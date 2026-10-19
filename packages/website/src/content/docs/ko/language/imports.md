@@ -43,7 +43,7 @@ defs:
   atLeast: { type: bool, params: { n: int }, cel: "user.level >= n" }
 ```
 
-def는 CEL 본문을 문자열로 쓴 것입니다 — `helped: "run.choseHelp"` — 이며 타입은 본문에서 추론됩니다. dsl 0.26.0 §2.7부터 `visited('…')` 또는 `validAt(…)` 호출인 본문은 `bool`을 추론하므로 `pierSeen: "visited('south.pier')"`에는 긴 형식이 필요 없습니다. `params:`가 있거나 검사기가 타입을 추론할 수 없는 def는 `{ type: bool, cel: "…" }` 긴 형식을 사용합니다. 다른 형태는 `E-DEF-DECL`입니다. 가져온 스키마의 def에서 `check-project`는 가져오는 문서마다가 아니라 스키마 줄에서 한 번 `E-DEF-DECL`을 보고하며 메시지 끝에 `(imported by N documents)`를 붙입니다.
+def는 CEL 본문을 문자열로 쓴 것입니다 — `helped: "run.choseHelp"` — 이며 타입은 본문에서 추론됩니다. dsl 0.26.0 §2.7부터 `visited('…')` 또는 `validAt(…)` 호출인 본문은 `bool`을 추론하므로 `pierSeen: "visited('south.pier')"`에는 긴 형식이 필요 없습니다. `params:`가 있거나 검사기가 타입을 추론할 수 없는 def는 `{ type: bool, cel: "…" }` 긴 형식을 사용합니다. 다른 형태는 `E-DEF-DECL`입니다. 가져온 스키마의 def에서 프로젝트 전체 `lute check`는 가져오는 문서마다가 아니라 스키마 줄에서 한 번 `E-DEF-DECL`을 보고하며 메시지 끝에 `(imported by N documents)`를 붙입니다.
 
 가져오기 경로는 **가져오는 씬 파일을 기준으로** 해석되므로, 씬과 스키마는 함께 이동해야 합니다(스키마 없이 씬을 `/tmp`로 복사하면 `E-USES-NOT-FOUND`가 발생합니다).
 

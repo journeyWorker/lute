@@ -3,7 +3,7 @@ title: The scene graph and `after:`
 description: How Lute assembles a project-wide prerequisite graph from each document's after declaration, the restricted visited/completed/active formula grammar, and the lute scenario graph view with its per-edge atom kinds and its bundle beat nodes.
 ---
 
-Scenes and quests declare their **prerequisites** — what must have happened before this node is available — and `check-project` assembles them into a project-wide graph. This closes the one asymmetry in the language: quests already had a declarative activation predicate (`<quest start>`), but scenes had no prerequisite surface at all. `after:` gives episodes what quests already had.
+Scenes and quests declare their **prerequisites** — what must have happened before this node is available — and whole-project `lute check` assembles them into a project-wide graph. This closes the one asymmetry in the language: quests already had a declarative activation predicate (`<quest start>`), but scenes had no prerequisite surface at all. `after:` gives episodes what quests already had.
 
 ## Declaring `after`
 
@@ -31,7 +31,7 @@ Formula ::= "visited(" StringLit ")" | "completed(" StringLit ")" | "active(" St
 
 ## Node assembly and edges
 
-At `check-project` time the tooling walks every document's frontmatter, computes each episode's canonical key into a project-wide **set**, and resolves each `visited(K)` / `completed(K)` / `active(K)` by exact string equality — never by decomposing the key. From each formula it derives a **topological-precedence DAG**: an edge `p → n` for every node `p` referenced anywhere in `n`'s formula, regardless of `&&`/`||` position and regardless of which atom named it. This over-approximating edge set is used for cycle detection and as the traversal order for the reachability and envelope passes.
+When whole-project `lute check` runs, the tooling walks every document's frontmatter, computes each episode's canonical key into a project-wide **set**, and resolves each `visited(K)` / `completed(K)` / `active(K)` by exact string equality — never by decomposing the key. From each formula it derives a **topological-precedence DAG**: an edge `p → n` for every node `p` referenced anywhere in `n`'s formula, regardless of `&&`/`||` position and regardless of which atom named it. This over-approximating edge set is used for cycle detection and as the traversal order for the reachability and envelope passes.
 
 The checker's claims are entirely **graph-structural** — is the edge set acyclic, do referenced ids exist, is there a satisfiable route, what does the graph guarantee. The formula's truth at a play session is a runtime question the engine evaluates, exactly as it evaluates `<quest start>`; Lute never runs it.
 
@@ -43,7 +43,7 @@ alternatives are simply two edges out of the same prerequisite — both land in 
 layer, and both are `Reachable`:
 
 ```console
-$ lute scenario .
+$ lute scenario --project .
 project root: .
   topological layers:
     layer 0: scene(x.s01ep01)
@@ -60,10 +60,10 @@ unlock, and both stay unlocked. If your story needs the *choice* to matter, that
 
 ## Viewing the graph
 
-`lute scenario <dir>` prints the assembled node/edge graph as deterministic topological waves, per resolved project root — the whole-graph view, without any centralized edge-manifest file to keep in sync with frontmatter.
+`lute scenario --project <dir>` prints the assembled node/edge graph as deterministic topological waves, per resolved project root — the whole-graph view, without any centralized edge-manifest file to keep in sync with frontmatter.
 
 ```console
-$ lute scenario .
+$ lute scenario --project .
 project root: .
   topological layers:
     layer 0: scene(narrator.s01ep01)
@@ -77,15 +77,15 @@ project root: .
     quest(findkai) -> scene(narrator.s01ep03) [completed]
 ```
 
-A quest joins the graph by declaring `follows` (even `follows=""`; graph metadata only — it never gates the quest), or, without one, through its anchors: the `::accept`s that take it up (`[accept]`, dsl 0.24.0 §2), its parent quest (`[subquest]`, dsl 0.25.0 §4), and the `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` conjuncts of its `start` (`[start]`, dsl 0.25.0 §4; an entry becomes the node `entry(X)`). See [Quests & scenes](/language/quests-and-scenes/#quest). A quest with none of these is listed as unanchored; it is still addressable by `lute scenario <dir> envelope quest:<id>`, but contributes no edges.
+A quest joins the graph by declaring `follows` (even `follows=""`; graph metadata only — it never gates the quest), or, without one, through its anchors: the `::accept`s that take it up (`[accept]`, dsl 0.24.0 §2), its parent quest (`[subquest]`, dsl 0.25.0 §4), and the `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` conjuncts of its `start` (`[start]`, dsl 0.25.0 §4; an entry becomes the node `entry(X)`). See [Quests & scenes](/language/quests-and-scenes/#quest). A quest with none of these is listed as unanchored; it is still addressable by `lute scenario --project <dir> envelope --node quest:<id>`, but contributes no edges.
 
 ### Edge kinds
 
 `completed(Q)` and `active(Q)` both land on the same `quest(Q)` node and are indistinguishable once the formula is flattened — so the graph records, alongside each edge, the atom kind(s) that justify it. All three output formats report it:
 
 - **`text`** — a bracketed list after each edge, as above. One edge can carry both kinds when a formula names the same quest twice: `after: 'active("findkai") || completed("findkai")'` prints `[completed, active]`.
-- **`json`** — each edge is `{"from":…,"to":…,"kinds":[…]}`; `kinds` is an array for the same reason.
-- **`dot`** — an edge justified **only** by `active` atoms renders `[style=dashed]`; anything carrying a `visited` or `completed` atom stays solid, because the stronger claim is what a reader should see.
+- **`json`** (`--json`) — each edge is `{"from":…,"to":…,"kinds":[…]}`; `kinds` is an array for the same reason.
+- **`dot`** (`--format dot`) — an edge justified **only** by `active` atoms renders `[style=dashed]`; anything carrying a `visited` or `completed` atom stays solid, because the stronger claim is what a reader should see.
 
 The kind is presentational and analytical, never structural: the DAG shape is identical either way, since an `active` edge constrains ordering exactly as a `completed` edge does. Besides the three atom kinds, an edge may be an anchor that no `after` formula wrote: `[accept]` from a unit that `::accept`s a quest, `[subquest]` from a parent quest to its child, and `[start]` from a source its `start` reads (dsl 0.24.0, 0.25.0).
 
@@ -100,7 +100,7 @@ A lore document's [bundle beats](/tooling/play/#bundle-beats) (dsl 0.23.0) are n
 ```
 
 ```console
-$ lute scenario .
+$ lute scenario --project .
 project root: .
   topological layers:
     layer 0: scene(narrator.s01ep01), beat(harbor.porter)
@@ -116,10 +116,10 @@ project root: .
     beat(harbor.porter) — its `when` reads visited('narrator.s01ep02'), which gates it but draws no edge; write `after="visited('narrator.s01ep02')"` to anchor it
 ```
 
-The `visited()` in its `when` draws no edge: a `when` is a runtime condition, not a prerequisite. Since dsl 0.25.0 the bare view therefore lists the beat as unanchored, with the `after=` that would order it (`unanchoredHints` in `--format json`). In `--format json` the node's `kind` is `beat` (its `prereq` is `null`), and in `--format dot` it is drawn `shape=note`. `lute scenario <dir> reach` and `envelope` take its canonical id, bare or as `beat:<id>`, and `reach` names where the beat is declared and what selects it:
+The `visited()` in its `when` draws no edge: a `when` is a runtime condition, not a prerequisite. Since dsl 0.25.0 the bare view therefore lists the beat as unanchored, with the `after=` that would order it (`unanchoredHints` in the `--json` report). In the `--json` report the node's `kind` is `beat` (its `prereq` is `null`), and with `--format dot` it is drawn `shape=note`. `lute scenario reach --node` and `lute scenario envelope --node` take its canonical id, bare or as `beat:<id>`, and `reach` names where the beat is declared and what selects it:
 
 ```console
-$ lute scenario . reach harbor.porter
+$ lute scenario --project . reach --node harbor.porter
 project root: .
 reach beat(harbor.porter):
   verdict: Reachable — a satisfiable route exists under your declared routes.
@@ -130,4 +130,4 @@ reach beat(harbor.porter):
   when: visited('narrator.s01ep02')
 ```
 
-Since dsl 0.25.0 §3 a bundle beat may declare `after="…"` itself, with a scene `after:`'s grammar and meaning. Written `<beat id="porter" on="talk" target="npc.porter" after="visited('narrator.s01ep02')">`, the porter moves out of layer 0 and the graph gains `scene(narrator.s01ep02) -> beat(harbor.porter) [visited]`; the beat is then eligible only once the prerequisite holds. `reach harbor.porter` then prints the formula on its `after:` line (`after: visited("narrator.s01ep02")`) instead of `(none declared)`. A bundle beat is also a legal `after:` predecessor (dsl 0.24.0 §2): a scene's or quest's `visited('harbor.porter')` names it, and connectivity routes through it like a scene.
+Since dsl 0.25.0 §3 a bundle beat may declare `after="…"` itself, with a scene `after:`'s grammar and meaning. Written `<beat id="porter" on="talk" target="npc.porter" after="visited('narrator.s01ep02')">`, the porter moves out of layer 0 and the graph gains `scene(narrator.s01ep02) -> beat(harbor.porter) [visited]`; the beat is then eligible only once the prerequisite holds. `reach --node harbor.porter` then prints the formula on its `after:` line (`after: visited("narrator.s01ep02")`) instead of `(none declared)`. A bundle beat is also a legal `after:` predecessor (dsl 0.24.0 §2): a scene's or quest's `visited('harbor.porter')` names it, and connectivity routes through it like a scene.

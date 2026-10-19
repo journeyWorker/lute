@@ -450,7 +450,7 @@ four `::assert` directives inside `<choice>` bodies; `lute check` on it reports
 
 `::accept{quest="<id>"}` (dsl 0.21.0) declares that the player accepts an **accept-driven** quest —
 one with no `start` predicate — at this point in a scene. It is the scene-side form of the engine's
-"accept quest" action and of `lute trace --accept`, and it usually sits in the choice where the
+"accept quest" action and of `lute trace --accepted-quest`, and it usually sits in the choice where the
 player agrees:
 
 ```lute
@@ -468,7 +468,7 @@ player agrees:
 Like `::set` and `::assert`, it is built in, not plugin vocabulary: it lowers to its own IR record,
 `{"kind": "accept", "family": "declaration", "position": …, "quest": "calmTheShed"}`, and the engine activates the quest if it is
 still `unset` and ignores the record otherwise. The target is checked twice: a missing or
-malformed `quest` is `E-ACCEPT-TARGET` in `lute check`, and `check-project` reports
+malformed `quest` is `E-ACCEPT-TARGET` in `lute check`, and whole-project `lute check` reports
 `E-ACCEPT-TARGET` when the id names no quest in the project or names a quest that has a `start`
 predicate (such a quest activates itself; accepting it means nothing), and, since 0.24.0, a child
 quest that activates with its parent (the message names the parent). See

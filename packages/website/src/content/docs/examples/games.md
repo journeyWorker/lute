@@ -10,7 +10,7 @@ kind of writer, then migrated to the current language. Each is its own project �
 scenes, lore, quests, plugins, `tests/` and `plays/` — with a README that names the features it
 exercises, the file to look at for each, and the commands to run it.
 
-CI checks every game with `lute check-project --deny-warnings` and runs its tests and plays, so the
+CI checks every game with `lute check --project <DIR> --deny-warnings` and runs its tests and plays, so the
 games stay clean as the language moves. Where a game means something a warning would otherwise
 question — a permanent ending, a latching `spentBy`, a role name two cast entries share — it says so
 in the spelling Lute provides for that intent, never with a suppression.
@@ -43,7 +43,7 @@ shows a project at scale.
 Run one from a checkout of the repository:
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/tea-hollin
-lute test docs/examples/games/tea-hollin
-lute play docs/examples/games/tea-hollin --script docs/examples/games/tea-hollin/plays/magpie.play.yaml
+lute check --project docs/examples/games/tea-hollin --deny-warnings
+lute test --project docs/examples/games/tea-hollin
+lute play --project docs/examples/games/tea-hollin --script docs/examples/games/tea-hollin/plays/magpie.play.yaml
 ```

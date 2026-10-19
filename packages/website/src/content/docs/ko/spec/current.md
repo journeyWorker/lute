@@ -391,3 +391,17 @@ CLI 계약입니다. JSON 보고서는 `command`, `schemaVersion`, 종료 코드
 `lute schema`는 파서의 명령 트리를 설명하고, 로컬 텔레메트리는
 `LUTE_TELEMETRY=0` 또는 `DO_NOT_TRACK=1`로 선택 해제합니다. 아티팩트, `run --json`,
 이벤트 스트림은 기존의 보고서가 아닌 프로토콜을 유지합니다.
+
+## 0.48 CLI 문법 부록
+
+0.48.0은 명령줄(과 아래의 동작 하나)만 바꾸며 언어와 아티팩트 형태는 그대로입니다.
+프로젝트는 항상 `--project <DIR>`로 지정하고, `--project`를 주지 않은 명령은 현재 디렉터리
+(`check`, `compile`, `context`, `trace`는 파일 피연산자의 디렉터리)에서 위쪽으로 가장 가까운
+`lute.project.yaml`을 찾습니다(해당 디렉터리 자신 포함). 발견된 프로젝트는 명시한 `--project`와
+똑같이 쓰이므로, 프로젝트 안에서 `compile <FILE>`과 `trace <FILE>`은 이제 프로젝트 판정으로 게이트됩니다. `check-project`는 `lute check`로 합쳐졌습니다.
+`lute check --project <DIR>`이 프로젝트 전체 검사이고 `lute check <FILE>…`은 문서만 검사합니다.
+`lute compile --project <DIR> -o <OUT>`이 `compile --all`을, `lute compile --stream <FILE>`가
+`compile-stream`을 대체합니다. `check --json` 보고서는 `files[]`와, 프로젝트 전체 모드에서는
+`project_diagnostics`를 갖는 `0.48.0.check`이며 `0.43.0.check-project` 보고서는 폐기되었습니다.
+플래그 이름도 일관되게 바뀌었습니다(예: `--out`은 `-o, --output`, `--locales`는 `--locale-bundle`,
+`context --target`은 `--node`). 이 페이지의 이전 행과 노트는 설명하는 버전의 표기를 그대로 유지합니다.

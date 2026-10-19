@@ -20,7 +20,7 @@ Lute 문서는 주제별로 구성되어 있지만, 여러분은 아마도 **역
 9. [추적 가이드](/ko/tooling/tracing/) 및 [`lute test`](/ko/tooling/cli/#test) — 선택한 경로를 따라 씬을 미리 보고, 관심 있는 모든 경로를 테스트로 유지합니다.
 10. [비트](/ko/language/beats/) 및 [스토리 플레이](/ko/tooling/play/) — 엔진이 고정된 에피소드 순서가 아니라 순간에 따라 다음 스토리 조각을 선택할 때 사용하는 기능입니다. 시작점으로 삼을 수 있도록 `lute init --template beats`가 통과하는 예제를 뼈대부터 생성합니다.
 
-작성하는 동안 [치트시트](/ko/reference/cheatsheet/)를 열어 두세요. 편집기와 터미널이 파일에 대해 서로 다른 내용을 표시한다면 항상 터미널을 신뢰하고 `lute doctor .`를 실행하세요. 오래된 편집기 언어 서버인지, 도구 체인이 일치하지 않는지 알려줍니다.
+작성하는 동안 [치트시트](/ko/reference/cheatsheet/)를 열어 두세요. 편집기와 터미널이 파일에 대해 서로 다른 내용을 표시한다면 항상 터미널을 신뢰하고 `lute doctor --project .`를 실행하세요. 오래된 편집기 언어 서버인지, 도구 체인이 일치하지 않는지 알려줍니다.
 
 ## 내러티브 프로그래머
 
@@ -64,8 +64,8 @@ Lute가 컴파일한 내용을 플레이하도록 게임 엔진을 연결합니�
 
 1. [AI 하네스 가이드](/ko/tooling/ai-harness/) — 신뢰된 `--permission-profile`, 필터링된 `lute context`, `lute check --json`, `--deny`, 종료 코드 및 픽스잇을 루프에 연결하는 방법을 다룹니다.
 2. [기능 권한](/ko/tooling/capability-permissions/) — 생성된 소스가 자신의 권한을 선택하게 해서는 안 됩니다. context, check, compile 및 스트리밍 전체에서 하나의 호스트 상한을 사용합니다.
-3. [스트리밍 연속성 컴파일러](/ko/tooling/continuation-compiler/) — 모델별 문법을 새로 만들지 않고 `compile-stream`을 통해 일반적인 검사 완료 Lute 본문 단위를 스트리밍합니다.
+3. [스트리밍 연속성 컴파일러](/ko/tooling/continuation-compiler/) — 모델별 문법을 새로 만들지 않고 `compile --stream`을 통해 일반적인 검사 완료 Lute 본문 단위를 스트리밍합니다.
 4. [CLI 레퍼런스](/ko/tooling/cli/) — 모든 하위 명령 표면, `--json` 형태 및 모든 단계가 기준으로 삼는 종료 코드 계약을 다룹니다.
 5. [현재 사양](/ko/spec/current/) — 현재 언어가 실제로 강제하는 내용을 통합한 색인입니다.
 6. [상태 스키마](/ko/state/schemas/) — 생성기가 대상으로 삼아야 하는, 공유되고 임포트되는 단일 기준 원천입니다.
-7. [조사 구축](/ko/getting-started/build-an-investigation/) — 실제 프로젝트에서 하네스가 자동화하는 check → trace → compile 루프를 확인합니다. 여기에는 `check-project`가 관계형 팩트 가드에 대해 입증하는 내용도 포함됩니다.
+7. [조사 구축](/ko/getting-started/build-an-investigation/) — 실제 프로젝트에서 하네스가 자동화하는 check → trace → compile 루프를 확인합니다. 여기에는 프로젝트 전체 `lute check`가 관계형 팩트 가드에 대해 입증하는 내용도 포함됩니다.

@@ -117,7 +117,7 @@ title: The number
 - 프롬프트도 선택지 라벨처럼 번역할 수 있습니다(dsl 0.47.0). lineId **`promptLineId`**는
   `{prefix}.{branch id}.prompt`이며 `prompt`가 있을 때만 존재합니다.
   [`lute loc export`](/ko/tooling/cli/#loc-export)는 이를 `kind: "prompt"` 행으로 쓰고,
-  `lute compile --locales`는 번역을 **`promptTexts`**(로케일 → 텍스트, 비어 있으면 생략)에
+  `lute compile --locale-bundle`는 번역을 **`promptTexts`**(로케일 → 텍스트, 비어 있으면 생략)에
   병합합니다. `prompt`는 원문 그대로입니다. 프롬프트와 선택지는 `{prefix}.{branch id}.…`
   네임스페이스를 공유하므로 `prompt=`가 있는 branch 안의 `<choice id="prompt">`는
   `E-CHOICE-DUP`입니다 — 선택지 이름을 바꾸세요. `prompt=`가 없으면 이 id도 쓸 수 있습니다.
@@ -229,7 +229,7 @@ title: The lighthouse
 </hub>
 ```
 
-`--choose lamp=ledger,ledger,leave`와 함께 `lute trace`를 실행하면 "The lamp room again."이
+`--choice lamp=ledger,ledger,leave`와 함께 `lute trace`를 실행하면 "The lamp room again."이
 두 번 출력됩니다. 허브는 `<return>` 블록을 최대 하나만 가질 수 있으며, 블록에는 속성을 지정할 수
 없습니다. 텍스트를 다르게 하려면 해당 줄에 `when=`으로 가드를 지정하거나 `<match>` 안에 넣습니다.
 [Ink 또는 Yarn에서 가져오기](/ko/guides/coming-from-ink-yarn/)에서는 플레이어가 계속 돌아오는 Ink knot를

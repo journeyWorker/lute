@@ -3,7 +3,7 @@ title: 도달 가능성
 description: 선언된 after 그래프에서 노드에 만족 가능한 경로가 있는지 Lute가 증명하는 방법, Reachable / Unreachable / Unknown 판정, 노드별 순환 저하, 그리고 lute scenario reach입니다.
 ---
 
-[씬 그래프](/ko/connectivity/scene-graph/)가 조립되면 `check-project`는 각 노드에 **프로젝트의 진입 집합에서 출발하는 만족 가능한 경로**가 하나 이상 있는지 묻습니다 — 경로를 열거하지 않고, 수식 AST를 메모이제이션하는 구조적 재귀로 계산합니다:
+[씬 그래프](/ko/connectivity/scene-graph/)가 조립되면 프로젝트 전체 `lute check`는 각 노드에 **프로젝트의 진입 집합에서 출발하는 만족 가능한 경로**가 하나 이상 있는지 묻습니다 — 경로를 열거하지 않고, 수식 AST를 메모이제이션하는 구조적 재귀로 계산합니다:
 
 ```
 reachable(visited(Y)) = ¬unreachable(Y)
@@ -19,7 +19,7 @@ reachable(X || Y) = reachable(X) ∨ reachable(Y)
 
 ## 판정
 
-`lute scenario <dir> reach <nodeId>`는 세 가지 판정 중 하나와 노드에 선언된 `after` 선행 조건 구조를 보고합니다:
+`lute scenario --project <dir> reach --node <nodeId>`는 세 가지 판정 중 하나와 노드에 선언된 `after` 선행 조건 구조를 보고합니다:
 
 - **Reachable** — 선언된 `after` 그래프에서 만족 가능한 경로가 존재합니다.
 - **Unreachable** — 선언된 경로가 노드에 도달하지 않습니다(`E-CONN-UNREACHABLE`).
@@ -28,7 +28,7 @@ reachable(X || Y) = reachable(X) ∨ reachable(Y)
 `<nodeId>`는 씬의 정식 키(예: `marina.s01ep02`) 또는 퀘스트의 `quest:<id>`입니다.
 
 ```console
-$ lute scenario . reach narrator.s01ep02
+$ lute scenario --project . reach --node narrator.s01ep02
 project root: .
 reach scene(narrator.s01ep02):
   verdict: Reachable — a satisfiable route exists under your declared routes.
@@ -41,10 +41,10 @@ reach scene(narrator.s01ep02):
 
 ## 결말
 
-`lute scenario <dir> reach --endings[=<occasion>]`(0.27.0)는 모든 결말을 한 번에 검사합니다. `=<occasion>`을 지정하면 해당 계기에 응답하는 모든 beat를 검사하고, 인자를 생략하면 콘텐츠에서 `::end`를 실행할 수 있는 모든 beat를 검사합니다. 각 행은 옆에 `after:` 판정을 두고, `when` 판정, 즉 `check-project`가 도달하는 판정(`E-BEAT-UNREACHABLE` / `E-ENTRY-UNREACHABLE`(결코 성립하지 않음) 또는 `W-BEAT-SHADOWED`(결코 승리하지 않음))을 표시합니다. 그리고 `when`을 반박하는 것이 없으면 읽는 상태 경로와 팩트, 그리고 이를 생성하는 주체를 표시합니다:
+`lute scenario --project <dir> reach --endings[=<occasion>]`(0.27.0)는 모든 결말을 한 번에 검사합니다. `=<occasion>`을 지정하면 해당 계기에 응답하는 모든 beat를 검사하고, 인자를 생략하면 콘텐츠에서 `::end`를 실행할 수 있는 모든 beat를 검사합니다. 각 행은 옆에 `after:` 판정을 두고, `when` 판정, 즉 프로젝트 전체 `lute check`가 도달하는 판정(`E-BEAT-UNREACHABLE` / `E-ENTRY-UNREACHABLE`(결코 성립하지 않음) 또는 `W-BEAT-SHADOWED`(결코 승리하지 않음))을 표시합니다. 그리고 `when`을 반박하는 것이 없으면 읽는 상태 경로와 팩트, 그리고 이를 생성하는 주체를 표시합니다:
 
 ```console
-$ lute scenario . reach --endings=termEnd
+$ lute scenario --project . reach --endings=termEnd
 project root: .
 endings (the beats answering `termEnd`):
   end.other.keeper (beat, lore/endings/other.lute): reachable

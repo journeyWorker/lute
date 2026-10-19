@@ -125,7 +125,7 @@ terminal: "run.fate == 'taken' || run.sanity <= 0"
 - 문자열도 아니고 `{ when, persists }` 매핑도 아니며 조건을 지정하지 않는 값은 `E-META-VALUE`입니다. 즉 `terminal:`은 게임이 끝나는 시점을 지정해야 합니다.
 - 조건이 성립하면 계기가 발생하지 않으므로 모든 비트는 `!terminal` 아래에서 판단됩니다. 게임이 아직 끝나지 않았는데 `when`이 명백히 거짓인 비트, 또는 `run.fate == 'taken'`을 필요로 하는 비트는 `E-BEAT-UNREACHABLE`입니다. 동일한 경계가 계기의 [`raisedWhen`](/ko/plugins/manifests/#계기-게이트-raisedwhen)을 통해 계기를 한 번에 하나씩 제한합니다.
 
-[`lute play`](/ko/tooling/play/)는 엔진을 따릅니다. `terminal:`이 성립한 뒤의 단계에는 게임이 끝났다는 메모가 추가되고, 그 지점에서 끝나는 플레이스루는 `end: terminal`을 보고합니다(`--json` 루트의 `"end": "terminal"`). 이후의 `occasion:` 또는 `advance:` 단계는 `E-OCCASION-GATE`(종료 코드 1)입니다. `newRun: true` 단계는 새 실행을 시작하며, 새 실행에서 조건이 거짓이 될 때만 플레이가 계속됩니다. 실행 상태에 대한 `terminal:`은 새 실행으로 리셋되지만, 새 실행에서 유지되는 것(`user.*`, `visited(…)`)을 읽는 조건은 리셋되지 않습니다. 긴 형식에서 `persists: true`라고 하지 않으면 `check-project`가 `W-TERMINAL-PERSISTENT`를 경고합니다. `persists: true`이면 메모와 거부 메시지가 게임이 영원히 끝났다고 알리며 `newRun`을 절대 제안하지 않습니다.
+[`lute play`](/ko/tooling/play/)는 엔진을 따릅니다. `terminal:`이 성립한 뒤의 단계에는 게임이 끝났다는 메모가 추가되고, 그 지점에서 끝나는 플레이스루는 `end: terminal`을 보고합니다(`--json` 루트의 `"end": "terminal"`). 이후의 `occasion:` 또는 `advance:` 단계는 `E-OCCASION-GATE`(종료 코드 1)입니다. `newRun: true` 단계는 새 실행을 시작하며, 새 실행에서 조건이 거짓이 될 때만 플레이가 계속됩니다. 실행 상태에 대한 `terminal:`은 새 실행으로 리셋되지만, 새 실행에서 유지되는 것(`user.*`, `visited(…)`)을 읽는 조건은 리셋되지 않습니다. 긴 형식에서 `persists: true`라고 하지 않으면 프로젝트 전체 `lute check`가 `W-TERMINAL-PERSISTENT`를 경고합니다. `persists: true`이면 메모와 거부 메시지가 게임이 영원히 끝났다고 알리며 `newRun`을 절대 제안하지 않습니다.
 
 조건은 계기가 발생할 때 판단되므로, 조건을 성립시키는 발생은 끝까지 진행됩니다. 게임을 끝내는 쓰기가 포함된 비트는 완료되고, `select: sequence` 발생의 나머지도 실행되며, 해당 발생으로 정리되는 `questComplete` / `questFailed` 핸들러가 마지막으로 실행을 확정합니다. 에필로그는 해당 쓰기 뒤에 오거나, 퀘스트의 `terminal:`이 읽는 `<on event="questComplete">` 핸들러 안에 옵니다. 콘텐츠의 `::end`는 게임을 절대 끝내지 않습니다. "end"의 모든 의미는 [게임이 끝남](/ko/tooling/play/#게임이-끝났을-때)을 참조하세요.
 
@@ -146,7 +146,7 @@ terminal: { when: "user.crowned", persists: true }
 
 ### 사용되지 않는 Def
 
-`check-project`는 선언된 `@def`를 콘텐츠, 다른 def 또는 규칙 가드가 참조하지 않을 때 `W-DEF-UNUSED`(dsl 0.24.0 §7)를 보고합니다. 프로젝트당 한 번, 선언 위치에서 보고됩니다. 스키마 파일의 줄 또는 문서 자체의 `defs:` 키 위치입니다. 플레이 스크립트와 테스트는 사용처가 아닙니다. 관계형 대응 항목은 `W-RELATION-UNREAD`입니다([읽는 항목이 없는 관계](/ko/state/facts-and-datalog/#아무도-읽지-않는-관계)를 참조).
+프로젝트 전체 `lute check`는 선언된 `@def`를 콘텐츠, 다른 def 또는 규칙 가드가 참조하지 않을 때 `W-DEF-UNUSED`(dsl 0.24.0 §7)를 보고합니다. 프로젝트당 한 번, 선언 위치에서 보고됩니다. 스키마 파일의 줄 또는 문서 자체의 `defs:` 키 위치입니다. 플레이 스크립트와 테스트는 사용처가 아닙니다. 관계형 대응 항목은 `W-RELATION-UNREAD`입니다([읽는 항목이 없는 관계](/ko/state/facts-and-datalog/#아무도-읽지-않는-관계)를 참조).
 
 호스트만 읽는 스키마 파일의 def(예: 게임의 `Program.def`)는 죽은 코드가 아닙니다. 메시지가 안내하듯 `host: true`로 표시하면 경고가 나오지 않습니다(0.41.1). 문서 자체의 frontmatter def는 `host:`를 받을 수 없으므로(`E-DEF-DECL`), 그 경고는 def를 쓰거나 지우라고만 안내합니다.
 
@@ -188,7 +188,7 @@ entities:
   trainer: { subsetOf: person, members: [rival] }
 ```
 
-```yaml unverified="an add: needs the base schema above beside it; both checked together with lute check-project"
+```yaml unverified="an add: needs the base schema above beside it; both checked together with whole-project lute check"
 # schema/areas/south.schema.yaml (one area's)
 entities:
   person:  { add: [grannyWren, oldSalt] }
@@ -213,12 +213,12 @@ schema/areas/south.schema.yaml:3:35: error [E-ENTITY-KIND-SHAPE] entity kind `tr
 ### 문서 간 선언
 
 두 문서의 프런트매터 `state:`에 선언된 경로는 하나의 런타임 값이므로, dsl 0.26.0
-§2.1부터 `check-project`는 선언을 비교하고 `type`, `default`, `per` 또는 `owner`가 다르면
+§2.1부터 프로젝트 전체 `lute check`는 선언을 비교하고 `type`, `default`, `per` 또는 `owner`가 다르면
 `E-STATE-DECL-CONFLICT`를 보고합니다([선언](/ko/state/state-model/#선언) 참고).
 
 모든 임포터가 반복해서 보고하게 되는 스키마 오류 — 하위 종류 및 `add:`의 `E-ENTITY-KIND-SHAPE`,
 `E-USES-DUP-STATE`, `E-USES-DUP-DEF`, `E-USES-DUP-RELATION`, 피어의 `E-KIND-NAME-CLASH`,
-그리고 가져온 def의 `E-DEF-DECL` — 는 가져오는 문서마다 보고하지 않고 `check-project`가 한 번만,
+그리고 가져온 def의 `E-DEF-DECL` — 는 가져오는 문서마다 보고하지 않고 프로젝트 전체 `lute check`가 한 번만,
 `(imported by N documents)`로 끝나는 스키마 줄의 프로젝트 전체 진단으로 보고합니다
 (dsl 0.26.0 §2.7). 임포터는 `ok` 상태로 남습니다.
 

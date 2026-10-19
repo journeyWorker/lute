@@ -25,7 +25,7 @@ wait.
 9. [Tracing guide](/tooling/tracing/) and [`lute test`](/tooling/cli/#test) — preview a scene along a chosen path, and keep every path you care about as a test.
 10. [Beats](/language/beats/) and [Playing a story](/tooling/play/) — when the engine picks the next piece of story by moment instead of a fixed episode order; `lute init --template beats` scaffolds a passing example to start from.
 
-Keep the [cheatsheet](/reference/cheatsheet/) open while you write. If your editor and the terminal ever disagree about a file, trust the terminal and run `lute doctor .`: it names a stale editor language server or a mismatched toolchain.
+Keep the [cheatsheet](/reference/cheatsheet/) open while you write. If your editor and the terminal ever disagree about a file, trust the terminal and run `lute doctor --project .`: it names a stale editor language server or a mismatched toolchain.
 
 ## Narrative programmer
 
@@ -75,8 +75,8 @@ keeps it honest. This path centers the machine-readable surfaces.
 
 1. [AI harness guide](/tooling/ai-harness/) — wiring trusted `--permission-profile`, filtered `lute context`, `lute check --json`, `--deny`, exit codes, and fixits into a loop.
 2. [Capability permissions](/tooling/capability-permissions/) — never let generated source choose its authority; use one host ceiling across context, check, compile, and streaming.
-3. [Streaming continuation compiler](/tooling/continuation-compiler/) — stream ordinary checked Lute body units through `compile-stream` without inventing a model-specific grammar.
+3. [Streaming continuation compiler](/tooling/continuation-compiler/) — stream ordinary checked Lute body units through `compile --stream` without inventing a model-specific grammar.
 4. [CLI reference](/tooling/cli/) — the full subcommand surface, `--json` shapes, and the exit-code contract every step keys off.
 5. [Current specification](/spec/current/) — the consolidated index of what the language actually enforces today.
 6. [State schemas](/state/schemas/) — the shared, imported source of truth a generator must target.
-7. [Build an investigation](/getting-started/build-an-investigation/) — see the check → trace → compile loop the harness automates, on a real project (including what `check-project` proves about relational fact guards).
+7. [Build an investigation](/getting-started/build-an-investigation/) — see the check → trace → compile loop the harness automates, on a real project (including what whole-project `lute check` proves about relational fact guards).

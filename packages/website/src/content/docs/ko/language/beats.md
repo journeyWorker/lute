@@ -233,12 +233,12 @@ state:
   `— after: prerequisite not satisfied`로 표시하고, `lute trace --beat`는 이를 적용하지 않은 채
   비트 헤드에 ``not eligible: `after` prerequisite not satisfied``를 기록합니다). `lute scenario`는
   해당 간선을 그립니다. 잘못된 수식은 `E-CONN-PROFILE`, 어떤 문서도 선언하지 않은 노드는
-  `check-project`에서 `E-CONN-UNKNOWN-NODE`입니다. 비트의 `when`에 있는 `visited()` 결합 조건은 여전히
+  프로젝트 전체 `lute check`에서 `E-CONN-UNKNOWN-NODE`입니다. 비트의 `when`에 있는 `visited()` 결합 조건은 여전히
   비트를 제한하지만 간선을 그리지 않으므로, `lute scenario`는 이러한 비트를 고립된 것으로 표시하고
   작성해야 할 `after=`를 이름으로 알려줍니다. 장면과 마찬가지로 경로 순서는 `after=`에, 상태는 `when`에
   넣으세요.
 - 장면 비트와 같은 방식으로 검사합니다. `E-OCCASION-UNKNOWN`, `E-BEAT-UNREACHABLE`, 아래의
-  `check-project` 경고 [다음 절](#검사기가-증명하는-내용)는 정식 id로 이름을 표시합니다.
+  프로젝트 전체 `lute check` 경고 [다음 절](#검사기가-증명하는-내용)는 정식 id로 이름을 표시합니다.
 - 줄은 정식 id 아래에서 주소가 지정됩니다. 포터의 첫 줄은 `interviews.porter.porter_0010`이고,
   제목의 `titleLineId`는 `interviews.porter.title`입니다.
 
@@ -376,7 +376,7 @@ trace 및 컴파일된 아티팩트는 이를 펼쳐 쓴 것처럼 표시합니�
 작성해야 합니다. `once`가 없거나 `once: false`인 `share`는 `E-BEAT-ATTR`입니다. 반복 가능한 비트에는
 소진할 것이 없기 때문입니다. 하나의 키에 속한 모든 비트는 동일한 `once`를 선언해야 합니다. 키는 한 기간에
 소진되기 때문입니다. 로어 문서 `harbor`에 `once="user" share="solWarm"`인 `solDock` 비트를 추가하면
-`check-project`가 라디오와 지붕 비트의 불일치를 보고합니다.
+프로젝트 전체 `lute check`가 라디오와 지붕 비트의 불일치를 보고합니다.
 
 <!-- lute-diagnostics -->
 ```
@@ -429,7 +429,7 @@ trace 및 컴파일된 아티팩트는 이를 펼쳐 쓴 것처럼 표시합니�
 이름으로 안내합니다.
 
 래치는 각 발생 때마다 새로 판정하는 조건과 다릅니다. 조건이 성립한 뒤 다시 거짓이 될 수 있을 때 둘의
-차이가 나타납니다. `check-project`는 `once`가 작성되지 않은 `spentBy` 비트의 조건이 `::retract` /
+차이가 나타납니다. 프로젝트 전체 `lute check`는 `once`가 작성되지 않은 `spentBy` 비트의 조건이 `::retract` /
 `::assert` 또는 디렉티브의 선언된 효과로 되돌릴 수 있는 팩트, 시즌 상태, 팩트나 퀘스트(시즌이 다시 열릴 때
 각각 초기화됨), 또는 `rearm`으로 `unset`으로 돌아가는 퀘스트를 읽으면 **`W-SPENT-BY-REVERSIBLE`** 경고를
 냅니다. 메시지는 다음 재작성 방법을 안내합니다. 조건이 다시 거짓일 때마다 되돌아와야 하는 비트에는
@@ -837,12 +837,12 @@ occasions:
 
 | 코드 | 시점 |
 |---|---|
-| `E-BEAT-ATTR` | 잘못된 비트 키 또는 속성입니다. `on`이 이름이 아니거나, `target`이 점으로 구분된 id가 아니거나 계기의 [target domain](#대상-도메인) 밖에 있거나, [`kind:` target](#kind-대상)이 계기 도메인 안에서 닫힌 kind를 지정하지 않거나, [`for`](#멤버별-1회-for)가 닫힌 kind의 `kind:<kind>`가 아니거나 `target`과 함께 있거나 대상에 대해 발생했거나 `select: sequence`가 아닌 계기에 있거나, `priority`가 정수가 아니거나, scene 또는 bundle 비트의 `once`가 `run` / `user` / `false` 이외이거나 엔트리의 `once`가 `run` / `user` / `false` 이외입니다(각각 프로젝트에 [clock](/ko/language/clock/)이 있을 때만 `day` / `slot`도 가능하고, `week`는 해당 `week:`가 있을 때만 가능함; dsl 0.27.0 §5). `once="false"`가 있거나 `spentBy`와 나란히 `share` 키를 쓰거나, `also`가 bool이 아니거나 엔트리에 있거나 `select: all` / `sequence` 계기에 있거나, `share`가 식별자가 아니거나 옆에 소비하는 `once`가 없거나, 하나의 `share` 키를 가진 비트의 `once`가 서로 다르거나(`check-project`), `on`이 없는 비트 키이거나, 대상이 없는 계기에서 scene 또는 bundle 비트의 `target`을 사용하거나, [bundle beat](#비트-번들)의 형태가 잘못된 경우입니다(`id`, 중복 id, 또는 비트는 있지만 `id:`가 없는 lore 문서). |
+| `E-BEAT-ATTR` | 잘못된 비트 키 또는 속성입니다. `on`이 이름이 아니거나, `target`이 점으로 구분된 id가 아니거나 계기의 [target domain](#대상-도메인) 밖에 있거나, [`kind:` target](#kind-대상)이 계기 도메인 안에서 닫힌 kind를 지정하지 않거나, [`for`](#멤버별-1회-for)가 닫힌 kind의 `kind:<kind>`가 아니거나 `target`과 함께 있거나 대상에 대해 발생했거나 `select: sequence`가 아닌 계기에 있거나, `priority`가 정수가 아니거나, scene 또는 bundle 비트의 `once`가 `run` / `user` / `false` 이외이거나 엔트리의 `once`가 `run` / `user` / `false` 이외입니다(각각 프로젝트에 [clock](/ko/language/clock/)이 있을 때만 `day` / `slot`도 가능하고, `week`는 해당 `week:`가 있을 때만 가능함; dsl 0.27.0 §5). `once="false"`가 있거나 `spentBy`와 나란히 `share` 키를 쓰거나, `also`가 bool이 아니거나 엔트리에 있거나 `select: all` / `sequence` 계기에 있거나, `share`가 식별자가 아니거나 옆에 소비하는 `once`가 없거나, 하나의 `share` 키를 가진 비트의 `once`가 서로 다르거나(프로젝트 전체 `lute check`), `on`이 없는 비트 키이거나, 대상이 없는 계기에서 scene 또는 bundle 비트의 `target`을 사용하거나, [bundle beat](#비트-번들)의 형태가 잘못된 경우입니다(`id`, 중복 id, 또는 비트는 있지만 `id:`가 없는 lore 문서). |
 | `E-OCCASION-UNKNOWN` | `on`이 확인된 플러그인에서 선언한 계기가 아닌 계기를 지정합니다(어떤 플러그인이 계기를 선언한 뒤에만 해당). |
-| `E-BEAT-UNREACHABLE` | scene 또는 bundle 비트의 `when`이 결코 성립하지 않음이 증명됩니다. [when의 판정 방식](#when의-판정-방식)을 참조하십시오. `lute check`는 한 파일에서 결정되는 내용을 판정하고, `lute check-project`는 [fact envelope](/ko/state/facts-and-datalog/)를 통해 사실 쿼리도 판정합니다. 엔트리 비트의 성립하지 않는 `when`은 `E-ENTRY-UNREACHABLE`로 유지됩니다. |
-| `W-BEAT-SHADOWED` | `check-project` 전용입니다. 동일한 계기와 대상에서 더 앞선 순서의 비트가 항상 실행 가능하고(`after:`가 없으며 `when`이 없거나 항상 참임) 소비되지 않기 때문에(`once`가 없는 엔트리, 또는 `once: false`인 scene 또는 bundle 비트), `select: first` 비트가 절대 승리할 수 없습니다. 대상 도메인이 닫힌 계기에서는 모든 `<prefix>.<member>`에 대해 해당 member의 비트가 이길 때 대상이 지정되지 않은 비트도 보고하며, 메시지는 대상별로 가리는 비트를 이름으로 표시합니다. [kind beat](#kind-대상)도 같은 방식으로 member별 판정을 받습니다. `also` 비트는 가리지도 않고 가려지지도 않습니다. |
-| `W-BEAT-PRIORITY-TIE` | `check-project` 전용입니다. 하나의 `select: first` 계기에서 대상이 없거나 같은 대상에 해당하는 두 비트의 `priority`가 같고, 두 `when`이 서로 배타적이라고 증명되지 않습니다. 둘 다 실행 가능하면 프로젝트 순서가 승자를 정하므로 파일 이름을 바꾸거나 파일을 옮기면 결과가 바뀝니다. 하나의 `priority`를 다르게 지정하거나 조건을 배타적으로 만드십시오. 함께 성립할 수 없는 조건의 예로 `run.slot == 'morning'` 대 `run.slot == 'night'`, `run.day > 5` 대 `run.day < 3`, `holds(P)` 대 `!holds(P)`가 있습니다. 비트의 `once`도 조건의 일부로 셉니다. 엔트리의 `once="user"`는 `!entry.<id>.everRead`, `once="run"`은 `!entry.<id>.read`, scene 또는 bundle 비트의 `once: user`는 `!visited('<id>')`로 셉니다. 따라서 `once="user"`인 bark와 그 bark의 `everRead`를 읽는 `when`을 가진 bark는 충돌하지 않습니다. 모든 규칙이 ground이고 `cel()` 전용 스케줄인 파생 atom의 `holds(…)`는 해당 `cel()` 가드로 세므로, 서로 다른 스케줄 슬롯의 비트도 충돌하지 않습니다. dsl 0.26.0 §8에 따라 부정은 먼저 정규화하며(드모르간 법칙, `!(run.money < 100)`은 `run.money >= 100`이므로 `run.money < 100`과 배타적임), 각 조건의 대안을 비교합니다. 두 비트의 `when`에서 사실 분석의 must 집합을 읽고, 각 비트가 아직 실행되지 않은 `once: run` / `user` 프레젠테이션으로만 주장하는 사실은 해당 비트가 실행 가능할 때 없는 것으로 셉니다. 또한 메시지는 두 조건이 배타적이지 않은 이유를 설명합니다. 예를 들어 `once: run`보다 오래 지속되는 플래그, 다른 곳에서 주장되거나 `tier: user`인 사실, 또는 각 `when`이 읽는 경로입니다(``beat `tie.first` reads `run.metMira` and beat `tie.again` reads `run.money`: no path both constrain``). 멤버 비트와 [kind beat](#kind-대상)는 절대 충돌하지 않습니다. 멤버 비트가 먼저 순위를 얻기 때문입니다. 가려진 비트는 대신 `W-BEAT-SHADOWED`를 보고하며, `also` 비트는 절대 충돌하지 않습니다. |
-| `W-BEAT-ONCE-RUN-USER` | `check-project` 전용입니다. scene 또는 bundle 비트가 기본값인 `run`을 `once`에 그대로 두었고 `when`이 사용자 계층 상태만 읽습니다. 즉 `user.*`, `entry.<id>.everRead`, `tier: user` 관계의 `holds` / `count`, 또는 사용자 계층 퀘스트의 `quest.<id>.*`이며, run 계층 경로, run 계층 사실, `visited()`는 없습니다. 조건이 성립하면 모든 실행에서 성립하므로 비트가 매 실행마다 다시 재생됩니다. 한 번만 들리는 비트에는 `once: user`를 사용하거나 run 계층 상태로 조건을 제한하십시오. 매 실행마다 재생하는 것이 의도라면 `once: run`을 작성하십시오. 엔트리의 `once="run"`처럼 작성자가 명시한 `once: run`은 의도를 나타내고 경고를 없앱니다. `prev.run.*`은 사용자 상태가 아니라 실행 이력이므로 이를 읽는 `when`에는 경고가 발생하지 않습니다. |
+| `E-BEAT-UNREACHABLE` | scene 또는 bundle 비트의 `when`이 결코 성립하지 않음이 증명됩니다. [when의 판정 방식](#when의-판정-방식)을 참조하십시오. `lute check`는 한 파일에서 결정되는 내용을 판정하고, 프로젝트 전체 `lute check`는 [fact envelope](/ko/state/facts-and-datalog/)를 통해 사실 쿼리도 판정합니다. 엔트리 비트의 성립하지 않는 `when`은 `E-ENTRY-UNREACHABLE`로 유지됩니다. |
+| `W-BEAT-SHADOWED` | 프로젝트 전체 `lute check` 전용입니다. 동일한 계기와 대상에서 더 앞선 순서의 비트가 항상 실행 가능하고(`after:`가 없으며 `when`이 없거나 항상 참임) 소비되지 않기 때문에(`once`가 없는 엔트리, 또는 `once: false`인 scene 또는 bundle 비트), `select: first` 비트가 절대 승리할 수 없습니다. 대상 도메인이 닫힌 계기에서는 모든 `<prefix>.<member>`에 대해 해당 member의 비트가 이길 때 대상이 지정되지 않은 비트도 보고하며, 메시지는 대상별로 가리는 비트를 이름으로 표시합니다. [kind beat](#kind-대상)도 같은 방식으로 member별 판정을 받습니다. `also` 비트는 가리지도 않고 가려지지도 않습니다. |
+| `W-BEAT-PRIORITY-TIE` | 프로젝트 전체 `lute check` 전용입니다. 하나의 `select: first` 계기에서 대상이 없거나 같은 대상에 해당하는 두 비트의 `priority`가 같고, 두 `when`이 서로 배타적이라고 증명되지 않습니다. 둘 다 실행 가능하면 프로젝트 순서가 승자를 정하므로 파일 이름을 바꾸거나 파일을 옮기면 결과가 바뀝니다. 하나의 `priority`를 다르게 지정하거나 조건을 배타적으로 만드십시오. 함께 성립할 수 없는 조건의 예로 `run.slot == 'morning'` 대 `run.slot == 'night'`, `run.day > 5` 대 `run.day < 3`, `holds(P)` 대 `!holds(P)`가 있습니다. 비트의 `once`도 조건의 일부로 셉니다. 엔트리의 `once="user"`는 `!entry.<id>.everRead`, `once="run"`은 `!entry.<id>.read`, scene 또는 bundle 비트의 `once: user`는 `!visited('<id>')`로 셉니다. 따라서 `once="user"`인 bark와 그 bark의 `everRead`를 읽는 `when`을 가진 bark는 충돌하지 않습니다. 모든 규칙이 ground이고 `cel()` 전용 스케줄인 파생 atom의 `holds(…)`는 해당 `cel()` 가드로 세므로, 서로 다른 스케줄 슬롯의 비트도 충돌하지 않습니다. dsl 0.26.0 §8에 따라 부정은 먼저 정규화하며(드모르간 법칙, `!(run.money < 100)`은 `run.money >= 100`이므로 `run.money < 100`과 배타적임), 각 조건의 대안을 비교합니다. 두 비트의 `when`에서 사실 분석의 must 집합을 읽고, 각 비트가 아직 실행되지 않은 `once: run` / `user` 프레젠테이션으로만 주장하는 사실은 해당 비트가 실행 가능할 때 없는 것으로 셉니다. 또한 메시지는 두 조건이 배타적이지 않은 이유를 설명합니다. 예를 들어 `once: run`보다 오래 지속되는 플래그, 다른 곳에서 주장되거나 `tier: user`인 사실, 또는 각 `when`이 읽는 경로입니다(``beat `tie.first` reads `run.metMira` and beat `tie.again` reads `run.money`: no path both constrain``). 멤버 비트와 [kind beat](#kind-대상)는 절대 충돌하지 않습니다. 멤버 비트가 먼저 순위를 얻기 때문입니다. 가려진 비트는 대신 `W-BEAT-SHADOWED`를 보고하며, `also` 비트는 절대 충돌하지 않습니다. |
+| `W-BEAT-ONCE-RUN-USER` | 프로젝트 전체 `lute check` 전용입니다. scene 또는 bundle 비트가 기본값인 `run`을 `once`에 그대로 두었고 `when`이 사용자 계층 상태만 읽습니다. 즉 `user.*`, `entry.<id>.everRead`, `tier: user` 관계의 `holds` / `count`, 또는 사용자 계층 퀘스트의 `quest.<id>.*`이며, run 계층 경로, run 계층 사실, `visited()`는 없습니다. 조건이 성립하면 모든 실행에서 성립하므로 비트가 매 실행마다 다시 재생됩니다. 한 번만 들리는 비트에는 `once: user`를 사용하거나 run 계층 상태로 조건을 제한하십시오. 매 실행마다 재생하는 것이 의도라면 `once: run`을 작성하십시오. 엔트리의 `once="run"`처럼 작성자가 명시한 `once: run`은 의도를 나타내고 경고를 없앱니다. `prev.run.*`은 사용자 상태가 아니라 실행 이력이므로 이를 읽는 `when`에는 경고가 발생하지 않습니다. |
 | `W-ENTRY-WRITE-REREAD` | 한 실행에서 다시 읽을 수 있는 엔트리(lookup 엔트리, `once`가 없는 엔트리 비트, 실행보다 짧은 `once`, `spentBy` entry, `once="run"` / `"user"`가 없는 `for=` entry)의 본문에 쓰기를 수행하는 `::set`, `::retract` 또는 effect-only 지시어가 있습니다. 이 쓰기는 한 실행에서 처음 읽을 때만 적용됩니다. `::assert`는 예외이며, `!entry.<id>.read`로 보호된 쓰기도 예외입니다. [두 번 읽기](/ko/language/lore-entries/#두-번-읽기)를 참조하십시오. |
 
 ### `when`의 판정 방식
@@ -900,18 +900,18 @@ defs:
 ### 작업 중
 
 사실로 제한된 비트는 그 사실을 주장하는 scene이 아직 작성되지 않았기 때문에만 성립하지 않는 경우가
-많습니다. `lute check-project --wip`(dsl 0.23.0)는 어떤 관계에도 생산자가 전혀 없기 때문에 조건이
+많습니다. `lute check --project <dir> --wip`(dsl 0.23.0)는 어떤 관계에도 생산자가 전혀 없기 때문에 조건이
 성립하지 않을 때 `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`을
 **경고**로 보고합니다. 즉 seed도, 어디에도 있는 `::assert`도, 규칙도, `reserved:`도 없는 경우입니다.
 경고의 메모에는 이유가 적힙니다. 생산자는 있지만 일치할 수 없는 관계는 계속 오류입니다. 그 뒤에
 따라오는 것도 마찬가지입니다. 콘텐츠가 아직 작성되지 않았기 때문에만 성립하지 않는 퀘스트도 연결성에는
-포함되므로, 그 퀘스트가 일으키는 `E-CONN-UNREACHABLE`은 오류로 남습니다. [`lute check-project`](/ko/tooling/cli/#check-project)를 참조하십시오.
+포함되므로, 그 퀘스트가 일으키는 `E-CONN-UNREACHABLE`은 오류로 남습니다. [프로젝트 전체 `lute check`](/ko/tooling/cli/#프로젝트-전체-모드)를 참조하십시오.
 
 ## 도구
 
-- `lute play <dir> --script <play.yaml>`은 프로젝트 전체에서 계기의 스크립트 시퀀스를 발생시킵니다. 모든 후보를 판정과 함께 출력하고, 승자와 모든 `also` 비트를 제시합니다(또는 `select: sequence` 계기의 실행 가능한 모든 비트를 제시함). 그리고 각 후보 뒤에 퀘스트 수명 주기를 진행합니다. `select: all` 계기의 단계는 `pick:`으로 플레이어의 선택을 지정하거나 `pick: none`으로 목록을 닫으며, 단계의 `expect: { presented: [ids] }`는 제시된 비트가 순서대로인지 검증합니다. Bundle 비트는 scene 비트처럼 재생됩니다. [스토리 재생](/ko/tooling/play/)을 참조하십시오.
+- `lute play --project <dir> --script <play.yaml>`은 프로젝트 전체에서 계기의 스크립트 시퀀스를 발생시킵니다. 모든 후보를 판정과 함께 출력하고, 승자와 모든 `also` 비트를 제시합니다(또는 `select: sequence` 계기의 실행 가능한 모든 비트를 제시함). 그리고 각 후보 뒤에 퀘스트 수명 주기를 진행합니다. `select: all` 계기의 단계는 `pick:`으로 플레이어의 선택을 지정하거나 `pick: none`으로 목록을 닫으며, 단계의 `expect: { presented: [ids] }`는 제시된 비트가 순서대로인지 검증합니다. Bundle 비트는 scene 비트처럼 재생됩니다. [스토리 재생](/ko/tooling/play/)을 참조하십시오.
   dsl 0.26.0 §8부터 `lute play`와 `lute test`는 엔트리 id를 받는 모든 곳에서 `<document id>.<entry id>`(`talks.miraBark`) 형식의 엔트리도 받습니다. 즉 `pick:`, `entriesRead:`, 단계의 `winner` / `offered` / `notOffered` / `presented`, 테스트의 `entry:` / `entries:`, `expect.eligible` 키 및 `lute trace --entry`에서 사용할 수 있습니다.
-- `lute beats <dir>`는 각 계기와 각 대상의 비트 사다리를 선택 순서대로 출력합니다. `priority`, `once`(및 `share` 키), `also`, `after:`, `when`, title, 위의 `check-project` 판정을 포함하며, 아직 깨끗하게 검사되지 않는 프로젝트에서도 출력합니다. dsl 0.26.0 §8부터는 더 이른 비트가 소비되지 않은 채 항상 이기고 fallback의 `when`이 더 이른 비트의 `when`을 함의하는 경우 fallback을 `covered by <id>`(`--json`: `coveredBy`)로 표시합니다. 이는 경고가 아니라 정보입니다.
+- `lute beats --project <dir>`는 각 계기와 각 대상의 비트 사다리를 선택 순서대로 출력합니다. `priority`, `once`(및 `share` 키), `also`, `after:`, `when`, title, 위의 프로젝트 전체 `lute check` 판정을 포함하며, 아직 깨끗하게 검사되지 않는 프로젝트에서도 출력합니다. dsl 0.26.0 §8부터는 더 이른 비트가 소비되지 않은 채 항상 이기고 fallback의 `when`이 더 이른 비트의 `when`을 함의하는 경우 fallback을 `covered by <id>`(`--json`: `coveredBy`)로 표시합니다. 이는 경고가 아니라 정보입니다.
 
   ```
     townVisit — select: first
@@ -920,9 +920,9 @@ defs:
       2  0         gate.shutFallback  bundle  no    covered by gate.open  -      run.badges >= 3
   ```
 
-  `lute calendar <dir> --axis …`는 모든 날짜와 시간 슬롯처럼 상태 값의 격자에서 실행 가능성을 평가하고, 각 셀에 제시되는 내용을 보여 줍니다. 즉 승자 또는 sequence의 전체 목록입니다. `lute scenario <dir> knowledge`는 각 사실로 제한된 비트가 쿼리하는 사실과 그 사실을 생산하는 대상을 추적합니다. [개요](/ko/tooling/overviews/)를 참조하십시오.
+  `lute calendar --project <dir> --axis …`는 모든 날짜와 시간 슬롯처럼 상태 값의 격자에서 실행 가능성을 평가하고, 각 셀에 제시되는 내용을 보여 줍니다. 즉 승자 또는 sequence의 전체 목록입니다. `lute scenario --project <dir> knowledge`는 각 사실로 제한된 비트가 쿼리하는 사실과 그 사실을 생산하는 대상을 추적합니다. [개요](/ko/tooling/overviews/)를 참조하십시오.
 - `lute trace <lore.lute> --beat <id>`는 하나의 bundle 비트를 미리 보고, `lute run <artifact> --beat <id>`는 컴파일된 lore artifact에서 하나를 실행합니다. bundle 비트를 지정하지 않는 id는 `trace`에서 `E-TRACE-BEAT`가 되고 `run`에서는 사용 오류입니다. [추적](/ko/tooling/tracing/#번들-비트)을 참조하십시오.
-- `lute compile --all`은 `project.index.json`에 `beats`를 씁니다. scene, 엔트리 또는 bundle 비트(kind `bundle`)마다 한 행이며, 확장된 `when`과 `title`을 포함합니다(dsl 0.23.0). 컴파일된 각 scene 비트에는 `meta.beat`가 포함되고, 각 엔트리 비트에는 `entry` 레코드에 `on` / `priority` / `once`가 포함되며, 각 bundle 비트는 lore artifact에서 본문에 앞서 `beat` 레코드로 기록됩니다.
+- 프로젝트 전체 `lute compile`(문서 피연산자 없음, `-o <DIR>`)은 `project.index.json`에 `beats`를 씁니다. scene, 엔트리 또는 bundle 비트(kind `bundle`)마다 한 행이며, 확장된 `when`과 `title`을 포함합니다(dsl 0.23.0). 컴파일된 각 scene 비트에는 `meta.beat`가 포함되고, 각 엔트리 비트에는 `entry` 레코드에 `on` / `priority` / `once`가 포함되며, 각 bundle 비트는 lore artifact에서 본문에 앞서 `beat` 레코드로 기록됩니다.
 - `lute new scene <name> --occasion <occasion> [--target <target>]`은 먼저 프로젝트에서 계기와 대상을 확인한 뒤 scene 비트를 작성합니다. 대상이 지정된 계기에는 `--target`이 필요합니다.
 - `lute context`는 프로젝트가 선언한 계기를 대상 도메인과 함께 다른 어휘 옆에 나열합니다.
 

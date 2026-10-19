@@ -169,7 +169,7 @@ note that the game is over, and a playthrough that ends there reports `end: term
 (`"end": "terminal"` at the root of `--json`). A later `occasion:` or `advance:` step is
 `E-OCCASION-GATE` (exit 1). A `newRun: true` step starts a new run, and play goes on only when the
 new run makes the condition false: a `terminal:` over run state is reset by it, one that reads what
-a new run keeps (`user.*`, `visited(…)`) is not, and `check-project` warns `W-TERMINAL-PERSISTENT`
+a new run keeps (`user.*`, `visited(…)`) is not, and whole-project `lute check` warns `W-TERMINAL-PERSISTENT`
 unless the long form says `persists: true`. With `persists: true` the notes and the refusal say the
 game is over for good and never suggest `newRun`.
 
@@ -208,7 +208,7 @@ run. With several schemas, the project's ending persists only when every declara
 
 ### Defs nothing uses
 
-`check-project` reports `W-DEF-UNUSED` (dsl 0.24.0 §7) for a declared `@def` that no content, no other def, and no rule guard references. It is reported once per project, at the declaration: the schema file's line, or the document's own `defs:` key. Play scripts and tests are not uses. The relational counterpart is `W-RELATION-UNREAD` (see [Relations nothing reads](/state/facts-and-datalog/#relations-nothing-reads)).
+Whole-project `lute check` reports `W-DEF-UNUSED` (dsl 0.24.0 §7) for a declared `@def` that no content, no other def, and no rule guard references. It is reported once per project, at the declaration: the schema file's line, or the document's own `defs:` key. Play scripts and tests are not uses. The relational counterpart is `W-RELATION-UNREAD` (see [Relations nothing reads](/state/facts-and-datalog/#relations-nothing-reads)).
 
 A schema file's def that only the host reads — a game's `Program.def`, say — is not dead: mark it `host: true` and the warning stays silent, as the message says (0.41.1). A document's own frontmatter def cannot take `host:` (`E-DEF-DECL`), so its warning only says to use the def or drop it.
 
@@ -251,7 +251,7 @@ entities:
   trainer: { subsetOf: person, members: [rival] }
 ```
 
-```yaml unverified="an add: needs the base schema above beside it; both checked together with lute check-project"
+```yaml unverified="an add: needs the base schema above beside it; both checked together with whole-project lute check"
 # schema/areas/south.schema.yaml (one area's)
 entities:
   person:  { add: [grannyWren, oldSalt] }
@@ -276,12 +276,12 @@ schema/areas/south.schema.yaml:3:35: error [E-ENTITY-KIND-SHAPE] entity kind `tr
 ### Declarations across documents
 
 A path declared in two documents' frontmatter `state:` is one runtime value, so since dsl 0.26.0
-§2.1 `check-project` compares the declarations and reports `E-STATE-DECL-CONFLICT` when their
+§2.1 whole-project `lute check` compares the declarations and reports `E-STATE-DECL-CONFLICT` when their
 `type`, `default`, `per` or `owner` differ (see [Declaration](/state/state-model/#declaration)).
 
 Schema errors that every importer would repeat — sub-kind and `add:` `E-ENTITY-KIND-SHAPE`,
 `E-USES-DUP-STATE`, `E-USES-DUP-DEF`, `E-USES-DUP-RELATION`, a peer `E-KIND-NAME-CLASH`, and
-`E-DEF-DECL` for an imported def — are reported by `check-project` once, as a project-wide line at
+`E-DEF-DECL` for an imported def — are reported by whole-project `lute check` once, as a project-wide line at
 the schema line ending `(imported by N documents)` (dsl 0.26.0 §2.7), rather than at every importing
 document; the importers stay `ok`.
 

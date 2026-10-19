@@ -116,7 +116,7 @@ entities:
     labels: { lampOil: lamp oil }
 ```
 
-```yaml unverified="an area schema: its add: lists extend kinds that schema/roster.schema.yaml declares, so it checks only inside its project (check-project clean there)"
+```yaml unverified="an area schema: its add: lists extend kinds that schema/roster.schema.yaml declares, so it checks only inside its project (whole-project check clean there)"
 # schema/areas/north.schema.yaml (area north)
 state:
   run.northFogLifted: { type: bool, default: false }
@@ -146,7 +146,7 @@ entities:
   다른 영역이 선언한 하위 종류도 포함합니다. 검사기는 어떤 영역이 어떤 종류를 소유하는지 알지
   못하므로, 그 내용은 `AREAS.md`에 기록합니다.
 
-다른 스키마 오류와 마찬가지로 `check-project`는 이러한 오류를 해당 스키마 줄 끝에서 프로젝트 전체의
+다른 스키마 오류와 마찬가지로 프로젝트 전체 `lute check`는 이러한 오류를 해당 스키마 줄 끝에서 프로젝트 전체의
 한 줄로 한 번 보고합니다(`(imported by N documents)`). 각 문서가 해당 스키마를 임포트할 때마다
 반복해서 보고하지 않으며, 임포트하는 문서 자체는 `ok` 상태로 유지됩니다.
 
@@ -162,7 +162,7 @@ schema/areas/south.schema.yaml:2:29: error [E-ENTITY-KIND-SHAPE] entity kind `pe
 ## 상태: 공유 경로는 한 번 선언합니다
 
 두 영역이 모두 읽거나 쓰는 경로는 스키마에 한 번 선언해야 합니다. 두 문서가 각자의 프런트매터 `state:`에
-같은 경로를 선언하면 `check-project`가 선언을 비교합니다. 하나의 런타임 값을 공유하므로 `type`, `default`,
+같은 경로를 선언하면 프로젝트 전체 `lute check`가 선언을 비교합니다. 하나의 런타임 값을 공유하므로 `type`, `default`,
 `per`, `owner`가 일치해야 합니다. 일치하지 않으면 **`E-STATE-DECL-CONFLICT`**(dsl 0.26.0 §2.1)가 발생하며
 두 파일과 줄을 표시하고, `lute play`는 한 경로를 두 타입으로 선언한 프로젝트를 거부합니다.
 `scene.*` 경로는 씬 로컬이므로 예외이며, `extends:`로 재정의한 기본값을 지정해 세부화한 선언은 충돌이 아닙니다.
@@ -193,7 +193,7 @@ Lute 프로젝트의 대부분 ID는 프로젝트 전체에서 사용되므로, 
 `E-ENTRY-ID-DUP`입니다. dsl 0.26.0부터 플레이와 테스트에서는 엔트리를
 `<document id>.<entry id>`(`north.guards.northGullAfterStorm`)로 이름 붙일 수 있어 플레이를 읽기 쉽게 만들지만,
 엔트리 ID 자체는 여전히 고유해야 합니다. 하나의 `<branch>` 또는 `<hub>` ID를 가진 두 문서는
-`check-project`에서 `W-BRANCH-ID-SHARED`를 발생시킵니다. 하나의 `choose:` 키가 두 메뉴에 답하게 되기 때문입니다.
+프로젝트 전체 `lute check`에서 `W-BRANCH-ID-SHARED`를 발생시킵니다. 하나의 `choose:` 키가 두 메뉴에 답하게 되기 때문입니다.
 
 ## 표시 이름: 영역마다 캐스트 파일 하나를 둡니다
 
@@ -210,14 +210,14 @@ cast:
 ```
 
 네 영역이 사람의 이름을 지정하면, 그중 두 영역이 서로 다른 사람에게 같은 표시 이름을 선택하는 일이 조만간
-생깁니다. `check-project`는 두 캐스트 엔트리의 `name:`이 같거나, 캐스트 이름이
+생깁니다. 프로젝트 전체 `lute check`는 두 캐스트 엔트리의 `name:`이 같거나, 캐스트 이름이
 `::use{… name="…"}` 표시 문자열과 같거나, 두 문자열이 서로 다른 화자의 이름을 지정할 때
 **`W-DISPLAY-NAME-DUP`**(dsl 0.26.0 §2.8, 권고; `lute lint`에서도)을 경고합니다. "Tower Guard" 또는
 "Eclipse Grunt" 같은 역할처럼 공유할 이름은 캐스트 엔트리에 `sharedName: true`를 표시하면 집계하지 않습니다.
 
 두 영역 파일이 모두 선언한 캐스트 ID는 `E-PLUGIN-DUP-ID`이며 나중 선언 위치에서 보고됩니다. 첫 번째 선언이 사용됩니다:
 
-<!-- lute-diagnostics unverified="byte-exact check-project output; the plugin loader prefixes the file position to a composed message, so no single format! literal holds it" -->
+<!-- lute-diagnostics unverified="byte-exact whole-project check output; the plugin loader prefixes the file position to a composed message, so no single format! literal holds it" -->
 ```
 ./plugins/harbor.engine/cast/south.yaml:3:3: error [E-PLUGIN-DUP-ID] cast `keeper` is already declared at cast/north.yaml:2; this declaration is ignored — rename or remove one
 ```
@@ -314,7 +314,7 @@ once: run
 
 계약은 비트의 **ID, 계기와 대상, 그리고 비트가 생성하는 팩트와 상태**입니다. 영역은 나머지를 모두 다시 쓸 수
 있습니다. 스텁이 첫날부터 존재하므로 스파인의 퀘스트에는 필요한 각 팩트의 생성자가 있고, 영역이 아직 한 줄도
-작성하지 않았을 때도 `check-project`가 통과합니다. 영역이 비트를 삭제하거나 팩트의 단언을 중단하면 다음 검사에서
+작성하지 않았을 때도 프로젝트 전체 `lute check`가 통과합니다. 영역이 비트를 삭제하거나 팩트의 단언을 중단하면 다음 검사에서
 스파인의 목표가 `E-OBJECTIVE-UNSATISFIABLE`이 됩니다. 검사기가 계약을 강제하기 때문입니다.
 
 `obtain`은 `item: { type: { entity: keyItem } }`을 받고 `You got the {{@item}}.`이라고 말합니다. 종류로 타입이
@@ -322,7 +322,7 @@ once: run
 각 사용처에서 `label=` 인자로 작성하는 대신 로스터의 `labels:`에 한 번 작성합니다.
 
 **계약 비트 또는 `--wip`.** 계약 비트가 아직 하나도 없을 때 스파인을 초안 작성하는 리드는 대신
-`lute check-project . --wip`로 검사할 수 있습니다. `E-OBJECTIVE-UNSATISFIABLE`, `E-BEAT-UNREACHABLE`,
+`lute check --project . --wip`로 검사할 수 있습니다. `E-OBJECTIVE-UNSATISFIABLE`, `E-BEAT-UNREACHABLE`,
 `E-ENTRY-UNREACHABLE`, `E-ARM-DEAD`는 아직 아무것도 생성하지 않는 관계 때문에 발생한 경우 경고가 됩니다.
 또한 dsl 0.26.0 §2.6부터는 공유 컴포넌트가 바인딩되지 않은 파라미터로만 단언하는 관계도 포함됩니다
 (`obtain`의 `::assert{hasItem(@item)}`에 아직 `::use`가 없는 경우). 생성자는 존재하지만 절대 일치하지 않는
@@ -403,13 +403,13 @@ steps:
 영역이 브랜치를 리드에게 핸드오프하기 전에 프로젝트 루트에서 다음을 실행합니다.
 
 ```sh
-lute check-project . --deny-warnings   # 0 errors, 0 warnings
-lute test . --project .                # every test and every play with expect:, spine included
-lute beats .                           # no W-BEAT-PRIORITY-TIE / W-BEAT-SHADOWED you did not intend
-lute refs . --attr give.item --reward ITEM   # who gives what
+lute check --project . --deny-warnings                # 0 errors, 0 warnings
+lute test --project .                                 # every test and every play with expect:, spine included
+lute beats --project .                                # no W-BEAT-PRIORITY-TIE / W-BEAT-SHADOWED you did not intend
+lute refs --project . --attr give.item --reward ITEM  # who gives what
 ```
 
-- **`check-project --deny-warnings`**는 모든 경고를 오류로 바꿉니다. 여러 작성자가 있는 프로젝트에서 용인된
+- **`lute check --project . --deny-warnings`**는 모든 경고를 오류로 바꿉니다. 여러 작성자가 있는 프로젝트에서 용인된
   경고는 아무도 읽지 않는 경고가 됩니다. 0만이 안정적인 숫자입니다. 의도한 경고는 플래그가 아니라 발생 지점에서
   (`sharedName: true`, `priority=`) 침묵시킵니다.
 - **`lute test`**는 모든 `*.test.yaml`과 `expect:`가 있는 모든 플레이를 실행하므로, 스파인 플레이와 각 영역의
@@ -425,7 +425,7 @@ lute refs . --attr give.item --reward ITEM   # who gives what
   모두 Super Rod를 준다”는 사실을 확인하는 방법입니다.
 
 ```
-$ lute refs . --attr give.item
+$ lute refs --project . --attr give.item
 ::give.item: 2 value(s)
   `flare` — 1 use(s) in 1 document(s)
     scenes/south/pier.lute:13 (via component `supply`)
@@ -445,7 +445,7 @@ $ lute refs . --attr give.item
 | 두 영역 스키마가 같은 상태, 정의 또는 관계 이름을 선언함 | `E-USES-DUP-STATE`, `E-USES-DUP-DEF`, `E-USES-DUP-RELATION` |
 | 하나의 씬, 퀘스트 또는 엔트리 ID를 가진 문서가 둘임 | `E-CONN-EPISODE-ID-DUP`, `E-QUEST-ID-DUP`, `E-ENTRY-ID-DUP` |
 | 두 캐스트 파일이 하나의 캐스트 ID를 선언함 | `E-PLUGIN-DUP-ID`, 나중 파일과 줄에서 표시 |
-| 두 문서가 하나의 `<branch>` 또는 `<hub>`에 같은 ID를 부여함 | `check-project`의 `W-BRANCH-ID-SHARED` |
+| 두 문서가 하나의 `<branch>` 또는 `<hub>`에 같은 ID를 부여함 | 프로젝트 전체 `lute check`의 `W-BRANCH-ID-SHARED` |
 | 존재하지 않는 엔진 ID (`::give{item="flair"}`) | did-you-mean과 함께 `E-BAD-ENUM`; 속성이 `{ entity: K }`로 타입 지정된 경우 컴포넌트 param을 통해서도 감지 |
 | 대상이 없는 보상 또는 엔진이 알지 못하는 대상 | 보상 종류가 `target:` 계약을 선언할 때 `E-REWARD-TARGET` |
 | 두 화자가 같은 이름으로 표시됨 | `W-DISPLAY-NAME-DUP` (`sharedName: true`이면 제외) |

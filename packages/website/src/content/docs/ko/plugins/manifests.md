@@ -160,7 +160,7 @@ relations:
 게이트된 occasion에 응답하는 비트는 게이트가 성립하는 동안에만 제시될 수 있습니다. 따라서 체커는 해당 occasion에 응답하는 모든 비트와 [엔트리 비트](/ko/language/beats/#엔트리-비트)를 게이트와 함께 판정하며, 게이트가 `occasion.target`을 읽으면 멤버별로 판정합니다:
 
 - 게이트의 텍스트는 모든 조건 슬롯처럼 검사됩니다. 오류는 비트의 `on`에서 ``occasion `enter`'s `raisedWhen: …`:`` 접두사와 함께 보고됩니다.
-- 게이트가 명백히 거짓인 비트는 `E-BEAT-UNREACHABLE`(엔트리라면 `E-ENTRY-UNREACHABLE`)입니다. 엔진이 그 비트에 대해 occasion을 절대 발생시키지 않기 때문입니다. 게이트가 성립할 때마다 `when`이 명백히 거짓인 비트도 마찬가지입니다. `lute check-project`에서는 게이트의 `holds(…)`가 프로젝트의 [팩트 분석](/ko/state/facts-and-datalog/#check-project가-관계형-가드를-분석하는-방법)으로 결정됩니다. 프로젝트 어디에서도 `canEnter(office)`를 assert할 수 없다면 `room.office`의 모든 `enter` 비트는 절대 자격을 얻지 못합니다.
+- 게이트가 명백히 거짓인 비트는 `E-BEAT-UNREACHABLE`(엔트리라면 `E-ENTRY-UNREACHABLE`)입니다. 엔진이 그 비트에 대해 occasion을 절대 발생시키지 않기 때문입니다. 게이트가 성립할 때마다 `when`이 명백히 거짓인 비트도 마찬가지입니다. 프로젝트 전체 `lute check`에서는 게이트의 `holds(…)`가 프로젝트의 [팩트 분석](/ko/state/facts-and-datalog/#프로젝트-전체-lute-check가-관계형-가드를-분석하는-방법)으로 결정됩니다. 프로젝트 어디에서도 `canEnter(office)`를 assert할 수 없다면 `room.office`의 모든 `enter` 비트는 절대 자격을 얻지 못합니다.
 - 이런 방식으로 자격을 절대 얻지 못하는 비트는 `W-BEAT-PRIORITY-TIE`에 참여하지 않습니다.
 - 게이트가 읽는 관계는 `W-RELATION-UNREAD`에서 읽힌 것으로 계산됩니다.
 
@@ -246,7 +246,7 @@ directives:
 assert holding(brassKey)  (effect of ::give)
 ```
 
-콘텐츠가 assert하는 것을 읽는 모든 분석은 이 호출을 해당 팩트의 `::assert`와 `::retract`로 읽습니다. 프로젝트의 [팩트 분석](/ko/state/facts-and-datalog/#check-project가-관계형-가드를-분석하는-방법)(무엇이 성립할 수 있고 반드시 성립해야 하는지), `W-RELATION-UNREAD`, `E-FACT-EXCLUSIVE`(디렉티브에 빠진 `retracts:`를 선언하라고 제안), 캐스트 존재, `lute scenario --facts`, [`lute scenario knowledge`](/ko/tooling/overviews/#lute-scenario-knowledge), `lute lore`가 모두 여기에 해당합니다. 따라서 어떤 `::give` 호출이 `holding`을 assert할 수 있다면 `holds('holding', ['brassKey'])` 가드는 어디에도 `::assert`를 작성하지 않아도 만족할 수 있습니다.
+콘텐츠가 assert하는 것을 읽는 모든 분석은 이 호출을 해당 팩트의 `::assert`와 `::retract`로 읽습니다. 프로젝트의 [팩트 분석](/ko/state/facts-and-datalog/#프로젝트-전체-lute-check가-관계형-가드를-분석하는-방법)(무엇이 성립할 수 있고 반드시 성립해야 하는지), `W-RELATION-UNREAD`, `E-FACT-EXCLUSIVE`(디렉티브에 빠진 `retracts:`를 선언하라고 제안), 캐스트 존재, `lute scenario --facts`, [`lute scenario knowledge`](/ko/tooling/overviews/#lute-scenario-knowledge), `lute lore`가 모두 여기에 해당합니다. 따라서 어떤 `::give` 호출이 `holding`을 assert할 수 있다면 `holds('holding', ['brassKey'])` 가드는 어디에도 `::assert`를 작성하지 않아도 만족할 수 있습니다.
 ### 엔티티 종류로 형식이 지정된 엔진 id
 
 가방 아이템, 종족 또는 상점의 재고 목록처럼 엔진이 소유하는 무언가를 이름으로 지정하는 속성은 프로젝트가 선언한 **엔티티 종류**로 형식을 지정할 수 있습니다(dsl 0.26.0 §2.5).
@@ -270,13 +270,13 @@ entities:
 
 종류에 속하지 않는 값은 `E-BAD-ENUM`과 did-you-mean을 받습니다. 문서의 어떤 스키마에도 선언되지 않은 종류로 형식이 지정된 속성은 모든 사용 위치에서 `E-DOMAIN-UNKNOWN`입니다.
 
-<!-- lute-diagnostics unverified="verbatim lute check-project output; the E-DOMAIN-UNKNOWN message spells the type with escaped braces, which the scraper does not read back as a literal" -->
+<!-- lute-diagnostics unverified="verbatim lute check --project output; the E-DOMAIN-UNKNOWN message spells the type with escaped braces, which the scraper does not read back as a literal" -->
 ```
 ./scenes/mart.lute:9:14: error [E-BAD-ENUM] `potoin` is not a member of entity kind `bagItem` (attribute `item` of `::give`) — did you mean `potion`?
 ./scenes/mart.lute:10:22: error [E-DOMAIN-UNKNOWN] attribute `species` of `::encounter` is typed `{ entity: monster }`, but `monster` is not a declared entity kind — declare it under `entities:` in a project schema this document reaches through `uses:`
 ```
 
-컴포넌트 매개변수를 통해 속성에 도달하는 값은 `::use` 인자에서 또는 매개변수의 `default:`에서 검사합니다([매개변수를 통한 엔진 id](/ko/language/components-and-extends/#매개변수를-통한-엔진-id) 참조). `lute refs <dir> --attr give.item`은 해당 값을 사용하는 문서와 줄을 함께 모든 값으로 나열하므로, 리드는 여러 작성자의 작업을 병합하기 전에 누가 무엇을 제공하는지 확인할 수 있습니다.
+컴포넌트 매개변수를 통해 속성에 도달하는 값은 `::use` 인자에서 또는 매개변수의 `default:`에서 검사합니다([매개변수를 통한 엔진 id](/ko/language/components-and-extends/#매개변수를-통한-엔진-id) 참조). `lute refs --project <dir> --attr give.item`은 해당 값을 사용하는 문서와 줄을 함께 모든 값으로 나열하므로, 리드는 여러 작성자의 작업을 병합하기 전에 누가 무엇을 제공하는지 확인할 수 있습니다.
 
 ### 보상 대상 계약
 
@@ -304,7 +304,7 @@ rewardKinds:
 ./quests/dex.lute:12:31: error [E-REWARD-TARGET] `goodRd` is not a member of entity kind `bagItem`, which `<reward kind="ITEM">` targets — did you mean `goodRod`?
 ```
 
-엔진이 소유한 id에는 어떤 형식을 사용해야 할까요? id를 저장소에 나열하고 그곳에서 검토할 수 있다면 **엔티티 종류**를 사용합니다(위의 `schema/items.schema.yaml` 같은 리드 소유 스키마 하나). 엔진의 카탈로그가 기준 정보이고 프로젝트가 고정된 스냅숏으로 이를 검사한다면 **프로바이더**를 사용합니다([프로바이더와 카탈로그](/ko/tooling/providers-and-catalog/) 참조). 어느 쪽이든 디렉티브 속성과 보상 종류를 **동일한** 종류 또는 프로바이더로 형식 지정해야 합니다. 그러면 `::give{item}`과 `<reward kind="ITEM" target>`이 하나의 id 공간을 공유하고, `lute refs <dir> --attr give.item --reward ITEM`이 두 항목을 모두 나열합니다(대상이 없는 보상은 `(no target)`으로 표시).
+엔진이 소유한 id에는 어떤 형식을 사용해야 할까요? id를 저장소에 나열하고 그곳에서 검토할 수 있다면 **엔티티 종류**를 사용합니다(위의 `schema/items.schema.yaml` 같은 리드 소유 스키마 하나). 엔진의 카탈로그가 기준 정보이고 프로젝트가 고정된 스냅숏으로 이를 검사한다면 **프로바이더**를 사용합니다([프로바이더와 카탈로그](/ko/tooling/providers-and-catalog/) 참조). 어느 쪽이든 디렉티브 속성과 보상 종류를 **동일한** 종류 또는 프로바이더로 형식 지정해야 합니다. 그러면 `::give{item}`과 `<reward kind="ITEM" target>`이 하나의 id 공간을 공유하고, `lute refs --project <dir> --attr give.item --reward ITEM`이 두 항목을 모두 나열합니다(대상이 없는 보상은 `(no target)`으로 표시).
 
 ### 캐스트
 
@@ -318,7 +318,7 @@ cast:
 
 `cast` export(dsl 0.23.0)는 엔진 팩이 대상으로 빌드되는 화자를 선언합니다. 각 맵 키는 화자 id이고 모든 필드는 선택 사항입니다. `name`은 표시 이름입니다. 0.24.0부터 엔트리는 캐릭터가 플레이어와 함께 있는 조건인 `present:`와 해당 캐릭터의 대사가 사용할 수 있는 `emotions:` 값인 `emotion=`도 선언할 수 있으며, `assume: true`를 지정하면 존재 여부 검사에서 엔진의 `reserved:` 팩트 중 `present:`가 부정하는 것을 부재로 간주할 수 있습니다. 가드가 `present:`를 함의하지 않는 대사는 `W-CAST-ABSENT`이고, `emotion=` 값이 `emotions:` 밖에 있으면 `E-BAD-ENUM`입니다([캐스트](/ko/language/dialogue-and-cast/#캐스트) 참조). 그 밖의 키는 `E-PLUGIN-PARSE`입니다. 플러그인 또는 스키마 문서의 `cast:` 키로 캐스트가 하나라도 선언되면, 캐스트 밖의 화자를 사용하는 콘텐츠 라인은 did-you-mean이 포함된 `E-CAST-UNKNOWN`을 받습니다. 캐스트 밖의 대상을 지정하는 `::actor{character}` 또는 `::camera{focus}`도 마찬가지입니다. 문서가 import하는 플러그인 캐스트와 스키마 캐스트는 합쳐지며, 공유하는 id에 대해서는 엔진의 표시 이름을 담은 플러그인 엔트리가 우선합니다. 동일한 id를 선언하는 활성 플러그인 두 개는 assembly에서 `E-PLUGIN-DUP-ACROSS`입니다. 비어 있지 않은 캐스트는 `capabilitySnapshot`에 반영되고, export하는 캐스트가 없는 플러그인은 스탬프를 그대로 둡니다. 0.24.0 키를 전혀 사용하지 않는 캐스트는 0.23에서 가지고 있던 스탬프를 유지합니다.
 
-dsl 0.26.0 §2.8부터 엔트리는 `sharedName: true`도 지정할 수 있습니다. 이때 `name`은 여러 화자가 의도적으로 공유하는 역할 이름입니다. 예를 들어 악당 팀의 일반 병사 계급을 들 수 있습니다(`grunt1: { name: Eclipse Grunt, sharedName: true }`). `check-project`와 `lute lint`는 정확히 동일한 이름으로 표시되는 두 화자를 권고 수준의 `W-DISPLAY-NAME-DUP`으로 보고하며, `sharedName` 엔트리는 그 수에 포함하지 않습니다([두 화자가 공유하는 표시 이름](/ko/language/dialogue-and-cast/#두-화자가-공유하는-표시-이름) 참조).
+dsl 0.26.0 §2.8부터 엔트리는 `sharedName: true`도 지정할 수 있습니다. 이때 `name`은 여러 화자가 의도적으로 공유하는 역할 이름입니다. 예를 들어 악당 팀의 일반 병사 계급을 들 수 있습니다(`grunt1: { name: Eclipse Grunt, sharedName: true }`). 프로젝트 전체 `lute check`와 `lute lint`는 정확히 동일한 이름으로 표시되는 두 화자를 권고 수준의 `W-DISPLAY-NAME-DUP`으로 보고하며, `sharedName` 엔트리는 그 수에 포함하지 않습니다([두 화자가 공유하는 표시 이름](/ko/language/dialogue-and-cast/#두-화자가-공유하는-표시-이름) 참조).
 
 ## 교차 속성(`stampAttrs`)
 

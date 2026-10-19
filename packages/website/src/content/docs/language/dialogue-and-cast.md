@@ -90,7 +90,7 @@ Every line compiles with a `lineId` and a **`voiceKey`** — narration and `{mon
 A voice key is a join key for recordings, not a claim that a recording exists; a project that does
 not voice its narration simply has no asset under those keys. Two lines in a project that share a
 `voiceKey` must say the same text (compared after [inline modifiers](#inline-text-modifiers) are
-stripped), or `check-project` reports `E-DUP-VOICEKEY`.
+stripped), or whole-project `lute check` reports `E-DUP-VOICEKEY`.
 
 `action=` is the one line attribute with a **stage** consequence, and it is a
 small one: it sets the speaker's pose for that line and marks them dirty, so
@@ -157,7 +157,7 @@ plugin's cast), and the language server offers the cast when it completes a spea
 
 Two speakers shown under the same name look like one person in the dialogue box. When several
 authors add characters to one project, that happens by accident: two areas each write a
-`Hiker Gus`. `check-project` reports it as the advisory **`W-DISPLAY-NAME-DUP`** (dsl 0.26.0
+`Hiker Gus`. Whole-project `lute check` reports it as the advisory **`W-DISPLAY-NAME-DUP`** (dsl 0.26.0
 §2.8), and `lute lint` reports it too. It compares two cast entries with exactly the same `name:`,
 a cast name equal to a component's `::use{… name="…"}` display string, and two such strings for
 different speakers (`who=`):
@@ -179,7 +179,7 @@ cast:
 ```
 
 A plugin's `cast/*.yaml` entry takes the same key. A merge gate that runs
-`check-project --deny-warnings` passes again once the intended role names are marked, and
+`lute check --project . --deny-warnings` passes again once the intended role names are marked, and
 `lute lint --deny W-DISPLAY-NAME-DUP` promotes the code on its own. See
 [Multi-author projects](/guides/multi-author/).
 
@@ -187,7 +187,7 @@ A plugin's `cast/*.yaml` entry takes the same key. A merge gate that runs
 
 With a cast declared, the character a staging directive names must be in it, like a speaker (dsl 0.24.0 §4). `::actor{character}` and `::camera{focus}` outside the cast are `E-CAST-UNKNOWN`, with the same did-you-mean. Timeline clips and the bodies of `<match>` arms and choices are checked as well:
 
-<!-- lute-diagnostics unverified="composed in crates/lute-check/src/cast.rs from a runtime-built directive prefix plus a pushed did-you-mean, so no single format! literal pins it; copied verbatim from check-project output" -->
+<!-- lute-diagnostics unverified="composed in crates/lute-check/src/cast.rs from a runtime-built directive prefix plus a pushed did-you-mean, so no single format! literal pins it; copied verbatim from whole-project lute check output" -->
 ```
 ./scenes/ridge.lute:11:20: error [E-CAST-UNKNOWN] `::actor{character}` `corvn` is not in the declared cast — did you mean `corvin`?
 ./scenes/ridge.lute:12:17: error [E-CAST-UNKNOWN] `::camera{focus}` `isold` is not in the declared cast — did you mean `isolde`?
@@ -253,7 +253,7 @@ The guards that count are the line's own `when=`, every enclosing `<choice when>
 - a lore entry's body assumes its own `entry.<id>.read` / `everRead`;
 - a quest `<on>` handler assumes the quest's state at that event, and the conjuncts of its `start` that stay true once true (`entry.<id>.everRead`, `visited(…)`);
 - a quest's `questComplete` handler also assumes the quest's completion (dsl 0.27.0): the quest completed when one of its required objectives did, so one required objective's `done` holds. A handler of a quest whose required objectives all need `@withToby` may give Tobias a line without repeating the guard. An `::assert`, `::retract` or `::set` in an objective body or an earlier `questComplete` handler of the quest can cancel this assumption, like any other guard;
-- under `check-project`, a beat assumes that every always-eligible `once` beat ranked above it for the same occasion has already been spent.
+- under whole-project `lute check`, a beat assumes that every always-eligible `once` beat ranked above it for the same occasion has already been spent.
 
 A `holds(A)` guard over a derived relation also implies the bodies of A's rules: with `inParty(P) :- recruited(P), not departed(P)`, a line guarded by `holds('inParty', ['isolde'])` satisfies `present: "!holds('departed', ['isolde'])"`. A relation whose rules are ground once bound, such as a `cel()`-only schedule, reads as the disjunction of those rule bodies.
 
@@ -261,7 +261,7 @@ A write cancels a guard only when it can falsify it on that path. An `::assert` 
 
 A `{vo}` line is exempt, since a voice-over is not the speaker being there: they may speak from outside the scene's time, as a memory or a narration over it. An `{os}` line is still checked (dsl 0.25.0 D-E): `{os}` means the speaker is *in the scene*, heard but out of frame, so they must be present. There is no flag yet for a remote speaker, such as a voice over the radio or the phone.
 
-Facts are the one place where `lute check` and `check-project` differ. `check-project` also counts the facts that hold on every route to the line: asserted earlier on every path, or seeded and never retracted. So the last line above, `@isolde: Back again.` after `::assert{ inParty(isolde) }`, is clean there. A single-file `lute check` cannot see those facts, so it warns on that line too and adds a note saying that `check-project` does see them. Like any warning, `--deny W-CAST-ABSENT` makes it an error.
+Facts are the one place where `lute check <FILE>` and whole-project `lute check` differ. Whole-project `lute check` also counts the facts that hold on every route to the line: asserted earlier on every path, or seeded and never retracted. So the last line above, `@isolde: Back again.` after `::assert{ inParty(isolde) }`, is clean there. A single-file `lute check <FILE>` cannot see those facts, so it warns on that line too and adds a note saying that whole-project `lute check` does see them. Like any warning, `--deny W-CAST-ABSENT` makes it an error.
 
 Presence often has a second half that only the engine writes, such as "and she has not fallen":
 `present: "holds('inParty', ['isolde']) && !holds('fell', ['isolde'])"`, where `fell` is a `reserved: true`
@@ -295,7 +295,7 @@ cast:
   isolde: { name: Isolde, present: "holds('inParty', ['isolde']) && !holds('fell', ['isolde'])", assume: true }
 ```
 
-With `changedOn`, `assume: true` no longer reads `!holds('fell', ['…'])` as true in a unit presented on one of those occasions: a scene, entry or bundle beat answering `on: battleEnd`, or a quest `<on event>` handler or `on=` objective body judged there. Under `check-project` the same holds for every **after-descendant** of such a unit in the [scenario graph](/connectivity/scene-graph/), over its `after:` / `after=` / `[start]` edges. Occasions have no static order of their own, so the graph is what says "after the battle". Take a camp scene that asserts `inParty(isolde)`, an aftermath scene on `battleEnd` with `after: 'visited("camp")'`, and a road scene with `after: 'visited("aftermath")'`:
+With `changedOn`, `assume: true` no longer reads `!holds('fell', ['…'])` as true in a unit presented on one of those occasions: a scene, entry or bundle beat answering `on: battleEnd`, or a quest `<on event>` handler or `on=` objective body judged there. Under whole-project `lute check` the same holds for every **after-descendant** of such a unit in the [scenario graph](/connectivity/scene-graph/), over its `after:` / `after=` / `[start]` edges. Occasions have no static order of their own, so the graph is what says "after the battle". Take a camp scene that asserts `inParty(isolde)`, an aftermath scene on `battleEnd` with `after: 'visited("camp")'`, and a road scene with `after: 'visited("aftermath")'`:
 
 ```lute
 @isolde{when="holds('inParty', ['isolde'])"}: We should keep moving.
@@ -305,7 +305,7 @@ With `changedOn`, `assume: true` no longer reads `!holds('fell', ['…'])` as tr
 
 On the road, the first two lines warn again, each with a note saying why `assume: true` did not cover them. The `{vo}` line stays exempt:
 
-<!-- lute-diagnostics unverified="verbatim lute check-project output; the W-CAST-ABSENT message is composed from a base literal plus the dsl 0.25.0 §6 changedOn suffix appended in crates/lute-check/src/cast.rs, so no single format! literal matches" -->
+<!-- lute-diagnostics unverified="verbatim whole-project lute check output; the W-CAST-ABSENT message is composed from a base literal plus the dsl 0.25.0 §6 changedOn suffix appended in crates/lute-check/src/cast.rs, so no single format! literal matches" -->
 ```
 ./scenes/road.lute:11:2: warning [W-CAST-ABSENT] `isolde` may not be here: the cast declares `present: "holds('inParty', ['isolde']) && !holds('fell', ['isolde'])"` for `isolde`, and the guards around this line do not imply it. Guard the line — `@isolde{when="holds('inParty', ['isolde']) && !holds('fell', ['isolde'])"}` — or move it under a guard that implies it; `assume: true` does not cover `fell`: this line follows an occasion its `changedOn:` names
 ```
@@ -569,6 +569,6 @@ line also gets `localeSegments` for that locale.
 Each export row also carries a `sourceHash` — `"sha256:<hex>"` of the line's plain text (markup
 and escapes removed, as `text` compiles), of an option's text, or of a prompt. Keep it in the
 translated file: [`lute loc import`](/tooling/cli/#loc-import) stores it per lineId and locale in
-the bundle (`schemaVersion: 2`, `sourceHashes`), and `lute compile --locales` reports
+the bundle (`schemaVersion: 2`, `sourceHashes`), and `lute compile --locale-bundle` reports
 `W-L10N-STALE` when a line was edited after the export its translation came from — re-export and
 update that translation. The stale translation is still merged until you do.

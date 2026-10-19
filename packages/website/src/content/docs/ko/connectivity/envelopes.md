@@ -28,7 +28,7 @@ entry node:   G = P = D
 `findkai` 퀘스트는 필수 목표가 `run.kaiFound`를 쓰고, `after: 'active("findkai")'`로 게이트되어 이를 읽는 장면과 `after: 'completed("findkai")'`로 게이트된 두 번째 장면이 있다고 하겠습니다. 안전한 것은 두 번째 장면뿐입니다.
 
 ```console
-$ lute scenario . envelope narrator.s01ep02
+$ lute scenario --project . envelope --node narrator.s01ep02
 project root: .
 envelope for scene(narrator.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
@@ -47,22 +47,22 @@ envelope for scene(narrator.s01ep02) (pre-entry — state available when control
 
 ## 표 읽기
 
-`lute scenario <dir> envelope <nodeId>`는 두 표를 모두 출력합니다. 노드 X에서 상태 경로 `P`를 읽을 때의 진단은 다음과 같습니다.
+`lute scenario --project <dir> envelope --node <nodeId>`는 두 표를 모두 출력합니다. 노드 X에서 상태 경로 `P`를 읽을 때의 진단은 다음과 같습니다.
 
 - `P ∈ Guaranteed(X)` → 선언된 경로에서 안전하므로 진단이 없습니다.
-- `P ∉ Possible(X)` → X 전에 `P`를 설정하는 선언된 경로가 전혀 없습니다 — **오류 등급**인 `E-STATE-MAYBE-UNAVAILABLE`이며, 기본적으로 `check-project`가 제공합니다.
-- `P ∈ Possible(X) \ Guaranteed(X)` → 일부 경로에는 설정되지만 전부는 아닙니다 — **경고 등급**이며, 기본적으로 이 명령의 출력에서 억제됩니다. 이는 `Possible \ Guaranteed` 읽기이며, `check-project`가 계산하고 기본적으로 버립니다.
+- `P ∉ Possible(X)` → X 전에 `P`를 설정하는 선언된 경로가 전혀 없습니다 — **오류 등급**인 `E-STATE-MAYBE-UNAVAILABLE`이며, 기본적으로 프로젝트 전체 `lute check`가 제공합니다.
+- `P ∈ Possible(X) \ Guaranteed(X)` → 일부 경로에는 설정되지만 전부는 아닙니다 — **경고 등급**이며, 기본적으로 이 명령의 출력에서 억제됩니다. 이는 `Possible \ Guaranteed` 읽기이며, 프로젝트 전체 `lute check`가 계산하고 기본적으로 버립니다.
 
 모든 메시지에는 "under your declared routes"라는 문구가 그대로 포함됩니다(A-hybrid 방식).
 
 ## 보장된 팩트
 
-스칼라 표 옆에서 엔벌로프는 **팩트 엔벌로프**(dsl 0.20.0)도 보유합니다. 이는 노드에 도달하는 *모든* 선언된 경로에서 성립하는 관계형 팩트입니다. `check-project`가 관계형 가드를 판정할 때 사용하는 must-set과 동일하며([`check-project`가 관계형 가드를 분석하는 방식](/ko/state/facts-and-datalog/#check-project가-관계형-가드를-분석하는-방법) 참고), `after:`를 따라 `Guaranteed`와 같은 구조적 재귀로 전파됩니다 — `visited(A)`는 `A`가 끝날 때 성립하는 것을 기여하고, `&&`는 합집합을, `||`는 교집합을 취하며, `completed(Q)`/`active(Q)`는 아무것도 기여하지 않습니다. 단조 팩트만 장면 경계를 넘어갑니다. 즉, 철회될 수 없고, 다른 assert가 다른 값으로 같은 `key:`를 공유할 수 없으며, 해당 관계가 `reserved:`도 엔진 개방형도 아니어야 합니다. `tier: scene`/`tier: quest` 팩트는 경계를 넘지 않습니다. 각 팩트에는 이를 설정한 것이 — assert 위치, `facts:` 시드 또는 규칙 — 표시됩니다.
+스칼라 표 옆에서 엔벌로프는 **팩트 엔벌로프**(dsl 0.20.0)도 보유합니다. 이는 노드에 도달하는 *모든* 선언된 경로에서 성립하는 관계형 팩트입니다. 프로젝트 전체 `lute check`가 관계형 가드를 판정할 때 사용하는 must-set과 동일하며([프로젝트 전체 `lute check`가 관계형 가드를 분석하는 방식](/ko/state/facts-and-datalog/#프로젝트-전체-lute-check가-관계형-가드를-분석하는-방법) 참고), `after:`를 따라 `Guaranteed`와 같은 구조적 재귀로 전파됩니다 — `visited(A)`는 `A`가 끝날 때 성립하는 것을 기여하고, `&&`는 합집합을, `||`는 교집합을 취하며, `completed(Q)`/`active(Q)`는 아무것도 기여하지 않습니다. 단조 팩트만 장면 경계를 넘어갑니다. 즉, 철회될 수 없고, 다른 assert가 다른 값으로 같은 `key:`를 공유할 수 없으며, 해당 관계가 `reserved:`도 엔진 개방형도 아니어야 합니다. `tier: scene`/`tier: quest` 팩트는 경계를 넘지 않습니다. 각 팩트에는 이를 설정한 것이 — assert 위치, `facts:` 시드 또는 규칙 — 표시됩니다.
 
 Haven 예시의 사무장 장면(ep09)은 다음과 같습니다.
 
 ```console
-$ lute scenario docs/examples/haven envelope haven.s01ep09
+$ lute scenario --project docs/examples/haven envelope --node haven.s01ep09
 …
   Guaranteed facts (hold on every declared route reaching this node):
     - awake(ottavio) (docs/examples/haven/scenes/stowaway.lute:20)
@@ -72,11 +72,11 @@ $ lute scenario docs/examples/haven envelope haven.s01ep09
 …
 ```
 
-에피소드 6에서는 Ottavio의 세 팩트를 모두 분기 밖에서 assert하고, ep09로 가는 모든 경로가 이를 통과합니다. 따라서 ep09의 `holds('found', ['ottavio'])` 가드는 결코 닫힐 수 없습니다 — 해당 장면의 `listTheMass` 선택지에 가드가 없는 이유입니다. `knows(vesna, manifest)`는 다른 문서 세 곳에서 assert하더라도 존재하지 않습니다. 그중 어느 것도 ep09로 가는 모든 경로에 놓이지 않기 때문입니다(수경 재배실은 두 대안 중 하나이고, 기록 보관소는 선택 사항이며, 사무장의 장부에 있는 assert는 자체 로어 엔트리 안에서만 성립하고 엔진이 원하는 시점에 제시합니다). `check-project`가 가드에서 `W-FACT-GUARANTEED`를 보고하면 이 표에서 그 팩트가 나온 것입니다. `--format json`에서는 같은 목록이 `envelope.guaranteedFacts`이며, `{ "fact", "establishedBy" }` 객체의 배열입니다.
+에피소드 6에서는 Ottavio의 세 팩트를 모두 분기 밖에서 assert하고, ep09로 가는 모든 경로가 이를 통과합니다. 따라서 ep09의 `holds('found', ['ottavio'])` 가드는 결코 닫힐 수 없습니다 — 해당 장면의 `listTheMass` 선택지에 가드가 없는 이유입니다. `knows(vesna, manifest)`는 다른 문서 세 곳에서 assert하더라도 존재하지 않습니다. 그중 어느 것도 ep09로 가는 모든 경로에 놓이지 않기 때문입니다(수경 재배실은 두 대안 중 하나이고, 기록 보관소는 선택 사항이며, 사무장의 장부에 있는 assert는 자체 로어 엔트리 안에서만 성립하고 엔진이 원하는 시점에 제시합니다). 프로젝트 전체 `lute check`가 가드에서 `W-FACT-GUARANTEED`를 보고하면 이 표에서 그 팩트가 나온 것입니다. `--json`에서는 같은 목록이 `envelope.guaranteedFacts`이며, `{ "fact", "establishedBy" }` 객체의 배열입니다.
 
 ## 퀘스트 지정
 
-`lute scenario <dir> envelope quest:<id>`는 **모든** 퀘스트에 대해 실제 표를 출력합니다.
+`lute scenario --project <dir> envelope --node quest:<id>`는 **모든** 퀘스트에 대해 실제 표를 출력합니다.
 
 - `after` 속성이 **있는** 퀘스트 → 장면과 정확히 같은 방식으로 계산한 전체 `Guaranteed`/`Possible` 표입니다.
 - `after`가 **없는** 퀘스트 → 기본값만 담은 `D` 표(결코 비어 있지 않고 오류도 아님)와, `after`를 선언하면 기본값만 있는 상태를 넘어 더 풍부한 정보를 얻는다는 한 줄 메모입니다.

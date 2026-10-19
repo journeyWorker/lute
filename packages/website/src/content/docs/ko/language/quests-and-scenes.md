@@ -117,7 +117,7 @@ error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key an
 - **서브퀘스트.** 모든 중첩 퀘스트는 부모에 매달립니다: `quest(relight) -> quest(oil) [subquest]`. 자식이 있는 부모는 더 이상 고정되지 않은 것으로 나열되지 않으며 자식도 마찬가지입니다.
 - **`start` 결합항.** `follows=`가 없는 퀘스트는 `visited('…')`, `entry.X.everRead`, 또는 `quest.Y.state == '…'`(어떤 상태든 `unset` 이외의 상태)를 읽는 `start`의 최상위 `&&` 결합항으로 고정됩니다. `start="entry.keeperLog.everRead && visited('arrival')"`은 `entry(keeperLog) -> quest(relight) [start]`와 `scene(arrival) -> quest(relight) [start]`를 그립니다. 엔트리는 `entry(<id>)` 노드로 그래프에 참여합니다. 이런 읽기의 `||`는 여러 소스를 가진 하나의 앵커입니다. 그러므로 `start` 기반 퀘스트에는 `start`를 `follows=`에 복사할 필요가 없습니다.
 
-`lute scenario <dir> reach quest:<id>`는 퀘스트의 앵커를 나열합니다(`--format json`에서는 `anchors`). 앵커는 퀘스트가 도달 불가능하다는 것을 증명하지 않으며, 순환을 닫을 앵커는 그리지 않습니다. 명시적인 `follows=`가 있으면 `start`와 `accept` 앵커 대신 그것이 선언한 간선만 유지되고, 서브퀘스트 간선은 남습니다.
+`lute scenario --project <dir> reach --node quest:<id>`는 퀘스트의 앵커를 나열합니다(`--json`에서는 `anchors`). 앵커는 퀘스트가 도달 불가능하다는 것을 증명하지 않으며, 순환을 닫을 앵커는 그리지 않습니다. 명시적인 `follows=`가 있으면 `start`와 `accept` 앵커 대신 그것이 선언한 간선만 유지되고, 서브퀘스트 간선은 남습니다.
 
 #### 돌아오는 퀘스트: 시즌 tier와 `rearm`
 
@@ -183,7 +183,7 @@ state:
 <objective id="heardVesna" title="Hear Vesna out" done="visited('haven.s01ep04')"/>
 ```
 
-인수는 문자열 리터럴 하나입니다. 프로젝트에 없는 씬을 이름 붙이면 `after:`와 정확히 같이 `check-project`에서 `E-CONN-UNKNOWN-NODE`가 됩니다. 단일 파일 `check`는 씬이 플레이되었는지 알 수 없으므로 고립된 `visited()`를 참 또는 거짓으로 결정하지 않습니다. 다만 조건 자체의 모순은 발견합니다: `visited('a.b') && !visited('a.b')`는 무엇이 플레이되었든 거짓입니다(dsl 0.23.0, [`when` 판정 방식](/ko/language/beats/#when의-판정-방식) 참고). [번들 비트](/ko/language/beats/#비트-번들)도 정식 id `<document id>.<beat id>` 아래에서 방문됩니다.
+인수는 문자열 리터럴 하나입니다. 프로젝트에 없는 씬을 이름 붙이면 `after:`와 정확히 같이 프로젝트 전체 `lute check`에서 `E-CONN-UNKNOWN-NODE`가 됩니다. 단일 파일 `check`는 씬이 플레이되었는지 알 수 없으므로 고립된 `visited()`를 참 또는 거짓으로 결정하지 않습니다. 다만 조건 자체의 모순은 발견합니다: `visited('a.b') && !visited('a.b')`는 무엇이 플레이되었든 거짓입니다(dsl 0.23.0, [`when` 판정 방식](/ko/language/beats/#when의-판정-방식) 참고). [번들 비트](/ko/language/beats/#비트-번들)도 정식 id `<document id>.<beat id>` 아래에서 방문됩니다.
 
 **계기에서 판정하는 목표.** `<objective on="<occasion>">`은 퀘스트가 active인 동안 계기가 발생할 때만 해당 목표의 `done`을 평가합니다 — 계속 평가하는 조건으로는 표현할 수 없는 런 종료 검사 시점입니다. `on`이 없으면 이전처럼 목표를 계속 평가합니다.
 
@@ -221,7 +221,7 @@ occasions:
 
 `lute play`는 스텝 헤더 아래, 후보 위에 전환을 출력합니다(`--json`: 스텝의 `judgedBefore`; `quests`는 핸들러 본문과 함께 그 이후의 퀘스트입니다). 기본값인 `judge: after`는 0.21.0의 순서를 유지합니다.
 
-**씬에서 퀘스트 수락하기.** `start`가 없는 퀘스트는 *수락으로 시작됩니다*. 엔진의 "퀘스트 수락" 액션(및 `lute trace --accept`)에 대응하는 씬 쪽 형태는 핵심 디렉티브 [`::accept{quest="<id>"}`](/ko/language/directives/#accept--퀘스트-수락)이며, 보통 플레이어가 동의하는 선택지 안에 둡니다:
+**씬에서 퀘스트 수락하기.** `start`가 없는 퀘스트는 *수락으로 시작됩니다*. 엔진의 "퀘스트 수락" 액션(및 `lute trace --accepted-quest`)에 대응하는 씬 쪽 형태는 핵심 디렉티브 [`::accept{quest="<id>"}`](/ko/language/directives/#accept--퀘스트-수락)이며, 보통 플레이어가 동의하는 선택지 안에 둡니다:
 
 ```lute
 <branch id="request">
@@ -235,7 +235,7 @@ occasions:
 </branch>
 ```
 
-퀘스트가 이미 active, complete 또는 failed이면 수락해도 아무 일도 일어나지 않습니다. `::accept`에는 가드를 붙일 수 있습니다. `::accept{quest="calmTheShed" when="run.shedPressure > 2"}`처럼 쓰며(dsl 0.26.0 §4, [디렉티브에 가드하기](/ko/language/directives/#디렉티브-가드하기-when) 참고), 가드가 거짓이면 건너뜁니다. `lute check-project`는 어떤 `::accept`도 이름 붙이지 않는 수락 기반 퀘스트에 **`W-QUEST-NEVER-ACCEPTED`**를 경고합니다(dsl 0.24.0 §2). 프로젝트의 어떤 것도 활성화할 수 없기 때문입니다. dsl 0.25.0 §5부터 `accepts:` mock(`mocks/*.yaml`, `*.test.yaml`)은 더 이상 이를 세지 않습니다. mock은 테스트만 증명하고 게임은 증명하지 않으므로, mock만 수락하는 퀘스트도 계속 경고하며 메시지에 mock 파일을 표시합니다. 문서 바깥에서 엔진이 수락하는 퀘스트는 [`accept="external"`](#스크립트-바깥에서-수락하기-acceptexternal)을 대신 선언합니다. `--deny W-QUEST-NEVER-ACCEPTED`는 경고를 오류로 만듭니다.
+퀘스트가 이미 active, complete 또는 failed이면 수락해도 아무 일도 일어나지 않습니다. `::accept`에는 가드를 붙일 수 있습니다. `::accept{quest="calmTheShed" when="run.shedPressure > 2"}`처럼 쓰며(dsl 0.26.0 §4, [디렉티브에 가드하기](/ko/language/directives/#디렉티브-가드하기-when) 참고), 가드가 거짓이면 건너뜁니다. 프로젝트 전체 `lute check`는 어떤 `::accept`도 이름 붙이지 않는 수락 기반 퀘스트에 **`W-QUEST-NEVER-ACCEPTED`**를 경고합니다(dsl 0.24.0 §2). 프로젝트의 어떤 것도 활성화할 수 없기 때문입니다. dsl 0.25.0 §5부터 `accepts:` mock(`mocks/*.yaml`, `*.test.yaml`)은 더 이상 이를 세지 않습니다. mock은 테스트만 증명하고 게임은 증명하지 않으므로, mock만 수락하는 퀘스트도 계속 경고하며 메시지에 mock 파일을 표시합니다. 문서 바깥에서 엔진이 수락하는 퀘스트는 [`accept="external"`](#스크립트-바깥에서-수락하기-acceptexternal)을 대신 선언합니다. `--deny W-QUEST-NEVER-ACCEPTED`는 경고를 오류로 만듭니다.
 
 <!-- lute-diagnostics -->
 ```
@@ -291,7 +291,7 @@ state:
 
 툴체인은 엔진의 수락을 대신합니다:
 
-- 테스트 또는 `lute trace`는 `accepts: [salvage]`(또는 `--accept salvage`)로 퀘스트를 시작합니다. 이것이 테스트가 외부 퀘스트를 걷는 방법이며, 테스트만 증명합니다. 0.25.0부터 `accept="external"`도 `::accept`도 없는 퀘스트에 대해서는 `W-QUEST-NEVER-ACCEPTED`를 더 이상 억제하지 않습니다.
+- 테스트 또는 `lute trace`는 `accepts: [salvage]`(또는 `--accepted-quest salvage`)로 퀘스트를 시작합니다. 이것이 테스트가 외부 퀘스트를 걷는 방법이며, 테스트만 증명합니다. 0.25.0부터 `accept="external"`도 `::accept`도 없는 퀘스트에 대해서는 `W-QUEST-NEVER-ACCEPTED`를 더 이상 억제하지 않습니다.
 - 플레이 스크립트는 퀘스트 게시판처럼 미리 상태를 시드하지 않고 `engine:` 스텝으로 플레이 중간에 수락합니다(dsl 0.26.0 §7):
 
   ```yaml
@@ -302,7 +302,7 @@ state:
 
   `lute play`는 `quest salvage accepted (engine)`을 출력하고 생명주기를 정착하므로 그 스텝에서 퀘스트의 `questActive` 핸들러가 실행됩니다. `engine: { accept }`는 수락 기반 퀘스트만 시작하며 `start`가 있는 퀘스트는 거부합니다.
 
-`accept`에는 `external`만 쓸 수 있습니다. 다른 값은 `E-ATTR-TYPE`입니다. `start`와 함께 `accept="external"`을 쓰는 경우도 마찬가지입니다. 퀘스트가 활성화되는 방법이 두 가지가 되기 때문입니다. [서브퀘스트](#서브퀘스트) 자식이 부모와 함께 활성화될 때는 엔진의 수락이 아무 일도 하지 않으므로 `check-project`가 `E-ACCEPT-TARGET`을 보고합니다. 자식에도 [`activate="accept"`](#대화에서-시작하기-activateaccept)를 선언하면 부모가 active인 동안 엔진을 기다립니다:
+`accept`에는 `external`만 쓸 수 있습니다. 다른 값은 `E-ATTR-TYPE`입니다. `start`와 함께 `accept="external"`을 쓰는 경우도 마찬가지입니다. 퀘스트가 활성화되는 방법이 두 가지가 되기 때문입니다. [서브퀘스트](#서브퀘스트) 자식이 부모와 함께 활성화될 때는 엔진의 수락이 아무 일도 하지 않으므로 프로젝트 전체 `lute check`가 `E-ACCEPT-TARGET`을 보고합니다. 자식에도 [`activate="accept"`](#대화에서-시작하기-activateaccept)를 선언하면 부모가 active인 동안 엔진을 기다립니다:
 
 <!-- lute-diagnostics -->
 ```
@@ -344,7 +344,7 @@ state:
 
 `lute trace`는 목표의 결정을 `failed`로 기록하고, `lute run` / `lute play`는 `letter.thank failed (by)` 또는 `failed (until)`을 출력합니다. 세 도구 모두 `done`과 기한을 같은 순서로 판정합니다. 퀘스트 전환도 [`failedBy`](#퀘스트가-실패한-이유)를 같은 방식으로 이름 붙입니다: `quest letter -> failed (by)`, 그리고 `(until)`, `(fail)`, `(subquest)`, `(cascade)`, `(superseded)`도 같습니다. [스토리 플레이](/ko/tooling/play/#기한과-대상-지정-목표)를 참고하세요.
 
-`on=`과 `by=`가 있고 `until=`은 없는 목표에서 `done`이 `by`를 필연적으로 함의한다면, 그 목표는 계기를 발생시키는 스텝에서만 완료될 수 있습니다. 그 밖의 곳에서는 계기가 발생하지 않은 정착에서 `by`가 `done`보다 늦지 않게 참이 되고, `done`을 판정하기도 전에 목표를 실패시킵니다. 이는 0.23.1의 계기 발생 시에만 판정하는 `by`를 위해 작성된 콘텐츠입니다. `lute check`와 `lute check-project`는 `by=`에서 **`W-DEADLINE-BEFORE-DONE`**을 경고하고(dsl 0.24.0 §2.1), 같은 조건의 `until=`을 제안합니다. `--deny W-DEADLINE-BEFORE-DONE`은 이를 오류로 만듭니다:
+`on=`과 `by=`가 있고 `until=`은 없는 목표에서 `done`이 `by`를 필연적으로 함의한다면, 그 목표는 계기를 발생시키는 스텝에서만 완료될 수 있습니다. 그 밖의 곳에서는 계기가 발생하지 않은 정착에서 `by`가 `done`보다 늦지 않게 참이 되고, `done`을 판정하기도 전에 목표를 실패시킵니다. 이는 0.23.1의 계기 발생 시에만 판정하는 `by`를 위해 작성된 콘텐츠입니다. `lute check`와 프로젝트 전체 `lute check`는 `by=`에서 **`W-DEADLINE-BEFORE-DONE`**을 경고하고(dsl 0.24.0 §2.1), 같은 조건의 `until=`을 제안합니다. `--deny W-DEADLINE-BEFORE-DONE`은 이를 오류로 만듭니다:
 
 ```lute check
 ---
@@ -390,16 +390,16 @@ hearing.lute:9:100: warning [W-DEADLINE-BEFORE-DONE] objective `verdict`'s `by="
 형태를 지키는 진단은 다섯 가지입니다:
 
 - `E-OBJECTIVE-QUEST-DONE` — 한 목표에 `quest=`와 `done=`이 함께 있습니다.
-- `E-QUEST-REF-UNKNOWN` — `quest=`가 알려진 퀘스트 id가 아닌 것을 이름 붙입니다. `after` 대상과 같은 분할입니다: 같은 문서 참조는 `check`에서 해석되고, 문서를 가로지르는 해석은 `check-project`가 합니다.
+- `E-QUEST-REF-UNKNOWN` — `quest=`가 알려진 퀘스트 id가 아닌 것을 이름 붙입니다. `after` 대상과 같은 분할입니다: 같은 문서 참조는 `check`에서 해석되고, 문서를 가로지르는 해석은 프로젝트 전체 `lute check`가 합니다.
 - `E-QUEST-MULTI-PARENT` — 하나의 퀘스트가 두 부모에서 `quest=`로 참조됩니다(그래프가 아닌 트리).
 - `E-QUEST-TREE-CYCLE` — 부모→자식 간선이 순환을 이룹니다. 자기 참조는 길이 1인 순환이며 부모와 자식이 같은 문서를 공유하면 `check`가 일찍 발견합니다.
-- `E-QUEST-TIER-MIX` — 서브퀘스트의 `tier`가 부모와 다릅니다. 오류는 두 퀘스트와 두 tier를 모두 이름 붙입니다. 역시 분할은 같습니다. 부모와 자식이 같은 문서면 `check`가 보고하고, 문서를 가로지르면 `check-project`가 보고합니다. 혼합된 트리는 영원히 잠길 수 있습니다. `tier="run"` 부모 아래의 user-tier 자식은 부모의 종료 때 상태를 유지하므로, 부모가 다음 런에 다시 시작되어도 자식이 다시 active가 되지 않습니다. user-tier 부모 아래의 run-tier 자식은 매 새 런마다 `unset`으로 초기화되지만 부모는 상태를 유지하므로, 부모가 끝난 뒤에는 자식이 다시 활성화되지 않습니다. 두 퀘스트에 같은 `tier`를 주세요.
+- `E-QUEST-TIER-MIX` — 서브퀘스트의 `tier`가 부모와 다릅니다. 오류는 두 퀘스트와 두 tier를 모두 이름 붙입니다. 역시 분할은 같습니다. 부모와 자식이 같은 문서면 `check`가 보고하고, 문서를 가로지르면 프로젝트 전체 `lute check`가 보고합니다. 혼합된 트리는 영원히 잠길 수 있습니다. `tier="run"` 부모 아래의 user-tier 자식은 부모의 종료 때 상태를 유지하므로, 부모가 다음 런에 다시 시작되어도 자식이 다시 active가 되지 않습니다. user-tier 부모 아래의 run-tier 자식은 매 새 런마다 `unset`으로 초기화되지만 부모는 상태를 유지하므로, 부모가 끝난 뒤에는 자식이 다시 활성화되지 않습니다. 두 퀘스트에 같은 `tier`를 주세요.
 
 도달 가능성은 참조를 따라 전파됩니다. 자식이 `E-QUEST-UNREACHABLE`인 필수 서브퀘스트 목표는 목표의 `quest=` 범위에 대해 `E-OBJECTIVE-UNSATISFIABLE`을 보고합니다. 전체 엔진 처리(두 방향의 cascade, 활성화, 트리 재구성)는 [quest-lifecycle.md](https://github.com/journeyWorker/lute/blob/main/docs/runtime/quest-lifecycle.md)에 있고, 작동 예시는 [`docs/examples/quest-subquest.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/quest-subquest.lute)입니다.
 
 #### 대화에서 시작하기: `activate="accept"`
 
-`start`가 없는 자식은 부모가 활성화되는 순간 일지에 들어갑니다. 플레이어가 대화에서 선택하는 우회 경로는 제시될 때만 들어가야 합니다. 자식의 **`activate="accept"`**(dsl 0.24.0 §2)는 `::accept`(또는 `accepts:` mock, `lute trace --accept`)를 기다리게 하며, `start`가 없는 루트 퀘스트와 같습니다. 부모가 `active`인 동안에만 활성화됩니다. 부모가 active가 아닐 때 실행된 수락은 효과 없이 소모되며 도구가 이를 알려 줍니다. `lute play`는 `note: accept of quest firewood spent — its parent quest camp is not active yet …`를 출력합니다(`--json`: `acceptSpent` 레코드). `lute trace` / `lute test`도 `accepts:` mock에 대해 같은 사실을 표시합니다.
+`start`가 없는 자식은 부모가 활성화되는 순간 일지에 들어갑니다. 플레이어가 대화에서 선택하는 우회 경로는 제시될 때만 들어가야 합니다. 자식의 **`activate="accept"`**(dsl 0.24.0 §2)는 `::accept`(또는 `accepts:` mock, `lute trace --accepted-quest`)를 기다리게 하며, `start`가 없는 루트 퀘스트와 같습니다. 부모가 `active`인 동안에만 활성화됩니다. 부모가 active가 아닐 때 실행된 수락은 효과 없이 소모되며 도구가 이를 알려 줍니다. `lute play`는 `note: accept of quest firewood spent — its parent quest camp is not active yet …`를 출력합니다(`--json`: `acceptSpent` 레코드). `lute trace` / `lute test`도 `accepts:` mock에 대해 같은 사실을 표시합니다.
 
 #### 대안: `complete="any"`
 
@@ -447,7 +447,7 @@ state:
 
 실패한 경로 하나가 나머지를 닫지는 않습니다. `complete="any"` 퀘스트의 합성된 `fail`은 필수 목표에 대한 **연접**입니다. 각 자식은 `quest.<c>.state == 'failed'`, 각 일반 목표는 `quest.<q>.objectives.<o>.failed` 플래그로 표현됩니다. 따라서 다른 경로가 하나도 남지 않을 때만 퀘스트가 실패합니다(`failedBy: fail`).
 
-수락 쪽의 형태를 지키는 진단은 세 가지입니다. `start` 옆의 `activate="accept"`는 `E-ATTR-TYPE`입니다(하나를 고르세요). 부모와 함께 활성화되는 자식에 대한 `::accept`는 예전에는 아무 일도 하지 않았지만, 이제 `check-project`에서 부모를 이름 붙이는 `E-ACCEPT-TARGET`입니다. 그리고 `W-QUEST-NEVER-ACCEPTED`는 `::accept`가 도달하지 않는 `activate="accept"` 자식을 표시합니다:
+수락 쪽의 형태를 지키는 진단은 세 가지입니다. `start` 옆의 `activate="accept"`는 `E-ATTR-TYPE`입니다(하나를 고르세요). 부모와 함께 활성화되는 자식에 대한 `::accept`는 예전에는 아무 일도 하지 않았지만, 이제 프로젝트 전체 `lute check`에서 부모를 이름 붙이는 `E-ACCEPT-TARGET`입니다. 그리고 `W-QUEST-NEVER-ACCEPTED`는 `::accept`가 도달하지 않는 `activate="accept"` 자식을 표시합니다:
 
 ```lute expect="E-ATTR-TYPE"
 ---
@@ -466,7 +466,7 @@ state:
 </quest>
 ```
 
-<!-- lute-diagnostics unverified="verbatim check-project output shape (names from this example); the W-QUEST-NEVER-ACCEPTED message is assembled from several pieces in crates/lute-check/src/accept.rs, so no single format! literal matches" -->
+<!-- lute-diagnostics unverified="verbatim whole-project lute check output shape (names from this example); the W-QUEST-NEVER-ACCEPTED message is assembled from several pieces in crates/lute-check/src/accept.rs, so no single format! literal matches" -->
 ```
 scenes/ferry.lute:17:21: error [E-ACCEPT-TARGET] `::accept` targets quest `force`, which activates with its parent `crossing`; declare `activate="accept"` on it to accept it from a scene
 quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for an acceptance (`activate="accept"`), but no `::accept` in the project names it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or remove `activate="accept"` so it activates with its parent `crossing`
@@ -500,7 +500,7 @@ quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits 
 
 `lute play`는 그러한 수락을 적용합니다. dsl 0.26.0 §7부터 `lute trace`와 `lute test`도 적용하므로, `accepts: [salvage]`로 이 문서를 테스트하면 `play`와 같이 `tides`가 active인 상태로 끝납니다. 0.26.0 전에는 trace와 test가 적용하지 않아 play와 결과가 달랐습니다.
 
-실패할 수 없는 퀘스트의 `questFailed` 핸들러는 데드 코드입니다. `lute check-project`는 퀘스트에 `fail`이 없고, `by=` 또는 `until=` [기한](#기한)이 있는 필수 목표도 없고, 스스로 실패할 수 있는 필수 서브퀘스트 목표도 없고(실패하는 필수 자식은 부모도 실패시킴), 부모 퀘스트도 없을 때 핸들러의 `event`에서 `W-QUEST-HANDLER-DEAD`를 경고합니다(부모가 끝나면 아직 active인 자식을 cascade로 실패시킴). `fail=` 조건을 추가하거나 핸들러를 제거하세요:
+실패할 수 없는 퀘스트의 `questFailed` 핸들러는 데드 코드입니다. 프로젝트 전체 `lute check`는 퀘스트에 `fail`이 없고, `by=` 또는 `until=` [기한](#기한)이 있는 필수 목표도 없고, 스스로 실패할 수 있는 필수 서브퀘스트 목표도 없고(실패하는 필수 자식은 부모도 실패시킴), 부모 퀘스트도 없을 때 핸들러의 `event`에서 `W-QUEST-HANDLER-DEAD`를 경고합니다(부모가 끝나면 아직 active인 자식을 cascade로 실패시킴). `fail=` 조건을 추가하거나 핸들러를 제거하세요:
 
 <!-- lute-diagnostics -->
 ```
@@ -509,7 +509,7 @@ quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits 
 
 같은 코드(dsl 0.24.0)는 완료된 퀘스트에서만 실행될 수 있는 월드 이벤트 핸들러도 이름 붙입니다. 즉 `when`에 모든 필수 목표의 `done`이 포함되는 핸들러입니다(`complete="any"`에서는 하나, `@def`는 확장됨). 그 `when`이 성립하면 퀘스트가 즉시 `complete`로 정착하고, 이벤트는 active 퀘스트의 핸들러에만 도달합니다. `lute check`도 이를 보고합니다. 생명주기 이벤트와 `on=` 또는 `quest=` 목표가 있는 퀘스트는 제외됩니다:
 
-<!-- lute-diagnostics unverified="verbatim lute check-project output; the message is composed in crates/lute-check/src/reachability.rs, which names the code through the project_check::W_QUEST_HANDLER_DEAD constant rather than a string literal, so the scraper cannot pair quote and code" -->
+<!-- lute-diagnostics unverified="verbatim whole-project lute check output; the message is composed in crates/lute-check/src/reachability.rs, which names the code through the project_check::W_QUEST_HANDLER_DEAD constant rather than a string literal, so the scraper cannot pair quote and code" -->
 ```
 quests/road.lute:25:14: warning [W-QUEST-HANDLER-DEAD] `<on event="combatEnd">` never runs: its `when` implies every required objective of quest `brawl` is done, so the quest has already completed when it holds, and an event reaches only an active quest's handlers; move the body to `<on event="questComplete">` or the objective's own body
 ```
@@ -584,8 +584,8 @@ title: Across the river
 
 ## 퀘스트 JSON 보고서
 
-`lute scenario --format json`은 `command`, `schemaVersion: "0.43.0.scenario"`, `ok`를
-포함한 보고서 객체 하나를 반환하며, `scenario reach --format json`의 버전은
+`lute scenario --json`은 `command`, `schemaVersion: "0.43.0.scenario"`, `ok`를
+포함한 보고서 객체 하나를 반환하며, `scenario reach --json`의 버전은
 `0.43.0.scenario-reach`입니다. 컴파일 아티팩트와 `run --json`은 별도의 계약이므로 봉투로
 감싸지지 않습니다. 자동화에서는 앵커, 간선, 퀘스트 상태를 읽기 전에 봉투를 먼저 검사하세요.
 재현 가능한 예제에는 `LUTE_TELEMETRY=0`을 사용하세요.

@@ -7,10 +7,10 @@ description: Lute 프로젝트를 컴파일하고 player.bindings.yaml을 검사
 
 ## 1. 프로젝트 컴파일
 
-완전한 번들을 만듭니다. 브라우저 런타임은 `project.index.json`과 그 안에 지정된 모든 아티팩트를 읽으므로 `--all`이 필요합니다.
+완전한 번들을 만듭니다. 브라우저 런타임은 `project.index.json`과 그 안에 지정된 모든 아티팩트를 읽으므로 프로젝트 전체(문서 피연산자 없이)를 디렉터리로 컴파일해야 합니다.
 
 ```console
-lute compile --all examples/player-demo -o dist/bundle
+lute compile --project examples/player-demo -o dist/bundle
 ```
 
 번들 디렉터리에는 `project.index.json`과 그 안에서 참조하는 모든 아티팩트 JSON 파일이 있어야 합니다. 0.41 런타임 바인딩 `lute_runtime_wasm_bg.wasm`도 제공합니다.
@@ -33,10 +33,10 @@ assetsBase: assets/
 전체 형식은 [바인딩 레퍼런스](/ko/player/bindings/)에 있습니다. 컴파일 뒤 다음 명령을 실행합니다.
 
 ```console
-lute check-project examples/player-demo
+lute check --project examples/player-demo
 ```
 
-`check-project`는 스키마, domain 및 cast 키, 참조 파일, 효과와 flow 계기를 검사합니다. 잘못된 shape는 `E-BINDING-SHAPE`, 알 수 없는 효과나 매개변수는 `E-BINDING-EFFECT`, 없는 asset은 `E-BINDING-FILE`, 프로젝트 어휘 밖의 키는 `E-BINDING-KEY`입니다. `--json`으로 모든 진단을 확인할 수 있습니다.
+프로젝트 전체 `lute check`는 스키마, domain 및 cast 키, 참조 파일, 효과와 flow 계기를 검사합니다. 잘못된 shape는 `E-BINDING-SHAPE`, 알 수 없는 효과나 매개변수는 `E-BINDING-EFFECT`, 없는 asset은 `E-BINDING-FILE`, 프로젝트 어휘 밖의 키는 `E-BINDING-KEY`입니다. `--json`으로 모든 진단을 확인할 수 있습니다.
 
 ## 3. 페이지에 마운트
 
@@ -106,9 +106,9 @@ cargo build --release -p lute-cli
 bun run --cwd packages/player-web demo
 ```
 
-이 스크립트는 `examples/player-demo`를 한국어 로케일 번들과 함께 컴파일하고(`lute compile --all examples/player-demo --locales examples/player-demo/locales/bundle.json`) `web/main.ts`를 번들링한 뒤 런타임 wasm을 복사하고 작은 서버를 시작합니다. 다른 `lute` 실행 파일은 `LUTE_BIN`, 포트는 `PORT`로 지정할 수 있습니다.
+이 스크립트는 `examples/player-demo`를 한국어 로케일 번들과 함께 컴파일하고(`lute compile --project examples/player-demo --locale-bundle examples/player-demo/locales/bundle.json -o <out>`) `web/main.ts`를 번들링한 뒤 런타임 wasm을 복사하고 작은 서버를 시작합니다. 다른 `lute` 실행 파일은 `LUTE_BIN`, 포트는 `PORT`로 지정할 수 있습니다.
 
-Settings 화면의 Locale에서 원본 로케일(`en-US`)과 `ko`를 고를 수 있습니다. 바꾸면 진행 중이든 새 게임이든 다음에 표시되는 대사, 선택지, 프롬프트부터 적용됩니다. 번들은 `examples/player-demo`에서 `lute loc export .`로 내보내 `locales/ko.json`으로 번역한 뒤 `lute loc import locales/ko.json -o locales/bundle.json`으로 만든 것입니다. 끝난 회차는 플레이어의 계보(lineage)로 남습니다. 새로고침한 뒤 새 게임을 시작하면 2회차가 1회차의 `user.*` 값과 `prev.run`을 이어받습니다(데모의 첫 장이 둘 다 보여 줍니다).
+Settings 화면의 Locale에서 원본 로케일(`en-US`)과 `ko`를 고를 수 있습니다. 바꾸면 진행 중이든 새 게임이든 다음에 표시되는 대사, 선택지, 프롬프트부터 적용됩니다. 번들은 `examples/player-demo`에서 `lute loc export`로 내보내 `locales/ko.json`으로 번역한 뒤 `lute loc import locales/ko.json -o locales/bundle.json`으로 만든 것입니다. 끝난 회차는 플레이어의 계보(lineage)로 남습니다. 새로고침한 뒤 새 게임을 시작하면 2회차가 1회차의 `user.*` 값과 `prev.run`을 이어받습니다(데모의 첫 장이 둘 다 보여 줍니다).
 
 ## 6. 스테이지 레이어
 

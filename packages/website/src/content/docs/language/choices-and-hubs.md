@@ -117,7 +117,7 @@ title: The number
 - A prompt is translatable like an option label (dsl 0.47.0): it gets the lineId
   **`promptLineId`**, `{prefix}.{branch id}.prompt`, present exactly when `prompt` is.
   [`lute loc export`](/tooling/cli/#loc-export) writes it as a `kind: "prompt"` row and
-  `lute compile --locales` merges its translations into **`promptTexts`** (locale → text, omitted
+  `lute compile --locale-bundle` merges its translations into **`promptTexts`** (locale → text, omitted
   when empty); `prompt` stays the source string. Because the prompt and the options share the
   `{prefix}.{branch id}.…` namespace, a `<choice id="prompt">` in a branch that has `prompt=` is
   `E-CHOICE-DUP` — rename the choice. Without `prompt=` the id is legal.
@@ -228,7 +228,7 @@ title: The lighthouse
 </hub>
 ```
 
-`lute trace` with `--choose lamp=ledger,ledger,leave` prints "The lamp room again." twice. A hub
+`lute trace` with `--choice lamp=ledger,ledger,leave` prints "The lamp room again." twice. A hub
 takes at most one `<return>` block, and the block takes no attributes. To vary the text, guard its
 lines with `when=` or wrap them in a `<match>`. [Coming from Ink or
 Yarn](/guides/coming-from-ink-yarn/) ports an Ink knot the player keeps returning to this way.

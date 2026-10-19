@@ -7,10 +7,10 @@ This guide uses the repository's `examples/player-demo`; the same steps work for
 
 ## 1. Compile the project
 
-Build a complete bundle. `--all` is required because the browser runtime reads `project.index.json` and every artifact named by it.
+Build a complete bundle. Compile the whole project (no document operand) into a directory, because the browser runtime reads `project.index.json` and every artifact named by it.
 
 ```console
-lute compile --all examples/player-demo -o dist/bundle
+lute compile --project examples/player-demo -o dist/bundle
 ```
 
 The bundle directory must contain `project.index.json` and all referenced artifact JSON files. Copy or serve the 0.41 runtime binding at `lute_runtime_wasm_bg.wasm` as well.
@@ -33,10 +33,10 @@ assetsBase: assets/
 The full format is in [Bindings reference](/player/bindings/). Check it after compiling:
 
 ```console
-lute check-project examples/player-demo
+lute check --project examples/player-demo
 ```
 
-`check-project` validates the schema, domain and cast keys, referenced files, effects, and flow occasions. A malformed shape is `E-BINDING-SHAPE`, an unknown effect or parameter is `E-BINDING-EFFECT`, a missing asset is `E-BINDING-FILE`, and a key outside the merged project vocabulary is `E-BINDING-KEY`. Missing, unused, and all other diagnostics are available with `--json`.
+Whole-project `lute check` validates the schema, domain and cast keys, referenced files, effects, and flow occasions. A malformed shape is `E-BINDING-SHAPE`, an unknown effect or parameter is `E-BINDING-EFFECT`, a missing asset is `E-BINDING-FILE`, and a key outside the merged project vocabulary is `E-BINDING-KEY`. Missing, unused, and all other diagnostics are available with `--json`.
 
 ## 3. Mount in a page
 
@@ -115,9 +115,9 @@ cargo build --release -p lute-cli
 bun run --cwd packages/player-web demo
 ```
 
-The script compiles `examples/player-demo` with its Korean locale bundle (`lute compile --all examples/player-demo --locales examples/player-demo/locales/bundle.json`), bundles its `web/main.ts`, copies the runtime wasm, and starts a small server. Set `LUTE_BIN` to another `lute` executable or `PORT` to choose a port. The demo serves the bindings at `/player.bindings.yaml`, the compiled bundle at `/bundle/`, wasm at `/wasm/`, and generated assets at `/assets/`.
+The script compiles `examples/player-demo` with its Korean locale bundle (`lute compile --project examples/player-demo --locale-bundle examples/player-demo/locales/bundle.json -o <out>`), bundles its `web/main.ts`, copies the runtime wasm, and starts a small server. Set `LUTE_BIN` to another `lute` executable or `PORT` to choose a port. The demo serves the bindings at `/player.bindings.yaml`, the compiled bundle at `/bundle/`, wasm at `/wasm/`, and generated assets at `/assets/`.
 
-Settings → Locale offers the source locale (`en-US`) and `ko`; switching applies to the next line, choice and prompt shown, mid-run or on a new game. The bundle comes from `lute loc export .` run in `examples/player-demo`, translated into `locales/ko.json`, then `lute loc import locales/ko.json -o locales/bundle.json`. A finished run is kept as the player's lineage: after a reload, New game starts run 2 with run 1's `user.*` values and its `prev.run` (the demo's first chapter shows both).
+Settings → Locale offers the source locale (`en-US`) and `ko`; switching applies to the next line, choice and prompt shown, mid-run or on a new game. The bundle comes from `lute loc export` run in `examples/player-demo`, translated into `locales/ko.json`, then `lute loc import locales/ko.json -o locales/bundle.json`. A finished run is kept as the player's lineage: after a reload, New game starts run 2 with run 1's `user.*` values and its `prev.run` (the demo's first chapter shows both).
 
 ## 6. Stage layers
 

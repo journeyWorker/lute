@@ -13,7 +13,7 @@ description: 빈 파일에서 작지만 실제로 동작하는 Lute 장면 하�
 것은 **코어 Lute만** 사용합니다 — 플러그인도, 프로젝트 설정도 없습니다. 오직 언어 그 자체입니다.
 
 **편집기와 터미널이 다르게 말하면** — `lute check`가 `ok`라고 하는 파일에 편집기가 빨간 밑줄을
-긋거나, 그 반대라면 — 터미널을 믿고 `lute doctor .`를 실행하세요. 흔한 원인을 짚어 줍니다:
+긋거나, 그 반대라면 — 터미널을 믿고 `lute doctor --project .`를 실행하세요. 흔한 원인을 짚어 줍니다:
 `lute`보다 오래된 편집기 언어 서버입니다(업그레이드한 뒤에는 편집기를 다시 시작하세요).
 
 ## Part 1 — 최소한의 뼈대
@@ -387,11 +387,11 @@ $ lute compile my-scene.lute
 대로 재생됨을 증명하지는 않습니다 — 그것은 `lute trace`와, Part 6의 `lute test`가 하는 일입니다.
 
 `lute trace`는 게임을 열지 않고 플레이스루를 미리 봅니다 — 각 분기에서 어떤 선택을
-할지 `--choose <branchId>=<choiceId>`로 알려주면, 장면을 따라가며 화면에 무엇이 표시될지
+할지 `--choice <branchId>=<choiceId>`로 알려주면, 장면을 따라가며 화면에 무엇이 표시될지
 출력합니다:
 
 ```
-$ lute trace my-scene.lute --choose orderChoice=black
+$ lute trace my-scene.lute --choice orderChoice=black
 trace: my-scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## The Counter
     @narrator  The diner is empty at this hour, and Mira likes it that way.
@@ -487,10 +487,10 @@ profiles:
 
 (키 템플릿은 `lute.project.yaml`의 `identity: { voiceKey: "…" }`로 바꿀 수 있습니다. 접두사 없는
 `{speaker}-{code}`를 고정하면 두 대사가 모두 `mira-0010`이 되어 녹음 하나를 나눠 쓰게 됩니다 —
-`check-project`는 같은 키 아래 수식자를 걷어낸 텍스트가 서로 다른 줄을 `E-DUP-VOICEKEY`로
+프로젝트 전체 `lute check`는 같은 키 아래 수식자를 걷어낸 텍스트가 서로 다른 줄을 `E-DUP-VOICEKEY`로
 거부합니다.)
 
-```lute check-project="docs/examples/episodes/booth.lute"
+```lute check-in-project="docs/examples/episodes/booth.lute"
 ---
 kind: scene
 id: mira.s01ep02
@@ -519,7 +519,7 @@ state:
 에피소드가 무엇이 존재하는지 알 길이 없습니다. **프로젝트** 체커는 할 수 있습니다:
 
 ```
-$ lute check-project episodes
+$ lute check --project episodes
 ok: episodes/booth.lute (0 warning(s))
 ok: episodes/diner.lute (0 warning(s))
 ok: episodes (2 file(s), 0 project-wide warning(s))
@@ -529,7 +529,7 @@ ok: episodes (2 file(s), 0 project-wide warning(s))
 표면입니다. 인자 없이 실행하면, 전체 그래프를 재생 순서대로 출력합니다:
 
 ```
-$ lute scenario episodes
+$ lute scenario --project episodes
 project root: episodes
   topological layers:
     layer 0: scene(mira.s01ep01)
@@ -538,12 +538,12 @@ project root: episodes
     scene(mira.s01ep01) -> scene(mira.s01ep02) [visited]
 ```
 
-`reach <id>`는 "플레이어가 여기까지 도달할 수 있는가, 그리고 어떤 경로로?"에 답하고,
-`envelope <id>`는 `when=` 가드를 작성하기 전에 가장 알고 싶은 질문 — *여기서 읽어도 안전한
+`reach --node <id>`는 "플레이어가 여기까지 도달할 수 있는가, 그리고 어떤 경로로?"에 답하고,
+`envelope --node <id>`는 `when=` 가드를 작성하기 전에 가장 알고 싶은 질문 — *여기서 읽어도 안전한
 상태는 무엇인가?* — 에 답합니다:
 
 ```
-$ lute scenario episodes envelope mira.s01ep02
+$ lute scenario --project episodes envelope --node mira.s01ep02
 project root: episodes
 envelope for scene(mira.s01ep02) (pre-entry — state available when control REACHES this node, before its own writes):
   Guaranteed (safe to read under your declared routes):
@@ -579,12 +579,12 @@ expect:
 
 - `file:`은 테스트할 장면이며 **테스트 파일 기준 상대 경로**입니다: 테스트가 `tests/`에 있으므로
   다이너는 `../diner.lute`입니다. (`scenes/` 폴더가 있는 프로젝트라면 `../scenes/<name>.lute`.)
-- `choose:`는 각 분기에서 고를 선택지로, `lute trace`의 `--choose`와 같습니다.
+- `choose:`는 각 분기에서 고를 선택지로, `lute trace`의 `--choice`와 같습니다.
 - `expect:`는 성립해야 할 것들입니다: `transcriptContains`는 반드시 나와야 할 줄(`@speaker: text`
   형태), `transcriptLacks`는 나오면 안 되는 줄, `state`는 장면이 끝난 뒤의 값입니다.
 
 ```
-$ lute test episodes --project episodes
+$ lute test --project episodes
 PASS  episodes/tests/diner.test.yaml  (episodes/diner.lute)
 
 1 passed, 0 failed
@@ -594,7 +594,7 @@ PASS  episodes/tests/diner.test.yaml  (episodes/diner.lute)
 
 <!-- lute-diagnostics unverified="lute test respells the walk.rs literal `--choose {id}={choice}` as the test key `choose: {id}={choice}` and composes the reason, so no single format! literal matches; the block is byte-exact binary output" -->
 ```
-$ lute test episodes --project episodes
+$ lute test --project episodes
 FAIL  episodes/tests/diner.test.yaml  (episodes/diner.lute)
       trace refused:
         episodes/diner.lute:26:3: error [E-TRACE-CHOICE] `choose: orderChoice=familiar` is ineligible at its presentation point: its guard `scene.knowsMira` decided false: `scene.knowsMira` is false (mock `state: { scene.knowsMira: <value> }`)
@@ -604,7 +604,7 @@ FAIL  episodes/tests/diner.test.yaml  (episodes/diner.lute)
 
 아무것도 `scene.knowsMira`를 설정하지 않았으므로 그 선택지의 가드는 거짓입니다. 테스트는 원하는
 상태에서 시작할 수 있습니다: `choose:` 위에 `state: { scene.knowsMira: true }`를 더하면
-`familiar` 경로도 테스트할 수 있습니다. 그다음 `lute test episodes --project episodes --coverage`는
+`familiar` 경로도 테스트할 수 있습니다. 그다음 `lute test --project episodes --coverage`는
 아직 어느 테스트도 고르지 않은 선택지와, 어느 테스트도 가리키지 않는 장면을 나열합니다 — 다음
 테스트를 위한 할 일 목록입니다.
 
@@ -777,7 +777,7 @@ Part 5의 `run.metMira`), 뒤따르는 구성이 플레이어가 어느 선택�
 미스터리, Ink 이식작, 로그라이크, 비주얼 노벨 — 테스트와 플레이까지 갖춰 검사를 통과하는
 [예제 게임](/ko/examples/games/)을 보세요.
 
-**편집기와 터미널이 다르게 말하나요?** 프로젝트에서 `lute doctor .`를 실행하세요. 툴체인과
+**편집기와 터미널이 다르게 말하나요?** 프로젝트에서 `lute doctor --project .`를 실행하세요. 툴체인과
 프로젝트 설정을 검사하고, `lute`보다 오래된 편집기 언어 서버를 짚어 줍니다.
 
 정해진 에피소드 순서가 아니라, 엔진이 알리는 순간 — 플레이어가 허브에 도착하고, 누군가에게 말을
@@ -789,5 +789,5 @@ $ lute init --template beats my-game
 ```
 
 계기(occasion) 플러그인, 그 순간에 응답하는 비트, 퀘스트, 로어 엔트리, 플레이 스크립트, 시나리오
-테스트를 만들어 주며 — 만든 그대로 `lute check-project`, `lute test`, `lute play`가 모두
+테스트를 만들어 주며 — 만든 그대로 프로젝트 전체 `lute check`, `lute test`, `lute play`가 모두
 통과합니다. [비트](/ko/language/beats/)와 [스토리 플레이](/ko/tooling/play/)에서 모델을 설명합니다.

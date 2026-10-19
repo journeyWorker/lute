@@ -118,7 +118,7 @@ entities:
     labels: { lampOil: lamp oil }
 ```
 
-```yaml unverified="an area schema: its add: lists extend kinds that schema/roster.schema.yaml declares, so it checks only inside its project (check-project clean there)"
+```yaml unverified="an area schema: its add: lists extend kinds that schema/roster.schema.yaml declares, so it checks only inside its project (whole-project check clean there)"
 # schema/areas/north.schema.yaml (area north)
 state:
   run.northFogLifted: { type: bool, default: false }
@@ -148,7 +148,7 @@ entities:
   sub-kind another area declared. The checker does not know which area owns which kind; write it
   in `AREAS.md`.
 
-Like the other schema errors, `check-project` reports these once, as a project-wide line at the
+Like the other schema errors, whole-project `lute check` reports these once, as a project-wide line at the
 schema line ending `(imported by N documents)`, instead of once for every document that imports the
 schema; the importing documents themselves stay `ok`.
 
@@ -165,7 +165,7 @@ schema into every document, so a name two areas both declare collides: `E-USES-D
 ## State: declare a shared path once
 
 A path two areas both read or write belongs in a schema, declared once. If two documents each
-declare the same path in their own frontmatter `state:`, `check-project` compares the
+declare the same path in their own frontmatter `state:`, whole-project `lute check` compares the
 declarations: they must agree on `type`, `default`, `per` and `owner`, since they share one
 runtime value. When they do not, it is **`E-STATE-DECL-CONFLICT`** (dsl 0.26.0 §2.1), naming
 both files and lines, and `lute play` refuses a project that declares one path with two types.
@@ -198,7 +198,7 @@ Entry ids carry no document prefix, so they are the easiest to collide on; two d
 declare one entry id are `E-ENTRY-ID-DUP`. Plays and tests may name an entry
 `<document id>.<entry id>` since dsl 0.26.0 (`north.guards.northGullAfterStorm`), which makes a
 play easier to read, but the entry id itself must still be unique. Two documents with one
-`<branch>` or `<hub>` id draw `W-BRANCH-ID-SHARED` from `check-project`, since one `choose:` key
+`<branch>` or `<hub>` id draw `W-BRANCH-ID-SHARED` from whole-project `lute check`, since one `choose:` key
 would answer both menus.
 
 ## Display names: one cast file per area
@@ -216,7 +216,7 @@ cast:
 ```
 
 With four areas naming people, two of them sooner or later pick the same display name for
-different people. `check-project` warns **`W-DISPLAY-NAME-DUP`** (dsl 0.26.0 §2.8, advisory; also
+different people. Whole-project `lute check` warns **`W-DISPLAY-NAME-DUP`** (dsl 0.26.0 §2.8, advisory; also
 `lute lint`) when two cast entries have the same `name:`, a cast name equals a `::use{… name="…"}`
 display string, or two such strings name different speakers. A name that is meant to be shared,
 a role like "Tower Guard" or "Eclipse Grunt", is marked `sharedName: true` on the cast entry and
@@ -225,7 +225,7 @@ not counted.
 A cast id that two area files both declare is `E-PLUGIN-DUP-ID`, reported at the later
 declaration; the first one is used:
 
-<!-- lute-diagnostics unverified="byte-exact check-project output; the plugin loader prefixes the file position to a composed message, so no single format! literal holds it" -->
+<!-- lute-diagnostics unverified="byte-exact whole-project check output; the plugin loader prefixes the file position to a composed message, so no single format! literal holds it" -->
 ```
 ./plugins/harbor.engine/cast/south.yaml:3:3: error [E-PLUGIN-DUP-ID] cast `keeper` is already declared at cast/north.yaml:2; this declaration is ignored — rename or remove one
 ```
@@ -324,7 +324,7 @@ once: run
 
 The contract is the beat's **id, occasion and target, and the facts and state it produces**. The
 area may rewrite everything else. Because the stub exists from day one, the spine's quests have a
-producer for every fact they need, and `check-project` is green before the area has written a
+producer for every fact they need, and whole-project `lute check` is green before the area has written a
 line. If an area deletes the beat or stops asserting the fact, the spine's objective becomes
 `E-OBJECTIVE-UNSATISFIABLE` at its next check: the checker enforces the contract.
 
@@ -333,7 +333,7 @@ typed by a kind renders the kind's label, so the line reads "You got the lamp oi
 text is written once, in the roster's `labels:`, instead of as a `label=` argument at every use.
 
 **Contract beats or `--wip`.** A lead who drafts the spine before any contract beat exists can
-check it with `lute check-project . --wip` instead. `E-OBJECTIVE-UNSATISFIABLE`,
+check it with `lute check --project . --wip` instead. `E-OBJECTIVE-UNSATISFIABLE`,
 `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE` and `E-ARM-DEAD` become warnings when they are caused
 only by a relation nothing produces yet, and since dsl 0.26.0 §2.6 that includes a relation only a
 shared component asserts with an unbound param (`::assert{hasItem(@item)}` in `obtain`, with no
@@ -418,13 +418,13 @@ eligible. See [Playing a story](/tooling/play/).
 Before an area hands a branch to the lead, it runs, from the project root:
 
 ```sh
-lute check-project . --deny-warnings   # 0 errors, 0 warnings
-lute test . --project .                # every test and every play with expect:, spine included
-lute beats .                           # no W-BEAT-PRIORITY-TIE / W-BEAT-SHADOWED you did not intend
-lute refs . --attr give.item --reward ITEM   # who gives what
+lute check --project . --deny-warnings                # 0 errors, 0 warnings
+lute test --project .                                 # every test and every play with expect:, spine included
+lute beats --project .                                # no W-BEAT-PRIORITY-TIE / W-BEAT-SHADOWED you did not intend
+lute refs --project . --attr give.item --reward ITEM  # who gives what
 ```
 
-- **`check-project --deny-warnings`** turns every warning into an error. With many writers a
+- **`lute check --project . --deny-warnings`** turns every warning into an error. With many writers a
   tolerated warning is a warning nobody reads; zero is the only stable number. Silence an
   intended one at its source (`sharedName: true`, a `priority=`), not with a flag.
 - **`lute test`** runs every `*.test.yaml` and every play with an `expect:`, so the spine play and
@@ -441,7 +441,7 @@ lute refs . --attr give.item --reward ITEM   # who gives what
   it ships:
 
 ```
-$ lute refs . --attr give.item
+$ lute refs --project . --attr give.item
 ::give.item: 2 value(s)
   `flare` — 1 use(s) in 1 document(s)
     scenes/south/pier.lute:13 (via component `supply`)
@@ -461,7 +461,7 @@ Commit only files you own. The lead's review is the one gate the tool cannot run
 | Two area schemas declare the same state, def or relation name | `E-USES-DUP-STATE`, `E-USES-DUP-DEF`, `E-USES-DUP-RELATION` |
 | Two documents with one scene, quest or entry id | `E-CONN-EPISODE-ID-DUP`, `E-QUEST-ID-DUP`, `E-ENTRY-ID-DUP` |
 | Two cast files declare one cast id | `E-PLUGIN-DUP-ID`, at the later file and line |
-| Two documents give a `<branch>` or `<hub>` the same id | `W-BRANCH-ID-SHARED` in `check-project` |
+| Two documents give a `<branch>` or `<hub>` the same id | `W-BRANCH-ID-SHARED` in whole-project `lute check` |
 | An engine id that does not exist (`::give{item="flair"}`) | `E-BAD-ENUM` with a did-you-mean, when the attribute is typed `{ entity: K }`, also through a component param |
 | A reward with no target, or a target the engine does not know | `E-REWARD-TARGET`, when the reward kind declares a `target:` contract |
 | Two speakers shown with the same name | `W-DISPLAY-NAME-DUP` (unless `sharedName: true`) |

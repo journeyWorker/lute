@@ -123,7 +123,7 @@ The per-entry `series=` / `order=` attributes (the first example on this page) r
 a series that spans several files. Inside a document that declares `series:`, an entry carrying its
 own `series=` or `order=` is `E-ENTRY-ATTR` — the two forms never mix in one file. Two entries that
 resolve to the same `(series, order)` are `E-ENTRY-SERIES-ORDER`: per document in `lute check`,
-across the project in `lute check-project`.
+across the project in whole-project `lute check`.
 
 ## What an entry body may contain
 
@@ -206,7 +206,7 @@ An `::assert` is exempt: its fact holds for the rest of the run either way.
 
 `entry.<id>.read` is a reserved `bool` any document can read: gate the next page of a series
 (`when="entry.scientistLog1.read"`), branch a scene on it, or complete a quest objective. Content
-never writes it. `lute check-project` warns `W-ENTRY-REF-UNKNOWN` when no document declares the id.
+never writes it. Whole-project `lute check` warns `W-ENTRY-REF-UNKNOWN` when no document declares the id.
 
 The flag is **run-tier**: a new run resets it, and the next first read applies the effects again.
 So `when="!entry.<id>.read"` makes an entry play once per run, not once ever.
@@ -241,7 +241,7 @@ See [Beats](/language/beats/).
 ### What a read proves
 
 A guard that assumes an entry was read also knows what that entry asserted (dsl 0.24.0 §6). Under
-`entry.X.read` (or `entry.X.read == true`), `lute check-project` adds the facts `X`'s body asserts
+`entry.X.read` (or `entry.X.read == true`), whole-project `lute check` adds the facts `X`'s body asserts
 on every route, and that nothing retracts, to the facts it knows hold, the Must set of the
 [fact analysis](/state/facts-and-datalog/). A `holds(…)` of one of them inside that guard is then
 redundant, `W-FACT-GUARANTEED`, and its negation can never hold (`E-ARM-DEAD` on a line). Save the
@@ -351,7 +351,7 @@ the `<beat>` attributes, the canonical id, and how a bundle beat is checked and 
   `shipRecords`. A test of an entry or beat that targets a
   [kind](/language/beats/#kind-targets) names the raised member with
   `state: { occasion.target: <member> }`.
-- `lute lore <dir>` prints the world-narrative map: entries by target and by series, with each
+- `lute lore --project <dir>` prints the world-narrative map: entries by target and by series, with each
   entry's and beat's `when` under it, and which facts entries reveal versus scenes and quests. It
   reads beat bodies too. When the project's rules derive a relation, a **Derived** section lists
   every conclusion the rules can reach from what the project asserts, the rule instance behind it,

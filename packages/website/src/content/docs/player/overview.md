@@ -5,7 +5,7 @@ description: The Lute 0.41 renderer-free player core and PixiJS web player, thei
 
 Lute 0.41 ships two player packages. [`@lute-lang/player`](https://www.npmjs.com/package/@lute-lang/player) is a renderer-free core: it owns progression, cue scheduling, interaction state, runtime sessions, saves, read history, backlog, auto/skip, rollback, and host bridges. [`@lute-lang/player-web`](https://www.npmjs.com/package/@lute-lang/player-web) supplies a browser implementation using PixiJS 8, Web Audio, screens, and input.
 
-Neither package compiles a story. Compile a project with `lute compile --all`, serve the resulting bundle and runtime wasm, and give the player a checked `player.bindings.yaml` file.
+Neither package compiles a story. Compile a project with `lute compile --project <dir> -o <out>`, serve the resulting bundle and runtime wasm, and give the player a checked `player.bindings.yaml` file.
 
 ## Architecture
 

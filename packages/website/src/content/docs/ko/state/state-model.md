@@ -60,7 +60,7 @@ state:
 ### 경로 하나, 선언 하나
 
 프런트매터의 `state:` 선언은 해당 문서에만 국한되지 않습니다. 두 문서에서 선언한
-`run.southFossil`은 런타임에 하나의 값입니다. dsl 0.26.0 §2.1부터 `check-project`는 인라인이든 가져온 것이든 경로의 모든
+`run.southFossil`은 런타임에 하나의 값입니다. dsl 0.26.0 §2.1부터 프로젝트 전체 `lute check`는 인라인이든 가져온 것이든 경로의 모든
 선언을 비교하고, `type`, `default`, `per` 또는 `owner`가 다르면 두
 파일과 줄을 명시한 **`E-STATE-DECL-CONFLICT`**를 보고합니다. `lute play`는 한
 경로를 두 타입으로 선언한 프로젝트를 거부합니다.

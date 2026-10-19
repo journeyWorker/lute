@@ -247,12 +247,12 @@ A bundle beat is a scene beat that lives in a different file:
   and `lute calendar` list it `— after: prerequisite not satisfied`, and `lute trace --beat` notes
   ``not eligible: `after` prerequisite not satisfied`` on the beat's head without enforcing it),
   and `lute scenario` draws its edges. A malformed formula is `E-CONN-PROFILE`, and a
-  node no document declares is `E-CONN-UNKNOWN-NODE` at `check-project`. A `visited()` conjunct in a
+  node no document declares is `E-CONN-UNKNOWN-NODE` at whole-project `lute check`. A `visited()` conjunct in a
   beat's `when` still gates it, but draws no edge, so `lute scenario` lists such a beat as
   unanchored and names the `after=` to write. Put route order in `after=` and state in `when`, as on
   a scene.
 - It is checked like a scene beat. `E-OCCASION-UNKNOWN`, `E-BEAT-UNREACHABLE`, and the
-  `check-project` warnings [below](#what-the-checker-proves) name it by its canonical id.
+  whole-project `lute check` warnings [below](#what-the-checker-proves) name it by its canonical id.
 - Its lines are addressed under the canonical id. The porter's first line is
   `interviews.porter.porter_0010`, and the title's `titleLineId` is `interviews.porter.title`.
 
@@ -399,7 +399,7 @@ A key is a name (letters, digits, `_` or `-`, not starting with `-`). It needs a
 `share` with no `once`, or with `once: false`, is `E-BEAT-ATTR`, since a repeatable beat has
 nothing to spend. Every beat of one key must declare the same `once`, because the key is spent for
 one period. Add a beat `solDock` to a lore document `harbor` with `once="user" share="solWarm"`,
-and `check-project` reports the mismatch on the radio and roof beats:
+and whole-project `lute check` reports the mismatch on the radio and roof beats:
 
 <!-- lute-diagnostics -->
 ```
@@ -456,7 +456,7 @@ at its default, only the seed facts, each quest `unset` until its `start` holds)
 the `when: "!(…)"` rewrite.
 
 A latch is not a condition judged afresh at each raise, and the two differ when the condition can
-turn false again after it has held. `check-project` warns **`W-SPENT-BY-REVERSIBLE`** on a
+turn false again after it has held. Whole-project `lute check` warns **`W-SPENT-BY-REVERSIBLE`** on a
 `spentBy` beat with no `once` written whose condition reads a fact some `::retract` / `::assert`
 or a directive's declared effect can undo, a season's state, facts or quest (each reset when the
 season opens again), or a quest a `rearm` returns to `unset`. The message names the rewrite:
@@ -886,12 +886,12 @@ clock has no values to give it.
 
 | Code | When |
 |---|---|
-| `E-BEAT-ATTR` | a malformed beat key or attribute: `on` not a name, `target` not a dotted id or outside its occasion's [target domain](#target-domains), a [`kind:` target](#kind-targets) that names no closed kind within the occasion's domain, a [`for`](#once-per-member-for) that is not `kind:<kind>` of a closed kind, sits beside `target`, or is on an occasion raised for a target or not `select: sequence`, `priority` not an integer, a scene's or bundle beat's `once` outside `run` / `user` / `false` or an entry's `once` outside `run` / `user` / `false` (each also `day` / `slot`, but only in a project with a [clock](/language/clock/), and `week` only with its `week:`; dsl 0.27.0 §5), `once="false"` or a `share` key written beside `spentBy`, `also` not a bool, on an entry, or on a `select: all` / `sequence` occasion, a `share` that is not an identifier or has no spending `once` beside it, beats of one `share` key with different `once`s (`check-project`), beat keys without `on`, a scene's or bundle beat's `target` on an untargeted occasion, or a [bundle beat](#beat-bundles) shape fault (its `id`, a duplicate id, a lore document with beats but no `id:`) |
+| `E-BEAT-ATTR` | a malformed beat key or attribute: `on` not a name, `target` not a dotted id or outside its occasion's [target domain](#target-domains), a [`kind:` target](#kind-targets) that names no closed kind within the occasion's domain, a [`for`](#once-per-member-for) that is not `kind:<kind>` of a closed kind, sits beside `target`, or is on an occasion raised for a target or not `select: sequence`, `priority` not an integer, a scene's or bundle beat's `once` outside `run` / `user` / `false` or an entry's `once` outside `run` / `user` / `false` (each also `day` / `slot`, but only in a project with a [clock](/language/clock/), and `week` only with its `week:`; dsl 0.27.0 §5), `once="false"` or a `share` key written beside `spentBy`, `also` not a bool, on an entry, or on a `select: all` / `sequence` occasion, a `share` that is not an identifier or has no spending `once` beside it, beats of one `share` key with different `once`s (whole-project `lute check`), beat keys without `on`, a scene's or bundle beat's `target` on an untargeted occasion, or a [bundle beat](#beat-bundles) shape fault (its `id`, a duplicate id, a lore document with beats but no `id:`) |
 | `E-OCCASION-UNKNOWN` | `on` names an occasion no resolved plugin declares (only once some plugin declares occasions) |
-| `E-BEAT-UNREACHABLE` | a scene or bundle beat's `when` provably never holds; see [How a `when` is decided](#how-a-when-is-decided). `lute check` decides what one file settles, and `lute check-project` also decides fact queries through the [fact envelope](/state/facts-and-datalog/). An entry beat's dead `when` stays `E-ENTRY-UNREACHABLE`. |
-| `W-BEAT-SHADOWED` | `check-project` only: a `select: first` beat that can never win, because an earlier-ordered beat on the same occasion and target is always eligible (no `after:`, and a `when` that is absent or always true) and never spent (an entry without `once`, or a scene or bundle beat with `once: false`). On an occasion whose target domain is closed, an untargeted beat is also reported when, at every `<prefix>.<member>`, such a beat for that member wins; the message names the shadower per target. A [kind beat](#kind-targets) is judged member by member the same way. `also` beats neither shadow nor are shadowed. |
-| `W-BEAT-PRIORITY-TIE` | `check-project` only: two beats on one `select: first` occasion, either untargeted or for the same target, with equal `priority` and `when`s that are not provably exclusive. When both are eligible, project order picks the winner, so renaming or moving a file changes it. Give one a different `priority`, or make the conditions exclusive: conditions that cannot hold together, such as `run.slot == 'morning'` against `run.slot == 'night'`, `run.day > 5` against `run.day < 3`, or `holds(P)` against `!holds(P)`. A beat's `once` counts as part of its condition: an entry's `once="user"` as `!entry.<id>.everRead`, its `once="run"` as `!entry.<id>.read`, a scene's or bundle beat's `once: user` as `!visited('<id>')`. So a bark with `once="user"` and one whose `when` reads that bark's `everRead` do not tie. A `holds(…)` of a derived atom whose rules are all ground, `cel()`-only schedules counts as those `cel()` guards, so beats on two different schedule slots do not tie either. Since dsl 0.26.0 §8 negations are normalized first (De Morgan, `!(run.money < 100)` as `run.money >= 100`, so it is exclusive with `run.money < 100`) and each condition's alternatives are compared; the fact analysis's must set at either beat's `when` is read; a fact that only a beat's own unplayed `once: run` / `user` presentation asserts counts as absent while that beat is eligible; and the message says why the two are not exclusive: a flag that outlives `once: run`, a fact asserted elsewhere or `tier: user`, or the paths each `when` reads (``beat `tie.first` reads `run.metMira` and beat `tie.again` reads `run.money`: no path both constrain``). A member beat and a [kind beat](#kind-targets) never tie: the member beat ranks first. A shadowed beat reports `W-BEAT-SHADOWED` instead, and an `also` beat never ties. |
-| `W-BEAT-ONCE-RUN-USER` | `check-project` only: a scene or bundle beat whose `once` is left at its default `run` and whose `when` reads only user-tier state: `user.*`, `entry.<id>.everRead`, `holds` / `count` of a `tier: user` relation, or `quest.<id>.*` of a user-tier quest, and no run-tier path, run-tier fact, or `visited()`. Once that condition holds it holds in every run, so the beat plays again each run. Use `once: user` for a beat heard once ever, or gate it on run-tier state. If replaying every run is the point, write `once: run`: an authored `once: run`, like an entry's `once="run"`, says so and silences the warning. `prev.run.*` is run history, not user state, so a `when` reading it never warns. |
+| `E-BEAT-UNREACHABLE` | a scene or bundle beat's `when` provably never holds; see [How a `when` is decided](#how-a-when-is-decided). `lute check` decides what one file settles, and whole-project `lute check` also decides fact queries through the [fact envelope](/state/facts-and-datalog/). An entry beat's dead `when` stays `E-ENTRY-UNREACHABLE`. |
+| `W-BEAT-SHADOWED` | whole-project `lute check` only: a `select: first` beat that can never win, because an earlier-ordered beat on the same occasion and target is always eligible (no `after:`, and a `when` that is absent or always true) and never spent (an entry without `once`, or a scene or bundle beat with `once: false`). On an occasion whose target domain is closed, an untargeted beat is also reported when, at every `<prefix>.<member>`, such a beat for that member wins; the message names the shadower per target. A [kind beat](#kind-targets) is judged member by member the same way. `also` beats neither shadow nor are shadowed. |
+| `W-BEAT-PRIORITY-TIE` | whole-project `lute check` only: two beats on one `select: first` occasion, either untargeted or for the same target, with equal `priority` and `when`s that are not provably exclusive. When both are eligible, project order picks the winner, so renaming or moving a file changes it. Give one a different `priority`, or make the conditions exclusive: conditions that cannot hold together, such as `run.slot == 'morning'` against `run.slot == 'night'`, `run.day > 5` against `run.day < 3`, or `holds(P)` against `!holds(P)`. A beat's `once` counts as part of its condition: an entry's `once="user"` as `!entry.<id>.everRead`, its `once="run"` as `!entry.<id>.read`, a scene's or bundle beat's `once: user` as `!visited('<id>')`. So a bark with `once="user"` and one whose `when` reads that bark's `everRead` do not tie. A `holds(…)` of a derived atom whose rules are all ground, `cel()`-only schedules counts as those `cel()` guards, so beats on two different schedule slots do not tie either. Since dsl 0.26.0 §8 negations are normalized first (De Morgan, `!(run.money < 100)` as `run.money >= 100`, so it is exclusive with `run.money < 100`) and each condition's alternatives are compared; the fact analysis's must set at either beat's `when` is read; a fact that only a beat's own unplayed `once: run` / `user` presentation asserts counts as absent while that beat is eligible; and the message says why the two are not exclusive: a flag that outlives `once: run`, a fact asserted elsewhere or `tier: user`, or the paths each `when` reads (``beat `tie.first` reads `run.metMira` and beat `tie.again` reads `run.money`: no path both constrain``). A member beat and a [kind beat](#kind-targets) never tie: the member beat ranks first. A shadowed beat reports `W-BEAT-SHADOWED` instead, and an `also` beat never ties. |
+| `W-BEAT-ONCE-RUN-USER` | whole-project `lute check` only: a scene or bundle beat whose `once` is left at its default `run` and whose `when` reads only user-tier state: `user.*`, `entry.<id>.everRead`, `holds` / `count` of a `tier: user` relation, or `quest.<id>.*` of a user-tier quest, and no run-tier path, run-tier fact, or `visited()`. Once that condition holds it holds in every run, so the beat plays again each run. Use `once: user` for a beat heard once ever, or gate it on run-tier state. If replaying every run is the point, write `once: run`: an authored `once: run`, like an entry's `once="run"`, says so and silences the warning. `prev.run.*` is run history, not user state, so a `when` reading it never warns. |
 | `W-ENTRY-WRITE-REREAD` | an entry that can be read again in a run (a lookup entry, an entry beat without `once`, a `once` shorter than the run, a `spentBy` entry, a `for=` entry without `once="run"` / `"user"`) whose body has a `::set`, a `::retract`, or an effect-only directive that writes: its writes apply on its first read in a run only. `::assert` is exempt, and so is a write guarded by `!entry.<id>.read`. See [Reading twice](/language/lore-entries/#reading-twice). |
 
 ### How a `when` is decided
@@ -950,17 +950,17 @@ beat never played before either, but now the checker says so.
 ### Work in progress
 
 A fact-gated beat is often dead only because the scene that asserts its fact is not written yet.
-`lute check-project --wip` (dsl 0.23.0) reports `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, and
+`lute check --project <dir> --wip` (dsl 0.23.0) reports `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, and
 `E-OBJECTIVE-UNSATISFIABLE` as **warnings** when the condition is dead only because some relation
 has no producer at all: no seed, no `::assert` anywhere, no rule, and not `reserved:`. The note on
 the warning says why. A relation that has producers but can never match stays an error. So does
 what follows downstream: a quest that is dead only because its content is unwritten still counts
 for connectivity, so an `E-CONN-UNREACHABLE` it causes stays an error. See
-[`lute check-project`](/tooling/cli/#check-project).
+[whole-project `lute check`](/tooling/cli/#whole-project-mode).
 
 ## Tooling
 
-- `lute play <dir> --script <play.yaml>` raises a scripted sequence of occasions through a whole
+- `lute play --project <dir> --script <play.yaml>` raises a scripted sequence of occasions through a whole
   project. It prints every candidate with its verdict, presents the winner and any `also` beats
   (or every eligible beat of a `select: sequence` occasion), and advances quest lifecycles after
   each one. A step on a `select: all` occasion names the player's choice with `pick:`, or closes
@@ -970,8 +970,8 @@ for connectivity, so an `E-CONN-UNREACHABLE` it causes stays an error. See
   `<document id>.<entry id>` (`talks.miraBark`) wherever they take an entry id: `pick:`,
   `entriesRead:`, a step's `winner` / `offered` / `notOffered` / `presented`, a test's `entry:` /
   `entries:` and `expect.eligible` keys, and `lute trace --entry`.
-- `lute beats <dir>` prints each occasion's (and each target's) beat ladder in selection order,
-  with priority, `once` (and its `share` key), `also`, `after:`, `when`, title, and the `check-project` verdicts above,
+- `lute beats --project <dir>` prints each occasion's (and each target's) beat ladder in selection order,
+  with priority, `once` (and its `share` key), `also`, `after:`, `when`, title, and the whole-project `lute check` verdicts above,
   even for a project that does not check clean yet. Since dsl 0.26.0 §8 it also marks a fallback
   that an earlier, never-spent beat always beats, because the fallback's `when` implies the
   earlier beat's, as `covered by <id>` (`--json`: `coveredBy`). It is informational, not a warning:
@@ -983,15 +983,15 @@ for connectivity, so an `E-CONN-UNREACHABLE` it causes stays an error. See
       2  0         gate.shutFallback  bundle  no    covered by gate.open  -      run.badges >= 3
   ```
 
-  `lute calendar <dir> --axis …` evaluates
+  `lute calendar --project <dir> --axis …` evaluates
   eligibility over a grid of state values, such as every day and time slot, and shows what each
-  cell presents: the winner, or a sequence's whole list. `lute scenario <dir> knowledge` traces
+  cell presents: the winner, or a sequence's whole list. `lute scenario --project <dir> knowledge` traces
   each fact-gated beat to the facts it queries and whatever produces them. See
   [Overviews](/tooling/overviews/).
 - `lute trace <lore.lute> --beat <id>` previews one bundle beat, and `lute run <artifact> --beat
   <id>` runs one from a compiled lore artifact. An id that names no bundle beat is `E-TRACE-BEAT`
   in `trace` and a usage error in `run`. See [Tracing](/tooling/tracing/#bundle-beats).
-- `lute compile --all` writes `beats` into `project.index.json`: one row per scene, entry, or
+- Whole-project `lute compile` (no document operand, `-o <DIR>`) writes `beats` into `project.index.json`: one row per scene, entry, or
   bundle beat (kind `bundle`), carrying the expanded `when` and the `title` (dsl 0.23.0). Each
   compiled scene beat carries `meta.beat`, each entry beat carries `on` / `priority` / `once` on
   its `entry` record, and each bundle beat is a `beat` record in its lore artifact, followed by its

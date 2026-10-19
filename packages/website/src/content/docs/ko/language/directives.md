@@ -358,7 +358,7 @@ state:
 
 ### `::accept` — 퀘스트 수락
 
-`::accept{quest="<id>"}`(dsl 0.21.0)는 이 지점에서 플레이어가 **수락 주도(accept-driven)** 퀘스트 — `start` 술어가 없는 퀘스트 — 를 수락한다고 선언합니다. 이는 엔진의 “퀘스트 수락” 동작과 `lute trace --accept`의 씬 측 형태이며, 보통 플레이어가 동의하는 선택지에 둡니다:
+`::accept{quest="<id>"}`(dsl 0.21.0)는 이 지점에서 플레이어가 **수락 주도(accept-driven)** 퀘스트 — `start` 술어가 없는 퀘스트 — 를 수락한다고 선언합니다. 이는 엔진의 “퀘스트 수락” 동작과 `lute trace --accepted-quest`의 씬 측 형태이며, 보통 플레이어가 동의하는 선택지에 둡니다:
 
 ```lute
 <branch id="request">
@@ -372,7 +372,7 @@ state:
 </branch>
 ```
 
-`::set` 및 `::assert`와 마찬가지로 플러그인 어휘가 아니라 내장 기능입니다. 자체 IR 레코드인 `{"kind": "accept", "family": "declaration", "position": …, "quest": "calmTheShed"}`로 낮아지며, 엔진은 퀘스트가 아직 `unset`이면 활성화하고 그렇지 않으면 레코드를 무시합니다. 대상은 두 번 검사됩니다. `quest`가 없거나 형식이 잘못되면 `lute check`에서 `E-ACCEPT-TARGET`이고, `check-project`는 id가 프로젝트에 없는 퀘스트를 가리키거나 `start` 술어가 있는 퀘스트를 가리킬 때 `E-ACCEPT-TARGET`을 보고합니다(그런 퀘스트는 스스로 활성화하므로 수락해도 의미가 없습니다). 0.24.0부터는 부모와 함께 활성화되는 자식 퀘스트도 마찬가지이며 메시지에 부모가 표시됩니다. [퀘스트와 씬](/ko/language/quests-and-scenes/#퀘스트가-씬-및-계기를-만나는-방식)을 참고하세요.
+`::set` 및 `::assert`와 마찬가지로 플러그인 어휘가 아니라 내장 기능입니다. 자체 IR 레코드인 `{"kind": "accept", "family": "declaration", "position": …, "quest": "calmTheShed"}`로 낮아지며, 엔진은 퀘스트가 아직 `unset`이면 활성화하고 그렇지 않으면 레코드를 무시합니다. 대상은 두 번 검사됩니다. `quest`가 없거나 형식이 잘못되면 `lute check`에서 `E-ACCEPT-TARGET`이고, 프로젝트 전체 `lute check`는 id가 프로젝트에 없는 퀘스트를 가리키거나 `start` 술어가 있는 퀘스트를 가리킬 때 `E-ACCEPT-TARGET`을 보고합니다(그런 퀘스트는 스스로 활성화하므로 수락해도 의미가 없습니다). 0.24.0부터는 부모와 함께 활성화되는 자식 퀘스트도 마찬가지이며 메시지에 부모가 표시됩니다. [퀘스트와 씬](/ko/language/quests-and-scenes/#퀘스트가-씬-및-계기를-만나는-방식)을 참고하세요.
 
 같은 디렉티브에 0.24.0의 추가 기능 두 가지가 있습니다. `activate="accept"`로 선언한 자식 퀘스트는 `::accept`를 기다리며 부모가 활성 상태인 동안에만 활성화됩니다. 부모가 활성 상태가 아닐 때 도착한 수락은 효과 없이 소진되며, 도구 모음은 이를 알립니다(`lute play`는 `note: accept of quest c spent — its parent quest p is not active yet …`를 출력합니다). `::accept{quest="…" at="nextRun"}`은 다음 `newRun` 초기화 직후까지 수락을 대기열에 넣으므로, 런 사이 허브에서 받은 런 등급 퀘스트가 그 초기화 뒤에도 유지됩니다. `nextRun`은 `at`에 쓸 수 있는 유일한 값이며 그 밖의 값은 `E-ACCEPT-TARGET`입니다. 둘 다 [퀘스트와 씬](/ko/language/quests-and-scenes/)에 설명되어 있습니다.
 

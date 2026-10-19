@@ -178,7 +178,7 @@ Two more kinds of anchor need no `follows=` either (dsl 0.25.0 §4):
   entry joins the graph as the node `entry(<id>)`. An `||` of such reads is one anchor with several
   sources. A `start`-driven quest therefore needs no copy of its `start` in `follows=`.
 
-`lute scenario <dir> reach quest:<id>` lists a quest's anchors (`anchors` in `--format json`).
+`lute scenario --project <dir> reach --node quest:<id>` lists a quest's anchors (`anchors` in `--json`).
 Anchors never prove a quest unreachable, and an anchor that would close a cycle is not drawn. An
 explicit `follows=` keeps only the edges it declares, in place of the `start` and `accept` anchors;
 the subquest edge stays.
@@ -291,7 +291,7 @@ a scene advances a quest simply by being played:
 ```
 
 The argument is one string literal. An id that names no scene in the project is
-`E-CONN-UNKNOWN-NODE` at `check-project`, exactly as in `after:`. A single-file `check` cannot know
+`E-CONN-UNKNOWN-NODE` at whole-project `lute check`, exactly as in `after:`. A single-file `check` cannot know
 whether a scene has been played, so it never decides a lone `visited()` true or false. It still
 sees a contradiction in the condition itself: `visited('a.b') && !visited('a.b')` is false
 whatever was played (dsl 0.23.0, see [How a `when` is decided](/language/beats/#how-a-when-is-decided)).
@@ -363,7 +363,7 @@ step's `judgedBefore`; its `quests` are the ones after, with the handler bodies)
 `judge: after`, keeps the 0.21.0 order.
 
 **Accepting a quest from a scene.** A quest without `start` is *accept-driven*. The scene-side
-form of the engine's "accept quest" action (and of `lute trace --accept`) is the core directive
+form of the engine's "accept quest" action (and of `lute trace --accepted-quest`) is the core directive
 [`::accept{quest="<id>"}`](/language/directives/#accept--taking-up-a-quest), typically inside the
 choice where the player agrees:
 
@@ -382,7 +382,7 @@ choice where the player agrees:
 Accepting while the quest is already active, complete, or failed does nothing. An `::accept` may
 carry a guard, `::accept{quest="calmTheShed" when="run.shedPressure > 2"}` (dsl 0.26.0 §4, see
 [Guarding a directive](/language/directives/#guarding-a-directive-when)), and is then skipped when
-the guard is false. `lute check-project`
+the guard is false. Whole-project `lute check`
 warns **`W-QUEST-NEVER-ACCEPTED`** (dsl 0.24.0 §2) at an accept-driven quest that no `::accept` in
 the project names: nothing can ever activate it. Since dsl 0.25.0 §5 an `accepts:` mock
 (`mocks/*.yaml`, `*.test.yaml`) no longer counts. A mock proves a test, not the game, so a quest
@@ -463,7 +463,7 @@ chooses, and the IR carries `"accept": "external"` on its `QuestCmd` (omitted by
 
 The toolchain stands in for the engine's acceptance:
 
-- A test or `lute trace` takes the quest up with `accepts: [salvage]` (or `--accept salvage`). That
+- A test or `lute trace` takes the quest up with `accepts: [salvage]` (or `--accepted-quest salvage`). That
   is how a test walks an external quest, and it proves the test only: since 0.25.0 it no longer
   silences `W-QUEST-NEVER-ACCEPTED` for a quest that has neither `accept="external"` nor an
   `::accept`.
@@ -482,7 +482,7 @@ The toolchain stands in for the engine's acceptance:
 
 `accept` takes only `external`; any other value is `E-ATTR-TYPE`. So is `accept="external"` beside
 `start`, since the quest would have two ways to activate. On a [subquest](#subquests) child that
-activates with its parent, the engine's acceptance would do nothing, so `check-project` reports
+activates with its parent, the engine's acceptance would do nothing, so whole-project `lute check` reports
 `E-ACCEPT-TARGET`. Declare [`activate="accept"`](#taken-up-in-dialogue-activateaccept) on the
 child as well, and it waits for the engine while its parent is active:
 
@@ -555,7 +555,7 @@ An `on=` objective with `by=` (and no `until=`) whose `done` provably implies it
 complete only in the step that raises its occasion. Anywhere else, `by` comes true no later than
 `done`, at a settle where the occasion is not raised, and fails the objective before `done` is
 ever judged. That is content written for 0.23.1's raise-only `by`. `lute check` and
-`lute check-project` warn **`W-DEADLINE-BEFORE-DONE`** (dsl 0.24.0 §2.1) at the `by=` and suggest
+whole-project `lute check` warn **`W-DEADLINE-BEFORE-DONE`** (dsl 0.24.0 §2.1) at the `by=` and suggest
 `until=` with the same condition; `--deny W-DEADLINE-BEFORE-DONE` makes it an error:
 
 ```lute check
@@ -622,7 +622,7 @@ Five diagnostics guard the shape:
 - `E-OBJECTIVE-QUEST-DONE` — `quest=` and `done=` on one objective.
 - `E-QUEST-REF-UNKNOWN` — `quest=` names no known quest id. Same split as
   `after` targets: same-document references resolve at `check`,
-  cross-document resolution is `check-project`'s.
+  cross-document resolution is whole-project `lute check`'s.
 - `E-QUEST-MULTI-PARENT` — one quest referenced by `quest=` from two
   parents (tree, not DAG).
 - `E-QUEST-TREE-CYCLE` — the parent→child edges form a cycle;
@@ -630,7 +630,7 @@ Five diagnostics guard the shape:
   document, `check` catches it early.
 - `E-QUEST-TIER-MIX` — a subquest's `tier` differs from its parent's. The
   error names both quests and both tiers. Same split again: `check` reports
-  it when parent and child share a document, `check-project` across
+  it when parent and child share a document, whole-project `lute check` across
   documents. A mixed tree would lock for good. Under a `tier="run"` parent,
   the parent's end cascades into a user-tier child that keeps that status
   across runs, so the parent restarts next run waiting on a child that never
@@ -651,7 +651,7 @@ worked example:
 
 A child without `start` joins the journal the moment its parent activates. A side path the player
 takes up in conversation should join only when it is offered. **`activate="accept"`** on the child
-(dsl 0.24.0 §2) makes it wait for an `::accept` (or an `accepts:` mock, or `lute trace --accept`),
+(dsl 0.24.0 §2) makes it wait for an `::accept` (or an `accepts:` mock, or `lute trace --accepted-quest`),
 like a root quest without `start`. It activates only while its parent is `active`: an accept that
 runs while the parent is not active is spent without effect, and the tools say so. `lute play`
 prints `note: accept of quest firewood spent — its parent quest camp is not active yet …`
@@ -717,7 +717,7 @@ fail`) only once no route is left.
 
 Three diagnostics guard the accept side. `activate="accept"` beside `start` is `E-ATTR-TYPE`
 (pick one). `::accept` of a child that activates with its parent used to do nothing; it is now
-`E-ACCEPT-TARGET` at `check-project`, naming the parent. And `W-QUEST-NEVER-ACCEPTED` flags an
+`E-ACCEPT-TARGET` at whole-project `lute check`, naming the parent. And `W-QUEST-NEVER-ACCEPTED` flags an
 `activate="accept"` child no `::accept` reaches:
 
 ```lute expect="E-ATTR-TYPE"
@@ -737,7 +737,7 @@ state:
 </quest>
 ```
 
-<!-- lute-diagnostics unverified="verbatim check-project output shape (names from this example); the W-QUEST-NEVER-ACCEPTED message is assembled from several pieces in crates/lute-check/src/accept.rs, so no single format! literal matches" -->
+<!-- lute-diagnostics unverified="verbatim whole-project lute check output shape (names from this example); the W-QUEST-NEVER-ACCEPTED message is assembled from several pieces in crates/lute-check/src/accept.rs, so no single format! literal matches" -->
 ```
 scenes/ferry.lute:17:21: error [E-ACCEPT-TARGET] `::accept` targets quest `force`, which activates with its parent `crossing`; declare `activate="accept"` on it to accept it from a scene
 quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for an acceptance (`activate="accept"`), but no `::accept` in the project names it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or remove `activate="accept"` so it activates with its parent `crossing`
@@ -783,7 +783,7 @@ next:
 apply it too, so a test of this document with `accepts: [salvage]` ends with `tides` active, as the
 play does. Before 0.26.0 trace and test did not apply it, and disagreed with play.
 
-A `questFailed` handler on a quest that can never fail is dead code. `lute check-project` warns
+A `questFailed` handler on a quest that can never fail is dead code. Whole-project `lute check` warns
 `W-QUEST-HANDLER-DEAD` at the handler's `event` when its quest has no `fail`, no required objective
 with a `by=` or `until=` [deadline](#deadlines), no required subquest objective whose child can
 itself fail (a failing required child fails its parent), and no parent quest (a parent's end
@@ -800,7 +800,7 @@ one whose `when` contains every required objective's `done` (any one, under `com
 only an active quest's handlers. `lute check` reports it too. Lifecycle events, and quests with an
 `on=` or `quest=` objective, are exempt:
 
-<!-- lute-diagnostics unverified="verbatim lute check-project output; the message is composed in crates/lute-check/src/reachability.rs, which names the code through the project_check::W_QUEST_HANDLER_DEAD constant rather than a string literal, so the scraper cannot pair quote and code" -->
+<!-- lute-diagnostics unverified="verbatim whole-project lute check output; the message is composed in crates/lute-check/src/reachability.rs, which names the code through the project_check::W_QUEST_HANDLER_DEAD constant rather than a string literal, so the scraper cannot pair quote and code" -->
 ```
 quests/road.lute:25:14: warning [W-QUEST-HANDLER-DEAD] `<on event="combatEnd">` never runs: its `when` implies every required objective of quest `brawl` is done, so the quest has already completed when it holds, and an event reaches only an active quest's handlers; move the body to `<on event="questComplete">` or the objective's own body
 ```
@@ -907,8 +907,8 @@ the stamp exists for any activated instance, and a read is only meaningful insid
 
 ## JSON reports for quests
 
-`lute scenario --format json` returns one report object with `command`,
-`schemaVersion: "0.43.0.scenario"`, and `ok`; `scenario reach --format json` uses
+`lute scenario --json` returns one report object with `command`,
+`schemaVersion: "0.43.0.scenario"`, and `ok`; `scenario reach --json` uses
 `0.43.0.scenario-reach`. These are reports, while compiled artifacts and `run --json`
 remain their own contracts. In automation, inspect the envelope before reading anchors,
 edges, or quest state. Use `LUTE_TELEMETRY=0` for reproducible command examples.

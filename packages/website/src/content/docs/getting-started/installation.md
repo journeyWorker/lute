@@ -88,7 +88,7 @@ binary the launcher starts; if it cannot tell which one that is, the line ends
 `(compared by reported version only)`.
 
 **If your editor and the terminal disagree** about a file — red underlines on a file `lute check`
-calls `ok`, or the other way round — trust the terminal and run `lute doctor .` in the project: the
+calls `ok`, or the other way round — trust the terminal and run `lute doctor --project .` in the project: the
 usual cause is an editor language server older than your `lute`, and restarting the editor after an
 upgrade fixes it.
 
@@ -100,4 +100,4 @@ an empty file, running `lute` at every step.
 Or start from a whole project: `lute init <dir>` scaffolds a minimal one, and
 `lute init --template beats <dir>` scaffolds a game driven by [beats and occasions](/tooling/play/)
 — an occasions plugin, beats, a quest, lore entries, a play script, and scenario tests that
-`lute check-project`, `lute test`, and `lute play` pass as scaffolded.
+whole-project `lute check`, `lute test`, and `lute play` pass as scaffolded.
