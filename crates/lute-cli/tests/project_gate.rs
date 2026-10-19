@@ -1,9 +1,10 @@
 //! `lute compile`/`lute trace` project-aware connectivity gate (connectivity
-//! design spec §5): WITH `--project <dir>` both commands gate on the target
-//! document's RECONCILED whole-project `check` verdict — an envelope-Guaranteed
+//! design spec §5): WITH a project (`--project <dir>`, or the nearest
+//! `lute.project.yaml` discovered above the file, 0.48.0 §2.1) both commands
+//! gate on the target document's RECONCILED whole-project `check` verdict — an envelope-Guaranteed
 //! `run.*`/`user.*` read no longer blocks with a standalone `E-MAYBE-UNSET`,
 //! and a read no route guarantees blocks with `E-STATE-MAYBE-UNAVAILABLE`.
-//! WITHOUT `--project`, the standalone single-file `check` gate is unchanged.
+//! WITHOUT a project, the standalone single-file `check` gate is unchanged.
 //! Single-root: `--project <dir>` = `<dir>` for BOTH capability and
 //! connectivity, no nested search; an out-of-tree target errors explicitly.
 //!

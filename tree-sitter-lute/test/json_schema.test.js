@@ -10,7 +10,7 @@
 import { test, expect, describe } from "bun:test";
 import Ajv from "ajv";
 import Ajv2020 from "ajv/dist/2020.js";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 
 const ROOT = `${import.meta.dir}/../..`;
@@ -734,8 +734,8 @@ describe("lute check report schema", () => {
   test("a failing document and a schema operand validate", () => {
     const validate = reportValidator();
     const dir = `${tmpdir()}/lute-check-report-${process.pid}-${Math.random().toString(36).slice(2)}`;
-    Bun.spawnSync(["mkdir", "-p", dir]);
-    Bun.write(`${dir}/bad.lute`, "---\nkind: scene\nid: bad\n---\n@narrator: [broken\n");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(`${dir}/bad.lute`, "---\nkind: scene\nid: bad\n---\n@narrator: [broken\n");
     const bad = checkJson([`${dir}/bad.lute`, "docs/examples/haven/world.schema.yaml"]);
     expect(bad.code).toBe(1);
     expect(bad.json.ok).toBe(false);
@@ -748,8 +748,8 @@ describe("lute check report schema", () => {
   test("an invalid manifest in whole-project mode reports files [] and the manifest diagnostics", () => {
     const validate = reportValidator();
     const dir = `${tmpdir()}/lute-check-manifest-${process.pid}-${Math.random().toString(36).slice(2)}`;
-    Bun.spawnSync(["mkdir", "-p", dir]);
-    Bun.write(`${dir}/lute.project.yaml`, "profiles: [this is: not valid\n");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(`${dir}/lute.project.yaml`, "profiles: [this is: not valid\n");
     const { code, json } = checkJson(["--project", dir]);
     expect(code).toBe(1);
     expect(json.files).toEqual([]);

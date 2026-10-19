@@ -141,25 +141,63 @@ fn none_found_is_a_usage_error_naming_project() {
 
 #[test]
 fn an_explicit_directory_without_a_manifest_is_a_workspace_and_nested_projects_keep_their_own() {
+    // `inner/` reads `run.gold`, which only its own manifest's `defaults.uses`
+    // schema declares; `loose/` has no manifest at all.
     let ws = lute_scratch::ScratchDir::named("disc-workspace");
-    write(&ws, "inner/lute.project.yaml", PROJECT_YAML);
-    write(&ws, "inner/a.lute", SCENE);
-    write(&ws, "loose/b.lute", SCENE);
+    write(
+        &ws,
+        "inner/lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndefaults:\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &ws,
+        "inner/world.schema.yaml",
+        "state:\n  run.gold: { type: int, default: 0 }\n",
+    );
+    let reader = "---\nkind: scene\nid: r\n---\n## R\n@narrator: {{run.gold}}\n";
+    write(&ws, "inner/a.lute", reader);
+    write(&ws, "loose/b.lute", reader);
     let out = lute_in(&ws, &["check", "--project", ".", "--json"]);
     assert_eq!(
         out.status.code(),
-        Some(0),
+        Some(1),
         "{}{}",
         stdout(&out),
         stderr(&out)
     );
-    let paths: Vec<String> = json(&out)["files"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|f| f["path"].as_str().unwrap().to_string())
-        .collect();
-    assert_eq!(paths.len(), 2, "{paths:?}");
+    let v = json(&out);
+    let files = v["files"].as_array().unwrap();
+    let entry = |suffix: &str| {
+        files
+            .iter()
+            .find(|f| f["path"].as_str().unwrap().ends_with(suffix))
+            .unwrap_or_else(|| panic!("{suffix} in {files:?}"))
+    };
+    let inner = entry("inner/a.lute");
+    assert_eq!(
+        inner["ok"], true,
+        "resolved against inner's own manifest: {inner}"
+    );
+    let loose = entry("loose/b.lute");
+    assert_eq!(loose["ok"], false, "resolved against no project: {loose}");
+    assert!(
+        loose["diagnostics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|d| d["code"] == "E-UNDECLARED"),
+        "{loose}"
+    );
+}
+
+#[test]
+fn the_discovery_note_is_once_per_project_even_when_spelled_differently() {
+    let dir = project("disc-spelling");
+    let a = dir.join("scenes/a.lute");
+    let b = dir.join("scenes/../scenes/b.lute");
+    let out = lute_in(&dir, &["check", a.to_str().unwrap(), b.to_str().unwrap()]);
+    assert_eq!(out.status.code(), Some(0), "{}", stderr(&out));
+    assert_eq!(discovery_notes(&out).len(), 1, "{}", stderr(&out));
 }
 
 #[test]
@@ -559,6 +597,11 @@ fn removed_commands_answer_with_the_rewritten_command_and_no_command_id() {
             "lute check --project docs/x --json",
         ),
         (
+            vec!["check-project", "--wip", "--json"],
+            "check-project",
+            "lute check --project <DIR> --wip --json",
+        ),
+        (
             vec!["check-project", "--wip", "d", "--deny", "W-WIP", "--json"],
             "check-project",
             "lute check --project d --wip --deny W-WIP --json",
@@ -566,7 +609,7 @@ fn removed_commands_answer_with_the_rewritten_command_and_no_command_id() {
         (
             vec!["compile-stream", "s.lute", "--providers", "p", "--json"],
             "compile-stream",
-            "lute compile --stream s.lute --providers p --json",
+            "lute compile --stream s.lute --providers p",
         ),
     ] {
         let out = Command::new(BIN)
@@ -594,7 +637,7 @@ fn removed_commands_answer_with_the_rewritten_command_and_no_command_id() {
         let record: Value = serde_json::from_str(line).unwrap();
         assert_eq!(record["command"], Value::Null, "{record}");
     }
-    assert_eq!(telemetry.lines().count(), 3);
+    assert_eq!(telemetry.lines().count(), 4);
 }
 
 #[test]
@@ -643,4 +686,26 @@ fn removed_compile_options_answer_with_the_replacement() {
         );
     }
     assert!(!dir.join("out").exists());
+}
+
+#[test]
+fn trace_of_a_document_gates_on_the_discovered_project_verdict() {
+    // 0.47.2 refused this document with exit 1 (single-file E-MAYBE-UNSET);
+    // the discovered project is the explicit one: the trace runs and, with an
+    // unresolved guard, ends incomplete (exit 3).
+    let examples = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/examples");
+    let file = examples.join("connected-outro.lute");
+    let discovered = lute_in(&examples, &["trace", file.to_str().unwrap()]);
+    let explicit = lute_in(
+        &examples,
+        &[
+            "trace",
+            file.to_str().unwrap(),
+            "--project",
+            examples.to_str().unwrap(),
+        ],
+    );
+    assert_eq!(discovered.status.code(), Some(3), "{}", stdout(&discovered));
+    assert_eq!(explicit.status.code(), Some(3), "{}", stdout(&explicit));
+    assert_eq!(stdout(&discovered), stdout(&explicit));
 }

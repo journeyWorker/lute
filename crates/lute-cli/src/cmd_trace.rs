@@ -52,8 +52,8 @@ pub(crate) fn run_trace(
     expand: bool,
 ) -> ExitCode {
     // FS-F2: resolved against the same project `lute check` resolves it
-    // against — `--project`, else the nearest manifest. Only an explicit
-    // `--project` switches the gate to the reconciled project verdict below.
+    // against — `--project`, else the nearest manifest. Either switches the
+    // gate to the reconciled project verdict below (0.48.0 §2.1).
     let discovered = discover_project(file, project);
     let resolved = project.or(discovered.as_deref());
     let Some(built) = build_input(file, providers, resolved, None) else {

@@ -32,8 +32,8 @@ pub(crate) struct Cli {
 pub(crate) struct ProjectOpt {
     /// Project directory (`lute.project.yaml` + `plugins/`). Omit for the
     /// nearest `lute.project.yaml` at or above the file operand's directory
-    /// (file commands) or the current directory; the stderr note names the
-    /// project used.
+    /// (file commands) or the current directory. A file command names the
+    /// project it discovered in a stderr note.
     #[arg(long = "project", value_name = "DIR")]
     pub(crate) project: Option<PathBuf>,
 }

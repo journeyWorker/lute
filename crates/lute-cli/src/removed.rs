@@ -32,7 +32,12 @@ fn line(words: &[String]) -> String {
     let mut out = String::from("lute");
     for word in words {
         out.push(' ');
-        out.push_str(&crate::shell_word(word));
+        if matches!(word.as_str(), "<DIR>" | "<FILE>") {
+            // A placeholder the author fills in, not a word to quote.
+            out.push_str(word);
+        } else {
+            out.push_str(&crate::shell_word(word));
+        }
     }
     out
 }
@@ -83,7 +88,9 @@ fn compile_stream(rest: &[String]) -> CliError {
             .cloned()
             .unwrap_or_else(|| "<FILE>".to_string()),
     );
-    words.extend(options);
+    // `--stream` is not a JSON command (it is a conflict), so `--json` is
+    // not carried over.
+    words.extend(options.into_iter().filter(|o| o != "--json"));
     let rewritten = line(&words);
     CliError::usage(format!("lute compile-stream is now `{rewritten}`"))
         .with_argument("compile-stream")
@@ -146,6 +153,15 @@ fn compile(rest: &[String]) -> Option<CliError> {
             }
             None => words.push(word.clone()),
         }
+    }
+    if has_all
+        && !words
+            .iter()
+            .any(|w| w == "-o" || w == "--output" || w.starts_with("--output="))
+    {
+        // The whole project needs an output directory; name the slot.
+        words.push("-o".to_string());
+        words.push("<DIR>".to_string());
     }
     let rewritten = line(&words);
     let message = match first {
