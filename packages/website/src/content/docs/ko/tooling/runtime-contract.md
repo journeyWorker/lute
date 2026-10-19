@@ -19,14 +19,14 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 재개 가능한 런타임 API와 JSON 와이어 형식은
 [런타임 이벤트 계약](https://github.com/journeyWorker/lute/blob/main/docs/runtime/event-contract.md)을
 참고하세요. `lute-runtime` 크레이트는 순수한 통합 표면을 노출합니다. `Runtime::load`로
-`compile --all` 번들을 로드하고, `begin`으로 세션을 만들고, `step`으로 진행하며,
+`compile --project` 번들을 로드하고, `begin`으로 세션을 만들고, `step`으로 진행하며,
 `snapshot`/`restore`와 읽기 전용 질의를 사용해 호스트가 검사할 수 있습니다. 렌더링, 페이싱,
 브리지 호출, 지급 확정은 호스트가 소유하고, 런타임은 그 효과를 데이터로 반환합니다.
 
 ## TypeScript 런타임
 
 TypeScript 호스트는 wasm 런타임 위의 Effect 4 API인
-[`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md)을 사용할 수 있습니다. Bun 및 브라우저 레이어는 `lute compile --all` 번들을 로드하고, 범위가 지정된 세션과 이벤트 스트림을 노출하며, 타입이 지정된 거부, 스냅숏, 리플레이를 제공합니다. 설치, 완전한 Bun 세션, 브라우저 제공, 프로그램 질의, 오류, 생성된 계약 스키마, `Replay`에 대해서는 [전체 TypeScript 런타임 가이드](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md)를 참고하세요.
+[`@lute-lang/runtime`](https://github.com/journeyWorker/lute/tree/main/docs/runtime/typescript-runtime.md)을 사용할 수 있습니다. Bun 및 브라우저 레이어는 `lute compile --project` 번들을 로드하고, 범위가 지정된 세션과 이벤트 스트림을 노출하며, 타입이 지정된 거부, 스냅숏, 리플레이를 제공합니다. 설치, 완전한 Bun 세션, 브라우저 제공, 프로그램 질의, 오류, 생성된 계약 스키마, `Replay`에 대해서는 [전체 TypeScript 런타임 가이드](https://github.com/journeyWorker/lute/blob/main/docs/runtime/typescript-runtime.md)를 참고하세요.
 
 0.41에서 `Program`에는 `gate(state, occasion, target?)`(`Effect<Gate, InvalidInput>`)와
 `def(state, name, args?)`가 추가됩니다. `args`는 선언된 매개변수마다 JSON 스칼라 하나입니다. 닫힌 관문의
@@ -216,7 +216,7 @@ Lute의 정적 분석도 한계를 정직하게 드러냅니다 — 도달 가�
 | `sections` | 문서의 `##` 섹션이며, 각각 `{ section, heading, id? }`입니다(heading 또는 id가 하나도 없으면 생략). |
 | `seasons` / `gates` / `terminal` / `terminalPersists` | 선택적 시계 및 계기 제어입니다. |
 
-`requiredSemantics`는 하나의 아티팩트에서 낮춰진 기능들의 정렬된 합집합입니다. 프로젝트 인덱스에도 문서 아티팩트의 정렬된 합집합으로 같은 필드가 들어 있으므로, `check-project`, `play`, 엔진은 모든 문서를 열기 전에 협상할 수 있습니다. 완전한 레지스트리와 트리거 매핑은 [0.33.0 제안서 §2–§3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry)에 있으며, 이 페이지에서는 의도적으로 그 레지스트리를 반복하지 않습니다.
+`requiredSemantics`는 하나의 아티팩트에서 낮춰진 기능들의 정렬된 합집합입니다. 프로젝트 인덱스에도 문서 아티팩트의 정렬된 합집합으로 같은 필드가 들어 있으므로, 프로젝트 전체 `check`, `play`, 엔진은 모든 문서를 열기 전에 협상할 수 있습니다. 완전한 레지스트리와 트리거 매핑은 [0.33.0 제안서 §2–§3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry)에 있으며, 이 페이지에서는 의도적으로 그 레지스트리를 반복하지 않습니다.
 
 ### 명령 레코드
 
@@ -328,7 +328,7 @@ major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.47.2` 매트�
 레지스트리 ID에는 `E-SEMANTICS-UNKNOWN`을 사용합니다. `lute run`은 제거된 0.36 필드를
 여전히 담은 아티팩트를 `E-IR-REMOVED-FIELD`로 거부합니다.
 
-`lute check --engine <file>`과 `lute check-project --engine <file>`은 플레이백 없이
+`lute check --engine <file>`과 `lute check --project <dir> --engine <file>`은 플레이백 없이
 저작 시점의 협상을 수행합니다. 누락된 캐퍼빌리티는 낮춰진 구성의 소스 범위, 의미 ID,
 엔진 이름과 함께 `E-CHECK-ENGINE-SEMANTICS`로 보고됩니다. 프로젝트 형식은 프로젝트 인덱스
 합집합을 검사하고 기여한 각 문서/범위를 나열합니다. 플러그인 호환성은 여전히 정확한
@@ -534,7 +534,7 @@ JSON Schema에 대해 검증한다면 `lute-ir-0.10.schema.json`을 가리키세
 
 ## 스트리밍 스냅숏 교체
 
-[`lute compile-stream`](/ko/tooling/continuation-compiler/)은 승인된 연속 입력 단위마다 완전한 일반 아티팩트 스냅숏을 내보냅니다. 두 번째 IR이나 패치 언어를 정의하지 않습니다. `appendFrom`은 이전 스냅숏의 명령 수이며, 새로 추가된 배열 영역만 식별합니다. 런타임 PC가 아니며 그 영역의 모든 레코드를 실행하라고 요청하는 값도 아닙니다.
+[`lute compile --stream`](/ko/tooling/continuation-compiler/)은 승인된 연속 입력 단위마다 완전한 일반 아티팩트 스냅숏을 내보냅니다. 두 번째 IR이나 패치 언어를 정의하지 않습니다. `appendFrom`은 이전 스냅숏의 명령 수이며, 새로 추가된 배열 영역만 식별합니다. 런타임 PC가 아니며 그 영역의 모든 레코드를 실행하라고 요청하는 값도 아닙니다.
 
 스냅숏이 도착하면 불변 프로그램 이미지를 교체하고 `position -> command index` 맵을 다시 만듭니다. **숫자** 명령 커서, 현재 상태 값, 팩트, 선택된 제어 흐름 스택, 호스트가 소유한 효과/멱등성 기록은 유지합니다. 새로 선언된 상태 슬롯만 초기화합니다. 아티팩트 객체가 교체되었다는 이유만으로 기존 기본값이나 시드 팩트를 다시 적용해서는 안 됩니다.
 
@@ -608,7 +608,7 @@ while (pc < artifact.commands.length) {
 
 ## 현지화 텍스트
 
-`line` 레코드의 `text`, choice/hub 옵션의 `text`, branch/hub의 `prompt`는 항상 **원본 언어**(`contentLang`)의 일반 텍스트입니다. 아티팩트를 [`lute compile --locales`](/ko/tooling/cli/#--locales--번역-번들-병합)로 빌드하면 레코드에 locale 태그 → 번역된 일반 텍스트인 `texts` 맵도 들어가며, 키는 레코드의 `lineId`입니다. `prompt`가 있는 `choice`/`hub` 레코드에는 `promptLineId`(`{prefix}.{branchOrHubId}.prompt`, `prompt`가 있으면 항상 존재, dsl 0.47.0)와, 번들이 번역했다면 `promptTexts`(locale 태그 → 번역된 프롬프트)도 들어갑니다. 인라인 수정자가 있는 line에는 원본용 `segments`와 각 번역 locale용 `localeSegments`가 일반 `texts` 항목 옆에 들어갑니다. 모든 번역 locale에는 항상 `texts` 항목이 있으므로 backlog, TTS, 검색에서 세그먼트를 평탄화할 필요가 없습니다.
+`line` 레코드의 `text`, choice/hub 옵션의 `text`, branch/hub의 `prompt`는 항상 **원본 언어**(`contentLang`)의 일반 텍스트입니다. 아티팩트를 [`lute compile --locale-bundle`](/ko/tooling/cli/#--locale-bundle--번역-번들-병합)로 빌드하면 레코드에 locale 태그 → 번역된 일반 텍스트인 `texts` 맵도 들어가며, 키는 레코드의 `lineId`입니다. `prompt`가 있는 `choice`/`hub` 레코드에는 `promptLineId`(`{prefix}.{branchOrHubId}.prompt`, `prompt`가 있으면 항상 존재, dsl 0.47.0)와, 번들이 번역했다면 `promptTexts`(locale 태그 → 번역된 프롬프트)도 들어갑니다. 인라인 수정자가 있는 line에는 원본용 `segments`와 각 번역 locale용 `localeSegments`가 일반 `texts` 항목 옆에 들어갑니다. 모든 번역 locale에는 항상 `texts` 항목이 있으므로 backlog, TTS, 검색에서 세그먼트를 평탄화할 필요가 없습니다.
 
 ```json
 {
@@ -640,9 +640,9 @@ while (pc < artifact.commands.length) {
 }
 ```
 
-locale 맵은 비어 있으면 생략됩니다. 따라서 `--locales` 없이 컴파일한 아티팩트는 이전과 바이트 단위로 동일하고, 이를 무시하는 소비자는 계속 원본 언어를 렌더링합니다. `texts`(수정된 line이면 `localeSegments`도, 프롬프트는 `promptTexts`)에서 locale을 조회해 제시하고 `text`(`prompt`)로 대체하십시오. 컴파일러는 빌드 시 정확히 그런 누락에 대해 경고(`W-L10N-MISSING`)하므로 완전한 번들에는 대체할 부분이 남지 않습니다.
+locale 맵은 비어 있으면 생략됩니다. 따라서 `--locale-bundle` 없이 컴파일한 아티팩트는 이전과 바이트 단위로 동일하고, 이를 무시하는 소비자는 계속 원본 언어를 렌더링합니다. `texts`(수정된 line이면 `localeSegments`도, 프롬프트는 `promptTexts`)에서 locale을 조회해 제시하고 `text`(`prompt`)로 대체하십시오. 컴파일러는 빌드 시 정확히 그런 누락에 대해 경고(`W-L10N-MISSING`)하므로 완전한 번들에는 대체할 부분이 남지 않습니다.
 
-런타임의 `line` 레코드(`--locales`로 컴파일한 번들에 대한 `lute-runtime` / `@lute-lang/runtime` 이벤트)는 이 맵을 렌더링해 줍니다(dsl 0.47.0). `{{…}}` 마커를 값으로 바꾼 `text`와 `segments`에 더해, line 명령에 `texts`와 `localeSegments`가 있으면 이를 함께 싣는데, 각 번역의 마커는 원본에서 참조 대상이 같은 마커(`{{ }}` 안의 텍스트를 앞뒤 공백을 빼고 비교하므로 `{{ user.voyages }}`와 `{{user.voyages}}`는 같음)에 대해 렌더링한 값으로 바뀝니다. 번역자는 마커 순서를 바꿔도 되고, 원본에 없는 마커는 쓴 그대로 남습니다. 레코드는 디코딩된 텍스트를 담으며(lute 0.47.1: 인코딩 백슬래시 없음), 번역에도 `\{{`를 쓸 수 있고 원본과 마찬가지로 리터럴 `{{`로 남습니다. 런타임 line은 아티팩트의 템플릿이 아니라 레코드로 보여 주십시오. 컨포먼스 레코드인 `lute run --json`은 다른 delivery 필드처럼 이를 생략합니다. 선택지 라벨과 프롬프트는 렌더링하지 않습니다.
+런타임의 `line` 레코드(`--locale-bundle`로 컴파일한 번들에 대한 `lute-runtime` / `@lute-lang/runtime` 이벤트)는 이 맵을 렌더링해 줍니다(dsl 0.47.0). `{{…}}` 마커를 값으로 바꾼 `text`와 `segments`에 더해, line 명령에 `texts`와 `localeSegments`가 있으면 이를 함께 싣는데, 각 번역의 마커는 원본에서 참조 대상이 같은 마커(`{{ }}` 안의 텍스트를 앞뒤 공백을 빼고 비교하므로 `{{ user.voyages }}`와 `{{user.voyages}}`는 같음)에 대해 렌더링한 값으로 바뀝니다. 번역자는 마커 순서를 바꿔도 되고, 원본에 없는 마커는 쓴 그대로 남습니다. 레코드는 디코딩된 텍스트를 담으며(lute 0.47.1: 인코딩 백슬래시 없음), 번역에도 `\{{`를 쓸 수 있고 원본과 마찬가지로 리터럴 `{{`로 남습니다. 런타임 line은 아티팩트의 템플릿이 아니라 레코드로 보여 주십시오. 컨포먼스 레코드인 `lute run --json`은 다른 delivery 필드처럼 이를 생략합니다. 선택지 라벨과 프롬프트는 렌더링하지 않습니다.
 
 ## 런타임 문서
 

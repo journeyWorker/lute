@@ -82,7 +82,7 @@ AND로 결합됩니다. 한 레이어의 목록 안에서는 하나만 일치해
 ```console
 $ lute check scene.lute --project . --permission-profile restricted
 $ lute compile scene.lute --project . --permission-profile restricted -o scene.json
-$ lute compile --all --project . --permission-profile restricted -o build
+$ lute compile --project . --permission-profile restricted -o build
 $ lute context scene.lute --json --project . --permission-profile restricted
 ```
 
@@ -91,14 +91,14 @@ $ lute context scene.lute --json --project . --permission-profile restricted
 바꾸지 않습니다. 따라서 `profile: authored`인 문서도 호스트가 고정한 `restricted`
 정책을 넓힐 수 없습니다. 프로젝트나 프로파일이 없으면 명시적인 해석 오류입니다.
 
-`compile --all`은 같은 호스트 상한으로 모든 문서를 먼저 검사합니다. 하나라도 거부되면
+`compile --project`는 같은 호스트 상한으로 모든 문서를 먼저 검사합니다. 하나라도 거부되면
 금지된 산출물도 부분 출력 집합도 만들지 않습니다.
 
 스트리밍에서는 고정된 같은 상한이 신뢰하는 템플릿과 모든 본문 단위를 검사합니다.
 
 ```console
 $ printf '::set{scene.score = 1}\n' \
-    | lute compile-stream scenes/live.lute --project . \
+    | lute compile --stream scenes/live.lute --project . \
         --permission-profile restricted
 ```
 

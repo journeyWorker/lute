@@ -11,7 +11,7 @@ description: 스냅숏 우선 프로바이더 해석 — 체커가 라이브 카
 
 ## `--providers`
 
-`check`, `check-project`, `compile`, `context`, `trace`, `scenario`는 모두 문서를 해석할 id가 들어 있는 고정 스냅숏 파일 디렉터리인 `--providers <DIR>`를 받습니다.
+`check`(`--project` 포함), `compile`, `context`, `trace`, `scenario`는 모두 문서를 해석할 id가 들어 있는 고정 스냅숏 파일 디렉터리인 `--providers <DIR>`를 받습니다.
 
 ```console
 $ lute check scene.lute --providers ./catalog
@@ -24,7 +24,7 @@ $ lute check scene.lute --providers ./catalog
 활성화 과정은 프로젝트에 설치된 플러그인과 선택한 프로필을 하나의 불변 capability 스냅숏으로 해석하고, `capabilitySnapshot` 해시를 찍습니다. 프로바이더 스냅숏은 이 해시에 고정됩니다. 해석된 `capabilitySnapshot`이 바뀌면 고정된 스냅숏에 다시 스탬프를 찍어야 합니다.
 
 ```console
-$ lute catalog refresh ./catalog --project ./my-game
+$ lute catalog refresh --providers ./catalog --project ./my-game
 ```
 
-`catalog refresh <dir>`는 `<dir>`의 모든 고정 스냅숏에 현재 `capabilitySnapshot`을 다시 스탬프하고 `stale` 플래그를 지우며, 로더가 읽는 디스크상의 평면 형식으로 각 파일을 다시 씁니다. `--project` 아래에서는 해석된 다중 플러그인 `capabilitySnapshot`을 스탬프하고, 이를 생략하면 core 기준선을 사용합니다. 정확성은 라이브 카탈로그에 의존하지 않습니다 — refresh는 이미 고정된 아티팩트를 정규화하고 다시 스탬프할 뿐이므로, `refresh`한 뒤 `load`해도 정확히 왕복됩니다. 명시적인 `catalog refresh`는 빌드보다 먼저 실행합니다. 종료 코드는 성공 시 **0**, I/O 오류 시 **2**입니다.
+`catalog refresh --providers <dir>`는 `<dir>`(기본값은 프로젝트의 `catalogDir`)의 모든 고정 스냅숏에 현재 `capabilitySnapshot`을 다시 스탬프하고 `stale` 플래그를 지우며, 로더가 읽는 디스크상의 평면 형식으로 각 파일을 다시 씁니다. 프로젝트(`--project` 또는 가장 가까운 `lute.project.yaml`) 안에서는 해석된 다중 플러그인 `capabilitySnapshot`을 스탬프하고, `--providers`만 있고 프로젝트가 없으면 core 기준선을 사용합니다. 정확성은 라이브 카탈로그에 의존하지 않습니다 — refresh는 이미 고정된 아티팩트를 정규화하고 다시 스탬프할 뿐이므로, `refresh`한 뒤 `load`해도 정확히 왕복됩니다. 명시적인 `catalog refresh`는 빌드보다 먼저 실행합니다. 종료 코드는 성공 시 **0**, I/O 오류 시 **2**입니다.

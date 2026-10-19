@@ -183,7 +183,7 @@ bool이 아닌 `also`, 그리고 자격 있는 비트가 이미 모두 제시되
 번들 비트는 엔트리가 아니라 씬 비트처럼 동작합니다: id는 `<문서 id>.<비트 id>` — `oskar.hunt`,
 `oskar.rumor` — 이므로 문서에 `id:`가 필요합니다. `once`의 기본값은 `run`이고 제시로 소진됩니다. 제시하면
 그 id가 방문한 것으로 기록되므로 어떤 조건에서든 `visited('oskar.hunt')`로 읽을 수 있습니다(`after:`는
-여전히 씬과 퀘스트만 가리킵니다). `check-project`는 다른 비트처럼 판정합니다(`E-BEAT-UNREACHABLE`,
+여전히 씬과 퀘스트만 가리킵니다). 프로젝트 전체 `check`는 다른 비트처럼 판정합니다(`E-BEAT-UNREACHABLE`,
 `W-BEAT-SHADOWED`, `W-BEAT-PRIORITY-TIE`, `W-BEAT-ONCE-RUN-USER`). 언어 규칙은
 [비트](/ko/language/beats/#비트-번들)에 있습니다. 트랜스크립트에서 번들 비트의 종류는 `beat`이며,
 `lute trace --beat`와 `lute run --beat`는 번들 비트 하나를 따로 제시합니다([트레이싱](/ko/tooling/tracing/#번들-비트)
@@ -296,7 +296,7 @@ steps:
 선택은 결정적입니다: 같은 상태, 팩트, 제시 이력이면 어느 엔진에서든 같은 비트를 고릅니다. 가중 무작위나
 쿨다운은 그 위에 얹는 엔진 정책이며, 참조 도구는 정확히 이 순서를 구현합니다. `select: first` 승자를
 파일 순서가 정하는 경우 — priority가 같고 `when`이 서로 배타적임을 증명할 수 없는 두 비트 —
-`check-project`는 `W-BEAT-PRIORITY-TIE`를 경고합니다. 이 경고와 다른 비트 권고는 [비트](/ko/language/beats/)
+프로젝트 전체 `check`는 `W-BEAT-PRIORITY-TIE`를 경고합니다. 이 경고와 다른 비트 권고는 [비트](/ko/language/beats/)
 문서를 보세요.
 
 `select: sequence`에서 후보는 계기가 발생할 때 정해지고, 그 발생의 비트 하나가 재생된 뒤로는 뒤의 비트마다
@@ -310,7 +310,7 @@ steps:
 ## `lute play`
 
 ```console
-$ lute play <PROJECT_DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--events] [--explain <ATOM>]…
+$ lute play --project <DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--events] [--derivation <ATOM>]…
 ```
  
 시간 제한 branch에서는 `choose` 대신 `timeout: true`로 만료를 답할 수 있습니다.
@@ -329,7 +329,7 @@ steps:
 
 `--events`는 재개 가능한 런타임 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 시드와 그 출력이,
 그 다음 줄부터는 플레이어가 보낸 각 입력과 출력이 짝을 이룹니다(`choose`, `bridgeResult` 응답도 포함).
-모든 출력에는 `eventVersion: "0.41.1"`이 붙습니다. `--json`, `--ir`, `--explain`, `--dump-conditions`와
+모든 출력에는 `eventVersion: "0.41.1"`이 붙습니다. `--json`, `--ir`, `--derivation`, `--conditions-output`와
 함께 사용할 수 없습니다.
 
 허브 적합성 프로젝트에서 얻은 짧은 실제 스트림은 다음과 같습니다(첫 선택 뒤에 두 번째 대기가 열립니다).
@@ -340,7 +340,7 @@ steps:
 {"input":{"option":"take","request":1,"type":"choose"},"output":{"await":{"menu":{"construct":"branch","document":"hub.lute","id":"answer","options":[{"exit":false,"id":"yes","once":false,"verdict":"open"},{"exit":false,"id":"no","once":false,"verdict":"open"}],"position":"001-0400","presentation":0},"request":2,"type":"awaitChoice"},"eventVersion":"0.41.1","events":[{"document":"hub.lute","record":{"chose":"take","hub":"desk","kind":"hub","position":"001-0200"},"type":"record"},{"document":"hub.lute","record":{"kind":"set","path":"run.count","position":"001-0300","value":1},"type":"record"}]}}
 ```
 
-- `<PROJECT_DIR>` — 프로젝트 루트(`lute.project.yaml`과 그 플러그인). 프로젝트는 `compile --all`과 같은
+- `--project <DIR>` — 프로젝트 루트(`lute.project.yaml`과 그 플러그인). 프로젝트는 `compile --project`와 같은
   게이트와 선언 유니온(씬, 퀘스트, 로어 문서)으로 메모리에서 통째로 컴파일됩니다. 문서들이 한 상태 경로를
   두 타입으로 선언한 프로젝트는 그 게이트에서 실패하고(`E-STATE-DECL-CONFLICT`, dsl 0.26.0 §2.1), 플레이는
   시작을 거부합니다(종료 코드 1). 프로젝트는 플레이마다 한 번 로드됩니다. dsl 0.26.0부터 팩트 분석을 비트마다가
@@ -354,8 +354,8 @@ steps:
   출력됩니다(dsl 0.27.0, round-5 T3-16). 이 플래그가 없으면 한 발생에서 `when: false`인 후보가 다섯 개
   이상일 때 한 줄로 접힙니다: `✗ 8 beats — when: false: a, b, c, …`. `--json`은 언제나 모든 후보를 나열합니다.
 - `--no-derive` — 프로젝트의 Datalog 규칙을 적용하지 않습니다(dsl 0.22.0 §6). 스크립트의 `derive:`보다
-  우선합니다. [파생과 `--explain`](#파생과---explain)을 보세요.
-- `--explain <ATOM>` — 반복 가능: 플레이가 끝난 뒤, 그라운드 원자가 왜 성립하는지 또는 왜 성립하지
+  우선합니다. [파생과 `--derivation`](#파생과---derivation)을 보세요.
+- `--derivation <ATOM>` — 반복 가능: 플레이가 끝난 뒤, 그라운드 원자가 왜 성립하는지 또는 왜 성립하지
   않는지 출력합니다.
 
 명령줄에서 따로 시드할 것은 없습니다: 상태, 팩트, 세이브, 결정, 단언이 모두 스크립트에 있으므로 하나의
@@ -456,7 +456,7 @@ rules:
 | `choose` | branch/hub id → 선택지 id(hub의 방문 순서, 또는 매번 다르게 결정하는 branch라면 목록): 모든 제시에 대한 결정. |
 | `visited`, `presented`, `quests`, `entriesRead` | 플레이가 출발하는 세이브 — [세이브에서 시작하기](#세이브에서-시작하기) 참고. |
 | `expect` | 플레이 종료 시점에 대한 단언 — [기대값](#기대값) 참고. |
-| `derive` | `false`면 프로젝트의 Datalog 규칙 적용을 멈춥니다 — [파생과 `--explain`](#파생과---explain) 참고. |
+| `derive` | `false`면 프로젝트의 Datalog 규칙 적용을 멈춥니다 — [파생과 `--derivation`](#파생과---derivation) 참고. |
 | `bridges` | 브리지 결과를 읽는 플러그인 호출에 대한 응답. 플레이 전체에 걸쳐 호출 순서대로 소비됩니다(dsl 0.24.0 §5) — [브리지 호출에 답하기](#브리지-호출에-답하기) 참고. |
 
 모든 스텝은 정확히 한 가지 일을 합니다 — `occasion`을 발생시키거나, `engine` 쓰기를 적용하거나,
@@ -801,13 +801,13 @@ steps:
 
 `newRun: true`는 새 런을 시작하지만, 플레이가 이어지는 것은 새 런이 `terminal:`을 거짓으로 만들 때뿐입니다.
 런 상태(`run.*`, 런 티어 퀘스트나 관계)를 읽는 `terminal:`은 초기화되고, 새 런이 유지하는 것(`user.*`,
-`visited(…)`)을 읽는 것은 그대로 성립하며 `check-project`가 스키마에 `W-TERMINAL-PERSISTENT`를 경고합니다.
+`visited(…)`)을 읽는 것은 그대로 성립하며 프로젝트 전체 `check`가 스키마에 `W-TERMINAL-PERSISTENT`를 경고합니다.
 다음 발생은 멈춥니다:
 `` step 4: E-OCCASION-GATE: the game is over — `terminal: user.crowned` holds, so the engine raises no occasion (`townVisit` included); it still holds after a new run: it reads `user.crowned`, which a new run keeps ``.
 
 모든 런을 넘어 남도록 의도한 결말은 스키마에서 그렇다고 적습니다:
 `terminal: { when: "user.crowned", persists: true }`([스키마](/ko/state/schemas/#실행을-초월하는-종료-persists-true)).
-그러면 `check-project`는 경고하지 않고, `lute play`는 새 런을 권하는 대신 게임이 영영 끝났다고 말합니다:
+그러면 프로젝트 전체 `check`는 경고하지 않고, `lute play`는 새 런을 권하는 대신 게임이 영영 끝났다고 말합니다:
 게임을 끝낸 스텝, 그 뒤의 `newRun: true`, 이후의 발생이 모두 그렇게 말하며 어느 것도 `newRun`을 권하지
 않습니다:
 
@@ -1088,7 +1088,7 @@ expect:
 - **스텝 3** — 아침에서 시작한 `advance: day`는 시계가 서 있는 곳에서 2일째를 닫고, 3일째로의 이동이
   `dayStart` 전의 정착에서 `fest`를 실패시킵니다.
 - 자정의 발생도 여느 스텝처럼 콘텐츠를 재생합니다: `transcriptContains` / `transcriptLacks`는 그 줄과
-  일치하고, [`--explain`](#파생과---explain)은 거기서 단언된 팩트를 댑니다
+  일치하고, [`--derivation`](#파생과---derivation)은 거기서 단언된 팩트를 댑니다
   (`asserted by scene `day.close`, step 3`). `lute test --coverage`에서는 거기서 제시된 문서도 커버된 것으로
   셉니다. 스텝 2에서 `expect: { presented: [day.close, day.open, routine.morning] }`는 성립하고,
   `winner: routine.morning`은 마지막 발생을 판정합니다.
@@ -2294,7 +2294,7 @@ dsl 0.27.0부터 바늘의 속성 블록은 버리지 않고 판정합니다(0.2
 (`RAYON_NUM_THREADS`를 따름) 파일 순서대로 보고합니다.
 [`lute test`](/ko/tooling/cli/#test)를 보세요.
 
-### 파생과 `--explain`
+### 파생과 `--derivation`
 
 `lute play`는 모든 `when`, `done`, 가드를 **프로젝트의 Datalog 규칙을 적용한**(계층화된 부정) 실시간
 팩트에 대해 평가합니다 — `lute run`, 그리고 0.22.0부터 `lute trace`와 `lute test`가 쓰는 것과 같은
@@ -2307,7 +2307,7 @@ dsl 0.27.0부터 바늘의 속성 블록은 버리지 않고 판정합니다(0.2
 `facts:` / `notFacts:` 기대값은 기반 팩트만 봅니다:
 
 ```console
-$ lute play tower --script tower/plays/night.play.yaml --no-derive
+$ lute play --project tower --script tower/plays/night.play.yaml --no-derive
 ```
 
 ```
@@ -2321,7 +2321,7 @@ $ lute play tower --script tower/plays/night.play.yaml --no-derive
 ── halted: step 1: the `when` of scene `town.victory` (scenes/town-victory.lute) decides the townVisit outcome but `!holds('threat', ['warden'])` evaluates unknown: fact `threat(warden)` is undetermined ──────────────
 ```
 
-`--explain <atom>`(반복 가능)은 플레이가 끝난 뒤 그라운드 원자가 끝에서 왜 성립하는지, 또는 왜 성립하지
+`--derivation <atom>`(반복 가능)은 플레이가 끝난 뒤 그라운드 원자가 끝에서 왜 성립하는지, 또는 왜 성립하지
 않는지 출력합니다. 성립하면: 사용된 규칙과 각 전제의 근거 — `seed fact`, 플레이 중 `asserted`(누가 단언했는지 아래 참고), 또는 다시
 파생된 것이면 그 아래 들여쓰기로 — 가 나오고, 부정 전제는 `(absent)`로 표시됩니다. 성립하지 않으면: 그것을
 결론지을 수 있는 모든 규칙이 전제 표시와 함께 나옵니다 — 없는 기반 팩트는 `✗ <atom>  (absent)`, 없는 파생
@@ -2330,7 +2330,7 @@ $ lute play tower --script tower/plays/night.play.yaml --no-derive
 `· <premise>  (not reached)`. `plays/night.play.yaml`이 `townVisit` 스텝 하나일 때:
 
 ```console
-$ lute play tower --script tower/plays/night.play.yaml --explain "threat(warden)" --explain "threat(hound)"
+$ lute play --project tower --script tower/plays/night.play.yaml --derivation "threat(warden)" --derivation "threat(hound)"
 ```
 
 ```
@@ -2382,13 +2382,13 @@ explain safe(warden): holds
 ```
 
 설명은 `── expect:` 블록 앞에 출력되며, `--json`은 이를 `explain`에 담습니다. 그라운드가 아닌
-원자(`knows(X)`, `slew(_)`)는 사용법 오류(종료 코드 2)입니다. `--explain`은 `--no-derive`에서도 최종 팩트와
+원자(`knows(X)`, `slew(_)`)는 사용법 오류(종료 코드 2)입니다. `--derivation`은 `--no-derive`에서도 최종 팩트와
 상태에 대해 규칙을 평가합니다.
 
 ### 배타 관계
 
 [`excludes:`](/ko/state/facts-and-datalog/#배타적-관계-excludes)로 선언한 관계(dsl 0.25.0 §1)는 같은 인자에서
-결코 함께 성립하지 않습니다. `check-project`가 증명할 수 있는 것은 증명하고, 둘 다 *가능하기만* 한 곳 — 한 씬의
+결코 함께 성립하지 않습니다. 프로젝트 전체 `check`가 증명할 수 있는 것은 증명하고, 둘 다 *가능하기만* 한 곳 — 한 씬의
 갈래가 `panicked(maren)`을 assert하고 뒤의 씬이 `calm(maren)`을 assert하는 경우 — 에서는 플레이가 모든 쓰기
 뒤에 파생된 것까지 포함한 실시간 팩트를 검사합니다. 둘 다 성립하면 그 쓰기 바로 아래에 위반을 출력하고 거기서
 멈춥니다(종료 코드 1). 씬의 뒤쪽 쓰기가 되돌리더라도 마찬가지입니다:
@@ -2524,7 +2524,7 @@ explain safe(warden): holds
 |---|---|
 | `0` | 완료 — 모든 스텝이 재생되었거나, `end: true` 스텝이 플레이스루를 끝냈거나, 플레이가 스키마의 [끝난 상태](#게임이-끝났을-때)로 끝났고, 모든 기대값이 성립함. |
 | `1` | 오류 — 프로젝트 컴파일 실패(dsl 0.26.0부터 문서들이 한 상태 경로를 두 가지로 선언한 경우, `E-STATE-DECL-CONFLICT`도 포함), 어휘 충돌, 자격이 없는 `pick`, 자격 있는 비트가 있는데 `pick`이 없는 `select: all` 스텝, 메뉴가 제시하지 않는 `choose:` 결정(자격 없는 선택지나 이미 고른 `once` hub 선택지), 스텝 자신의 `bridges:` 응답이 다 소비되지 않음, 함께 성립한 두 [배타 관계](#배타-관계)(dsl 0.25.0), `raisedWhen` 관문이 거짓인 계기를 발생시키는 스텝이나 게임이 끝난 뒤의 `occasion:` / `advance:` 스텝(`E-OCCASION-GATE`, dsl 0.27.0 §4), 끝난 시계를 넘는 `advance:`(`E-CLOCK-END`), 또는 기대값 불일치. |
-| `2` | 사용법 또는 I/O — 잘못된 스크립트([사용법 오류](#사용법-오류) 참고), 알 수 없는 계기나 월드 이벤트, 누락되었거나 도메인 밖인 `target`, 잘못된 시드나 `engine:` 쓰기, 수락 방식이 아닌 퀘스트의 `engine: { accept }`, 선언된 슬롯이나 요일을 가리키지 않는 `advance: { to }`, 시계를 뒤로 움직이는 `engine:` 스텝, 어떤 호출에도 맞지 않거나 어떤 결과 슬롯이나 capability `result:`도 타입을 정하지 않는 `bridges:` 응답(dsl 0.26.0), 그라운드가 아닌 `--explain` 원자, 읽을 수 없는 프로젝트, 잘못된 산출물. |
+| `2` | 사용법 또는 I/O — 잘못된 스크립트([사용법 오류](#사용법-오류) 참고), 알 수 없는 계기나 월드 이벤트, 누락되었거나 도메인 밖인 `target`, 잘못된 시드나 `engine:` 쓰기, 수락 방식이 아닌 퀘스트의 `engine: { accept }`, 선언된 슬롯이나 요일을 가리키지 않는 `advance: { to }`, 시계를 뒤로 움직이는 `engine:` 스텝, 어떤 호출에도 맞지 않거나 어떤 결과 슬롯이나 capability `result:`도 타입을 정하지 않는 `bridges:` 응답(dsl 0.26.0), 그라운드가 아닌 `--derivation` 원자, 읽을 수 없는 프로젝트, 잘못된 산출물. |
 | `3` | 미완료 — 스크립트에 없는 choice나 hub, 바닥난 branch `choose:` 목록, unknown으로 평가되는 `when`이나 퀘스트 목표, 해석되지 않은 `now()` / `validAt()`, 또는 브리지 결과에 `bridges:` 응답이 없는 플러그인 호출. |
 
 ## 트랜스크립트
@@ -2669,7 +2669,7 @@ explain safe(warden): holds
 - 워크는 `── end: complete (<n> steps)` — 모든 반복을 셈 — 로, `end` 스텝 뒤에는
   ``── end: `end: true` at step <n> (<k> later steps skipped)``로, 마지막 스텝 뒤에 게임이 끝나 있으면
   ``── end: terminal — `terminal: <condition>` holds``로(dsl 0.27.0 §4), 중간에 멈추면 `── halted: <message>`로
-  끝납니다. 그 뒤에 `--explain` 트리, 그다음 `── expect:` 블록이 옵니다.
+  끝납니다. 그 뒤에 `--derivation` 트리, 그다음 `── expect:` 블록이 옵니다.
 
 플러그인이 없는 모양만 검사하는 프로젝트에서, 부업을 제안하는 마을 씬과 `calm` 목표가 `runEnd`에서
 판정되는 퀘스트:
@@ -2723,7 +2723,7 @@ type PlayTranscript = {
   end: "complete" | "terminal" | "incomplete" | "error"; // how the walk ended — the values `expect.end` names; `terminal`: the schema's `terminal:` held
   error?: { message: string };
   expect?: { misses: ExpectMiss[] };       // when the script carries an `expect:`
-  explain?: Explanation[];                 // one per `--explain` atom
+  explain?: Explanation[];                 // one per `--derivation` atom
 };
 
 type Step = (OccasionStep | EngineStep | NewRunStep | EventStep | AdvanceStep | EndStep) & {
@@ -2844,7 +2844,7 @@ type Premise =
 
 ## 예제
 
-`lute init --template beats`는 스캐폴드된 그대로 `check-project`, `test`, `play`를 통과하는 작은 프로젝트를
+`lute init --template beats`는 스캐폴드된 그대로 프로젝트 전체 `check`, `test`, `play`를 통과하는 작은 프로젝트를
 만듭니다: 마을 광장의 첫날, 꺼져 버린 등불, 그리고 그 이유를 아는 두 사람.
 
 ```console
@@ -2976,7 +2976,7 @@ expect:
 프로젝트 디렉터리에서:
 
 ```console
-$ lute play . --script plays/first-day.play.yaml
+$ lute play --project . --script plays/first-day.play.yaml
 ```
 
 ```
@@ -3171,7 +3171,7 @@ expect:
 `plays/say-nothing.play.yaml`과 `plays/returning.play.yaml`로 저장하면:
 
 ```console
-$ lute test . --project .
+$ lute test --project .
 ```
 
 ```
@@ -3187,7 +3187,7 @@ FAIL  ./plays/say-nothing.play.yaml  (play of .)
 4 passed, 1 failed
 ```
 
-스캐폴드 자신의 플레이만 있을 때, `lute test . --project . --coverage`는 그것도 테스트로 셉니다:
+스캐폴드 자신의 플레이만 있을 때, `lute test --project . --coverage`는 그것도 테스트로 셉니다:
 
 ```
 PASS  ./tests/lamp-quest.test.yaml  (./quests/lamp.lute)

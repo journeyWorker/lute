@@ -351,7 +351,7 @@ IR을 직접 해석하세요. 플레이어(`@lute-lang/player`, `@lute-lang/play
 데이터로 구동되는 경로 하나 — 상태, 팩트, 선택, 이벤트 — 를 실행하고, 모든 결정과 그
 이유를 보고합니다. 모든 경로가 아니라 그 한 경로를 걷습니다.
 
-```text title="lute trace scene.lute --choose number=soft"
+```text title="lute trace scene.lute --choice number=soft"
 trace: scene.lute  (seeds: 0 paths, 0 facts; 1 selection)
   ## The Hostess with a Name
     ::camera{focus="marina" framing="close" duration=0.5}
@@ -376,7 +376,7 @@ trace complete: 2 decisions; choices 1/2 (number), arms 1/2 (scene.choices.numbe
     <dd>당신이 준 모의 데이터로 결정적인 경로 하나를 미리 보여 주므로, 누군가 플레이하기 전에 시나리오가 펼쳐지는 모습을 지켜볼 수 있습니다.</dd>
   </div>
   <div>
-    <dt>`lute check-project`</dt>
+    <dt>`lute check --project`</dt>
     <dd>선언한 `after:` 경로 — `visited`, `completed`, `active` — 위에서 도달 가능성을 계산해 Reachable / Unreachable / Unknown을 돌려줍니다. 관계형 관문은 거짓 확신이 아니라 사람이 검토할 경계로 드러납니다.</dd>
   </div>
   <div>
