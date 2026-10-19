@@ -5,8 +5,8 @@ The renderer-free Lute 0.47 visual-novel player core. It drives a compiled Lute 
 ## Install
 
 ```sh
-bun add @lute-lang/player@0.47.1 @lute-lang/runtime@0.47.1 effect@4.0.2
-# npm install @lute-lang/player@0.47.1 @lute-lang/runtime@0.47.1 effect@4.0.2
+bun add @lute-lang/player@0.47.2 @lute-lang/runtime@0.47.2 effect@4.0.2
+# npm install @lute-lang/player@0.47.2 @lute-lang/runtime@0.47.2 effect@4.0.2
 ```
 
 `@lute-lang/runtime` (the same release version) and `effect@4.0.2` are **peer dependencies**: the host installs them once, so the player, the runtime and the host share one `effect` and one runtime. For unreleased local builds, depend on packed tarballs (`scripts/pack-local.sh`), not `file:` directory links — see "Local dogfooding" in `docs/runtime/typescript-runtime.md`.
@@ -120,7 +120,7 @@ Effect.runFork(game.pipe(Effect.provide(Layer.mergeAll(runtimeSession, bundleSou
 | Holds | runtime state: `await`, `continuation?`, `project`, `request`, `snapshotVersion`, `world` (state, facts, stage, clock) | `{ snapshot, log, backlog }`: that runtime snapshot plus the player's accepted-input log and backlog |
 | Produced by | runtime `Session.save` | the player handle's `snapshot` (`DirectorHandle.snapshot`) |
 | Consumed by | runtime `Session.restore`; `LutePlayer.make({ snapshot })`; `RuntimeSession.layer({ snapshot })` | the handle's `restore(save)`; save slots |
-| Restores | the story where it was | the story and the player's log and backlog; read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, stage and music are rebuilt, and the await is presented again |
+| Restores | the story where it was | the story and the player's log and backlog; read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, the stage is rebuilt, its music is begun without waiting for it to start, and the await is presented again |
 
 Checkpoint and restore a running player with the handle:
 
@@ -145,10 +145,10 @@ With your own runtime session, build it with `RuntimeSession.layer({ snapshot: s
 
 ## API and guides
 
-- [Core architecture](https://github.com/journeyWorker/lute/blob/v0.47.1/docs/player/architecture.md)
-- [Bindings reference](https://github.com/journeyWorker/lute/blob/v0.47.1/docs/player/bindings.md)
+- [Core architecture](https://github.com/journeyWorker/lute/blob/v0.47.2/docs/player/architecture.md)
+- [Bindings reference](https://github.com/journeyWorker/lute/blob/v0.47.2/docs/player/bindings.md)
 - [Player overview](https://lute-lang.vercel.app/player/overview/)
 - [Custom hosts](https://lute-lang.vercel.app/player/custom-hosts/)
-- [Runtime event contract](https://github.com/journeyWorker/lute/blob/v0.47.1/docs/runtime/event-contract.md)
+- [Runtime event contract](https://github.com/journeyWorker/lute/blob/v0.47.2/docs/runtime/event-contract.md)
 
 Source and releases: [github.com/journeyWorker/lute](https://github.com/journeyWorker/lute).

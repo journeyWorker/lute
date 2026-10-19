@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: offer
-luteVersion: "0.47.1"
+luteVersion: "0.47.2"
 title: offer
 on: visit
 priority: 0

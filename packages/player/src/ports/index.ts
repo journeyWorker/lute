@@ -133,7 +133,16 @@ export interface AudioPlay {
   readonly restart: boolean
 }
 
-/** Sound seam. `play` completes when the sound ended (looping music: when it started). */
+/**
+ * Sound seam. `play` completes when the sound ended (looping music: when it started).
+ *
+ * Restoring a stage (load, `restore`, rollback) does not await its music call: it
+ * begins the music `play` (or `stop`) and goes on, so that call may still be in
+ * progress (waiting for the platform to allow sound, or for a file) when the story
+ * continues. A music `play` or `stop` MUST win over an earlier music `play` still
+ * in progress: the earlier one completes without starting (or is stopped once it
+ * starts), so the latest music request is the one that plays.
+ */
 export interface AudioPort {
   readonly play: (channel: AudioChannel, sound: AudioPlay) => Effect.Effect<void>
   readonly stop: (channel: AudioChannel, fade: number) => Effect.Effect<void>

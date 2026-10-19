@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: night
-luteVersion: "0.47.1"
+luteVersion: "0.47.2"
 title: night
 on: night
 priority: 0

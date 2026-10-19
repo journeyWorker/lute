@@ -1,7 +1,7 @@
 ---
 kind: quest
 id: ledger
-luteVersion: "0.47.1"
+luteVersion: "0.47.2"
 title: Ledger
 contentLang: en-GB
 ---

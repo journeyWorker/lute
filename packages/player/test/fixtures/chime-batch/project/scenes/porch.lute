@@ -1,0 +1,12 @@
+---
+kind: scene
+id: porch
+title: Porch
+on: begin
+once: false
+---
+
+## Porch
+
+@narrator{code="0010"}: The porch is quiet.
+::sfx{sound="chime"}

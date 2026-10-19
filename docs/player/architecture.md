@@ -149,8 +149,12 @@ interface LineGate {                 // provided by the director per batch
 interface CueScheduler {
   /**
    * Plays one batch (spec §6.3 rules 1–6). `mode` is read at each cue start
-   * (skip can be toggled mid-batch). Completes when every blocking cue ran and
-   * every stage cue settled; one-shot cues may still be running (they are
+   * (skip can be toggled mid-batch). Completes when every blocking cue ran,
+   * every stage cue settled and every forked cue (each non-waiting cue and
+   * timeline clip) has started — its `delay`/`at` elapsed and its `execute`
+   * begun (skip: `complete` begun; a cue still waiting when skip begins is
+   * completed at once; a forked cue whose fiber exits before starting also
+   * releases the wait); started one-shot cues may still be running (they are
    * forked into `scope`). Interrupting the returned effect interrupts all
    * cue fibers of the batch.
    */
@@ -312,9 +316,10 @@ creates fibers that outlive a call.
   and the line; `PlayerSession.restore`; remove the read marks the director
   added at input points later than `save.log.length` (it journals the marks
   per input point); rewrite the `auto` slot unless `autosave: false`; ensure
-  the stage's files, `presenter.restore(stage)`, restart the stage music;
-  re-present the await (`load.done`, accepted from `title`, `ended` and
-  `halted`).
+  the stage's files, `presenter.restore(stage)`, begin the stage music (a
+  fiber of the player scope, not awaited: `PixiAudio` holds a play until audio
+  is unlocked); re-present the await (`load.done`, accepted from `title`,
+  `ended` and `halted`).
 - **Cue composition** (§5.1, §5.3): `LutePlayer.make` creates the default
   factory, applies `cueFactory?: (base) => base` exactly once, and preserves
   one cue per output event and event order. `Director.make` can build the same
@@ -440,7 +445,7 @@ Effect.runFork(game.pipe(Effect.provide(Layer.mergeAll(runtimeSession, bundleSou
 | Holds | runtime state: `await`, `continuation?`, `project`, `request`, `snapshotVersion`, `world` (state, facts, stage, clock) | `{ snapshot, log, backlog }`: that runtime snapshot plus the player's accepted-input log and backlog |
 | Produced by | runtime `Session.save` | the player handle's `snapshot` (`DirectorHandle.snapshot`) |
 | Consumed by | runtime `Session.restore`; `LutePlayer.make({ snapshot })`; `RuntimeSession.layer({ snapshot })` | the handle's `restore(save)`; save slots |
-| Restores | the story where it was | the story and the player's log and backlog; read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, stage and music are rebuilt, and the await is presented again |
+| Restores | the story where it was | the story and the player's log and backlog; read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, the stage is rebuilt, its music is begun without waiting for it to start, and the await is presented again |
 
 Checkpoint and restore a running player with the handle:
 

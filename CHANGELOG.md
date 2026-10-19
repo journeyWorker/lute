@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.47.1`, the grammar and semantics the checker
+- **Language** — currently `0.47.2`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.47.1`) and gated on by consuming engines.
+  artifact (currently `0.47.2`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,113 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.47.2]
+
+**Fix patch on the 0.47 line: every cue of a batch starts, a load completes
+before audio unlocks** (spec [`0.47.2.md`](docs/proposals/scenario-dsl/0.47.2.md);
+plan
+[`2026-10-19-lute-0.47.2-fixes.md`](docs/superpowers/plans/2026-10-19-lute-0.47.2-fixes.md);
+decisions
+[`2026-10-19-lute-0.47.2-decisions.md`](docs/superpowers/notes/2026-10-19-lute-0.47.2-decisions.md)).
+Fixes issues #137 and #138, two pre-existing player defects recorded while
+implementing 0.47.1. Only the **player packages** earn the release; the
+toolchain, language, IR, Event and snapshot are stamp-only, as in 0.41.1 and
+0.42.1. `luteVersion`, `irVersion`, `eventVersion` and `snapshotVersion` read
+`0.47.2`; `bindingsVersion` stays `"0.47"`;
+`schemas/lute-{ir,events,snapshot,player-bindings}-0.47.schema.json` and the
+generated TypeScript (`packages/runtime/src/generated/**`,
+`packages/player/src/bindings/schema.ts`) are byte-identical to 0.47.1; the
+player's save/profile format stays `"0.47"`. The seven npm packages align to
+`0.47.2`.
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- None.
+
+### IR
+
+- None (stamp only).
+
+### Plugin
+
+- None.
+
+### Bindings
+
+- None.
+
+### CLI
+
+- None (every output captured by `scripts/cli-snapshot.py` is identical to
+  0.47.1 apart from stamps).
+
+### Runtime
+
+- None.
+
+### Player
+
+- Every cue of a batch starts, whatever the autosave mode. The scheduler's
+  `play` completes only after each cue it forked (each non-waiting cue and
+  each timeline clip) has started: its `delay`/`at` elapsed, `CueStarted`
+  published and its `execute` (in skip, `complete`) begun. Before, the batch
+  scope could close before such a fiber ran: with `autosave` `false` or
+  `"presentation"` a camera, vfx or sfx cue that was the last before a choice
+  was never started, and in every mode the same happened before an idle
+  await and to a one-shot cue still in its delay. A delayed non-waiting cue
+  now holds its batch for its delay (not its duration); a cue still in its
+  delay when skip begins is completed at once. Started one-shot cues are
+  still not joined. (#137)
+- A restore (load, host `restore`, rollback) no longer waits for the stage
+  music to start: the music call begins on a fiber of the player scope and
+  the restored await is presented after the presenter's restore. A failing
+  call on a custom `AudioPort` is logged. A custom `AudioPort` must let a later
+  music `play`/`stop` win over an earlier music `play` still in progress (the
+  `AudioPort` docs state it). (#138)
+- player-web: a load before any user gesture (host `act({ type: "continue" })`
+  at the title, or `restore`) reaches its restored await instead of hanging
+  until a click. `PixiAudio` serves music in call order: a music `play` or
+  `stop` supersedes every earlier music `play` still waiting (for the unlock,
+  its file or the backend), which completes without starting (at once while
+  it waits for the unlock; a backend play that resolves later is stopped,
+  never recorded); music already playing is replaced as before. So the loaded
+  stage's music, not the title music requested at mount, starts once audio
+  unlocks. sfx and voice are unchanged. (#138)
+
+### Diagnostics
+
+- None.
+
+### Identity
+
+- Stamp only: `eventVersion` / `snapshotVersion` read `0.47.2`; the Event,
+  snapshot and bindings schemas stay `lute-events-0.47`, `lute-snapshot-0.47`
+  and `lute-player-bindings-0.47` (bodies unchanged), `bindingsVersion` stays
+  `"0.47"`, and saves and profiles stay `"0.47"`. Line ids and voice keys do
+  not move.
+
+### Documentation
+
+- The player architecture docs state when a batch completes and that a
+  restore does not await the stage music; the custom-hosts pages (EN/KO)
+  state the `AudioPort` music-order rule; the player-web docs drop the
+  "currently not started" caveat and describe music before audio unlocks.
+
+### Migration notes
+
+| Class | Change | Migration |
+|---|---|---|
+| Player | A batch settles only after each forked cue started; a delayed one holds the batch for its delay. | None. |
+| Player | A restore no longer waits for the stage music to start. | A custom `AudioPort` lets a later music `play`/`stop` win over an earlier music `play` still in progress. |
+| player-web | Music requests are served in call order; while audio is locked only the latest survives and starts at unlock. | None. |
+| Release | All axes `0.47.2`; schemas, `bindingsVersion` and save format stay on `0.47`. | None. |
+
+From 0.47.1: run `lute fix` to raise `luteVersion` stamps to `0.47.2`.
 
 ## [0.47.1]
 

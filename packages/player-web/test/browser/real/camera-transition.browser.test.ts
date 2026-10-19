@@ -62,7 +62,8 @@ const expectActorsDrawn = (player: RealPlayer): void => {
  * the first idle entry (chapter one), returning once its opening fade cue
  * has started. Audio is unlocked first, at the idle menu, with a device
  * input (a wheel up, which opens the backlog, closed again; the idle screen
- * takes keys): a load restarts the music, which waits for the unlock.
+ * takes keys): sounds, and the batches that wait for them, wait for the
+ * unlock (a load does not: it begins the music without awaiting it).
  */
 const startDuringOpeningFade = async (player: RealPlayer): Promise<void> => {
   await waitFor(async () => (await player.view()).flow === "title", "the title")

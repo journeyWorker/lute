@@ -95,7 +95,9 @@ interface ChoiceMenu { show(menu: MenuAwait, remaining: Stream<number>): Effect<
 // audio/
 class PixiAudio implements AudioPort             // channels music (crossfade), sfx, voice; fades as Effects; unlock on first gesture
                                                  // music: restart plays from the start; without it the file already
-                                                 // playing only changes volume (fading over `fade`)
+                                                 // playing only changes volume (fading over `fade`); a music play or
+                                                 // stop supersedes every earlier music play still waiting (for unlock,
+                                                 // its file or the backend), so while locked only the latest survives
 
 // assets/
 class PixiAssets implements AssetLoader          // keys = binding paths; Pixi Assets manifest/bundles; refcounted ensure/release; progress stream
@@ -144,17 +146,14 @@ cue (skip) apply the framing at once. The transition runs on a fiber of the
 camera's own, forked in the player's scope (`PresenterOptions.scope`; unmount
 interrupts it), and the cue joins it: a cue the scheduler does not wait for is
 interrupted when its batch ends (e.g. right before a choice), and a started
-transition still plays out. (With `autosave` `false` or `"presentation"`, a
-non-waiting camera cue that is the last of a batch before a choice is
-currently not started at all: a player-core scheduler behaviour, tracked
-separately.) Its behaviours run under their own world key. A later camera
-cue (a transition or a move) supersedes it: its behaviours are cancelled and
-it does no more. Skip supersedes it only when skip starts while the cue still
-runs (the scheduler then stages the cue instantly); a transition whose cue
-already ended finishes at normal speed until the next camera cue. `restore`
-(load, rollback) supersedes it too, cancels every running camera behaviour,
-sets alpha 1 and no mask, then applies the default framing, so a load during
-a transition never leaves the actors hidden.
+transition still plays out. Its behaviours run under their own world key. A
+later camera cue (a transition or a move) supersedes it: its behaviours are
+cancelled and it does no more. Skip supersedes it only when skip starts while
+the cue still runs (the scheduler then stages the cue instantly); a transition
+whose cue already ended finishes at normal speed until the next camera cue.
+`restore` (load, rollback) supersedes it too, cancels every running camera
+behaviour, sets alpha 1 and no mask, then applies the default framing, so a
+load during a transition never leaves the actors hidden.
 
 ## Testing
 

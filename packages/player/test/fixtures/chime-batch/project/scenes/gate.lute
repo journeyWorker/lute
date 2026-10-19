@@ -1,0 +1,18 @@
+---
+kind: scene
+id: gate
+title: Gate
+on: visit
+once: false
+---
+
+## Gate
+
+@narrator{code="0010"}: The gate creaks.
+::camera{focus="narrator"}
+::sfx{sound="chime"}
+<branch id="door" prompt="Which way?">
+  <choice id="in" text="Go in">
+    ::set{run.over = true}
+  </choice>
+</branch>

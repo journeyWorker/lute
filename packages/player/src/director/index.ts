@@ -366,10 +366,18 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     yield* offerEvent({ type: "countdown.expired" })
   })
 
-  /** The restored stage's music (§7.7): silent without music or at `stop` / `fadeOut`. */
-  const restartMusic = (stage: Stage): Effect.Effect<void> => {
+  /**
+   * The restored stage's music (§7.7): silent without music or at `stop` / `fadeOut`.
+   * Begun on a fiber of the player scope, started at once and not awaited: a port
+   * whose `play` waits (player-web before audio is unlocked) must not hold a
+   * restore, and a later restore does not interrupt it (spec 0.47.2 §3).
+   */
+  const restartMusic = (stage: Stage): Effect.Effect<void, never, Scope.Scope> => {
     const music = stageMusic(options.bindings, stage)
-    return music === undefined ? options.audio.stop("music", 0) : options.audio.play("music", music)
+    // Nothing joins the fiber, so a failing custom port is logged here (the command loop no longer sees it).
+    const call = (music === undefined ? options.audio.stop("music", 0) : options.audio.play("music", music))
+      .pipe(Effect.catchCause((cause) => Effect.logWarning("stage music failed", cause)))
+    return Effect.asVoid(Effect.forkScoped(call, { startImmediately: true }))
   }
 
   const presentStage = (stage: Stage): Effect.Effect<void, never, Scope.Scope> => Effect.gen(function* () {
