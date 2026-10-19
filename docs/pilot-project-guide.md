@@ -29,7 +29,7 @@ target/release/lute --version   # docs/versioning.md의 현재 툴체인 버전�
 ```
 
 - `LUTE_BIN` 환경변수로 절대경로를 프로젝트 스크립트에 주입한다. npm `@lute-lang/lute`도 있지만 로컬 소스가 항상 최신.
-- **에디터 LSP는 소스상 CLI와 정합이다 — 위험은 스테일 *바이너리*다.** `lute-lsp`는 모든 진단을 공유 `lute_check::check`로 흘려보내므로 CLI와 바이트 단위로 일치한다(`crates/lute-lsp/tests/divergence.rs` 골든이 강제). 파일럿 시점의 "cinematic 섹션 헤딩 오진"(당시 명칭은 shot)은 문법이 아니라 PATH에 깔린 **낡은 lute-lsp 바이너리**가 원인이었다. 이제 서버가 `serverInfo.version`으로 구현 언어 버전을 광고하고, VS Code 확장이 문서의 `luteVersion:`보다 서버가 낮으면 경고한다(`lute.versionCheck`, 기본 on). 그래도 정본은 CLI `lute check` / `check-project`이며, 편집기를 새로 세팅하면 `cargo install --path crates/lute-lsp`로 서버를 최신화하라.
+- **에디터 LSP는 소스상 CLI와 정합이다 — 위험은 스테일 *바이너리*다.** `lute-lsp`는 모든 진단을 공유 `lute_check::check`로 흘려보내므로 CLI와 바이트 단위로 일치한다(`crates/lute-lsp/tests/divergence.rs` 골든이 강제). 파일럿 시점의 "cinematic 섹션 헤딩 오진"(당시 명칭은 shot)은 문법이 아니라 PATH에 깔린 **낡은 lute-lsp 바이너리**가 원인이었다. 이제 서버가 `serverInfo.version`으로 구현 언어 버전을 광고하고, VS Code 확장이 문서의 `luteVersion:`보다 서버가 낮으면 경고한다(`lute.versionCheck`, 기본 on). 그래도 정본은 CLI `lute check` / `check --project`이며, 편집기를 새로 세팅하면 `cargo install --path crates/lute-lsp`로 서버를 최신화하라.
 
 ## 3. 프로젝트 스켈레톤 (검증된 형태)
 
@@ -58,14 +58,14 @@ project/
 - number 대상 `<match subject=...>`은 범위 패턴으로 쓴다: `<when is="4..">` (0.18.0 — 양 끝 포함, `..0`·`1..3`도 가능). `<when test="$ >= 4">`도 동작하지만 `W-WHEN-TEST-LITERAL` 경고가 나고 `lute fix`가 `is=`로 바꿔 준다.
 - 대사 `emotion=`은 **lute 내장 enum**(neutral, surprised, delighted, shy, content, angry, sad)만 허용된다. 엔진 포트레이트 키(serious/soft 등)와 다르면 엔진 쪽에서 매핑 테이블을 둬라.
 - 브리지 호출은 항상 `sync="true"` + 후속 `<match subject="scene.<ns>.<key>.outcome">`에 **defeat(실패) 방어 아암**을 작성한다 — 정상 경로가 victory만 돌려줘도.
-- 관계 쿼리(`holds()`/`count()`)는 `check-project`가 프로젝트 전체를 보고 판정한다(0.20.0). 어떤 경로로도 성립할 수 없는 조건은 슬롯의 dead-code 에러(`E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE` 등), 도달하는 모든 경로에서 이미 성립하는 가드는 `W-FACT-GUARANTEED`(불필요한 조건 — 지워라)로 보고된다. 경로에 따라 갈리는 조건은 조용히 통과한다. 단일 파일 `lute check`는 관계 쿼리를 판정하지 않으므로 CI는 반드시 `check-project`로 돌려라. 예전 `W-UNPROVEN-RELATIONAL` 경고는 제거됐다(`--deny`에 쓰면 사용법 오류).
-- CI 게이트로 `lute trace <scene> --project story --choose ... --mock <bridge mock>`를 분기 루트별 1회씩 넣어라 (mock 형식: `conformance/*/mock.yaml`).
+- 관계 쿼리(`holds()`/`count()`)는 `check --project`가 프로젝트 전체를 보고 판정한다(0.20.0). 어떤 경로로도 성립할 수 없는 조건은 슬롯의 dead-code 에러(`E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE` 등), 도달하는 모든 경로에서 이미 성립하는 가드는 `W-FACT-GUARANTEED`(불필요한 조건 — 지워라)로 보고된다. 경로에 따라 갈리는 조건은 조용히 통과한다. 단일 파일 `lute check`는 관계 쿼리를 판정하지 않으므로 CI는 반드시 `check --project`로 돌려라. 예전 `W-UNPROVEN-RELATIONAL` 경고는 제거됐다(`--deny`에 쓰면 사용법 오류).
+- CI 게이트로 `lute trace <scene> --project story --choice ... --mock <bridge mock>`를 분기 루트별 1회씩 넣어라 (mock 형식: `conformance/*/mock.yaml`).
 
 ## 5. 런타임(엔진) 구현 시 함정 — 전부 실전에서 밟은 것
 
 정본: `docs/runtime/*.md` + `crates/lute-cli/src/runner.rs`(유일한 레퍼런스 구현). TS 포팅 전 정독.
 
-1. **position 비교는 세그먼트별 숫자 비교** — 최중요. (0.37.0 이전 IR 필드명은 `addr`.) 파일럿 당시 position(`002-11500`)의 라인 번호는 가변 자릿수 십진수였다. converge 폴백 해석("해당 position이 없으면 그 뒤 첫 position으로")을 **사전식 문자열 정렬**로 구현하면 `"002-11500" < "002-1400"`이 되어 허브 converge가 앞 바디로 되감기고, 바디가 무한 재생되며 run 상태가 무한 증식한다(tactus에서 7표 설계가 171표까지 증가). 현재 컴파일러는 한 아티팩트 안의 모든 position을 같은 폭으로 패딩하지만, `compile-stream` 스냅샷이 바뀌면 그 폭이 넓어질 수 있으므로 숫자 `(section, index)` 비교를 유지하라. conformance 픽스처는 4자리 position만 써서 이 버그를 **잡지 못한다** — 5자리 라인 넘버가 나오는 긴 씬에서만 발현. 반드시 숫자 비교 + 자체 회귀 테스트(참고: tactus `src/runtime/__tests__/addr-order.test.ts`).
+1. **position 비교는 세그먼트별 숫자 비교** — 최중요. (0.37.0 이전 IR 필드명은 `addr`.) 파일럿 당시 position(`002-11500`)의 라인 번호는 가변 자릿수 십진수였다. converge 폴백 해석("해당 position이 없으면 그 뒤 첫 position으로")을 **사전식 문자열 정렬**로 구현하면 `"002-11500" < "002-1400"`이 되어 허브 converge가 앞 바디로 되감기고, 바디가 무한 재생되며 run 상태가 무한 증식한다(tactus에서 7표 설계가 171표까지 증가). 현재 컴파일러는 한 아티팩트 안의 모든 position을 같은 폭으로 패딩하지만, `compile --stream` 스냅샷이 바뀌면 그 폭이 넓어질 수 있으므로 숫자 `(section, index)` 비교를 유지하라. conformance 픽스처는 4자리 position만 써서 이 버그를 **잡지 못한다** — 5자리 라인 넘버가 나오는 긴 씬에서만 발현. 반드시 숫자 비교 + 자체 회귀 테스트(참고: tactus `src/runtime/__tests__/addr-order.test.ts`).
 2. **hub `once`는 내구 기록으로**: 로컬 Set만으로도 동작하지만, converge 해석이 잘못되면 hub가 재진입되며 리셋된다. `scene.visited.<hub>.<opt>` 상태 기록과 병행하면 방어적이다.
 3. conformance 5종(`conformance/{choice-basic,quest-complete,hub-once-exit,match-otherwise,facts-datalog-rule}`)은 필수 게이트지만 **충분조건이 아니다**. 실제 컴파일된 자기 씬으로 헤드리스 완주 테스트를 추가하라 — tactus는 이걸로만 position 순서 버그를 재현했다.
 4. 그 외 계약: 티어별 리셋(씬 경계 `scene.*` 리셋, `run.*` 유지), Kleene 3치(unknown 가드 = 선택지 숨김/objective 미완), 계층화 Datalog 전체 재계산(파일럿 규모에선 증분 불요), 퀘스트 fail-우선·이벤트 1회 발화, 브리지 effects 3형(fromBridgeResult / op+by / literal).
@@ -85,9 +85,9 @@ project/
 ## 8. 검증 게이트 요약 (다음 파일럿의 Definition of Done)
 
 ```sh
-$LUTE_BIN check-project story                  # exit 0
+$LUTE_BIN check --project story                  # exit 0
 bun run story                                  # compile + IR 스키마 검증
-$LUTE_BIN trace ... --choose ... --mock ...    # 분기 루트별 1회
+$LUTE_BIN trace ... --choice ... --mock ...    # 분기 루트별 1회
 bunx tsc --noEmit && bunx vitest run           # conformance + 자체 씬 헤드리스 완주 포함
 # 브라우저 e2e: 타이틀→전 챕터→전 분기 루트→엔딩 (스크린샷 증빙)
 canon gate check                               # 스펙/태스크 원장 클린

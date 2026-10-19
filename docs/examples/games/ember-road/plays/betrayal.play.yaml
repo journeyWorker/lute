@@ -1,6 +1,6 @@
 # Route B — silver for the toll: let the twins' deadline pass, take Corvin's
 # scheme, sell the deserters to Maelis. Wren walks out at the next camp.
-#   lute play . --script plays/betrayal.play.yaml
+#   lute play --project . --script plays/betrayal.play.yaml
 choose:
   orders: price
   plea: price

@@ -1,7 +1,7 @@
 # The meter runs out: a tape, surgery, a hand in drawer 7, and a chase that
 # catches an ankle. The engine raises sanityBreak at zero.
 #
-#   lute play . --script plays/broken.play.yaml
+#   lute play --project . --script plays/broken.play.yaml
 state: { run.power: true }
 facts: [holding(morgueKey)]
 steps:

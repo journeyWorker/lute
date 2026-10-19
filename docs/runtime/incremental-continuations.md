@@ -59,7 +59,7 @@ flushes one `update` record while the pipe is still open; EOF then produces
 
 ```console
 $ { printf '@guide: First checked line.\n'; sleep 1; printf '@guide: Second checked line.\n'; } \
-    | lute compile-stream /tmp/live-scene.lute
+    | lute compile --stream /tmp/live-scene.lute
 {"kind":"start","sequence":0,"appendFrom":0,"artifact":{...}}
 {"kind":"update","sequence":1,"appendFrom":1,"artifact":{...}}
 {"kind":"update","sequence":2,"appendFrom":2,"artifact":{...}}
@@ -73,7 +73,7 @@ defaults, schemas, components, plugins, and provider references:
 
 ```console
 $ printf '@guide: Project-resolved line.\n' \
-    | lute compile-stream scenes/live.lute --project . --providers snapshots
+    | lute compile --stream scenes/live.lute --project . --providers snapshots
 ```
 
 The command never modifies the template. It reads the appended body from stdin,

@@ -17,4 +17,4 @@ rewrite YAML values. Only the selected Lute-owned YAML inputs participate in
 selection; their values remain untouched. Symlinks are skipped.
 
 Formatting is not validation, compilation, or migration. Use `lute check` or
-`check-project` for diagnostics, and review `lute diff` when comparing revisions.
+`check --project` for diagnostics, and review `lute diff` when comparing revisions.

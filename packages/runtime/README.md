@@ -1,7 +1,7 @@
 # @lute-lang/runtime
 
 The Lute runtime for TypeScript hosts, in [Effect](https://effect.website) 4:
-load a bundle compiled by `lute compile --all`, drive the resumable step
+load a bundle compiled by `lute compile --project`, drive the resumable step
 function, query the state (`view`, `evaluate`, `def`, `gate`, `candidates`, …),
 and replay input logs, on Bun and in browsers.
 

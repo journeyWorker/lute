@@ -35,25 +35,25 @@ deployed via Vercel). The published player libraries are
 lute init my-project           # scaffold project + starter scene + mock (--template beats: occasions, beats, plays, tests)
 lute new quest the-hunt        # scaffold one document (scene | quest | lore | schema; scene --occasion <occasion> writes a beat)
 lute check scene.lute          # static validation of one document
-lute check-project .           # every document + project-wide passes (quest ids, connectivity, fact guards)
+lute check --project .           # every document + project-wide passes (quest ids, connectivity, fact guards)
 lute lint .                    # advisory L-* findings governed by lute.lint.yaml
 lute trace scene.lute --mock m.yaml   # preview SOURCE behaviour, every decision explained
-lute compile scene.lute -o out.json   # JSON artifact (--all for a whole project + index)
+lute compile scene.lute -o out.json   # JSON artifact (`compile --project <dir> -o <dir>` for a whole project + index)
 lute run out.json --mock m.yaml       # reference runtime over the ARTIFACT an engine consumes
-lute lore my-project           # world-narrative map: lore entries by target/series, facts revealed
-lute play my-project --script p.play.yaml   # raise occasions + engine writes, see every beat's verdict + the winner
+lute lore --project my-project           # world-narrative map: lore entries by target/series, facts revealed
+lute play --project my-project --script p.play.yaml   # raise occasions + engine writes, see every beat's verdict + the winner
 lute test my-project/tests --project my-project   # execute declared scenario and play expectations
-lute beats my-project          # beat eligibility, ordering, and coverage report
+lute beats --project my-project          # beat eligibility, ordering, and coverage report
 lute tag .                     # stamp stable content-line codes for localization and voice assets
-lute impact . fact:felled(regent)   # reverse dependency closure (0.36.6)
-lute constraints .                  # manifest invariants (0.36.6)
-lute calendar my-project --axis run.day=1..7 --axis run.slot=morning,night   # who answers in every cell
-lute loc export . --format csv # localization round trip (+ import, word-count report)
-lute scenario .                # read-only graph / reachability / envelope reporting (+ `knowledge`: fact producers)
+lute impact --project . --node fact:felled(regent)   # reverse dependency closure (0.36.6)
+lute constraints --project .                  # manifest invariants (0.36.6)
+lute calendar --project my-project --axis run.day=1..7 --axis run.slot=morning,night   # who answers in every cell
+lute loc export --project . --format csv # localization round trip (+ import, word-count report)
+lute scenario --project .                # read-only graph / reachability / envelope reporting (+ `knowledge`: fact producers)
 lute context scene.lute        # project-resolved authoring surface
 lute fmt .                     # canonical, lossless source formatting (0.36.6)
 lute diff before after         # semantic revision diff (0.36.6)
-lute patch . patch.json        # atomic revision-checked edit (0.36.6)
+lute patch patch.json --project .        # atomic revision-checked edit (0.36.6)
 lute doctor                    # diagnose local toolchain + project setup
 lute version                   # the three independent version axes
 ```
@@ -71,7 +71,7 @@ Each document owns one role; read the one that matches what you are doing.
 | **writing a plugin** (directives, state, providers, bridge, `stampAttrs`, `rewardKinds`, `occasions`) | [`proposals/plugin-system/0.0.1.md`](docs/proposals/plugin-system/0.0.1.md) — manifest YAML schemas + resolution — plus the [`0.0.2`](docs/proposals/plugin-system/0.0.2.md)–[`0.0.7`](docs/proposals/plugin-system/0.0.7.md) deltas; the `occasions:` export is [`0.21.0`](docs/proposals/scenario-dsl/0.21.0.md) §2 | [`plugin-system.md`](docs/plugin-system.md) |
 | **building an engine** (consuming the execution IR) | [`docs/runtime/`](docs/runtime) — execution model, semantic negotiation, quest lifecycle, state lifecycle, timeline semantics, CEL & facts, bridge protocol, lore entries, beats and occasions — plus the execution IR JSON Schema [`schemas/lute-ir-0.47.schema.json`](schemas/lute-ir-0.47.schema.json), `lute.engine.yaml` matrices, and the [`conformance/`](conformance) fixtures | [`architecture.md`](docs/architecture.md) |
 | **building the compiler / checker / LSP** | the proposals above | [`architecture.md`](docs/architecture.md) — two-tier AST, auto-injection, the `check()` core, LSP |
-| **reasoning about run / user / app state** | [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) §9 (scalar tiers) + [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (relational facts + Datalog) + [`0.20.0`](docs/proposals/scenario-dsl/0.20.0.md) (what `check-project` proves about fact guards) | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
+| **reasoning about run / user / app state** | [`0.1.0`](docs/proposals/scenario-dsl/0.1.0.md) §9 (scalar tiers) + [`0.3.0`](docs/proposals/scenario-dsl/0.3.0.md) (relational facts + Datalog) + [`0.20.0`](docs/proposals/scenario-dsl/0.20.0.md) (what `check --project` proves about fact guards) | [`state-model-design.md`](docs/proposals/scenario-dsl/state-model-design.md) |
 | **authoring characters** (label / costume / `???` reveal / voice) | [`proposals/character-cast/0.0.1.md`](docs/proposals/character-cast/0.0.1.md) — cast contract | [`character-cast/design.md`](docs/proposals/character-cast/design.md) |
 | **choosing story beats / running `lute play`** | [`0.21.0`](docs/proposals/scenario-dsl/0.21.0.md) — occasions, scene and entry beats (`on` / `target` / `when` / `priority` / `once`), selection order, and `lute play`'s script and transcript — plus [`0.22.0`](docs/proposals/scenario-dsl/0.22.0.md): `engine:` steps, save seeds, `expect:` assertions, run boundaries, occasion target domains — [`0.23.0`](docs/proposals/scenario-dsl/0.23.0.md): `lute beats` / `lute calendar` overviews, `select: sequence`, `also`, bundle beats — [`0.24.0`](docs/proposals/scenario-dsl/0.24.0.md): a declared clock, `once: day` / `once: slot`, `advance:` / `include:` steps, `judge: before`, `bridges:` answers — [`0.25.0`](docs/proposals/scenario-dsl/0.25.0.md): `share` keys spent together, bundle `<beat after=…>` edges, bridge answers that omit unread fields — [`0.26.0`](docs/proposals/scenario-dsl/0.26.0.md) §§5, 7: `target="kind:<kind>"` beats, `::next` followed by trace/test, `eligible:` for an ineligible beat, `advance: { to: … }` — [`0.27.0`](docs/proposals/scenario-dsl/0.27.0.md) §§3–6, 8: `for="kind:<kind>"`, occasion `payload:`, `raisedWhen:` gates, `terminal:`, a finite clock, `once: week`, `seasons:`, `rearm=`, `spentBy:`, beat templates, the manifest's `sequence:` — [`0.28.0`](docs/proposals/scenario-dsl/0.28.0.md) §§2–6: the manifest's `chapters:`, a latching `spentBy`, `select: sequence` judged at each turn, `expect.end`, `outsideRun:` occasions — and [`0.29.0`](docs/proposals/scenario-dsl/0.29.0.md) §§3–5: `W-CHAPTER-STALL` only for a chain, `lute new scene --occasion` writing `on:`, the `terminal:` long form `{ when, persists: true }` | [`runtime/beats-and-occasions.md`](docs/runtime/beats-and-occasions.md); the website's [Playing a story](https://lute-lang.vercel.app/tooling/play/) |
 | **configuring lints** | [`specs/2026-08-26-lute-lint-system-design.md`](docs/superpowers/specs/2026-08-26-lute-lint-system-design.md) — `lute.lint.yaml`, rule levels, project-local `custom:` rules | [`docs/linting.md`](docs/linting.md) |
@@ -81,7 +81,7 @@ Worked examples:
 - [`docs/examples/games/`](docs/examples/games) — fourteen complete games (a detective mystery,
   a roguelike, an otome dating sim, a creature collector, a live-service gacha and more), each
   with a README saying what it shows of the language and how to run it; CI checks every one
-  with `lute check-project --deny-warnings`.
+  with `lute check --deny-warnings --project <dir>`.
 - [`docs/examples/haven/`](docs/examples/haven) — a whole small project: scenes, quests, lore
   entries, a shared world schema, and a component.
 - [`docs/examples/marina-s01ep02.lute`](docs/examples/marina-s01ep02.lute) — linear episode faithful
@@ -191,9 +191,9 @@ expect:
 ```
 
 ```sh
-lute play my-project --script plays/tenth-run.play.yaml
-lute play my-project --script plays/tenth-run.play.yaml --json
-lute test my-project       # runs every play that carries an expect:, beside *.test.yaml
+lute play --project my-project --script plays/tenth-run.play.yaml
+lute play --project my-project --script plays/tenth-run.play.yaml --json
+lute test --project my-project       # runs every play that carries an expect:, beside *.test.yaml
 ```
 
 For each step it lists every candidate beat with its verdict (`once`, `after:`, `when`), presents

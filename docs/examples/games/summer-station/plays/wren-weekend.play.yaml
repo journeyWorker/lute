@@ -1,6 +1,6 @@
 # Wren's route, from a Saturday save: every lantern part found, the forecast
 # delivered, Sol's Perseids missed.
-#   lute play . --script plays/wren-weekend.play.yaml
+#   lute play --project . --script plays/wren-weekend.play.yaml
 visited: [wren.first, sol.first, ines.forecast, village.deliver]
 presented: { run: [days.arrival, wren.first, sol.first, ines.forecast, village.deliver] }
 quests: { forecast: complete, lantern: active, meteor: failed, logkeeper: complete }

@@ -11,7 +11,7 @@ so a reader who "fixes" it deletes the evidence (see T4.7, and the "T4 controlle
 decision" that ruled this file is not retrofitted while Task 9's five siblings all
 carry `follows=`). See the README's "Deliberate imperfections".
 
-What it costs, verified with `lute scenario docs/examples/haven`: this quest appears
+What it costs, verified with `lute scenario --project docs/examples/haven`: this quest appears
 in NO topological layer and on NO edge — `follows=` is the ONLY thing that puts a
 quest into the prerequisite graph, and no amount of `start=`/`done=` work will
 place it. Since dsl 0.21.0 (§7a.5) it is no longer silently absent: the report

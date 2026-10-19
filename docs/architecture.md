@@ -60,7 +60,7 @@ target is the flat command-record format the engine consumes.
 > idea has one name (`follows=`, `outcome=`, `visibleWhen=`, `expect.options`, `expect.end`,
 > a *mark* for a `::next` target — since 0.37.0 a `::label` for a `::jump`), `spentBy` latches, `occasion.target` can be written, and a
 > hub may carry a `<return>` block. Since 0.29.0 every name an author writes follows one
-> identifier rule (a letter, then letters, digits or `_`), `lute check-project` prints causes
+> identifier rule (a letter, then letters, digits or `_`), `lute check --project` prints causes
 > first, and a `terminal:` may say its ending persists across runs (`{ when, persists: true }`).
 > Since 0.30.0 that rule is a name rule (letters, digits, `_` or `-`, not starting with `-`;
 > only a name read bare as `@name` stays an identifier), and a condition reaches a name that
@@ -74,14 +74,14 @@ target is the flat command-record format the engine consumes.
 ## Project loading (0.34.0)
 
 All project commands load through one project model per nearest manifest root.
-`check-project`, `context`, `scenario`, `beats`, `impact`, `calendar`, `play`,
+`check --project`, `context`, `scenario`, `beats`, `impact`, `calendar`, `play`,
 and `test` build reports from that model; single-file analysis uses the same
 input assembly. This note records the architectural ownership only; command
 semantics remain in the normative 0.34 proposal and command references.
 
 >
 > **The `.lute` snippets in this file are illustrative prose, not gated fixtures.** No CI job
-> checks them semantically: the `examples` job runs `lute check-project docs/examples` and the
+> checks them semantically: the `examples` job runs `lute check --project docs/examples` and the
 > `website` job checks syntax highlighting, neither of which reads this document's code fences.
 > They are kept consistent by review. Anything you intend to *run* belongs in
 > [`examples/`](examples), which is gated.
@@ -619,7 +619,7 @@ Reaching the temporary frontier means wait, not complete. Successful `finish` ma
 completion; an authored `::end` remains the distinct ordinary runtime terminator.
 
 The CLI exposes the same lifetime as newline-delimited JSON:
-`lute compile-stream <scene.lute> [--project DIR] [--providers DIR]`. It resolves the template
+`lute compile --stream <scene.lute> [--project DIR] [--providers DIR]`. It resolves the template
 once, prints and flushes `start`, each `update`, then either `finish` or `error`. Invalid UTF-8
 is rejected before the Rust `&str` API, and broken stdout stops further stdin consumption.
 The service performs no model call, remote operation, plugin bridge, publication, persistence,
@@ -707,7 +707,7 @@ above, never a rule-body dependency):
 - A `<match subject="…">` subject may not itself be a relation query (`E-MATCH-RELATION-SUBJECT`) —
   match subjects stay scalar, preserving the exhaustiveness/definite-assignment guarantees in
   *Existing directives* / *State* above.
-- **Fact envelopes (dsl 0.20.0, project-level).** `check-project` decides every `holds`/`count`
+- **Fact envelopes (dsl 0.20.0, project-level).** `check --project` decides every `holds`/`count`
   query in a guard slot from two sets: the argument-level, flow-insensitive **may** set
   (`fact_env.rs` — seeds, every live `::assert` in the root, reserved-relation universes, and the
   rules' closure over them) and the path-sensitive **must** set (`fact_must.rs` — a forward
@@ -725,7 +725,7 @@ above, never a rule-body dependency):
   so a never-eligible beat is `E-BEAT-UNREACHABLE` (an entry beat keeps
   `E-ENTRY-UNREACHABLE`). `beats.rs` owns the shape rules (`E-BEAT-ATTR`), the occasion
   vocabulary folded from plugin `occasions:` exports (`E-OCCASION-UNKNOWN`, shape-only when no
-  plugin declares any), and the `check-project` selection pass `check_project_beats`
+  plugin declares any), and the `check --project` selection pass `check_project_beats`
   (`W-BEAT-SHADOWED`: a `select: first` beat an earlier, always-eligible, never-spent beat
   always beats). Since 0.22.0 the same pass checks occasion target domains
   (`occasion_target_ok`, shared with `lute play`) and adds `W-BEAT-PRIORITY-TIE` (equal
@@ -739,14 +739,14 @@ above, never a rule-body dependency):
 - **Overviews and the sharper decider (dsl 0.23.0).** `beats.rs::project_beats` is the one
   list of every scene, entry and bundle beat (`bundles.rs` owns the bundle shape rules and
   canonical ids); `check_project_beats`, `lute beats` (`beats_cmd.rs`, which attaches the
-  `check-project` verdicts to each ladder row) and play all read it. `lute calendar`
+  `check --project` verdicts to each ladder row) and play all read it. `lute calendar`
   (`play/calendar.rs`) seeds a world per grid cell from a save and runs play's own
   `eligible_at`, so the calendar and `lute play` cannot disagree; `lute scenario knowledge`
   (`knowledge.rs`) traces queried atoms through rules to their asserting sites via
   `connectivity.rs::collect_asserts`. `decide` flattens an undecided `&&` / `||`, groups
   operands by path, and compares their solution sets (`solution.rs`: intervals, value sets,
   exclusions, with `unset` as a value), so a same-path contradiction decides false and a
-  covering disjunction true. `check-project --wip` re-checks a newly dead fact guard against a
+  covering disjunction true. `check --project <dir> --wip` re-checks a newly dead fact guard against a
   second may set in which unproduced relations are unbounded (`FactEnv::with_wip`); since dsl
   0.26.0 §2.6 a relation only a component `::assert` with an unbound `@param` writes counts as
   unproduced too (`fact_must::unproduced_relations`), and a required `<objective quest=…>` whose
@@ -994,7 +994,7 @@ Interaction with the pre-existing checker: an `E-ARM-DEAD` arm suppresses the pr
 `W-OVERLAP-ARMS` on the same span (a new post-pass suppressor, modeled on
 `suppress_exhaustive_subject_reads`) — the dead-arm error is the root (C4); `E-HUB-NO-EXIT`
 and `E-BRANCH-ALL-GUARDED` keep their purely-structural definitions unchanged.
-**Corpus fixture (D17):** `cargo run -p lute-cli -- check-project docs/examples` is the
+**Corpus fixture (D17):** `cargo run -p lute-cli -- check --project docs/examples` is the
 normative gate that the shipped example corpus checks clean under §5 — re-run in every task
 that touches this pass and again at the final release gate (below).
 
@@ -1211,9 +1211,9 @@ Exit codes: `0` complete, `1` refused (check errors or invalid mocks —
 (an `unknown` guard halted the walk).
 
 **D20 — auto-selection honesty (confirmed; ratified in spec §4.4).** At a `<branch>`/`<hub>`
-with no `--choose` entry, zero true-eligible choices, and at least one unknown-guarded
+with no `--choice` entry, zero true-eligible choices, and at least one unknown-guarded
 choice, the walk halts incomplete (exit 3) rather than guessing past the unknown eligibility
-— `--choose` remains the documented escape hatch. Confirmed by the hub design decision (hub is
+— `--choice` remains the documented escape hatch. Confirmed by the hub design decision (hub is
 an interactive conversation wheel, `0.1 §7.3.2`): trace cannot simulate the player's weave
 under unknown eligibility, so halting honestly is the correct preview behavior.
 
@@ -1222,7 +1222,7 @@ under unknown eligibility, so halting honestly is the correct preview behavior.
 | Code | Status | Note |
 |---|---|---|
 | `E-TRACE-MOCK-UNDECLARED`, `E-TRACE-MOCK-TYPE`, `E-TRACE-MOCK-FACT`, `E-TRACE-CHOICE` | New | Trace-only mock validation (§4.3) and forced-choice refusal (§4.4); render exactly as check diagnostics in both output forms. |
-| `E-TRACE-EVENT`, `E-TRACE-ACCEPT` | New | Two-path quest activation (§4.4): `E-TRACE-EVENT` rejects a lifecycle name (`questActive`/`questComplete`/`questFailed`) in `--event`/`events:` — those are engine-derived, never user-fired; `E-TRACE-ACCEPT` rejects `--accept`/`accepts:` naming an unknown quest id or a `start`-having quest (declarative, needs no accept). |
+| `E-TRACE-EVENT`, `E-TRACE-ACCEPT` | New | Two-path quest activation (§4.4): `E-TRACE-EVENT` rejects a lifecycle name (`questActive`/`questComplete`/`questFailed`) in `--event`/`events:` — those are engine-derived, never user-fired; `E-TRACE-ACCEPT` rejects `--accepted-quest`/`accepts:` naming an unknown quest id or a `start`-having quest (declarative, needs no accept). |
 | `E-ARM-DEAD`, `E-WHEN-LITERAL-DOMAIN`, `W-OTHERWISE-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `E-QUEST-UNREACHABLE`, `W-OBJECTIVE-HIDDEN` | New | §5 reachability — see the table above. |
 | `W-CHOICE-INTO-NO-PERSIST` | New | §7.3 bare-`into=` trap. |
 | `E-COMPONENT-STATE` | New | §6 component purity — see above. |
@@ -1248,7 +1248,7 @@ matches), `E-COMPONENT-ARG`/`-UNDECLARED`/`-CYCLE`/`-DUP`/`-PARSE`, `E-UNKNOWN-A
 
 **Worked example:** [`examples/gated-line.lute`](examples/gated-line.lute) (§7.2) and
 [`examples/choice-persist.lute`](examples/choice-persist.lute) (the spec §4.6 trace walkthrough
-— `lute trace docs/examples/choice-persist.lute --choose sofaHelp=help`).
+— `lute trace docs/examples/choice-persist.lute --choice sofaHelp=help`).
 
 ## Capability permission architecture (0.17.0)
 
@@ -1312,7 +1312,7 @@ The CLI's trusted `--permission-profile NAME` uses the manifest resolver to
 construct an additional project/global/ancestor/name ceiling, then calls
 `CapabilitySnapshot::restrict_permissions`; it does not select that profile's
 plugins or rewrite source. The same resolved snapshot flows to check, compile,
-`compile --all`, compile-stream, context, and the LSP. `context` and completion
+`compile --project`, `compile --stream`, context, and the LSP. `context` and completion
 filter what they advertise, while checker diagnostics and the compiler gate
 remain enforcement. There is deliberately no second editor authorization
 algorithm.

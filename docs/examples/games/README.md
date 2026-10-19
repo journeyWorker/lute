@@ -5,8 +5,8 @@ playing a different kind of writer, and migrated to the current language. Each d
 project (`lute.project.yaml`, schemas, scenes, lore, quests, plugins, `tests/`, `plays/`) with a
 README: the premise, what it shows of the language with the file to look at, and how to run it.
 
-CI checks every game with `lute check-project --deny-warnings` and runs its tests and plays
-(`lute test docs/examples` recurses into each one). Where a game means something a warning would
+CI checks every game with `lute check --deny-warnings --project <game>` and runs its tests and plays
+(`lute test --project docs/examples` recurses into each one). Where a game means something a warning would
 otherwise question, it says so in the spelling Lute provides for that intent, not with a
 suppression.
 
@@ -34,6 +34,6 @@ getting-started guides teach). Coming from Ink or Yarn, read [`ledger`](ledger/)
 Check and test one game:
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/<slug>
-lute test docs/examples/games/<slug>
+lute check --deny-warnings --project docs/examples/games/<slug>
+lute test --project docs/examples/games/<slug>
 ```

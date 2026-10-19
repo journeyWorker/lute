@@ -1,7 +1,7 @@
 # TypeScript runtime
 
 `@lute-lang/runtime` is the Effect 4 host API for Lute's resumable runtime. It
-loads a bundle produced by `lute compile --all`, drives the wasm binding for
+loads a bundle produced by `lute compile --project`, drives the wasm binding for
 `lute-runtime`, records inputs, exposes events and awaits as streams, and
 replays an input log. It does not render presentations, answer bridge calls,
 pace dialogue, settle grants, or apply other game policy: those remain the
@@ -42,12 +42,12 @@ the packages with `scripts/pack-local.sh`; it prints the tarball
 
 ## Bun
 
-Compile a project to the directory that the bundle layer reads. `--all` is
-important: the output contains `project.index.json` and every artifact named by
+Compile a project to the directory that the bundle layer reads. `compile --project <dir> -o <dir>` (no
+document operand) is important: the output contains `project.index.json` and every artifact named by
 that index.
 
 ```console
-lute compile --all path/to/project -o bundle
+lute compile --project path/to/project -o bundle
 ```
 
 This is a complete minimal session. It subscribes to `events` inside the
@@ -122,7 +122,7 @@ The low-level composition is also available as `LuteBun.wasm`,
 
 ## Browser
 
-Serve the release binding and the complete `lute compile --all` directory from
+Serve the release binding and the complete `lute compile --project` directory from
 the same application (or from URLs allowed by the application's fetch/CORS
 policy). The binding file is
 `dist/wasm/lute_runtime_wasm_bg.wasm`; the bundle URL must expose

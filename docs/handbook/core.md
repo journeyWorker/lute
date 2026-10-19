@@ -63,7 +63,7 @@ Component invocation keys use `instance="token"` with
 immediate owner; nested scopes are qualified by the complete enclosing path.
 Missing instance keys and missing line codes are warning-bearing positional
 fallbacks until `lute tag` writes them. Normal tagging never changes an
-existing key; `lute tag --force` retags line codes only and remains guarded by
+existing key; `lute tag --renumber --commit` retags line codes only and remains guarded by
 `codesLocked`. Published parent/document renames use the
 `identity.renames` ledger described in [DSL 0.36 §3](../proposals/scenario-dsl/0.36.0.md#3-rename-ledger-and-save-migration).
 
@@ -75,7 +75,7 @@ invocation and uncoded line is diagnosed (`W-COMPONENT-INSTANCE-UNTAGGED` and
 `W-LINE-CODE-UNTAGGED`); standalone files and snippets do not emit these two
 warnings. Run `lute tag` to back-fill both axes. It preserves authored values,
 allocates component keys as `use-001`, `use-002`, … per owner/component, writes
-only changed files, and is idempotent. `lute tag --force` still retags line
+only changed files, and is idempotent. `lute tag --renumber --commit` still retags line
 codes only and never rewrites an explicit `instance`.
 
 Published renames are explicit migration data:
@@ -126,7 +126,7 @@ bounded and heuristic claims and never turns “not found within bounds” into
 Project manifests may declare typed `constraints:`. The `reachable`,
 `completable`, `speaksOnlyWhen`, and `noSingleSlotProgress` kinds produce
 `holds`, `violated`, or `unknown` results; `lute constraints` reports every
-result, while `check-project` reports violations only.
+result, while `check --project` reports violations only.
 
 ## Evaluation and lowering
 

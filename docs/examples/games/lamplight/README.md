@@ -33,15 +33,15 @@ The porter knocks at 2:31 and Hask is found dead. From then on the engine raises
 ## Run it
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/lamplight
-lute test docs/examples/games/lamplight                           # 21 tests + 7 plays
-lute play docs/examples/games/lamplight --script docs/examples/games/lamplight/plays/solve.play.yaml
-lute play docs/examples/games/lamplight --script docs/examples/games/lamplight/plays/loop.play.yaml
-lute beats docs/examples/games/lamplight --occasion hourStrikes   # the hourly ladder, per-member beats included
-lute calendar docs/examples/games/lamplight --axis clock --occasion hourStrikes
-lute calendar docs/examples/games/lamplight --script docs/examples/games/lamplight/plays/solve.play.yaml --until "five o'clock, Crane counts heads" --axis run.hour=h05 --axis 'holds(seen(crane, brakevan, tunnel))=false,true' --occasion hourStrikes --facts opportunity
-lute trace docs/examples/games/lamplight/scenes/accusation.lute --project docs/examples/games/lamplight --state run.hour=h06 --fact 'alive(hask, late)' --fact 'unanswered(cab7, tunnel)' --fact 'motive(solt)' --fact 'means(solt)' --choose accuse=solt
-lute scenario docs/examples/games/lamplight knowledge              # every fact-guarded condition back to its producers
+lute check --deny-warnings --project docs/examples/games/lamplight
+lute test --project docs/examples/games/lamplight                           # 21 tests + 7 plays
+lute play --project docs/examples/games/lamplight --script docs/examples/games/lamplight/plays/solve.play.yaml
+lute play --project docs/examples/games/lamplight --script docs/examples/games/lamplight/plays/loop.play.yaml
+lute beats --project docs/examples/games/lamplight --occasion hourStrikes   # the hourly ladder, per-member beats included
+lute calendar --project docs/examples/games/lamplight --axis clock --occasion hourStrikes
+lute calendar --project docs/examples/games/lamplight --script docs/examples/games/lamplight/plays/solve.play.yaml --until "five o'clock, Crane counts heads" --axis run.hour=h05 --axis 'holds(seen(crane, brakevan, tunnel))=false,true' --occasion hourStrikes --relation opportunity
+lute trace docs/examples/games/lamplight/scenes/accusation.lute --project docs/examples/games/lamplight --state run.hour=h06 --fact 'alive(hask, late)' --fact 'unanswered(cab7, tunnel)' --fact 'motive(solt)' --fact 'means(solt)' --choice accuse=solt
+lute scenario --project docs/examples/games/lamplight knowledge              # every fact-guarded condition back to its producers
 ```
 
 ## Origin

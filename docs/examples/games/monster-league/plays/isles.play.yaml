@@ -3,7 +3,7 @@
 # beacons and Admin Nyx on Monday, the island radio on Tuesday, the Battle
 # Tower on Saturday, and the tower's new week on Monday.
 #
-#   lute play . --script plays/isles.play.yaml
+#   lute play --project . --script plays/isles.play.yaml
 visited: [spine.lab, spine.champion, spine.hallOfFame]
 quests: { league: complete, legacy: active }
 facts:

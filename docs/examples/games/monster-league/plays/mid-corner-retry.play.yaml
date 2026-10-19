@@ -3,7 +3,7 @@
 # (the skipped stair guard) and still report the walk complete, so the retry
 # is a play (see FINDINGS-mid M3).
 #
-#   lute play . --script plays/mid-corner-retry.play.yaml
+#   lute play --project . --script plays/mid-corner-retry.play.yaml
 state: { run.lair.cornerHideout: found }
 facts: [defeated(cornerGruntDoor)]
 steps:

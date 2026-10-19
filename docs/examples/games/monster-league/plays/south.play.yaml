@@ -3,7 +3,7 @@
 # its recruiter, the museum's revivals, Old Salt's two lessons, the board
 # parcel and a Sunday derby.
 #
-#   lute play . --script plays/south.play.yaml
+#   lute play --project . --script plays/south.play.yaml
 #
 # OWNED BY south. The parcel is a board quest: the engine accepts it at the
 # Pebbleton Center (an engine step).

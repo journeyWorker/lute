@@ -6,7 +6,7 @@
 # lost first), the siege of Ash Tower (mid's lens arrives by engine step),
 # the power plant and thunderwing.
 #
-#   lute play . --script plays/east.play.yaml
+#   lute play --project . --script plays/east.play.yaml
 #
 # OWNED BY east.
 visited: [spine.lab, south.bridgeRival]

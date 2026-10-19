@@ -63,13 +63,13 @@ the truth needs a broken alibi, an honest misidentification and a torn log page.
 ## Run it
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/lighthouse-keeper
-lute test docs/examples/games/lighthouse-keeper
-lute play docs/examples/games/lighthouse-keeper --script docs/examples/games/lighthouse-keeper/plays/true-account.play.yaml
-lute play docs/examples/games/lighthouse-keeper --script docs/examples/games/lighthouse-keeper/plays/missed-boat.play.yaml
-lute calendar docs/examples/games/lighthouse-keeper --script docs/examples/games/lighthouse-keeper/plays/true-account.play.yaml --until "the weather clears; the engine schedules Ada" --occasion nightfall --facts liar --facts alibied --facts suspect
-lute calendar docs/examples/games/lighthouse-keeper --axis run.weather=gale,fog,clear --occasion explore --target place.village
-lute lore docs/examples/games/lighthouse-keeper
+lute check --deny-warnings --project docs/examples/games/lighthouse-keeper
+lute test --project docs/examples/games/lighthouse-keeper
+lute play --project docs/examples/games/lighthouse-keeper --script docs/examples/games/lighthouse-keeper/plays/true-account.play.yaml
+lute play --project docs/examples/games/lighthouse-keeper --script docs/examples/games/lighthouse-keeper/plays/missed-boat.play.yaml
+lute calendar --project docs/examples/games/lighthouse-keeper --script docs/examples/games/lighthouse-keeper/plays/true-account.play.yaml --until "the weather clears; the engine schedules Ada" --occasion nightfall --relation liar --relation alibied --relation suspect
+lute calendar --project docs/examples/games/lighthouse-keeper --axis run.weather=gale,fog,clear --occasion explore --target place.village
+lute lore --project docs/examples/games/lighthouse-keeper
 ```
 
 ## Origin

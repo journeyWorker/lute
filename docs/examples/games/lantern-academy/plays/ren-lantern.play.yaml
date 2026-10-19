@@ -1,5 +1,5 @@
 # Term 1 of a new save, on Ren's route, to his lantern ending.
-#   lute play . --script plays/ren-lantern.play.yaml
+#   lute play --project . --script plays/ren-lantern.play.yaml
 # Siding with Ren at the hearing locks Kai's route; every afternoon in the
 # council room; a perfect date on the roof; asking him to stay.
 choose:

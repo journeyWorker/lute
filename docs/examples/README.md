@@ -30,5 +30,5 @@ named ending bindings, a player-web host recipe, a second play-through
 [`games/`](games/) holds fourteen complete games written against Lute 0.21–0.28 as dogfood
 projects — mysteries, a roguelike, a gacha, live-ops, a visual novel, an Ink port and more. Each is
 its own project (`games/<slug>/lute.project.yaml`) with a README naming the features it exercises,
-and CI checks each with `lute check-project --deny-warnings` and runs its tests and plays. Start at
+and CI checks each with `lute check --deny-warnings --project <game>` and runs its tests and plays. Start at
 the [index](games/README.md).

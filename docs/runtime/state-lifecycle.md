@@ -52,7 +52,7 @@ What the DSL *does* pin, and the engine must honor:
   `crates/lute-check/src/envelope.rs::in_envelope_scope`, which scopes exactly
   the `run.*`/`user.*` tiers). An engine that
   cleared `run.*`/`user.*` mid-run would violate the reachability guarantees
-  `check-project` proved. These are the two tiers whose reads the
+  `check --project` proved. These are the two tiers whose reads the
   `E-STATE-MAYBE-UNAVAILABLE` / envelope analysis reasons about.
 
 - **`scene.*` resets at the scene boundary.** Scene scratch — including the
@@ -257,8 +257,8 @@ midnight raises it again. An `engine:` step that moves
 `clock.index` backward is a usage error (exit 2); `newRun` starts the clock
 over. `lute calendar --axis clock=d1..d2` expands to every slot of those
 days in clock order (bare `clock`: one week from day 1, or day 1 without a
-`week:`); `--occasion dayEnd@clock.day,clock.slot=night` (or the clock's own
-paths, `@run.day,run.slot=night`) evaluates an occasion once per day.
+`week:`); `--occasion-axes dayEnd=clock.day,clock.slot=night` (or the clock's own
+paths, `dayEnd=run.day,run.slot=night`) evaluates an occasion once per day.
 
 `advance: { to: night }` and `advance: { to: { weekday: Fri, slot:
 morning } }` (dsl 0.26.0 §7) move to the next position after the current

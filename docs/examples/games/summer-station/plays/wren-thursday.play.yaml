@@ -1,6 +1,6 @@
 # The same Monday to Wednesday as the Sol route; on Thursday night the player
 # stays at supper instead of climbing to the roof, and the week turns to Wren.
-#   lute play . --script plays/wren-thursday.play.yaml
+#   lute play --project . --script plays/wren-thursday.play.yaml
 choose:
   village: ask
   care: careful

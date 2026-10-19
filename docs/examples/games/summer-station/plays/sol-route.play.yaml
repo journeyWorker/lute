@@ -1,6 +1,6 @@
 # The whole week, leaning toward Sol: every deadline met, the Perseids watched,
 # a confession on the roof on Saturday.
-#   lute play . --script plays/sol-route.play.yaml
+#   lute play --project . --script plays/sol-route.play.yaml
 choose:
   village: ask
   care: careful

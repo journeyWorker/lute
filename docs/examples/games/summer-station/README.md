@@ -17,7 +17,7 @@ The player arrives at Hallen Ridge Weather Station on Monday morning and works f
 
 - **Declared clock with a week** — three slots, `raise: { slot: slotStart, dayEnd: dayEnd }`, `raiseAtStart: true` (the engine raises `slotStart` at run start, which presents `days.arrival`; asserted at step 1 of `plays/week/mon-wed.steps.yaml`), `week:` labels, `clock.weekday` in `<match>` and defs (`@postDay`), `{{clock.weekdayLabel}}`, `{{run.day:ordinalWord}}`: `world.schema.yaml`, `scenes/routine/morning.lute`, `lore/routine.lute`.
 - **A `sequence` occasion** — `slotStart` plays the routine (priority 10) and then the day's events; a storm (priority 20) goes first: `lore/days.lute`, `lore/routine.lute`, `plugins/game.occasions/occasions/game.yaml`.
-- **Schedules as rules** — derived `at(person, place)` from `cel()` guards on the clock, `not pathShut(village)` over a `reserved:` engine relation, derived `ready(P)` over `run.aff[P]`, cast `present:` read from them: `world.schema.yaml`; `lute calendar --facts at` prints who is where, when.
+- **Schedules as rules** — derived `at(person, place)` from `cel()` guards on the clock, `not pathShut(village)` over a `reserved:` engine relation, derived `ready(P)` over `run.aff[P]`, cast `present:` read from them: `world.schema.yaml`; `lute calendar --relation at` prints who is where, when.
 - **Sub-kinds and per-member state** — `suitor: { subsetOf: person }`, `run.aff` with `per: suitor`: `world.schema.yaml`, `scenes/sol/*.lute`, `scenes/wren/*.lute`.
 - **Seasons** — `seasons: storm: { live: "@stormLive" }`, `season.storm.*` state, `once="season:storm"` chores, a `tier="season:storm"` quest with `start="@stormLive"`, `prev.season.storm.mast` in the second storm: `lore/storm.lute`, `quests/station.lute`, `plays/two-storms.play.yaml`, `tests/storm-second.test.yaml`.
 - **Spend periods and side remarks** — `once="day"` affection on `also` beats (`wrenWarm`, `solWarm`), `once="false"` conversations, `once="run"` meteor record, `spentBy: "run.balloonUp"` for a scene retried every afternoon until it succeeds: `lore/talks.lute`, `lore/perseids.lute`, `scenes/station/balloon.lute`, `plays/once-a-day.play.yaml`, `plays/balloon.play.yaml`.
@@ -34,14 +34,14 @@ The player arrives at Hallen Ridge Weather Station on Monday morning and works f
 ## Run it
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/summer-station
-lute test docs/examples/games/summer-station                          # 10 tests + 7 plays
-lute play docs/examples/games/summer-station --script docs/examples/games/summer-station/plays/sol-route.play.yaml
-lute play docs/examples/games/summer-station --script docs/examples/games/summer-station/plays/two-storms.play.yaml
-lute beats docs/examples/games/summer-station --occasion visit --target place.roof
-lute calendar docs/examples/games/summer-station --axis run.day=1..7 --axis run.slot=morning,afternoon,night --occasion slotStart --facts at
-lute calendar docs/examples/games/summer-station --occasion shower --axis occasion.payload.count=1,41,63 --axis run.slot=night
-lute trace docs/examples/games/summer-station/scenes/routine/morning.lute --state run.day=7 --state run.weather=fog --choose care=careful
+lute check --deny-warnings --project docs/examples/games/summer-station
+lute test --project docs/examples/games/summer-station                          # 10 tests + 7 plays
+lute play --project docs/examples/games/summer-station --script docs/examples/games/summer-station/plays/sol-route.play.yaml
+lute play --project docs/examples/games/summer-station --script docs/examples/games/summer-station/plays/two-storms.play.yaml
+lute beats --project docs/examples/games/summer-station --occasion visit --target place.roof
+lute calendar --project docs/examples/games/summer-station --axis run.day=1..7 --axis run.slot=morning,afternoon,night --occasion slotStart --relation at
+lute calendar --project docs/examples/games/summer-station --occasion shower --axis occasion.payload.count=1,41,63 --axis run.slot=night
+lute trace docs/examples/games/summer-station/scenes/routine/morning.lute --state run.day=7 --state run.weather=fog --choice care=careful
 ```
 
 ## Origin

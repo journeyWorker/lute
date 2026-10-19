@@ -31,10 +31,10 @@ How Ink constructs map to Lute, each once:
 ## Run it
 
 ```sh
-lute check-project --deny-warnings docs/examples/games/ledger
-lute test docs/examples/games/ledger                           # 4 tests + 3 plays
-lute play docs/examples/games/ledger --script docs/examples/games/ledger/plays/lit.play.yaml
-lute trace docs/examples/games/ledger/scenes/keeper.lute --choose lamp=ledger,desk,name,dusk
+lute check --deny-warnings --project docs/examples/games/ledger
+lute test --project docs/examples/games/ledger                           # 4 tests + 3 plays
+lute play --project docs/examples/games/ledger --script docs/examples/games/ledger/plays/lit.play.yaml
+lute trace docs/examples/games/ledger/scenes/keeper.lute --choice lamp=ledger,desk,name,dusk
 ```
 
 ## Origin
