@@ -37,7 +37,7 @@ envelope for scene(narrator.s01ep02) (pre-entry — state available when control
     - run.kaiFound   written by: …
   Guaranteed facts (hold on every declared route reaching this node):
     (none)
-  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in whole-project `check`, surfaced here):
     - ./scenes/whileActive.lute:13:36: state path `run.kaiFound` is set under your declared routes on SOME routes reaching this node, but not every one — not yet guaranteed; order this scene `after:` a scene every route passes that sets it, or guard the read with `has(run.kaiFound)`
 ```
 

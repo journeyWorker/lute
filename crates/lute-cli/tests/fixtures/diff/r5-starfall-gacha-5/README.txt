@@ -7,4 +7,4 @@ midnight crossed, and the miss is labelled "at dailyReset":
   expected [r.resetLine], actual [r.closeLine, r.resetLine]
 Either judge only the slot raise, or (better) judge every presentation of the step and then
 also allow it on a dayStart-only clock.
-Run: lute play . --script plays/p.play.yaml
+Run: lute play --project . --script plays/p.play.yaml

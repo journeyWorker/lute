@@ -79,8 +79,8 @@ Since 0.8.0 they set the exit code. Previously they printed and the build passed
 
 <!-- lute-diagnostics -->
 ```console
-$ lute check scene.lute --project . --json
-{"command":"check","files":[{"diagnostics":[{"code":"E-PLUGIN-OPTION-TYPE","message":"option `showcase.pack.resultScope` expects enum(scene|run), got \"galaxy\"",…}],"ok":false,"path":"scene.lute",…}],"ok":false,"schemaVersion":"0.48.0.check"}
+$ lute check scene.lute --project .
+lute: E-PLUGIN-MISSING-ACTIVE: plugin `nosuch` is activated by the project manifest but is not installed; add it under the plugins directory or drop it from the profile
 $ echo $?
 1
 ```
@@ -250,7 +250,7 @@ Lute is a deterministic CLI boundary, not a chat application or MCP server.
 
 ## The patch request (0.47)
 
-`lute patch <FILE> --project <DIR> [--dry-run] [--json]` reads `PATCH`, one JSON object. `lute schema patch` describes it under `inputs` (`argument: "PATCH"`, `kind: "request"`, `format: "json"`, then `fields`, `ops`, `preserve`, `nodeKinds`); that description is read from the same table as the request parser, so a harness can build requests from it. Unknown fields are refused (`E-PATCH-EDIT`).
+`lute patch <FILE> --project <DIR> [--dry-run] [--json]` reads `FILE`, one JSON object. `lute schema patch` describes it under `inputs` (`argument: "FILE"`, `kind: "request"`, `format: "json"`, then `fields`, `ops`, `preserve`, `nodeKinds`); that description is read from the same table as the request parser, so a harness can build requests from it. Unknown fields are refused (`E-PATCH-EDIT`).
 
 | Field | Required | Type | Meaning |
 |---|---|---|---|

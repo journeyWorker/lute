@@ -7,7 +7,7 @@ tests/again.test.yaml presents the entry without `state: { occasion.target: … 
 
 Commands:
   lute trace barks.lute --project . --entry again
-  lute test . --project .
+  lute test --project .
 
 Actual:
   <match occasion.target>   -> no arm

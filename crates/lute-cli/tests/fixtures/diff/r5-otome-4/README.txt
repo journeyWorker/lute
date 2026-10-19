@@ -4,7 +4,7 @@ be defeated when the rule binds its variable through an entity-kind atom.
   rule:  routeOpen(S) :- suitor(S), not locked(S)
   scenes/clash.lute asserts locked(ren) (in a choice) and locked(kai).
 
-  lute scenario . knowledge --for festival
+  lute scenario knowledge --project . --node festival
     -> "not locked(ren) — always holds (nothing can produce locked(ren): asserted by
         scene `clash` (scenes/clash.lute), but none of it yields these arguments from
         what the project asserts) — cannot be defeated"

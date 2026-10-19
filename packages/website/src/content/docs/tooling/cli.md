@@ -21,7 +21,7 @@ Options for one concept are declared once and mean the same on every command tha
 | Group | Options | Commands |
 |---|---|---|
 | Project | `--project <DIR>` | every command that works on a project |
-| Providers | `--providers <DIR>` | `check`, `compile`, `context`, `trace`, `expr`, `lint`, `impact`, `constraints`, `patch`, `play`, `test`, `scenario` (global), `beats`, `calendar`, and `catalog refresh` (the directory it refreshes) |
+| Providers | `--providers <DIR>` | `check`, `compile`, `context`, `trace`, `lint`, `impact`, `constraints`, `patch`, `play`, `test`, `scenario` (global), `calendar`, and `catalog refresh` (the directory it refreshes) |
 | Permission profile | `--permission-profile <NAME>` | `check`, `compile`, `context`, `trace`, `expr`, `patch`, `play`, `test`, `calendar` |
 | Diagnostic gate | `--deny <CODE>` (repeatable), `--deny-warnings` | `check`, `compile` (not with `--stream`), `lint`, `trace`, `expr`, `play`, `test`, `calendar` |
 | JSON | `--json` | every command that reports a result, except `schema` (always JSON) and `loc export` (an artifact writer) |
@@ -98,7 +98,7 @@ Every command has an **id**: its subcommand path as typed — `check`, `scenario
 $ lute schema [<COMMAND>]…
 ```
 
-Describes the command line itself as the `schema` report (always JSON; reads no files). With no path it lists the top-level commands (`id`, `summary`, `hasSubcommands`); with a path (`lute schema scenario reach`) it describes that command: `arguments` and `options` (`name`, `required`, `repeatable`, `takesValue`, and `short`, `valueName`, `possibleValues`, `default`, `help` where they apply), `subcommands`, `outputs` — each machine-readable output with the `flag` selecting it, its `kind` (`report`, `artifact` or `stream`) and a report's `schemaVersion` — and `inputs` (0.47): one entry per structured input the command reads, an empty list for every command but `patch`, whose `PATCH` request is described as `{ argument, kind: "request", format: "json", fields, ops, preserve, nodeKinds }` (see [the patch request](/tooling/ai-harness/#the-patch-request-047)). The data comes from the parser's own definition, so it cannot drift from `--help` or the patch request parser. `lute schema compile`, for example, lists the outputs `artifact` (no flag), `report` (`--json`, `0.43.0.compile`) and `stream` (`--stream`). A CI test walks this schema and fails when two commands spell one concept differently, so the grammar cannot drift. An unknown path is `E-CLI-USAGE`; exit **0**, or **2**.
+Describes the command line itself as the `schema` report (always JSON; reads no files). With no path it lists the top-level commands (`id`, `summary`, `hasSubcommands`); with a path (`lute schema scenario reach`) it describes that command: `arguments` and `options` (`name`, `required`, `repeatable`, `takesValue`, and `short`, `valueName`, `possibleValues`, `default`, `help` where they apply), `subcommands`, `outputs` — each machine-readable output with the `flag` selecting it, its `kind` (`report`, `artifact` or `stream`) and a report's `schemaVersion` — and `inputs` (0.47): one entry per structured input the command reads, an empty list for every command but `patch`, whose `FILE` request is described as `{ argument, kind: "request", format: "json", fields, ops, preserve, nodeKinds }` (see [the patch request](/tooling/ai-harness/#the-patch-request-047)). The data comes from the parser's own definition, so it cannot drift from `--help` or the patch request parser. `lute schema compile`, for example, lists the outputs `artifact` (no flag), `report` (`--json`, `0.43.0.compile`) and `stream` (`--stream`). A CI test walks this schema and fails when two commands spell one concept differently, so the grammar cannot drift. An unknown path is `E-CLI-USAGE`; exit **0**, or **2**.
 
 ## Telemetry
 
@@ -419,7 +419,7 @@ and consumer cursor/state rules.
 ## expr
 
 ```console
-$ lute expr <EXPR> [--project <DIR>] [--providers <DIR>] [--permission-profile <NAME>]
+$ lute expr <EXPR> [--project <DIR>] [--permission-profile <NAME>]
              [--deny <CODE>]… [--deny-warnings] [--json]
 ```
 
@@ -459,7 +459,7 @@ $ lute expr "@at(3, 'night')" --json
 $ lute trace <FILE> [--project <DIR>] [--providers <DIR>] [--permission-profile <NAME>]
              [--deny <CODE>]… [--deny-warnings]
              [--state <PATH>=<LITERAL>]… [--fact <ATOM>]… [--choice <BRANCH>=<CHOICE>[,<CHOICE>…]]…
-             [--event <N>]… [--accepted-quest <QUEST>]… [--occasion <OCCASION>[@<TARGET>]]…
+             [--event <NAME>]… [--accepted-quest <QUEST>]… [--occasion <OCCASION>[@<TARGET>]]…
              [--mock <FILE>] [--entry <ID> | --beat <ID>] [--no-derive] [--expand] [--json]
 ```
 
@@ -507,7 +507,7 @@ Since dsl 0.26.0 §6 a rule body may count (`canPass(earthGymDoor) :- count(hasB
 ## beats
 
 ```console
-$ lute beats [--project <DIR>] [--providers <DIR>] [--occasion <OCCASION>]… [--target <TARGET>]… [--expand] [--json]
+$ lute beats [--project <DIR>] [--occasion <OCCASION>]… [--target <TARGET>]… [--expand] [--json]
 ```
 
 Print every beat of the project as one ladder per occasion — and per target of a targeted occasion — in selection order (dsl 0.23.0): priority, beat and title, kind (`scene`, `entry`, `bundle`), `once` (`run`, `user`, `day`, `slot`, or `no` — a bundle beat's `once="day"` / `once="slot"` included — and `also`, and since dsl 0.25.0 a `share` key: `day, share solWarm`; `share` in `--json`), the whole-project `check` verdicts (`unreachable`, `shadowed`, `tied`, `once-run-user`), `after:` (a bundle beat's `after=` included), and `when` as the author wrote it — `@def` references included (dsl 0.24.0); `--expand` prints each `when` with its defs expanded, and `--json` carries both, `when` (expanded) and `whenAuthored`. `--occasion` and `--target` (both repeatable) filter the ladders; `--json` carries each verdict's full diagnostic. Read-only, and the project need not check clean. Exit **0** on success, **2** on I/O, a missing project or an unknown `--occasion`. See [Story overviews](/tooling/overviews/#lute-beats).
@@ -534,7 +534,7 @@ Evaluate `lute play`'s own eligibility at every cell of a grid of state values (
 - `--occasion <OCCASION>` (repeatable) — the occasions to evaluate; default every occasion a beat answers.
 - `--occasion-axes <OCCASION>=<AXES>` (repeatable; 0.47's `--occasion <O>@<AXES>`, dsl 0.24.0) — selects `O` and varies only the named axes for it: it is evaluated where every other axis is at its first value (`--occasion-axes dayEnd=run.day,run.slot=night` holds `run.slot` at `night` instead) and left blank elsewhere, so a once-a-day occasion reads once per day (`--json`: the column's `varies` and `heldAt`). Naming the same occasion in `--occasion` and `--occasion-axes`, or twice in `--occasion-axes`, is `E-CLI-USAGE`. With `--axis clock`, name the clock's axes — `--occasion-axes dayEnd=clock.day,clock.slot=night`, or the clock's own paths, `--occasion-axes dayEnd=run.day,run.slot=night` — to evaluate `O` once per day at one slot (the day's first slot when none is named; the day's last for the clock's `raise.dayEnd` occasion, where the clock raises it).
 - With `--axis clock`, an occasion the clock's `raise:` names is judged only where `lute play`'s `advance:` raises it: the `slot` occasion at every position but the one the run starts at, `dayStart` at a day's first slot but never on the day the run starts, `dayEnd` at a day's last slot (and at the last position of a clock that ends); with the clock's `raiseAtStart: true`, the `slot` occasion and `dayStart` are raised where the run starts too. Every other cell reads `not raised`, with no winner, eligible list or shadowed beats (`--json`: `"notRaised": true` on the result, and a root `notRaised` list of `{ occasion, reason }`; `--format csv`: `not raised` in `notes`), and a header line says where the clock raises it. A beat eligible only in such cells is never eligible, with `` eligible at day 1 (Mon) morning, where the clock does not raise `dayStart` ``. The run starts where the save puts the clock, before any `--script` step. A `dayEnd` column that names its slot (`--occasion-axes dayEnd=clock.day,clock.slot=afternoon`) is judged there: an `advance: day` closes the day wherever the clock stands.
-- `--target <T>` (repeatable) — the targets a targeted occasion is raised for. By default a targeted occasion gets one column per target its beats name, not one per member of its domain; when no beat names a target, a single `(any)` column only its untargeted beats answer.
+- `--target <TARGET>` (repeatable) — the targets a targeted occasion is raised for. By default a targeted occasion gets one column per target its beats name, not one per member of its domain; when no beat names a target, a single `(any)` column only its untargeted beats answer.
 - `--relation <RELATION>` (repeatable; 0.47's `--facts`, dsl 0.24.0) — print the relation's facts in every settled cell: a table with a row per first argument and a column per cell (`--relation at`: who is where, when); a per-cell `facts` map in `--json`, a `facts:<rel>` column in `--format csv`.
 - `--script <FILE>` — a play script: every cell starts from its save, with its `steps:` replayed exactly as `lute play` plays them.
 - `--until <STEP>` — with `--script`, replay only the steps before this one — a 1-based step number or a step `label:` (an unknown label gets a did-you-mean); the step itself is not played.
@@ -811,7 +811,7 @@ A `--project` inside a project but not at its root is refused (exit **2**, nothi
 
 ```console
 $ lute new scene tavi-shell --project scenes/talk
-lute new: `--project scenes/talk` resolves to `/private/tmp/tp/town/scenes/talk`, which is inside the project at `/private/tmp/tp/town` (its lute.project.yaml) but not its root; `--project` names the project, not the destination folder — did you mean `lute new scene talk/tavi-shell`? (nothing was written)
+lute new: `--project scenes/talk` resolves to `/tmp/tp/town/scenes/talk`, which is inside the project at `/tmp/tp/town` (its lute.project.yaml) but not its root; `--project` names the project, not the destination folder — did you mean `lute new scene talk/tavi-shell`? (nothing was written)
 ```
 
 Without `--project`, `lute new` discovers the project upward from the current directory, so it also works from a folder below the project root and the document still lands under the root: `cd scenes && lute new scene tavi-shell` writes `scenes/tavi-shell.lute` in the project that holds `lute.project.yaml`.
@@ -826,15 +826,15 @@ lute new: `scenes/town/welcome.lute` already declares `id: town.welcome` — sce
 `--occasion <OCCASION>` makes the scene a [beat](/language/beats/) answering that occasion, and `--target <TARGET>` names what a targeted occasion is raised for, a `<prefix>.<member>` of its target domain. Both are checked against the project before anything is written — an occasion the project's plugins do not declare, or a target outside the occasion's domain, is exit **2** with a did-you-mean and no file:
 
 ```console
-$ lute new scene talk/tomas-evening --occasion talk --target npc.tomass
-lute new: target `npc.tomass` is outside occasion `talk`'s domain `npc.<npc>` (`npc.mara`, `npc.tomas`) — did you mean `npc.tomas`?; nothing was written
+$ lute new scene explore/gate --occasion explore --target place.villag
+lute new: target `place.villag` is outside occasion `explore`'s domain `place.<place>` (`place.lantern`, `place.gallery`, `place.landing`, `place.cottage`, `place.village`) — did you mean `place.village`?; nothing was written
 ```
 
 A targeted occasion needs `--target`: a scene without `target:` would play for every target.
 
 ```console
-$ lute new scene talk/tomas-evening --occasion talk
-lute new: occasion `talk` is raised for a target, and a scene without `target:` would play for every one — pass `--target npc.<member>`, the target this scene answers; nothing was written
+$ lute new scene explore/gate --occasion explore
+lute new: occasion `explore` is raised for a target, and a scene without `target:` would play for every one — pass `--target place.<member>`, the target this scene answers; nothing was written
 ```
 
 `--occasion O` always writes `on: O` (0.29.0). When `O` is the occasion a chain of the manifest's [`chapters:`](/getting-started/connect-scenes/#the-chapters-chapters) answers, the output adds how to make the scene a chapter instead: list its id in that chain's `scenes:` and drop `on:`.

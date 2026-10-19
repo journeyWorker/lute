@@ -67,8 +67,8 @@ lute compile --stream scene.lute --project . \
 
 <!-- lute-diagnostics -->
 ```console
-$ lute check scene.lute --project . --json
-{"command":"check","files":[{"diagnostics":[{"code":"E-PLUGIN-OPTION-TYPE","message":"option `showcase.pack.resultScope` expects enum(scene|run), got \"galaxy\"",…}],"ok":false,"path":"scene.lute",…}],"ok":false,"schemaVersion":"0.48.0.check"}
+$ lute check scene.lute --project .
+lute: E-PLUGIN-MISSING-ACTIVE: plugin `nosuch` is activated by the project manifest but is not installed; add it under the plugins directory or drop it from the profile
 $ echo $?
 1
 ```
@@ -220,7 +220,7 @@ $ lute diff /tmp/drowned-crown-before /tmp/drowned-crown --json
 
 ## patch 요청 (0.47)
 
-`lute patch <FILE> [--project <DIR>] [--dry-run] [--json]`은 JSON 객체 하나인 `PATCH`를 읽습니다. `lute schema patch`가 이를 `inputs` 아래에 설명합니다(`argument: "PATCH"`, `kind: "request"`, `format: "json"`, 그리고 `fields`, `ops`, `preserve`, `nodeKinds`). 이 설명은 요청 파서와 같은 표에서 읽으므로, 하네스는 이를 보고 요청을 만들 수 있습니다. 알 수 없는 필드는 거부됩니다(`E-PATCH-EDIT`).
+`lute patch <FILE> [--project <DIR>] [--dry-run] [--json]`은 JSON 객체 하나인 `FILE`을 읽습니다. `lute schema patch`가 이를 `inputs` 아래에 설명합니다(`argument: "FILE"`, `kind: "request"`, `format: "json"`, 그리고 `fields`, `ops`, `preserve`, `nodeKinds`). 이 설명은 요청 파서와 같은 표에서 읽으므로, 하네스는 이를 보고 요청을 만들 수 있습니다. 알 수 없는 필드는 거부됩니다(`E-PATCH-EDIT`).
 
 | 필드 | 필수 | 타입 | 의미 |
 |---|---|---|---|

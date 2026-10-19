@@ -550,7 +550,7 @@ envelope for scene(mira.s01ep02) (pre-entry — state available when control REA
     (none)
   Guaranteed facts (hold on every declared route reaching this node):
     (none)
-  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in `check-project`, surfaced here):
+  Possible \ Guaranteed -- warning-grade reads (set on SOME but not every declared route; suppressed by default in whole-project `check`, surfaced here):
     (none)
 ```
 
@@ -591,7 +591,7 @@ PASS  episodes/tests/diner.test.yaml  (episodes/diner.lute)
 
 A failing test says why. Change the choice to `familiar`, which is guarded by `scene.knowsMira`:
 
-<!-- lute-diagnostics unverified="lute test respells the walk.rs literal `--choose {id}={choice}` as the test key `choose: {id}={choice}` and composes the reason, so no single format! literal matches; the block is byte-exact binary output" -->
+<!-- lute-diagnostics unverified="lute test respells the trace-driver literal `--choice {id}={choice}` as the test key `choose: {id}={choice}` and composes the reason, so no single format! literal matches; the block is byte-exact binary output" -->
 ```
 $ lute test --project episodes
 FAIL  episodes/tests/diner.test.yaml  (episodes/diner.lute)

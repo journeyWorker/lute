@@ -22,7 +22,7 @@ description: 모든 lute 하위 명령 — init, new, check, compile, expr, run,
 | 그룹 | 옵션 | 명령 |
 |---|---|---|
 | 프로젝트 | `--project <DIR>` | 프로젝트를 쓰는 모든 명령 |
-| Providers | `--providers <DIR>` | `check`, `compile`, `context`, `trace`, `expr`, `lint`, `impact`, `constraints`, `patch`, `play`, `test`, `scenario`(전역), `beats`, `calendar`, 그리고 `catalog refresh`(다시 스탬프할 디렉터리) |
+| Providers | `--providers <DIR>` | `check`, `compile`, `context`, `trace`, `lint`, `impact`, `constraints`, `patch`, `play`, `test`, `scenario`(전역), `calendar`, 그리고 `catalog refresh`(다시 스탬프할 디렉터리) |
 | 권한 프로필 | `--permission-profile <NAME>` | `check`, `compile`, `context`, `trace`, `expr`, `patch`, `play`, `test`, `calendar` |
 | 진단 게이트 | `--deny <CODE>`(반복 가능), `--deny-warnings` | `check`, `compile`(`--stream`과는 함께 쓸 수 없음), `lint`, `trace`, `expr`, `play`, `test`, `calendar` |
 | JSON | `--json` | 결과를 보고하는 모든 명령. 단 `schema`(항상 JSON)와 산출물을 쓰는 `loc export`는 제외 |
@@ -105,7 +105,7 @@ description: 모든 lute 하위 명령 — init, new, check, compile, expr, run,
 $ lute schema [<COMMAND>]…
 ```
 
-명령줄 자체를 `schema` 보고서로 설명합니다(항상 JSON, 파일을 읽지 않음). 경로가 없으면 최상위 명령(`id`, `summary`, `hasSubcommands`)을 나열하고, 경로가 있으면(`lute schema scenario reach`) 그 명령을 설명합니다. `arguments`와 `options`(`name`, `required`, `repeatable`, `takesValue`, 해당할 때 `short`, `valueName`, `possibleValues`, `default`, `help`), `subcommands`, `outputs` — 각 기계 판독용 출력을 고르는 `flag`, 종류 `kind`(`report`, `artifact`, `stream`), 보고서의 `schemaVersion` — 그리고 `inputs`(0.47)입니다. `inputs`는 명령이 읽는 구조화된 입력마다 한 항목이며, `patch`를 뺀 모든 명령에서 빈 목록입니다. `patch`의 `PATCH` 요청은 `{ argument, kind: "request", format: "json", fields, ops, preserve, nodeKinds }`로 설명됩니다([patch 요청](/ko/tooling/ai-harness/#patch-요청-047) 참고). 파서 자신의 정의에서 나오므로 `--help`나 patch 요청 파서와 어긋날 수 없습니다. 알 수 없는 경로는 `E-CLI-USAGE`이며, 종료 코드는 **0** 또는 **2**입니다.
+명령줄 자체를 `schema` 보고서로 설명합니다(항상 JSON, 파일을 읽지 않음). 경로가 없으면 최상위 명령(`id`, `summary`, `hasSubcommands`)을 나열하고, 경로가 있으면(`lute schema scenario reach`) 그 명령을 설명합니다. `arguments`와 `options`(`name`, `required`, `repeatable`, `takesValue`, 해당할 때 `short`, `valueName`, `possibleValues`, `default`, `help`), `subcommands`, `outputs` — 각 기계 판독용 출력을 고르는 `flag`, 종류 `kind`(`report`, `artifact`, `stream`), 보고서의 `schemaVersion` — 그리고 `inputs`(0.47)입니다. `inputs`는 명령이 읽는 구조화된 입력마다 한 항목이며, `patch`를 뺀 모든 명령에서 빈 목록입니다. `patch`의 `FILE` 요청은 `{ argument, kind: "request", format: "json", fields, ops, preserve, nodeKinds }`로 설명됩니다([patch 요청](/ko/tooling/ai-harness/#patch-요청-047) 참고). 파서 자신의 정의에서 나오므로 `--help`나 patch 요청 파서와 어긋날 수 없습니다. 알 수 없는 경로는 `E-CLI-USAGE`이며, 종료 코드는 **0** 또는 **2**입니다.
 
 ## Telemetry
 
@@ -373,7 +373,7 @@ scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `na
 ## expr
 
 ```console
-$ lute expr <EXPR> [--project <DIR>] [--providers <DIR>] [--permission-profile <NAME>]
+$ lute expr <EXPR> [--project <DIR>] [--permission-profile <NAME>]
              [--deny <CODE>]… [--deny-warnings] [--json]
 ```
 
@@ -411,7 +411,7 @@ $ lute expr "@at(3, 'night')" --json
 ```console
 $ lute trace <FILE> [--project <DIR>] [--providers <DIR>] [--permission-profile <NAME>]
               [--deny <CODE>]… [--deny-warnings] [--state <PATH>=<LITERAL>]… [--fact <ATOM>]…
-              [--choice <BRANCH>=<CHOICE>[,<CHOICE>…]]… [--event <N>]… [--accepted-quest <QUEST>]…
+              [--choice <BRANCH>=<CHOICE>[,<CHOICE>…]]… [--event <NAME>]… [--accepted-quest <QUEST>]…
               [--occasion <OCCASION>[@<TARGET>]]… [--mock <FILE>] [--entry <ID> | --beat <ID>]
               [--no-derive] [--expand] [--json]
 ```
@@ -462,7 +462,7 @@ $ lute scenario knowledge [--node <NODE>]
 ## beats
 
 ```console
-$ lute beats [--project <DIR>] [--providers <DIR>] [--occasion <OCCASION>]… [--target <TARGET>]… [--expand] [--json]
+$ lute beats [--project <DIR>] [--occasion <OCCASION>]… [--target <TARGET>]… [--expand] [--json]
 ```
 
 프로젝트의 모든 beat를 계기별 사다리 하나로, 대상 지정 계기라면 대상별 사다리로 나누어 선택 순서대로 출력합니다(dsl 0.23.0). 출력에는 priority, beat와 title, 종류(`scene`, `entry`, `bundle`), `once`(`run`, `user`, `day`, `slot`, 또는 `no`; 번들 beat의 `once="day"` / `once="slot"`도 포함), `also`, 그리고 dsl 0.25.0부터 `share` 키가 포함됩니다(`day, share solWarm`; `--json`에서는 `share`). 또한 전체 프로젝트 `check` 판정(`unreachable`, `shadowed`, `tied`, `once-run-user`), `after:`(번들 beat의 `after=`도 포함), 작성자가 쓴 그대로의 `when`을 출력하며 dsl 0.24.0부터 `@def` 참조도 포함합니다. `--expand`는 각 `when`을 def 확장 형태로 출력하고, `--json`은 두 형태를 `when`(확장)과 `whenAuthored`로 모두 담습니다. `--occasion`과 `--target`(둘 다 반복 가능)은 사다리를 거르고, `--json`은 각 판정의 전체 진단을 담습니다. 읽기 전용이며, 프로젝트가 깨끗하게 검사를 통과할 필요는 없습니다. 성공하면 종료 **0**, I/O 오류나 알 수 없는 `--occasion`이면 **2**입니다. [스토리 개요](/ko/tooling/overviews/#lute-beats)를 참고하세요.
@@ -489,7 +489,7 @@ $ lute calendar [--project <DIR>] [--providers <DIR>] [--permission-profile <NAM
 - `--occasion <OCCASION>` (반복 가능) — 평가할 계기이며, 기본값은 beat가 응답하는 모든 계기입니다.
 - `--occasion-axes <OCCASION>=<AXES>` (반복 가능, dsl 0.24.0) — `<OCCASION>`을 평가하면서(이 옵션이 그 계기를 선택하므로 `--occasion`에 따로 쓰지 않습니다) `<AXES>`(`<axis>[=<value>],…`)에 이름이 지정된 축만 변화시킵니다. 다른 모든 축이 첫 값인 곳에서 평가하고(`--occasion-axes dayEnd=run.day,run.slot=night`는 대신 `run.slot`을 `night`에 고정), 다른 곳은 비워 둡니다. 따라서 하루 한 번 계기는 하루에 한 번 읽습니다(`--json`: 열의 `varies` 및 `heldAt`). `--axis clock`에서는 시계의 축을 이름으로 지정합니다. `--occasion-axes dayEnd=clock.day,clock.slot=night` 또는 시계 자체 경로인 `--occasion-axes dayEnd=run.day,run.slot=night`로 `dayEnd`를 하루 한 슬롯에서 평가합니다(지정하지 않으면 그날의 첫 슬롯, 시계가 발생시키는 `raise.dayEnd` 계기에서는 그날의 마지막 슬롯). 같은 계기를 `--occasion`과 `--occasion-axes`에 모두 쓰거나 `--occasion-axes`에 두 번 쓰면 `E-CLI-USAGE`입니다.
 - `--axis clock`에서 시계의 `raise:`가 이름으로 지정한 계기는 `lute play`의 `advance:`가 발생시키는 위치에서만 판정합니다. `slot` 계기는 런이 시작한 위치를 제외한 모든 위치, `dayStart`는 런이 시작한 날을 제외한 각 날짜의 첫 슬롯, `dayEnd`는 각 날짜의 마지막 슬롯(끝나는 시계에서는 마지막 위치)에서 판정합니다. 시계에 `raiseAtStart: true`가 있으면 런이 시작한 위치에서도 `slot`과 `dayStart`를 발생시킵니다. 나머지 셀은 모두 `not raised`이며 승자, 자격 목록, 가려진 beat를 표시하지 않습니다(`--json`: 결과에 `"notRaised": true`, root에 `{ occasion, reason }` 목록인 `notRaised`, CSV: `notes`에 `not raised`). 헤더 줄에는 시계가 계기를 발생시키는 위치가 표시됩니다. 이런 셀에서만 자격 있는 beat는 `` eligible at day 1 (Mon) morning, where the clock does not raise `dayStart` `` 이유로 never eligible입니다. 런은 세이브가 시계를 둔 위치에서, `--script` 단계 전에 시작합니다. 슬롯을 이름으로 지정한 `dayEnd` 열(`dayEnd@clock.day,clock.slot=afternoon`)은 해당 위치에서 판정하며, `advance: day`는 시계가 어디에 서 있든 그날을 닫습니다.
-- `--target <T>` (반복 가능) — 대상 지정 계기를 발생시킬 대상입니다. 기본적으로 대상 지정 계기는 도메인의 모든 멤버가 아니라 beat가 이름으로 지정한 각 대상별 열 하나를 얻습니다. 어떤 beat도 대상을 이름으로 지정하지 않으면 대상 없는 beat만 응답하는 단일 `(any)` 열을 얻습니다.
+- `--target <TARGET>` (반복 가능) — 대상 지정 계기를 발생시킬 대상입니다. 기본적으로 대상 지정 계기는 도메인의 모든 멤버가 아니라 beat가 이름으로 지정한 각 대상별 열 하나를 얻습니다. 어떤 beat도 대상을 이름으로 지정하지 않으면 대상 없는 beat만 응답하는 단일 `(any)` 열을 얻습니다.
 - `--relation <RELATION>` (반복 가능, dsl 0.24.0) — 정착된 각 셀에서 관계의 팩트를 출력합니다. 첫 번째 인자마다 한 행, 셀마다 한 열인 표입니다(`--relation at`: 누가 언제 어디에 있는지). `--json`에서는 셀별 `facts` 맵, `--format csv`에서는 `facts:<rel>` 열을 제공합니다.
 - `--script <FILE>` — play 스크립트입니다. 모든 셀은 세이브에서 시작하며 `steps:`를 `lute play`와 정확히 같은 방식으로 replay합니다.
 - `--until <STEP>` — `--script`와 함께 사용하며, 이 단계 전까지만 replay합니다. 1부터 세는 단계 번호 또는 `label:` 단계이며(알 수 없는 레이블에는 did-you-mean이 표시됨), 해당 단계 자체는 재생하지 않습니다.
@@ -756,9 +756,10 @@ reward ITEM: 2 value(s)
 ## new
 
 ```console
-$ lute new <scene|quest|lore|schema> <NAME> [--project <DIR>] [--json]
 $ lute new scene <NAME> [--project <DIR>] [--occasion <OCCASION>] [--target <TARGET>] [--json]
 $ lute new quest <NAME> [--project <DIR>] [--start] [--json]
+$ lute new lore <NAME> [--project <DIR>] [--json]
+$ lute new schema <NAME> [--project <DIR>] [--json]
 ```
 
 기존 프로젝트에 새 문서 하나를 스캐폴딩합니다. 첫 번째 인자는 문서 종류(`scene`, `quest`, `lore`, `schema`)이고 `<name>`은 문서의 `id:`가 되며 파일 이름도 그 id를 따릅니다. 입력한 대소문자는 id에 유지됩니다(`isles.harborNight`는 그대로 `isles.harborNight`). 구문을 이루는 단어와 `-` 이름의 부분은 camel case로 합쳐지고(`The Epilogue` → `theEpilogue`, `the-hunt` → `theHunt`), 점이 있는 이름의 점은 유지됩니다. 이름의 `/`는 하위 폴더에 파일을 중첩하며, 씬에서는 폴더를 id에 점으로 반영합니다. `lute new scene talk/tomas-evening`은 `scenes/talk/tomasEvening.lute`에 `id: talk.tomasEvening`을 씁니다. `lute new quest lamp.oil`은 `quests/lamp.oil.lute`에 `id: lamp.oil`을 쓰고, `lute new lore old-map`은 `lore/oldMap.lute`에 `id: oldMap`과 `item.oldMap`에 연결된 `<entry>` 하나를 씁니다 — `quest.`나 `lore.` 접두사는 추가하지 않습니다. 모든 문서는 매니페스트의 `defaults:`가 이미 제공하는 항목(예: `luteVersion`, `uses`)을 생략합니다. `lute new quest`는 **수락 방식** 스텁을 스캐폴딩하며 `start`가 없고 이를 시작하는 `::accept{quest="…"}`를 설명하는 주석이 있습니다. `--start`는 자동 시작하는 `start="true"` 형식을 씁니다. `--project`는 프로젝트를 지정하며(없으면 현재 디렉터리에서 위로 올라가며 가장 가까운 `lute.project.yaml`을 찾습니다), 문서는 프로젝트 루트 아래에 생성됩니다. 프로젝트 하위 폴더에서 실행해도 발견된 프로젝트 전체에 대해 동작합니다. `--json`은 보고서 `0.48.0.new`(`{kind, id, path}`)를 출력합니다. 종류는 하위 명령이므로 `lute new <kind> <NAME>` 형태는 그대로입니다. 프로젝트 밖에서는 `lute new`가 stderr에 이를 알리고 독립적으로 완전한 문서를 씁니다.
@@ -767,7 +768,7 @@ $ lute new quest <NAME> [--project <DIR>] [--start] [--json]
 
 ```console
 $ lute new scene tavi-shell --project scenes/talk
-lute new: `--project scenes/talk` resolves to `/private/tmp/tp/town/scenes/talk`, which is inside the project at `/private/tmp/tp/town` (its lute.project.yaml) but not its root; `--project` names the project, not the destination folder — did you mean `lute new scene talk/tavi-shell`? (nothing was written)
+lute new: `--project scenes/talk` resolves to `/tmp/tp/town/scenes/talk`, which is inside the project at `/tmp/tp/town` (its lute.project.yaml) but not its root; `--project` names the project, not the destination folder — did you mean `lute new scene talk/tavi-shell`? (nothing was written)
 ```
 
 씬, 퀘스트, 로어는 하나의 문서 id 집합을 공유하므로 다른 문서가 이미 선언한 id가 되는 이름은 거부되며 아무것도 쓰지 않습니다.
@@ -780,15 +781,15 @@ lute new: `scenes/town/welcome.lute` already declares `id: town.welcome` — sce
 `--occasion <occasion>`은 해당 계기에 응답하는 씬 [비트](/ko/language/beats/)를 만들고, `--target <target>`은 대상 지정 계기가 무엇을 위해 발생하는지, 즉 대상 도메인의 `<prefix>.<member>`를 지정합니다. 파일을 쓰기 전에 둘 다 프로젝트에 맞춰 검사합니다. 프로젝트 플러그인이 선언하지 않은 계기이거나 계기 도메인 밖의 대상이면 did-you-mean과 함께 종료 **2**가 되고 파일을 만들지 않습니다.
 
 ```console
-$ lute new scene talk/tomas-evening --occasion talk --target npc.tomass
-lute new: target `npc.tomass` is outside occasion `talk`'s domain `npc.<npc>` (`npc.mara`, `npc.tomas`) — did you mean `npc.tomas`?; nothing was written
+$ lute new scene explore/gate --occasion explore --target place.villag
+lute new: target `place.villag` is outside occasion `explore`'s domain `place.<place>` (`place.lantern`, `place.gallery`, `place.landing`, `place.cottage`, `place.village`) — did you mean `place.village`?; nothing was written
 ```
 
 대상 지정 계기에는 `--target`이 필요합니다. `target:` 없는 씬은 모든 대상을 위해 재생되기 때문입니다.
 
 ```console
-$ lute new scene talk/tomas-evening --occasion talk
-lute new: occasion `talk` is raised for a target, and a scene without `target:` would play for every one — pass `--target npc.<member>`, the target this scene answers; nothing was written
+$ lute new scene explore/gate --occasion explore
+lute new: occasion `explore` is raised for a target, and a scene without `target:` would play for every one — pass `--target place.<member>`, the target this scene answers; nothing was written
 ```
 
 `--occasion O`는 항상 `on: O`를 씁니다(0.29.0). `O`가 매니페스트의 [`chapters:`](/ko/getting-started/connect-scenes/#장chapter들-chapters) 연쇄가 응답하는 계기라면, 그 씬을 대신 챕터로 만드는 방법도 출력합니다. 해당 연쇄의 `scenes:`에 id를 나열하고 `on:`을 제거하면 됩니다.

@@ -1974,7 +1974,7 @@ rules:
 stdout에 `command`, `schemaVersion`, `ok`를 포함한 객체 하나를 출력하며, `ok`는 프로세스 종료 코드가
 0일 때만 `true`입니다. `LUTE_TELEMETRY=0 target/debug/lute schema check`의 실제 출력은
 `schemaVersion: "0.48.0.schema"`이며 `--json` 검사 보고서(`0.48.0.check`)의 인자와 출력을 설명합니다.
-`lute schema`는 항상 JSON이며 인자, 옵션, 출력, `inputs`(`lute schema patch`의 `PATCH` 요청, 다른 명령은 빈 목록)를 나열합니다.
+`lute schema`는 항상 JSON이며 인자, 옵션, 출력, `inputs`(`lute schema patch`의 `FILE` 요청, 다른 명령은 빈 목록)를 나열합니다.
 
 JSON 모드의 사용법·I/O·입력 오류도 객체 하나입니다. `error.code`는 `E-CLI-USAGE`, `E-CLI-IO`,
 `E-CLI-INPUT` 중 하나이며 가능한 경우 `error.path`, `error.argument`, `error.hint`가 들어갑니다.
