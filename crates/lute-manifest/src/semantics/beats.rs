@@ -30,7 +30,7 @@ pub fn strict_subset(a: &[String], b: &[String]) -> bool {
 /// just before the first placed beat of its occasion, priority and rank that
 /// strictly includes it, else last — so the order restricted to one raise's
 /// candidates (which hold every beat including a candidate kind beat) is the
-/// order of those candidates alone. The one rule `check-project`,
+/// order of those candidates alone. The one rule whole-project `check`,
 /// `lute beats` and `lute play` rank by.
 pub fn selection_order(keys: &[(&str, i64, Option<&[String]>)]) -> Vec<usize> {
     let mut sorted: Vec<usize> = (0..keys.len()).collect();

@@ -1,5 +1,5 @@
 //! dsl 0.19.0 §8 CLI surfaces owned by the tooling slice: `lute new lore`
-//! scaffolds a document `lute check` accepts, and `lute lore <dir>` reports
+//! scaffolds a document `lute check` accepts, and `lute lore --project <dir>` reports
 //! the world-narrative map (entries by target / series, and which facts lore
 //! entries reveal versus scenes and quests) as text and as JSON.
 

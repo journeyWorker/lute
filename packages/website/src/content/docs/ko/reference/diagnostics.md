@@ -5,7 +5,7 @@ description: "Lute가 보고하는 모든 진단 코드: 무엇이 그 코드를
 
 <!-- crates/lute-cli/src/codes.rs의 레지스트리와 같은 순서로 코드마다 한 절을 둡니다(`cargo test -p lute-cli --bins codes`가 검사합니다). -->
 
-Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 오류입니다: 문서가 검사를 통과하지 못하고 `lute check`는 1로 끝납니다. `W-` 코드는 경고입니다: `--deny <CODE>`나 `--deny-warnings`가 오류로 올리지 않는 한 문서는 통과합니다. `E-` 코드가 경고로 출력되는 일은 없습니다: `check-project --wip`가 봐주는 죽은 가드는 `W-WIP`로 보고되고, 메시지가 플래그 없이는 같은 가드에 붙을 오류 코드를 밝힙니다. `lute --explain <CODE>`는 아래 항목을 터미널에 출력하고, 에디터는 각 코드를 이 페이지의 해당 절로 연결합니다.
+Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 오류입니다: 문서가 검사를 통과하지 못하고 `lute check`는 1로 끝납니다. `W-` 코드는 경고입니다: `--deny <CODE>`나 `--deny-warnings`가 오류로 올리지 않는 한 문서는 통과합니다. `E-` 코드가 경고로 출력되는 일은 없습니다: 프로젝트 전체 `check --wip`가 봐주는 죽은 가드는 `W-WIP`로 보고되고, 메시지가 플래그 없이는 같은 가드에 붙을 오류 코드를 밝힙니다. `lute --explain <CODE>`는 아래 항목을 터미널에 출력하고, 에디터는 각 코드를 이 페이지의 해당 절로 연결합니다.
 
 메시지는 무엇이 잘못되었는지를 평이한 말로 알려 줍니다. 코드 뒤의 스펙 절은 각 항목 아래에 해당 제안서 링크와 함께 나열되며, `--json` 출력에서는 각 진단의 `spec` 필드에 담깁니다.
 
@@ -629,7 +629,7 @@ diff 한쪽을 읽거나 안전하게 임시 materialize하거나 완전한 프�
 
 ### E-ENTRY-ID-DUP
 
-두 `<entry>` 요소가 같은 `id`를 공유했지만, 항목 id는 문서 전체(그리고 `check-project`에서는 프로젝트 전체)에서 고유해야 합니다.
+두 `<entry>` 요소가 같은 `id`를 공유했지만, 항목 id는 문서 전체(그리고 프로젝트 전체 `check`에서는 프로젝트 전체)에서 고유해야 합니다.
 
 명세: [dsl 0.19.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md)
 
@@ -852,7 +852,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-LOCALE-BUNDLE
 
-`lute compile --locales`가 로케일 임포트 파일을 병합하지 못했습니다 — 구문 오류, `locale`이 비어 있는 행, 또는 같은 로케일에 대한 중복된 `lineId`입니다.
+`lute compile --locale-bundle`가 로케일 임포트 파일을 병합하지 못했습니다 — 구문 오류, `locale`이 비어 있는 행, 또는 같은 로케일에 대한 중복된 `lineId`입니다.
 
 ### E-LOGIC-CONTENT
 
@@ -1669,7 +1669,7 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 ### E-TRACE-ACCEPT
 
-`--accept`/`accept:` 항목이 알 수 없는 퀘스트 id를 지정했거나, `start` 술어를 가진(선언적으로 활성화되어 accept가 필요 없는) 퀘스트를 지정했거나, 부모의 `<objective quest=…>`가 참조하는(부모를 통해 활성화되는 no-start 자식) 퀘스트를 지정했습니다.
+`--accepted-quest`/`accept:` 항목이 알 수 없는 퀘스트 id를 지정했거나, `start` 술어를 가진(선언적으로 활성화되어 accept가 필요 없는) 퀘스트를 지정했거나, 부모의 `<objective quest=…>`가 참조하는(부모를 통해 활성화되는 no-start 자식) 퀘스트를 지정했습니다.
 
 명세: [dsl 0.4.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.4.0 §4.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md)
 
@@ -1681,7 +1681,7 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 ### E-TRACE-CHOICE
 
-`--choose` 항목이 알 수 없는 분기/허브 id를 지정했거나, 그 분기/허브의 알 수 없는 선택지 id를 지정했거나, 도달 시점에 선택지의 가드가 거짓으로 판정되었습니다.
+`--choice` 항목이 알 수 없는 분기/허브 id를 지정했거나, 그 분기/허브의 알 수 없는 선택지 id를 지정했거나, 도달 시점에 선택지의 가드가 거짓으로 판정되었습니다.
 
 명세: [dsl 0.4.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.4.0 §4.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md)
 
@@ -2253,6 +2253,6 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-WIP
 
-`check-project --wip`에서, 가드나 목표가 필요로 하는 관계를 만들어 내는 콘텐츠가 아직 쓰이지 않았다는 이유만으로 죽어 있습니다(시드, `::assert`, 규칙, 예약 선언이 없거나, 바인딩되지 않은 `@param`을 가진 컴포넌트 `::assert`만 있음). 메시지는 `--wip` 없이 붙을 오류 코드(`E-ARM-DEAD`, `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`)를 밝힙니다.
+프로젝트 전체 `check --wip`에서, 가드나 목표가 필요로 하는 관계를 만들어 내는 콘텐츠가 아직 쓰이지 않았다는 이유만으로 죽어 있습니다(시드, `::assert`, 규칙, 예약 선언이 없거나, 바인딩되지 않은 `@param`을 가진 컴포넌트 `::assert`만 있음). 메시지는 `--wip` 없이 붙을 오류 코드(`E-ARM-DEAD`, `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`)를 밝힙니다.
 
 명세: [dsl 0.23.0 §10](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md), [dsl 0.26.0 §2.6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)

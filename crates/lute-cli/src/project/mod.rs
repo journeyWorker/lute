@@ -1,6 +1,6 @@
 //! Project collection: the deterministic `.lute` walk, per-file project
 //! root resolution, and the per-root document grouping every project-wide
-//! pass (`check-project`, `scenario`, `beats`, `lore`, …) builds on.
+//! pass (whole-project `check`, `scenario`, `beats`, `lore`, …) builds on.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -36,7 +36,7 @@ use lute_model::assemble_root_scenario;
 
 /// One resolved project root's docs, each paired with its parsed
 /// `Document` and `fold_env`'s `FoldedEnv` — the per-root unit
-/// `check-project` and `lute scenario` (T14) both group by.
+/// whole-project `check` and `lute scenario` (T14) both group by.
 pub(crate) use lute_model::{ByRoot, DocGroup};
 
 pub(crate) fn model_cli_error_with_message(
@@ -70,14 +70,14 @@ pub(crate) fn model_cli_error_with_message(
 
 /// Walk `dir` for `.lute` files ([`find_lute_files`]), `check()` +
 /// `fold_env` each one, and group the parsed docs by resolved project root
-/// — the shared file-collection step `check-project`, `lute scenario`
+/// — the shared file-collection step whole-project `check`, `lute scenario`
 /// (T14), and the compile/trace project-aware gate (connectivity spec §5)
 /// all build on top of, so they can never observe a DIFFERENT project
 /// structure for the same `dir` (never a second file-walk/parse).
 ///
 /// `single_root` picks the root-resolution rule (connectivity spec §5's
 /// single-root vs nested distinction): `false` resolves EACH file's OWN
-/// nearest ancestor root ([`project_root_for`], `check-project`/`lute
+/// nearest ancestor root ([`project_root_for`], whole-project `check`/`lute
 /// scenario`'s nested-subproject behavior); `true` treats `dir` itself as
 /// THE single root for every file (capabilities AND connectivity resolve
 /// against exactly `dir`, no nested nearest-root search — the compile/trace
@@ -148,7 +148,7 @@ pub(crate) fn collect_project_docs_in(
 }
 
 /// [`collect_project_docs`], also handing back each file's `(root, input)` —
-/// aligned with the returned results — for `check-project`'s compile pass
+/// aligned with the returned results — for whole-project `check`'s compile pass
 /// ([`project_compile_pass`]), and the number of capability-resolution
 /// errors printed that did not stop the walk (a name declared twice keeps
 /// its first declaration, so the documents are still checked); the caller
@@ -381,7 +381,7 @@ pub(crate) fn canonical_path(path: &Path) -> Option<PathBuf> {
     std::fs::canonicalize(path).ok()
 }
 
-/// T1-14: the project's May producer set — `check-project`'s own
+/// T1-14: the project's May producer set — whole-project `check`'s own
 /// reachability-gated [`lute_check::connectivity::live_assert_relations`] —
 /// for the root at `root`, the set `W-TRACE-MOCK-UNPRODUCIBLE` must judge a
 /// mocked fact against. `single_root` mirrors [`collect_project_docs`]:

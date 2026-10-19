@@ -45,10 +45,10 @@
 //! ## What is reused, never re-implemented
 //! - Whole-project compile + gate: [`lute_model::reconciled_project_results`] +
 //!   [`crate::gate_for_doc`] + `lute_compile::compile_with_check`, the loop
-//!   `compile --all` ([`crate::compile_all`]) runs, kept in memory.
+//!   whole-project `compile` ([`crate::compile_all`]) runs, kept in memory.
 //! - Beat table and declaration union: `lute_compile::index::build_index` —
 //!   the SAME `beats` rows (and tiebreak order), rules, seed facts and
-//!   relation tiers `compile --all` writes to `project.index.json`.
+//!   relation tiers whole-project `compile` writes to `project.index.json`.
 //! - Execution: [`lute_runtime::machine::Machine`] — the walker `lute run` uses
 //!   — driven by [`PlayDriver`], runs every scene beat, every entry beat
 //!   (its `--entry` path: first-read effects, `entry.<id>.read`), every

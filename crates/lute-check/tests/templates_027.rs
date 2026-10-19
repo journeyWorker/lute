@@ -276,7 +276,7 @@ fn a_failed_template_does_not_cascade_into_its_uses() {
         "{LORE_HEAD}<beat use=\"bondStory\" id=\"a\" who=\"x\">\n@narrator: Hi.\n</beat>\n"
     );
     // The importer carries the component's own fault as one related
-    // `E-COMPONENT-PARSE` (check-project drops it for the component's line).
+    // `E-COMPONENT-PARSE` (whole-project check drops it for the component's line).
     let typo = BOND.replace("  on: bond", "  onn: bond");
     let (_, diags) = run(&typo, &lore);
     assert_eq!(codes(&diags), vec!["E-COMPONENT-PARSE"], "{diags:#?}");

@@ -122,7 +122,7 @@ pub struct ExecutionIr {
     /// project root to resolve `visited`/`completed` targets against or to
     /// assemble a project-wide graph). Never a project-assembled graph,
     /// flattened/validated edge set, or cycle/reachability/envelope data —
-    /// those stay entirely in `check-project`/`lute scenario`. An engine
+    /// those stay entirely in whole-project `check`/`lute scenario`. An engine
     /// reconstructs the whole graph by unioning `prereqEdges` across every
     /// document's artifact, exactly as it already unions `relations`/`rules`.
     /// Name-sorted by `node` (determinism). APPENDED LAST — after `commands`,
@@ -795,7 +795,7 @@ pub struct LineCmd {
     pub segments: Vec<Segment>,
     /// Merged locale texts (dsl 0.8.0 §7, 0.37.0 §6), locale tag → the
     /// translation's plain-text derivation, keyed on this record's `lineId`.
-    /// Populated only when `compile --locales` was given a locale bundle;
+    /// Populated only when `compile --locale-bundle` was given a locale bundle;
     /// `text` always remains the SOURCE-language string. Absent when empty.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub texts: BTreeMap<String, String>,

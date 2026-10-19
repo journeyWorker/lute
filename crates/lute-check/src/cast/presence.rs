@@ -53,7 +53,7 @@ use super::*;
 /// outside it). A `{vo}` line is exempt: a voice-over does not put its
 /// speaker in the room (an `{os}` speaker is there, out of frame).
 ///
-/// `facts` is `check-project`'s fact envelope: with it, a `holds(F)` in
+/// `facts` is whole-project `check`'s fact envelope: with it, a `holds(F)` in
 /// `present` is also implied when `F` is in the Must set at the line
 /// ([`crate::fact_must`] records every unguarded line's own slot). Without
 /// it (single-file `check`) no fact query decides, so the warning is a
@@ -123,7 +123,7 @@ pub fn check_presence(
             .and_then(|p| p.ladder.get(&at.byte_start))
             .map_or(&[][..], Vec::as_slice)
     };
-    // The occasions unit `key` follows: its own (`on`), and — `check-project`
+    // The occasions unit `key` follows: its own (`on`), and — whole-project `check`
     // — every one a scenario-graph ancestor is presented on.
     let after = |key: usize, own: Option<&str>| -> Vec<String> {
         let graph = project
@@ -246,7 +246,7 @@ pub fn check_presence(
     w.out
 }
 
-/// dsl 0.24.0 §4, `check-project`: what presence reads beyond one document
+/// dsl 0.24.0 §4, whole-project `check`: what presence reads beyond one document
 /// — the root's fact envelope, the document's beat-ladder assumptions
 /// ([`crate::beats::presence_ladder`], keyed by a unit's `on` offset),
 /// every `::assert` site of the root ([`fact_producers`]) and (dsl 0.25.0
@@ -267,7 +267,7 @@ pub struct PresenceProject<'a> {
 /// Accept anchors and subquest edges order nothing here. Only occasions
 /// some relation of the root names in `changedOn:` are followed. `docs` and
 /// `foldeds` are aligned (one resolved root).
-/// dsl 0.24.0 §4, `check-project`: re-decide one document's per-file
+/// dsl 0.24.0 §4, whole-project `check`: re-decide one document's per-file
 /// `W-CAST-ABSENT`s under the root's fact envelope and the document's
 /// beat-ladder assumptions ([`crate::beats::presence_ladder`]) — a line the
 /// Must set or the ladder shows present is dropped, the rest keep the
@@ -409,7 +409,7 @@ pub(super) struct Presence<'a> {
     path: &'a Path,
     folded: &'a FoldedEnv,
     facts: Option<&'a FactEnv>,
-    /// `check-project`: every `::assert` site of the root.
+    /// whole-project `check`: every `::assert` site of the root.
     producers: Option<&'a FactProducers>,
     params: &'a BTreeMap<String, DomainInfo>,
     defs: DefTable<'a>,

@@ -770,7 +770,7 @@ fn translatable_records(artifact: &serde_json::Value, lines: bool) -> Vec<(Strin
 }
 
 /// The completeness claim itself, as a COUNT rather than an eyeball: every
-/// translatable record `compile --all` emits for `root` (in the artifacts
+/// translatable record whole-project `compile` emits for `root` (in the artifacts
 /// `keep` selects) has an export row under its own `lineId`, and that row's
 /// `sourceHash` (dsl 0.47.0 §3.2) is the hash of the record's compiled text
 /// — so a fresh round trip is never `W-L10N-STALE`. Content lines are checked

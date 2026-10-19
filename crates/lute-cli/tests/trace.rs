@@ -14,7 +14,7 @@ fn trace(args: &[&str]) -> std::process::Output {
 }
 
 // --- §4.6 worked example: `docs/examples/choice-persist.lute`
-// `--choose sofaHelp=help` -> exit 0; the transcript names the branch
+// `--choice sofaHelp=help` -> exit 0; the transcript names the branch
 // decision, the into-sugar `::set`, the arm-1 match decision, and the
 // trailing coverage summary ("choices 1/3", "arms 1/2").
 
@@ -224,7 +224,7 @@ fn event_lifecycle_name_exits_1_with_trace_event() {
     );
 }
 
-// --- §4.3/§4.4: `--accept` on rescueHalsin (a `start`-having, declarative
+// --- §4.3/§4.4: `--accepted-quest` on rescueHalsin (a `start`-having, declarative
 // quest) is `E-TRACE-ACCEPT` — it activates on its own and needs no accept.
 
 #[test]

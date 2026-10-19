@@ -269,7 +269,7 @@ fn standalone_component_with_no_caller_is_unverified_not_ok() {
         "no caller in scope must not be a bare `ok`; got:\n{text}"
     );
     assert!(
-        text.contains("check-project"),
+        text.contains("whole-project `check`"),
         "the message must name the deciding leg; got:\n{text}"
     );
     assert!(
@@ -403,7 +403,7 @@ fn standalone_component_with_no_project_is_unverified_not_ok() {
         "no project resolved must not be a bare `ok`; got:\n{text}"
     );
     assert!(
-        text.contains("::use") && text.contains("check-project"),
+        text.contains("::use") && text.contains("`lute check --project <dir>`"),
         "the message must still say what the verdict covers, that the component's \
          own imports are discarded at `::use`, and who decides; got:\n{text}"
     );

@@ -74,7 +74,7 @@ fn errors(text: &str) -> Vec<(String, String)> {
         .collect()
 }
 
-/// One lore document analyzed the way `check-project` analyzes it: the
+/// One lore document analyzed the way whole-project `check` analyzes it: the
 /// per-file report (reconciled with the facts) and the project pass's.
 struct Project {
     per_file: Vec<Diagnostic>,

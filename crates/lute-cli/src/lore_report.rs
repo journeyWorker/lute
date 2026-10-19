@@ -1,8 +1,8 @@
-//! `lute lore <dir> [--json]` — the project's world-narrative map (dsl 0.19.0
+//! `lute lore --project <dir> [--json]` — the project's world-narrative map (dsl 0.19.0
 //! §8).
 //!
 //! A read-only report over every `.lute` document under `dir`, discovered by
-//! the SAME deterministic walk `check-project` uses ([`crate::find_lute_files`]
+//! the SAME deterministic walk whole-project `check` uses ([`crate::find_lute_files`]
 //! — byte-sorted, symlink-deduped) and parsed by the same syntax-layer parse
 //! the checker runs ([`lute_syntax::parse`]). It does not check: a document
 //! that parses is reported whatever its diagnostics; one whose parse fails

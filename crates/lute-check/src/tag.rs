@@ -284,7 +284,7 @@ fn code_insert(line: &Line, bytes: &[u8], code: &str) -> (usize, String) {
 /// deletions leave the back-filled sequence gappy and out of order, and a
 /// clean renumber keeps codes readable. Once a document's codes are
 /// published identity — exported for localization or voice — renumbering
-/// breaks the `lineId` join (`loc import`, `compile --locales`), so a
+/// breaks the `lineId` join (`loc import`, `compile --locale-bundle`), so a
 /// frontmatter `codesLocked:` key refuses the operation. The guard fails
 /// CLOSED: any `codesLocked:` value other than exactly `false` locks
 /// (a typo like `codesLocked: "no"` must never silently unlock).

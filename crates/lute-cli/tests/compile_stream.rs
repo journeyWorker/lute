@@ -1,4 +1,4 @@
-//! End-to-end contract tests for `lute compile-stream`'s flushed NDJSON wire.
+//! End-to-end contract tests for `lute compile --stream`'s flushed NDJSON wire.
 
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};

@@ -1,4 +1,4 @@
-//! `lute compile --all` — compile a whole project and index it.
+//! whole-project `lute compile` — compile a whole project and index it.
 //!
 //! `lute compile` handles ONE file, and `--project <dir>` only resolves that
 //! file's capability snapshot. But `docs/runtime/execution-model.md` requires an
@@ -13,7 +13,7 @@
 //! Nothing here re-derives project structure. The document set and each
 //! document's checks and artifacts come from one [`lute_model::ProjectModel`]
 //! build for the whole project, rather than one pass per file. This keeps
-//! `compile --all` aligned with the project's model semantics.
+//! whole-project `compile` aligned with the project's model semantics.
 //!
 //! ## All-or-nothing
 //! Every document is compiled IN MEMORY first. A single failing gate prints its

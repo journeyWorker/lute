@@ -1234,7 +1234,7 @@ fn dfs_use_cycle(
 /// component (`params`) but a def of `env` (bar `env_params`, the params of
 /// a component whose env it is) is `E-COMPONENT-STATE` at the read, naming
 /// the param that carries the def in. The component's own check and each
-/// host's `::use` report it alike, so `check-project` keeps the one in the
+/// host's `::use` report it alike, so whole-project `check` keeps the one in the
 /// component.
 pub(super) fn component_def_reads(
     body: &Document,

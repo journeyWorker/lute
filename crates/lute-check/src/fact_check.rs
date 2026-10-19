@@ -715,12 +715,12 @@ impl SlotVerdict {
     }
 }
 
-/// `check-project --wip`: a dead-guard error (`E-ARM-DEAD`,
+/// whole-project `check --wip`: a dead-guard error (`E-ARM-DEAD`,
 /// `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`)
 /// reported as a warning because only content not written yet kills it.
 pub const W_WIP: &str = "W-WIP";
 
-/// dsl 0.28.0 (T3-66): the error `d` as `check-project --wip` reports it —
+/// dsl 0.28.0 (T3-66): the error `d` as whole-project `check --wip` reports it —
 /// [`W_WIP`], a warning, never an `E-` code at warning severity; the message
 /// keeps its sentence and names the code it has without the flag, then
 /// `why` the flag spares it.

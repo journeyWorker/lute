@@ -19,7 +19,7 @@
 //! `S = tobias` reads `not liar(hollis)` when only Hollis saw Tobias.
 //!
 //! Read-only, over the same per-root document collection `lute scenario`
-//! and `check-project` use; documents need not check clean.
+//! and whole-project `check` use; documents need not check clean.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -808,7 +808,7 @@ pub(crate) struct RootKnowledge {
     vocab: RelVocab,
     asserted: Asserters,
     /// Every ground fact that may hold at some point of some run — built as
-    /// `check-project` builds it, with every assert site counted live (this
+    /// whole-project `check` builds it, with every assert site counted live (this
     /// view does not run reachability).
     may: MaySet,
     /// The root vocabulary `may` was built over: what a rule's positive

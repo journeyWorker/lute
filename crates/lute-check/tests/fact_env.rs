@@ -1,7 +1,7 @@
 //! dsl 0.20.0 fact envelopes: the project-wide may set (§3), the must set
 //! (§4), the verdict plumbing into `decide()` (§5), and the relational guard
 //! pass (`check_fact_guards`) — run through the same pipeline `lute-cli`'s
-//! `check-project` runs (per-file `check()` -> reachability ->
+//! whole-project `check` runs (per-file `check()` -> reachability ->
 //! `live_assert_sites` -> `MaySet` -> `compute_must` -> `check_fact_guards`).
 
 use std::path::{Path, PathBuf};
@@ -71,7 +71,7 @@ fn lore(body: &str) -> String {
     format!("---\nkind: lore\ntitle: Records\n{VOCAB}---\n{body}\n")
 }
 
-/// One resolved root, analyzed the way `check-project` analyzes it.
+/// One resolved root, analyzed the way whole-project `check` analyzes it.
 struct Root {
     docs: ProjectDocs,
     foldeds: Vec<FoldedEnv>,
@@ -1116,7 +1116,7 @@ fn a_root_with_an_unparseable_frontmatter_decides_no_fact_impossible() {
     assert_eq!(codes(&r.guards("notes.lute")), ["E-ENTRY-UNREACHABLE"]);
 }
 
-// --- dsl 0.23.0 §10: `check-project --wip` -----------------------------------
+// --- dsl 0.23.0 §10: whole-project `check --wip` -----------------------------------
 
 impl Root {
     /// This root's envelope with its work-in-progress twin.

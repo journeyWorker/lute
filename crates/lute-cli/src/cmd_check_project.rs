@@ -1,4 +1,4 @@
-//! `lute check` in whole-project mode (0.48.0 §3.1; `check-project` through
+//! `lute check` in whole-project mode (0.48.0 §3.1; whole-project `check` through
 //! 0.47.2).
 
 use std::collections::BTreeMap;
@@ -293,7 +293,7 @@ pub(crate) fn run_check_project(
     // verdict, so a `W-DOMAIN-UNREAD` produced there would surface from
     // `lute check <file> --project <dir>` and break D-V outright. The anchor
     // is the declaration (dsl 0.24 T3-6): an imported schema's canonical path,
-    // printed walk-relative like every other check-project diagnostic.
+    // printed walk-relative like every other whole-project check diagnostic.
     {
         let per_file: Vec<(PathBuf, &lute_check::DomainUse)> = file_results
             .iter()
@@ -339,7 +339,7 @@ pub(crate) fn run_check_project(
             .collect();
         let extra: Vec<&str> = schema_texts.iter().map(String::as_str).collect();
         // An origin is the canonical schema path; print it walk-relative like
-        // every other check-project diagnostic (`./world.schema.yaml:73:3`).
+        // every other whole-project check diagnostic (`./world.schema.yaml:73:3`).
         let canon_dir = canonical_path(dir);
         // 0.41.0 §3.2: a state row's `type: number` suggests `int` from
         // every value the project gives it — its default and each literal

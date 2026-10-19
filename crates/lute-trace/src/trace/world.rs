@@ -206,7 +206,7 @@ pub(super) fn choice_diag(span: Span, id: &str, choice_id: &str, reason: &str) -
     let mut diagnostic = logic_diag(
         mock::E_TRACE_CHOICE,
         format!(
-            "`--choose {id}={choice_id}` is ineligible at its presentation point: {reason} (dsl 0.4.0 §4.4)"
+            "`--choice {id}={choice_id}` is ineligible at its presentation point: {reason} (dsl 0.4.0 §4.4)"
         ),
         span,
     );

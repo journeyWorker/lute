@@ -36,7 +36,7 @@ pub struct Bindings {
     #[serde(default)]
     pub music: Music,
     /// 0.42.0 §3.2: the project `volume` domain's absolute levels as gains,
-    /// each a finite number in `[0, 1]` (checked by `check-project`).
+    /// each a finite number in `[0, 1]` (checked by whole-project `check`).
     #[serde(default)]
     pub volumes: BTreeMap<String, f64>,
     #[serde(default)]
@@ -358,7 +358,7 @@ pub struct EndedScreen {
 
 /// `ui.title` (0.47.0 §4.1): the title heading `text` (non-empty) and the
 /// title backdrop / music references, each optional; a written `ui.title`
-/// binds at least one (both checked by `check-project`, `E-BINDING-SHAPE`).
+/// binds at least one (both checked by whole-project `check`, `E-BINDING-SHAPE`).
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[cfg_attr(feature = "json-schema", schemars(extend("minProperties" = 1)))]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

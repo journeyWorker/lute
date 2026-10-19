@@ -124,7 +124,7 @@ impl Column {
 
 /// One cell: its values, quest-settle notes, one outcome per column (`None`
 /// where a per-occasion `@` list leaves the column out of the cell), and
-/// per `--facts` relation the facts that hold there.
+/// per `--relation` relation the facts that hold there.
 struct Cell {
     at: Vec<(String, String, Json)>,
     notes: Vec<String>,
@@ -147,7 +147,7 @@ struct Seen {
     unraised: BTreeMap<String, BTreeSet<lute_manifest::clock::ClockAt>>,
 }
 
-/// A `--facts` relation: its name, argument domains, and the members of
+/// A `--relation` relation: its name, argument domains, and the members of
 /// its first argument's domain when closed (every row the table shows).
 struct FactsRel {
     name: String,

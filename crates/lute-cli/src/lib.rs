@@ -10,7 +10,7 @@
 //!   pinned provider catalog. Exit `0` when clean, `1` when any `Error`-severity
 //!   diagnostic is present (`CheckResult::ok`), `2` on an I/O failure. `--json`
 //!   prints the serialized [`CheckResult`]; otherwise a human line per diagnostic.
-//! - `lute check-project <dir> [--json] [--providers <dir>]` — recursively
+//! - `lute check --project <dir> [--json] [--providers <dir>]` — recursively
 //!   `check` every `*.lute` file under `<dir>` (deterministic sorted order),
 //!   resolving EACH file's project root independently as its nearest
 //!   ancestor directory containing a `lute.project.yaml` (bounded below by
@@ -32,7 +32,7 @@
 //!   on an I/O failure. `--json` prints a structured report (per-file
 //!   `CheckResult`s + the project-wide diagnostics); otherwise per-file
 //!   human lines plus a project-wide section.
-//! - `lute catalog refresh <dir>` — re-stamp every pinned provider snapshot in
+//! - `lute catalog refresh --providers <dir>` — re-stamp every pinned provider snapshot in
 //!   `<dir>` against the current `capabilitySnapshot` and clear its `stale` flag,
 //!   rewriting each file in the flat on-disk format `ProviderSet::load` reads
 //!   (plugin §10; "an explicit `catalog refresh` precedes a build"). Correctness

@@ -203,7 +203,7 @@ pub(crate) fn run_trace(opts: &TraceOptions<'_>) -> ExitCode {
         None => MockSet::default(),
     };
 
-    // `--state`/`--mock` literals and `--choose` targets carry no source
+    // `--state`/`--mock` literals and `--choice` targets carry no source
     // text: a diagnostic about one renders at the synthetic point.
     let flag_mocks = MockSet {
         state: state
@@ -228,7 +228,7 @@ pub(crate) fn run_trace(opts: &TraceOptions<'_>) -> ExitCode {
     // The project models this trace consults (gate, quest ids, producers),
     // each built once.
     let memo = lute_model::ModelMemo::default();
-    // dsl 0.26.0 §7 (T3-5): `--accept` / `accepts:` resolve against every
+    // dsl 0.26.0 §7 (T3-5): `--accepted-quest` / `accepts:` resolve against every
     // quest of the project, not only this document's.
     if !mocks.accepts.is_empty() {
         mocks.project_quests = resolved
@@ -389,7 +389,7 @@ pub(crate) fn run_trace(opts: &TraceOptions<'_>) -> ExitCode {
                     println!("trace refused: {} — invalid `--beat`", file.display());
                 } else if diags.iter().all(|d| d.code == lute_trace::E_TRACE_CHOICE) {
                     println!(
-                        "trace refused: {} — a `--choose` / `choose:` selection cannot be followed",
+                        "trace refused: {} — a `--choice` / `choose:` selection cannot be followed",
                         file.display()
                     );
                 } else {

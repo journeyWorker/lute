@@ -293,13 +293,13 @@ pub struct Decision {
     /// arm/choice carried one (`None` for an unguarded choice / the
     /// `<otherwise>` arm).
     pub guard: Option<String>,
-    /// `--choose` selected this outcome past a guard that was `false`
+    /// `--choice` selected this outcome past a guard that was `false`
     /// (branch/hub forcing already refused the walk before recording — see
     /// [`TraceExit::Refused`]) — this flag is set ONLY for the `unknown`
     /// forced-past case (§4.4: "forcing past an unknown guard is
     /// permitted... and reported as forced").
     pub forced: bool,
-    /// No `--choose` entry named this construct; the walk auto-picked the
+    /// No `--choice` entry named this construct; the walk auto-picked the
     /// first eligible arm/choice in document order (§4.4).
     pub auto: bool,
     /// Branch/hub only: every choice id eligible at THIS presentation point
@@ -481,7 +481,7 @@ pub struct TraceReport {
     /// §3.1 additive key.
     #[serde(rename = "endReason")]
     pub end_reason: Option<String>,
-    /// Every `--choose`/`choose:` selection the walk FORCED past a guard that
+    /// Every `--choice`/`choose:` selection the walk FORCED past a guard that
     /// decided `unknown` (§4.4 permits it and records the decision as
     /// `forced`). The walk went on as asked, so the exit code is unchanged —
     /// but the guard was never decided, so it is counted as unresolved in the

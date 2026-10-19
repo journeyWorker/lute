@@ -21,7 +21,7 @@ fn fixture() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/runtime-bridge-041")
 }
 
-/// `lute compile --all` of the fixture into `scratch`: the bundle directory.
+/// whole-project `lute compile` of the fixture into `scratch`: the bundle directory.
 fn compiled(scratch: &str) -> (lute_scratch::ScratchDir, PathBuf) {
     let scratch = lute_scratch::ScratchDir::named(scratch);
     let out = scratch.join("bundle");

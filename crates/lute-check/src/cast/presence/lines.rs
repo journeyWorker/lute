@@ -179,7 +179,7 @@ impl Presence<'_> {
         if self.facts.is_none() && (raw.contains("holds(") || raw.contains("count(")) {
             message.push_str(
                 " (a single-file check does not see facts asserted on every route to this \
-                 line; `lute check-project` does)",
+                 line; whole-project `lute check` does)",
             );
         }
         self.out.push(cast_diag(

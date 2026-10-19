@@ -202,7 +202,7 @@ pub fn run_test(options: &TestOptions) -> ExitCode {
     // tests conventionally live in `tests/`, and measuring against the walk
     // root there made `every testable document … is named` vacuously true
     // (T1-13). `find_lute_files` is the SAME byte-sorted, symlink-deduped
-    // walk `check-project` uses, so the two surfaces agree about what a
+    // walk whole-project `check` uses, so the two surfaces agree about what a
     // document is. Compared on canonical paths, printed as the walk spelled
     // them.
     //
@@ -524,7 +524,7 @@ pub(crate) fn run_test_for_constraint(
 
 /// Execute one scenario test in-process and report whether its trace visited a
 /// graph target. This deliberately uses the same trace runner as
-/// `constraints --run`; static YAML mentions are never treated as witnesses.
+/// `constraints --all-scripts`; static YAML mentions are never treated as witnesses.
 pub(crate) fn run_test_for_context(
     script: &Path,
     target: &NodeKey,
@@ -1946,7 +1946,7 @@ pub(super) fn yaml_atom_hint(atom: &str) -> String {
         return format!("`facts: [{fact}]`");
     }
     if let Some((id, list)) = atom
-        .strip_prefix("--choose ")
+        .strip_prefix("--choice ")
         .and_then(|rest| rest.split_once('='))
     {
         let list = list.split(',').collect::<Vec<_>>().join(", ");
@@ -2203,15 +2203,15 @@ impl ForeignQuestStart {
 }
 
 /// T9.11's second half. `lute-trace` composes its mock diagnostics for
-/// `lute trace`'s command line (`--choose id=arm`, `--state path=value`,
-/// `--fact`, `--event`, `--accept`, `--entry`), but in a `*.test.yaml` the same input
+/// `lute trace`'s command line (`--choice id=arm`, `--state path=value`,
+/// `--fact`, `--event`, `--accepted-quest`, `--entry`), but in a `*.test.yaml` the same input
 /// arrived as a YAML KEY. Printing the message verbatim names a syntax the
 /// file cannot use. This rewrites the flag spelling to the key spelling and
 /// nothing else — the codes, ids, values and clause citations are
 /// `lute-trace`'s and stay exactly as written.
 fn yaml_key_spelling(message: &str) -> String {
     // Round-5 T3-12: a backticked mock hint (`` `--fact "f"` ``, `` `--state
-    // p=<value>` ``, a refused `--choose`'s premise) becomes the YAML entry
+    // p=<value>` ``, a refused `--choice`'s premise) becomes the YAML entry
     // a test writes, as an unresolved atom's hint does ([`yaml_atom_hint`]).
     let mut out = String::with_capacity(message.len());
     let mut rest = message;
@@ -2231,11 +2231,11 @@ fn yaml_key_spelling(message: &str) -> String {
     }
     out.push_str(rest);
     for (flag, key) in [
-        ("--choose ", "choose: "),
+        ("--choice ", "choose: "),
         ("--state ", "state: "),
         ("--fact ", "facts: "),
         ("--event ", "events: "),
-        ("--accept ", "accepts: "),
+        ("--accepted-quest ", "accepts: "),
         ("--entry ", "entry: "),
         ("--beat ", "beat: "),
     ] {

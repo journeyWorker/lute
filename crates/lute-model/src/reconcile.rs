@@ -1,4 +1,4 @@
-//! `check-project`'s per-root reconciliation over already-collected docs:
+//! whole-project `check`'s per-root reconciliation over already-collected docs:
 //! the connectivity fixpoint, project-wide passes, and the relocation /
 //! roll-up of imported and component-body diagnostics.
 
@@ -216,8 +216,8 @@ pub fn compute_conn_fixpoint(
 /// FS-free and format-free). Shared by [`run_check_project`] (grouping +
 /// human/JSON output) and [`reconciled_project_results`] (the compile/trace
 /// project-aware §5 gate).
-/// `wip` grades the fact-envelope dead-guard verdicts for `check-project
-/// --wip` (dsl 0.23.0 §10). The last element is each root's converged fact
+/// `wip` grades the fact-envelope dead-guard verdicts for `check
+/// --wip` (whole project) (dsl 0.23.0 §10). The last element is each root's converged fact
 /// envelope, for the reports that judge a condition under it (`lute beats`'
 /// gate marks, dsl 0.27.0 §4).
 ///
@@ -279,7 +279,7 @@ pub fn reconcile_collected(
     let mut dotted_root_of: std::collections::HashMap<PathBuf, usize> =
         std::collections::HashMap::new();
     // Spec §5 project gate side channel (additive; NEVER affects
-    // `project_diags`, so `check-project`'s output is byte-identical).
+    // `project_diags`, so whole-project `check`'s output is byte-identical).
     // Accumulated across every resolved root so the single-root gate
     // (`reconciled_project_results`) can map its target document to the
     // NodeId(s) it hosts; the on/downstream-of-cycle test itself is decided

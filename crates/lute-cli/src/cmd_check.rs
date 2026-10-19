@@ -21,7 +21,7 @@ use lute_load::{
 ///
 /// Reuses [`find_lute_files`] — the same walk `collect_project_docs` performs at
 /// its own first line — so "in the resolved project" means exactly what it
-/// means for `check-project`, including its symlink canonicalization and
+/// means for whole-project `check`, including its symlink canonicalization and
 /// deduplication. Parses each candidate rather than running `check()` on it: at
 /// this point only the `::use` graph matters, and a full check per file would
 /// make the standalone leg quadratic in the project.
@@ -190,7 +190,7 @@ pub(crate) fn compile_gate_diags(input: &CheckInput) -> Vec<Diagnostic> {
 /// Fold compile-stage diagnostics into a clean `check` verdict: skip any
 /// already reported, restore document order (`check` hands back
 /// `(byte_start, code)` order, so the merged list reads like one run), and
-/// recompute `ok`. Shared by `lute check` and `check-project`.
+/// recompute `ok`. Shared by `lute check` and whole-project `check`.
 pub(crate) fn merge_gate_diags(result: &mut lute_check::CheckResult, gate: Vec<Diagnostic>) {
     let mut added = false;
     for d in gate {
@@ -234,7 +234,7 @@ pub(crate) fn component_root_diag(component: &str, at: Span) -> Diagnostic {
         message: format!(
             "`{component}` is a component (dsl §13): its `params:` are bound at each `::use`, so \
              it has no standalone compiled form — compile or trace a document that imports it. \
-             `lute check` on this file gives the component's own verdict and `check-project` is \
+             `lute check` on this file gives the component's own verdict and whole-project `check` is \
              the deciding leg (dsl 0.10.0 §9)"
         ),
         span: at,
@@ -250,12 +250,12 @@ pub(crate) fn component_root_diag(component: &str, at: Span) -> Diagnostic {
 /// Every diagnostic that holds at EVERY call site, re-anchored inside the
 /// component (dsl 0.10.0 §9 rule 4).
 ///
-/// Runs `check()` once per caller — the same run `check-project` performs — and
+/// Runs `check()` once per caller — the same run whole-project `check` performs — and
 /// INTERSECTS the component-body diagnostics by `(code, message)`, the same key
 /// §9 rule 2's roll-up uses, and for the same reason: that string is
 /// byte-identical across callers exactly when the problem is caller-independent.
 /// A diagnostic present at only some callers drops out of the intersection and
-/// stays with `check-project`, where the caller is visible.
+/// stays with whole-project `check`, where the caller is visible.
 ///
 /// The surviving diagnostics are then re-anchored from §9 rule 1's secondary
 /// location onto the primary one, because HERE the component IS the document
@@ -662,7 +662,7 @@ fn check_document(
     // dsl 0.10.0 §9 rule 4 (**D-W**): a standalone component check either
     // forwards the caller-resolved verdict or refuses to claim `ok`. Until
     // 0.10.0 it did neither: a component that cannot work with ANY of its
-    // callers reported `ok`, `check-project` reported the fault once per caller
+    // callers reported `ok`, whole-project `check` reported the fault once per caller
     // at line 1 of the wrong file, and `lute trace` refused with advice that
     // could not be followed. This is what makes that advice followable.
     //
@@ -686,7 +686,7 @@ fn check_document(
         {
             // Report only what holds at EVERY call site: a diagnostic holding at
             // some but not all callers is caller-specific and stays with
-            // `check-project`, where the caller is visible. Anchored inside the
+            // whole-project `check`, where the caller is visible. Anchored inside the
             // component — that is the whole point of running it here.
             Some((root, callers)) if !callers.is_empty() => {
                 // A caller-independent fault the component's own check already

@@ -1211,7 +1211,7 @@ fn write_at(dir: &std::path::Path, rel: &str, content: &str) {
     std::fs::write(path, content).unwrap();
 }
 
-/// `doctor <dir>` and `whole-project check <dir>` MUST resolve the same project root
+/// `doctor --project <dir>` and `check --project <dir>` MUST resolve the same project root
 /// for the same target, or `doctor` reports a vocabulary the checker rejects.
 ///
 /// The fixture is the asymmetry itself: `proj/lute.project.yaml` activates a
@@ -1403,7 +1403,7 @@ fn refused_test_prints_the_held_diagnostics_not_a_canned_string() {
     // input that came from a YAML key, so even printed it points at the
     // wrong syntax.
     assert!(
-        !text.contains("--choose"),
+        !text.contains("--choice") && !text.contains("--choose"),
         "render the YAML key, not the flag: {text}"
     );
     assert!(text.contains("choose:"), "the YAML key must appear: {text}");

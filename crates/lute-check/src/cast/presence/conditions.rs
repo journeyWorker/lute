@@ -360,7 +360,7 @@ impl Presence<'_> {
         out.unwrap_or_default()
     }
 
-    /// `check-project`: the facts known absent when unit `key` of this
+    /// whole-project `check`: the facts known absent when unit `key` of this
     /// document starts, as `!holds(F)` ([`unit_facts`]).
     pub(super) fn absent_facts(&self, key: usize, once: BeatOnce) -> Vec<String> {
         let Some(producers) = self.producers else {

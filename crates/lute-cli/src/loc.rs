@@ -1,7 +1,7 @@
 //! `lute loc` — localization export/import and production word-count reporting.
 //!
 //! Three surfaces over a project's `.lute` documents. `export` and `report` are
-//! read-only walks built on the SAME deterministic file walk `check-project`
+//! read-only walks built on the SAME deterministic file walk whole-project `check`
 //! uses ([`crate::find_lute_files`] — byte-sorted, symlink-deduped) and the SAME
 //! syntax-layer parse the checker runs ([`lute_syntax::parse`]). Neither
 //! validates: a document that fails to parse (any `Error`-severity parse
@@ -31,13 +31,13 @@
 //! source text the compiler emits for the record
 //! ([`lute_compile::locale::source_hash`]) — a line's text with inline markup
 //! and escapes removed, an option's text, a prompt. `loc import` stores it in
-//! the bundle and `compile --locales` reports `W-L10N-STALE` when the source
+//! the bundle and `compile --locale-bundle` reports `W-L10N-STALE` when the source
 //! has changed since.
 //!
 //! ### `lineId` — the join that makes the round trip possible
 //! `lineId` is the stable content join `lute-compile`'s addressing pass stamps
 //! on every line and option record (`address.rs`), and the ONLY key
-//! `compile --locales` can merge a translation back onto (`addr` is a
+//! `compile --locale-bundle` can merge a translation back onto (`addr` is a
 //! REGENERATED position, spec §4.2/§12). It is reproduced here at the SYNTAX
 //! layer from exactly the same three inputs the addressing pass uses:
 //! - the identity PREFIX — a scene's `{character}.{episodeId}`
@@ -62,7 +62,7 @@
 //! A component has no frontmatter and therefore no `{prefix}`, so exporting
 //! its lines under their own file produced rows with `lineId: null` that
 //! carried a `code` — rows `lute tag` could never fix, which `loc import`
-//! skipped and which `compile --locales` then reported as `W-L10N-MISSING`
+//! skipped and which `compile --locale-bundle` then reported as `W-L10N-MISSING`
 //! under a caller-derived id no export contained. Adopting the language's
 //! only reuse mechanism removed a line from the localization pipeline.
 //!
@@ -406,7 +406,7 @@ fn walk_nodes<'a>(
 /// A scene document's identity prefix: authored `id:` (dsl 0.15.0 §2) when
 /// present and valid, else `{character}.{episodeId}` via the SHARED
 /// [`canonical_episode_key`] `lute-compile`'s own prefix join and
-/// `check-project`'s scene-key grouping both call. `None` when the
+/// whole-project `check`'s scene-key grouping both call. `None` when the
 /// frontmatter carries neither a usable authored id nor a usable
 /// `character`/`season`/`episode` triad — a quest document (whose prefix is
 /// per-`<quest>`), a component/schema fragment, or a scene too broken to
@@ -528,7 +528,7 @@ fn is_component_document(doc: &Document) -> bool {
 ///
 /// Each file's `identity:` templates resolve against its OWN nearest-ancestor
 /// project root ([`lute_load::project_root_for`], bounded below by `dir`) —
-/// same nested-subproject rule `check-project` and `lute scenario` use, so a
+/// same nested-subproject rule whole-project `check` and `lute scenario` use, so a
 /// walk spanning two subprojects exports each one's real ids.
 fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
     let files = find_lute_files(dir).map_err(|e| {
@@ -541,7 +541,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
     for path in &files {
         // #3 / T6.10 fix (i): expand `::use` before extracting, so a
         // component's lines are exported once PER CALL SITE under the
-        // caller's identity prefix — the id `compile --locales` actually
+        // caller's identity prefix — the id `compile --locale-bundle` actually
         // merges on. This is `lute-trace`'s own pipeline (`trace.rs`'s
         // `trace_document`), in the same order, with the same three passes;
         // `expand_document` is deliberately NOT run, because `{{…}}`
@@ -1031,7 +1031,7 @@ fn render_report_human(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> St
 
 /// A translation round trip is a round TRIP: `export` extracted content and
 /// nothing brought it back. This canonicalizes translated exports into the
-/// locale bundle `lute compile --locales` merges.
+/// locale bundle `lute compile --locale-bundle` merges.
 pub const E_LOCALE_BUNDLE: &str = "E-LOCALE-BUNDLE";
 
 /// One parsed input row: the join key and the translated string.
@@ -1063,7 +1063,7 @@ struct ImportRow {
 ///
 /// ## Source hashes (dsl 0.47.0 §3.2)
 /// A row's `sourceHash` (JSON field or CSV column, optional) is stored per
-/// `(lineId, locale)` under the bundle's `sourceHashes`; `compile --locales`
+/// `(lineId, locale)` under the bundle's `sourceHashes`; `compile --locale-bundle`
 /// compares it with the record's current source. The bundle is always written
 /// as `schemaVersion: 2`.
 ///

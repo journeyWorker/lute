@@ -1,5 +1,5 @@
 //! Fact provenance (dsl 0.24.0 T3-2): what last asserted each base fact of
-//! a playthrough, for `--explain`'s asserted leaves.
+//! a playthrough, for `--derivation`'s asserted leaves.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -12,7 +12,7 @@ use super::run::Playthrough;
 
 /// dsl 0.24.0 T3-2: what last asserted each base fact of the playthrough —
 /// ``entry `keeperLog2`, step 4``, `engine step 7`, the script's `facts:` —
-/// for `--explain`'s asserted leaves. `initial` is the world's fact set
+/// for `--derivation`'s asserted leaves. `initial` is the world's fact set
 /// before the first step (seed facts are labelled by the caller).
 pub(super) fn fact_origins(play: &Playthrough, initial: &BTreeSet<Fact>) -> BTreeMap<Fact, String> {
     let mut out: BTreeMap<Fact, String> = initial

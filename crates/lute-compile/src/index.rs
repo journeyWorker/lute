@@ -1,4 +1,4 @@
-//! Project index (`lute compile --all`) — the UNION of every document's
+//! Project index (whole-project `lute compile`) — the UNION of every document's
 //! artifact vocabulary, plus the document table an engine needs to find them.
 //!
 //! `docs/runtime/execution-model.md` requires an engine to union `entities` /
@@ -502,15 +502,15 @@ pub fn build_index(
     })
 }
 
-/// `E-CAPABILITY-MISMATCH`: the code `check-project` reports an
+/// `E-CAPABILITY-MISMATCH`: the code whole-project `check` reports an
 /// [`IndexError::CapabilityMismatch`] under (0.21.1 T1-11).
 pub const E_CAPABILITY_MISMATCH: &str = "E-CAPABILITY-MISMATCH";
 
 /// The single-snapshot gate [`build_index`] enforces, over `(document,
 /// capabilitySnapshot)` pairs: one [`IndexError::CapabilityMismatch`] per
 /// document whose snapshot differs from the FIRST document's. Shared with
-/// `check-project` (0.21.1 T1-11), which runs it over each project root's
-/// resolved snapshots so a project `play`/`compile --all` will refuse cannot
+/// whole-project `check` (0.21.1 T1-11), which runs it over each project root's
+/// resolved snapshots so a project `play`/whole-project `compile` will refuse cannot
 /// pass the check first.
 pub fn capability_mismatches<'a>(
     docs: impl IntoIterator<Item = (&'a str, &'a str)>,
@@ -600,7 +600,7 @@ pub fn voice_key_collisions(docs: &[IndexInput<'_>]) -> Vec<VoiceKeyCollision> {
 /// key is [`SceneMeta::id`] verbatim — the shared canonical scene key
 /// ([`lute_check::meta::canonical_scene_key`], dsl 0.15.0 §2) already
 /// stamped into the artifact by `artifact_meta`, so the index can never
-/// name a scene differently from the addressing prefix or `check-project`'s
+/// name a scene differently from the addressing prefix or whole-project `check`'s
 /// scene-key grouping. A quest or lore document with an authored `id:` is
 /// keyed by it (dsl 0.19.0 §2.1); without one, by its first declared
 /// `<quest id>` (`<entry id>`). A quest/lore document with neither has no

@@ -149,7 +149,7 @@ pub(crate) fn write_stdout(s: &str) -> std::io::Result<()> {
 /// trailing ` (+N more: 12:3, 47:9, …)` — line:column, comma-joined, document
 /// order. Shared by [`print_human`] (the `check`/`compile` diagnostic list),
 /// `run_trace`'s Refused rendering (dsl 0.4.0 §4.5: "the `E-TRACE-*` codes
-/// render exactly as check diagnostics do"), and `compile --locales`'
+/// render exactly as check diagnostics do"), and `compile --locale-bundle`'
 /// `W-L10N-MISSING` stream — ONE line format, never a second convention.
 ///
 /// Rendered to a `String` rather than printed so a caller whose STDOUT is

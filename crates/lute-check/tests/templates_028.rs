@@ -437,7 +437,7 @@ defs:\n  late: \"run.hour >= 20\"\n---\n\n## Lit\n\n@narrator{when=\"@late\"}: I
     assert!(comp[at..].starts_with("@late"), "{at}");
 
     // A host reports the same diagnostic (at its `::use`, the component's
-    // copy related) — identical, so `check-project` keeps only one.
+    // copy related) — identical, so whole-project `check` keeps only one.
     let host = "---\nkind: scene\nid: s\ntitle: S\ncomponents: [lit.lute]\n\
 state:\n  run.hour: { type: int, default: 8 }\ndefs:\n  late: \"run.hour >= 20\"\n---\n\
 ## S\n\n::use{component=\"lit\"}\n";

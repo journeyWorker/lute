@@ -1,4 +1,4 @@
-//! `lute play --explain <atom>` (dsl 0.22.0 §6): why a ground atom holds at
+//! `lute play --derivation <atom>` (dsl 0.22.0 §6): why a ground atom holds at
 //! the end of a playthrough — the rule used and each premise's own support,
 //! a negated premise shown absent — or, when it does not, every rule that
 //! could conclude it with its failing premises. The answer comes from

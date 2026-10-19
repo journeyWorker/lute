@@ -1,6 +1,6 @@
 //! Session conformance (spec 0.38.0 §12): every `conformance/session/<case>`
 //! — `lute play --events` reproduces `expected.jsonl`, and a runtime loaded
-//! from the case's `lute compile --all` output, replaying `inputs.jsonl`,
+//! from the case's whole-project `lute compile` output, replaying `inputs.jsonl`,
 //! reproduces every output byte-for-byte.
 
 use std::collections::BTreeMap;
@@ -27,7 +27,7 @@ fn lute() -> Command {
     Command::new(env!("CARGO_BIN_EXE_lute"))
 }
 
-/// `lute compile --all <project>` written to a scratch directory and read
+/// `lute compile --project <project>` written to a scratch directory and read
 /// back as a host reads it: `project.index.json` plus every artifact by its
 /// index path.
 fn compiled_bundle(project: &Path, scratch: &str) -> Bundle {

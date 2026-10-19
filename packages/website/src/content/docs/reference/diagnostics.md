@@ -6,7 +6,7 @@ description: "Every diagnostic code Lute reports: what raises it, and the spec s
 <!-- Generated from crates/lute-cli/src/codes.rs. Edit the registry, then run
      LUTE_BLESS_DIAGNOSTICS=1 cargo test -p lute-cli --bins codes -->
 
-Every diagnostic Lute prints carries a code. `E-` codes are errors: the document fails the check and `lute check` exits 1. `W-` codes are warnings: the document passes, unless `--deny <CODE>` or `--deny-warnings` promotes them. An `E-` code is never printed as a warning: `check-project --wip` reports the dead guards it spares as `W-WIP`, and the message names the error code the same guard has without the flag. `lute --explain <CODE>` prints a code's entry below in the terminal, and an editor links each code to its section here.
+Every diagnostic Lute prints carries a code. `E-` codes are errors: the document fails the check and `lute check` exits 1. `W-` codes are warnings: the document passes, unless `--deny <CODE>` or `--deny-warnings` promotes them. An `E-` code is never printed as a warning: whole-project `check --wip` reports the dead guards it spares as `W-WIP`, and the message names the error code the same guard has without the flag. `lute --explain <CODE>` prints a code's entry below in the terminal, and an editor links each code to its section here.
 
 A message says what is wrong in plain words. The spec sections behind a code are listed under it, each linked to its proposal, and `--json` output carries them in each diagnostic's `spec` field.
 
@@ -630,7 +630,7 @@ Spec: [dsl 0.19.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-ENTRY-ID-DUP
 
-Two `<entry>` elements share the same `id`, though entry ids must be unique across the document (and project-wide under `check-project`).
+Two `<entry>` elements share the same `id`, though entry ids must be unique across the document (and project-wide under whole-project `check`).
 
 Spec: [dsl 0.19.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md)
 
@@ -854,7 +854,7 @@ A plugin or custom lint rule declaration is malformed, such as reusing a core ru
 
 ### E-LOCALE-BUNDLE
 
-`lute compile --locales` failed to merge a locale import file — bad syntax, a row with an empty `locale`, or a duplicate `lineId` for the same locale.
+`lute compile --locale-bundle` failed to merge a locale import file — bad syntax, a row with an empty `locale`, or a duplicate `lineId` for the same locale.
 
 ### E-LOGIC-CONTENT
 
@@ -1674,7 +1674,7 @@ Spec: [dsl §11.4](/spec/)
 
 ### E-TRACE-ACCEPT
 
-A `--accept`/`accept:` entry names an unknown quest id, a quest that carries a `start` predicate (which activates declaratively, needing no accept), or a quest referenced by a parent's `<objective quest=…>` (a no-start child that activates via its parent).
+A `--accepted-quest`/`accept:` entry names an unknown quest id, a quest that carries a `start` predicate (which activates declaratively, needing no accept), or a quest referenced by a parent's `<objective quest=…>` (a no-start child that activates via its parent).
 
 Spec: [dsl 0.4.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.4.0 §4.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md)
 
@@ -1686,7 +1686,7 @@ Spec: [dsl 0.23.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-TRACE-CHOICE
 
-A `--choose` entry names an unknown branch/hub id or an unknown choice id for that branch/hub, either before the walk starts or because the choice's guard decides false when reached.
+A `--choice` entry names an unknown branch/hub id or an unknown choice id for that branch/hub, either before the walk starts or because the choice's guard decides false when reached.
 
 Spec: [dsl 0.4.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.4.0 §4.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md)
 
@@ -2258,6 +2258,6 @@ Spec: [dsl 0.18.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-WIP
 
-Under `check-project --wip`, a guard or objective is dead only because a relation it needs has no producer written yet (no seed, `::assert`, rule, or reserved declaration, or only a component `::assert` with an unbound `@param`); the message names the error code it is without `--wip`: `E-ARM-DEAD`, `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, or `E-OBJECTIVE-UNSATISFIABLE`.
+Under whole-project `check --wip`, a guard or objective is dead only because a relation it needs has no producer written yet (no seed, `::assert`, rule, or reserved declaration, or only a component `::assert` with an unbound `@param`); the message names the error code it is without `--wip`: `E-ARM-DEAD`, `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, or `E-OBJECTIVE-UNSATISFIABLE`.
 
 Spec: [dsl 0.23.0 §10](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md), [dsl 0.26.0 §2.6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)

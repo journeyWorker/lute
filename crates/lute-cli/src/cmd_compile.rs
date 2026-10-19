@@ -128,7 +128,7 @@ pub(crate) fn dispatch_compile(opts: &CompileOptions<'_>) -> ExitCode {
 /// `-o <FILE>`), `1` when the check gate fails (diagnostics to stdout,
 /// human or `--json`), `2` on I/O or serialization failure.
 ///
-/// With `--locales <bundle.json>` the compiled execution IR additionally carries
+/// With `--locale-bundle <bundle.json>` the compiled execution IR additionally carries
 /// per-record locale texts ([`load_locale_bundle`] then
 /// [`lute_compile::locale::merge_locales`], dsl 0.8.0 §7, 0.47.0 §3). Any
 /// resulting `W-L10N-MISSING` / `W-L10N-STALE` prints to STDERR — stdout may be
@@ -395,7 +395,7 @@ fn stamp_project_identity_renames(
     Ok(())
 }
 
-/// Read + parse a `--locales <bundle.json>` file (dsl 0.8.0 §7). A missing or
+/// Read + parse a `--locale-bundle <bundle.json>` file (dsl 0.8.0 §7). A missing or
 /// unreadable file is I/O (`2`, matching every other file the CLI opens); a
 /// file that IS readable but is not a bundle is `E-LOCALE-BUNDLE` (`1`) — the
 /// same code `lute loc import` reports for a malformed input, so the two ends

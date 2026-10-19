@@ -413,7 +413,7 @@ pub fn check_project_subquest_unsatisfiable(
 }
 
 /// dsl 0.22.0 §7: an `<on event="questFailed">` on a quest that can never
-/// fail (`check-project` only).
+/// fail (whole-project `check` only).
 pub const W_QUEST_HANDLER_DEAD: &str = "W-QUEST-HANDLER-DEAD";
 
 /// [`W_QUEST_HANDLER_DEAD`] over one resolved project root: every

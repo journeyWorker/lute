@@ -157,7 +157,7 @@ struct ProjectRun {
     json: serde_json::Value,
 }
 
-/// Run `whole-project check <dir> --json` once per project root for the whole test
+/// Run `check --project <dir> --json` once per project root for the whole test
 /// binary. Every corpus test below asks the same question of the same tree, and
 /// the `docs/examples` root alone covers all fourteen games, so re-running it
 /// per test repeated the most expensive check in the suite several times. The

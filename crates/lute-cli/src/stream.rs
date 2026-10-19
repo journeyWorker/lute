@@ -1,4 +1,4 @@
-//! `lute compile-stream`: stream checked continuation execution IR as flushed NDJSON.
+//! `lute compile --stream`: stream checked continuation execution IR as flushed NDJSON.
 
 use std::io::{self, Read, Write};
 use std::path::Path;

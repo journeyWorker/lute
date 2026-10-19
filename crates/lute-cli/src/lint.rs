@@ -1,6 +1,6 @@
 //! `lute lint` — the CLI surface over `lute_lint::lint` (spec §2).
 //!
-//! Grouping mirrors `check-project`: `.lute` files discovered under `PATH`
+//! Grouping mirrors whole-project `check`: `.lute` files discovered under `PATH`
 //! are grouped by nearest ancestor `lute.project.yaml` (roots without a
 //! manifest fall back to `PATH` itself or, for a bare file, its parent
 //! directory). Each root loads `lute.lint.yaml` (or `--config PATH`),
@@ -34,7 +34,7 @@ use lute_manifest::resolve::resolve_activation;
 /// clap `value_parser` for `lute lint --deny <CODE>`.
 ///
 /// Lint diagnostic codes are dynamic (`L-*` derived from plugin/custom rule
-/// ids), so the code registry ([`crate::codes`]) `check`/`check-project`
+/// ids), so the code registry ([`crate::codes`]) `check`/whole-project `check`
 /// use cannot enumerate them. Instead accept any code matching
 /// `^(L-[A-Z0-9-]+|E-LINT-(CONFIG|EXPR|RULE))$`, plus the native
 /// `W-DISPLAY-NAME-DUP`. Anything else is a clap usage error (exit 2),
@@ -177,7 +177,7 @@ fn relative_display(file: &Path, root: &Path) -> PathBuf {
 /// root-relative display form. Returns `Err(exit 2)` on an unreadable file.
 ///
 /// Under a manifest (`with_project` true) the document is assembled through
-/// the shared model input path used by `check-project` — a scene a `chapters:`
+/// the shared model input path used by whole-project `check` — a scene a `chapters:`
 /// chain lists carries the `on:` the chain derives, so lint classifies it as
 /// the beat every other surface reads — returned with the model's
 /// [`lute_load::BuiltInput`] for the root's project passes.
@@ -339,7 +339,7 @@ fn lint_target(
         };
         let plugin_rules = plugin_rules_for_root(project.as_ref());
 
-        // Build parsed inputs — under a manifest, desugared as `check-project`
+        // Build parsed inputs — under a manifest, desugared as whole-project `check`
         // reads them ([`build_lint_input`]).
         let (inputs, builts): (Vec<LintDocInput>, Vec<_>) = {
             use rayon::prelude::*;
@@ -404,7 +404,7 @@ fn lint_target(
 }
 
 /// `W-DISPLAY-NAME-DUP` (dsl 0.26.0 §2.8) for one project root — the same
-/// pass `check-project` runs, each document's cast resolved the way `check`
+/// pass whole-project `check` runs, each document's cast resolved the way `check`
 /// resolves it. `builts` is index-aligned with `inputs`; paths are the
 /// root-relative display paths the other lint diagnostics carry.
 fn display_name_dups(

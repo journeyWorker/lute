@@ -173,7 +173,7 @@ pub fn in_selection_order(beats: Vec<ProjectBeat<'_>>) -> Vec<ProjectBeat<'_>> {
 }
 
 /// Every well-formed beat of one project root, in `ProjectIndex.beats`
-/// order: `docs` (parallel to `foldeds`) in `check-project` order — the
+/// order: `docs` (parallel to `foldeds`) in whole-project `check` order — the
 /// selection tiebreak after priority — then declaration order within a
 /// document (a lore document's entry beats and bundle beats interleave by
 /// source position, as their compiled records do).

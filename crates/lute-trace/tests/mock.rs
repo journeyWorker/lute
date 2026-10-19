@@ -119,7 +119,7 @@ fn appendix_a_fact_arity_mismatch_is_fact_error() {
     assert_eq!(codes(&diags), vec![E_TRACE_MOCK_FACT], "{diags:?}");
 }
 
-/// `--choose sofaHelp=shrug` against the `sofaHelp` branch (choices `help`/
+/// `--choice sofaHelp=shrug` against the `sofaHelp` branch (choices `help`/
 /// `warmly`/`tip`) -> `E-TRACE-CHOICE`.
 #[test]
 fn appendix_a_choose_unknown_choice_is_choice_error() {
@@ -132,7 +132,7 @@ fn appendix_a_choose_unknown_choice_is_choice_error() {
     assert_eq!(codes(&diags), vec![E_TRACE_CHOICE], "{diags:?}");
 }
 
-/// `--choose` naming an unknown branch/hub id entirely (not merely an
+/// `--choice` naming an unknown branch/hub id entirely (not merely an
 /// unknown choice within a real one) is the same code, structurally.
 #[test]
 fn choose_unknown_branch_id_is_choice_error() {
@@ -171,7 +171,7 @@ fn event_non_lifecycle_name_passes_structural_validation() {
     assert!(diags.is_empty(), "{diags:?}");
 }
 
-/// `--accept rescueHalsin` against a quest that carries a `start` predicate
+/// `--accepted-quest rescueHalsin` against a quest that carries a `start` predicate
 /// (declarative — activates on its own, needs no accept) -> `E-TRACE-ACCEPT`.
 #[test]
 fn appendix_a_accept_on_start_having_quest_is_accept_error() {
@@ -184,7 +184,7 @@ fn appendix_a_accept_on_start_having_quest_is_accept_error() {
     assert_eq!(codes(&diags), vec![E_TRACE_ACCEPT], "{diags:?}");
 }
 
-/// `--accept noSuchQuest` names a quest id absent from the document ->
+/// `--accepted-quest noSuchQuest` names a quest id absent from the document ->
 /// `E-TRACE-ACCEPT`.
 #[test]
 fn accept_unknown_quest_id_is_accept_error() {
@@ -249,7 +249,7 @@ fn reserved_relation_fact_is_a_legal_mock() {
 
 /// `<choice when="1 > 2">` — a `decide()`-provably-false guard (the
 /// `lute-check/tests/reachability.rs` idiom for a decidedly-false constant).
-/// Forcing it via `--choose` still passes STRUCTURAL validation: eligibility
+/// Forcing it via `--choice` still passes STRUCTURAL validation: eligibility
 /// is a walk-time, presentation-point property (Task 19), never evaluated
 /// here.
 #[test]
@@ -685,7 +685,7 @@ fn mock_subject_reads_the_file_key() {
 
 /// Absent is `Ok(None)`, not an error: `lute trace <doc> --mock m.yaml`
 /// supplies the subject on the command line, and required-ness belongs to
-/// `check-project`'s pass over `mocks/*.yaml`, not to the grammar.
+/// whole-project `check`'s pass over `mocks/*.yaml`, not to the grammar.
 #[test]
 fn mock_subject_is_absent_not_an_error() {
     assert_eq!(

@@ -3,7 +3,7 @@
 //! each validated LOCALLY (grammar only, via `prereq::parse_prereq`) by the
 //! single-file `check()` entrypoint. Node existence (whether the referenced
 //! `visited`/`completed` id actually exists in the project) is NOT resolved
-//! here — that is `check-project`'s job (Task 3+).
+//! here — that is whole-project `check`'s job (Task 3+).
 
 use lute_check::{check, CheckInput, Mode, ProjectDocs, SchemaImports};
 use lute_manifest::provider::ProviderSet;
@@ -1888,11 +1888,11 @@ fn maybe_unavailable_names_after_as_the_fix() {
 
 /// dsl 0.27.0 (round-5 T3-21): single-file `check` cannot see the scene an
 /// `after:` orders before this one, so its `E-MAYBE-UNSET` on a `run.*`
-/// path this file never sets says `check-project` decides it. A file with
+/// path this file never sets says whole-project `check` decides it. A file with
 /// no `after:`/`on:`, or one that sets the path itself, gets no such hint.
 #[test]
-fn single_file_maybe_unset_points_at_check_project_for_ordered_scenes() {
-    let hint = "lute check-project";
+fn single_file_maybe_unset_points_at_whole_project_check_for_ordered_scenes() {
+    let hint = "whole-project `lute check`";
     let scene = |meta: &str, body: &str| {
         format!(
             "---\nkind: scene\nid: late\n{meta}state:\n  run.exam: {{ type: {{ enum: [passed, failed] }} }}\n\
@@ -1947,7 +1947,7 @@ fn standalone_clean_file_not_newly_errored() {
     // which never sets `run.q`) would make `run.q` unavailable from the
     // PROJECT's entry-state perspective -- but that read is satisfied
     // LOCALLY, so it must never be reclassified against `x3`'s `Env` at
-    // project scope. `check-project` must NOT newly error a file
+    // project scope. whole-project `check` must NOT newly error a file
     // single-file `check` reports clean.
     let y3 =
         "---\nkind: scene\ncharacter: y3\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator: hi\n";
@@ -2141,7 +2141,7 @@ fn envelope_soundness_exhaustive_match_subject_after_choice_record_stays_clean()
     // locally proven -- yet `check()`'s own T4.4/T4.6 exemption
     // (`suppress_exhaustive_subject_reads`, now sourced from
     // `exhaustive_match_subject_spans`) proves the match-consumed read
-    // safe, so single-file `check` MUST be clean, and `check-project` MUST
+    // safe, so single-file `check` MUST be clean, and whole-project `check` MUST
     // NOT newly error it either (dsl §7 soundness invariant).
     let x6 = "---\nkind: scene\ncharacter: x6\nseason: 1\nepisode: 1\nstate:\n  \
               run.pick: { type: { enum: [warm, cold] } }\n---\n## Shot 1.\n\

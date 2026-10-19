@@ -111,7 +111,7 @@ fn arms_cov_for(report: &lute_trace::TraceReport, label: &str) -> lute_trace::Co
 fn auto_pick_and_forced_pick() {
     let input = load_input("../../docs/examples/choice-persist.lute");
 
-    // No --choose: `help` auto-picked (first choice, doc order — none of
+    // No --choice: `help` auto-picked (first choice, doc order — none of
     // the 3 choices carry a `when=` guard, so all are trivially eligible);
     // Shot 2's match fires arm 1 since the into sugar wrote
     // `run.metHelpfully = true`.
@@ -123,7 +123,7 @@ fn auto_pick_and_forced_pick() {
         .find(|d| d.construct == "branch")
         .expect("a branch decision was recorded");
     assert_eq!(branch.outcome, "help");
-    assert!(branch.auto, "no --choose -> auto pick: {branch:?}");
+    assert!(branch.auto, "no --choice -> auto pick: {branch:?}");
     assert!(!branch.forced);
     let m = report
         .decisions
@@ -132,7 +132,7 @@ fn auto_pick_and_forced_pick() {
         .expect("a match decision was recorded");
     assert_eq!(m.outcome, "arm 1");
 
-    // `--choose sofaHelp=help`: every choice is eligible (none guarded);
+    // `--choice sofaHelp=help`: every choice is eligible (none guarded);
     // Shot 2 still takes arm 1; coverage "choices 1/3, arms 1/2".
     let mocks = choose(&[("sofaHelp", &["help"])]);
     let (report, exit) = trace_document(&input, mocks);

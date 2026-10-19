@@ -9,7 +9,7 @@
 //! (default `false`) through the ordinary schema lookup. A read of an entry
 //! another document declares is admitted by shape instead
 //! ([`lute_manifest::semantics::cel_paths::is_reserved_entry_read`]), exactly as a foreign
-//! `quest.<id>.state` is; `check-project` resolves the id
+//! `quest.<id>.state` is; whole-project `check` resolves the id
 //! (`W-ENTRY-REF-UNKNOWN`, [`crate::project_check`]).
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -27,12 +27,12 @@ use crate::meta::{Namespace, StateDecl};
 /// non-string value for any string attribute. Anchored at the attribute.
 pub const E_ENTRY_ATTR: &str = "E-ENTRY-ATTR";
 /// Two entries with the same `id` (§3) — per document in `lute check`,
-/// project-wide in `check-project`.
+/// project-wide in whole-project `check`.
 pub const E_ENTRY_ID_DUP: &str = "E-ENTRY-ID-DUP";
 /// Two entries with the same `(series, order)` (§3).
 pub const E_ENTRY_SERIES_ORDER: &str = "E-ENTRY-SERIES-ORDER";
 /// `entry.<id>.read` names an id no document in the project declares (§5,
-/// `check-project` only).
+/// whole-project `check` only).
 pub const W_ENTRY_REF_UNKNOWN: &str = "W-ENTRY-REF-UNKNOWN";
 /// dsl 0.26.0 §8 (T3-4): a repeatable entry beat — it answers an occasion
 /// (`on=`) and has no `once`, so every raise may present it again in the

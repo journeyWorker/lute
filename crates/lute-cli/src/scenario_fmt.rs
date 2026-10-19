@@ -2,7 +2,7 @@
 //! SAME per-root scenario analysis the text view reports. Never a second
 //! analysis: every graph/reach/envelope datum comes from
 //! `crate::collect_project_docs` + `crate::assemble_root_scenario` (the exact
-//! per-root collection + connectivity/envelope passes `check-project` and the
+//! per-root collection + connectivity/envelope passes whole-project `check` and the
 //! text `lute scenario` view share), reusing `crate::reach_verdict_text`,
 //! `crate::format_prereq`, `crate::topo_layers`, `crate::node_cycle_degraded`,
 //! and the `reach`/`envelope` node-resolution seam verbatim — only the

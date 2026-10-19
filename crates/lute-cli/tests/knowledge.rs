@@ -1,5 +1,5 @@
 //! dsl 0.24.0 T3-1 / T3-2, through the built `lute` binary: `lute scenario
-//! knowledge` over every guard slot (grouped per document, `--for
+//! knowledge` over every guard slot (grouped per document, `--node
 //! <scene>#<branch>.<choice>`), constants propagated into negated premises,
 //! the negation wording ("cannot be defeated", "defeated when …"), a derived
 //! tree printed once; `lute play --derivation` provenance; `lute lore`'s entry
@@ -103,7 +103,7 @@ fn knowledge_covers_every_guard_slot_grouped_by_document() {
     let dir = inquiry("slots");
     let d = dir.to_str().unwrap();
     // Before 0.24 a scene with only choice and line guards was not a
-    // fact-guarded node: `--for` exited 2.
+    // fact-guarded node: `--node` exited 2.
     let s = ok(&[
         "scenario",
         "--project",
@@ -125,7 +125,7 @@ fn knowledge_covers_every_guard_slot_grouped_by_document() {
     assert!(s.contains("    line `@tobias` (line 22)\n"), "{s}");
     assert!(
         !s.contains("entry `nbTobias`"),
-        "--for selects the scene's guards only: {s}"
+        "--node selects the scene's guards only: {s}"
     );
 
     // One choice by `<scene>#<branch>.<choice>`.

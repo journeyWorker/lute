@@ -2,8 +2,8 @@
 //! read-only reporting surface over everything §4 computes. Evaluates no
 //! CEL, runs no Datalog, takes no mocks: pure graph math over declared
 //! structure, reusing [`collect_project_docs`]'s SAME per-root doc grouping
-//! `check-project` builds (never a second file-walk/parse) plus the SAME
-//! `lute_check::connectivity`/`envelope` analyses `check-project`'s own
+//! whole-project `check` builds (never a second file-walk/parse) plus the SAME
+//! `lute_check::connectivity`/`envelope` analyses whole-project `check`'s own
 //! per-root pass calls (never duplicated math — only the presentation, and
 //! the omission of diagnostics, differ).
 
@@ -288,7 +288,7 @@ pub(crate) fn primary_node_ambiguity_note(
 }
 
 /// `lute scenario` dispatch (dsl §5:571-584): reuses [`collect_project_docs`]
-/// — the SAME per-root doc collection `check-project` builds — then routes
+/// — the SAME per-root doc collection whole-project `check` builds — then routes
 /// to the bare graph view, `reach`, or `envelope`.
 pub(crate) fn run_scenario(
     dir: &Path,

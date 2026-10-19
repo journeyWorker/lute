@@ -443,7 +443,7 @@ pub(super) fn after_premise(raw: &str, afters: &BTreeMap<String, &str>) -> Optio
 /// presentation asserts — [`Beat::eligible`]), negations normalized (dsl
 /// 0.26.0 §8), pin one path to disjoint values in every pairing; or the
 /// decider folds their conjunction to `false` — in either beat's document,
-/// under `env`'s must set at that beat's `when` slot when `check-project`
+/// under `env`'s must set at that beat's `when` slot when whole-project `check`
 /// has one (both are judged in the same state, so a fact guaranteed at
 /// either slot holds). An unconstrained eligibility never excludes
 /// anything.

@@ -190,7 +190,7 @@ impl<'a> TraceDriver<'a> {
     }
 
     /// A scripted `choose:` list ran out at `menu`: recorded as unresolved,
-    /// with the longer list that would decide it (`--choose id=a,<b|c>`).
+    /// with the longer list that would decide it (`--choice id=a,<b|c>`).
     pub(super) fn record_exhausted(
         &mut self,
         menu: &Menu<'_>,
@@ -207,7 +207,7 @@ impl<'a> TraceDriver<'a> {
             .map(|o| o.id.as_str())
             .collect();
         let hint = format!(
-            "--choose {}={},<{}>",
+            "--choice {}={},<{}>",
             menu.id,
             list.join(","),
             open.join("|")

@@ -8,7 +8,7 @@
 //! - the `after:` verdict — the SAME reach verdict `lute scenario reach
 //!   <node>` prints ([`crate::reach_verdict_text`]); an entry, never a graph
 //!   node, is an entry point;
-//! - the `when` verdict — the `check-project` verdicts about the beat, the
+//! - the `when` verdict — the whole-project `check` verdicts about the beat, the
 //!   ones `lute beats` shows (`E-BEAT-UNREACHABLE` / `E-ENTRY-UNREACHABLE`:
 //!   it never holds; `W-BEAT-SHADOWED`: it never wins);
 //! - for a `when` nothing refutes, the state paths and fact atoms it reads
@@ -485,7 +485,7 @@ fn row(
     } else {
         (
             "unrefuted",
-            "check-project does not refute it; it needs:".to_string(),
+            "whole-project `check` does not refute it; it needs:".to_string(),
         )
     };
     let needs = match (&b.when, when_token) {

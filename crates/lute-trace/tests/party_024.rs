@@ -156,7 +156,7 @@ fn the_compiled_rules_derive_with_the_ir_kinds() {
         "membership is tested, never materialised as facts"
     );
 
-    // `--explain`: the kind premise reads as membership, the guard as the
+    // `play --derivation`: the kind premise reads as membership, the guard as the
     // member's own path.
     let Explanation::Holds(Proof::Derived { rule, premises, .. }) =
         program.explain(&closure, &fact("inParty", "isolde"), &eff)

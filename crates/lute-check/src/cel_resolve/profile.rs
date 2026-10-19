@@ -491,7 +491,7 @@ pub const VISITED_FN: &str = "visited";
 /// (the tier `after:` uses, never cleared by `newRun`), so definite
 /// assignment and the unset-sentinel rules do not apply to it, and `decide`
 /// treats it as an undecided atom. Its id resolves against the project's
-/// scene keys at `check-project` (`E-CONN-UNKNOWN-NODE`,
+/// scene keys at whole-project `check` (`E-CONN-UNKNOWN-NODE`,
 /// [`crate::connectivity::resolve_nodes`]).
 pub fn visited_call_target(c: &cel_parser::ast::CallExpr) -> Option<&str> {
     if c.func_name != VISITED_FN || c.target.is_some() || c.args.len() != 1 {

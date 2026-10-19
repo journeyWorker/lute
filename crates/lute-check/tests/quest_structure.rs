@@ -1,5 +1,5 @@
 //! dsl 0.24.0 §2 — quest structure, through the assembled `check()` and the
-//! `check-project` passes: `<quest activate complete>` values, `<on
+//! whole-project `check` passes: `<quest activate complete>` values, `<on
 //! target>`, `::accept{at}`, accepting a subquest child
 //! (`E-ACCEPT-TARGET`), `W-QUEST-NEVER-ACCEPTED`, and the reserved read-only
 //! `quest.<id>.failedBy` / `quest.<id>.objectives.<o>.failed` paths; dsl

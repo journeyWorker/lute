@@ -19,7 +19,7 @@ pub(super) fn share_groups(beats: &[ProjectBeat<'_>]) -> BTreeMap<String, Vec<us
     groups
 }
 
-/// dsl 0.25.0 §2 ([`E_BEAT_ATTR`], `check-project`): every beat of one
+/// dsl 0.25.0 §2 ([`E_BEAT_ATTR`], whole-project `check`): every beat of one
 /// `share` key declares the same `once` — the first beat of the key, in
 /// project order, sets it; each beat that differs is reported at its
 /// `share`.
@@ -161,7 +161,7 @@ pub(super) fn reported_in(
 
 /// The project beat passes over one resolved project root (dsl 0.21.0 §4,
 /// §5; dsl 0.22.0 §13). `docs` and `foldeds` are parallel and in
-/// `check-project` order, which is the `ProjectIndex.beats` tiebreak order
+/// whole-project `check` order, which is the `ProjectIndex.beats` tiebreak order
 /// (documents in order, declaration order within). Beats are in
 /// [`selection_order`]: priority descending, member > sub-kind > kind, then
 /// that order.

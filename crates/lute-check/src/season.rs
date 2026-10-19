@@ -437,7 +437,7 @@ fn legacy_season(raw: &str, name: &str, live: &str) -> String {
 /// dominating it (the engine judges it between steps, like a `<quest
 /// start>`). Reported at the season's `live:` key (its name, in the short
 /// form): a schema document's own in this document, an imported schema's in
-/// that schema (`lives`, by file; `check-project` folds the importers'
+/// that schema (`lives`, by file; whole-project `check` folds the importers'
 /// identical reports into one).
 pub(crate) fn check_live_texts(
     doc: &lute_syntax::ast::Document,

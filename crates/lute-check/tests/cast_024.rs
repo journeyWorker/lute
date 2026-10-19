@@ -257,7 +257,7 @@ fn a_match_arm_on_the_presence_state_implies_it() {
     let msg = &hits[0].message;
     assert!(msg.contains("present: \"run.withUs == true\""), "{msg}");
     assert!(
-        !msg.contains("check-project"),
+        !msg.contains("whole-project"),
         "no fact query, no project note: {msg}"
     );
 }
@@ -318,9 +318,9 @@ fn a_plugin_present_that_does_not_parse_is_reported_once_and_not_decided() {
     assert!(with_code(&ds, ABSENT).is_empty(), "{ds:?}");
 }
 
-// --- W-CAST-ABSENT under the fact Must set (check-project) ------------------
+// --- W-CAST-ABSENT under the fact Must set (whole-project check) ------------------
 
-/// One resolved root analyzed like `check-project`: per-file `check()`,
+/// One resolved root analyzed like whole-project `check`: per-file `check()`,
 /// then the fact envelope, then the presence reconciliation.
 fn project(texts: &[(&str, &str)]) -> Vec<(String, Vec<Diagnostic>)> {
     project_in(snapshot, texts)
@@ -401,7 +401,7 @@ fn a_fact_asserted_on_every_route_discharges_presence_in_check_project() {
     let hits = with_code(&ds, ABSENT);
     assert_eq!(hits.len(), 1, "{ds:?}");
     assert!(
-        hits[0].message.contains("`lute check-project` does"),
+        hits[0].message.contains("whole-project `lute check` does"),
         "{}",
         hits[0].message
     );

@@ -593,7 +593,7 @@ pub(crate) enum Command {
     ///
     /// Compiles the WHOLE project in memory
     /// (scene, quest and lore documents — the gate and declaration union
-    /// `compile --all` uses), then for every script step computes the beats
+    /// whole-project `compile` uses), then for every script step computes the beats
     /// answering the occasion, each candidate's verdict (`once` spending,
     /// `after:` over the live visited/completed/active sets, `when` through
     /// `lute run`'s evaluator), orders the eligible ones by priority then

@@ -94,7 +94,7 @@ fn project(dir: &Path) {
 }
 
 /// `lute loc export` rows, `lute loc import` of them translated into ko,
-/// then `compile --all --locales` into `out`. Returns the exported rows and
+/// then `compile --locale-bundle` into `out`. Returns the exported rows and
 /// the compile's output.
 fn compile_localized(dir: &Path, out: &Path) -> (Vec<Json>, Output) {
     let exported = run(&["loc", "export", "--project", dir.to_str().unwrap()]);

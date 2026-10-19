@@ -184,7 +184,7 @@ pub struct CheckInput {
 /// Project-wide domain-read accounting (dsl 0.10.0 §11.1, **D-V**).
 ///
 /// `check()` computes both halves per document, from ITS resolved snapshot and
-/// ITS merged vocabulary; `check-project` unions them across the root and
+/// ITS merged vocabulary; whole-project `check` unions them across the root and
 /// reports the difference. Split this way because the question is only
 /// answerable project-wide: a domain declared in a shared schema is read by
 /// SOME document, so a single-document verdict would be a false positive on the

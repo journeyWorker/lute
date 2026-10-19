@@ -187,7 +187,7 @@ pub fn pattern_text(p: &FactPattern) -> String {
 /// the call leaves unbound is not written, and not judged. A fault in a
 /// fact that reads no `@attr` is the declaration's, not the call's: it is
 /// reported at the plugin file's line when the CLI placed it
-/// ([`RelVocab::effect_origins`]; `check-project` folds the copies).
+/// ([`RelVocab::effect_origins`]; whole-project `check` folds the copies).
 pub fn check_call(
     dir: &Directive,
     decl: &DirectiveDecl,

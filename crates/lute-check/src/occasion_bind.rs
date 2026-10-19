@@ -425,7 +425,7 @@ fn raised_regions<'d>(
 /// `{ entity: K }` of an occasion this document's beats answer names a
 /// declared enum or entity kind — else `E-DOMAIN-UNKNOWN` with a
 /// did-you-mean, reported at the plugin's `payload:` line when the CLI
-/// placed it (`check-project` folds the importers' copies into one), else
+/// placed it (whole-project `check` folds the importers' copies into one), else
 /// at the answering beat's `on`.
 pub(crate) fn check_payload_domains(
     doc: &lute_syntax::ast::Document,

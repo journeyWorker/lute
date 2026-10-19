@@ -1,9 +1,9 @@
 //! Per-cell evaluation: the columns a run evaluates, each column's outcome
-//! at a cell, and the `--facts` relations that hold there.
+//! at a cell, and the `--relation` relations that hold there.
 
 use super::*;
 
-/// Per `--facts` relation, the facts of it that hold over the settled
+/// Per `--relation` relation, the facts of it that hold over the settled
 /// cell: the runner's fixpoint, as [`world_view`] derives them.
 ///
 /// [`world_view`]: lute_runtime::session::world_view

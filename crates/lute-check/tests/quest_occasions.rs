@@ -1,5 +1,5 @@
 //! dsl 0.21.0 §7a — quests meet scenes and occasions, through the assembled
-//! `check()` and the `check-project` passes: `visited('<scene id>')` in every
+//! `check()` and the whole-project `check` passes: `visited('<scene id>')` in every
 //! condition slot (§7a.1) and its project-level id resolution
 //! (`E-CONN-UNKNOWN-NODE`), `<objective on=>` (§7a.2, `E-BEAT-ATTR` /
 //! `E-OCCASION-UNKNOWN`), and `::accept{quest=}` (§7a.3, `E-ACCEPT-TARGET`).

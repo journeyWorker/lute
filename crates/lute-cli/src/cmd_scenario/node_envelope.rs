@@ -150,7 +150,7 @@ fn print_path_set_with_writers(out: &mut String, paths: &BTreeSet<String>, write
 /// it true — in `lute scenario knowledge`'s words (T3-2: asserting
 /// documents, seed facts, the engine for a `reserved` relation, the rules).
 /// `producible` reads the SAME reachability-gated assert sites
-/// (`live_assert_relations`) the `check-project` fact envelope seeds from;
+/// (`live_assert_relations`) the whole-project `check` fact envelope seeds from;
 /// this renders relation-level facts rather than deciding anything (#15,
 /// T4.7).
 fn print_facts_section(
@@ -222,7 +222,7 @@ fn print_cycle_envelope_note(out: &mut String) {
 /// Print a scene node's Guaranteed/Possible envelope tables (T10) plus its
 /// `Possible \ Guaranteed` warning-grade READS (contract #2): T11's
 /// [`envelope::check_envelope`] already computes BOTH grades together and
-/// returns them — `check-project` filters to `Severity::Error` only and
+/// returns them — whole-project `check` filters to `Severity::Error` only and
 /// drops the warning grade; this RE-derives the SAME call, singleton-scoped
 /// to `key` so every returned diagnostic necessarily belongs to this node,
 /// and keeps the warning grade instead. Never a second classification pass
@@ -299,7 +299,7 @@ fn print_scene_envelope(
     outln!(
         out,
         "  Possible \\ Guaranteed -- warning-grade reads (set on SOME but not every declared \
-         route; suppressed by default in `check-project`, surfaced here):"
+         route; suppressed by default in whole-project `check`, surfaced here):"
     );
     let mut any = false;
     for (path, d) in &diags {

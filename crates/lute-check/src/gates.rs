@@ -524,7 +524,7 @@ pub fn gate_never_holds(
 /// The seam's CEL checked like any condition slot (dsl 0.27.0 §4): the
 /// gate of every occasion a beat of this document answers — ground with
 /// its first member when it reads `occasion.target` — reported at the
-/// plugin's `raisedWhen:` line when the CLI placed it (`check-project` folds
+/// plugin's `raisedWhen:` line when the CLI placed it (whole-project `check` folds
 /// the importers' identical reports into one), else at that beat's `on`;
 /// the document's own `terminal:` at its value; an imported schema's
 /// `terminal:` at the schema's line. A string literal no member of its

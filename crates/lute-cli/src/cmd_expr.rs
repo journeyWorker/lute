@@ -210,7 +210,7 @@ fn finish(
     }
 }
 
-/// Every non-component document of the project, assembled as `compile --all`
+/// Every non-component document of the project, assembled as whole-project `compile`
 /// assembles it, in source-path order.
 fn project_documents(
     cache: &InputCache,

@@ -1,6 +1,6 @@
 //! dsl 0.37.0 §3.6/§6 through the CLI, on the lighthouse-keeper corpus scene
 //! that uses inline modifiers: `loc export` keeps the authored markup,
-//! `compile --locales` refuses a translation whose modifiers differ
+//! `compile --locale-bundle` refuses a translation whose modifiers differ
 //! (`E-L10N-MODIFIERS`), `play --json` line events carry `segments` beside
 //! the plain `text`, and `context` describes the modifier surface.
 

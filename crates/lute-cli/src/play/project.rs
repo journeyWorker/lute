@@ -1,4 +1,4 @@
-//! Whole-project compile (the `compile --all` loop, in memory) and the
+//! Whole-project compile (the whole-project `compile` loop, in memory) and the
 //! index a play runs over.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -59,7 +59,7 @@ pub(crate) const TEST: Gate = Gate {
 };
 
 /// Compile every non-component document under `project_dir` in memory with
-/// the `compile --all` gate — refusing to run `gate`'s command over a
+/// the whole-project `compile` gate — refusing to run `gate`'s command over a
 /// project that does not wholly compile — and build its index, over
 /// `memo`'s model of it. `Err` carries the exit code after the diagnostics
 /// are printed.
@@ -135,7 +135,7 @@ pub(crate) fn build_project_model(project_dir: &Path) -> Result<ProjectModel, Ex
     )
 }
 
-/// The model a play compiles from: the project as `compile --all` sees it.
+/// The model a play compiles from: the project as whole-project `compile` sees it.
 fn model_options(build: &Build) -> ModelOptions {
     ModelOptions {
         providers: build.providers.map(Path::to_path_buf),

@@ -6,11 +6,11 @@
 //! - Per file ([`check_accept_directive`]): `quest` present, a quoted
 //!   string, and a quest identifier; `at` (dsl 0.24.0 §2), when present,
 //!   the quoted `nextRun`; no other attribute.
-//! - `check-project` ([`check_project_accepts`]): the target names a quest
+//! - whole-project `check` ([`check_project_accepts`]): the target names a quest
 //!   declared in the project, and that quest is accept-driven
 //!   ([`accept_driven_quests`]); a `<quest accept="external">` is
 //!   accept-driven too (dsl 0.25.0 §5).
-//! - `check-project` ([`check_project_never_accepted`]): an accept-driven
+//! - whole-project `check` ([`check_project_never_accepted`]): an accept-driven
 //!   quest nothing accepts is [`W_QUEST_NEVER_ACCEPTED`] (dsl 0.24.0 §2);
 //!   `accept="external"` is the one non-content acceptance (dsl 0.25.0 §5).
 
@@ -23,14 +23,14 @@ use lute_syntax::ast::{Arm, AttrValue, Directive, Node};
 use crate::content_line::E_UNKNOWN_ATTR;
 use crate::ProjectDoc;
 /// `::accept` names no quest, a malformed quest id, a bad `at`, or (at
-/// `check-project`) a quest that is not an accept-driven quest of the
+/// whole-project `check`) a quest that is not an accept-driven quest of the
 /// project (dsl 0.21.0 §7a.3, 0.24.0 §2); also `accept="external"` on a
 /// subquest child that activates with its parent (dsl 0.25.0 §5).
 pub const E_ACCEPT_TARGET: &str = "E-ACCEPT-TARGET";
 
 /// An accept-driven quest that no `::accept` in the project names and that
 /// is not `accept="external"`: nothing ever activates it (dsl 0.24.0 §2,
-/// 0.25.0 §5, `check-project` only). A test or trace mock's `accepts:` is
+/// 0.25.0 §5, whole-project `check` only). A test or trace mock's `accepts:` is
 /// no acceptance — it proves the test, not the game.
 pub const W_QUEST_NEVER_ACCEPTED: &str = "W-QUEST-NEVER-ACCEPTED";
 
@@ -177,7 +177,7 @@ pub(crate) fn accept_driven_quests<'a>(docs: &'a [ProjectDoc<'a>]) -> BTreeSet<&
         .collect()
 }
 
-/// `check-project` resolution of every well-formed `::accept` target in one
+/// whole-project `check` resolution of every well-formed `::accept` target in one
 /// resolved project root (dsl 0.21.0 §7a.3, 0.24.0 §2): the quest must be
 /// declared in the project and accept-driven — a quest with `start`
 /// activates on its own, and a subquest child without `activate="accept"`

@@ -1,5 +1,5 @@
 //! The diagnostic-code registry (dsl 0.27.0 §9, T3-17): every code a `lute`
-//! surface emits — `check`, `check-project`, `compile`, `trace`, `play`,
+//! surface emits — `check`, whole-project `check`, `compile`, `trace`, `play`,
 //! `test`, `lint`, the editor — with its grade, one plain sentence saying what
 //! raises it, and the spec sections behind it. Messages carry no spec
 //! citations (`lute_core_span::plain_message`); this is where they went.
@@ -127,7 +127,7 @@ pub(crate) fn reference_page() -> String {
          Every diagnostic Lute prints carries a code. `E-` codes are errors: the document fails \
          the check and `lute check` exits 1. `W-` codes are warnings: the document passes, \
          unless `--deny <CODE>` or `--deny-warnings` promotes them. An `E-` code is never \
-         printed as a warning: `check-project --wip` reports the dead guards it spares as \
+         printed as a warning: whole-project `check --wip` reports the dead guards it spares as \
          `W-WIP`, and the message names the error code the same guard has without the flag. \
          `lute --explain <CODE>` prints a code's entry below in the terminal, and an editor \
          links each code to its section here.\n\n\

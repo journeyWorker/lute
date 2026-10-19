@@ -1,8 +1,8 @@
-//! `lute beats <dir> [--occasion O]… [--target T]… [--json]` (dsl 0.23.0
+//! `lute beats --project <dir> [--occasion O]… [--target T]… [--json]` (dsl 0.23.0
 //! §1): the beat ladder. For every occasion — and, for a targeted one, every
 //! target a beat names — the beats that answer it in selection order
 //! (priority descending, then project order), each with its priority,
-//! `once`, `after:`, `when`, title, and the static verdicts `check-project`
+//! `once`, `after:`, `when`, title, and the static verdicts whole-project `check`
 //! reaches about it: unreachable, shadowed, tied, and once-per-run over
 //! user state — plus (dsl 0.26.0 §8) `covered by <id>`, a fallback an
 //! earlier never-spent beat whose `when` it implies always beats
@@ -15,11 +15,11 @@
 //! (all of them, or which members), judged under the root's fact envelope;
 //! dsl 0.28.0: a kind or `for=` beat's cell says `never for <target>` where
 //! its `when` never holds for the ladder's target, judged per member as
-//! `check-project` judges it ([`lute_check::fact_check::beat_never_for`]).
+//! whole-project `check` judges it ([`lute_check::fact_check::beat_never_for`]).
 //!
 //! Nothing is re-derived. The rows are [`lute_check::project_beats`] — the
 //! beat list the project beat passes judge — and the verdicts are the
-//! `check-project` diagnostics themselves (per-file and project-wide, the
+//! whole-project `check` diagnostics themselves (per-file and project-wide, the
 //! same [`crate::reconcile_collected`] run), attached to the row they name.
 //! Documents need not check clean: an unreachable beat is an error, and
 //! showing it is the point.
@@ -150,7 +150,7 @@ pub(crate) fn names_beat(path: &Path, d: &Diagnostic, b: &ProjectBeat<'_>) -> bo
 struct Cells<'r, 'a> {
     /// The root's beats in selection order.
     beats: &'r [ProjectBeat<'a>],
-    /// The `check-project` verdicts per beat.
+    /// The whole-project `check` verdicts per beat.
     verdicts: &'r [Vec<&'r Diagnostic>],
     covered: &'r [Option<&'r str>],
     /// [`lute_check::beats::always_eligible`] per beat.
@@ -297,7 +297,7 @@ pub(crate) fn run_beats(
         let mut ladders = ladders(&beats, &decls, occasions, targets);
         gate_marks(&mut ladders, &beats, fact_envs.get(root));
         // dsl 0.28.0: a kind or `for=` beat's `when` judged per member, as
-        // `check-project` judges it.
+        // whole-project `check` judges it.
         let no_facts = lute_check::FactEnv::default();
         let env = fact_envs.get(root).unwrap_or(&no_facts);
         let never_for: Vec<Vec<String>> = beats
@@ -466,7 +466,7 @@ fn ladders<'a>(
     out
 }
 
-/// The verdict cell: the `check-project` verdicts about the beat, with
+/// The verdict cell: the whole-project `check` verdicts about the beat, with
 /// (dsl 0.27.0 T3-9) `shadowed by <id>` where this ladder's earlier beats
 /// win every time it could — even when it wins on another ladder — and
 /// (dsl 0.28.0) `never for <target>` where its `when` never holds for this

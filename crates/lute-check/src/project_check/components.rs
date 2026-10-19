@@ -50,11 +50,11 @@ pub fn component_unverified_diag(component: &str, at: Span, scope: ComponentScop
     };
     let next = match scope {
         ComponentScope::NoProject => {
-            "Re-run with `--project <dir>`, or run `lute check-project <dir>` — the deciding leg."
+            "Re-run with `--project <dir>`, or run `lute check --project <dir>` — the deciding leg."
         }
         ComponentScope::NoImporter => {
             "The component is unused under this root, or its call sites live outside it. \
-             `check-project` is the deciding leg."
+             whole-project `check` is the deciding leg."
         }
     };
     Diagnostic {

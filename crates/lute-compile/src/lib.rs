@@ -112,7 +112,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 ///
 /// IR `0.13.0` is a PURE RESTAMP of `0.12.0` — no field added, renamed,
 /// moved, or retyped. The `0.13.0` toolchain release earns it (lint system:
-/// `lute lint`, `lute.lint.yaml`, plugin lints export; and `lute tag --force`
+/// `lute lint`, `lute.lint.yaml`, plugin lints export; and `lute tag --renumber --commit`
 /// — a clean renumber for drafts guarded by the new `codesLocked` publish
 /// gate) alongside a language change (the universal frontmatter key
 /// `codesLocked`, a document-level publish latch checked and echoed but
@@ -234,7 +234,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// unknown artifact kind.
 ///
 /// IR `0.20.0` is a PURE RESTAMP of `0.19.0`: the language gains the
-/// project-level fact envelopes (dsl 0.20.0 — `check-project` decides
+/// project-level fact envelopes (dsl 0.20.0 — whole-project `check` decides
 /// relational `holds`/`count` guards as impossible, guaranteed, or possible,
 /// adds `E-ENTRY-UNREACHABLE` / `W-FACT-GUARANTEED`, and removes
 /// `W-UNPROVEN-RELATIONAL`), which is static semantics only: no field,
@@ -410,7 +410,7 @@ pub fn compile(input: &CheckInput) -> Result<ExecutionIr, Vec<Diagnostic>> {
 /// Like [`compile`] but gated on a CALLER-SUPPLIED [`CheckResult`] instead of
 /// running `check(input)` itself — the seam the project-aware CLI gate
 /// (connectivity design spec §5) uses to feed the target document's RECONCILED
-/// `check-project` verdict: a `run.*`/`user.*` read the connectivity envelope
+/// whole-project `check` verdict: a `run.*`/`user.*` read the connectivity envelope
 /// proves Guaranteed no longer blocks with a standalone `E-MAYBE-UNSET`, and a
 /// read no route guarantees blocks with the project's error-grade
 /// `E-STATE-MAYBE-UNAVAILABLE`. [`compile`] itself is the thin wrapper
@@ -652,7 +652,7 @@ fn compile_inner(
             // too, identity prefix = its canonical `<document id>.<beat id>`.
             // Units are 1-based in SOURCE order, entries and beats
             // interleaved as authored — the declaration order
-            // `ProjectIndex.beats` (and `check-project`) break ties by.
+            // `ProjectIndex.beats` (and whole-project `check`) break ties by.
             let resolved =
                 lute_check::resolve_entry_series(folded.typed.series.as_deref(), &doc.entries);
             enum Unit<'d> {
@@ -1314,7 +1314,7 @@ fn plugin_frontmatter(
 /// no resolved project root, so this NEVER validates a `visited`/
 /// `completed` target, resolves it against any other document, or
 /// assembles a project-wide graph — those stay entirely in
-/// `check-project`/`lute scenario` (T3–T14).
+/// whole-project `check`/`lute scenario` (T3–T14).
 ///
 /// **Raw means raw**: an entry is emitted whenever the edge slot is
 /// AUTHORED (`Some(_)`), including an authored-but-empty `after: ""` /

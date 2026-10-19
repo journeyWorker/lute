@@ -144,7 +144,7 @@ fn an_accept_activated_child_waits_for_its_accept() {
     );
     assert_ne!(final_state(&report, "quest.parley.state"), Some("active"));
 
-    // `--accept` on an `activate="accept"` child is legal and activates it
+    // `--accepted-quest` on an `activate="accept"` child is legal and activates it
     // under its active parent.
     let report = road(&[], &["toll"]);
     assert_eq!(quest_outcomes(&report.decisions, "toll"), ["active"]);

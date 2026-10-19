@@ -293,7 +293,7 @@ fn missing_required_meta_key_errors() {
 
 #[test]
 fn codes_locked_is_a_known_universal_key() {
-    // dsl §12 publish guard (`lute tag --force`): `codesLocked:` is core
+    // dsl §12 publish guard (`lute tag --renumber --commit`): `codesLocked:` is core
     // frontmatter on every document kind — never E-META-UNKNOWN-KEY.
     let (_m, diags) = parse_meta_str("character: x\nseason: 1\nepisode: 1\ncodesLocked: true\n");
     assert!(

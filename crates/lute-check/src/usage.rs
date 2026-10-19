@@ -1,4 +1,4 @@
-//! dsl 0.24.0 (round-3 T3-16) `check-project` advisories over the whole
+//! dsl 0.24.0 (round-3 T3-16) whole-project `check` advisories over the whole
 //! walked project: a declared relation written but never read
 //! ([`W_RELATION_UNREAD`]) and a declared `@def` no one references
 //! ([`W_DEF_UNUSED`]). Content only — play scripts and tests are not reads.

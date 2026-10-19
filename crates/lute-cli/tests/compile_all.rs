@@ -1,4 +1,4 @@
-//! `lute compile --all` acceptance (dsl 0.8.0 adoption surface): project-wide
+//! whole-project `lute compile` acceptance (dsl 0.8.0 adoption surface): project-wide
 //! compile plus the `project.index.json` UNION every engine previously had to
 //! re-implement by hand (`docs/runtime/execution-model.md`).
 //!

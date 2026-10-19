@@ -8,7 +8,7 @@ pub const W_LUTE_VERSION_STALE: &str = "W-LUTE-VERSION-STALE";
 
 /// LH N18: how a [`W_LUTE_VERSION_STALE`] message opens when the stamp is
 /// inherited from the manifest's `defaults:` rather than written by the
-/// document — `check-project` folds those into one report at the manifest.
+/// document — whole-project `check` folds those into one report at the manifest.
 pub const INHERITED_LUTE_VERSION: &str = "the project manifest's `defaults: luteVersion";
 
 /// dsl 0.6.1 §3: the freshness signal. Fires `W-LUTE-VERSION-STALE` when the
@@ -41,7 +41,7 @@ pub(super) fn check_lute_version_stale(
         (Some(s), Some(c)) if s > c
     );
     // LH N18: a stamp the document does not write itself comes from the
-    // manifest's `defaults: luteVersion` — say so, so `check-project` can fold
+    // manifest's `defaults: luteVersion` — say so, so whole-project `check` can fold
     // every document's copy into one report at the manifest line.
     let own = meta.raw_yaml.lines().any(|l| {
         l.strip_prefix("luteVersion")

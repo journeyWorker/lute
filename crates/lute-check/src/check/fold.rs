@@ -307,7 +307,7 @@ pub fn fold_env(
         ));
     }
     // dsl 0.23.0 §6: a subquest's `tier` equals its parent's — the
-    // same-document half of `E-QUEST-TIER-MIX` (check-project owns the
+    // same-document half of `E-QUEST-TIER-MIX` (whole-project check owns the
     // cross-document edges).
     fold_diags.extend(crate::project_check::check_doc_quest_tiers(doc));
 

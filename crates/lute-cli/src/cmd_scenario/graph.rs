@@ -15,7 +15,7 @@ use crate::project::{ByRoot, DocGroup};
 /// graph view, layered here rather than in `lute-check` (which only needs
 /// the flat order). A node stuck in a prerequisite cycle never becomes
 /// ready and is simply absent from every layer (already `E-CONN-CYCLE`'s
-/// problem, reported by `check-project`, not this read-only view's).
+/// problem, reported by whole-project `check`, not this read-only view's).
 pub(crate) fn topo_layers(
     g: &lute_check::connectivity::ConnGraph,
 ) -> Vec<Vec<lute_check::connectivity::NodeId>> {

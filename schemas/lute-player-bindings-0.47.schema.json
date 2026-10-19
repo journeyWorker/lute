@@ -903,7 +903,7 @@
     },
     "Title": {
       "additionalProperties": false,
-      "description": "`ui.title` (0.47.0 §4.1): the title heading `text` (non-empty) and the\ntitle backdrop / music references, each optional; a written `ui.title`\nbinds at least one (both checked by `check-project`, `E-BINDING-SHAPE`).",
+      "description": "`ui.title` (0.47.0 §4.1): the title heading `text` (non-empty) and the\ntitle backdrop / music references, each optional; a written `ui.title`\nbinds at least one (both checked by whole-project `check`, `E-BINDING-SHAPE`).",
       "minProperties": 1,
       "properties": {
         "background": {
@@ -1136,7 +1136,7 @@
         "type": "number"
       },
       "default": {},
-      "description": "0.42.0 §3.2: the project `volume` domain's absolute levels as gains,\neach a finite number in `[0, 1]` (checked by `check-project`).",
+      "description": "0.42.0 §3.2: the project `volume` domain's absolute levels as gains,\neach a finite number in `[0, 1]` (checked by whole-project `check`).",
       "type": "object"
     }
   },

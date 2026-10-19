@@ -8,7 +8,7 @@
 //! over a base fact set, stratum by stratum; a rule-body CEL guard reads
 //! scalar state through the same `exprNode` evaluator every other guard
 //! uses (`exec::expr`). [`Program::explain`] answers "why (not)" for one
-//! ground atom (`lute play --explain`).
+//! ground atom (`lute play --derivation`).
 //!
 //! Three-valued honesty: trace state may be unknown, so a rule guard can
 //! decide neither way. Such a rule instance derives nothing, and its head

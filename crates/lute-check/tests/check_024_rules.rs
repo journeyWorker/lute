@@ -151,7 +151,7 @@ fn count_distinct_is_in_profile_and_its_column_is_an_index() {
 // --- T3-6: schema-level diagnostics ---
 
 /// An imported relation's `W-DERIVE-NO-RULES` names the schema and carries
-/// the schema line as `related` (so check-project folds the importers into
+/// the schema line as `related` (so whole-project check folds the importers into
 /// one); a relation whose only rule failed to parse draws none at all.
 #[test]
 fn imported_schema_problems_point_at_the_schema_and_do_not_cascade() {
