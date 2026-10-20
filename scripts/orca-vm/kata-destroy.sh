@@ -33,7 +33,16 @@ log "releasing claim $claim${emu_claim:+ and $emu_claim}"
   delete sandboxclaim "$claim" ${emu_claim:+"$emu_claim"} --ignore-not-found --wait=false >&2
 [ -n "$sandbox" ] && ssh-keygen -R "$sandbox" -f "$HOME/.ssh/known_hosts" >/dev/null 2>&1 || true
 
-# Desktop side of the paired emulator (see kata-create.sh).
+# Desktop side of the paired emulators (see kata-create.sh): every forward
+# `forca emulator connect` made for this sandbox, including emulators the
+# agent started inside it. They are already owned by the sandbox claim, so the
+# cluster deletes them with it; the label delete just does not wait for that.
+"$kubectl_bin" ${kubeconfig:+--kubeconfig "$kubeconfig"} -n "${namespace:-agent-sandbox}" \
+  delete sandboxclaim -l "vivident.dev/workspace=$claim" --ignore-not-found --wait=false >&2 || true
+if [ -x "$(dirname "$0")/forca" ]; then
+  "$(dirname "$0")/forca" emulator disconnect --sandbox "$claim" >&2 </dev/null || true
+fi
+# Forward and adb port of a sandbox created by an older kata-create.sh.
 pf_pid_file="$HOME/.cache/orca-kata/$claim.port-forward.pid"
 if [ -f "$pf_pid_file" ]; then
   pid="$(cat "$pf_pid_file")"

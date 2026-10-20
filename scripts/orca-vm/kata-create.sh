@@ -103,7 +103,6 @@ claim="$(printf 'orca-%s-%s' "$repo_name" "$instance" | tr 'A-Z_.' 'a-z--' | tr 
 claim="${claim%-}"
 emu_claim=""
 has emulator && emu_claim="$claim-emu"
-pf_pid_file="$STATE_DIR/$claim.port-forward.pid"
 
 # Scratch space for kubectl output and uploads (0700: it can hold the backend
 # token). Removed on exit.
@@ -174,9 +173,8 @@ cleanup_on_exit() {
     log "create failed; releasing $claim${emu_claim:+ and $emu_claim}"
     KR_QUIET=1 RETRY_BUDGET="$CLEANUP_BUDGET" kr delete sandboxclaim "$claim" ${emu_claim:+"$emu_claim"} --ignore-not-found --wait=false ||
       log "could not release the claim; run: kubectl --kubeconfig '$kubeconfig' -n $NAMESPACE delete sandboxclaim $claim${emu_claim:+ $emu_claim}"
-    if [ -f "$pf_pid_file" ]; then
-      pid="$(cat "$pf_pid_file")"; pkill -P "$pid" 2>/dev/null || true; kill "$pid" 2>/dev/null || true
-      rm -f "$pf_pid_file"
+    if [ -x "$(dirname "$0")/forca" ]; then
+      ORCA_KATA_KUBECTL="$kubectl_bin" "$(dirname "$0")/forca" emulator disconnect --sandbox "$claim" >&2 </dev/null || true
     fi
   fi
   rm -rf "$work"
@@ -184,8 +182,9 @@ cleanup_on_exit() {
 trap cleanup_on_exit EXIT
 trap 'exit 1' TERM INT HUP
 
-# claim_from <claim> <pool>: idempotent (apply), so a retry after a lost
-# response is harmless.
+# claim_from <claim> <pool> [<owner claim uid>]: idempotent (apply), so a retry
+# after a lost response is harmless. With an owner uid the claim is an
+# emulator of the workspace claim $claim (label, ownerReference).
 claim_from() {
   local f="$work/claim.yaml"
   cat > "$f" <<EOF
@@ -196,6 +195,19 @@ metadata:
   namespace: $NAMESPACE
   labels:
     app.kubernetes.io/managed-by: orca-recipe
+EOF
+  if [ -n "${3:-}" ]; then
+    cat >> "$f" <<EOF
+    vivident.dev/workspace: $claim
+    vivident.dev/emulator-profile: phone
+  ownerReferences:
+    - apiVersion: extensions.agents.x-k8s.io/v1beta1
+      kind: SandboxClaim
+      name: $claim
+      uid: $3
+EOF
+  fi
+  cat >> "$f" <<EOF
 spec:
   warmPoolRef:
     name: $2
@@ -326,8 +338,12 @@ remote_run() {
 log "claiming $claim from pool $pool"
 claim_from "$claim" "$pool"
 if [ -n "$emu_claim" ]; then
+  # The emulator claim is owned by the workspace claim (deleting the workspace
+  # deletes it) and labelled so `forca emulator` finds it.
+  kr get sandboxclaim "$claim" -o jsonpath='{.metadata.uid}'
+  [ -n "$KR_OUT" ] || die "claim $claim has no uid"
   log "claiming $emu_claim from pool $EMU_POOL"
-  claim_from "$emu_claim" "$EMU_POOL"
+  claim_from "$emu_claim" "$EMU_POOL" "$KR_OUT"
 fi
 
 wait_claim "$claim" 300; sandbox="$WAIT_NAME"
@@ -336,6 +352,9 @@ emu_pod=""; emu_addr=""
 if [ -n "$emu_claim" ]; then
   # A warm emulator is already booted; a cold one needs ~2 minutes.
   wait_claim "$emu_claim" 600; emu_pod="$WAIT_NAME"
+  # The sandbox may stop this emulator itself (forca emulator stop); the
+  # admission policy lets it delete only claims labelled with its own pod.
+  kr label sandboxclaim "$emu_claim" "vivident.dev/workspace-pod=$sandbox" --overwrite
   kr get pod "$emu_pod" -o jsonpath='{.status.podIP}'
   emu_addr="$KR_OUT:5555"
   log "emulator $emu_pod ready at $emu_addr"
@@ -360,6 +379,7 @@ set -euo pipefail
   IFS= read -r features || true; IFS= read -r emu_addr || true
   IFS= read -r checkout_branch || true; IFS= read -r checkout_head || true
   IFS= read -r checkout_ref || true; IFS= read -r D || true
+  IFS= read -r ws_claim || true; IFS= read -r ws_pod || true
 } < "$1"
 has() { case ",$features," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 umask 077
@@ -476,6 +496,11 @@ if [ -n "$emu_addr" ]; then
   adb connect "$emu_addr" >&2
   extra_env="$extra_env FORCA_EMULATOR=$emu_addr ANDROID_SERIAL=$emu_addr"
 fi
+# The sandbox's own claim and pod name: `forca emulator` finds its workspace
+# with them (claims it starts are owned by FORCA_SANDBOX_CLAIM and labelled
+# with FORCA_SANDBOX_POD, which the admission policy checks).
+[ -z "$ws_claim" ] || extra_env="$extra_env FORCA_SANDBOX_CLAIM=$ws_claim"
+[ -z "$ws_pod" ] || extra_env="$extra_env FORCA_SANDBOX_POD=$ws_pod"
 
 # SSH sessions do not inherit the container env (toolchain PATH, omp broker,
 # git token, SDK homes, DOCKER_HOST of the dev-flutter podman engine); sshd
@@ -491,7 +516,7 @@ REMOTE
 
 make_payload "$work/setup.payload" "$setup_script" \
   "$(cat "$ssh_key.pub")" "$repo_url" "$repo_ref" "$project_root" "$git_name" "$git_email" \
-  "$FEATURES" "$emu_addr" "$checkout_branch" "$checkout_head" "$checkout_ref" "$SSHD_DIR"
+  "$FEATURES" "$emu_addr" "$checkout_branch" "$checkout_head" "$checkout_ref" "$SSHD_DIR" "$claim" "$sandbox"
 remote_run setup "$work/setup.payload"
 kr exec "$sandbox" -- sh -c 'cat "$HOME/.orca-setup/setup/host_key"'
 host_key="${KR_OUT%%$'\n'*}"
@@ -509,6 +534,17 @@ tar_flags=""
 tar --version 2>/dev/null | grep -q bsdtar && tar_flags="--no-xattrs --no-mac-metadata"
 COPYFILE_DISABLE=1 tar $tar_flags -C "$omp_agents" -cf "$work/agents.tar" .
 kr -f "$work/agents.tar" exec -i "$sandbox" -- sh -c 'mkdir -p "$HOME/.omp/agent/agents" && tar -C "$HOME/.omp/agent/agents" -xf -'
+
+# The forca CLI inside the sandbox (`forca emulator start|list|stop|posture`).
+# It ships with the recipe, so a workspace always has the CLI version that
+# matches the recipe's FORCA_SANDBOX_* environment, and `forca sync` is the
+# only update path. It needs bash, kubectl and adb, all in the dev-flutter
+# image.
+if has emulator; then
+  forca_cli="$(dirname "$0")/forca"
+  [ -f "$forca_cli" ] || die "missing $forca_cli (run forca sync)"
+  kr -f "$forca_cli" exec -i "$sandbox" -- sh -c 'mkdir -p "$HOME/.local/bin" && cat > "$HOME/.local/bin/forca.tmp" && chmod 0755 "$HOME/.local/bin/forca.tmp" && mv "$HOME/.local/bin/forca.tmp" "$HOME/.local/bin/forca"'
+fi
 
 # "Kata Sandbox + Backend" (kata-create-backend.sh): the repo's own setup flow
 # (eevee development-workflow guide): DOPPLER_TOKEN in the root .env, then
@@ -565,25 +601,21 @@ for attempt in 1 2 3 4 5 6; do
 done
 [ "$smoke" = 1 ] || die "SSH smoke test failed"
 
-# Desktop side of the emulator: a self-restarting port-forward to the
-# emulator's adbd plus `adb connect`, so the device shows up in Orca's Mobile
-# Emulator panel. The emulator itself runs on the cluster, never here.
+# Desktop side of the emulator: `forca emulator connect` (the forca CLI synced
+# next to this script) keeps a self-restarting port-forward to the emulator's
+# adbd and `adb connect`s it, so the device shows up in Orca's Mobile Emulator
+# panel. The emulator itself runs on the cluster, never here. The same command
+# re-establishes the connection later, and for emulators the agent starts
+# inside the sandbox.
 adb_port=""
 if [ -n "$emu_pod" ]; then
-  adb_bin="$(command -v adb || true)"
-  [ -n "$adb_bin" ] || [ ! -x "$HOME/Library/Android/sdk/platform-tools/adb" ] ||
-    adb_bin="$HOME/Library/Android/sdk/platform-tools/adb"
-  if [ -z "$adb_bin" ]; then
-    log "no adb on this desktop; skipping the local emulator connection"
+  forca_cli="$(dirname "$0")/forca"
+  if [ ! -x "$forca_cli" ]; then
+    log "missing $forca_cli (run forca sync); skipping the local emulator connection"
+  elif connect_json="$(ORCA_KATA_KUBECTL="$kubectl_bin" "$forca_cli" emulator connect --sandbox "$claim" --kubeconfig "$kubeconfig" --json </dev/null)"; then
+    adb_port="$(printf '%s' "$connect_json" | sed -n 's/.*"adb":"127\.0\.0\.1:\([0-9][0-9]*\)".*/\1/p')"
   else
-    mkdir -p "$STATE_DIR"
-    adb_port=15555
-    while nc -z 127.0.0.1 "$adb_port" >/dev/null 2>&1; do adb_port=$((adb_port + 1)); done
-    nohup bash -c "while :; do '$kubectl_bin' --kubeconfig '$kubeconfig' -n $NAMESPACE port-forward --address 127.0.0.1 pod/$emu_pod $adb_port:5555 >/dev/null 2>&1; sleep 2; done" \
-      >/dev/null 2>&1 &
-    echo $! > "$pf_pid_file"
-    for _ in $(seq 1 30); do nc -z 127.0.0.1 "$adb_port" >/dev/null 2>&1 && break; sleep 1; done
-    "$adb_bin" connect "127.0.0.1:$adb_port" >&2 || log "adb connect failed; run it by hand: adb connect 127.0.0.1:$adb_port"
+    log "could not connect this desktop's adb; run: forca emulator connect --sandbox $claim"
   fi
 fi
 
