@@ -15,6 +15,15 @@
 #   ORCA_KATA_KUBECTL     kubectl binary (default: PATH, then Homebrew paths)
 #   ORCA_KATA_POOL        SandboxWarmPool to claim from (default below)
 #   ORCA_KATA_SSH_KEY     desktop key Orca dials with (default ~/.ssh/orca-kata_ed25519)
+#   ORCA_KATA_RETRY_BUDGET  seconds a single cluster call may keep retrying
+#                         transient network errors (default 300)
+#
+# Network outages: every cluster call goes through `kr`, which retries
+# transient transport errors (no route, timeouts, resets, EOF, 5xx) with
+# backoff for up to the retry budget and fails at once on deterministic ones.
+# The long setup (clone, LFS, caches, backend) runs detached inside the
+# sandbox and is polled with short execs, so a dropped connection never
+# kills it: the poll just resumes where it left off.
 #
 # Features (repos.tsv third column):
 #   mirror    clone from the node-local forca cache (/forca in the sandbox:
@@ -31,6 +40,8 @@ NAMESPACE=agent-sandbox
 SSHD_DIR=/home/dev/.orca-sshd
 EMU_POOL=android-emu
 STATE_DIR="$HOME/.cache/orca-kata"
+RETRY_BUDGET="${ORCA_KATA_RETRY_BUDGET:-300}"
+CLEANUP_BUDGET=90
 
 log() { printf '[kata-create] %s\n' "$*" >&2; }
 die() { log "error: $*"; exit 1; }
@@ -52,7 +63,6 @@ done
 
 pool="${ORCA_KATA_POOL:-$DEFAULT_POOL}"
 ssh_key="${ORCA_KATA_SSH_KEY:-$HOME/.ssh/orca-kata_ed25519}"
-k() { "$kubectl_bin" --kubeconfig "$kubeconfig" -n "$NAMESPACE" "$@"; }
 
 # Repo to check out in the sandbox: this checkout's origin, over HTTPS so the
 # sandbox's GH_TOKEN can authenticate.
@@ -95,25 +105,90 @@ emu_claim=""
 has emulator && emu_claim="$claim-emu"
 pf_pid_file="$STATE_DIR/$claim.port-forward.pid"
 
+# Scratch space for kubectl output and uploads (0700: it can hold the backend
+# token). Removed on exit.
+mkdir -p "$STATE_DIR"
+work="$STATE_DIR/$claim.d"
+rm -rf "$work"
+mkdir -m 700 "$work"
+
+# kr: the only way this script talks to the cluster after the claim.
+#   kr [-f FILE] <kubectl-verb> <args...>
+# -f feeds FILE to stdin (for `exec -i`); stdout lands in $KR_OUT, stderr is
+# shown (unless KR_QUIET is set and the call succeeded). Transient transport
+# errors are retried with backoff until RETRY_BUDGET seconds have passed since
+# the first failure of this call; anything else fails at once with kubectl's
+# exit code. kubectl runs in the background and is awaited with `wait`, so a
+# TERM to this script is handled immediately instead of after the call.
+kr_child=""
+KR_OUT=""
+
+nap() { sleep "$1" & kr_child=$!; wait "$kr_child" || true; kr_child=""; }
+
+# transient <errfile>: 0 when the error is a network/server blip worth retrying
+transient() {
+  grep -Eiq 'not found|does not exist|forbidden|unauthorized|is invalid|invalid value|already exists|bad request|executable file|permission denied|command terminated with exit code' "$1" && return 1
+  grep -Eiq 'connection refused|connection reset|no route to host|network is unreachable|host is down|i/o timeout|connection timed out|broken pipe|tls handshake timeout|\bEOF\b|unable to upgrade connection|websocket|context deadline exceeded|client\.timeout|timeout occurred|request did not complete|etcdserver: (request timed out|leader changed)|serviceunavailable|internal ?error|currently unable to handle|status code 50[0-9]|too ?many ?requests|error dialing backend|lost connection|stream error|http2:|connection error|use of closed network' "$1"
+}
+
+kr() {
+  local infile=/dev/null rc first=-1 delay=2 verb extra=""
+  if [ "${1:-}" = -f ]; then infile="$2"; shift 2; fi
+  verb="$1"; shift
+  case "$verb" in get|apply|delete) extra=--request-timeout=30s ;; esac
+  KR_OUT=""
+  while :; do
+    "$kubectl_bin" --kubeconfig "$kubeconfig" -n "$NAMESPACE" "$verb" ${extra:+"$extra"} "$@" \
+      <"$infile" >"$work/out" 2>"$work/err" &
+    kr_child=$!
+    rc=0; wait "$kr_child" || rc=$?
+    kr_child=""
+    if [ "$rc" = 0 ]; then
+      [ -n "${KR_QUIET:-}" ] || cat "$work/err" >&2
+      KR_OUT="$(cat "$work/out"; printf x)"; KR_OUT="${KR_OUT%x}"
+      return 0
+    fi
+    if ! transient "$work/err"; then cat "$work/err" >&2; return "$rc"; fi
+    [ "$first" -ge 0 ] || first=$SECONDS
+    if [ $((SECONDS - first)) -ge "$RETRY_BUDGET" ]; then
+      log "giving up on kubectl $verb after ${RETRY_BUDGET}s of network errors"
+      cat "$work/err" >&2; return "$rc"
+    fi
+    log "kubectl $verb: $(sed -n '1p' "$work/err" | cut -c1-160); retrying in ${delay}s ($((RETRY_BUDGET - SECONDS + first))s left)"
+    nap "$delay"
+    delay=$((delay * 2)); [ "$delay" -le 15 ] || delay=15
+  done
+}
+
 # Any exit before the result JSON is printed releases the claims: `die`
 # (exit 1, which an ERR trap misses), a failed command under set -e, and
 # Orca stopping the recipe (TERM/INT/HUP). Without this a failed create left
 # a claimed VM and emulator running with no Orca workspace to delete them.
+# The delete itself retries through an outage; signals are ignored meanwhile
+# so a second TERM cannot abort the release.
 created=0
-cleanup_on_error() {
-  [ "$created" = 1 ] && return
-  log "create failed; releasing $claim${emu_claim:+ and $emu_claim}"
-  k delete sandboxclaim "$claim" ${emu_claim:+"$emu_claim"} --ignore-not-found --wait=false >/dev/null 2>&1 || true
-  if [ -f "$pf_pid_file" ]; then
-    pid="$(cat "$pf_pid_file")"; pkill -P "$pid" 2>/dev/null || true; kill "$pid" 2>/dev/null || true
-    rm -f "$pf_pid_file"
+cleanup_on_exit() {
+  trap '' TERM INT HUP
+  [ -z "$kr_child" ] || kill "$kr_child" 2>/dev/null || true
+  if [ "$created" != 1 ]; then
+    log "create failed; releasing $claim${emu_claim:+ and $emu_claim}"
+    KR_QUIET=1 RETRY_BUDGET="$CLEANUP_BUDGET" kr delete sandboxclaim "$claim" ${emu_claim:+"$emu_claim"} --ignore-not-found --wait=false ||
+      log "could not release the claim; run: kubectl --kubeconfig '$kubeconfig' -n $NAMESPACE delete sandboxclaim $claim${emu_claim:+ $emu_claim}"
+    if [ -f "$pf_pid_file" ]; then
+      pid="$(cat "$pf_pid_file")"; pkill -P "$pid" 2>/dev/null || true; kill "$pid" 2>/dev/null || true
+      rm -f "$pf_pid_file"
+    fi
   fi
+  rm -rf "$work"
 }
-trap cleanup_on_error EXIT
+trap cleanup_on_exit EXIT
 trap 'exit 1' TERM INT HUP
 
+# claim_from <claim> <pool>: idempotent (apply), so a retry after a lost
+# response is harmless.
 claim_from() {
-  k apply -f - >&2 <<EOF
+  local f="$work/claim.yaml"
+  cat > "$f" <<EOF
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxClaim
 metadata:
@@ -125,19 +200,127 @@ spec:
   warmPoolRef:
     name: $2
 EOF
+  kr -f "$f" apply -f -
+  printf '%s' "$KR_OUT" >&2
 }
 
-# wait_claim <claim> <seconds>: prints the sandbox (pod) name once Ready
+# wait_claim <claim> <seconds>: sets WAIT_NAME to the sandbox (pod) name once Ready
+WAIT_NAME=""
 wait_claim() {
   local name="" _
   for _ in $(seq 1 90); do
-    name="$(k get sandboxclaim "$1" -o jsonpath='{.status.sandbox.name}' 2>/dev/null || true)"
+    name=""
+    if KR_QUIET=1 kr get sandboxclaim "$1" -o jsonpath='{.status.sandbox.name}'; then name="$KR_OUT"; fi
     [ -n "$name" ] && break
-    sleep 2
+    nap 2
   done
   [ -n "$name" ] || die "claim $1 got no sandbox within 180s"
-  k wait pod "$name" --for=condition=Ready --timeout="${2}s" >&2
-  echo "$name"
+  kr wait pod "$name" --for=condition=Ready --timeout="${2}s"
+  printf '%s' "$KR_OUT" >&2
+  WAIT_NAME="$name"
+}
+
+# make_payload <file> <script> <arg>...: the upload format of remote_run. Line 1
+# is the argument count, then one line per argument, then the script, then an
+# end marker the sandbox checks so a cut-off upload is never started.
+make_payload() {
+  local f="$1" script="$2"; shift 2
+  {
+    printf '%s\n' "$#"
+    if [ "$#" -gt 0 ]; then printf '%s\n' "$@"; fi
+    printf '%s\n' "$script"
+    printf '#@@END@@\n'
+  } > "$f"
+}
+
+# Guest side of remote_run, run with `sh -c`. $1 is the run name. Starts the
+# uploaded script detached (own session, no stream attached) unless this run
+# was already started, so repeating the call after a network error never
+# starts a second copy. State lives in ~/.orca-setup/<name>/: args, run.sh,
+# log, pid, rc (written last, atomically).
+read -r -d '' launcher <<'LAUNCHER' || true
+D="$HOME/.orca-setup/$1"
+mkdir -p "$D"
+if [ -e "$D/started" ]; then cat > /dev/null; echo "remote $1 already started" >&2; exit 0; fi
+umask 077
+cat > "$D/payload.part"
+[ "$(tail -n 1 "$D/payload.part")" = "#@@END@@" ] || { echo "upload of $1 was cut off" >&2; exit 3; }
+mv "$D/payload.part" "$D/payload"
+n="$(head -n 1 "$D/payload")"
+sed -n "2,$((n + 1))p" "$D/payload" > "$D/args"
+tail -n +"$((n + 2))" "$D/payload" > "$D/run.sh"
+rm -f "$D/payload"
+: > "$D/log"
+touch "$D/started"
+RUNNER='echo $$ > "$1/pid"; export ORCA_RUN_DIR="$1"; cd "$HOME"
+bash "$1/run.sh" "$1/args" < /dev/null > "$1/log" 2>&1
+echo $? > "$1/rc.tmp"; mv "$1/rc.tmp" "$1/rc"; rm -f "$1/args"'
+if command -v setsid > /dev/null 2>&1; then
+  setsid nohup sh -c "$RUNNER" sh "$D" > /dev/null 2>&1 < /dev/null &
+else
+  nohup sh -c "$RUNNER" sh "$D" > /dev/null 2>&1 < /dev/null &
+fi
+for _ in 1 2 3 4 5 6 7 8 9 10; do [ -s "$D/pid" ] && exit 0; sleep 0.5; done
+rm -f "$D/started"
+echo "remote $1 did not start" >&2
+exit 4
+LAUNCHER
+
+# Guest side of the poll: "<new log bytes> <exit code or -> <runner alive>",
+# then exactly that many log bytes from offset $2. The exit code is read
+# before the log size, so once it is set the log is complete.
+read -r -d '' poller <<'POLLER' || true
+D="$HOME/.orca-setup/$1"; off=$2
+rc=-; [ -f "$D/rc" ] && rc="$(cat "$D/rc")"; [ -n "$rc" ] || rc=-
+pid="$(cat "$D/pid" 2>/dev/null || true)"; alive=0
+[ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && alive=1
+size=$(( $(wc -c < "$D/log" 2>/dev/null || echo 0) ))
+n=$((size - off)); [ "$n" -ge 0 ] || n=0
+echo "$n $rc $alive"
+if [ "$n" -gt 0 ]; then tail -c +"$((off + 1))" "$D/log" | head -c "$n"; fi
+POLLER
+
+# remote_run <name> <payload-file>: start (idempotent) and follow a detached
+# script in the sandbox. The sandbox log is streamed to stderr (Orca's
+# provisioning log). Poll errors go through kr, so an outage up to the retry
+# budget only pauses the output; the offset makes the stream resume exactly.
+remote_run() {
+  local name="$1" payload="$2" off=0 bad=0 dead=0 raw hdr body n rc alive got
+  log "remote $name: starting in $sandbox"
+  kr -f "$payload" exec -i "$sandbox" -- sh -c "$launcher" sh "$name"
+  while :; do
+    KR_QUIET=1 kr exec "$sandbox" -- sh -c "$poller" sh "$name" "$off" ||
+      die "lost contact with $sandbox while running remote $name"
+    raw="$KR_OUT"
+    hdr="${raw%%$'\n'*}"; body="${raw#*$'\n'}"
+    case "$raw" in *$'\n'*) ;; *) hdr="" ;; esac
+    n="${hdr%% *}"; rc="${hdr#* }"; alive="${rc##* }"; rc="${rc%% *}"
+    case "$n$alive" in ''|*[!0-9]*) hdr="" ;; esac
+    if [ -z "$hdr" ]; then
+      bad=$((bad + 1)); [ "$bad" -lt 5 ] || die "unreadable poll reply for remote $name"
+      nap 2; continue
+    fi
+    if [ "$n" -gt 0 ]; then
+      got="$(printf '%s' "$body" | wc -c | tr -d ' ')"
+      if [ "$got" != "$n" ] && [ "$bad" -lt 3 ]; then bad=$((bad + 1)); nap 2; continue; fi
+      printf '%s' "$body" >&2
+      off=$((off + n))
+    fi
+    bad=0
+    if [ "$rc" != "-" ]; then
+      [ "$rc" = 0 ] && return 0
+      KR_QUIET=1 kr exec "$sandbox" -- sh -c 'tail -n 40 "$HOME/.orca-setup/$1/log"' sh "$name" || true
+      log "remote $name failed with exit code $rc; last log lines:"
+      printf '%s' "$KR_OUT" >&2
+      die "remote $name failed (exit $rc)"
+    fi
+    if [ "$alive" = 0 ]; then
+      dead=$((dead + 1)); [ "$dead" -lt 3 ] || die "remote $name stopped without a result"
+    else
+      dead=0
+    fi
+    nap 5
+  done
 }
 
 log "claiming $claim from pool $pool"
@@ -147,13 +330,14 @@ if [ -n "$emu_claim" ]; then
   claim_from "$emu_claim" "$EMU_POOL"
 fi
 
-sandbox="$(wait_claim "$claim" 300)"
+wait_claim "$claim" 300; sandbox="$WAIT_NAME"
 log "sandbox $sandbox ready"
 emu_pod=""; emu_addr=""
 if [ -n "$emu_claim" ]; then
   # A warm emulator is already booted; a cold one needs ~2 minutes.
-  emu_pod="$(wait_claim "$emu_claim" 600)"
-  emu_addr="$(k get pod "$emu_pod" -o jsonpath='{.status.podIP}'):5555"
+  wait_claim "$emu_claim" 600; emu_pod="$WAIT_NAME"
+  kr get pod "$emu_pod" -o jsonpath='{.status.podIP}'
+  emu_addr="$KR_OUT:5555"
   log "emulator $emu_pod ready at $emu_addr"
 fi
 
@@ -164,23 +348,20 @@ if [ ! -f "$ssh_key" ]; then
 fi
 
 # Prepare a user-mode sshd (the pod runs as dev, so no system sshd), the SSH
-# session environment, the checkout, caches and the emulator connection.
-# Inputs arrive on stdin, one per line. The last stdout line is the sandbox
-# host key, read over the authenticated Kubernetes API rather than an
-# unverified ssh-keyscan.
-host_key="$(
-  printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$(cat "$ssh_key.pub")" "$repo_url" "$repo_ref" \
-    "$project_root" "$git_name" "$git_email" "$FEATURES" "$emu_addr" \
-    "$checkout_branch" "$checkout_head" "$checkout_ref" |
-    k exec -i "$sandbox" -- bash -c '
+# session environment, the checkout, caches and the emulator connection. Runs
+# detached in the sandbox; arguments are read from the file given as $1. The
+# last step writes the sandbox host key to $ORCA_RUN_DIR/host_key, read below
+# over the authenticated Kubernetes API rather than an unverified ssh-keyscan.
+read -r -d '' setup_script <<'REMOTE' || true
 set -euo pipefail
-read -r pub; read -r repo_url; read -r repo_ref; read -r project_root
-IFS= read -r git_name || true; IFS= read -r git_email || true
-IFS= read -r features || true; IFS= read -r emu_addr || true
-IFS= read -r checkout_branch || true; IFS= read -r checkout_head || true
-IFS= read -r checkout_ref || true
+{
+  read -r pub; read -r repo_url; read -r repo_ref; read -r project_root
+  IFS= read -r git_name || true; IFS= read -r git_email || true
+  IFS= read -r features || true; IFS= read -r emu_addr || true
+  IFS= read -r checkout_branch || true; IFS= read -r checkout_head || true
+  IFS= read -r checkout_ref || true; IFS= read -r D || true
+} < "$1"
 has() { case ",$features," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
-D='"$SSHD_DIR"'
 umask 077
 mkdir -p "$D" "$HOME/.ssh"
 [ -f "$D/host_ed25519" ] || ssh-keygen -q -t ed25519 -N "" -f "$D/host_ed25519"
@@ -305,9 +486,15 @@ umask 077
   env | grep -E "^(PATH|OMP_AUTH_BROKER_[A-Z_]*|GH_TOKEN|TOKEN_GITHUB|BUN_INSTALL[A-Z_]*|CARGO_HOME|RUSTUP_HOME|UV_[A-Z_]*|ANDROID_[A-Z_]*|JAVA_HOME|FLUTTER_[A-Z_]*|DOCKER_[A-Z_]*|COMPOSE_[A-Z_]*|LANG|LC_ALL)="
   for kv in $extra_env; do echo "$kv"; done
 } > "$HOME/.ssh/environment"
-cut -d" " -f1,2 "$D/host_ed25519.pub"
-' | tail -n 1
-)"
+cut -d" " -f1,2 "$D/host_ed25519.pub" > "$ORCA_RUN_DIR/host_key"
+REMOTE
+
+make_payload "$work/setup.payload" "$setup_script" \
+  "$(cat "$ssh_key.pub")" "$repo_url" "$repo_ref" "$project_root" "$git_name" "$git_email" \
+  "$FEATURES" "$emu_addr" "$checkout_branch" "$checkout_head" "$checkout_ref" "$SSHD_DIR"
+remote_run setup "$work/setup.payload"
+kr exec "$sandbox" -- sh -c 'cat "$HOME/.orca-setup/setup/host_key"'
+host_key="${KR_OUT%%$'\n'*}"
 case "$host_key" in ssh-ed25519\ *) ;; *) die "could not read sandbox host key" ;; esac
 
 # omp defaults (models, roles, compaction, ...) and custom agents so the first
@@ -315,13 +502,13 @@ case "$host_key" in ssh-ed25519\ *) ;; *) die "could not read sandbox host key" 
 omp_config="$(dirname "$0")/omp-config.yml"
 omp_agents="$(dirname "$0")/omp-agents"
 [ -f "$omp_config" ] && [ -d "$omp_agents" ] || die "missing $omp_config or $omp_agents (run forca sync)"
-k exec -i "$sandbox" -- sh -c 'mkdir -p "$HOME/.omp/agent" && cat > "$HOME/.omp/agent/config.yml"' < "$omp_config" >&2
+kr -f "$omp_config" exec -i "$sandbox" -- sh -c 'mkdir -p "$HOME/.omp/agent" && cat > "$HOME/.omp/agent/config.yml"'
 # bsdtar (macOS) would add AppleDouble files and provenance xattr headers that
 # GNU tar in the sandbox warns about.
 tar_flags=""
 tar --version 2>/dev/null | grep -q bsdtar && tar_flags="--no-xattrs --no-mac-metadata"
-COPYFILE_DISABLE=1 tar $tar_flags -C "$omp_agents" -cf - . |
-  k exec -i "$sandbox" -- sh -c 'mkdir -p "$HOME/.omp/agent/agents" && tar -C "$HOME/.omp/agent/agents" -xf -' >&2
+COPYFILE_DISABLE=1 tar $tar_flags -C "$omp_agents" -cf "$work/agents.tar" .
+kr -f "$work/agents.tar" exec -i "$sandbox" -- sh -c 'mkdir -p "$HOME/.omp/agent/agents" && tar -C "$HOME/.omp/agent/agents" -xf -'
 
 # "Kata Sandbox + Backend" (kata-create-backend.sh): the repo's own setup flow
 # (eevee development-workflow guide): DOPPLER_TOKEN in the root .env, then
@@ -329,25 +516,29 @@ COPYFILE_DISABLE=1 tar $tar_flags -C "$omp_agents" -cf - . |
 # token is a read-only service token in Secret forca-backend-<repo>; it only
 # lands in this workspace's .env. `adb reverse` makes the emulator's
 # localhost:3001 the sandbox API, so `run:local` works unchanged; Marionette
-# lets omp drive the running app (flutter-dev skill).
+# lets omp drive the running app (flutter-dev skill). Detached like the main
+# setup: `bun run setup` takes minutes.
 if [ "${ORCA_KATA_BACKEND:-0}" = 1 ]; then
   has backend || die "$repo_name has no backend feature in forca repos.tsv"
   backend_secret="forca-backend-$repo_name"
-  doppler_token="$(k get secret "$backend_secret" -o jsonpath='{.data.DOPPLER_TOKEN}' | base64 -d)"
+  kr get secret "$backend_secret" -o jsonpath='{.data.DOPPLER_TOKEN}'
+  doppler_token="$(printf '%s' "$KR_OUT" | base64 -d)"
   [ -n "$doppler_token" ] || die "secret $backend_secret has no DOPPLER_TOKEN"
   log "backend: bun run setup (several minutes), adb reverse :3001, Marionette"
-  printf '%s\n%s\n%s\n' "$doppler_token" "$project_root" "$emu_addr" |
-    k exec -i "$sandbox" -- bash -c '
+  read -r -d '' backend_script <<'REMOTE' || true
 set -euo pipefail
-read -r token; read -r project_root; IFS= read -r emu_addr || true
+{ read -r token; read -r project_root; IFS= read -r emu_addr || true; } < "$1"
 cd "$project_root"
 if [ ! -f .env ]; then (umask 077; printf "DOPPLER_TOKEN=%s\n" "$token" > .env); fi
 bun run setup >&2
 if [ -n "$emu_addr" ]; then adb -s "$emu_addr" reverse tcp:3001 tcp:3001 >&2; fi
 bun run flutter:marionette setup --providers oh-my-pi >&2 ||
   echo "warning: Marionette setup failed; see the flutter-dev skill" >&2
-' >&2
+REMOTE
+  make_payload "$work/backend.payload" "$backend_script" "$doppler_token" "$project_root" "$emu_addr"
   unset doppler_token
+  remote_run backend "$work/backend.payload"
+  rm -f "$work/backend.payload"
 fi
 
 # Orca dials with BatchMode and StrictHostKeyChecking: trust this sandbox's key
@@ -359,11 +550,20 @@ printf '%s %s\n' "$sandbox" "$host_key" >> "$known_hosts"
 
 proxy_command="'$kubectl_bin' --kubeconfig '$kubeconfig' -n $NAMESPACE exec -i $sandbox -- /usr/sbin/sshd -i -e -o LogLevel=QUIET -f $SSHD_DIR/sshd_config"
 
+# The tunnel goes through the API server like everything else, so a network
+# blip fails an attempt without meaning the sandbox is broken: retry a few times.
 log "smoke-testing SSH"
-ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -i "$ssh_key" \
-  -o "ProxyCommand=$proxy_command" "dev@$sandbox" \
-  "test -d '$project_root/.git' && command -v omp >/dev/null" >&2 ||
-  die "SSH smoke test failed"
+smoke=0
+for attempt in 1 2 3 4 5 6; do
+  if ssh -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes -i "$ssh_key" \
+    -o "ProxyCommand=$proxy_command" "dev@$sandbox" \
+    "test -d '$project_root/.git' && command -v omp >/dev/null" </dev/null >&2; then
+    smoke=1; break
+  fi
+  log "SSH smoke test attempt $attempt failed"
+  nap 5
+done
+[ "$smoke" = 1 ] || die "SSH smoke test failed"
 
 # Desktop side of the emulator: a self-restarting port-forward to the
 # emulator's adbd plus `adb connect`, so the device shows up in Orca's Mobile
