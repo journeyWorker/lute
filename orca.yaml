@@ -1,5 +1,5 @@
 # Orca per-workspace environments. "Kata Sandbox" runs the workspace in a
-# fresh Kata VM from the intranet agent-sandbox warm pool (omp-kata-rust) and
+# fresh Kata VM from the intranet agent-sandbox warm pool (forca-rust) and
 # releases it when the workspace is deleted. checkoutMode provisioned-root:
 # the workspace is the sandbox's own checkout (submodules, LFS assets, caches,
 # .env prepared by the recipe), on the branch Orca creates.
@@ -10,5 +10,5 @@ environmentRecipes:
   - id: kata
     name: Kata Sandbox
     checkoutMode: provisioned-root
-    create: forca recipe create --pool omp-kata-rust
+    create: forca recipe create --pool forca-rust
     destroy: forca recipe delete
