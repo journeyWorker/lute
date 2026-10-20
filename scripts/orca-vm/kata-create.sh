@@ -95,7 +95,13 @@ emu_claim=""
 has emulator && emu_claim="$claim-emu"
 pf_pid_file="$STATE_DIR/$claim.port-forward.pid"
 
+# Any exit before the result JSON is printed releases the claims: `die`
+# (exit 1, which an ERR trap misses), a failed command under set -e, and
+# Orca stopping the recipe (TERM/INT/HUP). Without this a failed create left
+# a claimed VM and emulator running with no Orca workspace to delete them.
+created=0
 cleanup_on_error() {
+  [ "$created" = 1 ] && return
   log "create failed; releasing $claim${emu_claim:+ and $emu_claim}"
   k delete sandboxclaim "$claim" ${emu_claim:+"$emu_claim"} --ignore-not-found --wait=false >/dev/null 2>&1 || true
   if [ -f "$pf_pid_file" ]; then
@@ -103,7 +109,8 @@ cleanup_on_error() {
     rm -f "$pf_pid_file"
   fi
 }
-trap cleanup_on_error ERR
+trap cleanup_on_error EXIT
+trap 'exit 1' TERM INT HUP
 
 claim_from() {
   k apply -f - >&2 <<EOF
@@ -380,7 +387,7 @@ if [ -n "$emu_pod" ]; then
   fi
 fi
 
-trap - ERR
+created=1
 log "ready: $sandbox ($project_root)${emu_pod:+, emulator $emu_pod (desktop adb 127.0.0.1:$adb_port)}"
 checkout_mode=""
 [ "$result_schema" = 2 ] && checkout_mode=',"checkoutMode":"provisioned-root"'
