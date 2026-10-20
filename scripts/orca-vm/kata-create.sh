@@ -290,10 +290,12 @@ if [ -n "$emu_addr" ]; then
 fi
 
 # SSH sessions do not inherit the container env (toolchain PATH, omp broker,
-# git token, SDK homes); sshd reads it from here for every session.
+# git token, SDK homes, DOCKER_HOST of the dev-flutter podman engine); sshd
+# reads it from here for every session (UsePAM no, so /etc/environment is not
+# applied).
 umask 077
 {
-  env | grep -E "^(PATH|OMP_AUTH_BROKER_[A-Z_]*|GH_TOKEN|TOKEN_GITHUB|BUN_INSTALL[A-Z_]*|CARGO_HOME|RUSTUP_HOME|UV_[A-Z_]*|ANDROID_[A-Z_]*|JAVA_HOME|FLUTTER_[A-Z_]*|LANG|LC_ALL)="
+  env | grep -E "^(PATH|OMP_AUTH_BROKER_[A-Z_]*|GH_TOKEN|TOKEN_GITHUB|BUN_INSTALL[A-Z_]*|CARGO_HOME|RUSTUP_HOME|UV_[A-Z_]*|ANDROID_[A-Z_]*|JAVA_HOME|FLUTTER_[A-Z_]*|DOCKER_[A-Z_]*|COMPOSE_[A-Z_]*|LANG|LC_ALL)="
   for kv in $extra_env; do echo "$kv"; done
 } > "$HOME/.ssh/environment"
 cut -d" " -f1,2 "$D/host_ed25519.pub"
