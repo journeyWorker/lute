@@ -383,7 +383,11 @@ set -euo pipefail
 } < "$1"
 has() { case ",$features," in *",$1,"*) return 0 ;; *) return 1 ;; esac; }
 umask 077
-mkdir -p "$D" "$HOME/.ssh"
+mkdir -p "$D" "$HOME/.ssh" "$HOME/.config/rclone"
+# The nas remote comes from the environment; an empty config file keeps rclone
+# from printing "config file not found" on every run (images before 2026-10-20
+# do not ship one in /etc/skel).
+[ -e "$HOME/.config/rclone/rclone.conf" ] || : > "$HOME/.config/rclone/rclone.conf"
 [ -f "$D/host_ed25519" ] || ssh-keygen -q -t ed25519 -N "" -f "$D/host_ed25519"
 printf "%s\n" "$pub" > "$HOME/.ssh/authorized_keys"
 cat > "$D/sshd_config" <<CFG
@@ -508,7 +512,7 @@ fi
 # applied).
 umask 077
 {
-  env | grep -E "^(PATH|OMP_AUTH_BROKER_[A-Z_]*|GH_TOKEN|TOKEN_GITHUB|BUN_INSTALL[A-Z_]*|CARGO_HOME|RUSTUP_HOME|UV_[A-Z_]*|ANDROID_[A-Z_]*|JAVA_HOME|FLUTTER_[A-Z_]*|DOCKER_[A-Z_]*|COMPOSE_[A-Z_]*|LANG|LC_ALL)="
+  env | grep -E "^(PATH|OMP_AUTH_BROKER_[A-Z_]*|GH_TOKEN|TOKEN_GITHUB|BUN_INSTALL[A-Z_]*|CARGO_HOME|RUSTUP_HOME|UV_[A-Z_]*|ANDROID_[A-Z_]*|JAVA_HOME|FLUTTER_[A-Z_]*|RCLONE_CONFIG_NAS_[A-Z_]*|DOCKER_[A-Z_]*|COMPOSE_[A-Z_]*|LANG|LC_ALL)="
   for kv in $extra_env; do echo "$kv"; done
 } > "$HOME/.ssh/environment"
 cut -d" " -f1,2 "$D/host_ed25519.pub" > "$ORCA_RUN_DIR/host_key"
@@ -522,12 +526,15 @@ kr exec "$sandbox" -- sh -c 'cat "$HOME/.orca-setup/setup/host_key"'
 host_key="${KR_OUT%%$'\n'*}"
 case "$host_key" in ssh-ed25519\ *) ;; *) die "could not read sandbox host key" ;; esac
 
-# omp defaults (models, roles, compaction, ...) and custom agents so the first
-# launch in the workspace is not a fresh install.
+# omp defaults (models, roles, compaction, ...), user-level context and custom
+# agents so the first launch in the workspace is not a fresh install.
 omp_config="$(dirname "$0")/omp-config.yml"
 omp_agents="$(dirname "$0")/omp-agents"
-[ -f "$omp_config" ] && [ -d "$omp_agents" ] || die "missing $omp_config or $omp_agents (run forca sync)"
+omp_context="$(dirname "$0")/omp-AGENTS.md"
+[ -f "$omp_config" ] && [ -f "$omp_context" ] && [ -d "$omp_agents" ] || die "missing $omp_config, $omp_context or $omp_agents (run forca sync)"
 kr -f "$omp_config" exec -i "$sandbox" -- sh -c 'mkdir -p "$HOME/.omp/agent" && cat > "$HOME/.omp/agent/config.yml"'
+# User-level context for every omp session (NAS artifact area, ...).
+kr -f "$omp_context" exec -i "$sandbox" -- sh -c 'mkdir -p "$HOME/.omp/agent" && cat > "$HOME/.omp/agent/AGENTS.md"'
 # bsdtar (macOS) would add AppleDouble files and provenance xattr headers that
 # GNU tar in the sandbox warns about.
 tar_flags=""
