@@ -105,7 +105,8 @@ const runMount = (element: HTMLElement, options: MountOptions, bindings: Binding
         load: (file) => pixiSoundBackend.load(resolveSound(file)),
         play: (file, playOptions) => pixiSoundBackend.play(resolveSound(file), playOptions),
         unlock: pixiSoundBackend.unlock
-      }
+      },
+      scope: yield* Scope.Scope
     })
     // `ui.title.background`/`music` are optional: no backdrop / no title music when absent (spec 0.47.0 §4.1).
     const titleBackground = title?.background === undefined || title.background === null

@@ -1,4 +1,4 @@
-import { Deferred, Effect, Fiber } from "effect"
+import { Deferred, Effect, Exit, Fiber, Scope } from "effect"
 import { TestClock } from "effect/testing"
 import { describe, expect, it } from "@effect/vitest"
 import { PixiAudio, AudioDecodeError, type AudioBackend, type AudioPlayback } from "../../src/audio/pixiAudio.js"
@@ -341,7 +341,7 @@ describe("PixiAudio music supersession (0.47.2 §3)", () => {
     return { backend, created }
   }
 
-  it.effect("completes every music play before unlock and starts only the latest after it", () =>
+  it.effect("returns every music play at once while locked and starts only the latest after unlock", () =>
     Effect.gen(function* () {
       const { backend, created } = controlledBackend()
       const audio = new PixiAudio({ backend })
@@ -350,32 +350,69 @@ describe("PixiAudio music supersession (0.47.2 §3)", () => {
       const first = Effect.runFork(tracked("title.wav"))
       const second = Effect.runFork(tracked("stage.wav"))
       yield* Effect.yieldNow
-      // The superseded play wakes while the gate is still closed.
-      expect(done).toEqual(["title.wav"])
+      // Locked audio holds no play (0.48.1 §3): both return before the gate opens.
+      expect(done).toEqual(["title.wav", "stage.wav"])
+      expect(created).toHaveLength(0)
       yield* audio.unlock
       yield* Effect.yieldNow
-      expect(done).toEqual(["title.wav", "stage.wav"])
       expect(created.map((item) => item.file)).toEqual(["stage.wav"])
       expect(created[0]?.stopCount()).toBe(0)
       yield* Fiber.join(first)
       yield* Fiber.join(second)
     }))
 
-  it.effect("a music stop before unlock supersedes a pending play", () =>
+  it.effect("a music stop before unlock supersedes a play started while locked", () =>
     Effect.gen(function* () {
       const { backend, created } = controlledBackend()
       const audio = new PixiAudio({ backend })
       let done = false
       const pending = Effect.runFork(audio.play("music", music("title.wav")).pipe(Effect.tap(() => Effect.sync(() => { done = true }))))
       yield* Effect.yieldNow
-      expect(done).toBe(false)
-      yield* audio.stop("music", 0)
-      yield* Effect.yieldNow
       expect(done).toBe(true)
+      yield* audio.stop("music", 0)
       yield* audio.unlock
       yield* Effect.yieldNow
       expect(created).toHaveLength(0)
       yield* Fiber.join(pending)
+    }))
+
+  it.effect("a channel's stop supersedes its plays begun while locked, on every channel", () =>
+    Effect.gen(function* () {
+      const { backend, created } = controlledBackend()
+      const audio = new PixiAudio({ backend })
+      yield* audio.play("sfx", { file: "click.wav", loop: false, volume: 1, fade: 0, restart: false })
+      yield* audio.play("voice", { file: "line.wav", loop: false, volume: 1, fade: 0, restart: false })
+      yield* audio.stop("sfx", 0)
+      yield* audio.unlock
+      yield* Effect.yieldNow
+      // Only the sfx channel was stopped: the voice play still starts.
+      expect(created.map((item) => item.file)).toEqual(["line.wav"])
+    }))
+
+  it.effect("closing the audio scope interrupts plays waiting for unlock", () =>
+    Effect.gen(function* () {
+      const { backend, created } = controlledBackend()
+      const scope = yield* Scope.make()
+      const audio = new PixiAudio({ backend, scope })
+      yield* audio.play("music", music("title.wav"))
+      yield* audio.play("sfx", { file: "click.wav", loop: false, volume: 1, fade: 0, restart: false })
+      yield* Scope.close(scope, Exit.void)
+      // A play begun after the scope closed is interrupted at once too.
+      yield* audio.play("sfx", { file: "late.wav", loop: false, volume: 1, fade: 0, restart: false })
+      yield* audio.unlock
+      yield* Effect.yieldNow
+      expect(created).toHaveLength(0)
+    }))
+
+  it.effect("returns a finite sfx play at once while locked and starts it on unlock", () =>
+    Effect.gen(function* () {
+      const { backend, created } = controlledBackend()
+      const audio = new PixiAudio({ backend })
+      yield* audio.play("sfx", { file: "click.wav", loop: false, volume: 1, fade: 0, restart: false })
+      expect(created).toHaveLength(0)
+      yield* audio.unlock
+      yield* Effect.yieldNow
+      expect(created.map((item) => item.file)).toEqual(["click.wav"])
     }))
 
   it.effect("leaves sfx plays unsuperseded by a music request", () =>

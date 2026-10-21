@@ -142,6 +142,11 @@ export interface AudioPlay {
  * continues. A music `play` or `stop` MUST win over an earlier music `play` still
  * in progress: the earlier one completes without starting (or is stopped once it
  * starts), so the latest music request is the one that plays.
+ *
+ * While the platform cannot start sound yet (player-web before the first user
+ * gesture), `play` SHOULD return at once and start the sound when it can (0.48.1):
+ * a music cue, or an sfx/voice cue with `wait`, must not hold a batch on a sound
+ * that cannot start.
  */
 export interface AudioPort {
   readonly play: (channel: AudioChannel, sound: AudioPlay) => Effect.Effect<void>
