@@ -35,9 +35,9 @@ use crate::session::{
 use crate::Machine;
 
 /// The event contract version outputs and snapshots are stamped with.
-pub const EVENT_VERSION: &str = "0.48.0";
+pub const EVENT_VERSION: &str = "0.48.1";
 /// The execution IR version this runtime executes (major.minor gate).
-pub const IR_VERSION: &str = "0.48.0";
+pub const IR_VERSION: &str = "0.48.1";
 
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]

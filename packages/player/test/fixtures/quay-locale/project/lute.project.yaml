@@ -4,6 +4,6 @@ profiles:
   quay:
     plugins: { quay.occasions: true }
 defaults:
-  luteVersion: "0.48.0"
+  luteVersion: "0.48.1"
   contentLang: en-US
   uses: [world.schema.yaml]
