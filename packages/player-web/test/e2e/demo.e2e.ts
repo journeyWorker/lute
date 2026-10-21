@@ -33,7 +33,8 @@ test.describe.serial("player demo", () => {
     const repo = process.cwd().replace(/\/packages\/player-web$/, "")
     const release = `${repo}/target/release/lute`
     const debug = `${repo}/target/debug/lute`
-    const env = { ...process.env, PORT: String(port), ...(existsSync(release) ? { LUTE_BIN: release } : existsSync(debug) ? { LUTE_BIN: debug } : {}) }
+    const explicit = process.env.LUTE_BIN
+    const env = { ...process.env, PORT: String(port), ...(explicit !== undefined && explicit !== "" ? {} : existsSync(release) ? { LUTE_BIN: release } : existsSync(debug) ? { LUTE_BIN: debug } : {}) }
     server = spawn("bun", ["scripts/demo.ts"], { cwd: `${repo}/packages/player-web`, env })
     await new Promise<void>((resolveServer, rejectServer) => {
       let output = ""

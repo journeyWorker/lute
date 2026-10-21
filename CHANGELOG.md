@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.48.0`, the grammar and semantics the checker
+- **Language** — currently `0.48.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.48.0`) and gated on by consuming engines.
+  artifact (currently `0.48.1`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,114 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.48.1]
+
+**Fix patch on the 0.48 line: a quest-completing play is a witness, a host-driven
+batch never hangs on locked audio** (spec
+[`0.48.1.md`](docs/proposals/scenario-dsl/0.48.1.md); plan
+[`2026-10-20-lute-0.48.1-fixes.md`](docs/superpowers/plans/2026-10-20-lute-0.48.1-fixes.md);
+decisions
+[`2026-10-20-lute-0.48.1-decisions.md`](docs/superpowers/notes/2026-10-20-lute-0.48.1-decisions.md)).
+Fixes issues #145 and #142, two pre-existing defects recorded while
+implementing 0.47.2 and 0.48, and #143 (tracked run artifacts). The language,
+IR, Event and snapshot shapes and the bindings do **not** change; the toolchain
+(the `constraints` / `context` witnesses) and the **player packages**
+(`player-web` audio) earn the release. `luteVersion`, `irVersion`,
+`eventVersion` and `snapshotVersion` read `0.48.1`; the schema files stay
+`-0.48` (bodies unchanged), `bindingsVersion` stays `"0.48"` and the player's
+save/profile format stays `"0.48"`. The seven npm packages align to `0.48.1`.
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- None.
+
+### IR
+
+- None (stamp only).
+
+### Plugin
+
+- None.
+
+### Bindings
+
+- None.
+
+### CLI
+
+- `constraints --all-scripts` / `--script` and `context --script` record a
+  witness from a play that completes a quest. The completed-quest set of a
+  play run is built from the play transcript's settled quest transitions
+  (`{"kind":"quest","quest":…,"state":"complete"}`), as it already was from a
+  test trace's final `quests` map; before, a `completable` constraint whose
+  only witness was a quest-completing `*.play.yaml` stayed `unknown`. (#145)
+- Every other command output is identical to 0.48.0 apart from stamps.
+
+### Runtime
+
+- None.
+
+### Player
+
+- player-web: a host-driven batch never hangs on locked audio. While audio is
+  locked (before the first user gesture), `PixiAudio.play` returns at once on
+  every channel — a music cue, or an sfx/voice cue with `wait`, no longer holds
+  the batch on a sound that cannot start — and the sound starts when audio
+  unlocks, on a fiber of the mount scope (closing the mount interrupts it).
+  A `stop` of a channel supersedes every play of that channel still pending;
+  music keeps its call-order rule (a later music `play` or `stop` supersedes
+  earlier pending music plays, 0.47.2 §3). `mountPlayer(...).act({ type:
+  "newGame" })` with no gesture now reaches a stage-music save point and
+  settles. `PixiAudioOptions.scope` is the new optional owner scope. (#142)
+- `AudioPort` docs: while the platform cannot start sound yet, `play` SHOULD
+  return at once and start the sound when it can.
+
+### Diagnostics
+
+- None.
+
+### Identity
+
+- Stamp only: `eventVersion` / `snapshotVersion` read `0.48.1`; the schemas stay
+  `lute-{ir,events,snapshot,player-bindings}-0.48` (bodies unchanged),
+  `bindingsVersion` stays `"0.48"`, saves and profiles stay `"0.48"`. Line ids
+  and voice keys do not move.
+
+### Fixed
+
+- **A play that completes a quest is a `constraints` / `context` witness.**
+  ([#145](https://github.com/journeyWorker/lute/issues/145))
+- **A host-driven batch no longer hangs on locked audio.**
+  ([#142](https://github.com/journeyWorker/lute/issues/142))
+
+### Tooling/Repo
+
+- `packages/player-web/test-results/.last-run.json` and `title.png` are
+  removed from the index (the directory was already ignored; nothing reads
+  them). ([#143](https://github.com/journeyWorker/lute/issues/143))
+- The player-web e2e server honours an explicit `LUTE_BIN` instead of
+  overriding it with `target/release/lute` or `target/debug/lute`.
+
+### Documentation
+
+- The custom-hosts pages (EN/KO) and the `AudioPort` docs state that
+  `PixiAudio.play` returns at once while audio is locked and the sound starts
+  on unlock.
+
+### Migration notes
+
+| Class | Change | Migration |
+|---|---|---|
+| CLI | A quest-completing play now witnesses `constraints` / `context`. | None. |
+| player-web | While audio is locked every `play` returns at once and starts on unlock; `stop` supersedes the channel's pending plays. | A custom `AudioPort` SHOULD do the same while it cannot start sound. |
+| Release | All axes `0.48.1`; schemas, `bindingsVersion` and save format stay on `0.48`. | None. |
+
+From 0.48.0: run `lute fix` to raise `luteVersion` stamps to `0.48.1`.
 
 ## [0.48.0]
 

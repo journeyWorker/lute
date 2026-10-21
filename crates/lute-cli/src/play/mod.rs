@@ -889,10 +889,20 @@ fn collect_arms(p: &ExecProject, document: &str, transcript: &[Json], out: &mut 
     }
 }
 
+/// The quests a transcript records as complete: a play's settled quest
+/// transitions (`{"kind":"quest","quest":…,"state":"complete"}`) and the
+/// final `quests` map of a test trace (`{id: "complete"}`).
 fn completed_quests(transcript: &[Json]) -> BTreeSet<String> {
     fn walk(value: &Json, out: &mut BTreeSet<String>) {
         match value {
             Json::Object(map) => {
+                if map.get("kind").and_then(Json::as_str) == Some("quest")
+                    && map.get("state").and_then(Json::as_str) == Some("complete")
+                {
+                    if let Some(id) = map.get("quest").and_then(Json::as_str) {
+                        out.insert(id.to_string());
+                    }
+                }
                 if let Some(quests) = map.get("quests").and_then(Json::as_object) {
                     for (id, state) in quests {
                         if state.as_str() == Some("complete") {

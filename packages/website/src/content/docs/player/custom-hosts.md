@@ -282,6 +282,8 @@ A `StageCue.Vfx` carries an `EffectSpec`: a catalogue effect (`flash`, `shake`, 
 
 Restoring a stage (load, `restore`, rollback) does not await its music call: the director begins the music `play` (or `stop`) on a fiber of the player scope and goes on, so that call may still be in progress (waiting for the platform to allow sound, or for a file) when the story continues. An `AudioPort` MUST let a later music `play` or `stop` win over an earlier music `play` still in progress: the earlier one completes without starting (or is stopped once it starts). `PixiAudio` does this, so a load before any user gesture reaches its restored await at once and the stage's music starts when audio unlocks.
 
+While the platform keeps audio locked (player-web before the first user gesture), `PixiAudio.play` returns at once on every channel and the sound starts when audio unlocks (0.48.1). A music cue, or an sfx/voice cue with `wait`, therefore never holds a batch on a sound that cannot start: a batch the host drives through `act` / `send` before any gesture settles, and the music begins on the first gesture. A music `play` or `stop` issued while locked still supersedes an earlier one that has not started. A custom `AudioPort` that cannot start sound yet SHOULD do the same rather than leave `play` pending.
+
 The public `PlayerAction` union is the device-independent input surface: advance, auto/skip, rollback, backlog/menu/save/load/settings, quick save/load, UI visibility, choice, idle, send, voice replay, and settings actions. A native host can emit these actions from any device.
 
 ## Line pacing

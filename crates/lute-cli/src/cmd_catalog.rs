@@ -24,7 +24,7 @@ pub(crate) fn run_refresh(
     providers: Option<&Path>,
     json: bool,
 ) -> ExitCode {
-    // The project is `--project` or the nearest `lute.project.yaml` (0.48.0
+    // The project is `--project` or the nearest `lute.project.yaml` (0.48.1
     // §2.1); `--providers` names the directory, defaulting to the project's
     // `catalogDir`. With neither there is nothing to refresh.
     let project = project

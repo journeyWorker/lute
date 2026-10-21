@@ -43,7 +43,7 @@ Whole-project `lute check` validates the schema, domain and cast keys, reference
 Install the exact 0.48 packages:
 
 ```console
-bun add @lute-lang/player-web@0.48.0 @lute-lang/player@0.48.0 @lute-lang/runtime@0.48.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.48.1 @lute-lang/player@0.48.1 @lute-lang/runtime@0.48.1 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player` declares `@lute-lang/runtime` and `effect` as peer dependencies, so the page installs them once and every package shares one `effect`.

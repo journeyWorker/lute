@@ -1,4 +1,4 @@
-import { Deferred, Effect, Fiber, Option, SubscriptionRef } from "effect"
+import { Deferred, Effect, Fiber, Option, Scope, SubscriptionRef } from "effect"
 import type { AudioChannel, AudioPlay, AudioPort, Volumes } from "@lute-lang/player"
 
 /** A typed failure raised by the sound backend while decoding or starting media. */
@@ -45,6 +45,11 @@ export interface PixiAudioOptions {
   readonly backend: AudioBackend
   readonly logger?: (message: string, error?: unknown) => void
   readonly initialVolumes?: Volumes
+  /**
+   * The scope that owns the fibers of plays begun while audio is locked: closing it
+   * interrupts them, so none outlives the player. Without it they are detached.
+   */
+  readonly scope?: Scope.Scope
 }
 
 /**
@@ -66,9 +71,15 @@ export class PixiAudio implements AudioPort {
   }
   private currentVolumes: Volumes
   private readonly gate = Deferred.makeUnsafe<void>()
-  /** The latest music `play`'s token, completed when a later music `play` or `stop` supersedes it; undefined after a `stop`. */
-  private musicRequest: Deferred.Deferred<void> | undefined
+  /** Tokens of the plays still in progress (not yet started), per channel; see {@link beginRequest}. */
+  private readonly pending: Record<AudioChannel, Set<Deferred.Deferred<void>>> = {
+    music: new Set(),
+    sfx: new Set(),
+    voice: new Set()
+  }
+  private readonly scope: Scope.Scope | undefined
   constructor(options: PixiAudioOptions) {
+    this.scope = options.scope
     this.backend = options.backend
     this.logger = options.logger ?? ((message, error) => console.warn(message, error))
     this.currentVolumes = options.initialVolumes ?? { master: 1, music: 1, sfx: 1, voice: 1 }
@@ -88,7 +99,8 @@ export class PixiAudio implements AudioPort {
 
 
   /**
-   * Play a channel sound, waiting for finite sounds to end. Music without
+   * Play a channel sound, waiting for finite sounds to end; while audio is locked
+   * it returns at once and the sound starts on unlock. Music without
    * `restart` whose file is the one already playing only changes its volume,
    * fading over `fade`, without restarting it (spec 0.41.0 §7.7). A music `play`
    * or `stop` supersedes every earlier music `play` still in progress (waiting for
@@ -98,16 +110,42 @@ export class PixiAudio implements AudioPort {
   readonly play = (channel: AudioChannel, soundToPlay: AudioPlay): Effect.Effect<void> =>
     Effect.gen({ self: this }, function* () {
       const self = this
-      // A music play is superseded by any later music play or stop (spec 0.47.2 §3).
-      const request = channel === "music" ? self.beginMusicRequest() : undefined
-      const superseded = (): boolean => request !== undefined && Deferred.isDoneUnsafe(request)
+      // A play is superseded by its channel's `stop`, and a music play also by any later music play (spec 0.47.2 §3).
+      const request = self.beginRequest(channel)
       if (!SubscriptionRef.getUnsafe(self.unlocked)) {
+        // Audio is locked (spec 0.48.1 §3): the sound starts once it unlocks, on a
+        // fiber of the audio's scope, and this `play` returns at once so that nothing waits
+        // for a sound that cannot start (a host-driven batch never hangs on the first gesture).
+        const locked = self.start(channel, soundToPlay, request, true)
+        yield* self.scope === undefined
+          ? Effect.forkDetach(locked, { startImmediately: true })
+          : Effect.forkIn(locked, self.scope, { startImmediately: true })
+        return
+      }
+      yield* self.start(channel, soundToPlay, request, false)
+    })
+
+  /** Play the sound, first waiting for the unlock gate when `locked`; `request` is the play's token (see {@link beginRequest}). */
+  private readonly start = (
+    channel: AudioChannel,
+    soundToPlay: AudioPlay,
+    request: Deferred.Deferred<void>,
+    locked: boolean
+  ): Effect.Effect<void> =>
+    Effect.gen({ self: this }, function* () {
+      const self = this
+      const superseded = (): boolean => Deferred.isDoneUnsafe(request)
+      if (locked) {
         // The supersession must wake the wait: the gate may stay closed for good.
-        yield* request === undefined
-          ? Deferred.await(self.gate)
-          : Effect.raceFirst(Deferred.await(self.gate), Deferred.await(request))
+        yield* Effect.raceFirst(Deferred.await(self.gate), Deferred.await(request))
       }
       if (superseded()) return
+      yield* self.begin(channel, soundToPlay, superseded)
+    }).pipe(Effect.ensuring(Effect.sync(() => { this.pending[channel].delete(request) })))
+
+  private readonly begin = (channel: AudioChannel, soundToPlay: AudioPlay, superseded: () => boolean): Effect.Effect<void> =>
+    Effect.gen({ self: this }, function* () {
+      const self = this
       if (channel === "music" && !soundToPlay.restart) {
         const playing = self.active.music.filter((record) => !record.stopping).at(-1)
         if (playing !== undefined && playing.file === soundToPlay.file) {
@@ -166,7 +204,7 @@ export class PixiAudio implements AudioPort {
   readonly stop = (channel: AudioChannel, fade: number): Effect.Effect<void> =>
     Effect.gen({ self: this }, function* () {
       const self = this
-      self.supersedeMusic(channel)
+      self.supersede(channel)
       const records = self.active[channel].slice()
       if (records.length === 0) return
       for (const record of records) {
@@ -199,21 +237,22 @@ export class PixiAudio implements AudioPort {
     })
 
   /**
-   * Register a music `play`: completes the previous request (superseding its
-   * play still in progress, whatever it waits for) and returns this play's own.
+   * Register a `play` of `channel`: its token is completed by that channel's `stop`
+   * (every pending play of the channel) and, for music, by any later music `play`
+   * (superseding the play still in progress, whatever it waits for).
    */
-  private beginMusicRequest(): Deferred.Deferred<void> {
-    this.supersedeMusic("music")
+  private beginRequest(channel: AudioChannel): Deferred.Deferred<void> {
+    if (channel === "music") this.supersede(channel)
     const request = Deferred.makeUnsafe<void>()
-    this.musicRequest = request
+    this.pending[channel].add(request)
     return request
   }
 
-  /** A music `stop` (or a later `play`) supersedes the latest music play still in progress. */
-  private supersedeMusic(channel: AudioChannel): void {
-    if (channel !== "music" || this.musicRequest === undefined) return
-    Deferred.doneUnsafe(this.musicRequest, Effect.void)
-    this.musicRequest = undefined
+  /** Complete every play of `channel` still in progress (not yet started): each returns without starting. */
+  private supersede(channel: AudioChannel): void {
+    const requests = [...this.pending[channel]]
+    this.pending[channel].clear()
+    for (const request of requests) Deferred.doneUnsafe(request, Effect.void)
   }
 
   private effectiveVolume(channel: AudioChannel, inputVolume: number): number {

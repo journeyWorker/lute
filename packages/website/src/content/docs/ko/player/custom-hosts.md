@@ -268,6 +268,8 @@ Session.layer({ bindings, cast: bundle.index.cast ?? {} })
 
 stage 복원(load, `restore`, rollback)은 그 음악 호출을 기다리지 않습니다. director가 음악 `play`(또는 `stop`)를 플레이어 scope의 fiber에서 시작하고 넘어가므로, 이야기가 이어질 때 그 호출이 아직 진행 중일 수 있습니다(플랫폼이 소리를 허용하기를, 또는 파일을 기다리는 중). `AudioPort`는 나중의 music `play`/`stop`이 아직 진행 중인 앞선 music `play`보다 우선하도록 해야 합니다. 앞선 호출은 시작하지 않고 완료되며, 이미 시작했다면 바로 멈춥니다. `PixiAudio`가 이렇게 하므로, 사용자 제스처 전의 load도 복원된 await에 바로 이르고 stage의 음악은 오디오가 풀릴 때 시작합니다.
 
+플랫폼이 오디오를 잠가 두는 동안(첫 사용자 제스처 전의 player-web) `PixiAudio.play`는 모든 채널에서 바로 반환하고, 소리는 오디오가 풀릴 때 시작합니다(0.48.1). 그래서 music cue나 `wait`가 있는 sfx/voice cue는 시작할 수 없는 소리 때문에 batch를 붙잡지 않습니다. 호스트가 제스처 전에 `act` / `send`로 구동한 batch도 마무리되고, 음악은 첫 제스처에서 시작합니다. 잠겨 있는 동안의 music `play`/`stop`도 아직 시작하지 않은 앞선 music `play`보다 우선합니다. 아직 소리를 시작할 수 없는 직접 만든 `AudioPort`도 `play`를 대기 상태로 두지 말고 같게 동작하도록 권장합니다.
+
 ## 대사 진행 주체
 
 기본은 director가 대사를 진행합니다. `showLine`은 텍스트가 다 표시되면 완료되고, `advance`는 타이핑 중인 line을 드러내고 표시된 line을 해제합니다. 타이핑, 페이지 넘김, 확인 입력을 직접 처리하는 presenter에는 두 가지 방법이 있습니다.
