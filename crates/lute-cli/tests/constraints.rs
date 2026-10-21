@@ -186,3 +186,85 @@ fn declaration_errors_are_field_anchored_and_unknown_is_not_a_warning() {
         assert!(out.contains(needle), "{out}");
     }
 }
+
+fn copy_dir(from: &Path, to: &Path) {
+    std::fs::create_dir_all(to).unwrap();
+    for entry in std::fs::read_dir(from).unwrap().flatten() {
+        let dest = to.join(entry.file_name());
+        if entry.file_type().unwrap().is_dir() {
+            copy_dir(&entry.path(), &dest);
+        } else {
+            std::fs::copy(entry.path(), dest).unwrap();
+        }
+    }
+}
+
+/// #145: a play that completes a quest witnesses it. The `play-hub` fixture's
+/// `tour` play settles `quest firstEscape -> complete` on its second hub visit.
+#[test]
+fn a_play_that_completes_a_quest_is_a_witness() {
+    let root = lute_scratch::ScratchDir::named("play-witness");
+    copy_dir(
+        &Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/play-hub"),
+        &root,
+    );
+    let project = root.join("lute.project.yaml");
+    let mut text = std::fs::read_to_string(&project).unwrap();
+    text.push_str("constraints:\n  - id: c\n    kind: completable\n    quest: firstEscape\n");
+    std::fs::write(&project, text).unwrap();
+
+    let (code, out) = run(&root, &["constraints"]);
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("c: completable unknown [unknown]"), "{out}");
+
+    for selection in [
+        vec!["--all-scripts"],
+        vec!["--script", "plays/tour.play.yaml"],
+    ] {
+        let mut args = vec!["constraints"];
+        args.extend(&selection);
+        let out = Command::new(BIN)
+            .args(&args)
+            .arg("--project")
+            .arg(&root)
+            .current_dir(&root)
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&out.stdout);
+        assert_eq!(out.status.code(), Some(0), "{selection:?}: {text}");
+        assert!(
+            text.contains("c: completable holds [witnessed]"),
+            "{selection:?}: {text}"
+        );
+        assert!(
+            text.contains("plays/tour.play.yaml: firstEscape -> complete"),
+            "{selection:?}: {text}"
+        );
+    }
+
+    // `context --script` classifies the same play as a witness of the quest.
+    let quest = root.join("quests/first-escape.lute");
+    let out = Command::new(BIN)
+        .args(["context"])
+        .arg(&quest)
+        .args(["--node", "quest:firstEscape", "--script", "plays", "--json"])
+        .arg("--project")
+        .arg(&root)
+        .current_dir(&root)
+        .output()
+        .unwrap();
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let tour = v["plays"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|t| t["file"] == "plays/tour.play.yaml")
+        .unwrap_or_else(|| panic!("{v}"));
+    assert_eq!(tour["classification"], "witnessed", "{v}");
+}
