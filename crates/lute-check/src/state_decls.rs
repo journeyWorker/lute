@@ -7,16 +7,20 @@
 //! declaration refining one it `extends:` (a schema or document overriding
 //! its base's default) is the language's own refinement, not a conflict.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::cell::OnceCell;
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use crate::ProjectDoc;
 use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
 use lute_manifest::types::{type_str, Literal, Owner, Type};
+use lute_syntax::ast::Meta;
 
 use crate::check::FoldedEnv;
 use crate::meta::StateDecl;
 use crate::rel_schema::{meta_position, state_key_span};
+use crate::state_origins::{StateHome, StateOrigin};
 
 pub const E_STATE_DECL_CONFLICT: &str = "E-STATE-DECL-CONFLICT";
 
@@ -24,13 +28,37 @@ pub const E_STATE_DECL_CONFLICT: &str = "E-STATE-DECL-CONFLICT";
 struct Decl<'a> {
     file: PathBuf,
     /// `file`'s `extends:` bases, transitively (canonical paths).
-    bases: BTreeSet<PathBuf>,
-    span: Span,
-    line: usize,
+    bases: Rc<BTreeSet<PathBuf>>,
+    site: Site<'a>,
+    /// `site`, located.
+    span: OnceCell<Span>,
     ty: &'a Type,
     default: Option<&'a Literal>,
     per: Option<&'a str>,
     owner: Option<&'a Owner>,
+}
+
+/// Where a [`Decl`] is. Locating a path in its frontmatter scans the file,
+/// so a declaration that may never be reported — every member of a `per:`
+/// family — is located only when it is ([`Decl::span`]).
+#[derive(Clone, Copy)]
+enum Site<'a> {
+    At(Span),
+    /// The path in a document's own frontmatter.
+    Inline(&'a Meta),
+    /// The path as a family member in an imported schema.
+    Member(&'a StateHome),
+}
+
+impl Site<'_> {
+    /// The frontmatter a site still to be located is located in.
+    fn meta(&self) -> Option<&Meta> {
+        match self {
+            Self::At(_) => None,
+            Self::Inline(meta) => Some(meta),
+            Self::Member(home) => Some(home.meta()),
+        }
+    }
 }
 
 impl Decl<'_> {
@@ -62,8 +90,41 @@ impl Decl<'_> {
             && self.owner == other.owner
     }
 
-    fn at(&self) -> String {
-        format!("{}:{}", self.file.display(), self.line)
+    /// The declaration of `path` (this decl's) located.
+    fn span(&self, path: &str) -> Span {
+        *self.span.get_or_init(|| match self.site {
+            Site::At(span) => span,
+            Site::Inline(meta) => meta_position(meta, state_key_span(meta, path)),
+            Site::Member(home) => home.locate(path).span,
+        })
+    }
+
+    fn at(&self, path: &str) -> String {
+        format!("{}:{}", self.file.display(), self.span(path).line)
+    }
+
+    /// Whether `self` and `other`, declarations of `path` in one file, are
+    /// one declaration: at one offset. A path's offset is
+    /// [`state_key_span`]'s, a function of the frontmatter alone, so two
+    /// sites in equal frontmatters are compared without locating either
+    /// (`same`: frontmatter pairs already compared).
+    fn same_place(
+        &self,
+        other: &Decl<'_>,
+        path: &str,
+        same: &mut HashMap<(*const Meta, *const Meta), bool>,
+    ) -> bool {
+        if let (Some(a), Some(b)) = (self.site.meta(), other.site.meta()) {
+            let equal = *same
+                .entry((std::ptr::from_ref(a), std::ptr::from_ref(b)))
+                .or_insert_with(|| {
+                    std::ptr::eq(a, b) || (a.span == b.span && a.raw_yaml == b.raw_yaml)
+                });
+            if equal {
+                return true;
+            }
+        }
+        self.span(path).byte_start == other.span(path).byte_start
     }
 }
 
@@ -88,6 +149,8 @@ pub fn check_project_state_decls(
     // 0.49.0 §9.2).
     let mut seen_vocabs: std::collections::HashSet<*const crate::rel_schema::RelVocab> =
         std::collections::HashSet::new();
+    // Frontmatter pairs [`Decl::same_place`] compared.
+    let mut same = HashMap::new();
     for (item, folded) in docs.iter().zip(foldeds) {
         let file = item.path;
         let doc = item.doc;
@@ -102,60 +165,73 @@ pub fn check_project_state_decls(
         }
         let vocab = &folded.env.rel_vocab;
         let inline = typed.state.decls.iter().map(|(path, decl)| {
-            let span = meta_position(&doc.meta, state_key_span(&doc.meta, &path));
             let per = typed.state_index.get(path.as_ref());
-            (path, decl, per, (file.to_path_buf(), span))
+            (path, decl, per, file.to_path_buf(), Site::Inline(&doc.meta))
         });
         let first_use = seen_vocabs.insert(std::sync::Arc::as_ptr(vocab));
-        let imported =
-            vocab
-                .origins
-                .state
-                .iter()
-                .filter(|_| first_use)
-                .filter_map(|(path, origin)| {
-                    let decl = folded.env.state.get(path)?;
-                    let at = (origin.file.clone(), origin.span);
-                    Some((
-                        std::borrow::Cow::Borrowed(path.as_str()),
-                        decl,
-                        vocab.indexed_state.get(path),
-                        at,
-                    ))
-                });
-        for (path, decl, per, (file, span)) in inline.chain(imported) {
-            let line = span.line as usize;
+        let imported = first_use
+            .then(|| vocab.origins.state.iter())
+            .into_iter()
+            .flatten()
+            .filter_map(|(path, origin)| {
+                let decl = folded.env.state.get(&path)?;
+                let per = vocab.indexed_state.get(path.as_ref());
+                let site = match origin {
+                    StateOrigin::At(o) => Site::At(o.span),
+                    StateOrigin::Member(home) => Site::Member(home),
+                };
+                Some((path, decl, per, origin.file().to_path_buf(), site))
+            });
+        for (path, decl, per, file, site) in inline.chain(imported) {
             if path.starts_with("scene.") {
                 continue;
             }
-            let decls = by_path.entry(path).or_default();
-            if decls
-                .iter()
-                .any(|d| d.file == file && d.span.byte_start == span.byte_start)
-            {
-                continue;
+            let new = new_decl(file, site, decl, per);
+            match by_path.get_mut(path.as_ref()) {
+                Some(decls) => {
+                    let known = decls
+                        .iter()
+                        .any(|d| d.file == new.file && d.same_place(&new, &path, &mut same));
+                    if !known {
+                        decls.push(new);
+                    }
+                }
+                None => {
+                    by_path.insert(path, vec![new]);
+                }
             }
-            decls.push(new_decl(file, span, line, decl, per));
-        }
-    }
-    for decls in by_path.values_mut() {
-        for d in decls.iter_mut() {
-            d.bases = extends_closure(&d.file, &mut extends);
         }
     }
 
+    let mut closures: BTreeMap<PathBuf, Rc<BTreeSet<PathBuf>>> = BTreeMap::new();
+    let mut canons: BTreeMap<PathBuf, Option<PathBuf>> = BTreeMap::new();
     let mut out = Vec::new();
     for (path, mut decls) in by_path {
+        // One declaration agrees with itself.
+        if decls.len() < 2 {
+            continue;
+        }
+        for d in &mut decls {
+            let bases = closures
+                .entry(d.file.clone())
+                .or_insert_with(|| Rc::new(extends_closure(&d.file, &mut extends)));
+            d.bases = Rc::clone(bases);
+        }
         decls.sort_by(|a, b| {
             a.file
                 .cmp(&b.file)
-                .then(a.span.byte_start.cmp(&b.span.byte_start))
+                .then_with(|| a.span(&path).byte_start.cmp(&b.span(&path).byte_start))
         });
         // A declaration whose file `extends:` another declaring file refines
         // it; the reference is the first declaration that refines none.
         let canon: Vec<Option<PathBuf>> = decls
             .iter()
-            .map(|d| std::fs::canonicalize(&d.file).ok())
+            .map(|d| {
+                canons
+                    .entry(d.file.clone())
+                    .or_insert_with(|| std::fs::canonicalize(&d.file).ok())
+                    .clone()
+            })
             .collect();
         let refines = |d: &Decl<'_>| canon.iter().flatten().any(|f| d.bases.contains(f));
         let mut plain = decls.iter().filter(|d| !refines(d));
@@ -169,14 +245,14 @@ pub fn check_project_state_decls(
                  share one runtime value (declare it once in a schema both documents import) \
                  (dsl 0.26.0 §2.1)",
                 first.shape(),
-                first.at(),
+                first.at(&path),
                 d.shape(),
-                d.at(),
+                d.at(&path),
             );
-            let mut diag = error(message.clone(), d.span);
+            let mut diag = error(message.clone(), d.span(&path));
             diag.related = vec![RelatedDiagnostic {
                 file: first.file.display().to_string(),
-                diagnostic: error(message, first.span),
+                diagnostic: error(message, first.span(&path)),
             }];
             out.push((d.file.clone(), diag));
         }
@@ -186,16 +262,15 @@ pub fn check_project_state_decls(
 
 fn new_decl<'a>(
     file: PathBuf,
-    span: Span,
-    line: usize,
+    site: Site<'a>,
     decl: &'a StateDecl,
     per: Option<&'a String>,
 ) -> Decl<'a> {
     Decl {
         file,
-        bases: BTreeSet::new(),
-        span,
-        line,
+        bases: Rc::default(),
+        site,
+        span: OnceCell::new(),
         ty: &decl.ty,
         default: decl.default.as_ref(),
         per: per.map(String::as_str),

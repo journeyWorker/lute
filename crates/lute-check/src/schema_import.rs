@@ -684,7 +684,7 @@ fn resolve_imports_in(
                 parsed
                     .get(f)
                     .and_then(|d| d.origins.state.get(&path))
-                    .cloned()
+                    .map(std::borrow::Cow::into_owned)
             },
             &order,
             &mut diags,
@@ -1099,7 +1099,6 @@ fn resolve_imports_in(
             (&mut origins.rules, &doc.origins.rules),
             (&mut origins.facts, &doc.origins.facts),
             (&mut origins.domains, &doc.origins.domains),
-            (&mut origins.state, &doc.origins.state),
             (&mut origins.members, &doc.origins.members),
             (&mut origins.cast, &doc.origins.cast),
             (&mut origins.kind_keys, &doc.origins.kind_keys),
@@ -1109,6 +1108,7 @@ fn resolve_imports_in(
                 dst.entry(k.clone()).or_insert_with(|| v.clone());
             }
         }
+        origins.state.merge_first(&doc.origins.state);
         unparsed_heads.extend(doc.failed_heads.iter().cloned());
     }
     // Where each imported `add:` member is written — the first `add:` of it
@@ -1535,14 +1535,7 @@ fn read_and_parse(
     // dsl 0.24 T3-6: where each declaration sits in THIS file, positioned, so
     // an importer's diagnostic about it can name the schema line.
     let idx = lute_core_span::TextIndex::new(&text);
-    let here = |s: Span| {
-        let end = s.byte_end.min(text.len());
-        let start = s.byte_start.min(end);
-        crate::rel_schema::DeclOrigin {
-            file: canon.to_path_buf(),
-            span: Span::from_bytes(&idx, start, end),
-        }
-    };
+    let here = |s: Span| crate::rel_schema::DeclOrigin::located(canon, &idx, s);
     let key = |name: &str| here(crate::meta::meta_key_span(&meta, name));
     let origins = crate::rel_schema::DeclOrigins {
         relations: tm
@@ -1569,28 +1562,31 @@ fn read_and_parse(
             .map(|f| (f.raw.clone(), here(f.span)))
             .collect(),
         domains: tm.domains.keys().map(|n| (n.clone(), key(n))).collect(),
-        state: tm
-            .state
-            .decls
-            .keys()
-            .map(|p| {
-                let span = here(crate::rel_schema::state_key_span(&meta, &p));
-                (p.into_owned(), span)
-            })
-            .collect(),
+        state: crate::state_origins::StateOrigins::declared_in(canon, &idx, &meta, &tm.state.decls),
         // Prerelease N4: each listed member's own line, the first place a
-        // duplicate `add:` of it names.
-        members: tm
-            .rel_kinds
-            .kinds
-            .keys()
-            .flat_map(|k| {
-                crate::rel_schema::kind_list_spans(&meta, k, "members:")
+        // duplicate `add:` of it names. A list is read in file order, so
+        // one cursor positions all of its members in one walk of its lines.
+        members: {
+            let mut cursor = idx.cursor();
+            let mut members = BTreeMap::new();
+            for k in tm.rel_kinds.kinds.keys() {
+                let located: Vec<_> = crate::rel_schema::kind_list_spans(&meta, k, "members:")
                     .into_iter()
-                    .rev()
-                    .map(|(m, span)| (crate::rel_schema::member_origin_key(k, &m), here(span)))
-            })
-            .collect(),
+                    .map(|(m, span)| {
+                        let origin = crate::rel_schema::DeclOrigin::located_by(
+                            canon,
+                            &mut cursor,
+                            text.len(),
+                            span,
+                        );
+                        (crate::rel_schema::member_origin_key(k, &m), origin)
+                    })
+                    .collect();
+                // The first listing of a member wins.
+                members.extend(located.into_iter().rev());
+            }
+            members
+        },
         cast: tm
             .cast
             .iter()
@@ -1670,6 +1666,9 @@ fn read_and_parse(
         diags.push(crate::rel_schema::at_origin(d, Some(&origin)));
     }
     let failed_heads = tm.rel_rule_failed_heads.clone();
+    // One cursor for every `add:` list: its members are positioned in file
+    // order, so in one walk of their lines.
+    let mut cursor = idx.cursor();
     let kind_adds = tm
         .rel_kinds
         .adds
@@ -1679,7 +1678,7 @@ fn read_and_parse(
             members: members.clone(),
             member_spans: crate::rel_schema::add_member_spans(&meta, kind, members)
                 .into_iter()
-                .map(|s| s.map(|s| here(s).span))
+                .map(|s| s.map(|s| crate::rel_schema::positioned_by(&mut cursor, text.len(), s)))
                 .collect(),
             origin: Some(key(kind)),
             span: at,

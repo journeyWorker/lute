@@ -64,6 +64,7 @@ pub mod set_type;
 pub(crate) mod solution;
 pub mod spent_by;
 pub mod state_decls;
+pub mod state_origins;
 pub mod tag;
 pub mod target_writes;
 pub mod templates;

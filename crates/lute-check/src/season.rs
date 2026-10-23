@@ -211,7 +211,7 @@ pub fn check_state(
     schema: &crate::StateView,
     seasons: &Seasons,
     span: Span,
-    origins: &BTreeMap<String, crate::rel_schema::DeclOrigin>,
+    origins: &crate::state_origins::StateOrigins,
 ) -> (crate::meta::StateDecls, Vec<Diagnostic>) {
     let mirror = |decl: &StateDecl| StateDecl {
         ty: decl.ty.clone(),
@@ -234,7 +234,7 @@ pub fn check_state(
             Some(msg) => {
                 diags.push(crate::rel_schema::at_origin(
                     diag(msg, span),
-                    origins.get(&*path),
+                    origins.get(&path).as_deref(),
                 ));
                 if let Some((at, _)) = family {
                     reported.insert(at);

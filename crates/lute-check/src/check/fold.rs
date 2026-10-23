@@ -121,7 +121,7 @@ fn changes_rel(typed: &crate::meta::TypedMeta, imports: &SchemaImports) -> bool 
             .state
             .decls
             .keys()
-            .any(|p| imports.rel.origins.state.contains_key(&*p))
+            .any(|p| imports.rel.origins.state.contains_key(&p))
 }
 
 /// The relational stage (dsl 0.3.0 §3/§4, data-catalog foundation A4): the
@@ -355,25 +355,6 @@ fn results_under(snapshot: &CapabilitySnapshot, value: &str) -> Vec<String> {
         .collect()
 }
 
-/// Where an imported `{ domain: K }` path's report goes: its schema line,
-/// or the first member's for a `per:` family.
-fn imported_state_origin<'o>(
-    origins: &'o std::collections::BTreeMap<String, crate::rel_schema::DeclOrigin>,
-    path: &str,
-) -> Option<&'o crate::rel_schema::DeclOrigin> {
-    let member = format!("{path}.");
-    origins.get(path).or_else(|| {
-        origins
-            .range::<str, _>((
-                std::ops::Bound::Included(member.as_str()),
-                std::ops::Bound::Unbounded,
-            ))
-            .take_while(|(p, _)| p.starts_with(&member))
-            .map(|(_, o)| o)
-            .next()
-    })
-}
-
 /// The project-wide fold stages over `imports`, run once per vocab (spec
 /// 0.49.0 §9.2): what [`fold_env`] reuses for a document that changes none
 /// of their inputs. The frontmatter-reading stages run against an empty
@@ -491,7 +472,7 @@ pub(crate) fn base_fold(
             locate: &|path, message| {
                 let origin = origins.get(path)?;
                 let d = state_decl_report("E-STATE-DECL", message, AT_PLACEHOLDER);
-                Some(crate::rel_schema::at_origin(d, Some(origin)))
+                Some(crate::rel_schema::at_origin(d, Some(&origin)))
             },
         },
     );
@@ -500,9 +481,10 @@ pub(crate) fn base_fold(
         &domains,
         &rel.indexed_state,
         &|path, _, message, code| {
-            let origin = imported_state_origin(origins, path)?;
+            // Its schema line, or the first member's for a `per:` family.
+            let origin = origins.at_or_under(path)?;
             let d = state_decl_report(code, message, AT_PLACEHOLDER);
-            Some(crate::rel_schema::at_origin(d, Some(origin)))
+            Some(crate::rel_schema::at_origin(d, Some(&origin)))
         },
     );
     // Guard expansion reads no frontmatter: its diagnostics are the rules'.
@@ -1295,7 +1277,7 @@ fn fold_env_in(
         } else {
             let origin = origins.get(path)?;
             let d = state_decl_report("E-STATE-DECL", message, at);
-            Some(crate::rel_schema::at_origin(d, Some(origin)))
+            Some(crate::rel_schema::at_origin(d, Some(&origin)))
         }
     };
     let site = crate::state_decls::ValuePrefixSite {
@@ -1351,9 +1333,9 @@ fn fold_env_in(
             let span = crate::meta::meta_path_span(&doc.meta, &["state", path, key]);
             Some(state_decl_report(code, message, span))
         } else {
-            let origin = imported_state_origin(origins, path)?;
+            let origin = origins.at_or_under(path)?;
             let d = state_decl_report(code, message, at);
-            Some(crate::rel_schema::at_origin(d, Some(origin)))
+            Some(crate::rel_schema::at_origin(d, Some(&origin)))
         }
     };
     let families_shared = typed.state_index.is_empty() && typed.per_pending.is_empty();

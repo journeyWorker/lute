@@ -97,19 +97,28 @@ fn missing_names(
     have.extend(own.domains.keys().map(String::as_str));
     have.extend(own.cast.keys().map(String::as_str));
     let o = &defaults.rel.origins;
-    [
-        &o.relations,
-        &o.kinds,
-        &o.domains,
-        &o.defs,
-        &o.state,
-        &o.cast,
-    ]
-    .into_iter()
-    .flatten()
-    .filter(|(name, _)| !have.contains(name.as_str()) && !own.state.decls.contains_key(name))
-    .map(|(name, origin)| (name.clone(), origin.file.clone()))
-    .collect()
+    let named = [&o.relations, &o.kinds, &o.domains, &o.defs]
+        .into_iter()
+        .flatten()
+        .map(|(name, origin)| {
+            (
+                std::borrow::Cow::Borrowed(name.as_str()),
+                origin.file.as_path(),
+            )
+        });
+    let state = o.state.iter().map(|(path, origin)| (path, origin.file()));
+    let cast = o.cast.iter().map(|(name, origin)| {
+        (
+            std::borrow::Cow::Borrowed(name.as_str()),
+            origin.file.as_path(),
+        )
+    });
+    named
+        .chain(state)
+        .chain(cast)
+        .filter(|(name, _)| !have.contains(name.as_ref()) && !own.state.decls.contains_key(name))
+        .map(|(name, file)| (name.into_owned(), file.to_path_buf()))
+        .collect()
 }
 
 fn annotate(d: &mut Diagnostic, missing: &BTreeMap<String, PathBuf>) {

@@ -109,6 +109,11 @@ impl StateFamily {
         &self.members
     }
 
+    /// The members, sorted, as the list every holder of the family shares.
+    pub(crate) fn shared_members(&self) -> &Arc<[String]> {
+        &self.members
+    }
+
     /// The declaration of member `m`, when it is one.
     pub fn member(&self, m: &str) -> Option<&StateDecl> {
         self.members.binary_search_by(|x| x.as_str().cmp(m)).ok()?;
