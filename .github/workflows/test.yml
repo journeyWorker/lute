@@ -62,7 +62,7 @@ name: Test
 # `scripts/vocab-grid.py gate` generates the #173 synthetic projects with
 # `lute-bench generate-vocab` and measures `target/debug/lute` with GNU
 # `/usr/bin/time -v`. It checks growth shape (ratios between cells of the same
-# run, each the minimum of two runs), not absolute time, which a shared runner
+# run, each the minimum of five runs), not absolute time, which a shared runner
 # could not hold. Its script is in the trigger set because no other workflow
 # runs it.
 
@@ -303,7 +303,7 @@ jobs:
       # a hang.
       - name: Project-model cost gate (vocab-grid.py gate, ADR D14)
         timeout-minutes: 15
-        run: python3 scripts/vocab-grid.py gate --lute ./target/debug/lute
+        run: python3 scripts/vocab-grid.py gate --lute ./target/debug/lute --runs 5
 
   public-api:
     name: public Rust API
