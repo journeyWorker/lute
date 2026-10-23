@@ -102,12 +102,20 @@ def parse_time(text: str) -> tuple[float, float]:
     return float(user.group(1)) + float(system.group(1)), int(rss.group(1)) * 1024 / 1e6
 
 
+def launch(command: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+    """Runs `command` to completion; a failure to start it is a usage error."""
+    try:
+        return subprocess.run(command, capture_output=True, text=True, env=env, check=False)
+    except OSError as exception:
+        error(f"cannot run {command[0]}: {exception}")
+
+
 def generate(bench: Path, out: Path, scenes: int, quests: int, slots: int) -> None:
     shutil.rmtree(out, ignore_errors=True)
     paths = slots // MEMBERS
     command = [str(bench), "generate-vocab", str(out), "-S", str(scenes), "-N", str(quests)]
     command += ["-M", str(paths), "-K", str(KINDS), "-P", str(MEMBERS)]
-    completed = subprocess.run(command, capture_output=True, text=True, check=False)
+    completed = launch(command)
     if completed.returncode != 0:
         error(f"{' '.join(command)} exited {completed.returncode}: {completed.stderr.strip()}")
 
@@ -118,11 +126,15 @@ def measure(lute: Path, args: list[str], runs: int, scratch: Path) -> Measure:
     best_cpu = best_rss = None
     for _ in range(runs):
         command = [*time_command(), "-o", str(report), str(lute), *args]
-        completed = subprocess.run(command, capture_output=True, text=True, env=environment, check=False)
+        completed = launch(command, env=environment)
         if completed.returncode != 0:
             detail = (completed.stderr.strip() or completed.stdout.strip())[-2000:]
             error(f"lute {' '.join(args)} exited {completed.returncode}: {detail}")
-        cpu, rss = parse_time(report.read_text())
+        try:
+            timing = report.read_text()
+        except OSError as exception:
+            error(f"cannot read the /usr/bin/time report {report}: {exception}")
+        cpu, rss = parse_time(timing)
         best_cpu = cpu if best_cpu is None else min(best_cpu, cpu)
         best_rss = rss if best_rss is None else min(best_rss, rss)
     return Measure(best_cpu, best_rss, os.getloadavg()[0])
@@ -214,7 +226,7 @@ def main(arguments: list[str]) -> int:
     options.lute = options.lute.resolve()
     options.bench = options.bench.resolve()
     for label, binary in (("--lute", options.lute), ("--bench", options.bench)):
-        if not os.access(binary, os.X_OK):
+        if not binary.is_file() or not os.access(binary, os.X_OK):
             hint = " (cargo build -p lute-bench)" if label == "--bench" else ""
             error(f"{label} {binary} is not an executable{hint}")
     scratch = Path(tempfile.mkdtemp(prefix="lute-vocab-grid-"))
