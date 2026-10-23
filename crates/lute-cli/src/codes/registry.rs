@@ -1548,8 +1548,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-UNKNOWN-ATTR",
-        summary: "A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize.",
-        spec: &["dsl 0.1.0 §7.1"],
+        summary: "A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it.",
+        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1"],
     },
     Code {
         code: "E-UNKNOWN-DIRECTIVE",
@@ -1563,8 +1563,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-UNKNOWN-ID",
-        summary: "An attribute referencing a `providerRef` id names an id absent from the pinned provider catalog.",
-        spec: &[],
+        summary: "An attribute or plugin frontmatter key referencing a `providerRef` id names an id absent from the pinned provider catalog.",
+        spec: &["dsl 0.49.0 §4.3"],
     },
     Code {
         code: "E-UNKNOWN-KIND",

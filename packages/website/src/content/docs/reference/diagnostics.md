@@ -1766,9 +1766,9 @@ Spec: [dsl §8.1](/spec/)
 
 ### E-UNKNOWN-ATTR
 
-A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize.
+A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it.
 
-Spec: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md)
+Spec: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-UNKNOWN-DIRECTIVE
 
@@ -1782,7 +1782,9 @@ Spec: [dsl 0.2.0 §4.5](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 ### E-UNKNOWN-ID
 
-An attribute referencing a `providerRef` id names an id absent from the pinned provider catalog.
+An attribute or plugin frontmatter key referencing a `providerRef` id names an id absent from the pinned provider catalog.
+
+Spec: [dsl 0.49.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-UNKNOWN-KIND
 

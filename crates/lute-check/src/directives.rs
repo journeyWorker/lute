@@ -207,7 +207,9 @@ pub fn check_directive(
         // Additive: `check_attr_value` still runs below and still reports
         // `E-ATTR-TYPE` for a non-number, so a value that is neither loses
         // nothing.
-        if matches!(attr.key.as_str(), "duration" | "delay") {
+        if matches!(attr.key.as_str(), "duration" | "delay")
+            && !lute_manifest::core::UNSTAMPED_DIRECTIVES.contains(&dir.tag.as_str())
+        {
             if let AttrValue::Str(raw) = &attr.value {
                 if crate::time::parse_time_ms(raw) == crate::time::TimeParse::TooFine {
                     diags.push(crate::timeline::time_resolution_diag(
@@ -219,20 +221,24 @@ pub fn check_directive(
             }
         }
         let Some(adecl) = decl.attrs.iter().find(|a| a.name == attr.key) else {
+            // 0.49.0 §4.1: a directive with no stamp carrier
+            // (`UNSTAMPED_DIRECTIVES`) would drop a core timing key or a
+            // plugin stamp, so both are refused before the two fallbacks
+            // below admit them on every other directive.
+            if let Some(message) = unstamped_attr_message(&dir.tag, &attr.key, snapshot) {
+                diags.push(diag("E-UNKNOWN-ATTR", Severity::Error, message, attr.span));
+                continue;
+            }
             // dsl §7.5: `duration`/`delay`/`wait` are cross-cutting reserved
-            // timing keys valid on ANY directive (core or plugin) even when
-            // its own schema does not declare them -- plugins are in fact
+            // timing keys valid on any other directive (core or plugin) even
+            // when its own schema does not declare them -- plugins are in fact
             // FORBIDDEN from declaring them (assembly-time
             // E-PLUGIN-RESERVED-NAME, plugin §10). Type-check the undeclared
             // use exactly like a directive that DID declare it would, via a
             // synthetic decl, so it never falls through to E-UNKNOWN-ATTR. A
             // directive that DOES declare one of these (core camera/video)
             // never reaches this branch -- the `find` above already matched.
-            // `::clear` (dsl 0.24.0 §4) takes no attributes at all: it lowers
-            // to one exit record per character on stage, which carry none of
-            // its timing, so a `duration`/`wait` there would be dropped.
-            let clear = dir.tag == lute_manifest::core::CLEAR_DIRECTIVE;
-            if let Some(universal) = universal_timing_decl(&attr.key).filter(|_| !clear) {
+            if let Some(universal) = universal_timing_decl(&attr.key) {
                 check_attr_value(
                     &owner, &universal, attr, snapshot, providers, domains, &mut diags,
                 );
@@ -261,12 +267,8 @@ pub fn check_directive(
             diags.push(diag(
                 "E-UNKNOWN-ATTR",
                 Severity::Error,
-                if clear {
-                    format!(
-                        "`::clear` has no attribute `{}` — it takes no attributes; every character \
-                         on stage exits with its own exit (dsl 0.24.0 §4)",
-                        attr.key
-                    )
+                if dir.tag == lute_manifest::core::CLEAR_DIRECTIVE {
+                    clear_attr_message(&attr.key)
                 } else {
                     let near = lute_manifest::suggest::did_you_mean(
                         &attr.key,
@@ -388,14 +390,52 @@ pub fn check_directive(
     diags
 }
 
-/// dsl §7.5: the cross-cutting timing keys every directive but `::clear`
-/// takes without declaring them — `duration`/`delay` are `double`, `wait`
-/// is `bool` (dsl §11.3). Plugins may not declare them.
+/// dsl §7.5: the cross-cutting timing keys every directive with a stamp
+/// carrier takes without declaring them (all but
+/// [`lute_manifest::core::UNSTAMPED_DIRECTIVES`], 0.49.0 §4.1) —
+/// `duration`/`delay` are `double`, `wait` is `bool` (dsl §11.3). Plugins
+/// may not declare them. A content line takes `wait` only (0.49.0 §4.2).
 pub const UNIVERSAL_TIMING_ATTRS: &[(&str, Type)] = &[
     ("duration", Type::Double),
     ("delay", Type::Double),
     ("wait", Type::Bool),
 ];
+
+/// 0.49.0 §4.1: the `E-UNKNOWN-ATTR` message for a core timing key
+/// ([`UNIVERSAL_TIMING_ATTRS`]) or a plugin `stampAttrs` attribute on a
+/// directive with no stamp carrier
+/// ([`lute_manifest::core::UNSTAMPED_DIRECTIVES`]). `None` for any other
+/// directive or key.
+fn unstamped_attr_message(tag: &str, key: &str, snapshot: &CapabilitySnapshot) -> Option<String> {
+    use lute_manifest::core::{CLEAR_DIRECTIVE, JUMP_DIRECTIVE, LABEL_DIRECTIVE};
+    let carried = UNIVERSAL_TIMING_ATTRS.iter().any(|(name, _)| *name == key)
+        || snapshot.stamp_attrs.contains_key(key);
+    if !carried || !lute_manifest::core::UNSTAMPED_DIRECTIVES.contains(&tag) {
+        return None;
+    }
+    Some(match tag {
+        JUMP_DIRECTIVE => format!(
+            "`::jump` does not carry `{key}`: it compiles to a `jump` record that has no stamp — \
+             put the attribute on the line or directive before it"
+        ),
+        LABEL_DIRECTIVE => format!(
+            "`::label` does not carry `{key}`: it compiles to no record — put the attribute on \
+             the line or directive after it"
+        ),
+        CLEAR_DIRECTIVE => clear_attr_message(key),
+        _ => format!("`::{tag}` does not carry `{key}`: it compiles to no stamped record"),
+    })
+}
+
+/// `E-UNKNOWN-ATTR` on `::clear` (dsl 0.24.0 §4), for every attribute,
+/// timing keys and plugin stamps included (0.49.0 §4.1): it emits no record of
+/// its own, and its exits exist only for characters on stage.
+fn clear_attr_message(key: &str) -> String {
+    format!(
+        "`::clear` has no attribute `{key}` — it takes no attributes; every character on stage \
+         exits with its own exit (dsl 0.24.0 §4)"
+    )
+}
 
 /// Synthetic [`AttrDecl`] for an undeclared reserved timing key
 /// ([`UNIVERSAL_TIMING_ATTRS`]), so [`check_attr_value`] type-checks an
@@ -405,7 +445,7 @@ pub const UNIVERSAL_TIMING_ATTRS: &[(&str, Type)] = &[
 /// that omits it simply gets no timing behavior; the compiler already treats
 /// an absent `wait` as non-blocking and an absent `duration`/`delay` as zero
 /// -- dsl §11.3, §11.4).
-fn universal_timing_decl(key: &str) -> Option<AttrDecl> {
+pub(crate) fn universal_timing_decl(key: &str) -> Option<AttrDecl> {
     let (name, ty) = UNIVERSAL_TIMING_ATTRS.iter().find(|(k, _)| *k == key)?;
     Some(AttrDecl {
         name: (*name).to_string(),

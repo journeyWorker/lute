@@ -43,4 +43,6 @@ pub use types::{FactDecl, Namespace, RuleDecl, StateDecl, StateSchema, TypedMeta
 
 pub(crate) use diagnostic_helpers::yaml_key;
 pub(crate) use diagnostics::{expand_per_pending, yaml_shape};
+pub(crate) use frontmatter::check_frontmatter_refs;
 pub(crate) use state::{engine_namespace, namespace_of};
+pub(crate) use types::FrontmatterRef;

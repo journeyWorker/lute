@@ -1090,6 +1090,15 @@ fn fold_env_in(
         &domains,
         input.plugin_origins(),
     ));
+    // 0.49.0 §4.3: reference-typed plugin frontmatter values against the
+    // merged vocabulary (entity kinds, domains, providers, asset kinds).
+    fold_diags.extend(crate::meta::check_frontmatter_refs(
+        &typed,
+        &doc.meta,
+        snapshot,
+        input.providers(),
+        &domains,
+    ));
 
     // 4b. Expand every active directive's `state.declares[]` into concrete
     //     state slots at each use site (plugin §8/§9), before the walk +

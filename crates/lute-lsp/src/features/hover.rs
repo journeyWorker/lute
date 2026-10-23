@@ -24,7 +24,7 @@
 use lute_check::{parse_meta, SchemaImports};
 use lute_core_span::Span;
 use lute_manifest::asset;
-use lute_manifest::core::{CLEAR_DIRECTIVE, JUMP_DIRECTIVE, LABEL_DIRECTIVE, LABEL_NAME_ATTR};
+use lute_manifest::core::{JUMP_DIRECTIVE, LABEL_DIRECTIVE, LABEL_NAME_ATTR, UNSTAMPED_DIRECTIVES};
 use lute_manifest::schema::AssetKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{AttrValue, Document, InlineModifier, InlineNode, InterpKind, Line};
@@ -337,13 +337,14 @@ fn directive_hover(snapshot: &CapabilitySnapshot, tag: &str) -> Option<String> {
 
 /// Render one attribute's declaration (type, required, default). An
 /// undeclared `duration`/`delay`/`wait` is the universal timing key every
-/// directive but `::clear` takes (dsl 0.37.0 §3.3).
+/// directive with a stamp carrier takes (dsl 0.37.0 §3.3; not
+/// `UNSTAMPED_DIRECTIVES`, 0.49.0 §4.1).
 fn attr_hover(snapshot: &CapabilitySnapshot, directive: &str, key: &str) -> Option<String> {
     let decl = snapshot.directive(directive)?;
     let Some(attr) = decl.attrs.iter().find(|a| a.name == key) else {
         let (_, ty) = lute_check::directives::UNIVERSAL_TIMING_ATTRS
             .iter()
-            .find(|(name, _)| *name == key && directive != CLEAR_DIRECTIVE)?;
+            .find(|(name, _)| *name == key && !UNSTAMPED_DIRECTIVES.contains(&directive))?;
         return Some(format!(
             "**`{key}`** (optional): {} — universal timing (seconds for \
              `duration`/`delay`)\n\non `::{directive}`",

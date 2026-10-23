@@ -339,6 +339,21 @@ pub struct TypedMeta {
     pub terminal: Option<crate::gates::TerminalDecl>,
     /// dsl 0.27.0 §5: a schema document's `seasons:` (name -> `{ live }`).
     pub seasons: crate::season::Seasons,
+    /// 0.49.0 §4.3: each reference-typed plugin frontmatter key whose value
+    /// is a string (or a list of strings), for the membership check
+    /// [`crate::meta::check_frontmatter_refs`] runs once the merged
+    /// vocabulary is folded. In key order.
+    pub(crate) frontmatter_refs: Vec<FrontmatterRef>,
+}
+
+/// One reference-typed plugin frontmatter key (0.49.0 §4.3): `ty` is the
+/// element type (`entity`, `domain`, `enumFromOption`, `providerRef` or
+/// `assetKind`), `values` the authored string, or each element of a list.
+#[derive(Clone, Debug)]
+pub(crate) struct FrontmatterRef {
+    pub(crate) key: String,
+    pub(crate) ty: Type,
+    pub(crate) values: Vec<String>,
 }
 
 impl TypedMeta {

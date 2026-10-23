@@ -302,7 +302,7 @@
       "properties": {
         "wait": {
           "type": "boolean",
-          "description": "resolved blocking flag: when true the engine finishes presenting the record before advancing."
+          "description": "resolved blocking flag: when true the engine finishes presenting the record before advancing. On a `line` record (0.49.0 §4.2), present only when authored: the line always waits for its own advance, and `false` lets the staging records after it, up to the next line, start while the line is presented."
         },
         "duration": {
           "type": "number",

@@ -274,13 +274,23 @@ pub(crate) fn extend_surface(
         })
         .collect();
     root.insert("builtinDirectives".into(), builtins.into());
-    // Cross-cutting attributes the checker admits on every directive.
+    // Cross-cutting attributes the checker admits on every directive; the
+    // timing keys and stamps not on a directive with no stamp carrier
+    // (0.49.0 §4.1).
+    let but_unstamped = format!(
+        "every directive but {}",
+        lute_manifest::core::UNSTAMPED_DIRECTIVES
+            .iter()
+            .map(|tag| format!("::{tag}"))
+            .collect::<Vec<_>>()
+            .join(", ")
+    );
     let mut every: Vec<Value> = vec![json!({
         "name": "when", "type": "condition", "on": "every directive"
     })];
     for (name, ty) in lute_check::directives::UNIVERSAL_TIMING_ATTRS {
         every.push(json!({
-            "name": name, "type": crate::attr_type_str(ty).0, "on": "every directive but ::clear"
+            "name": name, "type": crate::attr_type_str(ty).0, "on": but_unstamped
         }));
     }
     every.push(
@@ -288,7 +298,8 @@ pub(crate) fn extend_surface(
     );
     for (name, a) in &input.snapshot().stamp_attrs {
         every.push(json!({
-            "name": name, "type": crate::attr_type_str(&a.ty).0, "on": "every directive (stampAttrs)"
+            "name": name, "type": crate::attr_type_str(&a.ty).0,
+            "on": format!("{but_unstamped} (stampAttrs)")
         }));
     }
     root.insert("directiveAttrs".into(), every.into());

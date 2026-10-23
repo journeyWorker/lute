@@ -59,6 +59,12 @@ pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
         // (`normalize::backfill_component_codes`); an authored code wins.
         code: get("code").or_else(|| get(crate::normalize::COMPONENT_CODE_ATTR)),
         stamp: Stamp {
+            // 0.49.0 §4.2: an authored `wait` only; absent stays omitted (a
+            // line always waits for its own advance).
+            timing: Timing {
+                wait: attr_bool(&line.attrs, "wait"),
+                ..Timing::default()
+            },
             // plugin §14.1: a content line carries cross-cutting stamp attrs
             // like any other record. The built-in content-line keys win (they
             // ARE the record's own fields above) — the same precedence the
