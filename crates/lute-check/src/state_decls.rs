@@ -80,6 +80,14 @@ pub fn check_project_state_decls(
 ) -> Vec<(PathBuf, Diagnostic)> {
     let mut by_path: BTreeMap<&str, Vec<Decl<'_>>> = BTreeMap::new();
     let mut extends: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
+    // The relational vocabularies whose imported declarations are already
+    // recorded. A document sharing one adds nothing a previous document did
+    // not: each of its imported declarations sits at the same origin, and a
+    // declaration is recorded once per origin. Skipping them keeps this pass
+    // from walking the project's imported state once per document (spec
+    // 0.49.0 §9.2).
+    let mut seen_vocabs: std::collections::HashSet<*const crate::rel_schema::RelVocab> =
+        std::collections::HashSet::new();
     for (item, folded) in docs.iter().zip(foldeds) {
         let file = item.path;
         let doc = item.doc;
@@ -102,11 +110,18 @@ pub fn check_project_state_decls(
                 (file.to_path_buf(), span),
             )
         });
-        let imported = vocab.origins.state.iter().filter_map(|(path, origin)| {
-            let decl = folded.env.state.get(path)?;
-            let at = (origin.file.clone(), origin.span);
-            Some((path, decl, vocab.indexed_state.get(path), at))
-        });
+        let first_use = seen_vocabs.insert(std::sync::Arc::as_ptr(vocab));
+        let imported =
+            vocab
+                .origins
+                .state
+                .iter()
+                .filter(|_| first_use)
+                .filter_map(|(path, origin)| {
+                    let decl = folded.env.state.get(path)?;
+                    let at = (origin.file.clone(), origin.span);
+                    Some((path, decl, vocab.indexed_state.get(path), at))
+                });
         for (path, decl, per, (file, span)) in inline.chain(imported) {
             let line = span.line as usize;
             if path.starts_with("scene.") {

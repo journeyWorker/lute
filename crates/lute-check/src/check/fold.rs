@@ -423,8 +423,7 @@ pub(crate) fn base_fold(
                 .push(path.clone());
         }
     }
-    let state = Arc::new(state);
-    let view = crate::StateView::over(Arc::clone(&state));
+    let view = crate::StateView::over(Arc::new(state));
     // The imported defs, settled against the base state.
     let mut imported_defs = imports.defs.clone();
     let (imported_def_msgs, _) = crate::def_decl::settle_defs(
@@ -501,7 +500,7 @@ pub(crate) fn base_fold(
         rel_diags,
         guard_diags,
         rel_shared,
-        state,
+        view,
         paths_by_domain,
         imported_defs: Arc::new(imported_defs),
         def_diags,
@@ -649,7 +648,7 @@ fn fold_env_in(
     //    type must stay stable). Shared: the imports are the vocab's base
     //    state and every decl below goes to this document's overlay.
     let mut schema = match shared {
-        Some(b) => crate::StateView::over(Arc::clone(&b.state)),
+        Some(b) => b.view.clone(),
         None => crate::StateView::from(imports.state.clone()),
     };
     let mut state_merge_diags: Vec<Diagnostic> = Vec::new();

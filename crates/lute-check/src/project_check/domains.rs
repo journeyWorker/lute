@@ -77,12 +77,10 @@ pub fn domain_reads_from_relations(vocab: &crate::rel_schema::RelVocab) -> BTree
 /// (`run.wd: { type: { domain: weekday } }`). Since dsl 0.24.0 §1 such a path
 /// renders the domain's member `labels` in `{{…}}`, so the declaration reaches
 /// rendered text — a read as real as a directive attr typed against it.
+/// Read from the base's summary plus the document's overlay
+/// ([`crate::StateView::domain_reads`], spec 0.49.0 §9.2 R5).
 pub fn domain_reads_from_state(schema: &crate::StateView) -> BTreeSet<String> {
-    let mut out = BTreeSet::new();
-    for (_, decl) in schema.iter() {
-        collect_domain_names(&decl.ty, &mut out);
-    }
-    out
+    schema.domain_reads()
 }
 
 /// Every entity kind the relational vocabulary itself reads (round-3 CR N1,
@@ -123,7 +121,7 @@ pub fn domain_reads_from_kinds<'a>(
 /// Every `Type::Domain(name)` / `Type::Entity(name)` reachable from `ty`,
 /// including through the container types — a `{ list: { domain: X } }` slot
 /// reads `X` as surely as a bare one does.
-fn collect_domain_names(ty: &Type, out: &mut BTreeSet<String>) {
+pub(crate) fn collect_domain_names(ty: &Type, out: &mut BTreeSet<String>) {
     match ty {
         Type::Domain(name) | Type::Entity(name) => {
             out.insert(name.clone());

@@ -307,7 +307,7 @@ pub fn build_index(
                     .entry(entry.path.clone())
                     .or_insert_with(|| StateDomain {
                         kind: kind.clone(),
-                        members: members.clone(),
+                        members: members.to_vec(),
                     });
             }
         }
@@ -651,7 +651,7 @@ mod tests {
                 plugin: BTreeMap::new(),
                 beat: None,
             }),
-            state: Vec::new(),
+            state: crate::StateTable::default(),
             entities: Vec::new(),
             enums: Vec::new(),
             relations: Vec::new(),

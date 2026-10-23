@@ -468,7 +468,7 @@ fn envelope_serializes_with_state_entries() {
             plugin: BTreeMap::new(),
             beat: None,
         }),
-        state: vec![StateEntry {
+        state: StateTable::from(vec![StateEntry {
             path: "scene.choices.number".into(),
             ty: "enum".into(),
             domain: Some(vec!["blunt".into(), "soft".into(), "unset".into()]),
@@ -478,7 +478,7 @@ fn envelope_serializes_with_state_entries() {
             labels: BTreeMap::new(),
             label_forms: BTreeMap::new(),
             member_domain: None,
-        }],
+        }]),
         entities: Vec::new(),
         enums: Vec::new(),
         relations: Vec::new(),

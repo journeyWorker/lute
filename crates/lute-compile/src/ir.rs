@@ -3,6 +3,8 @@
 //! order — part of the byte-stability contract; never reorder.
 
 use std::collections::BTreeMap;
+use std::fmt;
+use std::sync::Arc;
 
 use serde::Serialize;
 
@@ -94,7 +96,7 @@ pub struct ExecutionIr {
     /// after the plugin capability snapshot.
     pub required_semantics: Vec<String>,
     pub meta: ArtifactMeta,
-    pub state: Vec<StateEntry>,
+    pub state: StateTable,
     /// Merged relational entity kinds (dsl 0.3.0 §3.1), name-sorted
     /// (`RelVocab.kinds` is a `BTreeMap` — deterministic order). Omitted
     /// entirely for a document with no relational declarations (D15 — byte-
@@ -427,7 +429,219 @@ pub struct StateEntry {
     /// member-checked against. In memory only: the wire entry keeps the
     /// `string` type the IR has always carried for these paths.
     #[serde(skip)]
-    pub member_domain: Option<(String, Vec<String>)>,
+    pub member_domain: Option<(String, Arc<[String]>)>,
+}
+
+/// An artifact's state table (§4.1), sorted by path: the rows its project
+/// vocab renders once for every document ([`BaseStateEntries`], shared),
+/// and this document's own rows, which replace a shared row of the same
+/// path (spec 0.49.0 §9.4). Serialized as the one merged array 0.48.1
+/// wrote, byte for byte.
+#[derive(Clone, Debug, Default)]
+pub struct StateTable {
+    base: Arc<BaseStateEntries>,
+    own: Vec<StateEntry>,
+}
+
+/// The state rows one project vocab renders the same for every document
+/// that changes none of their inputs, sorted by path.
+#[derive(Debug, Default)]
+pub struct BaseStateEntries {
+    entries: Vec<StateEntry>,
+    /// What the CEL-environment walk finds in [`Self::entries`], walked
+    /// once for every artifact sharing them.
+    cel_names: std::sync::OnceLock<CelNames>,
+}
+
+impl BaseStateEntries {
+    /// `entries` must be sorted by path, each path once.
+    pub(crate) fn new(entries: Vec<StateEntry>) -> Self {
+        debug_assert!(
+            entries.windows(2).all(|w| w[0].path < w[1].path),
+            "base state rows are sorted by path, each once"
+        );
+        Self {
+            entries,
+            cel_names: std::sync::OnceLock::new(),
+        }
+    }
+
+    /// The CEL roots and functions the rows' JSON names.
+    pub(crate) fn cel_names(&self) -> &CelNames {
+        self.cel_names.get_or_init(|| {
+            let mut names = CelNames::default();
+            for row in &self.entries {
+                names.walk(&serde_json::to_value(row).unwrap_or_default(), false);
+            }
+            names
+        })
+    }
+}
+
+/// The CEL variables (path roots) and functions an artifact's JSON names
+/// inside its expressions (`expr` subtrees).
+#[derive(Clone, Debug, Default)]
+pub(crate) struct CelNames {
+    pub(crate) roots: std::collections::BTreeSet<String>,
+    pub(crate) funcs: std::collections::BTreeSet<String>,
+}
+
+impl CelNames {
+    /// Collect from `v`; `in_expr` once under an `expr` key.
+    pub(crate) fn walk(&mut self, v: &serde_json::Value, in_expr: bool) {
+        if let Some(obj) = v.as_object() {
+            if in_expr {
+                for key in ["path", "has"] {
+                    if let Some(root) = obj
+                        .get(key)
+                        .and_then(|v| v.as_str())
+                        .and_then(|p| p.split('.').next())
+                    {
+                        self.roots.insert(root.to_string());
+                    }
+                }
+                if let Some(name) = obj.get("call").and_then(|v| v.as_str()) {
+                    if !matches!(name, "int" | "double") {
+                        self.funcs.insert(name.to_string());
+                    }
+                }
+            }
+            for (key, child) in obj {
+                self.walk(child, in_expr || key == "expr");
+            }
+        } else if let Some(items) = v.as_array() {
+            for child in items {
+                self.walk(child, in_expr);
+            }
+        }
+    }
+
+    pub(crate) fn extend(&mut self, other: &CelNames) {
+        self.roots.extend(other.roots.iter().cloned());
+        self.funcs.extend(other.funcs.iter().cloned());
+    }
+}
+
+impl From<Vec<StateEntry>> for StateTable {
+    /// A table of `own` rows only; sorted here.
+    fn from(mut own: Vec<StateEntry>) -> Self {
+        own.sort_by(|a, b| a.path.cmp(&b.path));
+        Self {
+            base: Arc::default(),
+            own,
+        }
+    }
+}
+
+impl StateTable {
+    /// The shared `base` rows, `own` (sorted by path, each path once)
+    /// replacing any base row of the same path.
+    pub(crate) fn new(base: Arc<BaseStateEntries>, own: Vec<StateEntry>) -> Self {
+        debug_assert!(
+            own.windows(2).all(|w| w[0].path < w[1].path),
+            "own state rows are sorted by path, each once"
+        );
+        Self { base, own }
+    }
+
+    /// Every row, in path order.
+    pub fn iter(&self) -> StateRows<'_> {
+        StateRows {
+            base: self.base.entries.iter().peekable(),
+            own: self.own.iter().peekable(),
+        }
+    }
+
+    /// The rows whose path starts with `prefix`, in path order.
+    pub fn with_prefix<'a>(&'a self, prefix: &'a str) -> impl Iterator<Item = &'a StateEntry> {
+        let from = |rows: &'a [StateEntry]| {
+            let at = rows.partition_point(|e| e.path.as_str() < prefix);
+            rows[at..]
+                .iter()
+                .take_while(move |e| e.path.starts_with(prefix))
+        };
+        StateRows {
+            base: from(&self.base.entries).peekable(),
+            own: from(&self.own).peekable(),
+        }
+    }
+
+    /// The row of `path`.
+    pub fn get(&self, path: &str) -> Option<&StateEntry> {
+        let at = |rows: &[StateEntry]| rows.binary_search_by(|e| e.path.as_str().cmp(path));
+        match at(&self.own) {
+            Ok(i) => Some(&self.own[i]),
+            Err(_) => at(&self.base.entries).ok().map(|i| &self.base.entries[i]),
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.iter().count()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.own.is_empty() && self.base.entries.is_empty()
+    }
+
+    /// The shared rows this table merges, for a caller that derives
+    /// something from them once per vocab.
+    pub(crate) fn base(&self) -> &Arc<BaseStateEntries> {
+        &self.base
+    }
+
+    pub(crate) fn own(&self) -> &[StateEntry] {
+        &self.own
+    }
+}
+
+impl<'a> IntoIterator for &'a StateTable {
+    type Item = &'a StateEntry;
+    type IntoIter = StateRows<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
+    }
+}
+
+impl Serialize for StateTable {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.collect_seq(self.iter())
+    }
+}
+
+/// [`StateTable::iter`]: the shared and own rows merged in path order, an
+/// own row replacing the shared row of its path.
+pub struct StateRows<'a, I = std::slice::Iter<'a, StateEntry>>
+where
+    I: Iterator<Item = &'a StateEntry>,
+{
+    base: std::iter::Peekable<I>,
+    own: std::iter::Peekable<I>,
+}
+
+impl<'a, I: Iterator<Item = &'a StateEntry>> fmt::Debug for StateRows<'a, I> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StateRows").finish_non_exhaustive()
+    }
+}
+
+impl<'a, I: Iterator<Item = &'a StateEntry>> Iterator for StateRows<'a, I> {
+    type Item = &'a StateEntry;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match (self.own.peek(), self.base.peek()) {
+            (Some(o), Some(b)) => match o.path.cmp(&b.path) {
+                std::cmp::Ordering::Less => self.own.next(),
+                std::cmp::Ordering::Greater => self.base.next(),
+                std::cmp::Ordering::Equal => {
+                    self.base.next();
+                    self.own.next()
+                }
+            },
+            (Some(_), None) => self.own.next(),
+            (None, _) => self.base.next(),
+        }
+    }
 }
 
 /// Cross-cutting optional stamps (dsl 0.37.0 §5.2), flattened into every

@@ -633,7 +633,6 @@ pub fn reconcile_collected(
         // §4.3 spec lines 442-448), unioned across every doc's own resolved
         // schema in this root.
         let mut per_doc = envelope::PerDocEffects::default();
-        let mut envelope_d: BTreeSet<String> = BTreeSet::new();
         let mut reads_per_scene: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
         // Per non-tainted, in-scope, entry-dependent read site: the exact
         // per-file `E-MAYBE-UNSET` diagnostic it would earn, keyed by
@@ -645,18 +644,11 @@ pub fn reconcile_collected(
         // heuristic.
         let mut sites_per_scene: BTreeMap<String, Vec<(Span, String)>> = BTreeMap::new();
         // `owner: engine` paths: an unavailable read of one is advised a
-        // guard or a default, never an `after:` (no scene sets it).
-        let mut engine_owned: BTreeSet<String> = BTreeSet::new();
+        // guard or a default, never an `after:` (no scene sets it). Both
+        // unions read each shared base's summary once (spec 0.49.0 §9.2 R5).
+        let mut state_union = lute_check::StateUnion::default();
         for (_path, doc, folded) in group_full {
-            envelope_d.extend(envelope::schema_defaults(&folded.env.state));
-            engine_owned.extend(
-                folded
-                    .env
-                    .state
-                    .iter()
-                    .filter(|(_, d)| d.owner == Some(lute_manifest::types::Owner::Engine))
-                    .map(|(p, _)| p.clone()),
-            );
+            state_union.add(&folded.env.state);
             for quest in &doc.quests {
                 if quest.id.is_empty() || ambiguous_quests.contains(&quest.id) {
                     continue;
@@ -667,6 +659,8 @@ pub fn reconcile_collected(
                 );
             }
         }
+        let envelope_d = state_union.defaults();
+        let engine_owned = state_union.engine_owned();
         for (key, occurrences) in &key_set {
             let Some((scene_path, _)) = occurrences.first() else {
                 continue;
@@ -737,7 +731,7 @@ pub fn reconcile_collected(
             sites_per_scene.insert(key.clone(), sites);
             reads_per_scene.insert(key.clone(), reads);
         }
-        let (envs, tainted) = envelope::propagate(&conn_graph, &per_doc, &envelope_d);
+        let (envs, tainted) = envelope::propagate(&conn_graph, &per_doc);
         // `check_envelope` returns BOTH grades together (see its own doc
         // comment); only the error grade joins `project_diags` -- the
         // warning grade is intentionally computed-and-discarded here (dsl
@@ -748,6 +742,7 @@ pub fn reconcile_collected(
         for (path, d) in envelope::check_envelope(
             &conn_graph,
             &envs,
+            &envelope_d,
             &tainted,
             &reads_per_scene,
             &engine_owned,

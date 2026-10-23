@@ -365,7 +365,10 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     // Folded state envelope: author decl + implicit branch decl (§4.1).
     let paths: Vec<&str> = artifact.state.iter().map(|s| s.path.as_str()).collect();
     assert_eq!(paths, vec!["scene.affect.marina", "scene.choices.number"]);
-    let choice_entry = &artifact.state[1];
+    let choice_entry = artifact
+        .state
+        .get("scene.choices.number")
+        .expect("choice slot");
     assert_eq!(choice_entry.ty, "enum");
     assert_eq!(
         choice_entry.domain.as_deref(),
@@ -375,7 +378,10 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     // §4.1: an implicit choice slot is seeded `default: "unset"` so the runtime
     // can init the branch record key before any choice is taken.
     assert_eq!(choice_entry.default, Some(serde_json::json!("unset")));
-    let affect = &artifact.state[0];
+    let affect = artifact
+        .state
+        .get("scene.affect.marina")
+        .expect("affect slot");
     assert_eq!(affect.ty, "int");
     assert_eq!(affect.default, Some(serde_json::json!(0)));
 

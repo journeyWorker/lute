@@ -18,7 +18,10 @@ pub fn project_docs(group: &DocGroup) -> Vec<ProjectDoc<'_>> {
 pub struct RootScenario {
     pub graph: lute_check::connectivity::ConnGraph,
     pub reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
-    pub envs: BTreeMap<lute_check::connectivity::NodeId, envelope::Env>,
+    /// Each node's ROUTE envelope ([`envelope::propagate`]); its whole
+    /// envelope also holds [`Self::envelope_d`] — read it with
+    /// [`Self::env`].
+    pub route_envs: BTreeMap<lute_check::connectivity::NodeId, envelope::Env>,
     pub tainted: BTreeSet<lute_check::connectivity::NodeId>,
     pub reads_per_scene: BTreeMap<String, Vec<(String, Span)>>,
     pub key_set: BTreeMap<String, Vec<(PathBuf, Span)>>,
@@ -29,8 +32,20 @@ pub struct RootScenario {
     pub dead_required_objective_quests: BTreeSet<String>,
     pub envelope_d: BTreeSet<String>,
     pub per_doc: envelope::PerDocEffects,
-    pub rel_vocab: lute_check::RelVocab,
+    /// The relational vocabulary of the root's last document declaring a
+    /// relation, shared with that document.
+    pub rel_vocab: std::sync::Arc<lute_check::RelVocab>,
     pub scene_must: BTreeMap<String, Vec<lute_check::fact_env::MustFact>>,
+}
+
+impl RootScenario {
+    /// `node`'s whole envelope: its route part with the entry floor `D`;
+    /// `None` when [`envelope::propagate`] gave it none (a cycle).
+    pub fn env(&self, node: &lute_check::connectivity::NodeId) -> Option<envelope::Env> {
+        self.route_envs
+            .get(node)
+            .map(|env| env.clone().with_floor(&self.envelope_d))
+    }
 }
 
 pub fn assemble_root_scenario(
@@ -52,13 +67,13 @@ pub fn assemble_root_scenario(
         &ambiguous_quests,
     );
     let mut per_doc = envelope::PerDocEffects::default();
-    let mut envelope_d = BTreeSet::new();
     let mut reads_per_scene = BTreeMap::new();
-    let mut rel_vocab = lute_check::RelVocab::default();
+    let mut rel_vocab = std::sync::Arc::default();
+    let mut state_union = lute_check::StateUnion::default();
     for (_, doc, folded) in group_full {
-        envelope_d.extend(envelope::schema_defaults(&folded.env.state));
+        state_union.add(&folded.env.state);
         if !folded.env.rel_vocab.relations.is_empty() {
-            rel_vocab = (*folded.env.rel_vocab).clone();
+            rel_vocab = std::sync::Arc::clone(&folded.env.rel_vocab);
         }
         for quest in &doc.quests {
             if !quest.id.is_empty() && !ambiguous_quests.contains(&quest.id) {
@@ -69,6 +84,7 @@ pub fn assemble_root_scenario(
             }
         }
     }
+    let envelope_d = state_union.defaults();
     let mut group_ix = std::collections::HashMap::with_capacity(group_full.len());
     for (i, (p, _, _)) in group_full.iter().enumerate() {
         group_ix.entry(p.as_path()).or_insert(i);
@@ -111,11 +127,11 @@ pub fn assemble_root_scenario(
         );
         reads_per_scene.insert(key.clone(), reads);
     }
-    let (envs, tainted) = envelope::propagate(&graph, &per_doc, &envelope_d);
+    let (route_envs, tainted) = envelope::propagate(&graph, &per_doc);
     RootScenario {
         graph,
         reach: fp.reach,
-        envs,
+        route_envs,
         tainted,
         reads_per_scene,
         key_set,

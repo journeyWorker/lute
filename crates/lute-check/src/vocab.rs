@@ -18,12 +18,13 @@
 //! only while the document changes none of that stage's inputs, and reruns
 //! the stage over base ∪ overlay otherwise (`check::fold`).
 
-use std::collections::{btree_map, BTreeMap, BTreeSet};
+use std::any::{Any, TypeId};
+use std::collections::{btree_map, BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::iter::Peekable;
 use std::ops::Bound;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, OnceLock};
 
 use lute_core_span::{Diagnostic, Span};
 use lute_manifest::clock::ClockDecl;
@@ -88,7 +89,13 @@ pub struct ProjectVocab {
     /// [`crate::CheckInput::import_diags`].
     pub imports: Arc<SchemaImports>,
     pub(crate) fold: BaseFold,
+    /// What a downstream crate derives from this vocab once for all its
+    /// documents (lute-compile's IR state rows, spec 0.49.0 §9.4), by type.
+    derived: Mutex<HashMap<TypeId, DerivedCell>>,
 }
+
+/// One [`ProjectVocab::derived`] value, initialized once.
+type DerivedCell = Arc<OnceLock<Arc<dyn Any + Send + Sync>>>;
 
 impl fmt::Debug for ProjectVocab {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -102,7 +109,11 @@ impl ProjectVocab {
     /// Run the project-wide fold stages over `imports` once.
     pub fn build(base: &ProjectBase, imports: Arc<SchemaImports>) -> Self {
         let fold = crate::check::base_fold(base, &imports);
-        Self { imports, fold }
+        Self {
+            imports,
+            fold,
+            derived: Mutex::default(),
+        }
     }
 
     /// The merged domain vocabulary a document that adds no domain of its
@@ -118,9 +129,26 @@ impl ProjectVocab {
     }
 
     /// The imported state, with the reserved `prev.run.*` mirrors and the
-    /// members of every `{ domain: K }` path.
-    pub fn state(&self) -> &Arc<StateSchema> {
-        &self.fold.state
+    /// members of every `{ domain: K }` path, as a view with no overlay —
+    /// what every document's view starts from.
+    pub fn view(&self) -> &StateView {
+        &self.fold.view
+    }
+
+    /// `T` derived from this vocab, computed by `init` on first use and
+    /// shared by every later caller (spec 0.49.0 §9.4: lute-compile renders
+    /// the base state's IR rows once per vocab, not once per document).
+    /// Concurrent first callers wait for the one computing it.
+    pub fn derived<T: Any + Send + Sync>(&self, init: impl FnOnce(&Self) -> T) -> Arc<T> {
+        let cell = Arc::clone(
+            self.derived
+                .lock()
+                .expect("derived-data lock poisoned")
+                .entry(TypeId::of::<T>())
+                .or_default(),
+        );
+        let value = cell.get_or_init(|| Arc::new(init(self)));
+        Arc::downcast(Arc::clone(value)).expect("derived data is stored under its own TypeId")
     }
 }
 
@@ -208,8 +236,9 @@ pub(crate) struct BaseFold {
     /// text, so a document that changes none of their inputs reuses them.
     pub(crate) rel_shared: bool,
     /// The imported state plus the `prev.run.*` mirrors and the members of
-    /// every `{ domain: K }` / `{ entity: K }` path under [`Self::domains`].
-    pub(crate) state: Arc<StateSchema>,
+    /// every `{ domain: K }` / `{ entity: K }` path under [`Self::domains`],
+    /// as a view with no overlay, with its summary.
+    pub(crate) view: StateView,
     /// Each domain name a base state path is typed by, with those paths.
     pub(crate) paths_by_domain: BTreeMap<String, Vec<String>>,
     /// The imported defs, settled against the base state.
@@ -286,10 +315,55 @@ pub(crate) fn changed_domains(
 #[derive(Clone, Default)]
 pub struct StateView {
     base: Arc<StateSchema>,
+    /// What the project-wide passes read of [`Self::base`], aggregated once.
+    summary: Arc<StateSummary>,
     overlay: StateSchema,
     /// Base paths whose domain this document changed into one that does
     /// not resolve (open, or undeclared): no members, though the base has.
     masked_domains: BTreeSet<String>,
+}
+
+/// What the project-wide passes read of a base state, aggregated once per
+/// vocab instead of once per document (spec 0.49.0 §9.2 R5).
+#[derive(Debug, Default)]
+pub struct StateSummary {
+    /// The `run.*`/`user.*` paths with a schema `default:` (the envelope's
+    /// entry floor `D`, [`crate::envelope::schema_defaults`]).
+    defaults: BTreeSet<String>,
+    /// The `owner: engine` paths.
+    engine_owned: BTreeSet<String>,
+    /// Each domain name a declaration's type names, with how many
+    /// declarations name it.
+    domain_reads: BTreeMap<String, usize>,
+}
+
+impl StateSummary {
+    fn of(schema: &StateSchema) -> Self {
+        let mut out = Self::default();
+        for (path, decl) in &schema.decls {
+            if is_default(path, decl) {
+                out.defaults.insert(path.clone());
+            }
+            if is_engine_owned(decl) {
+                out.engine_owned.insert(path.clone());
+            }
+            let mut names = BTreeSet::new();
+            crate::project_check::collect_domain_names(&decl.ty, &mut names);
+            for name in names {
+                *out.domain_reads.entry(name).or_default() += 1;
+            }
+        }
+        out
+    }
+}
+
+/// A path the envelope's entry floor holds (see [`StateSummary::defaults`]).
+fn is_default(path: &str, decl: &StateDecl) -> bool {
+    decl.default.is_some() && crate::envelope::in_envelope_scope(path)
+}
+
+fn is_engine_owned(decl: &StateDecl) -> bool {
+    decl.owner == Some(lute_manifest::types::Owner::Engine)
 }
 
 impl From<StateSchema> for StateView {
@@ -297,6 +371,7 @@ impl From<StateSchema> for StateView {
     fn from(overlay: StateSchema) -> Self {
         Self {
             base: Arc::default(),
+            summary: Arc::default(),
             overlay,
             masked_domains: BTreeSet::new(),
         }
@@ -304,17 +379,61 @@ impl From<StateSchema> for StateView {
 }
 
 impl StateView {
-    /// A view over `base` with an empty overlay.
+    /// A view over `base` with an empty overlay; `base` is summarized here,
+    /// once, for every view cloned from this one.
     pub fn over(base: Arc<StateSchema>) -> Self {
         let overlay = StateSchema {
             clock_rejected: base.clock_rejected,
             ..StateSchema::default()
         };
         Self {
+            summary: Arc::new(StateSummary::of(&base)),
             base,
             overlay,
             masked_domains: BTreeSet::new(),
         }
+    }
+
+    /// Whether `self` and `other` share one base.
+    pub fn shares_base(&self, other: &StateView) -> bool {
+        Arc::ptr_eq(&self.base, &other.base)
+    }
+
+    /// Every path this view may answer differently from its base: the
+    /// overlay's declarations, the base paths whose domain members it
+    /// resolves again or masks. In byte order, each once.
+    pub fn own_paths(&self) -> BTreeSet<&String> {
+        self.overlay
+            .decls
+            .keys()
+            .chain(self.overlay.domain_members.keys())
+            .chain(&self.masked_domains)
+            .collect()
+    }
+
+    /// Every domain name a declaration's type names
+    /// ([`crate::project_check::domain_reads_from_state`]): the overlay's,
+    /// and each the base names through a declaration the overlay does not
+    /// replace.
+    pub fn domain_reads(&self) -> BTreeSet<String> {
+        let mut out = BTreeSet::new();
+        let mut replaced: BTreeMap<String, usize> = BTreeMap::new();
+        for (path, decl) in &self.overlay.decls {
+            crate::project_check::collect_domain_names(&decl.ty, &mut out);
+            if let Some(base) = self.base.decls.get(path) {
+                let mut names = BTreeSet::new();
+                crate::project_check::collect_domain_names(&base.ty, &mut names);
+                for name in names {
+                    *replaced.entry(name).or_default() += 1;
+                }
+            }
+        }
+        for (name, count) in &self.summary.domain_reads {
+            if replaced.get(name).is_none_or(|r| r < count) {
+                out.insert(name.clone());
+            }
+        }
+        out
     }
 
     /// The declaration of `path`.
@@ -530,6 +649,114 @@ impl StateView {
     /// Mark a base path's domain members as no longer resolved.
     pub(crate) fn mask_domain(&mut self, path: String) {
         self.masked_domains.insert(path);
+    }
+}
+
+/// The union, over a project's documents, of what each one's state view
+/// holds of a [`StateSummary`] set — computed from each shared base once
+/// plus each document's overlay, never by iterating a base per document
+/// (spec 0.49.0 §9.2 R5). Equal to the union of the per-view sets.
+#[derive(Default)]
+pub struct StateUnion<'a> {
+    own_defaults: BTreeSet<String>,
+    own_engine_owned: BTreeSet<String>,
+    bases: Vec<BaseUse<'a>>,
+}
+
+impl fmt::Debug for StateUnion<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StateUnion")
+            .field("bases", &self.bases.len())
+            .finish_non_exhaustive()
+    }
+}
+
+/// The views of one shared base a [`StateUnion`] has seen: how many, and
+/// for each base path in a summary set, how many of them replace it with a
+/// declaration outside that set.
+struct BaseUse<'a> {
+    summary: &'a StateSummary,
+    views: usize,
+    unset_defaults: HashMap<&'a str, usize>,
+    unset_engine_owned: HashMap<&'a str, usize>,
+}
+
+impl<'a> StateUnion<'a> {
+    pub fn add(&mut self, view: &'a StateView) {
+        let summary: &'a StateSummary = &view.summary;
+        let mut base = if summary.defaults.is_empty() && summary.engine_owned.is_empty() {
+            // Nothing of this base to subtract from (a view with no shared
+            // base, or a base with neither kind of path).
+            None
+        } else {
+            let at = match self
+                .bases
+                .iter()
+                .position(|b| std::ptr::eq(b.summary, summary))
+            {
+                Some(at) => at,
+                None => {
+                    self.bases.push(BaseUse {
+                        summary,
+                        views: 0,
+                        unset_defaults: HashMap::new(),
+                        unset_engine_owned: HashMap::new(),
+                    });
+                    self.bases.len() - 1
+                }
+            };
+            let base = &mut self.bases[at];
+            base.views += 1;
+            Some(base)
+        };
+        for (path, decl) in &view.overlay.decls {
+            if is_default(path, decl) {
+                self.own_defaults.insert(path.clone());
+            } else if let Some(b) = base.as_mut().filter(|_| summary.defaults.contains(path)) {
+                *b.unset_defaults.entry(path.as_str()).or_default() += 1;
+            }
+            if is_engine_owned(decl) {
+                self.own_engine_owned.insert(path.clone());
+            } else if let Some(b) = base
+                .as_mut()
+                .filter(|_| summary.engine_owned.contains(path))
+            {
+                *b.unset_engine_owned.entry(path.as_str()).or_default() += 1;
+            }
+        }
+    }
+
+    /// ∪ [`crate::envelope::schema_defaults`] of every added view.
+    pub fn defaults(&self) -> BTreeSet<String> {
+        self.union(&self.own_defaults, |b| {
+            (&b.summary.defaults, &b.unset_defaults)
+        })
+    }
+
+    /// ∪ of every added view's `owner: engine` paths.
+    pub fn engine_owned(&self) -> BTreeSet<String> {
+        self.union(&self.own_engine_owned, |b| {
+            (&b.summary.engine_owned, &b.unset_engine_owned)
+        })
+    }
+
+    fn union(
+        &self,
+        own: &BTreeSet<String>,
+        set: impl for<'b> Fn(&'b BaseUse<'a>) -> (&'a BTreeSet<String>, &'b HashMap<&'a str, usize>),
+    ) -> BTreeSet<String> {
+        let mut out = own.clone();
+        for base in &self.bases {
+            let (paths, unset) = set(base);
+            // A base path is in the union unless every view replaced it.
+            out.extend(
+                paths
+                    .iter()
+                    .filter(|p| unset.get(p.as_str()).is_none_or(|n| *n < base.views))
+                    .cloned(),
+            );
+        }
+        out
     }
 }
 

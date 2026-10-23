@@ -258,5 +258,5 @@ pub use usage::{
     check_project_usage, document_read_view, number_row_values, schema_sources, yaml_read_view,
     UsageDoc, W_DEF_UNUSED, W_RELATION_UNREAD,
 };
-pub use vocab::{InputSources, ProjectBase, ProjectVocab, StateView};
+pub use vocab::{InputSources, ProjectBase, ProjectVocab, StateSummary, StateUnion, StateView};
 pub use when_test_literal::{check_when_test_literals, test_as_is_pattern, W_WHEN_TEST_LITERAL};

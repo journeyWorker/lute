@@ -12,6 +12,7 @@ mod quest_tree;
 
 pub use branches::{check_project_branch_ids, W_BRANCH_ID_SHARED};
 pub use components::{component_unverified_diag, ComponentScope, W_COMPONENT_UNVERIFIED};
+pub(crate) use domains::collect_domain_names;
 pub use domains::{
     check_project_domain_reads, domain_reading_set, domain_reads_from_kinds,
     domain_reads_from_relations, domain_reads_from_state, W_DOMAIN_UNREAD,

@@ -736,13 +736,7 @@ fn compile_inner(
         identity_renames: Vec::new(),
         required_semantics: Vec::new(),
         meta,
-        state: state_entries(
-            &folded.env.state,
-            &branch_paths,
-            &reserved,
-            &folded.domains,
-            &folded.env.rel_vocab.kinds,
-        ),
+        state: state_table(input, &folded, &branch_paths, &reserved),
         entities,
         enums,
         relations,
@@ -772,7 +766,7 @@ fn compile_inner(
             .collect(),
         cel_env: ir::CelEnv::default(),
     };
-    artifact.cel_env = collect_cel_env(&artifact);
+    artifact.cel_env = collect_cel_env(&mut artifact);
     artifact.required_semantics = semantics::collect(&artifact)
         .ids
         .into_iter()
@@ -1458,8 +1452,8 @@ fn stamp_reward_credits(commands: &mut [Command], snapshot: &CapabilitySnapshot)
     }
 }
 
-/// The RESOLVED + FOLDED state table (§4.1): BTreeMap order = sorted by path
-/// (deterministic). Implicit `scene.choices.*` entries append `unset` to
+/// The RESOLVED + FOLDED state table (§4.1): sorted by path (deterministic).
+/// Implicit `scene.choices.*` entries append `unset` to
 /// their domain and carry `branch:<id>` provenance (§11.1, plan note 10);
 /// reserved quest entries (`quest.<id>.state`, `quest.<id>.activatedAt`,
 /// `quest.<id>.objectives.<oid>.done`, IR addendum §1–2, dsl 0.8.0 §5) carry
@@ -1470,86 +1464,162 @@ fn stamp_reward_credits(commands: &mut [Command], snapshot: &CapabilitySnapshot)
 /// maybe-unset, before the quest is known — addendum §3.1's "no default"). The
 /// `.state` suffix gate on `append_unset` keeps the opaque `narrativeTime`
 /// anchor out of that convention: it has no enumerable domain at all.
-fn state_entries(
-    schema: &lute_check::StateView,
+///
+/// spec 0.49.0 §9.4: the rows of the project vocab's base state are
+/// rendered once per vocab ([`ProjectVocab::derived`]) and shared; this
+/// document renders only the paths it may render differently
+/// ([`lute_check::StateView::own_paths`], its branch and reserved paths).
+/// A document whose domains or kind labels differ from the vocab's — what
+/// a base row renders — gets a table of its own rows only.
+///
+/// [`ProjectVocab::derived`]: lute_check::ProjectVocab::derived
+fn state_table(
+    input: &CheckInput,
+    folded: &lute_check::FoldedEnv,
     branch_paths: &BTreeSet<String>,
     reserved: &BTreeMap<String, String>,
-    domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
-    kinds: &BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
-) -> Vec<StateEntry> {
-    schema
-        .iter()
-        // dsl 0.23.0 §6: the checker's `prev.run.*` mirror decls are implied
-        // by the `run.*` entries (the engine snapshots them at run end), and
-        // dsl 0.24.0 §1's `clock.*` decls by the artifact's `clock` — so the
-        // table carries only what content declares or quests reserve.
-        .filter(|(path, _)| {
-            !lute_manifest::semantics::cel_paths::is_prev_path(path)
-                && !lute_manifest::clock::is_clock_path(path)
-        })
-        .map(|(path, decl)| {
-            // An entry is an IMPLICIT branch-choice slot (§11.1) IFF its path is
-            // one of the `scene.choices.<branchId>` paths folded in from an actual
-            // `<branch>`/`<hub>` in the document. (`state:` cannot declare a
-            // `scene.choices.*` path, `E-STATE-NAMESPACE`, dsl 0.28.0.)
-            let is_implicit = branch_paths.contains(path);
-            // Same membership discriminator for the reserved quest/entry
-            // namespaces (NOT a `quest.`/`entry.` prefix guess): only a path
-            // the checker actually folded from a real `<quest>`/`<objective>`/
-            // `<entry>` counts. The map value IS the provenance stamp.
-            let reserved_owner = reserved.get(path);
-            let append_unset = is_implicit
-                || (reserved_owner.is_some()
-                    && path.starts_with("quest.")
-                    && path.ends_with(".state"));
-            let (ty, domain) = type_label(append_unset, &decl.ty);
-            // §4.1 seeds implicit choice slots `default: "unset"` (their domain is
-            // choice ids ∪ `unset`, no author default) so the runtime can init the
-            // branch record key before any choice is taken. Every other entry —
-            // a quest-reserved one included (keeps `lute-check`'s own
-            // `None`/`Some(false)` default verbatim) — keeps its declared default;
-            // the `or_else` fires only when `default` is absent AND the slot is a
-            // real branch.
-            let default =
-                decl.default.as_ref().map(literal_json).or_else(|| {
-                    is_implicit.then(|| serde_json::Value::String("unset".to_string()))
-                });
-            let provenance = if is_implicit {
-                // `branch:<id>` provenance is exclusive to real implicit slots.
-                path.strip_prefix("scene.choices.")
-                    .map(|id| format!("branch:{id}"))
-            } else {
-                reserved_owner.cloned()
-            };
-            StateEntry {
-                path: path.clone(),
-                ty,
-                domain,
-                default,
-                owner: decl.owner,
-                provenance,
-                // dsl 0.24.0 §1: a path typed against a named enum or an
-                // entity kind (`{ domain: K }` and `{ entity: K }` are one
-                // type to the checker) carries that domain's member labels,
-                // so an engine renders `{{path}}` from this one entry.
-                labels: match &decl.ty {
-                    Type::Domain(name) | Type::Entity(name) => domains
-                        .get(name)
-                        .map(|d| d.labels.clone())
-                        .unwrap_or_default(),
-                    _ => BTreeMap::new(),
-                },
-                label_forms: match &decl.ty {
-                    Type::Domain(name) | Type::Entity(name) => kinds
-                        .get(name)
-                        .map(|k| lute_ir::LabelForms::of(&k.labels))
-                        .unwrap_or_default(),
-                    _ => BTreeMap::new(),
-                },
-                member_domain: schema.domain_members(path).cloned(),
-            }
-        })
-        .collect()
+) -> StateTable {
+    let view = &folded.env.state;
+    let vocab = &input.vocab;
+    let rows = RowInputs {
+        view,
+        branch_paths,
+        reserved,
+        domains: &folded.domains,
+        kinds: &folded.env.rel_vocab.kinds,
+    };
+    let shared = view.shares_base(vocab.view())
+        && std::sync::Arc::ptr_eq(&folded.domains, vocab.domains())
+        && same_kind_labels(&folded.env.rel_vocab.kinds, &vocab.rel().kinds);
+    if !shared {
+        return StateTable::from(rows.render(view.iter()).collect::<Vec<_>>());
+    }
+    let base = vocab.derived(|vocab| {
+        let none = BTreeMap::new();
+        let base = RowInputs {
+            view: vocab.view(),
+            branch_paths: &BTreeSet::new(),
+            reserved: &none,
+            domains: vocab.domains(),
+            kinds: &vocab.rel().kinds,
+        };
+        ir::BaseStateEntries::new(base.render(vocab.view().iter()).collect())
+    });
+    let mut own: BTreeSet<&String> = view.own_paths();
+    own.extend(branch_paths.iter().chain(reserved.keys()));
+    let own = own
+        .into_iter()
+        .filter_map(|path| view.get(path).map(|decl| (path, decl)));
+    StateTable::new(base, rows.render(own).collect())
+}
+
+/// Whether two kind tables give every kind the same labels (all a state
+/// row reads of a kind).
+fn same_kind_labels(
+    a: &BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
+    b: &BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
+) -> bool {
+    a.len() == b.len()
+        && a.iter()
+            .zip(b)
+            .all(|((na, ka), (nb, kb))| na == nb && ka.labels == kb.labels)
+}
+
+/// What a state row is rendered from.
+struct RowInputs<'a> {
+    view: &'a lute_check::StateView,
+    branch_paths: &'a BTreeSet<String>,
+    reserved: &'a BTreeMap<String, String>,
+    domains: &'a BTreeMap<String, lute_manifest::snapshot::Domain>,
+    kinds: &'a BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
+}
+
+impl<'a> RowInputs<'a> {
+    /// The rows of `decls` (in path order), without the paths the table
+    /// leaves implied.
+    fn render<'d>(
+        &'d self,
+        decls: impl Iterator<Item = (&'d String, &'d lute_check::StateDecl)> + 'd,
+    ) -> impl Iterator<Item = StateEntry> + 'd {
+        decls
+            // dsl 0.23.0 §6: the checker's `prev.run.*` mirror decls are
+            // implied by the `run.*` entries (the engine snapshots them at
+            // run end), and dsl 0.24.0 §1's `clock.*` decls by the
+            // artifact's `clock` — so the table carries only what content
+            // declares or quests reserve.
+            .filter(|(path, _)| {
+                !lute_manifest::semantics::cel_paths::is_prev_path(path)
+                    && !lute_manifest::clock::is_clock_path(path)
+            })
+            .map(|(path, decl)| self.row(path, decl))
+    }
+
+    fn row(&self, path: &str, decl: &lute_check::StateDecl) -> StateEntry {
+        // An entry is an IMPLICIT branch-choice slot (§11.1) IFF its path is
+        // one of the `scene.choices.<branchId>` paths folded in from an actual
+        // `<branch>`/`<hub>` in the document. (`state:` cannot declare a
+        // `scene.choices.*` path, `E-STATE-NAMESPACE`, dsl 0.28.0.)
+        let is_implicit = self.branch_paths.contains(path);
+        // Same membership discriminator for the reserved quest/entry
+        // namespaces (NOT a `quest.`/`entry.` prefix guess): only a path
+        // the checker actually folded from a real `<quest>`/`<objective>`/
+        // `<entry>` counts. The map value IS the provenance stamp.
+        let reserved_owner = self.reserved.get(path);
+        let append_unset = is_implicit
+            || (reserved_owner.is_some() && path.starts_with("quest.") && path.ends_with(".state"));
+        let (ty, domain) = type_label(append_unset, &decl.ty);
+        // §4.1 seeds implicit choice slots `default: "unset"` (their domain is
+        // choice ids ∪ `unset`, no author default) so the runtime can init the
+        // branch record key before any choice is taken. Every other entry —
+        // a quest-reserved one included (keeps `lute-check`'s own
+        // `None`/`Some(false)` default verbatim) — keeps its declared default;
+        // the `or_else` fires only when `default` is absent AND the slot is a
+        // real branch.
+        let default = decl
+            .default
+            .as_ref()
+            .map(literal_json)
+            .or_else(|| is_implicit.then(|| serde_json::Value::String("unset".to_string())));
+        let provenance = if is_implicit {
+            // `branch:<id>` provenance is exclusive to real implicit slots.
+            path.strip_prefix("scene.choices.")
+                .map(|id| format!("branch:{id}"))
+        } else {
+            reserved_owner.cloned()
+        };
+        StateEntry {
+            path: path.to_string(),
+            ty,
+            domain,
+            default,
+            owner: decl.owner,
+            provenance,
+            // dsl 0.24.0 §1: a path typed against a named enum or an
+            // entity kind (`{ domain: K }` and `{ entity: K }` are one
+            // type to the checker) carries that domain's member labels,
+            // so an engine renders `{{path}}` from this one entry.
+            labels: match &decl.ty {
+                Type::Domain(name) | Type::Entity(name) => self
+                    .domains
+                    .get(name)
+                    .map(|d| d.labels.clone())
+                    .unwrap_or_default(),
+                _ => BTreeMap::new(),
+            },
+            label_forms: match &decl.ty {
+                Type::Domain(name) | Type::Entity(name) => self
+                    .kinds
+                    .get(name)
+                    .map(|k| lute_ir::LabelForms::of(&k.labels))
+                    .unwrap_or_default(),
+                _ => BTreeMap::new(),
+            },
+            member_domain: self
+                .view
+                .domain_members(path)
+                .map(|(kind, members)| (kind.clone(), members.as_slice().into())),
+        }
+    }
 }
 
 /// The set of ACTUAL implicit branch-choice slots (§11.1): one
@@ -1709,44 +1779,20 @@ pub(crate) fn literal_json(l: &Literal) -> serde_json::Value {
     }
 }
 
-fn collect_cel_env(ir: &ExecutionIr) -> ir::CelEnv {
-    let value = serde_json::to_value(ir).unwrap_or_default();
-    let mut roots = BTreeSet::new();
-    let mut funcs = BTreeSet::new();
-    fn walk(
-        v: &serde_json::Value,
-        roots: &mut BTreeSet<String>,
-        funcs: &mut BTreeSet<String>,
-        in_expr: bool,
-    ) {
-        if let Some(obj) = v.as_object() {
-            if in_expr {
-                if let Some(path) = obj.get("path").and_then(|v| v.as_str()) {
-                    if let Some(root) = path.split('.').next() {
-                        roots.insert(root.to_string());
-                    }
-                }
-                if let Some(path) = obj.get("has").and_then(|v| v.as_str()) {
-                    if let Some(root) = path.split('.').next() {
-                        roots.insert(root.to_string());
-                    }
-                }
-                if let Some(name) = obj.get("call").and_then(|v| v.as_str()) {
-                    if !matches!(name, "int" | "double") {
-                        funcs.insert(name.to_string());
-                    }
-                }
-            }
-            for (key, child) in obj {
-                walk(child, roots, funcs, in_expr || key == "expr");
-            }
-        } else if let Some(items) = v.as_array() {
-            for child in items {
-                walk(child, roots, funcs, in_expr);
-            }
-        }
+/// The CEL environment `ir` needs: every root an expression reads and every
+/// function it calls. The state table is walked apart from the rest: its
+/// shared rows once per vocab ([`BaseStateEntries`]), its own rows here
+/// (spec 0.49.0 §9.4).
+fn collect_cel_env(ir: &mut ExecutionIr) -> ir::CelEnv {
+    let state = std::mem::take(&mut ir.state);
+    let mut names = ir::CelNames::default();
+    names.walk(&serde_json::to_value(&*ir).unwrap_or_default(), false);
+    ir.state = state;
+    names.extend(ir.state.base().cel_names());
+    for row in ir.state.own() {
+        names.walk(&serde_json::to_value(row).unwrap_or_default(), false);
     }
-    walk(&value, &mut roots, &mut funcs, false);
+    let ir::CelNames { roots, funcs } = names;
     let variables = roots
         .into_iter()
         .map(|name| ir::CelVariable {

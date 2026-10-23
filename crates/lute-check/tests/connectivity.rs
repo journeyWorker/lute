@@ -1421,10 +1421,11 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         );
         reads_per_scene.insert(key.clone(), reads);
     }
-    let (envs, tainted) = lute_check::envelope::propagate(&conn_graph, &per_doc, &d);
+    let (envs, tainted) = lute_check::envelope::propagate(&conn_graph, &per_doc);
     for (path, diag) in lute_check::envelope::check_envelope(
         &conn_graph,
         &envs,
+        &d,
         &tainted,
         &reads_per_scene,
         &Default::default(),
@@ -2440,7 +2441,7 @@ fn active_envelope_is_strictly_weaker_than_completed() {
         ["run.flag".to_string()].into_iter().collect(),
     );
 
-    let (envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
+    let (envs, tainted) = propagate(&g, &per_doc);
     assert!(
         tainted.is_empty(),
         "both quest atoms resolve, so nothing may taint: {tainted:?}"

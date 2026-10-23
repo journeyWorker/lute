@@ -444,7 +444,13 @@ pub fn collect(ir: &ExecutionIr) -> Collected {
         );
     }
 
-    for state in &ir.state {
+    // Only `entry.*` and `quest.*` rows can add a semantic: read those
+    // ranges of the sorted table, in path order, instead of every row.
+    for state in ir
+        .state
+        .with_prefix("entry.")
+        .chain(ir.state.with_prefix("quest."))
+    {
         if state.path.starts_with("entry.")
             && (state.path.ends_with(".read") || state.path.ends_with(".everRead"))
         {
@@ -908,7 +914,7 @@ mod tests {
                 plugin: BTreeMap::new(),
                 beat: None,
             }),
-            state: vec![],
+            state: StateTable::default(),
             entities: vec![],
             enums: vec![],
             relations: vec![],

@@ -531,14 +531,10 @@ fn envelope_json(
                 "tainted".to_string(),
                 Value::Bool(scenario.tainted.contains(&node_id)),
             );
-            let env = scenario
-                .envs
-                .get(&node_id)
-                .cloned()
-                .unwrap_or_else(|| envelope::Env {
-                    guaranteed: scenario.envelope_d.clone(),
-                    possible: scenario.envelope_d.clone(),
-                });
+            let env = scenario.env(&node_id).unwrap_or_else(|| envelope::Env {
+                guaranteed: scenario.envelope_d.clone(),
+                possible: scenario.envelope_d.clone(),
+            });
             (env, None, scenario.scene_must.get(key))
         }
         NodeRef::Quest(id) => {
@@ -553,7 +549,7 @@ fn envelope_json(
             let qe = envelope::quest_envelope(
                 quest,
                 &scenario.graph,
-                &scenario.envs,
+                &scenario.route_envs,
                 &scenario.envelope_d,
             );
             (qe.env, Some(qe.enrichment_note), None)

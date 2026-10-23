@@ -254,14 +254,10 @@ fn print_scene_envelope(
              E-CONN-UNKNOWN-NODE)."
         );
     }
-    let env = scenario
-        .envs
-        .get(node_id)
-        .cloned()
-        .unwrap_or_else(|| envelope::Env {
-            guaranteed: scenario.envelope_d.clone(),
-            possible: scenario.envelope_d.clone(),
-        });
+    let env = scenario.env(node_id).unwrap_or_else(|| envelope::Env {
+        guaranteed: scenario.envelope_d.clone(),
+        possible: scenario.envelope_d.clone(),
+    });
     let writers = writers_of(scenario, node_id);
     outln!(
         out,
@@ -291,7 +287,8 @@ fn print_scene_envelope(
     // Only the warning grade is printed here; engine ownership words errors.
     let diags = envelope::check_envelope(
         &scenario.graph,
-        &scenario.envs,
+        &scenario.route_envs,
+        &scenario.envelope_d,
         &scenario.tainted,
         &single,
         &BTreeSet::new(),
@@ -356,7 +353,12 @@ fn print_quest_envelope(
     if quest.follows.is_some() && crate::node_cycle_degraded(scenario, &node_id) {
         print_cycle_envelope_note(out);
     }
-    let qe = envelope::quest_envelope(quest, &scenario.graph, &scenario.envs, &scenario.envelope_d);
+    let qe = envelope::quest_envelope(
+        quest,
+        &scenario.graph,
+        &scenario.route_envs,
+        &scenario.envelope_d,
+    );
     let writers = writers_of(scenario, &node_id);
     outln!(
         out,
