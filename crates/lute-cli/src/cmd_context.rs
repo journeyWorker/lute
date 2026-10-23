@@ -187,7 +187,10 @@ fn run_task_context(
         compile: true,
         wip: false,
     };
-    let model = match ProjectModel::build_single_root(&root, &opts) {
+    // One model of the root, which every witness script reads too (spec
+    // 0.49.0 §9.6).
+    let memo = lute_model::ModelMemo::selecting(opts.clone());
+    let model = match memo.single_root(&root, &opts) {
         Ok(model) => model,
         Err(error) => {
             return envelope::fail(CliError::io(
@@ -277,7 +280,7 @@ fn run_task_context(
         .map(|item| serde_json::to_value(item).unwrap_or_default())
         .collect::<Vec<_>>();
     sort_and_truncate(&mut affected, limit, "affected", &mut not_included);
-    let scripts = related_scripts(&model, &key, limit, scripts, &mut not_included);
+    let scripts = related_scripts(&memo, &model, &key, limit, scripts, &mut not_included);
     let vocabulary = vocabulary(&model, graph, &key, limit, &mut not_included);
     let excerpt = node
         .file
@@ -545,6 +548,7 @@ struct Scripts {
 }
 
 fn related_scripts(
+    memo: &lute_model::ModelMemo,
     model: &ProjectModel,
     key: &NodeKey,
     limit: usize,
@@ -592,6 +596,7 @@ fn related_scripts(
         let selected = scripts.selects(&path);
         let witnessed = selected
             && crate::cmd_constraints::run_script_for_context(
+                memo,
                 model.root(),
                 &path,
                 key,

@@ -37,7 +37,51 @@ fn one_build_per_root_and_options() {
     // `roots_under` reaches the same per-root builds.
     let roots = memo.roots_under(&dir, &opts(false)).unwrap();
     assert_eq!(roots.len(), 1);
-    assert!(Arc::ptr_eq(&roots[0], &checked));
+    assert_eq!(roots[0].0, dir.to_path_buf());
+    assert!(Arc::ptr_eq(&roots[0].1, &checked));
+    assert_eq!(memo.builds(), 2);
+}
+
+/// A selecting memo serves every request for a root, however spelled and
+/// whatever `compile`/`mode` it asks for, from its one selected build; the
+/// analysis-only results are what a `compile: false` model reports.
+#[test]
+fn a_selecting_memo_builds_each_root_once() {
+    let dir = project("select");
+    let memo = ModelMemo::selecting(opts(true));
+    let selected = memo.single_root(&dir, &opts(true)).unwrap();
+    let respelled = dir.join(".");
+    let checked = memo
+        .single_root(
+            &respelled,
+            &ModelOptions {
+                mode: lute_check::Mode::Author,
+                ..opts(false)
+            },
+        )
+        .unwrap();
+    assert!(Arc::ptr_eq(&selected, &checked));
+    let roots = memo.roots_under(&respelled, &opts(false)).unwrap();
+    assert_eq!(roots[0].0, respelled);
+    assert!(Arc::ptr_eq(&roots[0].1, &selected));
+    assert_eq!(memo.builds(), 1);
+
+    let plain = lute_model::ProjectModel::build_single_root(&dir, &opts(false)).unwrap();
+    let json = |checks: Vec<(&std::path::PathBuf, &lute_check::CheckResult)>| {
+        serde_json::to_value(checks).unwrap()
+    };
+    assert_eq!(
+        json(selected.analysis_checks().collect()),
+        json(
+            plain
+                .reconciled()
+                .checks
+                .iter()
+                .map(|(p, c)| (p, c))
+                .collect()
+        )
+    );
+    assert_eq!(selected.analysis_diagnostics(), plain.project_diagnostics());
 }
 
 #[test]

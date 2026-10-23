@@ -95,16 +95,23 @@ impl ModelMemo {
     }
 
     /// [`ProjectModel::roots_under`], each root's model built once per
-    /// `opts`. Like it, the first root that fails to build is the error.
+    /// `opts`, beside the root as `dir` spells it. A [`Self::selecting`]
+    /// memo's model is spelled from the first request's root, so a
+    /// consumer that keys by root uses the spelling returned here. Like
+    /// [`ProjectModel::roots_under`], the first root that fails to build is
+    /// the error.
     pub fn roots_under(
         &self,
         dir: &Path,
         opts: &ModelOptions,
-    ) -> Result<Vec<Arc<ProjectModel>>, Arc<ModelError>> {
+    ) -> Result<Vec<(PathBuf, Arc<ProjectModel>)>, Arc<ModelError>> {
         ProjectModel::project_roots(dir)
             .map_err(Arc::new)?
-            .iter()
-            .map(|root| self.single_root(root, opts))
+            .into_iter()
+            .map(|root| {
+                let model = self.single_root(&root, opts)?;
+                Ok((root, model))
+            })
             .collect()
     }
 }

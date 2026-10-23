@@ -167,12 +167,18 @@ fn assemble_bundle_from_model(
 ) -> Result<PlayBundle, ExitCode> {
     let Gate { cmd, refuses } = gate;
     let policy = &build.policy;
+    // A selecting memo's model is spelled from the root its command named
+    // first (spec 0.49.0 §9.6); paths are shown as `project_dir` spells them.
+    let shown = |path: &Path| -> PathBuf {
+        path.strip_prefix(source_model.root())
+            .map_or_else(|_| path.to_path_buf(), |rest| project_dir.join(rest))
+    };
     if source_model.has_resolution_errors() {
         for document in source_model.documents() {
             for diagnostic in &document.resolve_diags {
                 eprintln!(
                     "{cmd}: {} [{}] {}",
-                    document.path.display(),
+                    shown(&document.path).display(),
                     diagnostic.code,
                     diagnostic.message
                 );
@@ -181,11 +187,15 @@ fn assemble_bundle_from_model(
         eprintln!("{cmd}: project resolution failed; refusing to {refuses}");
         return Err(ExitCode::from(1));
     }
-    let mut project_diagnostics = source_model.project_diagnostics().to_vec();
+    let mut project_diagnostics: Vec<_> = source_model
+        .project_diagnostics()
+        .iter()
+        .map(|(path, diagnostic)| (shown(path), diagnostic.clone()))
+        .collect();
     let mut per_doc: Vec<_> = source_model
         .documents()
         .iter()
-        .map(|source| (source.path.clone(), source.check.clone()))
+        .map(|source| (shown(&source.path), source.check.clone()))
         .collect();
     relocate_imported_diags(&mut per_doc, &mut project_diagnostics, project_dir);
     for (path, diagnostic) in &mut project_diagnostics {
@@ -225,7 +235,7 @@ fn assemble_bundle_from_model(
     let mut needles = NeedleVocab::default();
     let mut source_maps = CoverageMaps::default();
     for source in source_model.documents() {
-        let Some(rel) = project_rel(&source.path, project_dir) else {
+        let Some(rel) = project_rel(&shown(&source.path), project_dir) else {
             continue;
         };
         if let Some(map) = &source.source_map {
@@ -238,7 +248,7 @@ fn assemble_bundle_from_model(
     let mut chapter_afters: BTreeSet<String> = BTreeSet::new();
 
     for source in source_model.documents() {
-        let file = &source.path;
+        let file = &shown(&source.path);
         if crate::compile_all::is_component_file(file) {
             continue;
         }

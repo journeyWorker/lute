@@ -120,7 +120,7 @@ pub(crate) fn collect_project_docs_in(
         };
         let mut file_results = Vec::new();
         let mut by_root = BTreeMap::new();
-        for model in memo.roots_under(dir, &opts).map_err(|error| {
+        for (root, model) in memo.roots_under(dir, &opts).map_err(|error| {
             let message = format!(
                 "lute: cannot build project under {}: {error}",
                 dir.display()
@@ -129,10 +129,9 @@ pub(crate) fn collect_project_docs_in(
             eprintln!("{message}");
             envelope::fail_quietly(envelope_error)
         })? {
-            let root = model.root().to_path_buf();
             let mut group = Vec::new();
             for doc in model.documents() {
-                file_results.push((doc.path.clone(), doc.check.clone()));
+                file_results.push((doc.path.clone(), doc.analysis_check().clone()));
                 group.push((doc.path.clone(), doc.doc.clone(), doc.folded.clone()));
             }
             by_root.insert(root, group);
@@ -207,12 +206,15 @@ pub(crate) fn collect_project_inputs_in(
         wip,
     };
     let models = if single_root {
-        vec![memo.single_root(dir, &opts).map_err(|error| {
-            let message = format!("lute: cannot build project {}: {error}", dir.display());
-            let envelope_error = model_cli_error_with_message(dir, &error, message.clone());
-            eprintln!("{message}");
-            envelope::fail_quietly(envelope_error)
-        })?]
+        vec![(
+            dir.to_path_buf(),
+            memo.single_root(dir, &opts).map_err(|error| {
+                let message = format!("lute: cannot build project {}: {error}", dir.display());
+                let envelope_error = model_cli_error_with_message(dir, &error, message.clone());
+                eprintln!("{message}");
+                envelope::fail_quietly(envelope_error)
+            })?,
+        )]
     } else {
         memo.roots_under(dir, &opts).map_err(|error| {
             let message = format!(
@@ -227,8 +229,7 @@ pub(crate) fn collect_project_inputs_in(
     let mut file_results = Vec::new();
     let mut by_root = BTreeMap::new();
     let mut reported = BTreeSet::new();
-    for model in &models {
-        let root = model.root().to_path_buf();
+    for (root, model) in &models {
         for doc in model.documents() {
             for message in &doc.project_diags {
                 if reported.insert(message.clone()) {
@@ -244,7 +245,7 @@ pub(crate) fn collect_project_inputs_in(
         }
     }
     let mut resolve_messages = BTreeSet::new();
-    for model in &models {
+    for (_, model) in &models {
         for doc in model.documents() {
             for message in &doc.project_diags {
                 if message.starts_with("E-") {
@@ -254,6 +255,7 @@ pub(crate) fn collect_project_inputs_in(
         }
     }
     let resolve_errors = resolve_messages.len();
+    let models = models.into_iter().map(|(_, model)| model).collect();
     Ok((file_results, by_root, models, resolve_errors))
 }
 

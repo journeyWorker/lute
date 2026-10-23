@@ -164,6 +164,8 @@ use runner::{yaml_atom_hint, yaml_atom_hints, IMPLICIT_ELIGIBLE, IMPLICIT_EXIT};
 
 pub(crate) use discovery::static_context_references;
 
+#[cfg(test)]
+pub(crate) use runner::witness_record;
 pub use runner::{run_test, TestOptions};
 pub(crate) use runner::{run_test_for_constraint, run_test_for_context};
 

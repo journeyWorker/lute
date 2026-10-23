@@ -85,12 +85,25 @@ pub struct ModelDocument {
     compile_doc: Option<lute_syntax::ast::Document>,
     pub folded: FoldedEnv,
     pub check: CheckResult,
+    /// The reconciled analysis-only check when compilation changed
+    /// [`Self::check`]; `None` while it did not ([`Self::analysis_check`]).
+    analysis_check: Option<CheckResult>,
     pub artifact: Option<ExecutionIr>,
     pub source_map: Option<SourceMap>,
     pub resolve_error: bool,
     pub resolve_blocks: bool,
     pub resolve_diags: Vec<lute_manifest::project::ResolveDiag>,
     pub project_diags: Vec<String>,
+}
+
+impl ModelDocument {
+    /// The reconciled analysis-only check: what a `compile: false` model
+    /// reports for this document. Compilation appends compile-gate
+    /// diagnostics to [`Self::check`] and can flip its `ok` (spec 0.49.0
+    /// §9.6).
+    pub fn analysis_check(&self) -> &CheckResult {
+        self.analysis_check.as_ref().unwrap_or(&self.check)
+    }
 }
 
 pub struct ReconciledOutputs {
@@ -106,6 +119,10 @@ pub struct ProjectModel {
     manifest: Option<lute_manifest::project::ProjectConfig>,
     documents: Vec<ModelDocument>,
     project_diagnostics: Vec<(PathBuf, Diagnostic)>,
+    /// The project diagnostics a `compile: false` model reports, when they
+    /// differ from [`Self::project_diagnostics`]
+    /// ([`Self::analysis_diagnostics`]).
+    analysis_diagnostics: Option<Vec<(PathBuf, Diagnostic)>>,
     index: Option<ProjectIndex>,
     /// Resolved and graph-validated project identity migrations.
     identity_renames: crate::rename::ResolvedRenames,
@@ -189,6 +206,7 @@ impl ProjectModel {
                     compile_doc,
                     folded,
                     check,
+                    analysis_check: None,
                     artifact: None,
                     source_map: None,
                     resolve_error,
@@ -275,6 +293,7 @@ impl ProjectModel {
                 }
                 let gate_diags = compile_gate_diags(&document.input);
                 if !gate_diags.is_empty() {
+                    document.analysis_check = Some(document.check.clone());
                     document.check.diagnostics.extend(gate_diags);
                     document.check.ok = false;
                     continue;
@@ -311,12 +330,14 @@ impl ProjectModel {
                         document.source_map = Some(source_map);
                     }
                     Err(diagnostics) => {
+                        document.analysis_check = Some(document.check.clone());
                         document.check.diagnostics.extend(diagnostics);
                         document.check.ok = false;
                     }
                 }
             }
         }
+        let mut index_diags = Vec::new();
         let index = if opts.compile {
             let inputs: Vec<IndexInput<'_>> = documents
                 .iter()
@@ -344,7 +365,7 @@ impl ProjectModel {
                                     "E-USES-DUP-RELATION"
                                 }
                             };
-                            project_diagnostics.push((
+                            index_diags.push((
                                 root.join("lute.project.yaml"),
                                 resolution_diagnostic(&format!("{code}: {error}")),
                             ));
@@ -356,6 +377,16 @@ impl ProjectModel {
         } else {
             None
         };
+        let ledger_entries = manifest
+            .as_ref()
+            .map(|config| config.identity_renames.clone())
+            .unwrap_or_default();
+        // What a `compile: false` model reports: no index errors, and the
+        // rename ledger resolved on the graph without compiled lines.
+        let mut analysis_diagnostics = (!index_diags.is_empty()
+            || (opts.compile && !ledger_entries.is_empty()))
+        .then(|| project_diagnostics.clone());
+        project_diagnostics.extend(index_diags);
         if let Some(config) = manifest.as_ref() {
             let manifest_path = root.join("lute.project.yaml");
             let text = std::fs::read_to_string(&manifest_path).unwrap_or_default();
@@ -366,6 +397,9 @@ impl ProjectModel {
                 if let Some(span) = &item.span {
                     diagnostic.span = lute_core_span::Span::from_bytes(&idx, span.start, span.end);
                 }
+                if let Some(analysis) = analysis_diagnostics.as_mut() {
+                    analysis.push((manifest_path.clone(), diagnostic.clone()));
+                }
                 project_diagnostics.push((manifest_path.clone(), diagnostic));
             }
         }
@@ -373,8 +407,16 @@ impl ProjectModel {
             for diagnostic in &mut document.check.diagnostics {
                 annotate_diagnostic(diagnostic);
             }
+            if let Some(check) = document.analysis_check.as_mut() {
+                for diagnostic in &mut check.diagnostics {
+                    annotate_diagnostic(diagnostic);
+                }
+            }
         }
-        for (_, diagnostic) in &mut project_diagnostics {
+        for (_, diagnostic) in project_diagnostics
+            .iter_mut()
+            .chain(analysis_diagnostics.iter_mut().flatten())
+        {
             annotate_diagnostic(diagnostic);
         }
         let checks = documents
@@ -395,17 +437,32 @@ impl ProjectModel {
             manifest,
             documents,
             project_diagnostics,
+            analysis_diagnostics,
             index,
             identity_renames: Vec::new(),
             reconciled,
             revisions,
             graph: std::sync::OnceLock::new(),
         };
-        let ledger_entries = model
-            .manifest
-            .as_ref()
-            .map(|config| config.identity_renames.clone())
-            .unwrap_or_default();
+        let analysis = (!ledger_entries.is_empty())
+            .then(|| model.analysis_diagnostics.take())
+            .flatten();
+        if let Some(mut analysis) = analysis {
+            let compiled: Vec<_> = model
+                .documents
+                .iter_mut()
+                .map(|d| (d.artifact.take(), d.source_map.take()))
+                .collect();
+            let graph = crate::graph::build(&model);
+            for (document, (artifact, source_map)) in model.documents.iter_mut().zip(compiled) {
+                document.artifact = artifact;
+                document.source_map = source_map;
+            }
+            if let Err(errors) = crate::rename::resolve_ledger(&ledger_entries, &graph) {
+                analysis.extend(ledger_diagnostics(&model.root, errors));
+            }
+            model.analysis_diagnostics = Some(analysis);
+        }
         if !ledger_entries.is_empty() {
             match crate::rename::resolve_ledger(&ledger_entries, model.graph()) {
                 Ok(ledger) => {
@@ -437,16 +494,8 @@ impl ProjectModel {
                     }
                 }
                 Err(errors) => {
-                    for error in errors {
-                        let mut diagnostic =
-                            resolution_diagnostic(&format!("{}: {}", error.code, error.message));
-                        if let Some(span) = error.span {
-                            diagnostic.span = span;
-                        }
-                        model
-                            .project_diagnostics
-                            .push((model.root.join("lute.project.yaml"), diagnostic));
-                    }
+                    let diagnostics = ledger_diagnostics(&model.root, errors);
+                    model.project_diagnostics.extend(diagnostics);
                     model.index = None;
                     for document in &mut model.documents {
                         document.artifact = None;
@@ -504,6 +553,19 @@ impl ProjectModel {
     }
     pub fn project_diagnostics(&self) -> &[(PathBuf, Diagnostic)] {
         &self.project_diagnostics
+    }
+    /// The project diagnostics a `compile: false` model of this project
+    /// reports: without index errors, and with the rename ledger resolved on
+    /// the graph without compiled lines (spec 0.49.0 §9.6).
+    pub fn analysis_diagnostics(&self) -> &[(PathBuf, Diagnostic)] {
+        self.analysis_diagnostics
+            .as_deref()
+            .unwrap_or(&self.project_diagnostics)
+    }
+    /// Every document's [`ModelDocument::analysis_check`], in document order:
+    /// the reconciled checks a `compile: false` model reports.
+    pub fn analysis_checks(&self) -> impl Iterator<Item = (&PathBuf, &CheckResult)> {
+        self.documents.iter().map(|d| (&d.path, d.analysis_check()))
     }
     pub fn index(&self) -> Option<&ProjectIndex> {
         self.index.as_ref()
@@ -582,6 +644,19 @@ fn yaml_files(dir: &Path) -> Vec<PathBuf> {
     }
     out.sort();
     out
+}
+
+fn ledger_diagnostics(
+    root: &Path,
+    errors: Vec<lute_semantic::RenameError>,
+) -> impl Iterator<Item = (PathBuf, Diagnostic)> + '_ {
+    errors.into_iter().map(move |error| {
+        let mut diagnostic = resolution_diagnostic(&format!("{}: {}", error.code, error.message));
+        if let Some(span) = error.span {
+            diagnostic.span = span;
+        }
+        (root.join("lute.project.yaml"), diagnostic)
+    })
 }
 
 fn resolution_diagnostic(raw: &str) -> Diagnostic {

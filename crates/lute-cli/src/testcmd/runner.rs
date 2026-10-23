@@ -505,39 +505,66 @@ impl Shared {
 /// (`resolve_error`) is therefore a build-failing error here too — `Err(1)`,
 /// never folded into a per-test `TestResult` where a caller filtering on
 /// `passed` could mistake a broken manifest for a failing assertion.
-/// Run one scenario test in-process and report only a quest completion
-/// transition observed by its trace. Seeded `complete` status is not enough.
+/// Run one scenario test in-process over `memo`'s models and report only a
+/// quest completion transition observed by its trace. Seeded `complete`
+/// status is not enough.
 pub(crate) fn run_test_for_constraint(
+    memo: &lute_model::ModelMemo,
     script: &Path,
     quest: &str,
     build: &crate::play::Build<'_>,
 ) -> bool {
-    let files = [script.to_path_buf()];
-    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, build) else {
-        return false;
-    };
-    let Ok(result) = run_one_test(script, build, false, &shared, None) else {
-        return false;
-    };
-    result.completed_quests.contains(quest)
+    witness_run(memo, script, build).is_some_and(|result| result.completed_quests.contains(quest))
 }
 
-/// Execute one scenario test in-process and report whether its trace visited a
-/// graph target. This deliberately uses the same trace runner as
-/// `constraints --all-scripts`; static YAML mentions are never treated as witnesses.
+/// Execute one scenario test in-process over `memo`'s models and report
+/// whether its trace visited a graph target. This deliberately uses the same
+/// trace runner as `constraints --all-scripts`; static YAML mentions are
+/// never treated as witnesses.
 pub(crate) fn run_test_for_context(
+    memo: &lute_model::ModelMemo,
     script: &Path,
     target: &NodeKey,
     build: &crate::play::Build<'_>,
 ) -> bool {
+    witness_run(memo, script, build).is_some_and(|result| result_visits_target(&result, target))
+}
+
+/// One witness script's test run over `memo`'s models; `None` when it could
+/// not run.
+fn witness_run(
+    memo: &lute_model::ModelMemo,
+    script: &Path,
+    build: &crate::play::Build<'_>,
+) -> Option<TestResult> {
     let files = [script.to_path_buf()];
-    let Ok(shared) = Shared::for_tests(&lute_model::ModelMemo::default(), &files, build) else {
-        return false;
-    };
-    let Ok(result) = run_one_test(script, build, false, &shared, None) else {
-        return false;
-    };
-    result_visits_target(&result, target)
+    let shared = Shared::for_tests(memo, &files, build).ok()?;
+    run_one_test(script, build, false, &shared, None).ok()
+}
+
+/// Everything a witness test run decides, for comparing two runs: its
+/// outcome, the trace it observed and its refusal diagnostics.
+#[cfg(test)]
+pub(crate) fn witness_record(
+    memo: &lute_model::ModelMemo,
+    script: &Path,
+    build: &crate::play::Build<'_>,
+) -> String {
+    match witness_run(memo, script, build) {
+        None => "not run".to_string(),
+        Some(r) => format!(
+            "passed={} exit={} end={:?} refusal={:?} completed={:?} visited={:?} autopicked={:?} notes={:?} lute={}",
+            r.passed,
+            r.exit,
+            r.end,
+            r.refusal,
+            r.completed_quests,
+            r.visited,
+            r.autopicked,
+            r.notes,
+            r.lute_file
+        ),
+    }
 }
 
 fn result_visits_target(result: &TestResult, target: &NodeKey) -> bool {
@@ -1159,7 +1186,7 @@ fn run_one_test(
     // verdict (T3-5).
     let mut checked = match resolve_with.and_then(|root| shared.gate(root, &lute_path)) {
         Some(check) => check,
-        None => model_doc.map_or_else(|| lute_check::check(input), |d| d.check.clone()),
+        None => model_doc.map_or_else(|| lute_check::check(input), |d| d.analysis_check().clone()),
     };
     // `--deny` / `--deny-warnings` promote the check verdict this test
     // consults: a denied warning refuses the trace, failing the test

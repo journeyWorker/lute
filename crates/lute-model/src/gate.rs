@@ -122,12 +122,40 @@ pub fn reconciled_project_results_in(
         eprintln!("lute: cannot build project {}: {error}", dir.display());
         ExitCode::from(2)
     })?;
-    Ok(ReconciledProject::of(&model))
+    Ok(ReconciledProject::analysis_of(&model))
 }
 
 impl ReconciledProject {
-    /// The gate verdicts `model`'s reconciliation already computed.
+    /// The gate verdicts `model`'s reconciliation computed, with its
+    /// compile-gated checks and diagnostics.
     pub fn of(model: &ProjectModel) -> Self {
+        let outputs = model.reconciled();
+        Self::from_parts(
+            model,
+            outputs.checks.iter().cloned().collect(),
+            outputs.diagnostics.clone(),
+        )
+    }
+
+    /// The gate verdicts a `compile: false` model of `model`'s project
+    /// reports: its analysis-only checks and diagnostics (spec 0.49.0 §9.6),
+    /// whatever options `model` was built with.
+    pub fn analysis_of(model: &ProjectModel) -> Self {
+        Self::from_parts(
+            model,
+            model
+                .analysis_checks()
+                .map(|(path, check)| (path.clone(), check.clone()))
+                .collect(),
+            model.analysis_diagnostics().to_vec(),
+        )
+    }
+
+    fn from_parts(
+        model: &ProjectModel,
+        per_doc: BTreeMap<PathBuf, lute_check::CheckResult>,
+        project_diagnostics: Vec<(PathBuf, Diagnostic)>,
+    ) -> Self {
         let outputs = model.reconciled();
         let mut cycle_degraded: BTreeSet<lute_check::connectivity::NodeId> = BTreeSet::new();
         for scenario in outputs.scenarios.values() {
@@ -138,8 +166,8 @@ impl ReconciledProject {
             }
         }
         ReconciledProject {
-            per_doc: outputs.checks.iter().cloned().collect(),
-            project_diagnostics: outputs.diagnostics.clone(),
+            per_doc,
+            project_diagnostics,
             cycle_degraded,
             nodes_by_path: outputs.nodes_by_path.clone(),
         }
