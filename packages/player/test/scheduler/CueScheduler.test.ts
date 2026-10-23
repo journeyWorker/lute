@@ -1,9 +1,10 @@
-import { Effect, Fiber, Stream, SubscriptionRef } from "effect"
+import { Deferred, Effect, Fiber, Stream, SubscriptionRef } from "effect"
 import * as TestClock from "effect/testing/TestClock"
 import { describe, expect, it } from "@effect/vitest"
 import type { Cue, CueContext } from "../../src/model.js"
 import * as Scheduler from "../../src/scheduler/index.js"
 import type { AudioPort, LineView, PlayMode, Presenter, StageCue } from "../../src/ports/index.js"
+import { flush } from "../director/support.js"
 
 const line: LineView = { lineId: "line", voiceKey: "", role: "dialogue", speaker: "narrator", speakerName: "", segments: [{ _tag: "Text", text: "x", styles: [] }], read: false }
 const presenter: Presenter = {
@@ -138,6 +139,46 @@ describe("CueScheduler", () => {
     const second = cue("line", [], { line: { ...line, lineId: "second" } })
     yield* scheduler.play([first, second], ctx, mode, lineGate)
     expect(order).toEqual(["started:line", "release:line", "started:second", "release:second"])
+  }))
+  it.effect("a wait-false line runs the cues after it before its release; the next line and the batch wait for it (0.49.0 §4.2)", () => Effect.gen(function* () {
+    const { scheduler, mode } = yield* install
+    const order: string[] = []
+    const released = yield* Deferred.make<void>()
+    const lineGate = {
+      started: (startedLine: LineView) => Effect.sync(() => order.push(`started:${startedLine.lineId}`)),
+      release: (shownLine: LineView) => Effect.andThen(
+        Effect.sync(() => order.push(`shown:${shownLine.lineId}`)),
+        shownLine.lineId === line.lineId ? Deferred.await(released) : Effect.void
+      )
+    }
+    const held = cue("line", [], { line, timing: { delay: 0, duration: undefined, wait: false, timeline: undefined, at: undefined } })
+    const bg = cue("bg", order, { stage: true, timing: { delay: 0, duration: undefined, wait: false, timeline: undefined, at: undefined } })
+    const blocking = cue("presentation", order)
+    const next = cue("line", [], { line: { ...line, lineId: "next" } })
+    let settled = false
+    const fiber = yield* Effect.forkScoped(Effect.andThen(scheduler.play([held, bg, blocking, next], ctx, mode, lineGate), Effect.sync(() => { settled = true })))
+    yield* flush
+    // The held line began first; its shown/release and the cues after it overlap.
+    expect(order[0]).toBe("started:line")
+    expect([...order].sort()).toEqual(["bg:execute", "presentation:execute", "shown:line", "started:line"])
+    expect(settled).toBe(false)
+    yield* Deferred.succeed(released, undefined)
+    yield* Fiber.join(fiber)
+    expect(order.slice(4)).toEqual(["started:next", "shown:next"])
+    expect(settled).toBe(true)
+  }))
+  it.effect("a wait-false line that ends the batch holds its settling until released (0.49.0 §4.2)", () => Effect.gen(function* () {
+    const { scheduler, mode } = yield* install
+    const released = yield* Deferred.make<void>()
+    const lineGate = { started: (_line: LineView) => Effect.void, release: (_line: LineView) => Deferred.await(released) }
+    const held = cue("line", [], { line, timing: { delay: 0, duration: undefined, wait: false, timeline: undefined, at: undefined } })
+    let settled = false
+    const fiber = yield* Effect.forkScoped(Effect.andThen(scheduler.play([held], ctx, mode, lineGate), Effect.sync(() => { settled = true })))
+    yield* flush
+    expect(settled).toBe(false)
+    yield* Deferred.succeed(released, undefined)
+    yield* Fiber.join(fiber)
+    expect(settled).toBe(true)
   }))
   it.effect("skip completes cues without advancing Clock", () => Effect.gen(function* () {
     const { scheduler, mode } = yield* install

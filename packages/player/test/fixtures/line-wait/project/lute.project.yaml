@@ -1,0 +1,9 @@
+pluginsDir: plugins/
+defaultProfile: dusk
+profiles:
+  dusk:
+    plugins: { dusk.occasions: true }
+defaults:
+  luteVersion: "0.48.1"
+  contentLang: en
+  uses: [world.schema.yaml]

@@ -28,6 +28,10 @@ const makeScheduler = (events: PubSub.PubSub<SchedulerEvent>): CueSchedulerShape
     const started = new Map<number, RunningGroup>()
     const settledStage: Array<Fiber.Fiber<void, never>> = []
     const pending: Array<Deferred.Deferred<void>> = []
+    // A `timing.wait: false` line (spec 0.49.0 §4.2) runs on its own fiber so
+    // the staging cues after it start while it is presented; the next line and
+    // the batch's settling still wait for its release.
+    let heldLine: Fiber.Fiber<void, never> | undefined
     const publish = (event: SchedulerEvent): Effect.Effect<void> => PubSub.publish(events, event)
 
     // A forked cue's gate opens in the fiber that runs its `execute` (skip:
@@ -104,12 +108,23 @@ const makeScheduler = (events: PubSub.PubSub<SchedulerEvent>): CueSchedulerShape
         }
         continue
       }
-      if (cue.timing.wait || cue.kind === "line" || cue.kind === "sequence") yield* runCue(cue, index)
+      if (cue.kind === "line") {
+        if (heldLine !== undefined) yield* Fiber.join(heldLine)
+        heldLine = undefined
+        if (cue.timing.wait) yield* runCue(cue, index)
+        else {
+          // The line begins (typing, or completed under skip) before the cues after it run.
+          const begun = yield* Deferred.make<void>()
+          heldLine = yield* Effect.forkScoped(Effect.ensuring(runCue(cue, index, 0, begun), Deferred.succeed(begun, undefined)))
+          yield* Deferred.await(begun)
+        }
+      } else if (cue.timing.wait || cue.kind === "sequence") yield* runCue(cue, index)
       else {
         const fiber = yield* fork(1, ([gateOpen]) => runCue(cue, index, 0, gateOpen))
         if (cue.stage) settledStage.push(fiber)
       }
     }
+    if (heldLine !== undefined) yield* Fiber.join(heldLine)
     // Every forked cue has started (or its fiber has exited) before the batch settles.
     for (const gateOpen of pending) yield* Deferred.await(gateOpen)
     for (const fiber of settledStage) yield* Fiber.join(fiber)
