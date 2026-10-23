@@ -37,16 +37,18 @@ fn codes_with_snapshot(dir: &Path, scene: &str, snapshot: CapabilitySnapshot) ->
     let (doc, _) = lute_syntax::parse(scene);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
     let components = resolve_components(dir, &meta0.components, doc.meta.span);
-    let input = CheckInput {
-        text: scene.to_string(),
-        uri: "scene".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        scene.to_string(),
+        "scene".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            Default::default(),
+            components,
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()

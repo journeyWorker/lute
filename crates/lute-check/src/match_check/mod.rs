@@ -95,7 +95,7 @@ use lute_syntax::ast::{
 use lute_syntax::is_pattern::{classify_is_literal, is_alternatives, IsLiteral, IsLiteralError};
 
 use crate::cel_paths::{is_reserved_quest_activated_at, E_PATH_IDENT};
-use crate::meta::{Namespace, StateDecl, StateSchema};
+use crate::meta::{Namespace, StateDecl};
 use crate::Ctx;
 use lute_manifest::semantics::cel_paths::{
     is_reserved_entry_read, is_reserved_quest_objective_done, QUEST_STATES,

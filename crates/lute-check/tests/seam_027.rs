@@ -7,6 +7,15 @@ use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_manifest::schema::{OccasionDecl, OccasionSelect, OccasionTarget};
 
 fn input(text: &str, gates: &[(&str, bool, &str)], terminal: Option<&str>) -> CheckInput {
+    CheckInput::new(
+        text.to_string(),
+        "seam".into(),
+        Mode::Author,
+        sources(gates, terminal),
+    )
+}
+
+fn sources(gates: &[(&str, bool, &str)], terminal: Option<&str>) -> lute_check::InputSources {
     let mut snapshot = lute_manifest::core::load_core_snapshot();
     for (name, targeted, gate) in gates {
         snapshot.occasions.insert(
@@ -45,16 +54,13 @@ fn input(text: &str, gates: &[(&str, bool, &str)], terminal: Option<&str>) -> Ch
                 persists: lute_check::gates::Persists::No,
             });
     }
-    CheckInput {
-        text: text.to_string(),
-        uri: "seam".into(),
+    lute_check::InputSources::from_parts(
         snapshot,
-        providers: Default::default(),
-        mode: Mode::Author,
+        Default::default(),
         imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+        Default::default(),
+        Default::default(),
+    )
 }
 
 fn errors(input: &CheckInput) -> Vec<(String, String)> {
@@ -254,7 +260,6 @@ fn a_gate_fault_is_reported_once_at_the_plugin_line() {
         "<beat id=\"a\" on=\"chime\" once=\"false\">\n  @narrator: x\n</beat>\n\
          <entry id=\"b\" on=\"chime\">\n  @narrator: y\n</entry>\n",
     );
-    let mut inp = input(&text, &[("chime", false, "run.hpp > 0")], None);
     let at = lute_core_span::Span {
         byte_start: 40,
         byte_end: 51,
@@ -262,12 +267,19 @@ fn a_gate_fault_is_reported_once_at_the_plugin_line() {
         column: 30,
         utf16_range: (40, 51),
     };
-    inp.imports.plugin_origins.gates.insert(
+    let mut origins = lute_check::rel_schema::PluginOrigins::default();
+    origins.gates.insert(
         "chime".into(),
         lute_check::rel_schema::DeclOrigin {
             file: "/p/plugins/ward/occasions/ward.yaml".into(),
             span: at,
         },
+    );
+    let inp = CheckInput::new(
+        text,
+        "seam".into(),
+        Mode::Author,
+        sources(&[("chime", false, "run.hpp > 0")], None).with_plugin_origins(origins),
     );
     let diags: Vec<_> = check(&inp)
         .diagnostics
@@ -368,7 +380,7 @@ fn ties(input: &CheckInput) -> Vec<String> {
     let folded = lute_check::fold_env(&doc, input).0;
     let docs = lute_check::ProjectDocs::parse(
         vec![(std::path::PathBuf::from("ward.lute"), doc)],
-        &input.snapshot,
+        input.snapshot(),
     );
     let views = docs.views();
     let producers = lute_check::cast::fact_producers(&views, &Default::default());

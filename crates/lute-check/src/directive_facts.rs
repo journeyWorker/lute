@@ -302,7 +302,7 @@ fn effect_literal_fault(
 ) -> Option<String> {
     use lute_manifest::schema::{OpBy, WriteValue};
     use lute_manifest::types::{Literal, Type};
-    let ty = &ctx.env.state.decls.get(path)?.ty;
+    let ty = &ctx.env.state.get(path)?.ty;
     let lit = match &write.value {
         WriteValue::Op {
             by: OpBy::Num(n), ..

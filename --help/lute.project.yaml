@@ -1,0 +1,4 @@
+defaultProfile: core
+profiles:
+  core:
+    plugins: {}

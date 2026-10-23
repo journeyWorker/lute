@@ -2,16 +2,18 @@ use lute_check::{CheckInput, Mode};
 use lute_compile::{compile, ExecutionIr};
 
 fn artifact(meta: &str, body: &str) -> ExecutionIr {
-    let input = CheckInput {
-        text: format!("---\nkind: scene\nid: semanticTest\n{meta}---\n## Test\n{body}\n"),
-        uri: "semantic-trigger".into(),
-        snapshot: lute_test_vocab::vocab_snapshot(),
-        providers: Default::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        format!("---\nkind: scene\nid: semanticTest\n{meta}---\n## Test\n{body}\n"),
+        "semantic-trigger".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            lute_test_vocab::vocab_snapshot(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     compile(&input).unwrap_or_else(|d| panic!("minimal semantic source failed: {d:?}"))
 }
 
@@ -46,11 +48,18 @@ fn temporal_source() {
 
 #[test]
 fn quest_lifecycle_source() {
-    let mut input = CheckInput {
-        text: "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n".into(),
-        uri: "quest-trigger".into(), snapshot: lute_test_vocab::vocab_snapshot(), providers: Default::default(),
-        mode: Mode::Ci, imports: Default::default(), components: Default::default(), defaults: Default::default(),
-    };
+    let mut input = CheckInput::new(
+        "---\nkind: quest\n---\n<quest id=\"q\" start=\"true\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n".into(),
+        "quest-trigger".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            lute_test_vocab::vocab_snapshot(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     requires(
         compile(&input).expect("minimal quest compiles"),
         &["lute.quest.lifecycle/1"],

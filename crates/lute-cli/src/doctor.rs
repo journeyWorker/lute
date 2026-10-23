@@ -152,19 +152,19 @@ fn scan_documents(root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
             }
         }
         let (merged, _diags) = lute_check::schema_import::merge_domains(
-            &built.input.snapshot,
-            &built.input.imports,
+            built.input.snapshot(),
+            built.input.imports(),
             &built.meta,
             at,
         );
         scan.domains.extend(merged);
-        for (id, plugin) in &built.input.snapshot.plugins {
+        for (id, plugin) in &built.input.snapshot().plugins {
             if id != "lute.core" {
                 scan.plugins.insert(id.clone(), plugin.version.clone());
             }
         }
         scan.declared_occasions
-            .extend(built.input.snapshot.occasions.keys().cloned());
+            .extend(built.input.snapshot().occasions.keys().cloned());
         // The desugared document (`chapters:`, beat templates):
         // a scene whose `on:` the manifest's `chapters:` derives answers it
         // too (round-5 First N1).
@@ -172,7 +172,7 @@ fn scan_documents(root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
         let _ = lute_check::desugar_document(&mut doc, &built.input);
         let (meta, _) = lute_check::meta::parse_meta_kind_with_defaults(
             &doc.meta,
-            &built.input.snapshot,
+            built.input.snapshot(),
             lute_check::meta::MetaKind::Scene,
             &built.defaults,
         );

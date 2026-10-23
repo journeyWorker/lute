@@ -331,8 +331,7 @@ fn project_diagnostics(cache: &InputCache, project: &Path, built: &BuiltInput) -
 fn import_failures(built: &BuiltInput) -> Vec<Diagnostic> {
     let mut out: Vec<Diagnostic> = built
         .input
-        .imports
-        .diags
+        .import_diags
         .iter()
         .filter(|d| matches!(d.code.as_str(), "E-USES-NOT-FOUND" | "E-USES-PARSE"))
         .map(|d| Diagnostic {

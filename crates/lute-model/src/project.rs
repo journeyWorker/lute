@@ -179,7 +179,7 @@ impl ProjectModel {
                 let mut doc = parsed.0.clone();
                 let _ = lute_check::desugar_document(&mut doc, &input);
                 let compile_doc = opts.compile.then(|| doc.clone());
-                lute_check::splice_component_effects(&mut doc, &input.components, &input.snapshot);
+                lute_check::splice_component_effects(&mut doc, &input.components, input.snapshot());
                 let (folded, _, _) = fold_env(&doc, &input);
                 let check = lute_check::check_parsed(&input, parsed);
                 Ok(ModelDocument {
@@ -529,7 +529,7 @@ fn build_revisions(
 ) -> Result<ProjectRevision, crate::revision::RevisionError> {
     let mut paths = BTreeSet::new();
     for document in documents {
-        let imports = &document.input.imports;
+        let imports = &document.input.imports();
         paths.insert(document.path.clone());
         paths.extend(imports.files.iter().cloned());
         paths.extend(imports.def_origins.values().cloned());
@@ -621,7 +621,7 @@ fn compile_gate_diags(input: &CheckInput) -> Vec<Diagnostic> {
     let mut arena = lute_cel::CelArena::default();
     let _ = lute_cel::fill_document(&mut arena, &mut doc);
     let (folded, _, _) = fold_env(&doc, input);
-    let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast);
+    let cast = lute_check::declared_cast(input.snapshot(), input.imports(), &folded.typed.cast);
     let mut diags = lute_compile::normalize::normalize_document(
         &mut doc,
         &input.components,

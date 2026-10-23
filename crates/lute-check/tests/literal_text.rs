@@ -14,16 +14,18 @@ fn check_body(body: &str) -> Vec<Diagnostic> {
         "---\nkind: scene\nid: lamp\nstate:\n  run.oil: {{ type: int, default: 1 }}\n  \
          run.knowsName: {{ type: bool, default: false }}\n---\n\n## Lamp Room\n\n{body}\n"
     );
-    check(&CheckInput {
+    check(&CheckInput::new(
         text,
-        uri: "scene".into(),
-        snapshot: vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: ComponentSet::default(),
-        defaults: Default::default(),
-    })
+        "scene".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            vocab_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            ComponentSet::default(),
+            Default::default(),
+        ),
+    ))
     .diagnostics
 }
 

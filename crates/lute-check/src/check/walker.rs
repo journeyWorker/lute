@@ -56,7 +56,7 @@ impl Walker<'_> {
         &self,
         when: Option<&lute_syntax::ast::CelSlot>,
         bodies: &[&[Node]],
-        schema: &crate::meta::StateSchema,
+        schema: &crate::StateView,
     ) -> Option<crate::reachability::Assumption> {
         crate::reachability::Assumption::new(
             when?,

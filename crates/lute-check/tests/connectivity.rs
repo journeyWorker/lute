@@ -13,16 +13,18 @@ fn permissive_providers() -> ProviderSet {
 }
 
 fn input_for(text: &str) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "test".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: permissive_providers(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "test".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            permissive_providers(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 #[test]
@@ -1273,16 +1275,18 @@ fn build_project_input(file: &PathBuf, project_dir: Option<&std::path::Path>) ->
     let base = file.parent().unwrap_or_else(|| std::path::Path::new("."));
     let imports = resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
     let components = resolve_components(base, &meta0.components, doc.meta.span);
-    CheckInput {
+    CheckInput::new(
         text,
-        uri: file.display().to_string(),
-        snapshot,
-        providers,
-        mode: Mode::Ci,
-        imports,
-        components,
-        defaults: Default::default(),
-    }
+        file.display().to_string(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            providers,
+            imports,
+            components,
+            Default::default(),
+        ),
+    )
 }
 
 fn parse_meta(

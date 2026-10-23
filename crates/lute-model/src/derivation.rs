@@ -182,7 +182,7 @@ fn merge_domains(
     finite: &mut BTreeMap<String, Vec<Value>>,
     relation_domains: &mut BTreeMap<String, Vec<Option<Vec<Value>>>>,
 ) {
-    for (name, domain) in &doc.folded.env.domains {
+    for (name, domain) in doc.folded.env.domains.iter() {
         if !domain.open {
             let values = domain
                 .members

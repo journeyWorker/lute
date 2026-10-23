@@ -23,16 +23,18 @@ use lute_test_vocab::vocab_snapshot;
 use std::path::Path;
 
 fn check_text(text: &str, components: ComponentSet) -> Vec<Diagnostic> {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "scene".into(),
-        snapshot: vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "scene".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            vocab_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
     check(&input).diagnostics
 }
 

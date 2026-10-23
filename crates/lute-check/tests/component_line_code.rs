@@ -44,16 +44,18 @@ const USE_SCENE: &str =
 ## Shot 1.\n::use{component=\"c\"}\n";
 
 fn check_text(text: String, components: ComponentSet) -> Vec<Diagnostic> {
-    let input = CheckInput {
+    let input = CheckInput::new(
         text,
-        uri: "scene".into(),
-        snapshot: vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    };
+        "scene".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            vocab_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
     check(&input).diagnostics
 }
 

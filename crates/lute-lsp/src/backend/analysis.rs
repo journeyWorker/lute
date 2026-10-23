@@ -56,9 +56,9 @@ impl Backend {
             Mode::Author,
         );
         let input = built.input;
-        let providers = input.providers.clone();
+        let providers = input.providers().clone();
         let result = check(&input);
-        self.warn_if_older_than_stamp(&snapshot.text, &input.defaults)
+        self.warn_if_older_than_stamp(&snapshot.text, input.defaults())
             .await;
         // Opt-in lint (design §2, §3): publish alongside check diagnostics
         // when `<project root>/lute.lint.yaml` exists AND sets `lsp: true`.

@@ -38,16 +38,18 @@ fn compile_json(text: &str) -> Value {
 }
 
 fn compile_ir(text: &str) -> lute_compile::ExecutionIr {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "test".into(),
-        snapshot: snapshot(),
-        providers: Default::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "test".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     compile(&input).unwrap_or_else(|diags| panic!("compiles: {diags:#?}"))
 }
 

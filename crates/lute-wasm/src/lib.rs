@@ -43,16 +43,18 @@ pub fn start() {
 /// imports: the `lute.core` snapshot (embedded, FS-free), an empty provider
 /// set, empty schema/component imports, and Ci (batch) analysis mode.
 fn build_input(src: &str) -> CheckInput {
-    CheckInput {
-        text: src.to_string(),
-        uri: "playground.lute".to_string(),
-        snapshot: load_core_snapshot(),
-        providers: Default::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        src.to_string(),
+        "playground.lute".to_string(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            load_core_snapshot(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 /// Statically validate `src` against `lute.core` and return the serialized

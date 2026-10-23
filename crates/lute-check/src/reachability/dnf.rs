@@ -15,7 +15,7 @@ use super::{comparison_set, comparison_set_polar};
 /// and so constrains nothing we can use).
 fn membership_sets_polar(
     expr: &Expr,
-    schema: &crate::meta::StateSchema,
+    schema: &crate::StateView,
     negated: bool,
 ) -> Option<Vec<(String, SolutionSet)>> {
     let Expr::Call(c) = expr else {
@@ -71,7 +71,7 @@ pub(crate) struct Conjuncts(pub(crate) Vec<(String, SolutionSet)>);
 pub(crate) fn when_conjuncts(
     raw: &str,
     defs: &DefTable<'_>,
-    schema: &crate::meta::StateSchema,
+    schema: &crate::StateView,
     vocab: Option<&crate::rel_schema::RelVocab>,
 ) -> Conjuncts {
     let mut out = Vec::new();
@@ -97,7 +97,7 @@ fn parse_expanded(raw: &str, defs: &DefTable<'_>) -> Option<Expr> {
 
 struct ConjunctCtx<'a> {
     defs: &'a DefTable<'a>,
-    schema: &'a crate::meta::StateSchema,
+    schema: &'a crate::StateView,
     vocab: Option<&'a crate::rel_schema::RelVocab>,
 }
 
@@ -381,7 +381,7 @@ impl Disjunct {
 pub(crate) fn when_dnf(
     raw: &str,
     defs: &DefTable<'_>,
-    schema: &crate::meta::StateSchema,
+    schema: &crate::StateView,
     vocab: Option<&crate::rel_schema::RelVocab>,
 ) -> Dnf {
     let Some(expr) = parse_expanded(raw, defs) else {

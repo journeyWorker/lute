@@ -32,16 +32,18 @@ fn input_for(text: &str) -> CheckInput {
         },
     );
     let base = Path::new(".");
-    CheckInput {
-        text: text.to_string(),
-        uri: "quest_024.lute".to_string(),
-        snapshot,
-        providers: lute_manifest::provider::ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span),
-        components: lute_check::resolve_components(base, &meta0.components, doc.meta.span),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "quest_024.lute".to_string(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            lute_manifest::provider::ProviderSet::default(),
+            lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span),
+            lute_check::resolve_components(base, &meta0.components, doc.meta.span),
+            Default::default(),
+        ),
+    )
 }
 
 fn trace(text: &str, mocks: MockSet) -> TraceReport {

@@ -33,7 +33,7 @@ fn stable_for(manifest: Option<&str>) -> bool {
         manifest.map(|_| &*dir),
         None,
     );
-    built.input.snapshot.identity_require_stable
+    built.input.snapshot().identity_require_stable
 }
 
 #[test]

@@ -6,16 +6,18 @@ use lute_core_span::Diagnostic;
 use lute_manifest::provider::ProviderSet;
 
 fn diags(text: &str) -> Vec<Diagnostic> {
-    check(&CheckInput {
-        text: text.to_string(),
-        uri: "reserved_names".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    })
+    check(&CheckInput::new(
+        text.to_string(),
+        "reserved_names".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    ))
     .diagnostics
 }
 

@@ -10,7 +10,7 @@ use lute_manifest::schema::OccasionDecl;
 use lute_manifest::snapshot::Domain;
 use lute_manifest::types::{Literal, Owner, Type};
 
-use crate::meta::{Namespace, StateDecl, StateSchema};
+use crate::meta::{Namespace, StateDecl};
 
 /// A malformed `clock:` declaration (dsl 0.24.0 §1): a shape the clock
 /// cannot use, a `day`/`slot` path that is undeclared, mistyped or not
@@ -314,7 +314,7 @@ pub struct ClockSite {
 /// importer into one attributed to the schema.
 pub fn check_clock(
     clocks: &[(ClockSite, ClockDecl)],
-    schema: &StateSchema,
+    schema: &crate::StateView,
     domains: &BTreeMap<String, Domain>,
     occasions: &BTreeMap<String, OccasionDecl>,
     span: Span,
@@ -338,7 +338,7 @@ pub fn check_clock(
     // the clock stays out (as a rejected one does) and says why, once.
     let invalid = std::iter::once(&clock.day)
         .chain(clock.slot.as_ref())
-        .find_map(|path| schema.invalid.get(path));
+        .find_map(|path| schema.invalid(path));
     if let Some(cause) = invalid {
         let note = |at: Span| crate::depends::depends_diag("clock:", cause, at, Layer::Content);
         let mut d = note(span);
@@ -377,13 +377,13 @@ pub fn check_clock(
 /// undeclared path is then not a problem here.
 pub fn clock_problems(
     clock: &ClockDecl,
-    schema: &StateSchema,
+    schema: &crate::StateView,
     domains: &BTreeMap<String, Domain>,
     occasions: &BTreeMap<String, OccasionDecl>,
     partial: bool,
 ) -> Vec<String> {
     let mut out = Vec::new();
-    match schema.decls.get(&clock.day) {
+    match schema.get(&clock.day) {
         None if partial => {}
         None => out.push(format!("`day: {}` is not a declared state path", clock.day)),
         Some(decl) => {
@@ -409,7 +409,7 @@ pub fn clock_problems(
         }
     }
     if let Some(slot) = &clock.slot {
-        match schema.decls.get(slot) {
+        match schema.get(slot) {
             None if partial => {}
             None => out.push(format!("`slot: {slot}` is not a declared state path")),
             Some(decl) => {
@@ -476,7 +476,7 @@ pub fn clock_problems(
     // dsl 0.27.0 §4: a finite clock starts where the day/slot defaults put
     // it — never past its last position.
     if let Some(last) = clock.last_at() {
-        let default = |path: &str| schema.decls.get(path).and_then(|d| d.default.as_ref());
+        let default = |path: &str| schema.get(path).and_then(|d| d.default.as_ref());
         let start = match (default(&clock.day), clock.slot.as_deref().map(default)) {
             (Some(Literal::Int(d)), None) => clock.at(*d as f64, None),
             (Some(Literal::Int(d)), Some(Some(Literal::Str(s)))) => clock.at(*d as f64, Some(s)),
@@ -502,13 +502,13 @@ pub fn clock_problems(
 /// clock. `owner: engine`, the day path's tier, and a default computed from
 /// the `day`/`slot` defaults when both have one — so a read is exactly as
 /// definitely-assigned as the clock paths themselves.
-pub fn reserved_decls(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, StateDecl)> {
-    let day = schema.decls.get(&clock.day);
+pub fn reserved_decls(clock: &ClockDecl, schema: &crate::StateView) -> Vec<(String, StateDecl)> {
+    let day = schema.get(&clock.day);
     let namespace = day.map_or(Namespace::Run, |d| d.namespace);
     let slot_default = clock
         .slot
         .as_ref()
-        .map(|s| schema.decls.get(s).and_then(|d| d.default.as_ref()));
+        .map(|s| schema.get(s).and_then(|d| d.default.as_ref()));
     let at = match (day.and_then(|d| d.default.as_ref()), slot_default) {
         (Some(Literal::Int(d)), None) => clock.at(*d as f64, None),
         (Some(Literal::Int(d)), Some(Some(Literal::Str(s)))) => clock.at(*d as f64, Some(s)),
@@ -597,7 +597,7 @@ pub fn weekday_range(clock: &ClockDecl) -> Option<(i64, i64)> {
 /// declared default (day 1 when unknown) to the last day. The clock only
 /// moves forward, and a `newRun` starts it at the defaults, so a `when`
 /// needing a later position can never hold.
-pub fn int_ranges(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, (i64, i64))> {
+pub fn int_ranges(clock: &ClockDecl, schema: &crate::StateView) -> Vec<(String, (i64, i64))> {
     let mut out = Vec::new();
     if let Some(range) = weekday_range(clock) {
         out.push((lute_manifest::clock::CLOCK_WEEKDAY.to_string(), range));
@@ -622,7 +622,7 @@ pub fn int_ranges(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, (i64,
 /// starting slot through its last one ([`StateSchema::clock_members`]).
 /// Empty for a clock that never ends, spans several days (every slot comes
 /// round on an earlier day) or counts whole days.
-pub fn slot_members(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, Vec<String>)> {
+pub fn slot_members(clock: &ClockDecl, schema: &crate::StateView) -> Vec<(String, Vec<String>)> {
     let (Some(slot), Some((first, last))) = (&clock.slot, finite_span(clock, schema)) else {
         return Vec::new();
     };
@@ -640,7 +640,7 @@ pub fn slot_members(clock: &ClockDecl, schema: &StateSchema) -> Vec<(String, Vec
 /// for a clock that never ends or starts past its end.
 fn finite_span(
     clock: &ClockDecl,
-    schema: &StateSchema,
+    schema: &crate::StateView,
 ) -> Option<(lute_manifest::clock::ClockAt, lute_manifest::clock::ClockAt)> {
     let last = clock.last_at()?;
     let first = first_at(clock, schema);
@@ -649,8 +649,11 @@ fn finite_span(
 
 /// Where the clock starts: its paths' defaults, day 1 and the first slot
 /// when unknown.
-pub(crate) fn first_at(clock: &ClockDecl, schema: &StateSchema) -> lute_manifest::clock::ClockAt {
-    let default = |path: &str| schema.decls.get(path).and_then(|d| d.default.as_ref());
+pub(crate) fn first_at(
+    clock: &ClockDecl,
+    schema: &crate::StateView,
+) -> lute_manifest::clock::ClockAt {
+    let default = |path: &str| schema.get(path).and_then(|d| d.default.as_ref());
     let first_day = match default(&clock.day) {
         Some(Literal::Int(d)) if *d >= 1 => *d,
         _ => 1,
@@ -681,8 +684,8 @@ pub fn false_reason(
 /// provably false — the reason an unreachable `when` gives. `None` when the
 /// clock never ends or `raw` names none of its bounded paths (a best-effort
 /// text match: a path read through a `@def` goes unnamed).
-pub fn end_reason(schema: &StateSchema, raw: &str) -> Option<String> {
-    schema.int_ranges.get(lute_manifest::clock::CLOCK_INDEX)?;
+pub fn end_reason(schema: &crate::StateView, raw: &str) -> Option<String> {
+    schema.int_range(lute_manifest::clock::CLOCK_INDEX)?;
     let names = |path: &str| {
         raw.match_indices(path).any(|(i, _)| {
             let ident = |c: char| c.is_ascii_alphanumeric() || c == '_' || c == '.';
@@ -690,14 +693,12 @@ pub fn end_reason(schema: &StateSchema, raw: &str) -> Option<String> {
         })
     };
     let reads: Vec<String> = schema
-        .int_ranges
-        .iter()
+        .int_ranges()
         .filter(|(path, _)| path.as_str() != lute_manifest::clock::CLOCK_WEEKDAY && names(path))
         .map(|(path, (a, b))| format!("`{path}` only ranges over {a}..{b}"))
         .chain(
             schema
-                .clock_members
-                .iter()
+                .clock_member_sets()
                 .filter(|(path, _)| names(path))
                 .map(|(path, ms)| slot_holds(path, ms)),
         )
@@ -712,8 +713,8 @@ pub fn end_reason(schema: &StateSchema, raw: &str) -> Option<String> {
 
 /// dsl 0.28.0 (T3-40): why a `<match>` arm on a finite clock's slot `path`
 /// can never match — the reason `E-ARM-DEAD` gives.
-pub fn slot_end_reason(schema: &StateSchema, path: &str) -> Option<String> {
-    let ms = schema.clock_members.get(path)?;
+pub fn slot_end_reason(schema: &crate::StateView, path: &str) -> Option<String> {
+    let ms = schema.clock_members(path)?;
     Some(format!(
         "the clock ends at its last position, so {}",
         slot_holds(path, ms)

@@ -24,7 +24,7 @@ pub const E_PERMISSION_QUEST: &str = "E-PERMISSION-QUEST";
 /// [`crate::CheckResult`]. It deliberately does not re-run data-flow or other
 /// project-reconciled checks. The unrestricted path returns before parsing.
 pub fn check_permissions(input: &CheckInput) -> Vec<Diagnostic> {
-    if input.snapshot.permissions.is_unrestricted() {
+    if input.snapshot().permissions.is_unrestricted() {
         return Vec::new();
     }
 
@@ -33,7 +33,7 @@ pub fn check_permissions(input: &CheckInput) -> Vec<Diagnostic> {
     crate::component_effects::splice_component_effects(
         &mut doc,
         &input.components,
-        &input.snapshot,
+        input.snapshot(),
     );
     let (folded, _, _) = crate::fold_env(&doc, input);
     let mut diagnostics = check_document_permissions(&doc, &folded.typed, input);
@@ -53,14 +53,14 @@ pub(crate) fn check_document_permissions(
     typed: &TypedMeta,
     input: &CheckInput,
 ) -> Vec<Diagnostic> {
-    let permissions = &input.snapshot.permissions;
+    let permissions = &input.snapshot().permissions;
     if permissions.is_unrestricted() {
         return Vec::new();
     }
 
     let mut checker = PermissionChecker {
         permissions,
-        snapshot: &input.snapshot,
+        snapshot: input.snapshot(),
         components: &input.components,
         diagnostics: Vec::new(),
         using: Vec::new(),
@@ -118,9 +118,9 @@ impl PermissionChecker<'_> {
     fn check_state_defaults(&mut self, doc: &Document, typed: &TypedMeta, input: &CheckInput) {
         // Imported defaults initialize the root document too. An inline override
         // replaces only an `extends` winner; a `uses` winner remains effective.
-        for (path, decl) in &input.imports.state.decls {
+        for (path, decl) in &input.imports().state.decls {
             if typed.state.decls.contains_key(path)
-                && input.imports.state_overridable.contains(path)
+                && input.imports().state_overridable.contains(path)
             {
                 continue;
             }
@@ -133,8 +133,8 @@ impl PermissionChecker<'_> {
             }
         }
         for (path, decl) in &typed.state.decls {
-            if input.imports.state.decls.contains_key(path)
-                && !input.imports.state_overridable.contains(path)
+            if input.imports().state.decls.contains_key(path)
+                && !input.imports().state_overridable.contains(path)
             {
                 continue;
             }
@@ -149,7 +149,7 @@ impl PermissionChecker<'_> {
     }
 
     fn check_seed_facts(&mut self, doc: &Document, typed: &TypedMeta, input: &CheckInput) {
-        for fact in &input.imports.rel.facts {
+        for fact in &input.imports().rel.facts {
             self.check_fact_write(&fact.fact.relation, doc.meta.span, "imported seed fact");
         }
         for fact in &typed.rel_facts {

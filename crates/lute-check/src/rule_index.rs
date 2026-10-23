@@ -238,7 +238,7 @@ pub fn check_var_guard(
     rule: &Rule,
     cel: &str,
     vocab: &RelVocab,
-    state: &crate::meta::StateSchema,
+    state: &crate::StateView,
     domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
     span: Span,
 ) -> Result<String, Vec<Diagnostic>> {
@@ -262,7 +262,7 @@ pub fn check_var_guard(
             ));
             continue;
         };
-        let kind = match state.decls.get(path).map(|d| &d.ty) {
+        let kind = match state.get(path).map(|d| &d.ty) {
             Some(lute_manifest::types::Type::Domain(k) | lute_manifest::types::Type::Entity(k)) => {
                 k.clone()
             }

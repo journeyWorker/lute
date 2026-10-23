@@ -127,11 +127,6 @@ pub struct SchemaImports {
     /// and season name: the positioned span of its `live:` key (of its name,
     /// in the short form) — where a problem with the condition is reported.
     pub season_lives: BTreeMap<PathBuf, BTreeMap<String, Span>>,
-    /// dsl 0.27.0 §4: where the installed plugins declare what a document's
-    /// check judges but cannot place — filled by the CLI, which knows the
-    /// project's plugins directory; empty on every other surface (a fault
-    /// is then reported at its use, as before).
-    pub plugin_origins: crate::rel_schema::PluginOrigins,
     pub rel: RelImports,
 }
 
@@ -270,7 +265,7 @@ fn uses_diag(code: &str, message: String, at: Span) -> Diagnostic {
 /// The importer-span placeholder [`ImportCache`] resolves with: no real span
 /// has `usize::MAX` offsets, so every diagnostic span equal to it is exactly
 /// one `resolve_imports` anchored at its `at` argument.
-const AT_PLACEHOLDER: Span = Span {
+pub(crate) const AT_PLACEHOLDER: Span = Span {
     byte_start: usize::MAX,
     byte_end: usize::MAX,
     line: u32::MAX,
@@ -278,26 +273,38 @@ const AT_PLACEHOLDER: Span = Span {
     utf16_range: (u32::MAX, u32::MAX),
 };
 
-/// Per-run memo of [`resolve_imports`] and
+/// Per-run memo of [`resolve_imports`] — each import graph resolved into a
+/// [`ProjectVocab`] per [`ProjectBase`] — and of
 /// [`crate::component_import::resolve_components`]: every document of a
 /// project that names the same `uses:`/`extends:` (or `components:`) lists
 /// from the same directory resolves the same import DAG, so a batch caller (a
 /// project check over thousands of scenes) reads and parses each imported file
-/// once instead of once per document.
+/// once, and folds what the graph declares once, instead of once per
+/// document (spec 0.49.0 §9.2).
 ///
 /// Each result depends on the importing document only through `at`, which is
 /// copied verbatim into diagnostic spans; the memo resolves once against
-/// [`AT_PLACEHOLDER`] and rewrites those spans to each caller's `at`, so both
-/// methods return exactly what the uncached resolvers would. Holds no
-/// invalidation: the files are assumed not to change during one run.
+/// [`AT_PLACEHOLDER`] and returns each caller its diagnostics anchored at its
+/// `at`, so the shared value is exactly what the uncached resolvers return.
+/// Holds no invalidation: the files are assumed not to change during one run.
+///
+/// [`ProjectVocab`]: crate::ProjectVocab
+/// [`ProjectBase`]: crate::ProjectBase
 #[derive(Default)]
 pub struct ImportCache {
     imports: Memo<(PathBuf, Vec<String>, Vec<String>), SchemaImports>,
+    vocabs: Memo<(u64, PathBuf, Vec<String>, Vec<String>), crate::ProjectVocab>,
     components: Memo<(PathBuf, Vec<String>), crate::ComponentSet>,
     /// Each imported file, read once: [`ImportCache::resolve`] is keyed by
     /// the importer's directory, and importers in different directories
     /// reach the same schema files.
     files: Memo<PathBuf, ParsedFile>,
+}
+
+impl std::fmt::Debug for ImportCache {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ImportCache").finish_non_exhaustive()
+    }
 }
 
 /// One imported file as [`read_and_parse`] reads it against
@@ -311,44 +318,54 @@ struct ParsedFile {
 }
 
 impl ImportCache {
-    /// [`resolve_imports`], memoized on `(base_dir, uses, extends)`.
-    pub fn resolve(
+    /// [`resolve_imports`], memoized on `(base_dir, uses, extends)`, with
+    /// its diagnostics anchored at [`AT_PLACEHOLDER`].
+    fn resolve(&self, base_dir: &Path, uses: &[String], extends: &[String]) -> Arc<SchemaImports> {
+        let key = (base_dir.to_path_buf(), uses.to_vec(), extends.to_vec());
+        self.imports.get_or_init(key, || {
+            resolve_imports_in(base_dir, uses, extends, AT_PLACEHOLDER, Some(&self.files))
+        })
+    }
+
+    /// The [`crate::ProjectVocab`] of `(base_dir, uses, extends)` against
+    /// `base`, memoized on both, and the import diagnostics anchored at `at`.
+    pub fn vocab(
         &self,
+        base: &crate::ProjectBase,
         base_dir: &Path,
         uses: &[String],
         extends: &[String],
         at: Span,
-    ) -> Arc<SchemaImports> {
-        let key = (base_dir.to_path_buf(), uses.to_vec(), extends.to_vec());
-        let cached = self.imports.get_or_init(key, || {
-            resolve_imports_in(base_dir, uses, extends, AT_PLACEHOLDER, Some(&self.files))
+    ) -> (Arc<crate::ProjectVocab>, Vec<Diagnostic>) {
+        let key = (
+            base.id(),
+            base_dir.to_path_buf(),
+            uses.to_vec(),
+            extends.to_vec(),
+        );
+        let vocab = self.vocabs.get_or_init(key, || {
+            crate::ProjectVocab::build(base, self.resolve(base_dir, uses, extends))
         });
-        if at == AT_PLACEHOLDER {
-            return cached;
-        }
-        let mut out = (*cached).clone();
-        anchor_at(&mut out.diags, at);
-        Arc::new(out)
+        let mut diags = vocab.imports.diags.clone();
+        anchor_at(&mut diags, at);
+        (vocab, diags)
     }
 
     /// [`crate::component_import::resolve_components`], memoized on
-    /// `(base_dir, components)`.
+    /// `(base_dir, components)`, and its diagnostics anchored at `at`.
     pub fn resolve_components(
         &self,
         base_dir: &Path,
         components: &[String],
         at: Span,
-    ) -> Arc<crate::ComponentSet> {
+    ) -> (Arc<crate::ComponentSet>, Vec<Diagnostic>) {
         let key = (base_dir.to_path_buf(), components.to_vec());
         let cached = self.components.get_or_init(key, || {
             crate::component_import::resolve_components(base_dir, components, AT_PLACEHOLDER)
         });
-        if at == AT_PLACEHOLDER {
-            return cached;
-        }
-        let mut out = (*cached).clone();
-        anchor_at(&mut out.diags, at);
-        Arc::new(out)
+        let mut diags = cached.diags.clone();
+        anchor_at(&mut diags, at);
+        (cached, diags)
     }
 }
 
@@ -381,7 +398,7 @@ impl<K: Eq + std::hash::Hash, V> Memo<K, V> {
 }
 
 /// Replace every [`AT_PLACEHOLDER`] span (outer or `related`) with `at`.
-fn anchor_at(diags: &mut [Diagnostic], at: Span) {
+pub(crate) fn anchor_at(diags: &mut [Diagnostic], at: Span) {
     for d in diags {
         if d.span == AT_PLACEHOLDER {
             d.span = at;
@@ -1060,7 +1077,6 @@ fn resolve_imports_in(
         terminal,
         seasons,
         season_lives,
-        plugin_origins: Default::default(),
         rel: RelImports {
             kinds: rel_kinds,
             kind_order,
@@ -1086,8 +1102,8 @@ fn resolve_imports_in(
 /// Union the PROJECT's declared domains with the plugin/core baseline already
 /// on `snapshot` ([`CapabilitySnapshot::domains`], A2) — the ACTUAL merged
 /// domain vocabulary a later checker task (A4) resolves `Type::Domain(name)`
-/// against, mirroring how `check.rs::fold_env` unions `input.snapshot.defs`
-/// with `input.imports.defs`.
+/// against, mirroring how `check.rs::fold_env` unions `input.snapshot().defs`
+/// with `input.imports().defs`.
 ///
 /// The project side has TWO sources, and both are the identical two-step
 /// projection of the same YAML shape — `parse_enums`, then

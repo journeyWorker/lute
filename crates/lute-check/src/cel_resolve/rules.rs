@@ -167,7 +167,7 @@ pub(crate) fn check_def_body(
     cel: &str,
     params: &[String],
     span: Span,
-    schema: &crate::meta::StateSchema,
+    schema: &crate::StateView,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let slot = CelSlot::raw(CelKind::Condition, cel.to_string(), span);

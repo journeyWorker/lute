@@ -13,8 +13,8 @@ use std::sync::Arc;
 use lute_manifest::snapshot::Domain;
 use lute_manifest::types::Type;
 
-use crate::meta::StateSchema;
 use crate::rel_schema::RelVocab;
+use crate::vocab::StateView;
 
 /// Analysis mode. `Author` is the interactive LSP default (lenient about
 /// catalog staleness); `Ci` is the batch/build mode that later tasks may treat
@@ -37,9 +37,11 @@ pub enum Mode {
 pub struct Env {
     /// Author (interactive LSP) vs. Ci (batch) analysis mode.
     pub mode: Mode,
-    /// Inline `state:` schema (dsl §9.3): the declared state paths T4.3 resolves
-    /// state-path reads against (`E-UNDECLARED`). T4.4–T4.7 read this too.
-    pub state: StateSchema,
+    /// The folded state schema (dsl §9.3): the project's imported state
+    /// shared with every document, plus this document's own decls
+    /// ([`StateView`]). T4.3 resolves state-path reads against it
+    /// (`E-UNDECLARED`); T4.4–T4.7 read it too.
+    pub state: StateView,
     /// Names declared under frontmatter `defs:` (dsl §8.1): the `@ref` targets
     /// T4.3 resolves `@name` uses against (`E-UNDECLARED-REF`).
     pub defs: BTreeSet<String>,
@@ -78,7 +80,7 @@ pub struct Env {
     /// `check_atom` an empty map, silently skipping `E-FACT-DOMAIN` for any
     /// relation arg typed against a plugin/core/project domain (as opposed
     /// to a RelVocab entity kind or `enums:` name) inside a query.
-    pub domains: BTreeMap<String, Domain>,
+    pub domains: Arc<BTreeMap<String, Domain>>,
     /// dsl 0.24.0 §1: the project's declared clock (one), as settled by
     /// [`crate::clock::check_clock`] — `None` without one. Its reserved
     /// `clock.*` decls are already in [`Self::state`]; trace derives their

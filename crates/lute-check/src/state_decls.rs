@@ -103,7 +103,7 @@ pub fn check_project_state_decls(
             )
         });
         let imported = vocab.origins.state.iter().filter_map(|(path, origin)| {
-            let decl = folded.env.state.decls.get(path)?;
+            let decl = folded.env.state.get(path)?;
             let at = (origin.file.clone(), origin.span);
             Some((path, decl, vocab.indexed_state.get(path), at))
         });
@@ -245,126 +245,213 @@ fn declared_extends(file: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// The callbacks [`value_prefix_at`] reports through: `declared(path)` — an
+/// author declared the path; `results_under(value)` — the directives
+/// storing results under `value.`; `locate(path, message)` — the report at
+/// `path`'s declaration, `None` for a path no author declared.
+pub(crate) struct ValuePrefixSite<'a> {
+    pub(crate) declared: &'a dyn Fn(&str) -> bool,
+    pub(crate) results_under: &'a dyn Fn(&str) -> Vec<String>,
+    pub(crate) locate: &'a dyn Fn(&str, &str) -> Option<Diagnostic>,
+}
+
 /// dsl 0.28.0 (T3-45): a declared path that is both a value and the prefix of
 /// another declared path — `run.lanterns` beside `run.lanterns.gold`, or a
 /// `scene.date` a directive's result state fills as `scene.date.stars.*`.
 /// Stored state cannot hold a value and fields under one name, so the pair is
-/// an `E-STATE-DECL`, reported once per value path — `locate(path, message)`
-/// builds it at `path`'s declaration (the value's, else the longer path's).
-/// A field no author declared (`declared`) is a directive's result: the
-/// report names the directives storing results under the value
-/// (`results_under`), not one of the fields a call happened to open, so the
-/// reports of every document using the value fold into one.
+/// an `E-STATE-DECL`, reported once per value path, in path order.
 pub(crate) fn check_value_prefix(
-    schema: &crate::meta::StateSchema,
-    declared: &dyn Fn(&str) -> bool,
-    results_under: &dyn Fn(&str) -> Vec<String>,
-    locate: &dyn Fn(&str, &str) -> Option<Diagnostic>,
+    state: &crate::StateView,
+    site: &ValuePrefixSite<'_>,
 ) -> Vec<Diagnostic> {
-    let keys: Vec<&str> = schema.decls.keys().map(String::as_str).collect();
-    let mut out = Vec::new();
-    for (i, value) in keys.iter().enumerate() {
-        // A container type legitimately has fields.
-        let container = matches!(
-            schema.decls[*value].ty,
-            Type::Record(_) | Type::Map { .. } | Type::List(_)
-        );
-        if container || crate::cel_paths::is_engine_owned_path(value) {
-            continue;
-        }
-        let prefix = format!("{value}.");
-        let fields: Vec<&str> = keys[i + 1..]
-            .iter()
-            .take_while(|k| k.starts_with(value))
-            .filter(|k| k.starts_with(&prefix))
-            .copied()
-            .collect();
-        let Some(&first) = fields.first() else {
-            continue;
-        };
-        let message = match fields.iter().find(|f| declared(f)) {
-            Some(field) => format!(
-                "`{value}` is declared as a value and is also the prefix of `{field}` — stored \
-                 state cannot hold a value and fields under one name; rename one of them"
-            ),
-            None => {
-                let owners: Vec<String> = results_under(value)
-                    .iter()
-                    .map(|d| format!("`::{d}`"))
-                    .collect();
-                let who = match owners.len() {
-                    0 => "a directive stores its results".to_string(),
-                    1 => format!("{} stores its results", owners[0]),
-                    _ => format!("{} store their results", owners.join(", ")),
-                };
-                format!(
-                    "`{value}` is declared as a value, but {who} under `{value}.` — stored state \
-                     cannot hold a value and fields under one name; rename `{value}`"
-                )
-            }
-        };
-        out.extend(locate(value, &message).or_else(|| locate(first, &message)));
-    }
-    out
+    state
+        .keys()
+        .filter_map(|value| value_prefix_at(state, value, site))
+        .collect()
 }
+
+/// [`check_value_prefix`] by value path, over every declared path.
+pub(crate) fn value_prefix_by_path(
+    state: &crate::StateView,
+    site: &ValuePrefixSite<'_>,
+) -> BTreeMap<String, Diagnostic> {
+    state
+        .keys()
+        .filter_map(|value| Some((value.clone(), value_prefix_at(state, value, site)?)))
+        .collect()
+}
+
+/// The [`check_value_prefix`] report of one declared `value`, when it is a
+/// value with fields: the report is built at the value's declaration, else
+/// at its first field's. A field no author declared (`declared`) is a
+/// directive's result: the report names the directives storing results
+/// under the value, not one of the fields a call happened to open, so the
+/// reports of every document using the value fold into one.
+pub(crate) fn value_prefix_at(
+    state: &crate::StateView,
+    value: &str,
+    site: &ValuePrefixSite<'_>,
+) -> Option<Diagnostic> {
+    // A container type legitimately has fields.
+    let container = matches!(
+        state.get(value)?.ty,
+        Type::Record(_) | Type::Map { .. } | Type::List(_)
+    );
+    if container || crate::cel_paths::is_engine_owned_path(value) {
+        return None;
+    }
+    let prefix = format!("{value}.");
+    let mut fields = state.with_prefix(&prefix).map(|(k, _)| k.as_str());
+    let first = fields.next()?;
+    let message = match std::iter::once(first)
+        .chain(fields)
+        .find(|f| (site.declared)(f))
+    {
+        Some(field) => format!(
+            "`{value}` is declared as a value and is also the prefix of `{field}` — stored \
+             state cannot hold a value and fields under one name; rename one of them"
+        ),
+        None => {
+            let owners: Vec<String> = (site.results_under)(value)
+                .iter()
+                .map(|d| format!("`::{d}`"))
+                .collect();
+            let who = match owners.len() {
+                0 => "a directive stores its results".to_string(),
+                1 => format!("{} stores its results", owners[0]),
+                _ => format!("{} store their results", owners.join(", ")),
+            };
+            format!(
+                "`{value}` is declared as a value, but {who} under `{value}.` — stored state \
+                 cannot hold a value and fields under one name; rename `{value}`"
+            )
+        }
+    };
+    (site.locate)(value, &message).or_else(|| (site.locate)(first, &message))
+}
+
+/// `locate(path, key, message, code)` for [`check_domain_types`]: the report
+/// at the path's `key` (`type` / `default`); `None` for a path no author
+/// declared.
+pub(crate) type DomainTypeLocate<'a> = &'a dyn Fn(&str, &str, &str, &str) -> Option<Diagnostic>;
 
 /// A `{ domain: K }` / `{ entity: K }` state path whose `K` no enum or entity
 /// kind declares (`E-DOMAIN-UNKNOWN`), and one whose `default:` is not one of
 /// a closed `K`'s members (`E-STATE-DECL`) — played, a value no `<match>` arm
 /// takes. A `per:` family (`families`: family → kind) is reported once, at
-/// the family. `locate(path, key, message, code)` builds the report at the
-/// path's `key` (`type` / `default`); `None` for a path no author declared.
+/// the family, as its first typed member decides.
 pub(crate) fn check_domain_types(
-    schema: &crate::meta::StateSchema,
+    state: &crate::StateView,
     domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
     families: &BTreeMap<String, String>,
-    locate: &dyn Fn(&str, &str, &str, &str) -> Option<Diagnostic>,
+    locate: DomainTypeLocate<'_>,
 ) -> Vec<Diagnostic> {
-    let mut out = Vec::new();
+    domain_types_by_at(state, domains, families, locate)
+        .into_values()
+        .collect::<BTreeMap<_, _>>()
+        .into_values()
+        .collect()
+}
+
+/// Where [`check_domain_types`] reports `path`: its `per:` family, else
+/// itself.
+pub(crate) fn domain_type_at<'p>(path: &'p str, families: &BTreeMap<String, String>) -> &'p str {
+    path.rsplit_once('.')
+        .map(|(f, _)| f)
+        .filter(|f| families.contains_key(*f))
+        .unwrap_or(path)
+}
+
+/// [`check_domain_types`]'s reports by reported path (`at`), each with the
+/// path that decided it (its order in the report stream).
+pub(crate) fn domain_types_by_at(
+    state: &crate::StateView,
+    domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
+    families: &BTreeMap<String, String>,
+    locate: DomainTypeLocate<'_>,
+) -> BTreeMap<String, (String, Diagnostic)> {
+    let mut out = BTreeMap::new();
     let mut seen = BTreeSet::new();
-    for (path, decl) in &schema.decls {
-        let (Type::Domain(name) | Type::Entity(name)) = &decl.ty else {
+    for (path, decl) in state.iter() {
+        if !matches!(decl.ty, Type::Domain(_) | Type::Entity(_)) {
             continue;
-        };
-        let family = path
-            .rsplit_once('.')
-            .map(|(f, _)| f)
-            .filter(|f| families.contains_key(*f));
-        let at = family.unwrap_or(path);
+        }
+        let at = domain_type_at(path, families);
         if !seen.insert(at) {
             continue;
         }
-        let (form, word) = match &decl.ty {
-            Type::Entity(_) => ("entity", "entity kind"),
-            _ => ("domain", "enum"),
-        };
-        match domains.get(name) {
-            None => {
-                let names: Vec<String> = domains.keys().cloned().collect();
-                let message = format!(
-                    "`{at}` is typed `{{ {form}: {name} }}`, but `{name}` is not a declared enum \
-                     or entity kind{}{}",
-                    crate::rel_schema::member_hint(name, &names),
-                    crate::renames::renamed_domain_hint(name, domains)
-                );
-                out.extend(locate(at, "type", &message, "E-DOMAIN-UNKNOWN"));
-            }
-            Some(d) if !d.open => {
-                let Some(Literal::Str(v)) = &decl.default else {
-                    continue;
-                };
-                if d.members.contains(v) {
-                    continue;
-                }
-                let message = format!(
-                    "`{at}`'s `default: {v}` is not a member of {word} `{name}` [{}]{}",
-                    d.members.join(", "),
-                    crate::rel_schema::member_hint(v, &d.members)
-                );
-                out.extend(locate(at, "default", &message, "E-STATE-DECL"));
-            }
-            Some(_) => {}
+        if let Some(d) = domain_type_report(at, decl, domains, locate) {
+            out.insert(at.to_string(), (path.clone(), d));
         }
     }
     out
+}
+
+/// [`check_domain_types`]'s report for the reported path `at`, recomputed
+/// over `state`: its first `{ domain: K }` path decides, as in the full
+/// scan.
+pub(crate) fn domain_type_report_at(
+    state: &crate::StateView,
+    at: &str,
+    domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
+    families: &BTreeMap<String, String>,
+    locate: DomainTypeLocate<'_>,
+) -> Option<(String, Diagnostic)> {
+    let own = state
+        .get(at)
+        .filter(|_| domain_type_at(at, families) == at)
+        .map(|decl| (at, decl));
+    let prefix = format!("{at}.");
+    let members = state
+        .with_prefix(&prefix)
+        .filter(|_| families.contains_key(at))
+        .filter(|(p, _)| !p[prefix.len()..].contains('.'))
+        .map(|(p, d)| (p.as_str(), d));
+    let (path, decl) = own
+        .into_iter()
+        .chain(members)
+        .find(|(_, d)| matches!(d.ty, Type::Domain(_) | Type::Entity(_)))?;
+    domain_type_report(at, decl, domains, locate).map(|d| (path.to_string(), d))
+}
+
+fn domain_type_report(
+    at: &str,
+    decl: &StateDecl,
+    domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
+    locate: DomainTypeLocate<'_>,
+) -> Option<Diagnostic> {
+    let (Type::Domain(name) | Type::Entity(name)) = &decl.ty else {
+        return None;
+    };
+    let (form, word) = match &decl.ty {
+        Type::Entity(_) => ("entity", "entity kind"),
+        _ => ("domain", "enum"),
+    };
+    match domains.get(name) {
+        None => {
+            let names: Vec<String> = domains.keys().cloned().collect();
+            let message = format!(
+                "`{at}` is typed `{{ {form}: {name} }}`, but `{name}` is not a declared enum \
+                 or entity kind{}{}",
+                crate::rel_schema::member_hint(name, &names),
+                crate::renames::renamed_domain_hint(name, domains)
+            );
+            locate(at, "type", &message, "E-DOMAIN-UNKNOWN")
+        }
+        Some(d) if !d.open => {
+            let Some(Literal::Str(v)) = &decl.default else {
+                return None;
+            };
+            if d.members.contains(v) {
+                return None;
+            }
+            let message = format!(
+                "`{at}`'s `default: {v}` is not a member of {word} `{name}` [{}]{}",
+                d.members.join(", "),
+                crate::rel_schema::member_hint(v, &d.members)
+            );
+            locate(at, "default", &message, "E-STATE-DECL")
+        }
+        Some(_) => None,
+    }
 }

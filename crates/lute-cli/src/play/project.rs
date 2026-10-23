@@ -258,8 +258,8 @@ fn assemble_bundle_from_model(
         let (mut desugared, _) = lute_syntax::parse(&input.text);
         lute_check::chapters::apply_chapters(
             &mut desugared,
-            &input.defaults,
-            &input.snapshot.occasions,
+            input.defaults(),
+            &input.snapshot().occasions,
         );
         chapter_afters.extend(lute_check::chapters::derived_after(
             &desugared,

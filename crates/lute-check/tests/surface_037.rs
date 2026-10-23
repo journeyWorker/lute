@@ -11,16 +11,18 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_test_vocab::vocab_snapshot;
 
 fn check_text(text: String, components: ComponentSet) -> Vec<Diagnostic> {
-    check(&CheckInput {
+    check(&CheckInput::new(
         text,
-        uri: "scene".into(),
-        snapshot: vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    })
+        "scene".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            vocab_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    ))
     .diagnostics
 }
 

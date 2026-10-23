@@ -6,16 +6,18 @@ use lute_check::{check, CheckInput, CheckResult, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 
 fn run(text: &str) -> CheckResult {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "on".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "on".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
 }
 
@@ -55,18 +57,20 @@ fn on_event_naming_an_occasion_says_what_makes_it_run() {
             ..Default::default()
         },
     );
-    let res = check(&CheckInput {
-        text: "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n\
+    let res = check(&CheckInput::new(
+        "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\"/>\n\
                <on event=\"dusk\">\n@x: hi\n</on>\n</quest>\n"
             .into(),
-        uri: "on".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    });
+        "on".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    ));
     let d = res
         .diagnostics
         .iter()

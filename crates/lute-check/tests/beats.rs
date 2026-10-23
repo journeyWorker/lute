@@ -50,16 +50,18 @@ fn with_occasions() -> CapabilitySnapshot {
 }
 
 fn input(text: &str, snapshot: CapabilitySnapshot) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "beats".into(),
-        snapshot,
-        providers: Default::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "beats".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 fn diags_with(text: &str, snapshot: CapabilitySnapshot) -> Vec<Diagnostic> {

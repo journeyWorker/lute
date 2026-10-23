@@ -13,16 +13,18 @@ state:\n  scene.n: { type: int, default: 0 }\n\
 entities:\n  npc: { members: [mara, tomas] }\n  item: { members: [lamp] }\n";
 
 fn input(text: &str, imports: SchemaImports) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "check_024_rules".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "check_024_rules".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 /// A scene whose frontmatter adds `extra` (relations/rules/defs) and whose

@@ -586,6 +586,7 @@ version = "0.48.1"
 dependencies = [
  "lute-check",
  "lute-cli",
+ "lute-load",
  "lute-model",
  "lute-runtime",
  "lute-scratch",
@@ -711,6 +712,7 @@ dependencies = [
  "lute-check",
  "lute-core-span",
  "lute-manifest",
+ "lute-scratch",
  "lute-syntax",
  "rayon",
  "serde",

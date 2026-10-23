@@ -13,16 +13,22 @@ use lute_core_span::Diagnostic;
 use lute_syntax::ast::Document;
 
 fn input(text: &str) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "diag028".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: Default::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    input_with(text, SchemaImports::default())
+}
+
+fn input_with(text: &str, imports: SchemaImports) -> CheckInput {
+    CheckInput::new(
+        text.to_string(),
+        "diag028".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            Default::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 const VOCAB: &str = "relations:\n  knows: { args: [person], tier: run }\n\
@@ -180,8 +186,7 @@ fn an_objective_handed_a_kind_target_says_objectives_take_one() {
 // --- T3-1: one cause, one report ---------------------------------------------
 
 fn codes(text: &str, imports: SchemaImports) -> Vec<String> {
-    let mut input = input(text);
-    input.imports = imports;
+    let input = input_with(text, imports);
     lute_check::check(&input)
         .diagnostics
         .into_iter()

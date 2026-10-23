@@ -30,7 +30,7 @@ use lute_syntax::ast::{
 
 use crate::connectivity::{ConnGraph, NodeId, PrereqState};
 use crate::defassign::{check_definite_assignment, Assigned};
-use crate::meta::{Namespace, StateSchema};
+use crate::meta::Namespace;
 use lute_manifest::semantics::prereq::PrereqFormula;
 
 /// `true` when `path` resolves to the `run.*`/`user.*` tier — the two
@@ -168,7 +168,7 @@ fn scan_choice_record(choice: &Choice, out: &mut BTreeSet<String>) {
 /// body was already validated by the real `check_definite_assignment` pass
 /// over the whole quest document; this is a read-only re-derivation of its
 /// guaranteed-write set, not a second source of diagnostics.
-fn body_guaranteed(nodes: &[Node], schema: &StateSchema) -> BTreeSet<String> {
+fn body_guaranteed(nodes: &[Node], schema: &crate::StateView) -> BTreeSet<String> {
     let (_diags, writes, _reads) =
         check_definite_assignment(nodes, &crate::defassign::Scope::bare(schema), None);
     guaranteed(&writes)
@@ -197,7 +197,7 @@ fn body_guaranteed(nodes: &[Node], schema: &StateSchema) -> BTreeSet<String> {
 /// (grammar admission, dsl 0.2.0 §6.7 — mirrors `match_check::check_quest`'s
 /// and `project_check`'s own top-level-only objective scans), so a single
 /// top-level pass over `q.body` is exhaustive.
-pub fn writes_on_complete(q: &Quest, schema: &StateSchema) -> BTreeSet<String> {
+pub fn writes_on_complete(q: &Quest, schema: &crate::StateView) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for node in &q.body {
         match node {
@@ -467,9 +467,8 @@ fn eval_formula(f: &PrereqFormula, per_doc: &PerDocEffects, envs: &BTreeMap<Node
 /// `defassign`'s own existing rule (`has_default` in `defassign.rs`)" —
 /// cross-schema default conflicts are already that layer's own job, so
 /// this never re-derives or re-resolves anything, only filters+extracts.
-pub fn schema_defaults(schema: &StateSchema) -> BTreeSet<String> {
+pub fn schema_defaults(schema: &crate::StateView) -> BTreeSet<String> {
     schema
-        .decls
         .iter()
         .filter(|(path, decl)| decl.default.is_some() && in_envelope_scope(path))
         .map(|(path, _)| path.clone())
@@ -740,7 +739,7 @@ mod tests {
     /// Mirrors `defassign::tests::fixture` — parses + fills CEL + lifts the
     /// inline `state:` schema, needed only by the `guaranteed()`/divergence
     /// tests below (`possible_writes` needs no schema).
-    fn fixture(src: &str) -> (Vec<Node>, StateSchema) {
+    fn fixture(src: &str) -> (Vec<Node>, crate::StateView) {
         let (mut doc, _pd) = parse(src);
         let mut arena = CelArena::default();
         let _ = fill_document(&mut arena, &mut doc);
@@ -754,7 +753,7 @@ mod tests {
             .next()
             .map(|s| s.body)
             .unwrap_or_default();
-        (nodes, meta.state)
+        (nodes, meta.state.into())
     }
 
     /// Like `fixture`, but returns the first `<quest>` declaration itself
@@ -762,7 +761,7 @@ mod tests {
     /// `writes_on_complete` needs the `Quest` struct to read
     /// `Objective::optional`/`On::event`/`On::when`, which the flat node
     /// list `quest_nodes` returns loses.
-    fn quest_fixture(src: &str) -> (Quest, StateSchema) {
+    fn quest_fixture(src: &str) -> (Quest, crate::StateView) {
         let (mut doc, _pd) = parse(src);
         let mut arena = CelArena::default();
         let _ = fill_document(&mut arena, &mut doc);
@@ -775,7 +774,7 @@ mod tests {
             .into_iter()
             .next()
             .expect("quest_fixture src must declare a <quest>");
-        (quest, meta.state)
+        (quest, meta.state.into())
     }
 
     #[test]

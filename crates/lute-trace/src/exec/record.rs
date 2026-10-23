@@ -426,8 +426,8 @@ pub fn needle_vocab(input: &lute_check::CheckInput, meta: &lute_check::TypedMeta
         utf16_range: (0, 0),
     };
     let (domains, _) =
-        lute_check::schema_import::merge_domains(&input.snapshot, &input.imports, meta, nowhere);
-    let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &meta.cast);
+        lute_check::schema_import::merge_domains(input.snapshot(), input.imports(), meta, nowhere);
+    let cast = lute_check::declared_cast(input.snapshot(), input.imports(), &meta.cast);
     NeedleVocab {
         members: lute_check::content_line::CONTENT_LINE_DOMAIN_SLOTS
             .iter()
@@ -439,7 +439,7 @@ pub fn needle_vocab(input: &lute_check::CheckInput, meta: &lute_check::TypedMeta
                 (slot.to_string(), members)
             })
             .collect(),
-        stamps: input.snapshot.stamp_attrs.keys().cloned().collect(),
+        stamps: input.snapshot().stamp_attrs.keys().cloned().collect(),
         speakers: (!cast.is_empty()).then(|| {
             cast.into_keys()
                 .chain(std::iter::once("narrator".to_string()))

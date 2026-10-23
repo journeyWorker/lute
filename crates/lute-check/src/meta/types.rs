@@ -101,6 +101,12 @@ impl StateSchema {
         if self.clock_rejected && (path == "clock" || path.starts_with("clock.")) {
             return true;
         }
+        self.faulty_covers(path)
+    }
+
+    /// [`Self::is_faulty`] without the rejected-clock rule: `path` is in
+    /// [`Self::faulty`] or a member under a faulty dotted path.
+    pub fn faulty_covers(&self, path: &str) -> bool {
         self.faulty.contains(path)
             || self.faulty.iter().any(|f| {
                 f.contains('.')

@@ -56,16 +56,18 @@ fn snap_with_stamp_attrs() -> CapabilitySnapshot {
 }
 
 fn input(text: &str, snapshot: CapabilitySnapshot) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "stamp_attrs".into(),
-        snapshot,
-        providers: Default::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "stamp_attrs".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 fn commands(text: &str, snapshot: CapabilitySnapshot) -> Vec<serde_json::Value> {

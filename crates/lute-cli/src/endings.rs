@@ -1116,11 +1116,7 @@ impl<'g> Producers<'g> {
     fn decl(&self, path: &str) -> Option<&lute_check::meta::StateDecl> {
         let mut p = path;
         loop {
-            if let Some(d) = self
-                .group
-                .iter()
-                .find_map(|(_, _, f)| f.env.state.decls.get(p))
-            {
+            if let Some(d) = self.group.iter().find_map(|(_, _, f)| f.env.state.get(p)) {
                 return Some(d);
             }
             p = &p[..p.rfind('.')?];

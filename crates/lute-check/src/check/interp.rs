@@ -352,13 +352,8 @@ pub(super) fn check_interp_format(
                 // Every member path of a family shares its declared type.
                 Some(family) => env
                     .state
-                    .decls
-                    .iter()
-                    .find(|(k, _)| {
-                        k.strip_prefix(family.as_str())
-                            .and_then(|m| m.strip_prefix('.'))
-                            .is_some_and(|m| !m.contains('.'))
-                    })
+                    .members_of(&family)
+                    .next()
                     .map(|(_, d)| d.ty.clone()),
                 None => crate::cel_paths::text_state_path(raw)
                     .and_then(|p| crate::set_op::resolve_type(&p, &env.state).cloned()),

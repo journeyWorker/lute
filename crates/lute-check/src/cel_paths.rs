@@ -421,6 +421,65 @@ pub(crate) fn select_path(expr: &Expr) -> Option<String> {
     lute_cel::path::static_path_string(expr)
 }
 
+/// Every static path ([`select_path`]) written anywhere in `expr`, at any
+/// depth — the paths a type decision over `expr` may look up.
+pub(crate) fn every_static_path(expr: &Expr, out: &mut std::collections::BTreeSet<String>) {
+    if let Some(path) = select_path(expr) {
+        out.insert(path);
+    }
+    let mut sub = |e: &Expr| every_static_path(e, out);
+    match expr {
+        Expr::Select(sel) => sub(&sel.operand.expr),
+        Expr::Call(call) => {
+            if let Some(target) = &call.target {
+                sub(&target.expr);
+            }
+            for arg in &call.args {
+                sub(&arg.expr);
+            }
+        }
+        Expr::List(list) => {
+            for el in &list.elements {
+                sub(&el.expr);
+            }
+        }
+        Expr::Map(map) => {
+            for entry in &map.entries {
+                match &entry.expr {
+                    EntryExpr::MapEntry(m) => {
+                        sub(&m.key.expr);
+                        sub(&m.value.expr);
+                    }
+                    EntryExpr::StructField(f) => sub(&f.value.expr),
+                }
+            }
+        }
+        Expr::Struct(st) => {
+            for entry in &st.entries {
+                match &entry.expr {
+                    EntryExpr::MapEntry(m) => {
+                        sub(&m.key.expr);
+                        sub(&m.value.expr);
+                    }
+                    EntryExpr::StructField(f) => sub(&f.value.expr),
+                }
+            }
+        }
+        Expr::Comprehension(c) => {
+            for e in [
+                &c.iter_range,
+                &c.accu_init,
+                &c.loop_cond,
+                &c.loop_step,
+                &c.result,
+            ] {
+                sub(&e.expr);
+            }
+        }
+        Expr::Ident(_) | Expr::Literal(_) | Expr::Unspecified => {}
+    }
+}
+
 /// `true` for a quoted-name index that is a static path (`run.visits["lab-b2"]`):
 /// the `Call` shape a walk must read as a path, like a `Select`, rather than
 /// descend into.
@@ -435,10 +494,10 @@ pub(crate) fn is_path_index(expr: &Expr) -> bool {
 /// deterministic).
 pub(crate) fn nearest_declared_path<'s>(
     path: &str,
-    schema: &'s crate::meta::StateSchema,
+    schema: &'s crate::StateView,
     max_dist: usize,
 ) -> Option<&'s str> {
-    lute_manifest::suggest::nearest(path, schema.decls.keys().map(|k| k.as_str()), max_dist)
+    lute_manifest::suggest::nearest(path, schema.keys().map(|k| k.as_str()), max_dist)
 }
 
 /// The message for a read of an undeclared path under an engine namespace —

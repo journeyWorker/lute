@@ -5,16 +5,30 @@ use lute_check::{CheckInput, Mode};
 use lute_compile::{compile, ArtifactMeta, Command, Role};
 
 fn input(text: &str) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "test".into(),
-        snapshot: lute_test_vocab::vocab_snapshot(),
-        providers: Default::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    input_with(
+        text,
+        lute_test_vocab::vocab_snapshot(),
+        lute_check::ComponentSet::default(),
+    )
+}
+
+fn input_with(
+    text: &str,
+    snapshot: lute_manifest::snapshot::CapabilitySnapshot,
+    components: lute_check::ComponentSet,
+) -> CheckInput {
+    CheckInput::new(
+        text.to_string(),
+        "test".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            Default::default(),
+            components,
+            Default::default(),
+        ),
+    )
 }
 
 /// Unwrap a scene execution IR's untagged `meta` (0.2.0 kind envelope) — these
@@ -108,13 +122,13 @@ episode: 40
   </choice>
 </branch>
 "#;
-    let mut input = input(DOC);
-    input
-        .snapshot
+    let mut snapshot = lute_test_vocab::vocab_snapshot();
+    snapshot
         .domains
         .get_mut("musicPlayback")
         .expect("core musicPlayback")
         .stops = vec!["fadeOut".into()];
+    let input = input_with(DOC, snapshot, lute_check::ComponentSet::default());
     let artifact = compile(&input).expect("timed choice and music stop compile");
     let json = serde_json::to_value(&artifact).unwrap();
     let music = json["commands"]
@@ -333,7 +347,7 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
     assert_eq!(artifact.lute, "0.48.1");
     assert_eq!(artifact.ir_version, "0.48.1");
-    assert_eq!(artifact.capability_snapshot, inp.snapshot.version);
+    assert_eq!(artifact.capability_snapshot, inp.snapshot().version);
     assert!(
         !artifact.capability_snapshot.is_empty(),
         "capabilitySnapshot must be a non-empty snapshot stamp"
@@ -1240,8 +1254,7 @@ episode: 1
   </choice>
 </hub>
 "#;
-    let mut inp = input(HUB_USE);
-    inp.components = comps;
+    let inp = input_with(HUB_USE, lute_test_vocab::vocab_snapshot(), comps);
 
     let check_result = lute_check::check(&inp);
     assert!(

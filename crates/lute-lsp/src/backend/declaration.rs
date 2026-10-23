@@ -71,9 +71,9 @@ impl Backend {
         );
         // Declaration imports and the active project baseline come from the
         // same model assembly used by scene analysis.
-        let imports = built.input.imports.clone();
+        let imports = built.input.imports().clone();
         diags.extend(imports.diags.clone());
-        let baseline = built.input.snapshot.clone();
+        let baseline = built.input.snapshot().clone();
         let mut rdiags = built.resolve_diags;
         if let Err(message) = request_cache.project(project_root).as_ref() {
             rdiags.push(lute_manifest::project::ResolveDiag {
@@ -125,7 +125,7 @@ impl Backend {
         }
         let env = lute_check::ctx::Env {
             mode: Mode::Author,
-            state,
+            state: lute_check::StateView::from(state),
             defs: def_names,
             def_types,
             // Arity/arg-type checks (`E-REF-ARITY`/`E-REF-ARG-TYPE`) on a

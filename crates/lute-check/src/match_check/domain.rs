@@ -57,7 +57,7 @@ pub struct DomainInfo {
 /// ([`Domain::Number`], dsl 0.18.0 §4); anything else is INFINITE (requires
 /// `<otherwise>`). Maybe-unset: a `scene.choices.*` subject always (a branch may
 /// not have been reached), or a `run.*`/`user.*`/`app.*` decl with no `default`.
-pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> DomainInfo {
+pub(crate) fn infer_domain(subject: Option<&str>, schema: &crate::StateView) -> DomainInfo {
     let Some(path) = subject else {
         return DomainInfo {
             domain: Domain::Infinite,
@@ -126,7 +126,7 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
             resolved: true,
         };
     }
-    match schema.decls.get(path) {
+    match schema.get(path) {
         Some(decl) => {
             // dsl 0.27.0 §2: a `{ domain: K }` / `{ entity: K }` path is as
             // finite as an inline enum (`StateSchema::string_members`).
@@ -141,7 +141,7 @@ pub(crate) fn infer_domain(subject: Option<&str>, schema: &StateSchema) -> Domai
                 (Type::Bool, _) => {
                     Domain::Finite(vec![DomainValue::Bool(true), DomainValue::Bool(false)])
                 }
-                (Type::Int, _) => match schema.int_ranges.get(path) {
+                (Type::Int, _) => match schema.int_range(path) {
                     Some(&(lo, hi)) => Domain::IntRange { lo, hi },
                     None => Domain::IntNumber,
                 },
@@ -252,8 +252,8 @@ pub(crate) fn param_domain(
 }
 
 /// The enum members declared at `path`, if the decl is a `Type::Enum`.
-fn enum_members(path: &str, schema: &StateSchema) -> Option<Vec<DomainValue>> {
-    match &schema.decls.get(path)?.ty {
+fn enum_members(path: &str, schema: &crate::StateView) -> Option<Vec<DomainValue>> {
+    match &schema.get(path)?.ty {
         Type::Enum(members) => Some(
             members
                 .iter()
@@ -283,7 +283,7 @@ pub(crate) fn resolve_subject(
     m: &Match,
     defs: &crate::cel_expand::DefTable<'_>,
     def_types: &BTreeMap<String, Type>,
-    schema: &StateSchema,
+    schema: &crate::StateView,
 ) -> (Option<String>, DomainInfo) {
     if let Some(resolved) = def_subject(&m.subject.raw, defs, def_types, schema) {
         return resolved;
@@ -299,7 +299,7 @@ fn def_subject(
     raw: &str,
     defs: &crate::cel_expand::DefTable<'_>,
     def_types: &BTreeMap<String, Type>,
-    schema: &StateSchema,
+    schema: &crate::StateView,
 ) -> Option<(Option<String>, DomainInfo)> {
     let text = raw.trim();
     // The first ref scanned is the outermost: a call's argument refs follow it.
@@ -316,7 +316,7 @@ fn def_subject_of(
     text: &str,
     defs: &crate::cel_expand::DefTable<'_>,
     def_types: &BTreeMap<String, Type>,
-    schema: &StateSchema,
+    schema: &crate::StateView,
 ) -> Option<(Option<String>, DomainInfo)> {
     if !defs.bodies.contains_key(&r.name) {
         return None;

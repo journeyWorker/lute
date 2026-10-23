@@ -1235,7 +1235,7 @@ pub(super) fn check_use_def_enum_args(
     components: &ComponentSet,
     def_bodies: &std::collections::BTreeMap<String, String>,
     def_types: &std::collections::BTreeMap<String, Type>,
-    schema: &crate::meta::StateSchema,
+    schema: &crate::StateView,
     diags: &mut Vec<Diagnostic>,
 ) {
     let mut dirs = Vec::new();
@@ -1317,7 +1317,7 @@ pub(super) fn check_use_def_enum_args(
 /// members. `None` when any result position is something else.
 fn def_result_values(
     expr: &cel_parser::ast::Expr,
-    schema: &crate::meta::StateSchema,
+    schema: &crate::StateView,
 ) -> Option<Vec<String>> {
     use cel_parser::ast::Expr;
     match expr {
@@ -1331,7 +1331,7 @@ fn def_result_values(
         Expr::Literal(cel_parser::reference::Val::String(s)) => Some(vec![s.to_string()]),
         Expr::Select(_) | Expr::Ident(_) => {
             let path = crate::cel_paths::select_path(expr)?;
-            match &schema.decls.get(&path)?.ty {
+            match &schema.get(&path)?.ty {
                 Type::Enum(ms) => Some(ms.clone()),
                 _ => None,
             }

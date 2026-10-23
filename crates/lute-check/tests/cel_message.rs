@@ -12,16 +12,18 @@ const FM: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n";
 const FM_STR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.s: { type: string, default: \"\" }\n---\n";
 
 fn run(text: &str) -> CheckResult {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "cel_message".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "cel_message".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
 }
 
@@ -284,16 +286,18 @@ fn component_body_cel_parse_is_translated_and_reanchored() {
         &lute_manifest::snapshot::CapabilitySnapshot::default(),
     );
     let components = lute_check::resolve_components(&dir, &meta0.components, doc.meta.span);
-    let input = CheckInput {
-        text: scene.to_string(),
-        uri: "scene".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        scene.to_string(),
+        "scene".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
     let diags = check(&input).diagnostics;
     let d = diags
         .iter()

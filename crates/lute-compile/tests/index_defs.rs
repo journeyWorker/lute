@@ -24,20 +24,22 @@ fn invalid_schema_defs_and_their_dependants_are_not_exported() {
     let text = "---\nkind: scene\nid: a\nuses: [world.schema.yaml]\n---\n## A\n@narrator: Hi.\n";
     let (doc, _) = lute_syntax::parse(text);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "a.lute".into(),
-        snapshot: load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: resolve_imports(&dir, &meta0.uses, &meta0.extends, doc.meta.span),
-        components: resolve_components(&dir, &meta0.components, doc.meta.span),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "a.lute".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            load_core_snapshot(),
+            ProviderSet::default(),
+            resolve_imports(&dir, &meta0.uses, &meta0.extends, doc.meta.span),
+            resolve_components(&dir, &meta0.components, doc.meta.span),
+            Default::default(),
+        ),
+    );
     assert!(
-        lute_check::def_decl::is_invalid(&input.imports.defs["bad"]),
+        lute_check::def_decl::is_invalid(&input.imports().defs["bad"]),
         "the checker marks `bad` invalid: {:?}",
-        input.imports.defs["bad"]
+        input.imports().defs["bad"]
     );
 
     let defs = lute_compile::index::document_defs(&input);

@@ -269,7 +269,7 @@ pub(crate) fn extend_surface(
         .map(|d| {
             let syntax = d
                 .syntax
-                .map_or_else(|| core_syntax(d.name, &input.snapshot), str::to_string);
+                .map_or_else(|| core_syntax(d.name, input.snapshot()), str::to_string);
             json!({ "name": d.name, "syntax": syntax, "meaning": d.meaning })
         })
         .collect();
@@ -286,7 +286,7 @@ pub(crate) fn extend_surface(
     every.push(
         json!({ "name": "at", "type": "time", "on": "a directive inside a <track> clip only" }),
     );
-    for (name, a) in &input.snapshot.stamp_attrs {
+    for (name, a) in &input.snapshot().stamp_attrs {
         every.push(json!({
             "name": name, "type": crate::attr_type_str(&a.ty).0, "on": "every directive (stampAttrs)"
         }));
@@ -330,7 +330,7 @@ pub(crate) fn extend_surface(
         root.insert("seasons".into(), seasons.into());
     }
     let chapters: Vec<Value> = input
-        .defaults
+        .defaults()
         .chapters()
         .iter()
         .map(|c| {
@@ -338,7 +338,7 @@ pub(crate) fn extend_surface(
                 "on": c.on,
                 "scenes": c.scenes,
                 "applied": c.applied,
-                "chained": lute_check::chapters::chained(&c.on, &input.snapshot.occasions),
+                "chained": lute_check::chapters::chained(&c.on, &input.snapshot().occasions),
             })
         })
         .collect();

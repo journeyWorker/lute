@@ -416,7 +416,7 @@ fn in_domain_gate<'a>(o: &'a Objective, ctx: &DecideCtx<'_>) -> Option<Gate<'a>>
 /// declared type; `None` for anything else.
 pub(super) fn comparison_set(
     expr: &Expr,
-    schema: &crate::meta::StateSchema,
+    schema: &crate::StateView,
 ) -> Option<(String, SolutionSet)> {
     comparison_set_polar(expr, schema, false)
 }
@@ -425,7 +425,7 @@ pub(super) fn comparison_set(
 /// operator (`!(x < 1)` is `x >= 1`, `!(x == c)` is `x != c`).
 pub(super) fn comparison_set_polar(
     expr: &Expr,
-    schema: &crate::meta::StateSchema,
+    schema: &crate::StateView,
     negated: bool,
 ) -> Option<(String, SolutionSet)> {
     let Expr::Call(c) = expr else {

@@ -11,7 +11,7 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::ident::is_name;
 use lute_manifest::season::{season_of_path, season_ref, SeasonDecl};
 
-use crate::meta::{Namespace, StateDecl, StateSchema};
+use crate::meta::{Namespace, StateDecl};
 
 /// A season declared or used wrongly (dsl 0.27.0 §5).
 pub const E_SEASON_DECL: &str = "E-SEASON-DECL";
@@ -208,14 +208,14 @@ pub fn undeclared(name: &str, what: &str, seasons: &Seasons) -> Option<String> {
 /// (`origins`, [`crate::rel_schema::DeclOrigins::state`]), once for the
 /// project; the document's own at `span`.
 pub fn check_state(
-    schema: &StateSchema,
+    schema: &crate::StateView,
     seasons: &Seasons,
     span: Span,
     origins: &BTreeMap<String, crate::rel_schema::DeclOrigin>,
 ) -> (Vec<(String, StateDecl)>, Vec<Diagnostic>) {
     let mut mirrors = Vec::new();
     let mut diags = Vec::new();
-    for (path, decl) in &schema.decls {
+    for (path, decl) in schema.with_prefix("season.") {
         let Some(name) = season_of_path(path) else {
             continue;
         };

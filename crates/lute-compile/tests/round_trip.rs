@@ -29,16 +29,18 @@ fn config() -> Config {
 }
 
 fn input(text: String) -> CheckInput {
-    CheckInput {
+    CheckInput::new(
         text,
-        uri: "property-round-trip".into(),
-        snapshot: lute_test_vocab::vocab_snapshot(),
-        providers: Default::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+        "property-round-trip".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            lute_test_vocab::vocab_snapshot(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 fn generated_source(bytes: &[u8]) -> String {

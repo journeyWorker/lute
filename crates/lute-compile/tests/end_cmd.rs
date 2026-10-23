@@ -6,16 +6,18 @@ use lute_check::{CheckInput, Mode};
 use lute_compile::{compile, Command};
 
 fn input(text: &str) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "end_cmd".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: Default::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "end_cmd".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n";

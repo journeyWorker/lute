@@ -68,16 +68,18 @@ fn input() -> CheckInput {
         meta0.profile.as_deref(),
         &meta0.plugins,
     );
-    CheckInput {
-        text: PARTY.to_string(),
-        uri: "party.lute".to_string(),
-        snapshot,
-        providers: lute_manifest::provider::ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        PARTY.to_string(),
+        "party.lute".to_string(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            lute_manifest::provider::ProviderSet::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 fn fact(rel: &str, arg: &str) -> Fact {

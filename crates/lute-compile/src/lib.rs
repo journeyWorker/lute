@@ -35,7 +35,7 @@ pub use source_map::SourceMap;
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_cel::CelArena;
-use lute_check::meta::{canonical_episode_id, canonical_scene_key, StateSchema};
+use lute_check::meta::{canonical_episode_id, canonical_scene_key};
 use lute_check::{check, fold_env, CheckInput, CheckResult, DefTable, FoldedEnv, StageState};
 use lute_core_span::{Diagnostic, Severity};
 use lute_ir::*;
@@ -504,7 +504,7 @@ fn compile_inner(
     };
 
     // §5 pass 2 — AST normalization (D8): components + persist.
-    let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast);
+    let cast = lute_check::declared_cast(input.snapshot(), input.imports(), &folded.typed.cast);
     let mut diags = normalize::normalize_document(
         &mut doc,
         &input.components,
@@ -515,7 +515,7 @@ fn compile_inner(
     );
     // A plugin directive lowered by a core builtin hook runs as that core
     // directive (`lower: { kind: builtin, name: clearStage }` is `::clear`).
-    lute_check::builtin_lowering::canonicalize_builtin_directives(&mut doc, &input.snapshot);
+    lute_check::builtin_lowering::canonicalize_builtin_directives(&mut doc, input.snapshot());
 
     // §5 pass 3 — CEL expansion (D4).
     let table = DefTable {
@@ -531,7 +531,7 @@ fn compile_inner(
     // (byte-identical aside from `kind`/version); quest = a parallel loop
     // over `doc.quests`, one addressing unit per `<quest>` declaration.
     let mut cx = stage::WalkCx {
-        snapshot: &input.snapshot,
+        snapshot: input.snapshot(),
         env: &folded.env,
         components: Vec::new(),
         timelines: 0,
@@ -550,7 +550,7 @@ fn compile_inner(
             // every lineId here (byte-identical to 0.14.0 for a doc that has
             // not migrated to `id:`).
             let beat = scene_beat(&folded, &table, &mut diags);
-            let meta = artifact_meta(&doc, &folded, &input.snapshot, beat);
+            let meta = artifact_meta(&doc, &folded, input.snapshot(), beat);
             let prefix = meta.id.clone();
             let mut shots = Vec::new();
             for (i, shot) in doc.sections.iter().enumerate() {
@@ -638,7 +638,7 @@ fn compile_inner(
             let (commands, addr_diags) =
                 address::assign_addresses_into(shots, identity, map.as_deref_mut());
             (
-                ArtifactMeta::Quest(quest_meta(&doc, &folded, &input.snapshot)),
+                ArtifactMeta::Quest(quest_meta(&doc, &folded, input.snapshot())),
                 commands,
                 addr_diags,
             )
@@ -692,7 +692,7 @@ fn compile_inner(
             let (commands, addr_diags) =
                 address::assign_addresses_into(shots, identity, map.as_deref_mut());
             (
-                ArtifactMeta::Lore(lore_meta(&doc, &folded, &input.snapshot)),
+                ArtifactMeta::Lore(lore_meta(&doc, &folded, input.snapshot())),
                 commands,
                 addr_diags,
             )
@@ -716,7 +716,7 @@ fn compile_inner(
         _ => None,
     };
     expand::type_occasion_target_placeholders(&mut commands, scene_kind);
-    stamp_reward_credits(&mut commands, &input.snapshot);
+    stamp_reward_credits(&mut commands, input.snapshot());
 
     if diags.iter().any(|d| d.severity == Severity::Error) {
         return Err(diags);
@@ -732,7 +732,7 @@ fn compile_inner(
         kind: folded.doc_kind.into(),
         lute: LUTE_LANG_VERSION.to_string(),
         ir_version: LUTE_IR_VERSION.to_string(),
-        capability_snapshot: input.snapshot.version.clone(),
+        capability_snapshot: input.snapshot().version.clone(),
         identity_renames: Vec::new(),
         required_semantics: Vec::new(),
         meta,
@@ -1471,14 +1471,13 @@ fn stamp_reward_credits(commands: &mut [Command], snapshot: &CapabilitySnapshot)
 /// `.state` suffix gate on `append_unset` keeps the opaque `narrativeTime`
 /// anchor out of that convention: it has no enumerable domain at all.
 fn state_entries(
-    schema: &StateSchema,
+    schema: &lute_check::StateView,
     branch_paths: &BTreeSet<String>,
     reserved: &BTreeMap<String, String>,
     domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
     kinds: &BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
 ) -> Vec<StateEntry> {
     schema
-        .decls
         .iter()
         // dsl 0.23.0 §6: the checker's `prev.run.*` mirror decls are implied
         // by the `run.*` entries (the engine snapshots them at run end), and
@@ -1547,7 +1546,7 @@ fn state_entries(
                         .unwrap_or_default(),
                     _ => BTreeMap::new(),
                 },
-                member_domain: schema.domain_members.get(path).cloned(),
+                member_domain: schema.domain_members(path).cloned(),
             }
         })
         .collect()
@@ -1784,16 +1783,18 @@ mod tests {
     use lute_check::{CheckInput, Mode};
 
     fn test_input(text: &str) -> CheckInput {
-        CheckInput {
-            text: text.to_string(),
-            uri: "test".into(),
-            snapshot: lute_manifest::core::load_core_snapshot(),
-            providers: Default::default(),
-            mode: Mode::Ci,
-            imports: Default::default(),
-            components: Default::default(),
-            defaults: Default::default(),
-        }
+        CheckInput::new(
+            text.to_string(),
+            "test".into(),
+            Mode::Ci,
+            lute_check::InputSources::from_parts(
+                lute_manifest::core::load_core_snapshot(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+            ),
+        )
     }
 
     #[test]
@@ -1966,16 +1967,18 @@ mod tests {
                 ])),
             },
         );
-        let input = CheckInput {
-            text: "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncast:\n  ana:\n    costume: school\n---\n## Shot 1.\n@narrator: hi\n".to_string(),
-            uri: "test".into(),
-            snapshot: snap,
-            providers: Default::default(),
-            mode: Mode::Ci,
-            imports: Default::default(),
-            components: Default::default(),
-            defaults: Default::default(),
-        };
+        let input = CheckInput::new(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncast:\n  ana:\n    costume: school\n---\n## Shot 1.\n@narrator: hi\n".to_string(),
+            "test".into(),
+            Mode::Ci,
+            lute_check::InputSources::from_parts(
+                snap,
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+            ),
+        );
         let art =
             super::compile(&input).expect("compiles: plugin-owned key passes E-FRONTMATTER-SCHEMA");
         let v = serde_json::to_value(&art).unwrap();
@@ -2008,16 +2011,18 @@ mod tests {
         let mut snap = lute_manifest::core::load_core_snapshot();
         snap.frontmatter
             .insert("questTier".to_string(), lute_manifest::types::Type::Int);
-        let input = CheckInput {
-            text: "---\nkind: quest\nquestTier: 2\n---\n<quest id=\"q1\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n".to_string(),
-            uri: "test".into(),
-            snapshot: snap,
-            providers: Default::default(),
-            mode: Mode::Ci,
-            imports: Default::default(),
-            components: Default::default(),
-            defaults: Default::default(),
-        };
+        let input = CheckInput::new(
+            "---\nkind: quest\nquestTier: 2\n---\n<quest id=\"q1\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n".to_string(),
+            "test".into(),
+            Mode::Ci,
+            lute_check::InputSources::from_parts(
+                snap,
+                Default::default(),
+                Default::default(),
+                Default::default(),
+                Default::default(),
+            ),
+        );
         let art = super::compile(&input).unwrap();
         let v = serde_json::to_value(&art).unwrap();
         assert_eq!(v["meta"]["plugin"]["questTier"], serde_json::json!(2));

@@ -20,6 +20,16 @@ use lute_trace::{trace_document, Decision, Step, TraceExit, UnresolvedEntry};
 /// compile`/`lute trace` do (no `--project`; `base` resolves any `uses:`/
 /// `components:` relative paths).
 fn input_for(text: &str, uri: &str, base: &Path) -> CheckInput {
+    input_for_with(text, uri, base, |_| {})
+}
+
+/// [`input_for`], with `edit` applied to the resolved snapshot first.
+fn input_for_with(
+    text: &str,
+    uri: &str,
+    base: &Path,
+    edit: impl FnOnce(&mut lute_manifest::snapshot::CapabilitySnapshot),
+) -> CheckInput {
     let (doc, parse_diags) = lute_syntax::parse(text);
     assert!(
         parse_diags.is_empty(),
@@ -29,23 +39,26 @@ fn input_for(text: &str, uri: &str, base: &Path) -> CheckInput {
         &doc.meta,
         &lute_manifest::snapshot::CapabilitySnapshot::default(),
     );
-    let (snapshot, _) = lute_manifest::project::resolve_document_snapshot(
+    let (mut snapshot, _) = lute_manifest::project::resolve_document_snapshot(
         None,
         meta0.profile.as_deref(),
         &meta0.plugins,
     );
+    edit(&mut snapshot);
     let imports = lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
     let components = lute_check::resolve_components(base, &meta0.components, doc.meta.span);
-    CheckInput {
-        text: text.to_string(),
-        uri: uri.to_string(),
-        snapshot,
-        providers: lute_manifest::provider::ProviderSet::default(),
-        mode: Mode::Ci,
-        imports,
-        components,
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        uri.to_string(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            lute_manifest::provider::ProviderSet::default(),
+            imports,
+            components,
+            Default::default(),
+        ),
+    )
 }
 
 /// Load and assemble a real `docs/examples/*.lute` fixture by path
@@ -1425,18 +1438,19 @@ fn deadline_fixture(objectives: &str) -> String {
 
 /// [`deadline_fixture`] assembled, with the world event `bell` declared.
 fn deadline_input(objectives: &str) -> CheckInput {
-    let mut input = input_for(
+    input_for_with(
         &deadline_fixture(objectives),
         "deadline.lute",
         Path::new("."),
-    );
-    input.snapshot.events.insert(
-        "bell".to_string(),
-        lute_manifest::schema::EventDecl {
-            name: "bell".to_string(),
+        |snapshot| {
+            snapshot.events.insert(
+                "bell".to_string(),
+                lute_manifest::schema::EventDecl {
+                    name: "bell".to_string(),
+                },
+            );
         },
-    );
-    input
+    )
 }
 
 #[test]
@@ -1630,15 +1644,16 @@ fn a_grant_credits_its_kinds_path_as_play_does() {
                 <objective id=\"o\" title=\"O\" done=\"true\"/>\n\
                 <reward kind=\"CASE\" amount=\"3\"/>\n\
                 </quest>\n";
-    let mut input = input_for(text, "credit.lute", Path::new("."));
-    input.snapshot.reward_kinds.insert(
-        "CASE".to_string(),
-        lute_manifest::schema::RewardKindDecl {
-            name: "CASE".to_string(),
-            credits: Some("user.cases".to_string()),
-            ..Default::default()
-        },
-    );
+    let input = input_for_with(text, "credit.lute", Path::new("."), |snapshot| {
+        snapshot.reward_kinds.insert(
+            "CASE".to_string(),
+            lute_manifest::schema::RewardKindDecl {
+                name: "CASE".to_string(),
+                credits: Some("user.cases".to_string()),
+                ..Default::default()
+            },
+        );
+    });
     let (report, exit) = trace_document(&input, MockSet::default());
     assert_complete(&exit);
     assert_eq!(

@@ -97,7 +97,6 @@ use crate::cel_paths::{
     collect_path_uses, is_reserved_quest_activated_at, is_reserved_quest_state, is_state_path,
     PathRole,
 };
-use crate::meta::StateSchema;
 use lute_manifest::semantics::cel_paths::{
     is_reserved_entry_read, is_reserved_quest_objective_done, is_reserved_quest_path,
 };
@@ -109,7 +108,7 @@ use lute_manifest::semantics::cel_paths::{
 /// schema, the def table every `@def` use expands through, and the def result
 /// types a `<match subject="@def">` subject takes its domain from (dsl 0.24.0).
 pub struct Scope<'a> {
-    pub schema: &'a StateSchema,
+    pub schema: &'a crate::StateView,
     pub defs: DefTable<'a>,
     pub def_types: &'a BTreeMap<String, Type>,
     /// dsl 0.27.0 (round-5 T3-21): the document is a scene another scene
@@ -152,7 +151,7 @@ impl<'a> Scope<'a> {
     }
 
     /// `schema` with no defs in scope.
-    pub fn bare(schema: &'a StateSchema) -> Self {
+    pub fn bare(schema: &'a crate::StateView) -> Self {
         Self {
             schema,
             defs: DefTable {
@@ -167,7 +166,7 @@ impl<'a> Scope<'a> {
     }
     /// This scope over `schema` — a kind beat's own environment
     /// ([`crate::check::FoldedEnv::env_at`]).
-    pub fn with_schema(&self, schema: &'a StateSchema) -> Self {
+    pub fn with_schema(&self, schema: &'a crate::StateView) -> Self {
         Self {
             schema,
             defs: DefTable {
@@ -279,7 +278,7 @@ pub(crate) fn assumed_present(assume: Option<&CelSlot>, cx: &Scope<'_>) -> Assig
 /// Whether `path` is provably present given the `assigned` set: an entry is
 /// the path or an ancestor of it, or `path` is a `prev.run.*` mirror the
 /// atomic run-end snapshot covers (see the module doc).
-pub(crate) fn is_present(path: &str, assigned: &Assigned, schema: &StateSchema) -> bool {
+pub(crate) fn is_present(path: &str, assigned: &Assigned, schema: &crate::StateView) -> bool {
     proven(path, assigned, &[], schema)
 }
 
@@ -1090,15 +1089,13 @@ fn check_read(
 /// cel-layer resolver's; a family read by index (`user.bond[…]`) and
 /// `occasion.*` (typed per beat) are judged there too. One report per def,
 /// path and place.
-fn undeclared_through_def(u: &Use, schema: &StateSchema, diags: &mut Vec<Diagnostic>) {
+fn undeclared_through_def(u: &Use, schema: &crate::StateView, diags: &mut Vec<Diagnostic>) {
     let Some(def) = u.via.as_deref() else {
         return;
     };
     let path = u.path.as_str();
     let family = format!("{path}.");
-    if path.split('.').next() == Some("occasion")
-        || schema.decls.keys().any(|k| k.starts_with(&family))
-    {
+    if path.split('.').next() == Some("occasion") || schema.keys().any(|k| k.starts_with(&family)) {
         return;
     }
     let hint = crate::cel_paths::nearest_declared_path(path, schema, 2)
@@ -1279,7 +1276,7 @@ fn parse_uses_uncached(text: &str) -> Vec<crate::cel_paths::PathUse> {
 /// every `run.*` value, and a `run.*` path with a `default` always holds a
 /// value then — so once ANY `prev.run.*` path is proven present, a run has
 /// ended and every `prev.run.<q>` whose `run.<q>` is defaulted is present.
-fn proven(path: &str, assigned: &Assigned, local: &[String], schema: &StateSchema) -> bool {
+fn proven(path: &str, assigned: &Assigned, local: &[String], schema: &crate::StateView) -> bool {
     let covers = |a: &String| {
         path.strip_prefix(a.as_str())
             .is_some_and(|rest| rest.is_empty() || rest.starts_with('.'))
@@ -1300,7 +1297,7 @@ fn proven(path: &str, assigned: &Assigned, local: &[String], schema: &StateSchem
 /// Whether evaluating `expr` from entry state may read an unset path: a
 /// declared, undefaulted read its own short-circuits do not prove (a
 /// `<match subject="@def">` domain's `unset` case, dsl 0.24.0).
-pub(crate) fn may_read_unset(expr: &cel_parser::ast::Expr, schema: &StateSchema) -> bool {
+pub(crate) fn may_read_unset(expr: &cel_parser::ast::Expr, schema: &crate::StateView) -> bool {
     collect_path_uses(expr).iter().any(|u| {
         u.role == PathRole::Read
             && !is_choicelog(&u.path)
@@ -1317,13 +1314,8 @@ pub(crate) fn may_read_unset(expr: &cel_parser::ast::Expr, schema: &StateSchema)
 /// document's own `<quest>` fold populated the schema (a foreign-quest read
 /// is always legal, never `E-UNDECLARED`) — see `cel_resolve::is_declared`,
 /// which applies the identical rule for T4.3's read-site check.
-pub(crate) fn is_declared(path: &str, schema: &StateSchema) -> bool {
-    is_reserved_quest_path(path)
-        || is_reserved_entry_read(path)
-        || schema
-            .decls
-            .keys()
-            .any(|k| path == k || path.starts_with(&format!("{k}.")))
+pub(crate) fn is_declared(path: &str, schema: &crate::StateView) -> bool {
+    is_reserved_quest_path(path) || is_reserved_entry_read(path) || schema.covers(path)
 }
 
 /// True when the schema decl that `path` resolves to (exact or nearest ancestor)
@@ -1358,7 +1350,7 @@ pub(crate) fn is_declared(path: &str, schema: &StateSchema) -> bool {
 /// `entry.<id>.read` (dsl 0.19.0 §5) always defaults to
 /// `false` — the decl `crate::lore::entry_read_decl` folds for a local entry
 /// — so a foreign entry's flag is definite too.
-fn has_default(path: &str, schema: &StateSchema) -> bool {
+fn has_default(path: &str, schema: &crate::StateView) -> bool {
     is_reserved_quest_objective_done(path)
         || is_reserved_quest_activated_at(path)
         || is_reserved_quest_state(path)
@@ -1370,9 +1362,8 @@ fn has_default(path: &str, schema: &StateSchema) -> bool {
         // dsl 0.27.0 §3: bound by the raise its beat answers.
         || path.starts_with(&format!("{}.", lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD))
         || schema
-            .decls
+            .lineage(path)
             .iter()
-            .filter(|(k, _)| path == k.as_str() || path.starts_with(&format!("{k}.")))
             .any(|(_, decl)| decl.default.is_some())
 }
 
@@ -1427,7 +1418,7 @@ mod tests {
 
     /// Build `(nodes, schema)` from a `.lute` snippet: parse the DSL, fill every
     /// CEL slot's AST, and lift the inline `state:` schema from frontmatter.
-    fn fixture(src: &str) -> (Vec<Node>, StateSchema) {
+    fn fixture(src: &str) -> (Vec<Node>, crate::StateView) {
         let (mut doc, _pd) = parse(src);
         let mut arena = CelArena::default();
         let _ = fill_document(&mut arena, &mut doc);
@@ -1441,11 +1432,11 @@ mod tests {
             .next()
             .map(|s| s.body)
             .unwrap_or_default();
-        (nodes, meta.state)
+        (nodes, meta.state.into())
     }
     /// A `StateSchema` declaring exactly `path`, typed and WITHOUT a default —
     /// the shape `E-MAYBE-UNSET` exists for.
-    fn schema_with_undefaulted(path: &str) -> StateSchema {
+    fn schema_with_undefaulted(path: &str) -> crate::StateView {
         let src = format!(
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  \
              {path}: {{ type: string }}\n---\n## Shot 1.\n"
@@ -1491,7 +1482,7 @@ mod tests {
     /// never `E-MAYBE-UNSET`. It used to be, on every read, local or foreign.
     #[test]
     fn quest_state_read_is_definite() {
-        let schema = StateSchema::default();
+        let schema = crate::StateView::default();
         for raw in [
             "quest.q.state == 'active'",
             "quest.q.state == 'unset'",

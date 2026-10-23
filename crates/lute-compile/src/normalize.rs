@@ -17,7 +17,6 @@ use lute_check::component_effects::{
     bind_attrs, bind_slot_raw, cel_string_literal, display_args, fold_component_matches,
     use_args_for,
 };
-use lute_check::meta::StateSchema;
 use lute_check::occasion_bind::OccasionScopes;
 use lute_check::ComponentSet;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
@@ -195,7 +194,7 @@ pub fn normalize_document(
     components: &ComponentSet,
     cast: &BTreeMap<String, CastMember>,
     domains: &BTreeMap<String, Domain>,
-    schema: &StateSchema,
+    schema: &lute_check::StateView,
     targets: &OccasionScopes,
 ) -> Vec<Diagnostic> {
     let components = &Components {
@@ -488,7 +487,7 @@ fn synthesize_subquests(quests: &mut [lute_syntax::ast::Quest]) {
 fn normalize_nodes(
     nodes: &mut Vec<Node>,
     components: &Components<'_>,
-    schema: &StateSchema,
+    schema: &lute_check::StateView,
     uses: &mut UseIdentityState,
     diags: &mut Vec<Diagnostic>,
 ) {
@@ -806,7 +805,7 @@ fn valid_instance_token(value: &str) -> bool {
 fn expand_use(
     d: &Directive,
     components: &Components<'_>,
-    schema: &StateSchema,
+    schema: &lute_check::StateView,
     uses: &mut UseIdentityState,
     diags: &mut Vec<Diagnostic>,
 ) -> Vec<Node> {
@@ -1415,13 +1414,13 @@ fn text_sub_span(text_span: Span, text: &str, start: usize, end: usize) -> Span 
 /// E-PERSIST-REMOVED before compile ever runs). Well-formedness is
 /// gate-proven (0.6.0 §2.2: `E-INTO-*`); anything unresolvable here is
 /// skipped, total.
-fn synth_into(choice: &mut Choice, schema: &StateSchema) {
+fn synth_into(choice: &mut Choice, schema: &lute_check::StateView) {
     let find = |k: &str| choice.attrs.iter().find(|a| a.key == k);
     let Some(AttrValue::Str(into_path)) = find("into").map(|a| &a.value) else {
         return; // no `into=` → not the record sugar
     };
     let into_path = into_path.clone();
-    let Some(decl) = schema.decls.get(into_path.as_str()) else {
+    let Some(decl) = schema.get(into_path.as_str()) else {
         return; // gate: E-INTO-TARGET / E-INTO-UNDECLARED
     };
     let value = find("value").and_then(|a| match &a.value {
@@ -1491,7 +1490,7 @@ mod tests {
             &comps,
             &Default::default(),
             &Default::default(),
-            &StateSchema::default(),
+            &lute_check::StateView::default(),
             &Default::default(),
         );
         assert!(diags.is_empty(), "{diags:#?}");
@@ -1557,7 +1556,7 @@ episode: 1
             &comps,
             &Default::default(),
             &Default::default(),
-            &StateSchema::default(),
+            &lute_check::StateView::default(),
             &Default::default(),
         );
         assert!(
@@ -1595,7 +1594,7 @@ components: [greet.component.lute]
             &comps,
             &Default::default(),
             &Default::default(),
-            &StateSchema::default(),
+            &lute_check::StateView::default(),
             &Default::default(),
         );
         let arg_err = diags
@@ -1680,7 +1679,7 @@ episode: 1
             &Default::default(),
             &Default::default(),
             &Default::default(),
-            &schema,
+            &lute_check::StateView::from(schema),
             &Default::default(),
         );
         assert!(diags.is_empty(), "{diags:#?}");
@@ -1757,7 +1756,7 @@ components: [greet.component.lute]
             &comps,
             &Default::default(),
             &Default::default(),
-            &StateSchema::default(),
+            &lute_check::StateView::default(),
             &Default::default(),
         );
         assert!(diags.is_empty(), "{diags:#?}");
@@ -1849,7 +1848,7 @@ kind: quest
             &comps,
             &Default::default(),
             &Default::default(),
-            &StateSchema::default(),
+            &lute_check::StateView::default(),
             &Default::default(),
         );
         assert!(diags.is_empty(), "{diags:#?}");
@@ -1893,7 +1892,7 @@ kind: quest
             &comps,
             &Default::default(),
             &Default::default(),
-            &StateSchema::default(),
+            &lute_check::StateView::default(),
             &Default::default(),
         );
         // Subquest synthesis is pure text: it never produces diagnostics of

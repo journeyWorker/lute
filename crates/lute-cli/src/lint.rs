@@ -203,7 +203,7 @@ fn build_lint_input(
         lute_check::chapters::apply_chapters(
             &mut parsed.0,
             &built.defaults,
-            &built.input.snapshot.occasions,
+            &built.input.snapshot().occasions,
         );
         (text, parsed.0, Some(built))
     } else {
@@ -418,9 +418,9 @@ fn display_name_dups(
         .zip(inputs)
         .map(|(built, input)| {
             (
-                lute_check::declared_cast(&built.input.snapshot, &built.input.imports, &[]),
+                lute_check::declared_cast(built.input.snapshot(), built.input.imports(), &[]),
                 lute_check::check::use_speaker_lines(&input.doc, &built.input.components),
-                built.input.imports.rel.origins.cast.clone(),
+                built.input.imports().rel.origins.cast.clone(),
             )
         })
         .collect();

@@ -25,16 +25,18 @@ fn input_for(text: &str, uri: &str, base: &Path) -> CheckInput {
     );
     let imports = lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
     let components = lute_check::resolve_components(base, &meta0.components, doc.meta.span);
-    CheckInput {
-        text: text.to_string(),
-        uri: uri.to_string(),
-        snapshot,
-        providers: lute_manifest::provider::ProviderSet::default(),
-        mode: Mode::Ci,
-        imports,
-        components,
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        uri.to_string(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            lute_manifest::provider::ProviderSet::default(),
+            imports,
+            components,
+            Default::default(),
+        ),
+    )
 }
 
 fn halsin() -> CheckInput {

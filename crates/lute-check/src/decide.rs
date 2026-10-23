@@ -29,7 +29,6 @@ use lute_manifest::types::Type;
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::fact_env::{CountInterval, FactScope, GroundFact, HoldsVerdict, QueryPattern};
 use crate::match_check::{infer_domain, Domain, DomainInfo, DomainValue};
-use crate::meta::StateSchema;
 use crate::rel_schema::RelVocab;
 use crate::solution::{
     covers, domain_value, finite_set, holds_member, meet_spans, number_set, number_spans, Kind,
@@ -57,7 +56,7 @@ pub enum DollarBinding<'a> {
 }
 
 pub struct DecideCtx<'a> {
-    pub schema: &'a StateSchema,
+    pub schema: &'a crate::StateView,
     pub dollar: Option<DollarBinding<'a>>,
     /// Component params (name -> domain) for §6 slots; empty elsewhere.
     pub params: &'a BTreeMap<String, DomainInfo>,
@@ -719,7 +718,7 @@ fn state_path(expr: &Expr) -> Option<String> {
 /// A state path's domain: [`infer_domain`]'s for a declared path, else the
 /// declared type of a field under a declared record/map (which may be
 /// absent — maybe unset), else open.
-fn path_domain(path: &str, schema: &StateSchema) -> PathDomain {
+fn path_domain(path: &str, schema: &crate::StateView) -> PathDomain {
     let info = infer_domain(Some(path), schema);
     if info.resolved {
         return PathDomain::of(&info);

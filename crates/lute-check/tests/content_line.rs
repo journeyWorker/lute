@@ -11,16 +11,18 @@ fn codes(text: &str) -> Vec<String> {
 /// Same harness against an explicit snapshot — for the one test whose subject
 /// IS the absence of a vocabulary declaration.
 fn codes_with(text: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "t".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()
@@ -32,16 +34,18 @@ fn codes_with(text: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
 /// the owner-rendering assertions below are about wording, not about which
 /// code fired.
 fn diagnostics(text: &str) -> Vec<lute_core_span::Diagnostic> {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "t".into(),
-        snapshot: lute_test_vocab::vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_test_vocab::vocab_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input).diagnostics
 }
 

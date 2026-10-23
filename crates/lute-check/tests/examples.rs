@@ -19,31 +19,35 @@ fn permissive_providers() -> ProviderSet {
 }
 
 fn input_for(text: &str) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "test".into(),
-        snapshot: lute_test_vocab::vocab_snapshot(),
-        providers: permissive_providers(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "test".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_test_vocab::vocab_snapshot(),
+            permissive_providers(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 #[test]
 fn marina_example_checks_clean() {
     let text = std::fs::read_to_string("../../docs/examples/marina-s01ep02.lute").unwrap();
-    let input = CheckInput {
+    let input = CheckInput::new(
         text,
-        uri: "marina".into(),
-        snapshot: lute_test_vocab::vocab_snapshot(),
-        providers: permissive_providers(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+        "marina".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_test_vocab::vocab_snapshot(),
+            permissive_providers(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let res = check(&input);
     let errors: Vec<_> = res
         .diagnostics

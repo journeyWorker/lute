@@ -75,7 +75,7 @@ pub fn document_defs(input: &lute_check::CheckInput) -> BTreeMap<String, IndexDe
     let mut bodies = BTreeMap::new();
     let mut params = BTreeMap::new();
     let mut host = BTreeMap::new();
-    for (name, d) in &input.snapshot.defs {
+    for (name, d) in &input.snapshot().defs {
         bodies.insert(name.clone(), d.cel.clone());
         params.insert(
             name.clone(),
@@ -86,7 +86,7 @@ pub fn document_defs(input: &lute_check::CheckInput) -> BTreeMap<String, IndexDe
         );
         host.insert(name.clone(), d.host);
     }
-    for (name, v) in &input.imports.defs {
+    for (name, v) in &input.imports().defs {
         if lute_check::def_decl::is_invalid(v) {
             // It may shadow a plugin def of the same name: neither is
             // the def this document sees.

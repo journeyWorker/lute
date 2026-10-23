@@ -10,16 +10,18 @@ use lute_manifest::schema::RewardKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
 
 fn run_with(text: &str, snapshot: CapabilitySnapshot) -> CheckResult {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "reward".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "reward".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
 }
 
@@ -206,16 +208,18 @@ fn reward_target_diags(
         "---\nkind: quest\nentities:\n  bagItem: {{ members: [goodRod, potion] }}\n  \
          loot: {{ open: engine }}\n---\n<quest id=\"q\">\n{rewards}</quest>\n"
     );
-    let input = CheckInput {
+    let input = CheckInput::new(
         text,
-        uri: "reward".into(),
-        snapshot: snap_with_target(target),
-        providers,
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+        "reward".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snap_with_target(target),
+            providers,
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()

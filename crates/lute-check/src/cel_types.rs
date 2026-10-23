@@ -27,12 +27,11 @@ use lute_manifest::clock::ClockDecl;
 use lute_manifest::types::Type;
 
 use crate::cel_paths::select_path;
-use crate::meta::StateSchema;
 use crate::set_type::{decide, Decision, DefTypes};
 
 /// What an operand is typed against.
 pub(crate) struct Typing<'a> {
-    pub schema: &'a StateSchema,
+    pub schema: &'a crate::StateView,
     pub defs: &'a DefTypes,
     /// The type of `$` (the `<match>` subject), when known.
     pub dollar: Option<Type>,

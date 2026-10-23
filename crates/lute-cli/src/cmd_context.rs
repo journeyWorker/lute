@@ -397,8 +397,8 @@ fn run_position_context(
             source: &source,
             byte_offset: offset,
         },
-        &built.input.imports,
-        &built.input.snapshot,
+        built.input.imports(),
+        built.input.snapshot(),
     ) {
         Ok(resolution) => resolution,
         Err(error) => {
@@ -667,7 +667,7 @@ fn vocabulary(
     }
     let mut enums = Vec::new();
     for document in model.documents() {
-        for (path, declaration) in &document.folded.env.state.decls {
+        for (path, declaration) in document.folded.env.state.iter() {
             if !state_paths.contains(path) {
                 continue;
             }
@@ -702,13 +702,13 @@ fn vocabulary(
 /// them), and marks every other engine-owned path `owner: engine`.
 fn authoring_surface(
     input: &CheckInput,
-    state: &lute_check::StateSchema,
+    state: &lute_check::StateView,
     rel_vocab: &RelVocab,
     branch_paths: &BTreeSet<String>,
     domains: &std::collections::BTreeMap<String, lute_manifest::snapshot::Domain>,
 ) -> serde_json::Value {
     use serde_json::{Map, Value};
-    let snap = &input.snapshot;
+    let snap = &input.snapshot();
 
     // Directives: BTreeMap key == directive name ⇒ iteration is name-sorted.
     // Attrs keep declaration order (their authoring/positional order).
@@ -779,7 +779,6 @@ fn authoring_surface(
 
     // Folded state schema: BTreeMap key == path ⇒ iteration is path-sorted.
     let state_schema: Vec<Value> = state
-        .decls
         .iter()
         .filter(|(path, _)| {
             lute_manifest::semantics::cel_paths::reserved_path(path).is_none()
@@ -993,7 +992,7 @@ fn authoring_surface(
     root.insert("rewardKinds".into(), reward_kinds);
     // dsl 0.23.0 §7: the declared cast (plugins ∪ imported schemas) the
     // speakers are checked against; omitted while speakers are shape-only.
-    let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &[]);
+    let cast = lute_check::declared_cast(input.snapshot(), input.imports(), &[]);
     if !cast.is_empty() {
         root.insert(
             "cast".into(),

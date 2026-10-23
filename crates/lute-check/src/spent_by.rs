@@ -747,7 +747,6 @@ fn start_values(folded: &FoldedEnv) -> BTreeMap<String, Val> {
     folded
         .env
         .state
-        .decls
         .iter()
         .filter(|(_, d)| {
             matches!(

@@ -17,16 +17,18 @@ fn diagnostics(require_stable: bool) -> Vec<lute_core_span::Diagnostic> {
     let components = resolve_components(&dir, &typed.components, doc.meta.span);
     let mut snapshot = vocab_snapshot();
     snapshot.identity_require_stable = require_stable;
-    let input = CheckInput {
-        text: SCENE.into(),
-        uri: dir.join("scene.lute").display().to_string(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        SCENE.into(),
+        dir.join("scene.lute").display().to_string(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
     check(&input).diagnostics
 }
 
@@ -76,16 +78,18 @@ fn project_without_stable_identity_reports_neither_warning() {
 fn standalone_check_without_project_reports_neither_warning() {
     let text =
         "---\nkind: scene\ncharacter: n\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@n: uncoded\n";
-    let input = CheckInput {
-        text: text.into(),
-        uri: "standalone.lute".into(),
-        snapshot: vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.into(),
+        "standalone.lute".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            vocab_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let diagnostics = check(&input).diagnostics;
     assert!(!diagnostics.iter().any(|d| {
         matches!(

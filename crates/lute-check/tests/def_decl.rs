@@ -15,16 +15,18 @@ const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
 state:\n  scene.flag: { type: bool, default: false }\n  scene.n: { type: int, default: 0 }\n";
 
 fn input(text: &str, imports: SchemaImports) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "def_decl".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "def_decl".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 /// A scene declaring `defs:\n  <def>` and using `@<used>` as a bool guard.

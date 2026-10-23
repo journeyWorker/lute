@@ -114,9 +114,9 @@ pub struct DeclOrigins {
 }
 
 /// dsl 0.27.0 §4: plugin declarations a document's check judges, at their
-/// line in the plugin's export file (see [`SchemaImports::plugin_origins`]).
+/// line in the plugin's export file (see [`ProjectBase::plugin_origins`]).
 ///
-/// [`SchemaImports::plugin_origins`]: crate::SchemaImports::plugin_origins
+/// [`ProjectBase::plugin_origins`]: crate::ProjectBase::plugin_origins
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PluginOrigins {
     /// Each gated occasion's `raisedWhen:` value.

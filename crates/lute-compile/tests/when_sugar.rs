@@ -35,16 +35,18 @@ fn compile_in(dir: &Path, text: &str) -> serde_json::Value {
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
     let components = resolve_components(dir, &meta0.components, doc.meta.span);
     let imports = resolve_imports(dir, &meta0.uses, &meta0.extends, doc.meta.span);
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "scene.lute".into(),
-        snapshot: load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports,
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "scene.lute".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            load_core_snapshot(),
+            ProviderSet::default(),
+            imports,
+            components,
+            Default::default(),
+        ),
+    );
     let artifact =
         compile(&input).unwrap_or_else(|e| panic!("scene compiles clean: {e:#?}\n{text}"));
     serde_json::to_value(&artifact).expect("artifact serializes")

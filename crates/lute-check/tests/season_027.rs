@@ -38,16 +38,18 @@ fn diagnostics(text: &str, imports: SchemaImports) -> Vec<Diagnostic> {
             ..Default::default()
         },
     );
-    check(&CheckInput {
-        text: text.to_string(),
-        uri: "season".into(),
-        snapshot,
-        providers: Default::default(),
-        mode: Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    })
+    check(&CheckInput::new(
+        text.to_string(),
+        "season".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    ))
     .diagnostics
 }
 

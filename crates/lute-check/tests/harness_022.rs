@@ -73,16 +73,18 @@ fn snapshot() -> CapabilitySnapshot {
 }
 
 fn input(text: &str) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "harness".into(),
-        snapshot: snapshot(),
-        providers: Default::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "harness".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot(),
+            Default::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 fn diags(text: &str) -> Vec<Diagnostic> {
@@ -166,7 +168,7 @@ fn engine_owned_decl_is_lifted_onto_the_schema() {
     let (doc, _) = lute_syntax::parse(&input.text);
     let folded = fold_env(&doc, &input).0;
     assert_eq!(
-        folded.env.state.decls["run.day"].owner,
+        folded.env.state.get("run.day").expect("run.day").owner,
         Some(lute_manifest::types::Owner::Engine)
     );
 }

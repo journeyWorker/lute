@@ -23,7 +23,7 @@ pub(crate) fn replaced(
     key: &str,
 ) -> Option<Vec<String>> {
     frontmatter?.get(key)?;
-    let paths: Vec<String> = match input.defaults.get(key)? {
+    let paths: Vec<String> = match input.defaults().get(key)? {
         yaml_serde::Value::String(s) => vec![s.clone()],
         yaml_serde::Value::Sequence(v) => v
             .iter()
@@ -55,7 +55,8 @@ pub(crate) fn note_replaced_uses(
     input: &CheckInput,
     mut diags: Vec<Diagnostic>,
 ) -> Vec<Diagnostic> {
-    if input.defaults.get("uses").is_none() || !diags.iter().any(|d| d.severity == Severity::Error)
+    if input.defaults().get("uses").is_none()
+        || !diags.iter().any(|d| d.severity == Severity::Error)
     {
         return diags;
     }
@@ -64,7 +65,7 @@ pub(crate) fn note_replaced_uses(
     };
     let defaults =
         crate::schema_import::resolve_imports(Path::new("."), &paths, &[], doc.meta.span);
-    let missing = missing_names(&defaults, &input.imports);
+    let missing = missing_names(&defaults, input.imports());
     if missing.is_empty() {
         return diags;
     }

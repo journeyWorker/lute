@@ -22,7 +22,6 @@ use std::path::PathBuf;
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::FoldedEnv;
 use crate::decide::{decide, literal_truth, DecideCtx, Decided};
-use crate::meta::StateSchema;
 use crate::project_doc::ProjectDoc;
 use crate::rel_schema::RelVocab;
 use crate::solution::{contains, number_spans, Truth};
@@ -391,7 +390,7 @@ impl Formula {
 /// `unbounded`, as if it did not) is cut off one week past `horizon`.
 fn positions(
     clock: &ClockDecl,
-    schema: &StateSchema,
+    schema: &crate::StateView,
     formulas: &[&Formula],
     unbounded: bool,
 ) -> Option<Vec<ClockAt>> {
@@ -438,7 +437,7 @@ pub(crate) fn decide_connective(
     args: &[IdedExpr],
     ctx: &DecideCtx<'_>,
 ) -> Option<bool> {
-    let clock = ctx.schema.clock.as_ref()?;
+    let clock = ctx.schema.clock()?;
     let parts = args
         .iter()
         .map(|a| build(&a.expr, ctx, clock, &PLAIN))
@@ -455,7 +454,7 @@ pub(crate) fn decide_connective(
 }
 
 /// The value `f` has at every position, when it has one.
-fn uniform(f: &Formula, clock: &ClockDecl, schema: &StateSchema) -> Option<bool> {
+fn uniform(f: &Formula, clock: &ClockDecl, schema: &crate::StateView) -> Option<bool> {
     let all = positions(clock, schema, &[f], false)?;
     let (first, rest) = all.split_first()?;
     let v = f.eval(clock, *first, Settle::Within)?;
@@ -468,7 +467,7 @@ fn uniform(f: &Formula, clock: &ClockDecl, schema: &StateSchema) -> Option<bool>
 /// the reason an unreachable `when`, a dead arm or a deadline that never
 /// holds gives. `None` when the clock's positions do not decide it false.
 pub fn position_reason(raw: &str, defs: &DefTable<'_>, ctx: &DecideCtx<'_>) -> Option<String> {
-    let clock = ctx.schema.clock.as_ref()?;
+    let clock = ctx.schema.clock()?;
     let mut arena = lute_cel::CelArena::default();
     let ided = parse(raw, defs, &mut arena)?;
     let f = build(&ided.expr, ctx, clock, &PLAIN);
@@ -534,7 +533,7 @@ fn flat_conjuncts<'f>(f: &'f Formula, out: &mut Vec<(&'f Formula, Option<String>
 /// slot path: on that day the slot only reaches the last slot.
 fn last_day_slots(
     clock: &ClockDecl,
-    schema: &StateSchema,
+    schema: &crate::StateView,
     last: ClockAt,
     conjuncts: &[(&Formula, Option<String>)],
 ) -> Option<String> {
@@ -639,7 +638,7 @@ pub fn check_project_deadline_windows(
     for (item, folded) in docs.iter().zip(foldeds) {
         let path = item.path;
         let doc = item.doc;
-        let Some(clock) = folded.env.state.clock.as_ref() else {
+        let Some(clock) = folded.env.state.clock() else {
             continue;
         };
         let defs = DefTable {
@@ -910,7 +909,7 @@ impl<'c> RaiseModel<'c> {
         folded: &'c FoldedEnv,
     ) -> Option<(Self, Formula)> {
         let schema = &folded.env.state;
-        let clock = schema.clock.as_ref()?;
+        let clock = schema.clock()?;
         let defs = DefTable {
             bodies: &folded.def_bodies,
             params: &folded.env.def_params,
@@ -1207,7 +1206,7 @@ pub fn project_objective_slot_results(
     for (item, folded) in docs.iter().zip(foldeds) {
         let path = item.path;
         let doc = item.doc;
-        let Some(clock) = folded.env.state.clock.as_ref() else {
+        let Some(clock) = folded.env.state.clock() else {
             continue;
         };
         for q in &doc.quests {
@@ -1420,7 +1419,7 @@ pub fn check_project_advance_cascades(
     let mut out = Vec::new();
     for pb in crate::beats::project_beats(docs, foldeds) {
         let Some(spec) = pb.advances else { continue };
-        let Some(clock) = pb.folded.env.state.clock.as_ref() else {
+        let Some(clock) = pb.folded.env.state.clock() else {
             continue;
         };
         if RaiseRule::of(clock, pb.on).is_none() || pb.spent_by.is_some() {
@@ -1530,7 +1529,7 @@ pub fn check_project_objective_clock_windows(
     for (item, folded) in docs.iter().zip(foldeds) {
         let path = item.path;
         let doc = item.doc;
-        let Some(clock) = folded.env.state.clock.as_ref() else {
+        let Some(clock) = folded.env.state.clock() else {
             continue;
         };
         for q in &doc.quests {
@@ -1610,7 +1609,7 @@ pub fn check_project_objective_clock_windows(
             if tree_root(quest_a) != tree_root(quest_b) || !run_a || !run_b || pos_a != pos_b {
                 continue;
             }
-            let Some(clock) = foldeds.iter().find_map(|f| f.env.state.clock.as_ref()) else {
+            let Some(clock) = foldeds.iter().find_map(|f| f.env.state.clock()) else {
                 continue;
             };
             let message = format!(

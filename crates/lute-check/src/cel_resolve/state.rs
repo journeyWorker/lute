@@ -206,14 +206,7 @@ pub(crate) fn check_state_path(
 /// lore flag `entry.<id>.read` (dsl 0.19.0 §5) is admitted by the same
 /// shape rule, wherever its `<entry>` lives.
 pub(crate) fn is_declared(path: &str, ctx: &Ctx<'_>) -> bool {
-    is_reserved_quest_path(path)
-        || is_reserved_entry_read(path)
-        || ctx
-            .env
-            .state
-            .decls
-            .keys()
-            .any(|k| path == k || path.starts_with(&format!("{k}.")))
+    is_reserved_quest_path(path) || is_reserved_entry_read(path) || ctx.env.state.covers(path)
 }
 
 /// Guard/condition slots (dsl §9.6): a `<match>` subject or any boolean guard.

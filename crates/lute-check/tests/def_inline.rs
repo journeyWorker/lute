@@ -16,16 +16,18 @@ fn codes_in(dir: Option<&Path>, scene: &str) -> Vec<String> {
         Some(dir) => resolve_components(dir, &meta0.components, doc.meta.span),
         None => Default::default(),
     };
-    let input = CheckInput {
-        text: scene.to_string(),
-        uri: "scene".into(),
-        snapshot: load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        scene.to_string(),
+        "scene".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            load_core_snapshot(),
+            ProviderSet::default(),
+            Default::default(),
+            components,
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()

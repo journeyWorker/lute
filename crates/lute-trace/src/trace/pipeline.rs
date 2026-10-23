@@ -176,7 +176,7 @@ pub(super) fn trace_pipeline(
         mock_diags.extend(mock::validate_bridges(
             &mocks,
             &folded,
-            &input.snapshot,
+            input.snapshot(),
             &content_reads,
         ));
     }
@@ -189,7 +189,7 @@ pub(super) fn trace_pipeline(
 
     // 4. The same lute-compile passes, in the same order, `compile` runs —
     //    the tree the static notes and the AST-only report texts read.
-    let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast);
+    let cast = lute_check::declared_cast(input.snapshot(), input.imports(), &folded.typed.cast);
     let mut diags = lute_compile::normalize::normalize_document(
         &mut doc,
         &input.components,
@@ -198,7 +198,7 @@ pub(super) fn trace_pipeline(
         &folded.env.state,
         &folded.env.occasion_scopes,
     );
-    lute_check::builtin_lowering::canonicalize_builtin_directives(&mut doc, &input.snapshot);
+    lute_check::builtin_lowering::canonicalize_builtin_directives(&mut doc, input.snapshot());
     let table = DefTable {
         bodies: &folded.def_bodies,
         params: &folded.env.def_params,
@@ -237,7 +237,7 @@ pub(super) fn trace_pipeline(
     // engine's seam too, over the same one-document project.
     let quest_raises = folded.doc_kind == lute_check::DocKind::Quest && !mocks.occasions.is_empty();
     let judging = (judged_kind || quest_raises)
-        .then(|| judging_project(&input.uri, artifact, &input.snapshot.occasions))
+        .then(|| judging_project(&input.uri, artifact, &input.snapshot().occasions))
         .flatten()
         .map(|mut p| {
             p.chapter_afters
@@ -306,7 +306,7 @@ pub(super) fn trace_pipeline(
             let (on, Some(target)) = lute_runtime::split_occasion(raw) else {
                 return None;
             };
-            let decl = input.snapshot.occasions.get(on)?;
+            let decl = input.snapshot().occasions.get(on)?;
             let why = lute_check::beats::occasion_target_ok(decl, target, kinds).err()?;
             if !target.contains('.')
                 && lute_check::gates::domain_members(decl, kinds)
@@ -390,7 +390,7 @@ pub(super) fn trace_pipeline(
                 // A unit answering one fixed target is presented only when
                 // its occasion is raised for that target.
                 let decl = input
-                    .snapshot
+                    .snapshot()
                     .occasions
                     .get(on)
                     .filter(|d| d.target.takes_target());
@@ -423,7 +423,7 @@ pub(super) fn trace_pipeline(
                 }
                 continue;
             };
-            match raised_member(&mocks, &input.snapshot.occasions, &unit, on, members) {
+            match raised_member(&mocks, &input.snapshot().occasions, &unit, on, members) {
                 Ok(Some(m)) => {
                     raised.insert(key, m);
                     binding_ons.insert(on.to_string());
@@ -445,7 +445,7 @@ pub(super) fn trace_pipeline(
         ast: AstIndex::of(&doc),
         mocks: &mocks,
         folded: &folded,
-        snapshot: &input.snapshot,
+        snapshot: input.snapshot(),
         content_reads: &content_reads,
         members,
         authored,

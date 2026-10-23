@@ -19,16 +19,18 @@ fn absent(body: &str) -> Vec<Diagnostic> {
          run.mood: {{ type: enum, values: [calm, tense], default: calm }}\n{ENUMS}---\n\
          ## Shot 1.\n::actor{{character=\"vesna\" action=\"show\"}}\n{body}\n"
     );
-    let input = CheckInput {
+    let input = CheckInput::new(
         text,
-        uri: "t".into(),
-        snapshot: load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            load_core_snapshot(),
+            ProviderSet::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()

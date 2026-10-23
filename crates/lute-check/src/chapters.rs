@@ -575,7 +575,6 @@ fn paths_that_may_stay(when: &str, folded: &FoldedEnv) -> Option<Vec<String>> {
             || folded
                 .env
                 .state
-                .decls
                 .get(p)
                 .is_some_and(|d| d.owner == Some(lute_manifest::types::Owner::Engine))
     };

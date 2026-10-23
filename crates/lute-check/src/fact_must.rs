@@ -74,7 +74,6 @@ use crate::connectivity::{ConnGraph, NodeId, PrereqState};
 use crate::fact_env::{
     GroundFact, MaySet, MustClosure, MustFact, MustMap, Provenance, QueryPattern, RootVocab,
 };
-use crate::meta::StateSchema;
 use crate::rel_schema::RelVocab;
 use crate::ProjectDoc;
 use cel_parser::ast::{operators as op, Expr};
@@ -710,7 +709,7 @@ struct Walk<'a> {
     root: &'a Root<'a>,
     path: &'a Path,
     defs: DefTable<'a>,
-    schema: &'a StateSchema,
+    schema: &'a crate::StateView,
     /// The document's own vocabulary: a fact of a relation it does not
     /// declare is never tracked (its queries are never decided either).
     vocab: &'a RelVocab,

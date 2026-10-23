@@ -653,7 +653,6 @@ pub fn reconcile_collected(
                 folded
                     .env
                     .state
-                    .decls
                     .iter()
                     .filter(|(_, d)| d.owner == Some(lute_manifest::types::Owner::Engine))
                     .map(|(p, _)| p.clone()),

@@ -152,7 +152,7 @@ pub struct HostArgs {
     pub cast: BTreeMap<String, String>,
     /// The merged kinds and domains; `None` when the document declares its
     /// own inline (membership is then left to the checks alone).
-    pub domains: Option<BTreeMap<String, Domain>>,
+    pub domains: Option<std::sync::Arc<BTreeMap<String, Domain>>>,
 }
 
 impl HostArgs {

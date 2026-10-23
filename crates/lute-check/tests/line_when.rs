@@ -15,16 +15,18 @@ use std::path::Path;
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n";
 
 fn codes(text: &str) -> Vec<String> {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "line_when".into(),
-        snapshot: lute_test_vocab::vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "line_when".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_test_vocab::vocab_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()
@@ -127,16 +129,18 @@ fn component_codes(dir: &Path, scene: &str) -> Vec<String> {
         &lute_manifest::snapshot::CapabilitySnapshot::default(),
     );
     let components = resolve_components(dir, &meta0.components, doc.meta.span);
-    let input = CheckInput {
-        text: scene.to_string(),
-        uri: "scene".into(),
-        snapshot: lute_test_vocab::vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        scene.to_string(),
+        "scene".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            lute_test_vocab::vocab_snapshot(),
+            ProviderSet::default(),
+            Default::default(),
+            components,
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()

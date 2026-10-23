@@ -625,7 +625,6 @@ fn walk_match(
                 let subject_is_double = cx
                     .env
                     .state
-                    .decls
                     .get(m.subject.raw.trim())
                     .is_some_and(|decl| matches!(decl.ty, lute_manifest::types::Type::Double));
                 let pair = match crate::expr::synth_arm_expr_typed(

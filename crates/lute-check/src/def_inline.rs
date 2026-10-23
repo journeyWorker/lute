@@ -31,14 +31,13 @@ use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::{CheckInput, FoldedEnv};
 use crate::component_import::ComponentSet;
 use crate::decide::{decide_slot, DecideCtx, Decided};
-use crate::meta::StateSchema;
 
 pub const E_ATTR_DEF_DYNAMIC: &str = "E-ATTR-DEF-DYNAMIC";
 pub const E_INTERP_DEF: &str = "E-INTERP-DEF";
 
 /// Fold an attribute's `@ref` value (`raw`, expanded or not) to the constant
 /// it provably has on every run (§5.1). `None` = state-dependent.
-pub fn fold_attr_ref(raw: &str, defs: &DefTable<'_>, schema: &StateSchema) -> Option<Decided> {
+pub fn fold_attr_ref(raw: &str, defs: &DefTable<'_>, schema: &crate::StateView) -> Option<Decided> {
     let params = BTreeMap::new();
     let ctx = DecideCtx {
         schema,
@@ -161,7 +160,7 @@ pub(crate) fn check_def_inlining(
 
 struct Cx<'a> {
     defs: DefTable<'a>,
-    schema: &'a StateSchema,
+    schema: &'a crate::StateView,
     input: &'a CheckInput,
     domains: &'a BTreeMap<String, lute_manifest::snapshot::Domain>,
     diags: Vec<Diagnostic>,
@@ -262,7 +261,7 @@ impl Cx<'_> {
         let Some(dir) = dir else {
             return;
         };
-        let snapshot = &self.input.snapshot;
+        let snapshot = &self.input.snapshot();
         let decl = snapshot
             .directive(&dir.tag)
             .and_then(|d| d.attrs.iter().find(|ad| ad.name == a.key))
@@ -279,7 +278,7 @@ impl Cx<'_> {
                 adecl,
                 &literal,
                 snapshot,
-                &self.input.providers,
+                self.input.providers(),
                 self.domains,
                 &mut self.diags,
             );

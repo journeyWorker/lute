@@ -77,9 +77,9 @@ pub fn domain_reads_from_relations(vocab: &crate::rel_schema::RelVocab) -> BTree
 /// (`run.wd: { type: { domain: weekday } }`). Since dsl 0.24.0 §1 such a path
 /// renders the domain's member `labels` in `{{…}}`, so the declaration reaches
 /// rendered text — a read as real as a directive attr typed against it.
-pub fn domain_reads_from_state(schema: &crate::meta::StateSchema) -> BTreeSet<String> {
+pub fn domain_reads_from_state(schema: &crate::StateView) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
-    for decl in schema.decls.values() {
+    for (_, decl) in schema.iter() {
         collect_domain_names(&decl.ty, &mut out);
     }
     out

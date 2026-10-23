@@ -993,7 +993,7 @@ pub(crate) fn guard_decides(cel: &str, value: bool) -> bool {
         bodies: &bodies,
         params: &def_params,
     };
-    let schema = crate::meta::StateSchema::default();
+    let schema = crate::StateView::default();
     let params = BTreeMap::new();
     let ctx = crate::decide::DecideCtx {
         schema: &schema,

@@ -213,7 +213,7 @@ pub fn check_cel_slot(
                 seg.starts_with(|c: char| c.is_ascii_alphabetic() || c == '_')
                     && seg.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
             });
-        if let Some(decl) = ctx.env.state.decls.get(path).filter(|_| bare) {
+        if let Some(decl) = ctx.env.state.get(path).filter(|_| bare) {
             if !compatible(&decl.ty, &ExpectedType::Bool) {
                 let example = match &decl.ty {
                     Type::Int | Type::Double => format!("{path} > 0"),
@@ -251,8 +251,7 @@ pub fn check_cel_slot(
             None if ctx
                 .env
                 .state
-                .decls
-                .contains_key(lute_manifest::semantics::beats::OCCASION_TARGET) => {}
+                .contains(lute_manifest::semantics::beats::OCCASION_TARGET) => {}
             None => diags.push(diag(
                 "E-UNDECLARED",
                 crate::beats::occasion_target_scope_message(),

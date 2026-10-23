@@ -369,7 +369,7 @@ fn is_ident_char(c: char) -> bool {
 pub fn number_row_values(docs: &[UsageDoc<'_>]) -> BTreeMap<String, Vec<f64>> {
     let mut rows: BTreeMap<&str, (&str, Vec<f64>)> = BTreeMap::new();
     for d in docs {
-        for (path, decl) in &d.folded.env.state.invalid {
+        for (path, decl) in d.folded.env.state.invalid_rows() {
             if let Some(site) = &decl.site {
                 rows.entry(path.as_str())
                     .or_insert_with(|| (site.as_str(), decl.seen.clone()));

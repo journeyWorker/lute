@@ -370,7 +370,7 @@ fn component_env(params: &[(String, Type)]) -> Env {
     }
     Env {
         mode: Mode::Author,
-        state: crate::meta::StateSchema::default(),
+        state: crate::StateView::default(),
         defs,
         def_types,
         def_params,
@@ -378,7 +378,7 @@ fn component_env(params: &[(String, Type)]) -> Env {
         // Component bodies get an empty `RelVocab` (above) — no relation is
         // ever declared/queryable inside one (dsl §13, presentational-scope
         // only), so the merged domains view is moot; kept empty to match.
-        domains: std::collections::BTreeMap::new(),
+        domains: std::sync::Arc::default(),
         clock: None,
         terminal: None,
         terminal_persists: false,
@@ -710,8 +710,8 @@ pub(super) fn walk_component_body(
                 //
                 // VOCABULARY SCOPE (the one design decision here): `domains`
                 // is the IMPORTING document's merged vocabulary — `check()`
-                // threads `folded.domains` (= `merge_domains(input.snapshot,
-                // input.imports, …)`) into `validate_components`, and
+                // threads `folded.domains` (= `merge_domains(input.snapshot(),
+                // input.imports(), …)`) into `validate_components`, and
                 // `ComponentDef` (component_import.rs) carries only
                 // `params`/`body`/`src`, never the component file's OWN
                 // `uses:` imports. Resolving against the component's own

@@ -64,16 +64,22 @@ fn snapshot() -> CapabilitySnapshot {
 }
 
 fn input(text: &str, snapshot: CapabilitySnapshot) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "cast".into(),
-        snapshot,
-        providers: Default::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    input_with(text, snapshot, SchemaImports::default())
+}
+
+fn input_with(text: &str, snapshot: CapabilitySnapshot, imports: SchemaImports) -> CheckInput {
+    CheckInput::new(
+        text.to_string(),
+        "cast".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 /// A scene with id `id`, extra frontmatter `fm` (newline-terminated) and
@@ -189,9 +195,9 @@ fn an_occasion_gate_and_not_terminal_imply_presence() {
          <beat id=\"hall\" on=\"hubVisit\" once=\"false\">\n  @isolde: Hall.\n</beat>\n"
     );
     let absent = |terminal: Option<&str>| {
-        let mut inp = input(&src, snap.clone());
+        let mut imports = SchemaImports::default();
         if let Some(t) = terminal {
-            inp.imports
+            imports
                 .terminal
                 .push(lute_check::schema_import::ImportedTerminal {
                     file: PathBuf::from("/p/world.schema.yaml"),
@@ -206,6 +212,7 @@ fn an_occasion_gate_and_not_terminal_imply_presence() {
                     persists: lute_check::gates::Persists::No,
                 });
         }
+        let inp = input_with(&src, snap.clone(), imports);
         let ds = check(&inp).diagnostics;
         assert_clean_vocab(&ds);
         with_code(&ds, ABSENT)

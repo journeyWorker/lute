@@ -83,7 +83,7 @@ impl Assumption {
         bodies: &[&[Node]],
         defs: &DefTable<'_>,
         def_types: &BTreeMap<String, Type>,
-        schema: &crate::meta::StateSchema,
+        schema: &crate::StateView,
         snapshot: &CapabilitySnapshot,
     ) -> Option<Self> {
         let raw = when.raw.trim();
@@ -152,7 +152,7 @@ impl Assumption {
         &self,
         path: &str,
         item: &CoverItem,
-        schema: &crate::meta::StateSchema,
+        schema: &crate::StateView,
     ) -> bool {
         let mut on_path = self
             .conjuncts

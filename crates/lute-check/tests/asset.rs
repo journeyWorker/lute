@@ -110,16 +110,18 @@ fn scene(directive: &str) -> String {
 }
 
 fn check_codes(text: &str, snap: CapabilitySnapshot, providers: ProviderSet) -> Vec<String> {
-    let input = CheckInput {
-        text: text.into(),
-        uri: "t".into(),
-        snapshot: snap,
-        providers,
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.into(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snap,
+            providers,
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()

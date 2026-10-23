@@ -25,7 +25,7 @@ pub(crate) fn member_arm_verdicts(
     dead: &[String],
     defs: &DefTable<'_>,
     def_types: &BTreeMap<String, Type>,
-    schema: &crate::meta::StateSchema,
+    schema: &crate::StateView,
 ) -> Vec<Diagnostic> {
     let assume = Assumption {
         raw: raw.trim().to_string(),

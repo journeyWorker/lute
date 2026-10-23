@@ -9,13 +9,13 @@ use std::collections::BTreeMap;
 
 use lute_check::match_check::{Domain, DomainValue};
 use lute_check::meta::{Namespace, StateDecl, StateSchema};
-use lute_check::{decide_slot, DecideCtx, Decided, DefTable, DollarBinding, DomainInfo};
+use lute_check::{decide_slot, DecideCtx, Decided, DefTable, DollarBinding, DomainInfo, StateView};
 use lute_manifest::types::{Literal, Type};
 
 /// `run.rank: enum [fail, bronze, silver, gold]`, `run.flag: bool` (default
 /// `false`), `run.n: int` (default `0`) — mirrors the plan's Step 1 schema
 /// — plus `run.m: int` with no default (maybe unset).
-fn schema() -> StateSchema {
+fn schema() -> StateView {
     let mut decls = BTreeMap::new();
     decls.insert(
         "run.rank".to_string(),
@@ -58,10 +58,10 @@ fn schema() -> StateSchema {
             owner: None,
         },
     );
-    StateSchema {
+    StateView::from(StateSchema {
         decls,
         ..Default::default()
-    }
+    })
 }
 
 /// The same finite domain `run.rank` infers to, built by hand (`infer_domain`

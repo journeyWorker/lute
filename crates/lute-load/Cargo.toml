@@ -12,3 +12,6 @@ lute-syntax = { path = "../lute-syntax" }
 serde = { workspace = true }
 yaml_serde = { workspace = true }
 rayon = "1.12"
+
+[dev-dependencies]
+lute-scratch = { path = "../lute-scratch" }

@@ -45,7 +45,6 @@ use crate::fact_env::{
     CountInterval, FactEnv, FactScope, GroundFact, HoldsVerdict, MustFact, Provenance, QueryPattern,
 };
 use crate::match_check::{infer_domain, subject_path, CoverItem, DomainInfo, DomainValue};
-use crate::meta::StateSchema;
 pub use crate::reachability::E_ENTRY_UNREACHABLE;
 use crate::reachability::{
     arm_has_foreign_literal, E_ARM_DEAD, E_OBJECTIVE_UNSATISFIABLE, E_QUEST_UNREACHABLE,
@@ -511,7 +510,7 @@ struct Guards<'a> {
     path: &'a Path,
     defs: DefTable<'a>,
     def_types: &'a BTreeMap<String, lute_manifest::types::Type>,
-    schema: &'a StateSchema,
+    schema: &'a crate::StateView,
     vocab: &'a RelVocab,
     env: &'a FactEnv,
     params: &'a BTreeMap<String, DomainInfo>,
@@ -835,7 +834,7 @@ impl<'a> Guards<'a> {
 
     /// This environment over `schema` — a kind or `for=` beat's own
     /// ([`FoldedEnv::env_at`]).
-    fn over(&self, schema: &'a StateSchema) -> Guards<'a> {
+    fn over(&self, schema: &'a crate::StateView) -> Guards<'a> {
         Guards {
             path: self.path,
             defs: DefTable {
