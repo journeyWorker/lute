@@ -68,6 +68,21 @@ rules:
 
 프로젝트 전체 `lute check`의 `W-DOMAIN-UNREAD`는 아무것도 읽지 않는 종류를 표시합니다. 관계 인자와 함께 하위 종류의 `subsetOf:` 부모, `per:` 인덱스로 사용되는 종류, 규칙 본문이나 `holds(…)` 조건의 종류 원자를 읽기로 셉니다. 경고는 해당 종류를 선언한 스키마의 줄 또는 문서 자체의 `entities:` 키에 표시되며, 첫 번째 import 지점에는 표시되지 않습니다.
 
+### 같은 철자의 id를 쓰는 두 id 공간
+
+두 종류가 같은 멤버를 나열하는 이유가 단지 두 id 공간이 `{id}`를 같게 표기하기 때문이라면 합치지 마세요. 두 공간의 멤버를 모두 나열하는 **공유 루트 종류**를 선언하고 각 종류를 그 하위 종류로 만드세요. `{first}: { subsetOf: <root>, members: […] }`입니다. 모든 참조는 여전히 자기 종류에 대해 검사됩니다. 0.49.0부터 `E-ENTITY-KIND-CLASH`가 이 해결책을 알려 줍니다:
+
+```yaml
+entities:
+  speaker: { members: [mira, vendor-reply] }
+  person:  { subsetOf: speaker, members: [mira] }
+  vendor:  { subsetOf: speaker, members: [vendor-reply] }
+```
+
+### 이름이 아닌 id: `providerRef`
+
+엔터티나 enum 멤버는 **이름**(글자, 숫자, `_`, `-`)이어야 하므로 다른 시스템의 id인 `vendor:reply`는 `E-PATH-IDENT`입니다. 이름이 아닌 id를 검증하려면 프로바이더를 선언하고(`plugins/<id>/providers/`, `catalogDir`에 고정된 스냅샷) 속성을 `{ providerRef: <provider> }`로 타입 지정하세요. 0.49.0부터 엔터티/enum 멤버에 대한 `E-PATH-IDENT`가 이 방법을 알려 줍니다. [프로바이더와 카탈로그](/ko/tooling/providers-and-catalog/)를 참고하세요.
+
 ### 배타적 관계: `excludes:`
 
 일부 관계는 같은 인자에 대해 함께 성립할 수 없습니다. 쓰러진 사람은 살아 있는 상태로 보이지 않으며, 증인은 정직하면서 동시에 거짓말쟁이일 수 없습니다. 관계는 배제하는 관계를 선언할 수 있습니다(dsl 0.25.0 §1).

@@ -40,7 +40,7 @@ Every command has an **id**: its subcommand path as typed — `check`, `scenario
 |---|---|---|
 | `check` | `--json` | `0.48.0.check` |
 | `impact` | `--json` | `0.43.0.impact` |
-| `constraints` | `--json` | `0.43.0.constraints` |
+| `constraints` | `--json` | `0.49.0.constraints` |
 | `lint` | `--json` | `0.43.0.lint` |
 | `compile` | `--json` | `0.43.0.compile` |
 | `expr` | `--json` | `0.43.0.expr` |
@@ -196,6 +196,8 @@ Constraints declared in `lute.project.yaml` are also checked by whole-project `c
 
 Summaries count by severity (0.41.0). `lute check <FILE>` ends each file with `ok: <path> (W warning(s))` or `failed: <path> (E error(s), W warning(s))`, and whole-project `check` with `ok: <dir> (F file(s), W project-wide warning(s))` or `failed: <dir> (F file(s), E project-wide error(s), W project-wide warning(s))`. An `info` diagnostic is never a warning: when a run has any, the count is appended (`, I info` / `, I project-wide info`); a run without one prints exactly the line above. `hint` diagnostics are not counted, and a `--deny`-promoted diagnostic counts as an error only.
 
+A single-file check (and the language server) can add `W-PROJECT-CHECK-SKIPPED`, severity **info**, once per distinct quest id per document: the first read of `quest.<id>.*` whose id the document and its imports do not declare is named as not judged, because quest references are resolved only by whole-project `lute check` (`lute check --project <DIR>`). Whole-project check, `compile` and the wasm build never raise it. `ok` is unchanged; the info count shows in the summary, e.g. `ok: quests/q.lute (0 warning(s), 1 info)`.
+
 A declaration that does not parse no longer cascades (0.41.0). A `type: number` — the type 0.31 removed — is `E-TYPE-NUMBER` at its `number`, naming the choice between `int` and `double` (and suggesting `int` when every value it takes is whole). The declaration stays in the environment by name: a plugin whose export holds it still loads its other entries, and what depends on it is not checked until it is fixed — one `W-DEPENDS-ON-INVALID` note (an info) per invalid declaration, at its first dependant, counts the rest, instead of an `E-CLOCK-DECL` or one `E-UNKNOWN-DIRECTIVE` per use.
 
 ## impact
@@ -279,6 +281,21 @@ every `*.play.yaml` and `*.test.yaml` of the project and records witnessed quest
 transitions for `completable`; `--script <FILE>` (repeatable) executes only the named scripts — a directory selects every script under it — and the two are exclusive (`E-CLI-USAGE`). Whole-project `check` reports only violations
 (`E-CONSTRAINT-VIOLATED`) and malformed declarations (`E-CONSTRAINT-DECL`);
 there is no `W-CONSTRAINT-UNKNOWN`.
+
+The 0.49.0 report (`schemaVersion` `0.49.0.constraints`) gives every row a `subject` and a `reason`:
+
+```json
+{"command": "constraints", "schemaVersion": "0.49.0.constraints", "ok": true, "diagnostics": [],
+ "constraints": [{"root": ".", "id": "first-reachable", "kind": "reachable", "subject": "quest:first",
+   "verdict": "holds", "evidence": "proven", "reason": "unanchored: available from the start of play",
+   "scope": null, "declaration": {…}, "witnesses": [], "counterexamples": [], "related": [], "declarationErrors": []}]}
+```
+
+- `reason` is set on every verdict: for `holds`, the evidence (e.g. `connectivity proves reachable`); for `unknown`, why nothing was decided (e.g. `no play or test script was run (--all-scripts / --script)`, ``2 script(s) ran; none completed quest `first` ``, or the reachability reason). The text output prints it as a `  reason: …` line under `unknown`.
+- `counterexamples` and `related` (`E-CONSTRAINT-VIOLATED`) are non-empty only on `violated`.
+- `reachable` and `scenario reach` use one reachability claim; an unanchored quest is `reachable holds [proven]` (see [Reachability](/connectivity/reachability/)).
+- `E-CONSTRAINT-DECL` entries are in `diagnostics`, not in `constraints`.
+- A root whose `lute.project.yaml` exists but does not load prints the manifest diagnostics whole-project `check` prints and exits `1`; JSON has `ok: false`, `constraints: []` and the diagnostics (with `path` = the manifest). A declared constraint is never omitted without a diagnostic.
 
 ## Evidence levels
 
@@ -1044,6 +1061,8 @@ $ lute lint [<PATH>] [--project <DIR>] [--providers <DIR>] [--config <FILE>]
 ```
 
 Run the advisory content lints — line length, dialogue ratio, emotion streaks, missing assets, and project-local rules — over a file or a directory tree (default: the current directory; with `--project <DIR>` and no `<PATH>`, the project directory). The linear-VN norms (`L-SECTION-STARTS-WITH-BACKGROUND`, `L-DIALOGUE-RATIO`, `L-SCENE-LENGTH-SPREAD`) judge only linear scenes, never beats, components, quests, or lore. Documents are grouped by their nearest `lute.project.yaml` (with `--project <DIR>`, `<DIR>` is the walk floor: each document resolves against its nearest project at or below it), and each project's `lute.lint.yaml` (or `--config <FILE>`) sets rule levels, thresholds, ignore globs, and `custom:` rules. Findings are `L-*` codes, separate from `lute check`: lints never enter the capability snapshot or change an artifact. `--deny`/`--deny-warnings` promote findings as in `check`. Exit **0** clean or only sub-error findings, **1** any error-severity finding (including `E-LINT-CONFIG`/`E-LINT-EXPR`), **2** on I/O, malformed YAML, or usage. Rules, metrics, and the config format: [Linting](/tooling/linting/).
+
+`lute lint <DIR>` uses the project (0.49.0): it discovers the nearest `lute.project.yaml` at or above `<DIR>`, applies that project's `lute.lint.yaml`, and prints findings relative to the project root. `lute lint <DIR> --project <P>` lints `<DIR>` inside `<P>`; a `<DIR>` outside `<P>` is `E-CLI-USAGE` (`lute lint: <DIR> is not inside the project <P>`).
 
 Since dsl 0.26.0 lint also reports `W-DISPLAY-NAME-DUP`, the advisory whole-project `check` reports too: two speakers the dialogue box would show under one name — two cast entries with the same `name:`, a cast name equal to a `::use{… name="…"}` display string, or two such strings for different speakers (`who=`). A cast entry marked `sharedName: true` is an intended role name several speakers share and is not counted. The code is not a `lute.lint.yaml` rule; `--deny W-DISPLAY-NAME-DUP` makes it an error. See [Linting](/tooling/linting/#display-names).
 

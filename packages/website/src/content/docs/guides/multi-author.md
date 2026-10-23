@@ -198,8 +198,15 @@ Entry ids carry no document prefix, so they are the easiest to collide on; two d
 declare one entry id are `E-ENTRY-ID-DUP`. Plays and tests may name an entry
 `<document id>.<entry id>` since dsl 0.26.0 (`north.guards.northGullAfterStorm`), which makes a
 play easier to read, but the entry id itself must still be unique. Two documents with one
-`<branch>` or `<hub>` id draw `W-BRANCH-ID-SHARED` from whole-project `lute check`, since one `choose:` key
-would answer both menus.
+`<branch>` or `<hub>` id draw `W-BRANCH-ID-SHARED` from whole-project `lute check` — but since 0.49.0
+only when a `*.play.yaml` or `*.test.yaml` under the root names that id as a `choose:` key (at top
+level or in a step), because only then does one key answer both menus. Two documents that share an
+id no script ever chooses by stay quiet.
+
+Two id spaces whose ids merely spell `{id}` the same way (two areas that each have a `first`) are
+not one kind. When `E-ENTITY-KIND-CLASH` reports them, declare a shared root kind that lists both
+spaces' members and make each space a sub-kind of it (`{first}: { subsetOf: <root>, members: […] }`);
+every reference still checks against its own kind.
 
 ## Display names: one cast file per area
 
@@ -389,6 +396,11 @@ Rules for an included steps file:
 - An accept-driven quest the engine takes up outside any document (`accept="external"`, a quest
   board) is accepted mid-play with an `engine: { accept: [northLostBuoy] }` step instead of a save
   seed.
+- A quest only the host grants — a quest board, a shop, a cutscene outside Lute — is written
+  `accept="external"` without a `start`. Do not write a `start` that reads the quest's own state
+  (`E-QUEST-START-SELF`), and do not let two areas' quests wait on each other with nothing outside
+  the cycle to start either (`E-QUEST-START-CYCLE`): start one of them from a scene or beat outside
+  the cycle, or grant it with `accept="external"`. See [Reachability](/connectivity/reachability/#start-cycles-and-unavoidable-deadlocks).
 
 ### Clock hand-offs
 

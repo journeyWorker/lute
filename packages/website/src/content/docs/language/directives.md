@@ -265,7 +265,9 @@ and gets its anchor again.
 
 ## `::clear` — emptying the stage
 
-`::clear` (dsl 0.24.0 §4) takes every character off the stage at once. It has no attributes. The
+`::clear` (dsl 0.24.0 §4) takes every character off the stage at once. It has no attributes — no
+timing key and, since 0.49.0, no plugin stamp either (`E-UNKNOWN-ATTR`; see
+[Directives that carry no stamp](#directives-that-carry-no-stamp)). The
 background and the music stay, which is what separates it from a `::bg` scene change:
 
 ```lute check
@@ -319,7 +321,7 @@ exit.
 ## Timing & the `wait` model
 
 `duration`, `delay`, and `wait` are reserved **staging** timing keys that may appear on any
-directive but `::clear`:
+directive but `::clear`, `::jump` and `::label`:
 
 - **`duration`** — the transform length in seconds (e.g. `duration="0.6"`).
 - **`delay`** — an offset in seconds from the directive's own slot start.
@@ -341,6 +343,34 @@ In the artifact the resolved values sit in the record's `timing` object —
 
 The `at` key is *not* a staging timing attribute; it is a timeline-position key valid only on
 clips inside a [`<timeline>`](/language/timeline-and-property-tracks/).
+
+A content line admits `wait` (a bool) and no other timing key; `delay` and `duration` on a line stay
+`E-UNKNOWN-ATTR`. It compiles to the line record's `timing.wait`, and an absent `wait` leaves
+`timing` off the line. A line always waits for its own advance. `wait` says whether the staging cues
+that follow it, up to the next line, wait for the line: `true` (or absent) means they wait, `false`
+means they start while the line is presented. The next line still waits for the previous one.
+
+```lute
+@marina{wait="false"}: The fireworks start as I speak.
+::cg{assetId="CUT.rooftop.fireworks" display="show"}   /* starts while the line is shown */
+@oskar: Look at that.                                  /* still waits for marina's line */
+```
+
+### Directives that carry no stamp
+
+`::jump`, `::label` and `::clear` emit no stamped record: `::jump` lowers to a `jump` record with no
+stamp, `::label` lowers to no record, and `::clear` lowers to no record of its own (it only injects
+one actor exit per character on stage, and none on an empty stage). A plugin stamp attribute or a
+core timing key on one of them is `E-UNKNOWN-ATTR`, at the attribute, instead of being accepted and
+silently dropped:
+
+- `::jump`: `` `::jump` does not carry `cue`: it compiles to a `jump` record that has no stamp — put the attribute on the line or directive before it ``
+- `::label`: `` `::label` does not carry `cue`: it compiles to no record — put the attribute on the line or directive after it ``
+- `::clear`: "it takes no attributes; every character on stage exits with its own exit" now covers stamp attributes too.
+
+`::clear` does not hand its stamps to the exits it injects, because whether an exit exists depends
+on the stage, and an empty stage would drop the value. A stamp belongs on the `::actor{exit}` you
+write yourself.
 
 ## `::end` — terminating the walk
 
@@ -434,6 +464,10 @@ state:
 A `to` that names no `::label` in the document is `E-JUMP-UNDEFINED`; a label at or above the jump
 is `E-JUMP-BACKWARD`. Content after an unguarded `::jump` in the same body never runs and is
 `W-CODE-AFTER-JUMP`. To jump to a line, put a `::label` immediately before it.
+
+Neither `::jump` nor `::label` carries a stamp (a plugin stamp or a timing key such as `wait` is
+`E-UNKNOWN-ATTR`; see [Directives that carry no stamp](#directives-that-carry-no-stamp)): put the
+attribute on the line or directive before the jump, or after the label.
 
 ## Reserved directives
 

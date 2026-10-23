@@ -60,6 +60,21 @@ defs:
 
 0.21.0부터 모든 조건 슬롯은 `visited('<scene id>')`도 호출할 수 있습니다. 이 함수는 해당 씬이 이 세이브에서 제시된 뒤 한 번이라도 제시되었으면 true이며, 씬의 `after:`가 읽는 것과 같은 방문 집합을 사용합니다. 인자는 프로젝트의 씬을 하나 지정하는 문자열 리터럴 하나이거나, 0.23.0부터 정식 `<document id>.<beat id>`로 지정한 [번들 비트](/ko/language/beats/#비트-번들)일 수 있습니다(그렇지 않으면 `E-CONN-UNKNOWN-NODE`가 프로젝트 전체 `lute check`에서 발생합니다). [퀘스트와 씬](/ko/language/quests-and-scenes/#퀘스트가-씬-및-계기를-만나는-방식)을 참고하세요.
 
+## `per:` 멤버의 존재 확인
+
+`per:` 패밀리는 그 종류의 멤버로 인덱싱되며, 이름이 CEL 식별자가 아닌 멤버(`look-around`)는 따옴표로 씁니다. `user.stepRank["look-around"]`처럼요. 그런 멤버가 설정되었는지 물으려면 멤버십 형식을 쓰세요(0.49.0).
+
+```lute
+@guide{when="'look-around' in user.stepRank"}: You have already looked around.
+@guide{when="!('look-around' in user.stepRank)"}: Take a look around first.
+```
+
+`'<member>' in <family>`(문자열 리터럴과 `per:` 패밀리)는 `<family>.<member>`의 존재 가드이며, 점으로 이은 멤버에 `has()`를 쓴 것과 정확히 같습니다. 참이면 가드된 본문의 나머지에서 그 멤버가 대입된 것으로 증명되고, 부정은 그 반대를 증명합니다. 패밀리의 멤버가 아닌 리터럴은 `<family>["<literal>"]`을 읽을 때와 같은 진단을 받습니다. `lute trace`와 런타임은 이를 `has()`로 평가합니다.
+
+`has(user.stepRank["look-around"])`는 계속 `E-CEL-PARSE`이며, 이제 ``— `has()` takes a field; for a member that is not an identifier write `'<m>' in <family>` `` 힌트가 붙습니다.
+
+존재 테스트를 언급하는 모든 메시지는 같은 방식으로 표기합니다. 루트 뒤의 모든 세그먼트가 식별자이면 `has(<path>)` / `!has(<path>)`, 마지막 세그먼트가 식별자가 아닌 `per:` 멤버이면 `'<m>' in <family>` / `!('<m>' in <family>)`입니다. 그 밖에 식별자가 아닌 세그먼트가 있는 경로에는 가드 표기가 없으므로, 메시지는 `after:`와 `default:` 해결책만 알려 줍니다.
+
 ## 보간은 CEL이 아닙니다
 
 콘텐츠 텍스트의 `{{…}}` 보간은 CEL 표현식이 아닙니다. 보간은 하나의 값을 지정합니다. 상태 경로(종류의 멤버를 위해 실행되는 비트에서는 멤버로 인덱싱된 `per:` 패밀리인 `{{user.bond[occasion.target]}}`도 해당), 그 안에서의 `{{occasion.target}}` 자체, def `@ref` / `@ref(args)`, 또는 `userName`입니다. 계산된 값에는 def가 필요합니다. 0.24.0부터 보간은 콜론 뒤에 하나의 **형식 힌트**를 포함할 수 있습니다. `{{user.deaths:ordinal}}`은 `1st`, `2nd`, `3rd`, `11th`, `21st`, `111th`로 렌더링됩니다([보간](/ko/language/dialogue-and-cast/#보간) 참고). 힌트는 `ordinal`, `ordinalWord`, `cardinalWord`, `plural(one|other)`이며 이는 `int` 또는 `double`에 사용하고, `capitalize`, `start`, `indefinite`이며 텍스트에 사용합니다. 다른 이름은 모두 `E-CEL-PROFILE`입니다. 문자열, enum 또는 bool 경로/def, 혹은 `{{userName}}`에 숫자 힌트를 사용하면 `E-REF-TYPE`이고, 숫자 경로나 bool에 텍스트 힌트를 사용해도 마찬가지입니다.

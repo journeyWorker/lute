@@ -72,6 +72,41 @@ reachable here means nothing static refutes it, not that a run reaches it: a pla
 
 고정된 A-hybrid enforcement 방침에서는 그래프가 엔진이 준수할 수도 있는 권고 데이터이므로, 모든 도달 가능성 메시지는 무조건적인 런타임 주장으로 쓰지 않고 "사용자가 선언한 `after` 경로에 따른"이라고 표현합니다.
 
+## 시작 순환과 피할 수 없는 교착
+
+퀘스트의 `start` 조건도 그래프의 일부입니다. `lute scenario`는 순환을 닫는 엣지를 포함해 모든 `start` 앵커 엣지를 그립니다(0.48.1은 순환을 닫는 엣지를 조용히 버렸습니다).
+
+`start`는 AND/OR 구조를 유지합니다. 최상위 `&&` 항 하나가 **앵커** 하나이며, 모든 앵커가 성립해야 합니다. 앵커의 소스들은 대안이어서 하나만 있으면 충분합니다.
+
+퀘스트가 영영 시작할 수 없고 앵커 엣지의 순환 위에 있으면 **교착**(deadlock) 상태입니다. 이는 *시작 가능*의 최소 고정점입니다:
+
+1. 앵커가 있는 퀘스트가 아닌 노드는 위의 도달 가능성 분석으로 결정합니다. 씬, beat, entry는 도달 불가이거나 `after` 순환 위에 있지 않으면 라우팅 가능합니다. 앵커가 없는 퀘스트는 시작할 수 있습니다.
+2. **모든** 앵커에 시작할 수 있는(퀘스트) 또는 라우팅 가능한(다른 노드) 소스가 **하나라도** 있으면 퀘스트는 시작할 수 있습니다.
+3. "아무것도 시작할 수 없다"에서 출발해 더 변하지 않을 때까지 반복합니다.
+
+교착 상태인 각 퀘스트는 `start`에서 `E-QUEST-START-CYCLE`(오류, 프로젝트 전체)이며, 강연결 집합마다 하나씩 가장 작은 퀘스트에서 보고합니다. 경로는 가장 짧은 앵커 순환이며 `E-CONN-CYCLE`처럼 표시합니다:
+
+```text
+quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` waits for the next and no source outside the cycle starts any of them; start one of them from something outside the cycle, or grant it with `accept="external"`
+```
+
+**외부에서 진입하는 순환은 문제없습니다.** 퀘스트 A가 B가 active일 때 시작하고, B가 A가 active이거나 **또는** `visited("entry")`일 때 시작하며, 씬 `entry`가 라우팅 가능하다면 B는 시작할 수 있고 따라서 A도 시작할 수 있습니다. 진단은 없습니다. 두 엣지는 여전히 그려지고, 위상 순서가 허용하는 곳에서는 두 퀘스트가 `entry` 뒤 층에 배치됩니다. 그렇지 않으면 층 없이 나열됩니다.
+
+교착의 출력:
+
+- 그래프 텍스트는 교착 퀘스트를 `(unlayered -- part of a start cycle, E-QUEST-START-CYCLE): …` 줄로 출력합니다. JSON과 DOT에는 `startCycle`이 들어갑니다. `after` 순환의 텍스트는 그대로입니다.
+- 교착 퀘스트, 또는 교착 소스만을 통해 하류에 있는 퀘스트의 `reach`는 ``this quest's `start` waits on a start cycle (E-QUEST-START-CYCLE): <path>; it can never start under your declared routes.`` 라는 이유와 함께 `Unknown`입니다. 시작할 수 없는 퀘스트를 `Reachable`로 보고하지 않습니다.
+
+### 자기 퀘스트를 읽는 `start`
+
+퀘스트 자신의 `start`에서 `quest.<own id>.*`를 읽으면 `E-QUEST-START-SELF`(오류, 문서별, `start`에서)입니다. 퀘스트가 시작되기 전에는 상태에 값이 없으므로 그 조건으로는 퀘스트를 시작할 수 없습니다. 호스트만 부여하는 퀘스트는 `start` 없이 `accept="external"`로 씁니다.
+
+앵커 역할을 하는 자기 읽기는 도움이 되지 않는 소스로 계산되므로, 앵커의 소스가 그것뿐인 퀘스트는 교착 상태입니다. 그 퀘스트와 의존 대상은 `Reachable`이 아닙니다. 자기 읽기만으로 인한 교착은 `E-QUEST-START-CYCLE`이 아니라 `E-QUEST-START-SELF`로 보고합니다.
+
+### 앵커가 없는 퀘스트
+
+앵커가 없는 퀘스트는 `reachable holds [proven]`이며 이유는 `unanchored: available from the start of play`입니다. `lute scenario reach`와 `lute constraints`는 같은 하나의 도달 가능성 주장을 읽으므로 서로 어긋날 수 없습니다.
+
 ## 0.34.0의 증거
 
 시나리오 reach 결과에는 JSON에서 `evidence`가 포함됩니다. 구조적 도달 가능성

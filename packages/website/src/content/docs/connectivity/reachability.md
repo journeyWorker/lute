@@ -72,6 +72,41 @@ One accepted conservative gap: because the edge model over-approximates `||` pos
 
 Under the locked A-hybrid enforcement posture the graph is advisory data the engine *may* honor, so every reachability message is worded "under your declared `after` routes," never as an unconditional runtime claim.
 
+## Start cycles and unavoidable deadlocks
+
+A quest's `start` condition is part of the graph too. Every `start` anchor edge is drawn by `lute scenario`, including an edge that closes a cycle (0.48.1 silently dropped the closing edge).
+
+A `start` keeps its AND/OR structure. Each top-level `&&` conjunct is one **anchor**, and every anchor must hold. An anchor's sources are alternatives: one source is enough.
+
+A quest is **deadlocked** when it can never start and sits on a cycle of anchor edges. This is the least fixed point of *can-start*:
+
+1. A node that is not a quest with anchors is decided by the reachability analysis above: scenes, beats and entries are routable unless they are unreachable or on an `after` cycle. A quest without anchors can start.
+2. A quest can start when **every** anchor has **some** source that can start (a quest) or is routable (another node).
+3. Iterate from "nothing can start" until nothing changes.
+
+Each deadlocked quest is `E-QUEST-START-CYCLE` (error, project-wide) at its `start`, one per strongly connected set, reported at its least quest. The path is the shortest anchor cycle, rendered like `E-CONN-CYCLE`:
+
+```text
+quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` waits for the next and no source outside the cycle starts any of them; start one of them from something outside the cycle, or grant it with `accept="external"`
+```
+
+**An externally entered cycle is fine.** If quest A starts when B is active, and B starts when A is active **or** `visited("entry")`, and scene `entry` is routable, then B can start, so A can start: no diagnostic. Both edges are still drawn, and the two quests are layered after `entry` where the topological order allows; otherwise they are listed unlayered.
+
+Output for a deadlock:
+
+- The graph text prints the deadlocked quests on a line `(unlayered -- part of a start cycle, E-QUEST-START-CYCLE): …`. JSON and DOT carry `startCycle`. The text for an `after` cycle is unchanged.
+- `reach` for a deadlocked quest, or one downstream only through deadlocked sources, is `Unknown` with the reason ``this quest's `start` waits on a start cycle (E-QUEST-START-CYCLE): <path>; it can never start under your declared routes.`` Reachability never reports `Reachable` for a quest that cannot start.
+
+### A `start` that reads its own quest
+
+Any read of `quest.<own id>.*` in a quest's own `start` is `E-QUEST-START-SELF` (error, per document, at `start`): the state has no value before the quest starts, so the condition can never start it. A quest only the host grants is written `accept="external"` without a `start`.
+
+An anchoring self-read counts as a source that never helps, so a quest whose anchor has only that source is deadlocked: it and its dependents are not `Reachable`. A self-only deadlock is reported as `E-QUEST-START-SELF`, not `E-QUEST-START-CYCLE`.
+
+### Unanchored quests
+
+An unanchored quest is `reachable holds [proven]` with the reason `unanchored: available from the start of play`. `lute scenario reach` and `lute constraints` read the same single reachability claim, so they cannot disagree.
+
 ## Evidence in 0.34.0
 
 Scenario reach results include `evidence` in JSON. A structural reachability

@@ -44,7 +44,15 @@ the `into=` sugar:
 
 *(From [`docs/examples/choice-persist.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/choice-persist.lute).)*
 
-`into="run.<path>"` alone appends `::set{run.<path> = <value>}` to that arm. The target path is
+### `into=` writes first
+
+`into="run.<path>"` (with its optional `value`) means `::set{run.<path> = <value>}` placed **first** in
+the arm, before any line or directive in it. Since 0.49.0 the checker sees it that way: a read of the
+path inside the arm is already assigned, so no `has()` guard or `unset` arm is needed there. An arm
+that ends in `::jump` records the write before it leaves. The `E-INTO-*` diagnostics, and the error
+for an arm that already `::set`s the same path, are unchanged.
+
+`into="run.<path>"` alone is that `::set{run.<path> = <value>}`. The target path is
 named by **`into`** and must be declared in your schema. **`value`** defaults to `true` for a
 bool path; an `enum` or numeric (`int` or `double`) path requires an explicit `value`. (0.6.0 removed the old
 `persist="run"` attribute; a stray `persist=` is now `E-PERSIST-REMOVED`, and `lute fix` deletes it
@@ -61,6 +69,37 @@ has already cleared:
   </otherwise>
 </match>
 ```
+
+## Free-text input
+
+Lute has no text-entry construct and does not need one: asking the player to type an answer is a
+[bridge](/plugins/bridge/) call. A plugin declares a blocking bridge directive whose `effects.writes`
+entry reads `fromBridgeResult`; the host shows its text box, and the typed answer lands in a state
+slot the directive declares. A `<match>` or `<branch>` then reads that slot like any other state.
+
+```lute
+@guard: Halt. What is the password?
+
+::ask{slot="password"}
+
+<match subject="scene.ask.password.answer">
+  <when is="swordfish">
+    @guard: Pass, friend.
+  </when>
+  <otherwise>
+    @guard: Wrong. Move along.
+  </otherwise>
+</match>
+```
+
+The call blocks, so `scene.ask.password.answer` is assigned after `::ask` (see
+[Sync semantics](/plugins/bridge/#sync-semantics--the-stale-default-trap)) and the `<match>` reads it
+without a guard. Write `wait="false"` only for a fire-and-continue call: the read is then
+`E-MAYBE-UNSET` again, because nothing waits for the answer.
+The host half — what it receives and how it answers — is in the
+[runtime contract](/tooling/runtime-contract/). The checked example is
+[`docs/examples/free-text-input/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/free-text-input), with a
+`lute test` for the right and the wrong answer.
 
 ## The compiled record
 

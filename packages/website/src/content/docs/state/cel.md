@@ -60,6 +60,21 @@ When the relational layer is in play, conditions may also read the fact database
 
 Since 0.21.0, every condition slot may also call `visited('<scene id>')` — true once that scene has been presented in this save, the same visited set a scene's `after:` reads. The argument is one string literal naming a scene of the project, or, since 0.23.0, a [bundle beat](/language/beats/#beat-bundles) by its canonical `<document id>.<beat id>` (`E-CONN-UNKNOWN-NODE` in whole-project `lute check` otherwise). See [Quests & scenes](/language/quests-and-scenes/#quests-meet-scenes-and-occasions).
 
+## Presence of a `per:` member
+
+A `per:` family is indexed by a member of its kind, and a member whose name is not a CEL identifier (`look-around`) is written quoted, `user.stepRank["look-around"]`. To ask whether such a member is set, write the membership form (0.49.0):
+
+```lute
+@guide{when="'look-around' in user.stepRank"}: You have already looked around.
+@guide{when="!('look-around' in user.stepRank)"}: Take a look around first.
+```
+
+`'<member>' in <family>`, with a string literal and a `per:` family, is a presence guard of `<family>.<member>`, exactly equivalent to `has()` of the dotted member: when it is true the member is assigned for the rest of the guarded body, and its negation proves the opposite. A literal that is not a member of the family gets the diagnostic a read of `<family>["<literal>"]` gets. `lute trace` and the runtime evaluate it as `has()`.
+
+`has(user.stepRank["look-around"])` stays `E-CEL-PARSE`, now with the hint ``— `has()` takes a field; for a member that is not an identifier write `'<m>' in <family>` ``.
+
+Every message that names a presence test spells it the same way: `has(<path>)` / `!has(<path>)` when every segment after the root is an identifier, and `'<m>' in <family>` / `!('<m>' in <family>)` when the last segment is a `per:` member that is not. For any other path with a non-identifier segment there is no guard spelling, so the message names only the `after:` and `default:` remedies.
+
 ## Interpolation is not CEL
 
 A `{{…}}` interpolation in content text is not a CEL expression. It names one value: a state path (in a beat that runs for a kind's members, also a `per:` family indexed by the member, `{{user.bond[occasion.target]}}`), `{{occasion.target}}` itself there, a def `@ref` / `@ref(args)`, or `userName`. A computed value needs a def. Since 0.24.0 an interpolation may carry one **format hint** after a colon: `{{user.deaths:ordinal}}` renders `1st`, `2nd`, `3rd`, `11th`, `21st`, `111th` (see [Interpolation](/language/dialogue-and-cast/#interpolation)). The hints are `ordinal`, `ordinalWord`, `cardinalWord` and `plural(one|other)` for an `int` or `double`, and `capitalize`, `start` and `indefinite` for text; any other name is `E-CEL-PROFILE`. A numeric hint on a string, enum or bool path or def, or on `{{userName}}`, is `E-REF-TYPE`, and so is a text hint on a numeric path or a bool.

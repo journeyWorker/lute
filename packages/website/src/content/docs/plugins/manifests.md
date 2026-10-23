@@ -40,7 +40,7 @@ An option's value is the active profile's, otherwise its declared `default:`. An
 
 ## Export files
 
-Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, and shape refs; since dsl 0.26.0 a directive attribute may also be typed `{ entity: <kind> }`, [below](#engine-ids-typed-by-an-entity-kind)). State paths use **structured segments**, never `$name` interpolation.
+Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, and shape refs; since dsl 0.26.0 a directive attribute may also be typed `{ entity: <kind> }`, [below](#engine-ids-typed-by-an-entity-kind)). State paths use **structured segments**, never `$name` interpolation. A *directive attribute* or `stampAttrs` entry cannot be typed `list`, `map` or `record` at its top level (since 0.49): an attribute value is written as one scalar, so no `.lute` value could satisfy it, and the plugin load fails with `E-PLUGIN-INVALID-DIRECTIVE`, naming the attribute (``stamp attribute `tags` `` for a stamp) and suggesting a `string` parsed in the host or one attribute per field. Plugin `options:`, frontmatter keys, state shapes and bridge results keep these types, because YAML can write them.
 
 - `directives/*.yaml` — `::name` directive declarations (see [Bridge](/plugins/bridge/)).
 - `state/*.yaml` — reusable typed record shapes (`stateShapes:`) and structured path templates (`stateTemplates:`); one file may hold both (since 0.24.0; before, the second was dropped).
@@ -333,8 +333,9 @@ rewardKinds:
 | `entity: <kind>` | the target is a member of that project entity kind; a non-member is `E-REWARD-TARGET` with a did-you-mean |
 | `provider: <name>` | the target is an id of that provider's catalog; the provider must be active (the plugin load fails otherwise), an unknown id is `E-REWARD-TARGET`, and a stale snapshot only warns (`W-CATALOG-STALE`) |
 | `required: true` | a reward of the kind without `target=` is `E-REWARD-TARGET`; without it a target may be omitted |
+| `forbidden: true` | the kind takes no target: a `<reward>` of it with `target=` is `E-REWARD-TARGET` at the `target=` attribute (since 0.49) |
 
-A contract names `entity:` or `provider:`, not both: one with both fails the plugin load (`E-PLUGIN-PARSE`). A kind without `target:` takes any `target=` or none, as before. The ITEM contract above catches both mistakes a hand-maintained list lets through:
+A contract names `entity:` or `provider:`, not both: one with both fails the plugin load (`E-PLUGIN-PARSE`). A kind without `target:` takes any `target=` or none, as before. A kind that takes no target says so with `target: { forbidden: true }`, which stands **alone**: combined with `provider`, `entity` or `required` it fails the plugin load, because a kind that takes no target cannot also name an id space or require one. For `COINS: { target: { forbidden: true } }`, ``<reward kind="COINS" target="x"/>`` is `E-REWARD-TARGET`: `` <reward kind="COINS"> takes no `target=`: its reward kind declares `target: { forbidden: true }` — remove the attribute``. Adding the key does not change an existing `capabilitySnapshot`. The ITEM contract above catches both mistakes a hand-maintained list lets through:
 
 <!-- lute-diagnostics -->
 ```
@@ -370,20 +371,22 @@ stampAttrs:
 
 Entries are ordinary `AttrDecl`s — the same `{ name, required?, type, default? }` shape a directive attr uses — but they are admissible on **every** directive *and* on content lines (`@speaker{…}: text`), on top of that surface's own attributes. Resolution is strict: the surface's own declarations win, then `stampAttrs`, then `E-UNKNOWN-ATTR`. Value typing rides the existing attribute path, so a mistyped one is a plain `E-ATTR-TYPE` / `E-BAD-ENUM` — no new rules.
 
-`::sfx{sound="chime" bonusId="b-02"}` followed by `@marina{code="0010" bonusId="b-01" bonusScore="7"}: Welcome back.` compiles to two records that each carry the attribute **flattened onto the record's top level**, beside the core keys (`kind`, `family`, `position`, `timing`) — never in the record's own `fields`:
+`::sfx{sound="chime" bonusId="b-02"}` followed by `@marina{code="0010" bonusId="b-01" bonusScore="7"}: Welcome back.` compiles to two records that each carry the attribute in **one nested `stamps` object** (since 0.49), after the core keys (`kind`, `family`, `position`, `timing`) — never flattened beside the record's own keys and never in its `fields`:
 
 ```json
-{ "kind": "sfx", "family": "staging", "position": "001-0100", "sound": "chime", "bonusId": "b-02" }
+{ "kind": "sfx", "family": "staging", "position": "001-0100", "sound": "chime", "stamps": { "bonusId": "b-02" } }
 { "kind": "line", "family": "content", "position": "001-0200", "role": "dialogue",
   "speaker": "marina", "text": "Welcome back.", "lineId": "marina.s01ep01.marina_0010",
-  "voiceKey": "marina.s01ep01.marina-0010", "bonusId": "b-01", "bonusScore": 7 }
+  "voiceKey": "marina.s01ep01.marina-0010", "stamps": { "bonusId": "b-01", "bonusScore": 7 } }
 ```
+
+Each entry's JSON value is typed by the declaring plugin's attribute declaration, as before. The object is omitted when no stamp was authored, so a record without one is unchanged. Because the stamps live under their own key, a plugin stamp named like a key of its carrier (`tag`, `speaker`, `text`, `label`, `name`, `id`, …) can no longer collide with it; before 0.49 such a stamp wrote that key twice. The same `stamps` object reaches the host beside, and never merged into, the `attrs` of a plugin event record and of a [bridge](/plugins/bridge/) call.
 
 An **unauthored** stamp attribute is not injected — not even when its declaration carries a `default`. Absent means absent, so declaring a cross-cutting vocabulary and authoring none of it leaves the artifact byte-identical. The declaration is not free, though: `stampAttrs` participates in `capabilitySnapshot`, because a changed cross-cutting vocabulary is a changed capability surface and an engine must be able to refuse the mismatch.
 
 ### Reserved stamp keys
 
-The core stamp owns eight names — `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`, `source`. A plugin declaring an attribute under any of them is rejected at assembly with **`E-PLUGIN-RESERVED-STAMP-ATTR`**:
+The core stamp owns eight names — `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`, `source`. `at`, `duration`, `delay`, `wait` and `timeline` are authoring keys that compile into `timing`; `timing`, `provenance` and `source` stay flattened record keys. The nested `stamps` object removes the *JSON* collision for every other name, but these eight stay reserved, since a plugin stamp named like one would still be ambiguous to the author. A plugin declaring an attribute under any of them is rejected at assembly with **`E-PLUGIN-RESERVED-STAMP-ATTR`**:
 
 <!-- lute-diagnostics -->
 ```

@@ -1,0 +1,6 @@
+file: ../scenes/password.lute
+bridges: { ask: [ { answer: swordfish } ] }
+expect:
+  end: complete
+  transcriptContains:
+    - "Pass, friend."

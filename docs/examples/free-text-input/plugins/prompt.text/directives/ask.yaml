@@ -1,0 +1,16 @@
+# A blocking bridge call: the host shows a text box and answers with the typed string.
+# `wait` is the language's blocking key (not declared here); the write below reads a
+# bridge result, so the call blocks and `scene.ask.<slot>.answer` is assigned after it.
+directives:
+  - name: ask
+    layer: bridge
+    attrs:
+      - { name: slot, required: true, type: { slotId: { namespace: scene.ask } } }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [ask, { fromAttr: { name: slot, slotType: localId } }], shape: textAnswer }
+    effects:
+      writes:
+        - { scope: scene, path: [ask, { fromAttr: { name: slot } }, answer], value: { fromBridgeResult: answer } }
+    bridge: { service: prompt, operation: ask }
