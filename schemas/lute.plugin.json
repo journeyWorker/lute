@@ -862,11 +862,6 @@
                 ]
               },
               {
-                "properties": {
-                  "required": {
-                    "const": true
-                  }
-                },
                 "required": [
                   "required"
                 ]

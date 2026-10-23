@@ -480,10 +480,12 @@ describe("lute.plugin.json — plugin manifest + export files", () => {
     const kinds = (target) => ({ rewardKinds: { COINS: { target } } });
     expect(validateAgainst(ajv, pluginSchema.$id, kinds({ forbidden: true })).ok).toBe(true);
     expect(validateAgainst(ajv, pluginSchema.$id, kinds({ provider: "items" })).ok).toBe(true);
+    expect(validateAgainst(ajv, pluginSchema.$id, kinds({ forbidden: false, required: true })).ok).toBe(true);
     for (const bad of [
       { forbidden: true, provider: "items" },
       { forbidden: true, entity: "keepsake" },
       { forbidden: true, required: true },
+      { forbidden: true, required: false },
       { provider: "items", entity: "keepsake" },
       { forbade: true },
     ]) {

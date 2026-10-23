@@ -335,8 +335,9 @@ fn required_rejects_a_missing_target_and_only_then() {
 }
 
 /// 0.49.0 §3.3 (#168): a kind declaring `target: { forbidden: true }`
-/// rejects a `<reward>` with `target=`, at the attribute, and accepts one
-/// without it.
+/// rejects a `<reward>` with `target=` — quoted, an `@ref`, or bare (the
+/// last two stay in the reward's residual attrs) — at the authored value,
+/// and accepts one without it.
 #[test]
 fn forbidden_rejects_a_target_at_the_attribute() {
     let forbidden = || lute_manifest::schema::RewardTarget {
@@ -350,42 +351,50 @@ fn forbidden_rejects_a_target_at_the_attribute() {
     );
     assert!(none.is_empty(), "no target is clean: {none:?}");
 
-    let rewards = "<reward kind=\"ITEM\" target=\"goodRod\"/>\n";
-    let text = format!(
-        "---\nkind: quest\nentities:\n  bagItem: {{ members: [goodRod, potion] }}\n  \
-         loot: {{ open: engine }}\n---\n<quest id=\"q\">\n{rewards}</quest>\n"
-    );
-    let input = CheckInput::new(
-        text.clone(),
-        "reward".into(),
-        Mode::Author,
-        lute_check::InputSources::from_parts(
-            snap_with_target(forbidden()),
-            ProviderSet::default(),
-            SchemaImports::default(),
-            Default::default(),
-            Default::default(),
-        ),
-    );
-    let diags: Vec<_> = check(&input)
-        .diagnostics
-        .into_iter()
-        .filter(|d| d.code == "E-REWARD-TARGET")
-        .collect();
-    assert_eq!(diags.len(), 1, "{diags:?}");
-    let d = &diags[0];
-    assert_eq!(d.severity, Severity::Error);
-    assert_eq!(
-        d.message,
-        "`<reward kind=\"ITEM\">` takes no `target=`: its reward kind declares \
-         `target: { forbidden: true }` — remove the attribute"
-    );
-    let at = text.find("goodRod\"/>").unwrap();
-    assert_eq!(
-        (d.span.byte_start, d.span.byte_end),
-        (at, at + "goodRod".len()),
-        "anchored at the `target=` value, like every `E-REWARD-TARGET`"
-    );
+    // (authored attribute, the text the diagnostic spans)
+    for (attr, anchor) in [
+        ("target=\"goodRod\"", "goodRod"),
+        ("target=@goodRod", "@goodRod"),
+        ("target", "target"),
+    ] {
+        let text = format!(
+            "---\nkind: quest\nentities:\n  bagItem: {{ members: [goodRod, potion] }}\n  \
+             loot: {{ open: engine }}\n---\n<quest id=\"q\">\n<reward kind=\"ITEM\" {attr}/>\n\
+             </quest>\n"
+        );
+        let input = CheckInput::new(
+            text.clone(),
+            "reward".into(),
+            Mode::Author,
+            lute_check::InputSources::from_parts(
+                snap_with_target(forbidden()),
+                ProviderSet::default(),
+                SchemaImports::default(),
+                Default::default(),
+                Default::default(),
+            ),
+        );
+        let diags: Vec<_> = check(&input)
+            .diagnostics
+            .into_iter()
+            .filter(|d| d.code == "E-REWARD-TARGET")
+            .collect();
+        assert_eq!(diags.len(), 1, "{attr}: {diags:?}");
+        let d = &diags[0];
+        assert_eq!(d.severity, Severity::Error);
+        assert_eq!(
+            d.message,
+            "`<reward kind=\"ITEM\">` takes no `target=`: its reward kind declares \
+             `target: { forbidden: true }` — remove the attribute"
+        );
+        let at = text.find(attr).unwrap() + attr.find(anchor).unwrap();
+        assert_eq!(
+            &text[d.span.byte_start..d.span.byte_end],
+            anchor,
+            "{attr}: anchored at the authored value"
+        );
+        assert_eq!(d.span.byte_start, at, "{attr}");
+    }
 }
 
 #[test]

@@ -897,6 +897,10 @@ fn reward_kind_target_forbidden_is_exclusive() {
         ("forbidden-provider", "{ forbidden: true, provider: items }"),
         ("forbidden-entity", "{ forbidden: true, entity: bagItem }"),
         ("forbidden-required", "{ forbidden: true, required: true }"),
+        (
+            "forbidden-not-required",
+            "{ forbidden: true, required: false }",
+        ),
     ] {
         let errs = load_plugin_dir(&pkg(tag, target)).expect_err(target);
         let msg = format!("{errs:?}");

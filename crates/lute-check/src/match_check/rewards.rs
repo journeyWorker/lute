@@ -138,6 +138,27 @@ fn check_reward_target(
     env: &RewardTargetEnv<'_>,
 ) -> Option<Diagnostic> {
     let kind = r.kind.trim();
+    if contract.forbidden {
+        // Only a quoted `target="…"` is lifted into `r.target`; an `@ref` or
+        // a bare `target` stays in `attrs`, and is an authored target too.
+        let at = r.target_span.or_else(|| {
+            r.attrs
+                .iter()
+                .find(|a| a.key == "target")
+                .map(|a| a.value_span)
+        });
+        return at.map(|at| {
+            diag(
+                E_REWARD_TARGET,
+                Severity::Error,
+                format!(
+                    "`<reward kind=\"{kind}\">` takes no `target=`: its reward kind declares \
+                     `target: {{ forbidden: true }}` — remove the attribute"
+                ),
+                at,
+            )
+        });
+    }
     let Some(target) = r.target.as_deref() else {
         return contract.required.then(|| {
             diag(
@@ -152,17 +173,6 @@ fn check_reward_target(
         });
     };
     let at = r.target_span.unwrap_or(r.span);
-    if contract.forbidden {
-        return Some(diag(
-            E_REWARD_TARGET,
-            Severity::Error,
-            format!(
-                "`<reward kind=\"{kind}\">` takes no `target=`: its reward kind declares \
-                 `target: {{ forbidden: true }}` — remove the attribute"
-            ),
-            at,
-        ));
-    }
     if let Some(entity) = contract.entity.as_deref() {
         let message = match env.kinds.get(entity).map(|d| &d.shape) {
             None if env.kinds.is_empty() => format!(

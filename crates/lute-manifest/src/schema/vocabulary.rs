@@ -221,8 +221,10 @@ struct RawRewardTarget {
     provider: Option<String>,
     #[serde(default)]
     entity: Option<String>,
+    /// `Option` so `forbidden: true` can refuse any `required:` key, even
+    /// `required: false` (0.49.0 §3.3: `forbidden: true` alone).
     #[serde(default)]
-    required: bool,
+    required: Option<bool>,
     #[serde(default)]
     forbidden: bool,
 }
@@ -235,7 +237,9 @@ impl TryFrom<RawRewardTarget> for RewardTarget {
                 "a reward kind's `target:` takes `provider:` or `entity:`, not both".to_string(),
             ));
         }
-        if raw.forbidden && (raw.provider.is_some() || raw.entity.is_some() || raw.required) {
+        if raw.forbidden
+            && (raw.provider.is_some() || raw.entity.is_some() || raw.required.is_some())
+        {
             return Err(SchemaError::RewardTarget(
                 "a reward kind's `target:` takes `forbidden: true` alone — a kind that takes \
                  no target cannot also name an id space or require one"
@@ -245,7 +249,7 @@ impl TryFrom<RawRewardTarget> for RewardTarget {
         Ok(RewardTarget {
             provider: raw.provider,
             entity: raw.entity,
-            required: raw.required,
+            required: raw.required.unwrap_or(false),
             forbidden: raw.forbidden,
         })
     }
