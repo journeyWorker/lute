@@ -289,7 +289,7 @@ Every root kind also accepts `title`, `luteVersion`, `contentLang`, `profile`, `
 spelling. `title:` is the only document title: a `# Title` line in the body is `E-INERT-TITLE`. A
 quest's graph edge is the `follows=` attribute on `<quest>`. It is not a frontmatter key.
 
-A plugin frontmatter key typed `entity`, `domain`, `enumFromOption`, `providerRef` or `assetKind` is checked against its set (0.49.0): a string outside it is `E-BAD-ENUM` with a did-you-mean (`` `mirra` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`? ``), a `list` of such a type checks each element, and a non-string value stays `E-FRONTMATTER-SCHEMA`.
+A plugin frontmatter key typed `entity`, `domain`, `enumFromOption`, `providerRef` or `assetKind` is checked (0.49.0) with the same type-specific validation as an attribute of that type: `providerRef` gives `E-UNKNOWN-ID` (and possibly `W-CATALOG-STALE`), asset kinds give `E-ASSET-*`, and an entity or enum typo is `E-BAD-ENUM` with a did-you-mean, for example (`` `mirra` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`? ``), a `list` of such a type checks each element, and a non-string value stays `E-FRONTMATTER-SCHEMA`.
 
 → [Frontmatter & profiles](/language/frontmatter-and-profiles/)
 

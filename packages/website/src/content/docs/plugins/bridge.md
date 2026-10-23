@@ -100,7 +100,7 @@ The scene writes nothing by hand. It runs the bridge, then reads the declared sl
 
 ## Sync semantics
 
-A bridge call that writes a result blocks, and its result writes are a **definite assignment after the call** (since 0.49). A *blocking bridge call* is a plugin directive call whose declaration has at least one `effects.writes` entry valued `fromBridgeResult` and whose effective core `wait` is not `false`. The checker treats each resolved result path of an unguarded blocking call as assigned from the call on, so the `<match>` above reads `scene.minigame.service01.rank` with no `E-MAYBE-UNSET`, and removing an arm from it reports `E-NONEXHAUSTIVE`. Under a `when=` guard the writes belong only to the guarded fork.
+A bridge call that writes a result blocks, and its result writes are a **definite assignment after the call** (since 0.49). A *blocking bridge call* is a plugin directive call whose declaration has at least one `effects.writes` entry valued `fromBridgeResult` and whose effective core `wait` is not `false`. The checker treats each resolved result path of an unguarded blocking call as assigned from the call on, so the `<match>` above reads `scene.minigame.service01.rank` with no `E-MAYBE-UNSET`, and removing its `<otherwise>` arm (which leaves `fail` uncovered) reports `E-NONEXHAUSTIVE`. Under a `when=` guard the writes belong only to the guarded fork.
 
 `wait` is the language's blocking key. With **`wait="false"`** the call is fire-and-continue, the writes are *not* assumed, and a following read of the result keeps `E-MAYBE-UNSET`.
 

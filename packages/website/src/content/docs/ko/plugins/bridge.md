@@ -94,7 +94,7 @@ directives:
 
 ## 동기화 의미론
 
-결과를 쓰는 브리지 호출은 블로킹되며, 그 결과 쓰기는 **호출 이후의 확정 할당**입니다(0.49부터). *블로킹 브리지 호출*은 선언에 `fromBridgeResult` 값을 가진 `effects.writes` 항목이 하나 이상 있고 유효한 코어 `wait`가 `false`가 아닌 플러그인 디렉티브 호출입니다. 체커는 보호되지 않은 블로킹 호출의 해석된 각 결과 경로를 호출 시점부터 할당된 것으로 취급하므로, 위의 `<match>`는 `E-MAYBE-UNSET` 없이 `scene.minigame.service01.rank`를 읽으며 그 arm 하나를 지우면 `E-NONEXHAUSTIVE`가 보고됩니다. `when=` 가드 아래에서는 쓰기가 가드된 분기에만 속합니다.
+결과를 쓰는 브리지 호출은 블로킹되며, 그 결과 쓰기는 **호출 이후의 확정 할당**입니다(0.49부터). *블로킹 브리지 호출*은 선언에 `fromBridgeResult` 값을 가진 `effects.writes` 항목이 하나 이상 있고 유효한 코어 `wait`가 `false`가 아닌 플러그인 디렉티브 호출입니다. 체커는 보호되지 않은 블로킹 호출의 해석된 각 결과 경로를 호출 시점부터 할당된 것으로 취급하므로, 위의 `<match>`는 `E-MAYBE-UNSET` 없이 `scene.minigame.service01.rank`를 읽으며 `<otherwise>` arm을 지우면(`fail`이 처리되지 않은 채 남음) `E-NONEXHAUSTIVE`가 보고됩니다. `when=` 가드 아래에서는 쓰기가 가드된 분기에만 속합니다.
 
 `wait`는 언어의 블로킹 키입니다. **`wait="false"`**이면 호출은 fire-and-continue이고, 쓰기는 할당된 것으로 가정되지 *않으며*, 이어지는 결과 읽기는 `E-MAYBE-UNSET`을 유지합니다.
 

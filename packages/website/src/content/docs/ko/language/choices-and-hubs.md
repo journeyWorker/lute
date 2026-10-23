@@ -85,7 +85,7 @@ Lute에는 텍스트 입력 구성물이 없고, 필요하지도 않습니다. �
 </match>
 ```
 
-호출이 블로킹이므로 `scene.ask.password.answer`는 `::ask` 뒤에 대입된 상태가 되고([동기화 의미론](/ko/plugins/bridge/#동기화-의미론과-오래된-기본값-함정) 참고) `<match>`는 가드 없이 읽습니다. `wait="false"`는 호출하고 계속 진행하는 경우에만 쓰세요. 그러면 아무것도 답을 기다리지 않으므로 읽기가 다시 `E-MAYBE-UNSET`입니다. 호스트 쪽 — 무엇을 받고 어떻게 답하는지 — 은 [런타임 계약](/ko/tooling/runtime-contract/)에 있습니다. 검사되는 예제는 [`docs/examples/free-text-input/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/free-text-input)이며, 맞는 답과 틀린 답에 대한 `lute test`가 있습니다.
+호출이 블로킹이므로 `scene.ask.password.answer`는 `::ask` 뒤에 대입된 상태가 되고([동기화 의미론](/ko/plugins/bridge/#동기화-의미론) 참고) `<match>`는 가드 없이 읽습니다. `wait="false"`는 호출하고 계속 진행하는 경우에만 쓰세요. 논블로킹 호출은 확정 할당 보장을 더하지 않으므로, 기본값이 없고 다른 것으로 보호되지 않는 결과를 읽으면 `E-MAYBE-UNSET`이 보고될 수 있습니다. 호스트 쪽 — 무엇을 받고 어떻게 답하는지 — 은 [런타임 계약](/ko/tooling/runtime-contract/)에 있습니다. 검사되는 예제는 [`docs/examples/free-text-input/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/free-text-input)이며, 맞는 답과 틀린 답에 대한 `lute test`가 있습니다.
 
 ## 컴파일된 기록
 

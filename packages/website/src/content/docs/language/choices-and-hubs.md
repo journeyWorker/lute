@@ -93,9 +93,10 @@ slot the directive declares. A `<match>` or `<branch>` then reads that slot like
 ```
 
 The call blocks, so `scene.ask.password.answer` is assigned after `::ask` (see
-[Sync semantics](/plugins/bridge/#sync-semantics--the-stale-default-trap)) and the `<match>` reads it
-without a guard. Write `wait="false"` only for a fire-and-continue call: the read is then
-`E-MAYBE-UNSET` again, because nothing waits for the answer.
+[Sync semantics](/plugins/bridge/#sync-semantics)) and the `<match>` reads it
+without a guard. Write `wait="false"` only for a fire-and-continue call: a non-blocking call adds no
+definite-assignment guarantee, so a read of an undefaulted result that nothing else
+protects can report `E-MAYBE-UNSET`.
 The host half — what it receives and how it answers — is in the
 [runtime contract](/tooling/runtime-contract/). The checked example is
 [`docs/examples/free-text-input/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/free-text-input), with a

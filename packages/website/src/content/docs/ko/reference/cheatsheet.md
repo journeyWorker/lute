@@ -306,7 +306,7 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`는 `bool`이고, `count
 제목은 프론트매터 `title:` 하나뿐이며, 본문의 `# 제목`은 `E-INERT-TITLE`입니다. 퀘스트의 그래프 간선은
 `<quest>`의 `follows=` 속성이며, 프론트매터 키가 아닙니다.
 
-플러그인 프론트매터 키 중 타입이 `entity`, `domain`, `enumFromOption`, `providerRef`, `assetKind`인 키는 그 집합에 대해 검사됩니다(0.49.0). 집합 밖의 문자열은 비슷한 이름 제안과 함께 `E-BAD-ENUM`입니다(`` `mirra` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`? ``). 그런 타입의 `list`는 각 원소를 검사하고, 문자열이 아닌 값은 계속 `E-FRONTMATTER-SCHEMA`입니다.
+플러그인 프론트매터 키 중 타입이 `entity`, `domain`, `enumFromOption`, `providerRef`, `assetKind`인 키는 해당 타입의 속성과 같은 타입별 검증으로 검사됩니다(0.49.0). `providerRef`는 `E-UNKNOWN-ID`(경우에 따라 `W-CATALOG-STALE`), 에셋 종류는 `E-ASSET-*`가 되고, 엔티티·enum 오타는 비슷한 이름 제안과 함께 `E-BAD-ENUM`입니다. 예를 들면 (`` `mirra` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`? ``). 그런 타입의 `list`는 각 원소를 검사하고, 문자열이 아닌 값은 계속 `E-FRONTMATTER-SCHEMA`입니다.
 
 → [프론트매터와 프로필](/ko/language/frontmatter-and-profiles/)
 
