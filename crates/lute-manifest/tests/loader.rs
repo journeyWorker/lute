@@ -912,6 +912,24 @@ fn reward_kind_target_forbidden_is_exclusive() {
             "{target}: {msg}"
         );
     }
+    // A present `required:` must be a bool: `null` is not read as omitted,
+    // with or without `forbidden: true` (0.48.1 refused it as not a bool).
+    for (tag, target) in [
+        ("required-null", "{ required: null }"),
+        (
+            "forbidden-required-null",
+            "{ forbidden: true, required: null }",
+        ),
+    ] {
+        let errs = load_plugin_dir(&pkg(tag, target)).expect_err(target);
+        let msg = format!("{errs:?}");
+        assert!(
+            msg.contains(
+                "`rewardKinds.COINS.target.required` is empty, where `true` or `false` is expected"
+            ),
+            "{target}: {msg}"
+        );
+    }
 }
 
 /// 0.49.0 §3.3: `capabilitySnapshot` hashes `RewardTarget`'s `Debug`, which

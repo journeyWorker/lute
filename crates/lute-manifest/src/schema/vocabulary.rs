@@ -222,11 +222,21 @@ struct RawRewardTarget {
     #[serde(default)]
     entity: Option<String>,
     /// `Option` so `forbidden: true` can refuse any `required:` key, even
-    /// `required: false` (0.49.0 §3.3: `forbidden: true` alone).
-    #[serde(default)]
+    /// `required: false` (0.49.0 §3.3: `forbidden: true` alone). A present
+    /// key must be a bool: `required: null` is refused, as on 0.48.1, not
+    /// read as omitted.
+    #[serde(default, deserialize_with = "present_bool")]
     required: Option<bool>,
     #[serde(default)]
     forbidden: bool,
+}
+
+/// A present key read as a `bool` (`null` is a type error); `#[serde(default)]`
+/// keeps an omitted key `None`.
+fn present_bool<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Option<bool>, D::Error> {
+    bool::deserialize(deserializer).map(Some)
 }
 
 impl TryFrom<RawRewardTarget> for RewardTarget {
