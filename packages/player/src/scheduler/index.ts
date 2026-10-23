@@ -29,8 +29,9 @@ const makeScheduler = (events: PubSub.PubSub<SchedulerEvent>): CueSchedulerShape
     const settledStage: Array<Fiber.Fiber<void, never>> = []
     const pending: Array<Deferred.Deferred<void>> = []
     // A `timing.wait: false` line (spec 0.49.0 §4.2) runs on its own fiber so
-    // the staging cues after it start while it is presented; the next line and
-    // the batch's settling still wait for its release.
+    // the staging cues after it start while it is presented. The next line, a
+    // `presentation` (it clears the dialogue window) and the batch's settling
+    // still wait for its release.
     let heldLine: Fiber.Fiber<void, never> | undefined
     const publish = (event: SchedulerEvent): Effect.Effect<void> => PubSub.publish(events, event)
 
@@ -108,9 +109,11 @@ const makeScheduler = (events: PubSub.PubSub<SchedulerEvent>): CueSchedulerShape
         }
         continue
       }
-      if (cue.kind === "line") {
-        if (heldLine !== undefined) yield* Fiber.join(heldLine)
+      if ((cue.kind === "line" || cue.kind === "presentation") && heldLine !== undefined) {
+        yield* Fiber.join(heldLine)
         heldLine = undefined
+      }
+      if (cue.kind === "line") {
         if (cue.timing.wait) yield* runCue(cue, index)
         else {
           // The line begins (typing, or completed under skip) before the cues after it run.

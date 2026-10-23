@@ -1,3 +1,10 @@
 state:
   run.over: { type: bool, default: false }
+  run.day: { type: int, default: 1, owner: engine }
+  run.slot: { type: { enum: [morning, evening] }, default: evening, owner: engine }
+clock:
+  day: run.day
+  slot: run.slot
+  slots: [morning, evening]
+  raise: tick
 terminal: "run.over"

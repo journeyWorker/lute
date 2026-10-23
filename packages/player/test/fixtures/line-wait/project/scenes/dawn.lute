@@ -1,0 +1,12 @@
+---
+kind: scene
+id: dawn
+title: Dawn
+on: tick
+once: false
+---
+
+## Dawn
+
+@narrator{code="0010"}: Morning comes.
+::set{run.over = true}

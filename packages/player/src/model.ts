@@ -46,7 +46,7 @@ export interface CueTiming {
   /**
    * The batch waits for this cue to finish (`timing.wait`; sequences always).
    * A line always waits for its release; `false` lets the cues after it run
-   * while it is presented, up to the next line (spec 0.49.0 §4.2).
+   * while it is presented, up to the next line or presentation (spec 0.49.0 §4.2).
    */
   readonly wait: boolean
   /** Timeline ordinal and start offset (`timing.timeline`, `timing.at`). */

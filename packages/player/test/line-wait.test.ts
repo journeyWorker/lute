@@ -1,7 +1,8 @@
 /**
  * Lute 0.49.0 §4.2 (#174): a line's `timing.wait: false` lets the staging
- * cues after it start while it is presented; the next line still waits for
- * its release. Over the compiled `line-wait` fixture.
+ * cues after it start while it is presented; the next line and a following
+ * presentation (which clears the window) still wait for its release. Over the
+ * compiled `line-wait` fixture.
  */
 import { Effect } from "effect"
 import { describe, expect, it } from "@effect/vitest"
@@ -32,5 +33,21 @@ describe("line wait (0.49.0 §4.2)", () => {
     yield* handle.actions({ type: "advance" })
     yield* flush
     expect(recorded.effects).toEqual(["stage Background", "stage Background"])
+  }))))
+
+  it.effect("a wait=\"false\" line starts the following bg before its advance; the next presentation's clear still waits", () => overLineWait(Effect.scoped(Effect.gen(function* () {
+    const recorded = recorder()
+    const handle = yield* player(recorded, {}, { ...quayBindings, flow: { newGame: { occasion: "begin" } } })
+
+    yield* handle.actions({ type: "newGame" })
+    yield* flush
+    // `porch`'s line stays presented: `dawn`'s presentation has not cleared it, though the bg started.
+    expect(recorded.dialogue).toEqual(["clear", "line The porch light hums."])
+    expect(recorded.effects).toEqual(["stage Background"])
+
+    yield* handle.actions({ type: "advance" })
+    yield* flush
+    // The release clears the line, then `dawn`'s presentation clears the window before its line.
+    expect(recorded.dialogue).toEqual(["clear", "line The porch light hums.", "clear", "clear", "line Morning comes."])
   }))))
 })
