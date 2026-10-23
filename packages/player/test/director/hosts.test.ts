@@ -10,7 +10,8 @@ import * as Cues from "../../src/cues/index.js"
 import { DirectorBusy } from "../../src/director/index.js"
 import { SaveIncompatible } from "../../src/session/index.js"
 import type { Bindings } from "../../src/bindings/schema.js"
-import type { Input } from "../../src/model.js"
+import type { BridgeAwait, Input } from "../../src/model.js"
+import type { PluginCall } from "../../src/ports/index.js"
 import { flush, withHarness } from "./support.js"
 import type { Harness } from "./support.js"
 
@@ -18,6 +19,17 @@ const canvas = { width: 1920, height: 1080 }
 const noFlow: Bindings = { bindingsVersion: "0.48", canvas }
 const visit: Input = { type: "raiseOccasion", occasion: "visit" }
 const gateFixture = join(repositoryRoot, "crates", "lute-cli", "tests", "fixtures", "runtime-gate-041")
+/** 0.49.0 §3.1: `::wave` (non-blocking) and `::battle` (bridge) carrying plugin stamps, raised by `duel` for `foe.kato`. */
+const stampsFixture = join(repositoryRoot, "crates", "lute-cli", "tests", "fixtures", "plugin-stamps-049")
+/** conformance/command-plugin as a `chapter` scene: one unanswered `demo` plugin record. */
+const pluginProject = Effect.suspend(() => {
+  const dir = mkdtempSync(join(tmpdir(), "lute-player-plugin-"))
+  cpSync(join(repositoryRoot, "conformance", "command-plugin"), dir, { recursive: true })
+  for (const file of ["artifact.json", "expected.json", "mock.yaml"]) rmSync(join(dir, file))
+  const source = join(dir, "source.lute")
+  writeFileSync(source, readFileSync(source, "utf8").replace("kind: scene\n", "kind: scene\nid: trial\non: chapter\n"))
+  return compileBundle(dir)
+})
 const failure = <A, E>(exit: Exit.Exit<A, E>) => Option.getOrUndefined(Exit.findErrorOption(exit))
 
 /** Advance through lines until the story waits for something else. */
@@ -302,19 +314,57 @@ describe("bridges and plugin records (§7.6, §7.10)", () => {
       expect(lineText(h)).toEqual(["Persuasion failed.", "Score received."])
     }))
   }))
+
+  it.effect("plugin stamps reach the host beside attrs on the bridge request and the plugin call (0.49.0 §3.1)", () => Effect.gen(function* () {
+    const bundle = yield* compileBundle(stampsFixture)
+    const requests: Array<BridgeAwait> = []
+    const calls: Array<PluginCall> = []
+    yield* withHarness(bundle, {
+      bindings: { ...noFlow, flow: { newGame: { occasion: "duel", target: "foe.kato" } } },
+      host: {
+        bridge: { battle: (request) => Effect.sync(() => { requests.push(request); return { fields: { outcome: "win" } } }) },
+        plugin: {
+          wave: (call) => Effect.sync(() => { calls.push(call) }),
+          battle: (call) => Effect.sync(() => { calls.push(call) })
+        }
+      }
+    }, (h) => Effect.gen(function* () {
+      yield* h.action({ type: "newGame" }); yield* drain(h)
+      expect(lineText(h)).toEqual(["Won."])
+      // Blocking: the bridge request carries the stamps; `tag` stays the call's own key.
+      expect(requests.map(({ tag, attrs, stamps }) => ({ tag, attrs, stamps }))).toEqual([
+        { tag: "battle", attrs: { foe: "kato", resultKey: "fight" }, stamps: { cue: "drums", tag: "opening", tempo: 3 } }
+      ])
+      // Non-blocking: only the unanswered `wave` record reaches `plugin`.
+      expect(calls.map(({ tag, attrs, stamps }) => ({ tag, attrs, stamps }))).toEqual([
+        { tag: "wave", attrs: { to: "kato" }, stamps: { cue: "bell" } }
+      ])
+    }))
+  }))
+
+  it.effect("a call without plugin stamps hands the host no stamps key on either path", () => Effect.gen(function* () {
+    const bridged = yield* compileBundle(join(sessionRoot, "bridge-call", "project"))
+    const requests: Array<BridgeAwait> = []
+    yield* withHarness(bridged, {
+      bindings: { ...noFlow, flow: { newGame: { occasion: "chapter" } } },
+      host: { bridge: { check: (request) => Effect.sync(() => { requests.push(request); return { fields: { passed: true } } }) } }
+    }, (h) => Effect.gen(function* () {
+      yield* h.action({ type: "newGame" }); yield* drain(h)
+      expect(requests.map((request) => "stamps" in request)).toEqual([false])
+    }))
+    const calls: Array<PluginCall> = []
+    yield* withHarness(yield* pluginProject, {
+      bindings: { ...noFlow, flow: { newGame: { occasion: "chapter" } } },
+      host: { plugin: { demo: (call) => Effect.sync(() => { calls.push(call) }) } }
+    }, (h) => Effect.gen(function* () {
+      yield* h.action({ type: "newGame" }); yield* drain(h)
+      expect(calls.map((call) => "stamps" in call)).toEqual([false])
+    }))
+  }))
 })
 
 describe("cue factory composition (§5.3)", () => {
   const bridgeHost = { bindings: { ...noFlow, flow: { newGame: { occasion: "chapter" } } } } as const
-  /** conformance/command-plugin as a `chapter` scene: one unanswered `demo` plugin record. */
-  const pluginProject = Effect.suspend(() => {
-    const dir = mkdtempSync(join(tmpdir(), "lute-player-plugin-"))
-    cpSync(join(repositoryRoot, "conformance", "command-plugin"), dir, { recursive: true })
-    for (const file of ["artifact.json", "expected.json", "mock.yaml"]) rmSync(join(dir, file))
-    const source = join(dir, "source.lute")
-    writeFileSync(source, readFileSync(source, "utf8").replace("kind: scene\n", "kind: scene\nid: trial\non: chapter\n"))
-    return compileBundle(dir)
-  })
   it.effect("host.plugin wins a tag over a pre-composed factory's handler", () => Effect.gen(function* () {
     const bundle = yield* pluginProject
     const calls: Array<string> = []

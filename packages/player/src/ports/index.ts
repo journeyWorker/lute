@@ -274,6 +274,11 @@ export interface PluginCall {
   readonly tag: string
   /** The record's resolved directive attributes. */
   readonly attrs: BridgeAwait["attrs"]
+  /**
+   * The command's plugin stamps (0.49.0 §3.1), beside and never merged into
+   * `attrs`, as on {@link BridgeAwait}; absent when the command carries none.
+   */
+  readonly stamps?: NonNullable<BridgeAwait["stamps"]>
   /** The record's source document. */
   readonly document: string
   readonly position: string

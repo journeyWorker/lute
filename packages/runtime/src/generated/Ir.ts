@@ -65,6 +65,12 @@ export const timing = Schema.Struct({
 export type timing = typeof timing.Type;
 
 /**
+ * plugin stampAttrs values (plugin §14.1), keyed by attribute name
+ */
+export const stamps = Schema.Record(Schema.String, Schema.Json);
+export type stamps = typeof stamps.Type;
+
+/**
  * dsl 0.37.0 §3.6: one presentation segment of a modified line — a coalesced text run or a pause leaf.
  */
 export const segment = Schema.Union([
@@ -704,7 +710,8 @@ export const cmdLine = Schema.Struct({
   "localeSegments": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => segments))),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdLine = typeof cmdLine.Type;
 
@@ -720,7 +727,8 @@ export const cmdBg = Schema.Struct({
   "assetId": Schema.optionalKey(Schema.String),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdBg = typeof cmdBg.Type;
 
@@ -738,7 +746,8 @@ export const cmdMusic = Schema.Struct({
   "assetId": Schema.optionalKey(Schema.String),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdMusic = typeof cmdMusic.Type;
 
@@ -753,7 +762,8 @@ export const cmdSfx = Schema.Struct({
   "assetId": Schema.optionalKey(Schema.String),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdSfx = typeof cmdSfx.Type;
 
@@ -769,7 +779,8 @@ export const cmdVfx = Schema.Struct({
   "transition": Schema.optionalKey(Schema.String),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdVfx = typeof cmdVfx.Type;
 
@@ -790,7 +801,8 @@ export const cmdActor = Schema.Struct({
   "preload": Schema.optionalKey(Schema.Boolean),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdActor = typeof cmdActor.Type;
 
@@ -807,7 +819,8 @@ export const cmdCamera = Schema.Struct({
   "transition": Schema.optionalKey(Schema.String),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 }).check(Schema.makeFilter((value) => [
   [
     "focus"
@@ -836,7 +849,8 @@ export const cmdCg = Schema.Struct({
   "layout": Schema.optionalKey(Schema.String),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdCg = typeof cmdCg.Type;
 
@@ -851,7 +865,8 @@ export const cmdVideo = Schema.Struct({
   "display": Schema.String,
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdVideo = typeof cmdVideo.Type;
 
@@ -865,7 +880,8 @@ export const cmdSequence = Schema.Struct({
   "name": Schema.String,
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdSequence = typeof cmdSequence.Type;
 
@@ -881,7 +897,8 @@ export const cmdSet = Schema.Struct({
   "value": Schema.suspend(() => celSlot),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdSet = typeof cmdSet.Type;
 
@@ -896,7 +913,8 @@ export const cmdAssert = Schema.Struct({
   "args": Schema.Array(Schema.String),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdAssert = typeof cmdAssert.Type;
 
@@ -911,7 +929,8 @@ export const cmdRetract = Schema.Struct({
   "args": Schema.Array(Schema.String),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdRetract = typeof cmdRetract.Type;
 
@@ -936,7 +955,8 @@ export const cmdChoice = Schema.Struct({
   "default": Schema.optionalKey(Schema.String),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdChoice = typeof cmdChoice.Type;
 
@@ -953,7 +973,8 @@ export const cmdMatch = Schema.Struct({
   "converge": Schema.suspend(() => position),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdMatch = typeof cmdMatch.Type;
 
@@ -974,7 +995,8 @@ export const cmdHub = Schema.Struct({
   "return": Schema.optionalKey(Schema.suspend(() => position)),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdHub = typeof cmdHub.Type;
 
@@ -999,7 +1021,8 @@ export const cmdEnd = Schema.Struct({
   "reason": Schema.optionalKey(Schema.String),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdEnd = typeof cmdEnd.Type;
 
@@ -1056,7 +1079,8 @@ export const cmdQuest = Schema.Struct({
   ])),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdQuest = typeof cmdQuest.Type;
 
@@ -1073,7 +1097,8 @@ export const cmdOn = Schema.Struct({
   "target": Schema.optionalKey(Schema.String),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdOn = typeof cmdOn.Type;
 
@@ -1133,7 +1158,8 @@ export const cmdEntry = Schema.Struct({
   ])),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdEntry = typeof cmdEntry.Type;
 
@@ -1150,7 +1176,8 @@ export const cmdAccept = Schema.Struct({
   ])),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdAccept = typeof cmdAccept.Type;
 
@@ -1207,12 +1234,13 @@ export const cmdBeat = Schema.Struct({
   "body": Schema.suspend(() => position),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdBeat = typeof cmdBeat.Type;
 
 /**
- * Plugin-directive passthrough (Rust `Command::Plugin`), serialized as kind `plugin`. Declared fields and effects are opaque to core. Plugin `stampAttrs` cross-cutting attrs appear as further top-level keys beside `timing`.
+ * Plugin-directive passthrough (Rust `Command::Plugin`), serialized as kind `plugin`. Declared fields and effects are opaque to core. Plugin `stampAttrs` cross-cutting attrs are in the nested `stamps` object (0.49.0 §3.1), like on every stamped record.
  */
 export const cmdPlugin = Schema.Struct({
   "kind": Schema.Literal("plugin"),
@@ -1232,7 +1260,8 @@ export const cmdPlugin = Schema.Struct({
   }))),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
-  "source": Schema.optionalKey(Schema.suspend(() => source))
+  "source": Schema.optionalKey(Schema.suspend(() => source)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type cmdPlugin = typeof cmdPlugin.Type;
 

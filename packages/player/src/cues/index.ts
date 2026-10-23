@@ -413,7 +413,7 @@ const makeEventCue = (event: Exclude<Event, { readonly type: "record" }>): Cue =
   return cueBase("clock", timingOf({}, "clock"), false, [], "clock", noop, noop)
 }
 
-const decodeAttrs = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Json))
+const decodeJsonRecord = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Json))
 
 /**
  * A `plugin` record whose tag has a host `plugin` handler: a waiting cue that
@@ -428,8 +428,11 @@ const pluginCue = (
   position: string
 ): Cue => {
   const tag = string(runtimeRecord.tag) ? runtimeRecord.tag : String(command.tag)
-  const attrs: BridgeAwait["attrs"] = Option.getOrElse(decodeAttrs(runtimeRecord.attrs), () => ({}))
-  const call: PluginCall = { tag, attrs, document, position }
+  const attrs: BridgeAwait["attrs"] = Option.getOrElse(decodeJsonRecord(runtimeRecord.attrs), () => ({}))
+  // 0.49.0 §3.1: the record's plugin stamps ride beside `attrs`; the runtime
+  // omits them when the command has none, and so does the call.
+  const stamps = Option.getOrUndefined(decodeJsonRecord(runtimeRecord.stamps))
+  const call: PluginCall = { tag, attrs, ...(stamps === undefined ? {} : { stamps }), document, position }
   const run = (_ctx: CueContext): Effect.Effect<void> => handler(call)
   return cueBase("plugin", { ...timingOf(command, "plugin"), wait: true }, false, [], `plugin ${tag}`, run, run)
 }

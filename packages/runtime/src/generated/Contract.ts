@@ -57,6 +57,7 @@ export const Await = Schema.Union([
       Schema.check(Schema.isGreaterThanOrEqualTo(0))
     ),
     "results": Schema.Record(Schema.String, Schema.suspend(() => fieldType)),
+    "stamps": Schema.optionalKey(Schema.Record(Schema.String, Schema.Json)),
     "tag": Schema.String,
     "type": Schema.Literal("awaitBridge")
   }),
