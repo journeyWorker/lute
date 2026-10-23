@@ -295,11 +295,11 @@ const host = {
 }
 ```
 
-핸들러는 typed `BridgeAwait`(`request`, `tag`, `document`, `position`, 호출의 `attrs`, 답해야 할 typed `results`)를 받아 `BridgeAnswer { fields, writes? }`를 반환합니다. director가 `bridgeResult { request, fields, writes? }`를 보내고 cue 재생을 계속하며, writes는 뒤따르는 대사보다 먼저 반영됩니다. 핸들러는 별도 fiber에서 실행되므로 호스트가 게임을 진행하는 동안에도 메뉴가 동작합니다. 핸들러가 없으면 임의의 답을 만들지 않고 bridge-unhandled 실패를 보고합니다.
+핸들러는 typed `BridgeAwait`(`request`, `tag`, `document`, `position`, 호출의 `attrs`, 플러그인 `stamps`(0.49: 지시문의 플러그인 스탬프 속성으로 `attrs`와 별개이며 명령에 없으면 생략됨), 답해야 할 typed `results`)를 받아 `BridgeAnswer { fields, writes? }`를 반환합니다. director가 `bridgeResult { request, fields, writes? }`를 보내고 cue 재생을 계속하며, writes는 뒤따르는 대사보다 먼저 반영됩니다. 핸들러는 별도 fiber에서 실행되므로 호스트가 게임을 진행하는 동안에도 메뉴가 동작합니다. 핸들러가 없으면 임의의 답을 만들지 않고 bridge-unhandled 실패를 보고합니다.
 
 ## Plugin 레코드
 
-non-blocking plugin 지시문은 tag로 키를 둔 `PlayerHost.plugin`으로 호스트에 전달됩니다. 레코드는 대기 cue가 되어, batch 안 레코드 위치에서 `PluginCall { tag, attrs, document, position }`으로 핸들러를 실행하고 완료되면 batch를 이어 가며 skip 모드에서도 실행합니다(게임 동작은 연출이 아님). bridge로 답한 호출의 레코드는 `plugin`에 넘기지 않습니다. cue factory는 출력 이벤트마다 정확히 cue 하나를 순서대로 반환하므로 호스트가 factory를 감쌀 수도 있습니다.
+non-blocking plugin 지시문은 tag로 키를 둔 `PlayerHost.plugin`으로 호스트에 전달됩니다. 레코드는 대기 cue가 되어, batch 안 레코드 위치에서 `PluginCall { tag, attrs, stamps?, document, position }`(`stamps`는 명령의 플러그인 스탬프 속성으로 `attrs`와 별개이며 없으면 생략됩니다)으로 핸들러를 실행하고 완료되면 batch를 이어 가며 skip 모드에서도 실행합니다(게임 동작은 연출이 아님). bridge로 답한 호출의 레코드는 `plugin`에 넘기지 않습니다. cue factory는 출력 이벤트마다 정확히 cue 하나를 순서대로 반환하므로 호스트가 factory를 감쌀 수도 있습니다.
 
 `Director.make`도 같은 `bundle`, `bindings`, cue-factory wrapper, `host`
 옵션으로 기본 factory를 만들 수 있으므로 hand-composed director에 별도
