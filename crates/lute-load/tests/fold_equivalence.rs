@@ -226,3 +226,40 @@ fn r3_a_declared_path_an_imported_def_reads_resettles_it() {
         ),
     ]);
 }
+
+/// A `uses:`-peer redeclaration is rejected from the effective state but is
+/// still the document's own `state:` key, where a value/prefix report on it
+/// is placed.
+#[test]
+fn a_rejected_redeclaration_of_a_prefix_path_is_reported_at_the_document() {
+    project(&[
+        (
+            "world.schema.yaml",
+            "state:\n  run.a: { type: int }\n  run.a.b: { type: int }\n",
+        ),
+        ("plain.lute", PLAIN),
+        (
+            "redeclare.lute",
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n\
+             state:\n  run.a: { type: int }\n---\n## Shot 1.\n@narrator: hi\n",
+        ),
+    ]);
+}
+
+/// The same for a `{ domain: K }` report: an imported path whose default is
+/// outside its domain, redeclared (and rejected) by the document.
+#[test]
+fn a_rejected_redeclaration_of_a_domain_path_is_reported_at_the_document() {
+    project(&[
+        (
+            "world.schema.yaml",
+            "enums:\n  mood: [calm, cross]\nstate:\n  run.m: { type: { domain: mood }, default: glad }\n",
+        ),
+        ("plain.lute", PLAIN),
+        (
+            "redeclare.lute",
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: world.schema.yaml\n\
+             state:\n  run.m: { type: { domain: mood }, default: glad }\n---\n## Shot 1.\n@narrator: hi\n",
+        ),
+    ]);
+}

@@ -70,9 +70,10 @@ impl Backend {
             Mode::Author,
         );
         // Declaration imports and the active project baseline come from the
-        // same model assembly used by scene analysis.
+        // same model assembly used by scene analysis. The imports' own
+        // `diags` sit at a placeholder; the copy anchored here is reported.
         let imports = built.input.imports().clone();
-        diags.extend(imports.diags.clone());
+        diags.extend(built.input.import_diags.iter().cloned());
         let baseline = built.input.snapshot().clone();
         let mut rdiags = built.resolve_diags;
         if let Err(message) = request_cache.project(project_root).as_ref() {

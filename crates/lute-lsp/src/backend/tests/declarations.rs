@@ -634,3 +634,64 @@ async fn analyze_declaration_cel_parse_error_falls_back_to_key_span_for_unresolv
     );
     std::fs::remove_dir_all(&root).ok();
 }
+
+/// A declaration `.yaml` in a project whose `defaults.uses` schema imports
+/// one that does not exist: the import failure is published at the
+/// document, not at the import cache's placeholder span (which has no
+/// position and panicked the conversion to an LSP range).
+#[tokio::test(flavor = "current_thread")]
+async fn analyze_declaration_reports_a_failed_default_import_at_the_document() {
+    use futures::StreamExt;
+    use std::fs;
+    use tower::{Service, ServiceExt};
+    use tower_lsp_server::jsonrpc::Request as RpcRequest;
+    use tower_lsp_server::LspService;
+
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lsp_decl_missing_default");
+    fs::create_dir_all(root.join("schema")).unwrap();
+    fs::write(
+        root.join("lute.project.yaml"),
+        "defaultProfile: default\nprofiles:\n  default: {}\ndefaults:\n  uses: [world.schema.yaml]\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("world.schema.yaml"),
+        "uses: missing.schema.yaml\nstate:\n  run.day: { type: int, default: 1 }\n",
+    )
+    .unwrap();
+    let decl_path = root.join("schema/state.yaml");
+    let text = "state:\n  run.trust: { type: int, default: 0 }\n";
+    fs::write(&decl_path, text).unwrap();
+    let uri_str = format!("file://{}", decl_path.display());
+
+    let (mut service, mut socket) = LspService::new(Backend::new);
+    let init = RpcRequest::build("initialize")
+        .params(serde_json::json!({ "capabilities": {} }))
+        .id(1)
+        .finish();
+    service.ready().await.unwrap().call(init).await.unwrap();
+    let open = RpcRequest::build("textDocument/didOpen")
+        .params(serde_json::json!({
+            "textDocument": {
+                "uri": uri_str, "languageId": "yaml", "version": 1, "text": text
+            }
+        }))
+        .finish();
+    service.ready().await.unwrap().call(open).await.unwrap();
+    let opened = socket.next().await.expect("didOpen should publish");
+    let diags = opened
+        .params()
+        .and_then(|p| p.get("diagnostics").cloned())
+        .and_then(|d| d.as_array().cloned())
+        .expect("publish carries a diagnostics array");
+    let missing = diags
+        .iter()
+        .find(|d| d.get("code").and_then(|c| c.as_str()) == Some("E-USES-NOT-FOUND"))
+        .unwrap_or_else(|| panic!("expected E-USES-NOT-FOUND, got {diags:?}"));
+    let line = missing
+        .pointer("/range/start/line")
+        .and_then(|l| l.as_u64())
+        .expect("a range");
+    assert!(line <= 1, "reported inside the document: {missing:?}");
+}

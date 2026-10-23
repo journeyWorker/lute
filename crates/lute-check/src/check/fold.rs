@@ -1247,10 +1247,20 @@ fn fold_env_in(
         results_under: &|value| results_under(snapshot, value),
         locate: &locate_value,
     };
+    // A path the document writes in its `state:` is placed at its own key
+    // even when the merge rejected it (a `uses:`-peer redeclaration), so the
+    // reports touching it are rebuilt whether or not it is in the overlay.
+    let authored = || {
+        schema
+            .overlay()
+            .decls
+            .keys()
+            .chain(typed.state.decls.keys())
+    };
     match shared {
         Some(b) => {
             let mut affected = std::collections::BTreeSet::new();
-            for path in schema.overlay().decls.keys() {
+            for path in authored() {
                 affected.insert(path.as_str());
                 let mut end = path.len();
                 while let Some(dot) = path[..end].rfind('.') {
@@ -1295,7 +1305,7 @@ fn fold_env_in(
             let families = &vocab.indexed_state;
             let at_of = |p: &str| crate::state_decls::domain_type_at(p, families).to_string();
             let mut affected: std::collections::BTreeSet<String> =
-                schema.overlay().decls.keys().map(|p| at_of(p)).collect();
+                authored().map(|p| at_of(p)).collect();
             for name in &changed_domains {
                 affected.extend(
                     b.paths_by_domain
