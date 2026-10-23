@@ -492,12 +492,14 @@ pub(crate) fn is_path_index(expr: &Expr) -> bool {
 /// is already declared (distance 0 is excluded — no self-suggestion), or the
 /// schema declares nothing. Ties broken by `BTreeMap` key order (stable,
 /// deterministic).
-pub(crate) fn nearest_declared_path<'s>(
+pub(crate) fn nearest_declared_path(
     path: &str,
-    schema: &'s crate::StateView,
+    schema: &crate::StateView,
     max_dist: usize,
-) -> Option<&'s str> {
-    lute_manifest::suggest::nearest(path, schema.keys().map(|k| k.as_str()), max_dist)
+) -> Option<String> {
+    let keys: Vec<std::borrow::Cow<'_, str>> = schema.keys().collect();
+    lute_manifest::suggest::nearest(path, keys.iter().map(|k| k.as_ref()), max_dist)
+        .map(str::to_string)
 }
 
 /// The message for a read of an undeclared path under an engine namespace —

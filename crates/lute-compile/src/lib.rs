@@ -32,6 +32,7 @@ pub use ir::*;
 pub use semantics::*;
 pub use source_map::SourceMap;
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_cel::CelArena;
@@ -1505,11 +1506,16 @@ fn state_table(
         };
         ir::BaseStateEntries::new(base.render(vocab.view().iter()).collect())
     });
-    let mut own: BTreeSet<&String> = view.own_paths();
-    own.extend(branch_paths.iter().chain(reserved.keys()));
+    let mut own: BTreeSet<Cow<'_, str>> = view.own_paths();
+    own.extend(
+        branch_paths
+            .iter()
+            .chain(reserved.keys())
+            .map(|p| Cow::Borrowed(p.as_str())),
+    );
     let own = own
         .into_iter()
-        .filter_map(|path| view.get(path).map(|decl| (path, decl)));
+        .filter_map(|path| view.get(&path).map(|decl| (path, decl)));
     StateTable::new(base, rows.render(own).collect())
 }
 
@@ -1539,7 +1545,7 @@ impl<'a> RowInputs<'a> {
     /// leaves implied.
     fn render<'d>(
         &'d self,
-        decls: impl Iterator<Item = (&'d String, &'d lute_check::StateDecl)> + 'd,
+        decls: impl Iterator<Item = (Cow<'d, str>, &'d lute_check::StateDecl)> + 'd,
     ) -> impl Iterator<Item = StateEntry> + 'd {
         decls
             // dsl 0.23.0 §6: the checker's `prev.run.*` mirror decls are
@@ -1551,7 +1557,7 @@ impl<'a> RowInputs<'a> {
                 !lute_manifest::semantics::cel_paths::is_prev_path(path)
                     && !lute_manifest::clock::is_clock_path(path)
             })
-            .map(|(path, decl)| self.row(path, decl))
+            .map(|(path, decl)| self.row(&path, decl))
     }
 
     fn row(&self, path: &str, decl: &lute_check::StateDecl) -> StateEntry {

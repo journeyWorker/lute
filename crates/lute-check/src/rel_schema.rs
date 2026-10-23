@@ -867,7 +867,7 @@ pub fn build_rel_vocab(
         origins.domains.remove(name);
     }
     for path in typed.state.decls.keys() {
-        origins.state.remove(path);
+        origins.state.remove(&*path);
     }
     for r in &typed.rel_rules {
         origins.rules.remove(&r.raw);

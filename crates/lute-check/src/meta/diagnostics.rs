@@ -509,17 +509,17 @@ pub(super) fn per_members(
 ) -> Result<Vec<String>, &'static str> {
     let mut closed = kinds.kinds.clone();
     lute_manifest::relations::imply_sub_kind_members(&mut closed, &kinds.order);
-    closed_per_members(&closed, kind)
+    closed_per_members(&closed, kind).map(<[String]>::to_vec)
 }
 
 /// [`per_members`] over kinds whose sub-kind members are already implied.
-pub(super) fn closed_per_members(
-    kinds: &BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
+pub(super) fn closed_per_members<'k>(
+    kinds: &'k BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
     kind: &str,
-) -> Result<Vec<String>, &'static str> {
+) -> Result<&'k [String], &'static str> {
     use lute_manifest::relations::KindShape;
     match kinds.get(kind).map(|k| &k.shape) {
-        Some(KindShape::Members(ms)) => Ok(ms.clone()),
+        Some(KindShape::Members(ms)) => Ok(ms),
         Some(KindShape::Open) => {
             Err("names an `open:` entity kind, whose members the engine registers at runtime")
         }
@@ -529,6 +529,14 @@ pub(super) fn closed_per_members(
                      schema it imports",
         ),
     }
+}
+
+/// `members` sorted and deduplicated, as a [`StateFamily`] holds them.
+pub(crate) fn sorted_members(members: &[String]) -> std::sync::Arc<[String]> {
+    let mut sorted = members.to_vec();
+    sorted.sort_unstable();
+    sorted.dedup();
+    sorted.into()
 }
 
 /// `E-STATE-DECL`'s message for a `per:` that cannot index `path`.
@@ -552,50 +560,48 @@ pub struct PendingPer {
     pub span: Span,
 }
 
-/// The member decls and `path → kind` index entries each [`PendingPer`]
-/// declares over `kinds` (sub-kind members already implied — the merged
-/// vocabulary's), and an `E-STATE-DECL` at its key for one whose kind is
+/// The `per:` family each [`PendingPer`] declares over `kinds` (sub-kind
+/// members already implied — the merged vocabulary's), its `path → kind`
+/// index entry, and an `E-STATE-DECL` at its key for one whose kind is
 /// still unknown, `open:` or malformed, or whose `default:` map is wrong.
+/// Families over one kind share its member list (`shared`, by kind).
 #[expect(
     clippy::type_complexity,
-    reason = "pending metadata expansion returns declarations, indexes, and diagnostics"
+    reason = "pending metadata expansion returns families, indexes, and diagnostics"
 )]
 pub(crate) fn expand_per_pending(
     pending: &[PendingPer],
     kinds: &BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
+    shared: &mut BTreeMap<String, std::sync::Arc<[String]>>,
 ) -> (
-    Vec<(String, StateDecl)>,
+    Vec<(String, StateFamily)>,
     Vec<(String, String)>,
     Vec<Diagnostic>,
 ) {
-    let (mut decls, mut index, mut diags) = (Vec::new(), Vec::new(), Vec::new());
+    let (mut families, mut index, mut diags) = (Vec::new(), Vec::new(), Vec::new());
     for p in pending {
         match closed_per_members(kinds, &p.kind) {
             Ok(members) => {
-                let defaults = per_member_defaults(
+                let sorted = shared
+                    .entry(p.kind.clone())
+                    .or_insert_with(|| sorted_members(members));
+                let family = per_family(
                     &p.path,
                     &p.kind,
-                    &members,
-                    &p.decl.ty,
+                    members,
+                    std::sync::Arc::clone(sorted),
+                    p.decl.clone(),
                     p.default.clone(),
                     &mut diags,
                     p.span,
                 );
-                for (m, default) in members.iter().zip(defaults) {
-                    decls.push((
-                        format!("{}.{m}", p.path),
-                        StateDecl {
-                            default,
-                            ..p.decl.clone()
-                        },
-                    ));
-                }
+                families.push((p.path.clone(), family));
                 index.push((p.path.clone(), p.kind.clone()));
             }
             Err(why) => diags.push(state_decl_diag(per_fault(&p.path, &p.kind, why), p.span)),
         }
     }
-    (decls, index, diags)
+    (families, index, diags)
 }
 
 /// An `E-STATE-DECL` at a `state:` key.
@@ -672,27 +678,39 @@ pub(super) fn scalar_default(
     }
 }
 
-/// The default of each member of a `per: <kind>` family (dsl 0.24.0 §3), in
-/// `members` order. A scalar `default:` is every member's; a map gives
-/// members their own — `{ isolde: 2, corvin: 0 }` — where every key is a
-/// member or `_`, the fallback for the members it does not name. A member
-/// the map neither names nor falls back for, a key that is no member, a
-/// value that is not a scalar of the path's type, and a list default are
-/// each `E-STATE-DECL`; the member they concern gets no default.
-pub(super) fn per_member_defaults(
+/// The `per: <kind>` family (dsl 0.24.0 §3) `decl` declares over `members`
+/// (in kind order; `sorted` is the same list as [`sorted_members`] gives
+/// it). A scalar `default:` is every member's; a map gives members their
+/// own — `{ isolde: 2, corvin: 0 }` — where every key is a member or `_`,
+/// the fallback for the members it does not name. A member the map neither
+/// names nor falls back for, a key that is no member, a value that is not a
+/// scalar of the path's type, and a list default are each `E-STATE-DECL`;
+/// the member they concern gets no default.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a family's identity, members, declaration and diagnostic sink"
+)]
+pub(crate) fn per_family(
     path: &str,
     kind: &str,
     members: &[String],
-    ty: &Type,
+    sorted: std::sync::Arc<[String]>,
+    decl: StateDecl,
     default: Option<Literal>,
     diags: &mut Vec<Diagnostic>,
     span: Span,
-) -> Vec<Option<Literal>> {
+) -> StateFamily {
+    let ty = &decl.ty;
     let map = match default {
         Some(Literal::Map(map)) => map,
         other => {
-            let d = scalar_default(path, ty, other, diags, span);
-            return vec![d; members.len()];
+            let default = scalar_default(path, ty, other, diags, span);
+            return StateFamily::new(
+                kind.to_string(),
+                StateDecl { default, ..decl },
+                sorted,
+                BTreeMap::new(),
+            );
         }
     };
     let mut bad = |msg: String| {
@@ -743,15 +761,21 @@ pub(super) fn per_member_defaults(
                 .join(", ")
         ));
     }
-    members
+    let fallback = valid.get("_").map(|v| (*v).clone());
+    let own = valid
         .iter()
-        .map(|m| {
-            valid
-                .get(m.as_str())
-                .or_else(|| valid.get("_"))
-                .map(|v| (*v).clone())
-        })
-        .collect()
+        .filter(|(k, _)| **k != "_")
+        .map(|(k, v)| (k.to_string(), (*v).clone()))
+        .collect();
+    StateFamily::new(
+        kind.to_string(),
+        StateDecl {
+            default: fallback,
+            ..decl
+        },
+        sorted,
+        own,
+    )
 }
 
 pub(super) fn map_prefix(path: &str) -> &str {

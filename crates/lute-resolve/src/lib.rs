@@ -5,7 +5,6 @@
 //! boundary with `TextIndex`.
 
 pub mod cursor;
-use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use lute_check::schema_import::SchemaImports;
@@ -65,9 +64,7 @@ pub fn resolve_position(
     // Imported state is authoritative. Inline defs are authoritative over
     // imported defs. This is deliberately the checker's precedence, not a CLI
     // convenience rule.
-    for (path, decl) in &imports.state.decls {
-        meta.state.decls.insert(path.clone(), decl.clone());
-    }
+    meta.state.decls.append(imports.state.decls.clone());
     for (name, value) in &imports.defs {
         meta.defs
             .entry(name.clone())
@@ -132,10 +129,7 @@ fn find_slot(doc: &Document, off: usize) -> Option<&CelSlot> {
     found
 }
 
-fn resolve_state_type(
-    decls: &BTreeMap<String, lute_check::meta::StateDecl>,
-    path: &str,
-) -> Option<Type> {
+fn resolve_state_type(decls: &lute_check::meta::StateDecls, path: &str) -> Option<Type> {
     if let Some(decl) = decls.get(path) {
         return Some(decl.ty.clone());
     }
@@ -184,7 +178,7 @@ fn expected_for_slot(
     }
 }
 
-fn path_type(raw: &str, decls: &BTreeMap<String, lute_check::meta::StateDecl>) -> Option<Type> {
+fn path_type(raw: &str, decls: &lute_check::meta::StateDecls) -> Option<Type> {
     let path = raw.trim().trim_matches('"');
     if path
         .bytes()
@@ -341,10 +335,10 @@ fn symbols_for_cursor(
     if !defs_only {
         for (name, decl) in &meta.state.decls {
             symbols.push(Symbol {
-                name: name.clone(),
+                name: name.to_string(),
                 kind: "state".into(),
                 ty: Some(decl.ty.clone()),
-                declaration: declaration(source, name),
+                declaration: declaration(source, &name),
             });
         }
     }

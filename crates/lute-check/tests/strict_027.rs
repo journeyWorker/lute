@@ -234,10 +234,10 @@ fn a_per_family_declares_the_members_its_sub_kinds_add() {
         assert!(
             imp.state.decls.contains_key(path),
             "{path}: {:?}",
-            imp.state.decls.keys()
+            imp.state.decls.keys().collect::<Vec<_>>()
         );
     }
     assert!(!imp.state.decls.contains_key("user.bond.tavi"));
-    let sefa = &imp.state.decls["user.bond.sefa"];
+    let sefa = imp.state.decls.get("user.bond.sefa").expect("declared");
     assert_eq!(sefa.default, Some(lute_manifest::types::Literal::Int(5)));
 }

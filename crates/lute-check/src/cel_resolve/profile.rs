@@ -261,12 +261,15 @@ impl<'a> ProfileScope<'a> {
     }
 
     /// The first declared path whose last segment is `name` (any case).
-    fn path_ending_in(&self, name: &str) -> Option<&'a str> {
-        self.schema?.keys().map(String::as_str).find(|k| {
-            !crate::cel_paths::is_engine_owned_path(k)
-                && k.rsplit_once('.')
-                    .is_some_and(|(_, last)| last.eq_ignore_ascii_case(name))
-        })
+    fn path_ending_in(&self, name: &str) -> Option<String> {
+        self.schema?
+            .keys()
+            .find(|k| {
+                !crate::cel_paths::is_engine_owned_path(k)
+                    && k.rsplit_once('.')
+                        .is_some_and(|(_, last)| last.eq_ignore_ascii_case(name))
+            })
+            .map(std::borrow::Cow::into_owned)
     }
 }
 

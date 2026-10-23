@@ -78,7 +78,7 @@ pub fn check_project_state_decls(
     docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
 ) -> Vec<(PathBuf, Diagnostic)> {
-    let mut by_path: BTreeMap<&str, Vec<Decl<'_>>> = BTreeMap::new();
+    let mut by_path: BTreeMap<std::borrow::Cow<'_, str>, Vec<Decl<'_>>> = BTreeMap::new();
     let mut extends: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
     // The relational vocabularies whose imported declarations are already
     // recorded. A document sharing one adds nothing a previous document did
@@ -102,13 +102,9 @@ pub fn check_project_state_decls(
         }
         let vocab = &folded.env.rel_vocab;
         let inline = typed.state.decls.iter().map(|(path, decl)| {
-            let span = meta_position(&doc.meta, state_key_span(&doc.meta, path));
-            (
-                path,
-                decl,
-                typed.state_index.get(path),
-                (file.to_path_buf(), span),
-            )
+            let span = meta_position(&doc.meta, state_key_span(&doc.meta, &path));
+            let per = typed.state_index.get(path.as_ref());
+            (path, decl, per, (file.to_path_buf(), span))
         });
         let first_use = seen_vocabs.insert(std::sync::Arc::as_ptr(vocab));
         let imported =
@@ -120,14 +116,19 @@ pub fn check_project_state_decls(
                 .filter_map(|(path, origin)| {
                     let decl = folded.env.state.get(path)?;
                     let at = (origin.file.clone(), origin.span);
-                    Some((path, decl, vocab.indexed_state.get(path), at))
+                    Some((
+                        std::borrow::Cow::Borrowed(path.as_str()),
+                        decl,
+                        vocab.indexed_state.get(path),
+                        at,
+                    ))
                 });
         for (path, decl, per, (file, span)) in inline.chain(imported) {
             let line = span.line as usize;
             if path.starts_with("scene.") {
                 continue;
             }
-            let decls = by_path.entry(path.as_str()).or_default();
+            let decls = by_path.entry(path).or_default();
             if decls
                 .iter()
                 .any(|d| d.file == file && d.span.byte_start == span.byte_start)
@@ -281,7 +282,7 @@ pub(crate) fn check_value_prefix(
 ) -> Vec<Diagnostic> {
     state
         .keys()
-        .filter_map(|value| value_prefix_at(state, value, site))
+        .filter_map(|value| value_prefix_at(state, &value, site))
         .collect()
 }
 
@@ -292,7 +293,10 @@ pub(crate) fn value_prefix_by_path(
 ) -> BTreeMap<String, Diagnostic> {
     state
         .keys()
-        .filter_map(|value| Some((value.clone(), value_prefix_at(state, value, site)?)))
+        .filter_map(|value| {
+            let d = value_prefix_at(state, &value, site)?;
+            Some((value.into_owned(), d))
+        })
         .collect()
 }
 
@@ -316,9 +320,9 @@ pub(crate) fn value_prefix_at(
         return None;
     }
     let prefix = format!("{value}.");
-    let mut fields = state.with_prefix(&prefix).map(|(k, _)| k.as_str());
+    let mut fields = state.with_prefix(&prefix).map(|(k, _)| k);
     let first = fields.next()?;
-    let message = match std::iter::once(first)
+    let message = match std::iter::once(first.clone())
         .chain(fields)
         .find(|f| (site.declared)(f))
     {
@@ -342,7 +346,7 @@ pub(crate) fn value_prefix_at(
             )
         }
     };
-    (site.locate)(value, &message).or_else(|| (site.locate)(first, &message))
+    (site.locate)(value, &message).or_else(|| (site.locate)(&first, &message))
 }
 
 /// `locate(path, key, message, code)` for [`check_domain_types`]: the report
@@ -386,17 +390,18 @@ pub(crate) fn domain_types_by_at(
     locate: DomainTypeLocate<'_>,
 ) -> BTreeMap<String, (String, Diagnostic)> {
     let mut out = BTreeMap::new();
-    let mut seen = BTreeSet::new();
+    let mut seen: BTreeSet<String> = BTreeSet::new();
     for (path, decl) in state.iter() {
         if !matches!(decl.ty, Type::Domain(_) | Type::Entity(_)) {
             continue;
         }
-        let at = domain_type_at(path, families);
-        if !seen.insert(at) {
+        let at = domain_type_at(&path, families);
+        if seen.contains(at) {
             continue;
         }
+        seen.insert(at.to_string());
         if let Some(d) = domain_type_report(at, decl, domains, locate) {
-            out.insert(at.to_string(), (path.clone(), d));
+            out.insert(at.to_string(), (path.to_string(), d));
         }
     }
     out
@@ -415,13 +420,12 @@ pub(crate) fn domain_type_report_at(
     let own = state
         .get(at)
         .filter(|_| domain_type_at(at, families) == at)
-        .map(|decl| (at, decl));
+        .map(|decl| (std::borrow::Cow::Borrowed(at), decl));
     let prefix = format!("{at}.");
     let members = state
         .with_prefix(&prefix)
         .filter(|_| families.contains_key(at))
-        .filter(|(p, _)| !p[prefix.len()..].contains('.'))
-        .map(|(p, d)| (p.as_str(), d));
+        .filter(|(p, _)| !p[prefix.len()..].contains('.'));
     let (path, decl) = own
         .into_iter()
         .chain(members)

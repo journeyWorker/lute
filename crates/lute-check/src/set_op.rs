@@ -289,7 +289,7 @@ fn season_path_for(path: &str, schema: &crate::StateView) -> Option<String> {
             .is_some_and(|(_, r)| r == rest)
     });
     let first = hits.next()?;
-    hits.next().is_none().then(|| first.clone())
+    hits.next().is_none().then(|| first.into_owned())
 }
 
 /// Check a `::set` directive's target write-policy and op/type compatibility

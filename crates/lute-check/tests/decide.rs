@@ -59,7 +59,7 @@ fn schema() -> StateView {
         },
     );
     StateView::from(StateSchema {
-        decls,
+        decls: decls.into_iter().collect(),
         ..Default::default()
     })
 }

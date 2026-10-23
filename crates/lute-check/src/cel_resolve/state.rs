@@ -181,6 +181,7 @@ pub(crate) fn check_state_path(
             // unless an authored `scene.*` path is the nearer reading.
             let near = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2);
             let engine = near
+                .as_ref()
                 .filter(|_| path.starts_with("scene."))
                 .is_none()
                 .then(|| crate::cel_paths::engine_path_hint(path, &|p| is_declared(p, ctx)))

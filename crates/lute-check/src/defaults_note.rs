@@ -95,7 +95,6 @@ fn missing_names(
     have.extend(own.rel.enums.keys().map(String::as_str));
     have.extend(own.defs.keys().map(String::as_str));
     have.extend(own.domains.keys().map(String::as_str));
-    have.extend(own.state.decls.keys().map(String::as_str));
     have.extend(own.cast.keys().map(String::as_str));
     let o = &defaults.rel.origins;
     [
@@ -108,7 +107,7 @@ fn missing_names(
     ]
     .into_iter()
     .flatten()
-    .filter(|(name, _)| !have.contains(name.as_str()))
+    .filter(|(name, _)| !have.contains(name.as_str()) && !own.state.decls.contains_key(name))
     .map(|(name, origin)| (name.clone(), origin.file.clone()))
     .collect()
 }

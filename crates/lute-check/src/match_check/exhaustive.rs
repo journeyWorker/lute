@@ -100,14 +100,14 @@ fn subject_for(patterns: &[&IsPattern], schema: &crate::StateView) -> Option<Str
     }
     // A `prev.*` mirror holds the last run's value of the path beside it.
     let mut fits = schema.keys().filter(|path| {
-        let info = infer_domain(Some(path.as_str()), schema);
+        let info = infer_domain(Some(path), schema);
         !path.starts_with("prev.")
             && matches!(info.domain, Domain::Finite(_))
             && info.resolved
             && !lits.iter().any(|lit| literal_is_foreign(lit, &info))
     });
     let one = fits.next()?;
-    fits.next().is_none().then(|| one.clone())
+    fits.next().is_none().then(|| one.into_owned())
 }
 
 /// Validate a `<match>` for exhaustiveness, unset coverage, the age-gate, and

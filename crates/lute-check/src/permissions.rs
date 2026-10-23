@@ -119,9 +119,8 @@ impl PermissionChecker<'_> {
         // Imported defaults initialize the root document too. An inline override
         // replaces only an `extends` winner; a `uses` winner remains effective.
         for (path, decl) in &input.imports().state.decls {
-            if typed.state.decls.contains_key(path)
-                && input.imports().state_overridable.contains(path)
-            {
+            let path = &*path;
+            if typed.state.decls.contains_key(path) && input.imports().is_overridable(path) {
                 continue;
             }
             if decl.default.is_some() {
@@ -133,8 +132,9 @@ impl PermissionChecker<'_> {
             }
         }
         for (path, decl) in &typed.state.decls {
+            let path = &*path;
             if input.imports().state.decls.contains_key(path)
-                && !input.imports().state_overridable.contains(path)
+                && !input.imports().is_overridable(path)
             {
                 continue;
             }

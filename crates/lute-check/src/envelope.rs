@@ -483,7 +483,7 @@ pub fn schema_defaults(schema: &crate::StateView) -> BTreeSet<String> {
     schema
         .iter()
         .filter(|(path, decl)| decl.default.is_some() && in_envelope_scope(path))
-        .map(|(path, _)| path.clone())
+        .map(|(path, _)| path.into_owned())
         .collect()
 }
 

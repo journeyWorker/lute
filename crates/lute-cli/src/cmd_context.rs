@@ -673,7 +673,7 @@ fn vocabulary(
     let mut enums = Vec::new();
     for document in model.documents() {
         for (path, declaration) in document.folded.env.state.iter() {
-            if !state_paths.contains(path) {
+            if !state_paths.contains(path.as_ref()) {
                 continue;
             }
             if let Type::Enum(members) = &declaration.ty {
@@ -794,9 +794,9 @@ fn authoring_surface(
             // slot: its authorable enum domain is choice ids ∪ `unset` (compile's
             // state-table domain), NOT the folded members alone. Author enums at
             // any other path are not in `branch_paths` and keep their members.
-            let (ty, domain) = state_type_str(branch_paths.contains(path), &decl.ty);
+            let (ty, domain) = state_type_str(branch_paths.contains(path.as_ref()), &decl.ty);
             let mut o = Map::new();
-            o.insert("path".into(), path.clone().into());
+            o.insert("path".into(), path.to_string().into());
             o.insert("type".into(), ty.into());
             o.insert("namespace".into(), namespace_str(decl.namespace).into());
             // dsl 0.22.0 §1.2: engine-owned paths are read-only to content —
@@ -807,7 +807,7 @@ fn authoring_surface(
                     "owner".into(),
                     serde_json::to_value(owner).unwrap_or(Value::Null),
                 );
-            } else if lute_check::cel_paths::is_engine_owned_path(path) {
+            } else if lute_check::cel_paths::is_engine_owned_path(&path) {
                 o.insert("owner".into(), "engine".into());
             }
             if let Some(def) = &decl.default {

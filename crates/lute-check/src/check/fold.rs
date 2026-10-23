@@ -121,7 +121,7 @@ fn changes_rel(typed: &crate::meta::TypedMeta, imports: &SchemaImports) -> bool 
             .state
             .decls
             .keys()
-            .any(|p| imports.rel.origins.state.contains_key(p))
+            .any(|p| imports.rel.origins.state.contains_key(&*p))
 }
 
 /// The relational stage (dsl 0.3.0 §3/§4, data-catalog foundation A4): the
@@ -183,23 +183,33 @@ fn rel_stage(
 }
 
 /// dsl 0.23.0 §6: the reserved, read-only `prev.run.<path>` mirror of every
-/// declared `run.<path>` among `decls` — same type, no default.
-fn prev_run_mirrors<'a>(
-    decls: impl Iterator<Item = (&'a String, &'a crate::meta::StateDecl)>,
-) -> Vec<(String, crate::meta::StateDecl)> {
-    decls
-        .filter_map(|(path, decl)| {
-            lute_manifest::semantics::cel_paths::prev_run_path(path).map(|prev| {
-                let mirror = crate::meta::StateDecl {
-                    ty: decl.ty.clone(),
-                    default: None,
-                    namespace: crate::meta::Namespace::User,
-                    owner: Some(lute_manifest::types::Owner::Engine),
-                };
-                (prev, mirror)
-            })
-        })
-        .collect()
+/// declared `run.<path>` among `decls` — same type, no default. A `run.*`
+/// family's mirror is the `prev.run.*` family over the same members.
+fn prev_run_mirrors(decls: &crate::meta::StateDecls) -> crate::meta::StateDecls {
+    let mirror = |decl: &crate::meta::StateDecl| crate::meta::StateDecl {
+        ty: decl.ty.clone(),
+        default: None,
+        namespace: crate::meta::Namespace::User,
+        owner: Some(lute_manifest::types::Owner::Engine),
+    };
+    let mut out = crate::meta::StateDecls::default();
+    for (path, family) in decls.families() {
+        // `<path>.<m>` is a `run.*` path exactly when `path` is `run` or a
+        // `run.*` path.
+        if path == "run" || path.starts_with("run.") {
+            out.insert_family(
+                format!("prev.{path}"),
+                family.map_decl(mirror),
+                crate::meta::Precedence::Replace,
+            );
+        }
+    }
+    for (path, decl) in decls.explicit() {
+        if let Some(prev) = lute_manifest::semantics::cel_paths::prev_run_path(path) {
+            out.insert(prev, mirror(decl));
+        }
+    }
+    out
 }
 
 /// The def tables (dsl §8.1), each merged plugin < imported < inline: the
@@ -392,8 +402,8 @@ pub(crate) fn base_fold(
         AT_PLACEHOLDER,
     );
     let mut state = imports.state.clone();
-    let mirrors = prev_run_mirrors(state.decls.iter());
-    state.decls.extend(mirrors);
+    let mirrors = prev_run_mirrors(&state.decls);
+    state.decls.append(mirrors);
     // The clock the imports declare, settled over the base state: its enums
     // join the domains a document that changes nothing sees.
     let clocks = imported_clocks(imports);
@@ -413,16 +423,25 @@ pub(crate) fn base_fold(
         }
     }
     state.resolve_domains(&domains);
-    let mut paths_by_domain: std::collections::BTreeMap<String, Vec<String>> =
-        std::collections::BTreeMap::new();
-    for (path, decl) in &state.decls {
-        if let Type::Domain(name) | Type::Entity(name) = &decl.ty {
-            paths_by_domain
-                .entry(name.clone())
-                .or_default()
-                .push(path.clone());
+    // By domain, the explicit paths and the families typed with it.
+    let by_domain = |decls: &mut dyn Iterator<Item = (&String, &crate::meta::StateDecl)>| {
+        let mut out: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        for (path, decl) in decls {
+            if let Type::Domain(name) | Type::Entity(name) = &decl.ty {
+                out.entry(name.clone()).or_default().push(path.clone());
+            }
         }
-    }
+        out
+    };
+    let paths_by_domain = by_domain(&mut state.decls.explicit().iter());
+    let families_by_domain = by_domain(
+        &mut state
+            .decls
+            .families()
+            .iter()
+            .map(|(path, family)| (path, family.decl())),
+    );
     let view = crate::StateView::over(Arc::new(state));
     // The imported defs, settled against the base state.
     let mut imported_defs = imports.defs.clone();
@@ -502,6 +521,7 @@ pub(crate) fn base_fold(
         rel_shared,
         view,
         paths_by_domain,
+        families_by_domain,
         imported_defs: Arc::new(imported_defs),
         def_diags,
         def_reads,
@@ -537,7 +557,7 @@ fn imported_clocks(
 /// base's (spec 0.49.0 §9.2 R3).
 fn touches_def_reads(state: &crate::StateView, reads: &std::collections::BTreeSet<String>) -> bool {
     state.overlay().decls.keys().any(|path| {
-        if reads.contains(path) {
+        if reads.contains(&*path) {
             return true;
         }
         let mut end = path.len();
@@ -652,9 +672,35 @@ fn fold_env_in(
         None => crate::StateView::from(imports.state.clone()),
     };
     let mut state_merge_diags: Vec<Diagnostic> = Vec::new();
-    for (path, decl) in &typed.state.decls {
+    // An inline `per:` family no imported declaration names a member of
+    // joins whole (spec 0.49.0 §9.3); otherwise every path is merged one by
+    // one, in path order.
+    let whole = typed
+        .state
+        .decls
+        .families()
+        .iter()
+        .all(|(path, family)| !imports.state.decls.declares_member_of(path, family));
+    let inline: Box<dyn Iterator<Item = (std::borrow::Cow<'_, str>, &crate::meta::StateDecl)>> =
+        if whole {
+            for (path, family) in typed.state.decls.families() {
+                schema.insert_family(path.clone(), family.clone());
+            }
+            Box::new(
+                typed
+                    .state
+                    .decls
+                    .explicit()
+                    .iter()
+                    .map(|(k, d)| (std::borrow::Cow::Borrowed(k.as_str()), d)),
+            )
+        } else {
+            Box::new(typed.state.decls.iter())
+        };
+    for (path, decl) in inline {
+        let path = &*path;
         match imports.state.decls.get(path) {
-            Some(imported) if imports.state_overridable.contains(path) => {
+            Some(imported) if imports.is_overridable(path) => {
                 // Extends-base override: the inline decl wins; guard the type.
                 if decl.ty != imported.ty {
                     state_merge_diags.push(Diagnostic {
@@ -673,7 +719,7 @@ fn fold_env_in(
                         related: Vec::new(),
                     });
                 }
-                schema.insert(path.clone(), decl.clone());
+                schema.insert(path.to_string(), decl.clone());
             }
             Some(_) => {
                 // Uses-peer path: a scene must not redeclare it (imported wins).
@@ -693,7 +739,7 @@ fn fold_env_in(
                 });
             }
             None => {
-                schema.insert(path.clone(), decl.clone());
+                schema.insert(path.to_string(), decl.clone());
             }
         }
     }
@@ -718,11 +764,23 @@ fn fold_env_in(
         }
     }
     // dsl 0.28.0: an inline `per:` over a kind an imported schema declares.
-    let (per_decls, per_index, per_faults) =
-        crate::meta::expand_per_pending(&typed.per_pending, &vocab.kinds);
-    for (path, decl) in per_decls {
-        if !schema.contains(&path) {
-            schema.insert(path, decl);
+    let (per_families, per_index, per_faults) = crate::meta::expand_per_pending(
+        &typed.per_pending,
+        &vocab.kinds,
+        &mut std::collections::BTreeMap::new(),
+    );
+    for (path, family) in per_families {
+        if !schema.declares_member_of(&path, &family) {
+            schema.insert_family(path, family);
+            continue;
+        }
+        // A member declared already keeps its declaration.
+        for m in family.members() {
+            let key = format!("{path}.{m}");
+            if !schema.contains(&key) {
+                let decl = family.member(m).unwrap_or(family.decl()).clone();
+                schema.insert(key, decl);
+            }
         }
     }
     if !per_index.is_empty() {
@@ -751,10 +809,9 @@ fn fold_env_in(
     //     a path that existed BEFORE this loop (inline or imported) is
     //     `E-QUEST-RESERVED-DECL`; a same-id repeat re-inserts the identical
     //     decl unflagged, since the set is frozen before the loop.
-    let pre_existing_overlay: std::collections::BTreeSet<String> =
-        schema.overlay().decls.keys().cloned().collect();
+    let pre_existing_overlay = schema.overlay().decls.clone();
     let pre_existing = |path: &str, schema: &crate::StateView| {
-        pre_existing_overlay.contains(path) || schema.base().decls.contains_key(path)
+        pre_existing_overlay.contains_key(path) || schema.base().decls.contains_key(path)
     };
     let mut seen_quests: std::collections::BTreeSet<String> =
         imports.imported_quest_ids.keys().cloned().collect();
@@ -815,8 +872,8 @@ fn fold_env_in(
     // 4a''. dsl 0.23.0 §6: `prev.run.<path>` mirrors every declared
     //       `run.<path>`. The base state holds the mirrors of the imported
     //       paths; this document's own `run.*` decls mirror here.
-    let mirrors = prev_run_mirrors(schema.overlay().decls.iter());
-    schema.overlay_mut().decls.extend(mirrors);
+    let mirrors = prev_run_mirrors(&schema.overlay().decls);
+    schema.overlay_mut().decls.append(mirrors);
     // 4a'''. dsl 0.24.0 §1: the project's clock — its imports' `clock:` and,
     //        for a schema document, its own — checked against the folded
     //        schema; its reserved read-only `clock.*` paths join the schema.
@@ -933,7 +990,7 @@ fn fold_env_in(
         crate::meta::meta_key_span(&doc.meta, "state"),
         &vocab.origins.state,
     );
-    schema.overlay_mut().decls.extend(mirrors);
+    schema.overlay_mut().decls.append(mirrors);
     fold_diags.extend(season_diags);
     fold_diags.extend(crate::season::check_uses(
         doc,
@@ -1070,8 +1127,8 @@ fn fold_env_in(
     };
     if let Some(b) = shared {
         for name in &changed_domains {
-            for path in b.paths_by_domain.get(name).into_iter().flatten() {
-                if schema.overlay().decls.contains_key(path) {
+            for path in b.paths_typed_by(name) {
+                if schema.overlay().decls.contains_key(&path) {
                     continue;
                 }
                 match domains.get(name).filter(|d| !d.open) {
@@ -1080,9 +1137,9 @@ fn fold_env_in(
                         schema
                             .overlay_mut()
                             .domain_members
-                            .insert(path.clone(), members);
+                            .insert(path.into_owned(), members);
                     }
-                    None => schema.mask_domain(path.clone()),
+                    None => schema.mask_domain(path.into_owned()),
                 }
             }
         }
@@ -1258,16 +1315,17 @@ fn fold_env_in(
     };
     match shared {
         Some(b) => {
-            let mut affected = std::collections::BTreeSet::new();
+            let mut affected: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
             for path in authored() {
-                affected.insert(path.as_str());
                 let mut end = path.len();
                 while let Some(dot) = path[..end].rfind('.') {
                     end = dot;
                     if schema.contains(&path[..end]) {
-                        affected.insert(&path[..end]);
+                        affected.insert(path[..end].to_string());
                     }
                 }
+                affected.insert(path.into_owned());
             }
             let mut out: std::collections::BTreeMap<&str, Diagnostic> = b
                 .value_prefix
@@ -1275,7 +1333,7 @@ fn fold_env_in(
                 .filter(|(v, _)| !affected.contains(v.as_str()))
                 .map(|(v, d)| (v.as_str(), d.clone()))
                 .collect();
-            for value in affected {
+            for value in &affected {
                 if let Some(d) = crate::state_decls::value_prefix_at(&schema, value, &site) {
                     out.insert(value, d);
                 }
@@ -1304,15 +1362,9 @@ fn fold_env_in(
             let families = &vocab.indexed_state;
             let at_of = |p: &str| crate::state_decls::domain_type_at(p, families).to_string();
             let mut affected: std::collections::BTreeSet<String> =
-                authored().map(|p| at_of(p)).collect();
+                authored().map(|p| at_of(&p)).collect();
             for name in &changed_domains {
-                affected.extend(
-                    b.paths_by_domain
-                        .get(name)
-                        .into_iter()
-                        .flatten()
-                        .map(|p| at_of(p)),
-                );
+                affected.extend(b.paths_typed_by(name).map(|p| at_of(&p)));
             }
             if !changed_domains.is_empty() {
                 // A report names the declared domains in its hint.

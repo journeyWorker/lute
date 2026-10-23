@@ -89,6 +89,10 @@ pub struct SchemaImports {
     /// path resolved from a `uses` peer (depth 0) stays `E-STATE-REDECLARE` if the
     /// scene redeclares it.
     pub state_overridable: BTreeSet<String>,
+    /// The `per:` families of [`Self::state`] whose winner came from an
+    /// `extends` base, by family path: each member is overridable as a path
+    /// of [`Self::state_overridable`] is (spec 0.49.0 §9.3).
+    pub family_overridable: BTreeSet<String>,
     /// Every `<quest id>` reachable via the import graph (dsl 0.2.0 §6.3: a quest
     /// id is unique PROJECT-WIDE — "like a named `run.*` fact ... not an
     /// implementation leak" — not merely per document), keyed by id -> one
@@ -128,6 +132,19 @@ pub struct SchemaImports {
     /// in the short form) — where a problem with the condition is reported.
     pub season_lives: BTreeMap<PathBuf, BTreeMap<String, Span>>,
     pub rel: RelImports,
+}
+
+impl SchemaImports {
+    /// Whether the importing document may refine the imported `path`
+    /// ([`Self::state_overridable`], [`Self::family_overridable`]).
+    pub fn is_overridable(&self, path: &str) -> bool {
+        self.state_overridable.contains(path)
+            || self
+                .state
+                .decls
+                .family_of(path)
+                .is_some_and(|(family, _)| self.family_overridable.contains(family))
+    }
 }
 
 /// Relational vocabulary gathered across the uses/extends DAG (spec §4.1),
@@ -191,7 +208,7 @@ impl Edge {
 struct ParsedDoc {
     /// Raw frontmatter for exact malformed entity-kind diagnostics.
     raw_yaml: String,
-    state: BTreeMap<String, StateDecl>,
+    state: crate::meta::StateDecls,
     /// dsl 0.28.0 (T3-1): the state paths whose own row this doc reported
     /// ([`StateSchema::faulty`]).
     faulty: BTreeSet<String>,
@@ -579,14 +596,33 @@ fn resolve_imports_in(
     let mut enum_by_name: BTreeMap<String, Vec<(PathBuf, usize, Domain)>> = BTreeMap::new();
     let mut fact_entries: Vec<(usize, PathBuf, usize, FactDecl)> = Vec::new();
     let mut rule_entries: Vec<(usize, PathBuf, usize, RuleDecl)> = Vec::new();
+    // A `per:` family no other reachable document declares a member of is
+    // merged whole, as the one declaration of each of its members (spec
+    // 0.49.0 §9.3); any other is merged member by member, as every path is.
+    let mut lone_families: Vec<(String, usize, crate::meta::StateFamily)> = Vec::new();
     for (canon, doc) in &parsed {
         let depth = dist.get(canon).copied().unwrap_or(0);
-        for (path, decl) in &doc.state {
+        for (path, decl) in doc.state.explicit() {
             state_by_name.entry(path.clone()).or_default().push((
                 canon.clone(),
                 depth,
                 decl.clone(),
             ));
+        }
+        for (path, family) in doc.state.families() {
+            let lone = parsed
+                .iter()
+                .all(|(other, d)| other == canon || !d.state.declares_member_of(path, family));
+            if lone {
+                lone_families.push((path.clone(), depth, family.clone()));
+                continue;
+            }
+            for (key, decl) in doc.state.family_entries(path, family) {
+                state_by_name
+                    .entry(key)
+                    .or_default()
+                    .push((canon.clone(), depth, decl.clone()));
+            }
         }
         for (name, v) in &doc.defs {
             def_by_name
@@ -682,6 +718,17 @@ fn resolve_imports_in(
             state_overridable.insert(path.clone());
         }
         state.decls.insert(path, winner);
+    }
+    let mut family_overridable = BTreeSet::new();
+    for (path, depth, family) in lone_families {
+        if depth >= 1 {
+            family_overridable.insert(path.clone());
+        }
+        // Only its own document's explicit paths can name a member: those
+        // already shadow it there.
+        state
+            .decls
+            .insert_family(path, family, crate::meta::Precedence::KeepExisting);
     }
     state.faulty = parsed
         .values()
@@ -901,12 +948,30 @@ fn resolve_imports_in(
         .flat_map(|doc| doc.state_index.iter().map(|(p, k)| (p.clone(), k.clone())))
         .collect();
     // dsl 0.28.0: a `per:` over a kind another reachable schema declares.
+    let mut shared_members = BTreeMap::new();
     for doc in parsed.values() {
         for (pending, origin) in &doc.per_pending {
-            let (decls, index, faults) =
-                crate::meta::expand_per_pending(std::slice::from_ref(pending), &implied_kinds);
-            for (path, decl) in decls {
-                state.decls.entry(path).or_insert(decl);
+            let (families, index, faults) = crate::meta::expand_per_pending(
+                std::slice::from_ref(pending),
+                &implied_kinds,
+                &mut shared_members,
+            );
+            for (path, family) in families {
+                // A family already at `path` stays as its members' explicit
+                // declarations, overridable as they were.
+                if family_overridable.remove(&path) {
+                    if let Some(old) = state.decls.families().get(&path) {
+                        let members: Vec<String> = state
+                            .decls
+                            .family_entries(&path, old)
+                            .map(|(key, _)| key)
+                            .collect();
+                        state_overridable.extend(members);
+                    }
+                }
+                state
+                    .decls
+                    .insert_family(path, family, crate::meta::Precedence::KeepExisting);
             }
             indexed_state.extend(index);
             for d in faults {
@@ -1070,6 +1135,7 @@ fn resolve_imports_in(
         files: parsed.keys().cloned().collect(),
         diags,
         state_overridable,
+        family_overridable,
         imported_quest_ids,
         cast,
         imported_entry_ids,
@@ -1354,7 +1420,7 @@ fn read_and_parse(
 ) -> (ParsedDoc, Vec<String>, Vec<String>) {
     let empty = ParsedDoc {
         raw_yaml: String::new(),
-        state: BTreeMap::new(),
+        state: crate::meta::StateDecls::default(),
         faulty: BTreeSet::new(),
         clock_rejected: false,
         invalid: BTreeMap::new(),
@@ -1507,7 +1573,10 @@ fn read_and_parse(
             .state
             .decls
             .keys()
-            .map(|p| (p.clone(), here(crate::rel_schema::state_key_span(&meta, p))))
+            .map(|p| {
+                let span = here(crate::rel_schema::state_key_span(&meta, &p));
+                (p.into_owned(), span)
+            })
             .collect(),
         // Prerelease N4: each listed member's own line, the first place a
         // duplicate `add:` of it names.

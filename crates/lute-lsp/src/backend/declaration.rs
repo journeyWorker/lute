@@ -99,9 +99,7 @@ impl Backend {
         // file's own inline `state:` overrides an imported decl of the same
         // path (mirrors `check.rs::fold_env`'s inline-over-imported precedence).
         let mut state = imports.state.clone();
-        for (path, decl) in &typed.state.decls {
-            state.decls.insert(path.clone(), decl.clone());
-        }
+        state.decls.append(typed.state.decls.clone());
 
         // The `@ref` existence/type tables `defs:` CEL bodies resolve `@name`
         // uses against: plugin/project baseline < imported < inline (same

@@ -1089,7 +1089,7 @@ fn state_path_items(meta: &lute_check::TypedMeta) -> Vec<CompletionItem> {
         .decls
         .iter()
         .map(|(path, decl)| CompletionItem {
-            label: path.clone(),
+            label: path.into_owned(),
             kind: Some(CompletionItemKind::PROPERTY),
             detail: Some(type_label(&decl.ty)),
             ..Default::default()

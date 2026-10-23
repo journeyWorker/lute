@@ -604,7 +604,11 @@ pub(super) fn component_own_slots(
 ) -> std::collections::BTreeSet<String> {
     let mut schema = crate::meta::StateSchema::default();
     fold_directive_slots(body, snapshot, components, &mut schema);
-    schema.decls.into_keys().collect()
+    schema
+        .decls
+        .keys()
+        .map(std::borrow::Cow::into_owned)
+        .collect()
 }
 
 /// dsl 0.26.0 §3.3: `slot` reads state, and only the component's own result

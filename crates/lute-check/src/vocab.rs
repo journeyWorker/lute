@@ -19,10 +19,10 @@
 //! the stage over base ∪ overlay otherwise (`check::fold`).
 
 use std::any::{Any, TypeId};
+use std::borrow::Cow;
 use std::collections::{btree_map, BTreeMap, BTreeSet, HashMap};
 use std::fmt;
 use std::iter::Peekable;
-use std::ops::Bound;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
@@ -34,7 +34,7 @@ use lute_manifest::snapshot::{CapabilitySnapshot, Domain, InvalidDecl};
 use lute_manifest::types::Type;
 
 use crate::component_import::ComponentSet;
-use crate::meta::{RuleDecl, StateDecl, StateSchema};
+use crate::meta::{DeclEntries, RuleDecl, StateDecl, StateFamily, StateSchema};
 use crate::rel_schema::{PluginOrigins, RelVocab};
 use crate::schema_import::SchemaImports;
 
@@ -239,8 +239,12 @@ pub(crate) struct BaseFold {
     /// every `{ domain: K }` / `{ entity: K }` path under [`Self::domains`],
     /// as a view with no overlay, with its summary.
     pub(crate) view: StateView,
-    /// Each domain name a base state path is typed by, with those paths.
+    /// Each domain name a base state path is typed by, with those paths
+    /// (explicit declarations; families in [`Self::families_by_domain`]).
     pub(crate) paths_by_domain: BTreeMap<String, Vec<String>>,
+    /// Each domain name a base `per:` family is typed by, with those
+    /// families' paths.
+    pub(crate) families_by_domain: BTreeMap<String, Vec<String>>,
     /// The imported defs, settled against the base state.
     pub(crate) imported_defs: Arc<BTreeMap<String, yaml_serde::Value>>,
     /// `E-DEF-DECL` for the imported defs.
@@ -260,6 +264,28 @@ pub(crate) struct BaseFold {
     /// `snapshot.domains` extended with the imported domains — what a
     /// template header argument is member-checked against.
     pub(crate) template_domains: Arc<BTreeMap<String, Domain>>,
+}
+
+impl BaseFold {
+    /// Every base state path typed by domain `name`, each member of a
+    /// family typed by it included.
+    pub(crate) fn paths_typed_by<'a>(&'a self, name: &str) -> impl Iterator<Item = Cow<'a, str>> {
+        let decls = &self.view.base().decls;
+        let explicit = self
+            .paths_by_domain
+            .get(name)
+            .into_iter()
+            .flatten()
+            .map(|p| Cow::Borrowed(p.as_str()));
+        let families = self
+            .families_by_domain
+            .get(name)
+            .into_iter()
+            .flatten()
+            .filter_map(move |p| decls.families().get_key_value(p))
+            .flat_map(move |(p, f)| decls.family_entries(p, f).map(|(k, _)| Cow::Owned(k)));
+        explicit.chain(families)
+    }
 }
 
 /// A span no document has: a base stage that reads the frontmatter text is
@@ -324,14 +350,19 @@ pub struct StateView {
 }
 
 /// What the project-wide passes read of a base state, aggregated once per
-/// vocab instead of once per document (spec 0.49.0 §9.2 R5).
+/// vocab instead of once per document (spec 0.49.0 §9.2 R5). A `per:`
+/// family is recorded as its family path (spec 0.49.0 §9.3).
 #[derive(Debug, Default)]
 pub struct StateSummary {
     /// The `run.*`/`user.*` paths with a schema `default:` (the envelope's
     /// entry floor `D`, [`crate::envelope::schema_defaults`]).
     defaults: BTreeSet<String>,
+    /// The families some member of which is in [`Self::defaults`]' set.
+    default_families: BTreeSet<String>,
     /// The `owner: engine` paths.
     engine_owned: BTreeSet<String>,
+    /// The `owner: engine` families.
+    engine_owned_families: BTreeSet<String>,
     /// Each domain name a declaration's type names, with how many
     /// declarations name it.
     domain_reads: BTreeMap<String, usize>,
@@ -340,17 +371,40 @@ pub struct StateSummary {
 impl StateSummary {
     fn of(schema: &StateSchema) -> Self {
         let mut out = Self::default();
-        for (path, decl) in &schema.decls {
+        let mut read = |decl: &StateDecl, count: usize| {
+            if count == 0 {
+                return;
+            }
+            let mut names = BTreeSet::new();
+            crate::project_check::collect_domain_names(&decl.ty, &mut names);
+            for name in names {
+                *out.domain_reads.entry(name).or_default() += count;
+            }
+        };
+        for decl in schema.decls.explicit().values() {
+            read(decl, 1);
+        }
+        for (path, family) in schema.decls.families() {
+            read(family.decl(), schema.decls.family_len(path, family));
+        }
+        for (path, decl) in schema.decls.explicit() {
             if is_default(path, decl) {
                 out.defaults.insert(path.clone());
             }
             if is_engine_owned(decl) {
                 out.engine_owned.insert(path.clone());
             }
-            let mut names = BTreeSet::new();
-            crate::project_check::collect_domain_names(&decl.ty, &mut names);
-            for name in names {
-                *out.domain_reads.entry(name).or_default() += 1;
+        }
+        for (path, family) in schema.decls.families() {
+            if schema
+                .decls
+                .family_entries(path, family)
+                .any(|(key, decl)| is_default(&key, decl))
+            {
+                out.default_families.insert(path.clone());
+            }
+            if is_engine_owned(family.decl()) {
+                out.engine_owned_families.insert(path.clone());
             }
         }
         out
@@ -402,12 +456,17 @@ impl StateView {
     /// Every path this view may answer differently from its base: the
     /// overlay's declarations, the base paths whose domain members it
     /// resolves again or masks. In byte order, each once.
-    pub fn own_paths(&self) -> BTreeSet<&String> {
+    pub fn own_paths(&self) -> BTreeSet<Cow<'_, str>> {
         self.overlay
             .decls
             .keys()
-            .chain(self.overlay.domain_members.keys())
-            .chain(&self.masked_domains)
+            .chain(
+                self.overlay
+                    .domain_members
+                    .keys()
+                    .chain(&self.masked_domains)
+                    .map(|k| Cow::Borrowed(k.as_str())),
+            )
             .collect()
     }
 
@@ -420,7 +479,7 @@ impl StateView {
         let mut replaced: BTreeMap<String, usize> = BTreeMap::new();
         for (path, decl) in &self.overlay.decls {
             crate::project_check::collect_domain_names(&decl.ty, &mut out);
-            if let Some(base) = self.base.decls.get(path) {
+            if let Some(base) = self.base.decls.get(&path) {
                 let mut names = BTreeSet::new();
                 crate::project_check::collect_domain_names(&base.ty, &mut names);
                 for name in names {
@@ -436,7 +495,7 @@ impl StateView {
         out
     }
 
-    /// The declaration of `path`.
+    /// The declaration of `path`, a `per:` family member's included.
     pub fn get(&self, path: &str) -> Option<&StateDecl> {
         self.overlay
             .decls
@@ -448,29 +507,48 @@ impl StateView {
         self.overlay.decls.contains_key(path) || self.base.decls.contains_key(path)
     }
 
-    /// Every declaration, in byte order of the path.
-    pub fn iter(&self) -> Merged<'_, StateDecl> {
-        Merged::new(
-            self.overlay.decls.range::<str, _>(..),
-            self.base.decls.range::<str, _>(..),
-        )
+    /// Every declaration, in byte order of the path; a `per:` family's
+    /// members are expanded as they are reached.
+    pub fn iter(&self) -> MergedDecls<'_> {
+        MergedDecls {
+            overlay: self.overlay.decls.iter().peekable(),
+            base: self.base.decls.iter().peekable(),
+        }
     }
 
     /// Every declared path, in byte order.
-    pub fn keys(&self) -> impl Iterator<Item = &String> {
+    pub fn keys(&self) -> impl Iterator<Item = Cow<'_, str>> {
         self.iter().map(|(k, _)| k)
     }
 
     /// The declarations whose path starts with `prefix`, in byte order.
-    pub fn with_prefix<'a>(&'a self, prefix: &str) -> Prefixed<'a> {
-        let from = (Bound::Included(prefix), Bound::Unbounded);
-        Prefixed {
-            inner: Merged::new(
-                self.overlay.decls.range::<str, _>(from),
-                self.base.decls.range::<str, _>(from),
-            ),
-            prefix: prefix.to_string(),
+    pub fn with_prefix<'a>(&'a self, prefix: &str) -> MergedDecls<'a> {
+        MergedDecls {
+            overlay: self.overlay.decls.with_prefix(prefix).peekable(),
+            base: self.base.decls.with_prefix(prefix).peekable(),
         }
+    }
+
+    /// Whether some member of `family` at `path` is declared already.
+    pub(crate) fn declares_member_of(&self, path: &str, family: &StateFamily) -> bool {
+        self.overlay.decls.declares_member_of(path, family)
+            || self.base.decls.declares_member_of(path, family)
+    }
+
+    /// The `per:` family whose member `path` resolves to, with its path.
+    pub fn family_of(&self, path: &str) -> Option<(&str, &StateFamily)> {
+        if self.overlay.decls.contains_key(path) {
+            return self.overlay.decls.family_of(path);
+        }
+        self.base.decls.family_of(path)
+    }
+
+    /// Declare the `per:` family `family` at `path` in the overlay; each
+    /// member replaces any declaration of its path.
+    pub(crate) fn insert_family(&mut self, path: String, family: StateFamily) {
+        self.overlay
+            .decls
+            .insert_family(path, family, crate::meta::Precedence::Replace);
     }
 
     /// The declarations directly under `family` (`family.<m>`, no further
@@ -478,7 +556,7 @@ impl StateView {
     pub fn members_of<'a>(
         &'a self,
         family: &str,
-    ) -> impl Iterator<Item = (&'a String, &'a StateDecl)> + 'a {
+    ) -> impl Iterator<Item = (Cow<'a, str>, &'a StateDecl)> + 'a {
         let at = family.len() + 1;
         self.with_prefix(&format!("{family}."))
             .filter(move |(k, _)| !k[at..].contains('.'))
@@ -538,13 +616,13 @@ impl StateView {
     /// The `{ domain: K }` name and members of `path`
     /// ([`StateSchema::domain_members`]).
     pub fn domain_members(&self, path: &str) -> Option<&(String, Vec<String>)> {
-        if let Some(m) = self.overlay.domain_members.get(path) {
+        if let Some(m) = self.overlay.domain_members_of(path) {
             return Some(m);
         }
         if self.overlay.decls.contains_key(path) || self.masked_domains.contains(path) {
             return None;
         }
-        self.base.domain_members.get(path)
+        self.base.domain_members_of(path)
     }
 
     /// Every whole-number range, in byte order of the path.
@@ -675,16 +753,37 @@ impl fmt::Debug for StateUnion<'_> {
 /// for each base path in a summary set, how many of them replace it with a
 /// declaration outside that set.
 struct BaseUse<'a> {
+    base: &'a StateSchema,
     summary: &'a StateSummary,
     views: usize,
-    unset_defaults: HashMap<&'a str, usize>,
-    unset_engine_owned: HashMap<&'a str, usize>,
+    unset_defaults: HashMap<Cow<'a, str>, usize>,
+    unset_engine_owned: HashMap<Cow<'a, str>, usize>,
+}
+
+/// Which [`StateSummary`] set a [`StateUnion`] reads.
+#[derive(Clone, Copy)]
+enum SummarySet {
+    Defaults,
+    EngineOwned,
+}
+
+impl SummarySet {
+    fn holds(self, path: &str, decl: &StateDecl) -> bool {
+        match self {
+            Self::Defaults => is_default(path, decl),
+            Self::EngineOwned => is_engine_owned(decl),
+        }
+    }
 }
 
 impl<'a> StateUnion<'a> {
     pub fn add(&mut self, view: &'a StateView) {
         let summary: &'a StateSummary = &view.summary;
-        let mut base = if summary.defaults.is_empty() && summary.engine_owned.is_empty() {
+        let mut base = if summary.defaults.is_empty()
+            && summary.default_families.is_empty()
+            && summary.engine_owned.is_empty()
+            && summary.engine_owned_families.is_empty()
+        {
             // Nothing of this base to subtract from (a view with no shared
             // base, or a base with neither kind of path).
             None
@@ -697,6 +796,7 @@ impl<'a> StateUnion<'a> {
                 Some(at) => at,
                 None => {
                     self.bases.push(BaseUse {
+                        base: &view.base,
                         summary,
                         views: 0,
                         unset_defaults: HashMap::new(),
@@ -709,52 +809,72 @@ impl<'a> StateUnion<'a> {
             base.views += 1;
             Some(base)
         };
+        let in_base = |set: SummarySet, path: &str| {
+            view.base
+                .decls
+                .get(path)
+                .is_some_and(|decl| set.holds(path, decl))
+        };
         for (path, decl) in &view.overlay.decls {
-            if is_default(path, decl) {
-                self.own_defaults.insert(path.clone());
-            } else if let Some(b) = base.as_mut().filter(|_| summary.defaults.contains(path)) {
-                *b.unset_defaults.entry(path.as_str()).or_default() += 1;
-            }
-            if is_engine_owned(decl) {
-                self.own_engine_owned.insert(path.clone());
+            if is_default(&path, decl) {
+                self.own_defaults.insert(path.to_string());
             } else if let Some(b) = base
                 .as_mut()
-                .filter(|_| summary.engine_owned.contains(path))
+                .filter(|_| in_base(SummarySet::Defaults, &path))
             {
-                *b.unset_engine_owned.entry(path.as_str()).or_default() += 1;
+                *b.unset_defaults.entry(path.clone()).or_default() += 1;
+            }
+            if is_engine_owned(decl) {
+                self.own_engine_owned.insert(path.to_string());
+            } else if let Some(b) = base
+                .as_mut()
+                .filter(|_| in_base(SummarySet::EngineOwned, &path))
+            {
+                *b.unset_engine_owned.entry(path).or_default() += 1;
             }
         }
     }
 
     /// ∪ [`crate::envelope::schema_defaults`] of every added view.
     pub fn defaults(&self) -> BTreeSet<String> {
-        self.union(&self.own_defaults, |b| {
-            (&b.summary.defaults, &b.unset_defaults)
-        })
+        self.union(&self.own_defaults, SummarySet::Defaults)
     }
 
     /// ∪ of every added view's `owner: engine` paths.
     pub fn engine_owned(&self) -> BTreeSet<String> {
-        self.union(&self.own_engine_owned, |b| {
-            (&b.summary.engine_owned, &b.unset_engine_owned)
-        })
+        self.union(&self.own_engine_owned, SummarySet::EngineOwned)
     }
 
-    fn union(
-        &self,
-        own: &BTreeSet<String>,
-        set: impl for<'b> Fn(&'b BaseUse<'a>) -> (&'a BTreeSet<String>, &'b HashMap<&'a str, usize>),
-    ) -> BTreeSet<String> {
+    fn union(&self, own: &BTreeSet<String>, set: SummarySet) -> BTreeSet<String> {
         let mut out = own.clone();
         for base in &self.bases {
-            let (paths, unset) = set(base);
+            let (paths, families, unset) = match set {
+                SummarySet::Defaults => (
+                    &base.summary.defaults,
+                    &base.summary.default_families,
+                    &base.unset_defaults,
+                ),
+                SummarySet::EngineOwned => (
+                    &base.summary.engine_owned,
+                    &base.summary.engine_owned_families,
+                    &base.unset_engine_owned,
+                ),
+            };
             // A base path is in the union unless every view replaced it.
-            out.extend(
-                paths
-                    .iter()
-                    .filter(|p| unset.get(p.as_str()).is_none_or(|n| *n < base.views))
-                    .cloned(),
-            );
+            let kept = |p: &str| unset.get(p).is_none_or(|n| *n < base.views);
+            out.extend(paths.iter().filter(|p| kept(p)).cloned());
+            let decls = &base.base.decls;
+            for (path, family) in families
+                .iter()
+                .filter_map(|p| decls.families().get_key_value(p))
+            {
+                out.extend(
+                    decls
+                        .family_entries(path, family)
+                        .filter(|(key, decl)| set.holds(key, decl) && kept(key))
+                        .map(|(key, _)| key),
+                );
+            }
         }
         out
     }
@@ -764,9 +884,12 @@ impl<'a> StateUnion<'a> {
 /// same entries however they are split between base and overlay.
 impl fmt::Debug for StateView {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let domain_members: BTreeMap<&String, &(String, Vec<String>)> = self
+        let domain_members: BTreeMap<Cow<'_, str>, _> = self
             .keys()
-            .filter_map(|k| self.domain_members(k).map(|m| (k, m)))
+            .filter_map(|k| {
+                let m = self.domain_members(&k)?;
+                Some((k, m))
+            })
             .collect();
         let ranges: Vec<_> = Merged::new(
             self.overlay.int_ranges.range::<str, _>(..),
@@ -822,37 +945,45 @@ impl<'a, V> Merged<'a, V> {
     }
 }
 
-/// [`StateView::with_prefix`]: the merged declarations from `prefix` on, up
-/// to the first path that does not start with it.
-pub struct Prefixed<'a> {
-    inner: Merged<'a, StateDecl>,
-    prefix: String,
-}
-
-impl fmt::Debug for Prefixed<'_> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("Prefixed")
-            .field("prefix", &self.prefix)
-            .finish_non_exhaustive()
-    }
-}
-
-impl<'a> Iterator for Prefixed<'a> {
-    type Item = (&'a String, &'a StateDecl);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.inner
-            .next()
-            .filter(|(k, _)| k.starts_with(&self.prefix))
-    }
-}
-
 impl<'a, V> Iterator for Merged<'a, V> {
     type Item = (&'a String, &'a V);
 
     fn next(&mut self) -> Option<Self::Item> {
         match (self.overlay.peek(), self.base.peek()) {
             (Some((o, _)), Some((b, _))) => match o.as_str().cmp(b.as_str()) {
+                std::cmp::Ordering::Less => self.overlay.next(),
+                std::cmp::Ordering::Greater => self.base.next(),
+                std::cmp::Ordering::Equal => {
+                    self.base.next();
+                    self.overlay.next()
+                }
+            },
+            (Some(_), None) => self.overlay.next(),
+            (None, _) => self.base.next(),
+        }
+    }
+}
+
+/// [`StateView::iter`]: the overlay's and the base's declarations, each
+/// with its `per:` families expanded, merged in path order; on an equal
+/// path the overlay's wins.
+pub struct MergedDecls<'a> {
+    overlay: Peekable<DeclEntries<'a>>,
+    base: Peekable<DeclEntries<'a>>,
+}
+
+impl fmt::Debug for MergedDecls<'_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("MergedDecls").finish_non_exhaustive()
+    }
+}
+
+impl<'a> Iterator for MergedDecls<'a> {
+    type Item = (Cow<'a, str>, &'a StateDecl);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match (self.overlay.peek(), self.base.peek()) {
+            (Some((o, _)), Some((b, _))) => match o.as_ref().cmp(b.as_ref()) {
                 std::cmp::Ordering::Less => self.overlay.next(),
                 std::cmp::Ordering::Greater => self.base.next(),
                 std::cmp::Ordering::Equal => {
@@ -902,10 +1033,13 @@ mod tests {
         }
         let mut view = StateView::over(Arc::new(base));
         *view.overlay_mut() = overlay;
-        let got: Vec<(&String, &StateDecl)> = view.iter().collect();
-        let want: Vec<(&String, &StateDecl)> = merged.iter().collect();
+        let got: Vec<(Cow<'_, str>, &StateDecl)> = view.iter().collect();
+        let want: Vec<(Cow<'_, str>, &StateDecl)> = merged
+            .iter()
+            .map(|(k, d)| (Cow::Borrowed(k.as_str()), d))
+            .collect();
         assert_eq!(got, want);
-        let prefixed: Vec<&String> = view.with_prefix("run.a").map(|(k, _)| k).collect();
+        let prefixed: Vec<Cow<'_, str>> = view.with_prefix("run.a").map(|(k, _)| k).collect();
         assert_eq!(prefixed, ["run.a", "run.a-z", "run.a.a", "run.a.b"]);
         assert_eq!(
             view.nearest_ancestor("run.a.b.c").map(|(p, _)| p),

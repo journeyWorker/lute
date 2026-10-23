@@ -80,7 +80,7 @@ fn schema_enum_subject() -> StateView {
         },
     );
     StateView::from(StateSchema {
-        decls,
+        decls: decls.into_iter().collect(),
         ..Default::default()
     })
 }
@@ -98,7 +98,7 @@ fn schema_maybe_unset_subject() -> StateView {
         },
     );
     StateView::from(StateSchema {
-        decls,
+        decls: decls.into_iter().collect(),
         ..Default::default()
     })
 }
@@ -157,7 +157,7 @@ fn schema_bool(path: &str, default: Option<bool>) -> StateView {
         },
     );
     StateView::from(StateSchema {
-        decls,
+        decls: decls.into_iter().collect(),
         ..Default::default()
     })
 }
@@ -202,7 +202,7 @@ fn otherwise_makes_infinite_domain_exhaustive() {
         },
     );
     let schema = StateView::from(StateSchema {
-        decls,
+        decls: decls.into_iter().collect(),
         ..Default::default()
     });
     let m = match_with(
@@ -232,7 +232,7 @@ fn infinite_domain_without_otherwise_is_nonexhaustive() {
         },
     );
     let schema = StateView::from(StateSchema {
-        decls,
+        decls: decls.into_iter().collect(),
         ..Default::default()
     });
     let m = match_with("run.n", vec![when_arm("$ == 1"), when_arm("$ == 2")]);
@@ -420,7 +420,7 @@ fn age_gate_without_teen_or_otherwise_errors() {
         },
     );
     let schema = StateView::from(StateSchema {
-        decls,
+        decls: decls.into_iter().collect(),
         ..Default::default()
     });
     let m = match_with(
@@ -444,7 +444,7 @@ fn age_gate_with_teen_arm_ok() {
         },
     );
     let schema = StateView::from(StateSchema {
-        decls,
+        decls: decls.into_iter().collect(),
         ..Default::default()
     });
     let m = match_with(
@@ -507,7 +507,7 @@ fn scene_choices_full_coverage_leaves_unset_to_definite_assignment() {
         },
     );
     let schema = StateView::from(StateSchema {
-        decls,
+        decls: decls.into_iter().collect(),
         ..Default::default()
     });
     let m = match_with(
@@ -994,7 +994,7 @@ fn schema_rank4(with_default: bool) -> StateView {
         },
     );
     StateView::from(StateSchema {
-        decls,
+        decls: decls.into_iter().collect(),
         ..Default::default()
     })
 }
@@ -1503,7 +1503,7 @@ fn is_exhaustive_agrees_with_number_coverage() {
             },
         );
         StateView::from(StateSchema {
-            decls,
+            decls: decls.into_iter().collect(),
             ..Default::default()
         })
     };
