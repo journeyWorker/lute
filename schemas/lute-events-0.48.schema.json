@@ -126,6 +126,11 @@
               "description": "Each result field content reads, with its declared type.",
               "type": "object"
             },
+            "stamps": {
+              "additionalProperties": true,
+              "description": "0.49.0 §3.1: the IR command's plugin stamps (its `stamps`\nobject), beside and never merged into `attrs`; omitted when the\ncommand carries none.",
+              "type": "object"
+            },
             "tag": {
               "type": "string"
             },

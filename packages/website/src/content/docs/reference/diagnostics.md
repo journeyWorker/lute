@@ -1094,7 +1094,9 @@ A plugin package declares the same id more than once within one export kind; the
 
 ### E-PLUGIN-INVALID-DIRECTIVE
 
-A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one).
+A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one); or a directive attribute or `stampAttrs` entry is typed `list`, `map` or `record`, which no authored attribute value can satisfy.
+
+Spec: [dsl 0.49.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-PLUGIN-IO
 
@@ -1150,7 +1152,7 @@ Spec: [dsl §10](/spec/), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute
 
 ### E-PLUGIN-RESERVED-STAMP-ATTR
 
-A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`) that the core stamp already owns.
+A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp.
 
 Spec: [plugin §14](/spec/)
 
@@ -1390,9 +1392,9 @@ Spec: [dsl 0.16.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-REWARD-TARGET
 
-A `<reward>`'s `target=` violates its reward kind's target contract: required but missing, or naming neither a declared entity-kind member nor a provider catalog id.
+A `<reward>`'s `target=` violates its reward kind's target contract: required but missing, present although the kind declares `target: { forbidden: true }`, or naming neither a declared entity-kind member nor a provider catalog id.
 
-Spec: [dsl 0.26.0 §2.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)
+Spec: [dsl 0.26.0 §2.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md), [dsl 0.49.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-RULE-AGGREGATE-CYCLE
 

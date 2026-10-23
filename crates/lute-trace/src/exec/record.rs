@@ -37,24 +37,40 @@ pub fn str_of<'a>(rec: &'a Json, key: &str) -> &'a str {
 }
 
 /// A command's scalar fields as `k="v"` / `k=true` / `k=3`, key order, minus
-/// `skip`.
+/// `skip`. The entries of its nested plugin `stamps` object (0.49.0 §3.1)
+/// render beside them as the authored attributes they were, in the same key
+/// order and never skipped: a stamp named like a skipped record key
+/// (`speaker`, `text`, …) is the author's attribute, not that field. A name
+/// both carry renders the record's field first.
 pub fn render_attrs(cmd: &Json, skip: &[&str]) -> String {
     let Json::Object(map) = cmd else {
         return String::new();
     };
-    let mut parts = Vec::new();
-    for (k, v) in map {
-        if skip.contains(&k.as_str()) {
-            continue;
-        }
-        match v {
-            Json::String(s) => parts.push(format!("{k}=\"{s}\"")),
-            Json::Bool(b) => parts.push(format!("{k}={b}")),
-            Json::Number(n) => parts.push(format!("{k}={n}")),
-            _ => {}
-        }
-    }
-    parts.join(" ")
+    let own = map.iter().filter(|(k, _)| !skip.contains(&k.as_str()));
+    let stamps = map
+        .get("stamps")
+        .and_then(Json::as_object)
+        .into_iter()
+        .flatten();
+    let mut parts: Vec<(&str, String)> = own
+        .chain(stamps)
+        .filter_map(|(k, v)| {
+            let rendered = match v {
+                Json::String(s) => format!("{k}=\"{s}\""),
+                Json::Bool(b) => format!("{k}={b}"),
+                Json::Number(n) => format!("{k}={n}"),
+                _ => return None,
+            };
+            Some((k.as_str(), rendered))
+        })
+        .collect();
+    // Stable: a record field keeps its place before a same-named stamp.
+    parts.sort_by(|a, b| a.0.cmp(b.0));
+    parts
+        .into_iter()
+        .map(|(_, part)| part)
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// A line's source head: `@speaker` plus its delivery — the role flag it

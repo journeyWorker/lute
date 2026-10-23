@@ -646,7 +646,8 @@ impl<'a, I: Iterator<Item = &'a StateEntry>> Iterator for StateRows<'a, I> {
 
 /// Cross-cutting optional stamps (dsl 0.37.0 §5.2), flattened into every
 /// stamped record: the nested `timing` object, injection provenance,
-/// component source, and plugin cross-cutting attrs.
+/// component source, and (0.49.0 §3.1) the nested `stamps` object of plugin
+/// cross-cutting attrs.
 #[derive(Clone, Debug, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Stamp {
@@ -664,13 +665,15 @@ pub struct Stamp {
     #[serde(skip)]
     pub authored: Option<String>,
     /// Plugin-declared CROSS-CUTTING attrs (plugin 0.0.2 §14.1 `stampAttrs:`),
-    /// flattened beside `timing`. An engine reads these exactly like a
-    /// directive `fields` entry — typed by the declaring plugin's `AttrDecl`,
-    /// absent when unauthored. Assembly REJECTS a `stampAttrs` name colliding
-    /// with any reserved key (`E-PLUGIN-RESERVED-STAMP-ATTR`), so this map can
-    /// never shadow them. Serialized LAST within the stamp.
-    #[serde(flatten, skip_serializing_if = "BTreeMap::is_empty")]
-    pub extra: BTreeMap<String, serde_json::Value>,
+    /// serialized as ONE nested object `stamps` (0.49.0 §3.1), keyed by
+    /// attribute name, LAST within the stamp and omitted when empty (a record
+    /// without a plugin stamp keeps its 0.48.1 bytes). Nesting is what keeps
+    /// a stamp named like one of its carrier's keys (`tag`, `speaker`,
+    /// `text`, …) from writing that key twice. An engine reads each entry
+    /// exactly like a directive `fields` entry — typed by the declaring
+    /// plugin's `AttrDecl`, absent when unauthored.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub stamps: BTreeMap<String, serde_json::Value>,
 }
 
 /// A record's `timing` object (dsl 0.37.0 §5.2). `duration`, `delay`, and

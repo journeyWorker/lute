@@ -1092,7 +1092,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-INVALID-DIRECTIVE
 
-플러그인 디렉티브 선언이 닫힌 어휘 밖의 `semantics:` 플래그를 사용했거나, 같은 속성 이름을 두 번 이상 선언했거나, 속성의 `type`에 속하지 않는 값을 `default:`로 선언했습니다(`double` 속성의 정수 기본값은 허용됩니다).
+플러그인 디렉티브 선언이 닫힌 어휘 밖의 `semantics:` 플래그를 사용했거나, 같은 속성 이름을 두 번 이상 선언했거나, 속성의 `type`에 속하지 않는 값을 `default:`로 선언했습니다(`double` 속성의 정수 기본값은 허용됩니다). 또한 속성 값은 스칼라 하나로 쓰므로(문자열, 숫자, bool, enum 또는 엔티티 멤버, provider 또는 asset id) 최상위 타입이 `list`, `map`, `record`인 디렉티브 속성이나 `stampAttrs` 항목은 어떤 `.lute` 값으로도 만족할 수 없어 플러그인 로드 시 거부됩니다. 메시지가 속성 이름을 알려 줍니다: `string`으로 선언해 호스트에서 파싱하거나, 필드마다 속성 하나로 나누세요.
+
+명세: [dsl 0.49.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-PLUGIN-IO
 
@@ -1388,9 +1390,9 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 ### E-REWARD-TARGET
 
-`<reward>`의 `target=`이 해당 reward kind의 target 계약을 위반합니다: 필수인데 없거나, 선언된 엔티티 종류의 멤버도 provider 카탈로그 id도 아닙니다.
+`<reward>`의 `target=`이 해당 reward kind의 target 계약을 위반합니다: 필수인데 없거나, 선언된 엔티티 종류의 멤버도 provider 카탈로그 id도 아닙니다. 0.49.0부터는 reward kind가 `target: { forbidden: true }`를 선언했는데 `<reward>`가 `target=`을 쓰는 경우도 포함합니다: ``<reward kind="COINS"> takes no `target=`: its reward kind declares `target: { forbidden: true }` — remove the attribute``. `forbidden: true`는 `provider`/`entity`/`required`와 함께 쓸 수 없습니다.
 
-명세: [dsl 0.26.0 §2.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)
+명세: [dsl 0.26.0 §2.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md), [dsl 0.49.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-RULE-AGGREGATE-CYCLE
 

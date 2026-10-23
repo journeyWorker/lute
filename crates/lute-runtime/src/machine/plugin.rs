@@ -146,6 +146,12 @@ impl<D: Driver> Machine<D> {
         // dsl 0.41.0 §5.5: the call's attributes as executed, `occasion.target`
         // bound — what every `plugin` record and the bridge await carry.
         let attrs = cmd.get("fields").and_then(Json::as_object);
+        // 0.49.0 §3.1: the command's plugin stamps ride beside `attrs`, never
+        // merged into them, and are omitted when the command has none.
+        let stamps = cmd
+            .get("stamps")
+            .and_then(Json::as_object)
+            .filter(|s| !s.is_empty());
         let (answer, host) = if reads.is_empty() {
             (None, crate::session::Writes::default())
         } else {
@@ -154,6 +160,7 @@ impl<D: Driver> Machine<D> {
                 addr: addr(cmd),
                 reads: &reads,
                 attrs,
+                stamps,
             };
             match self.driver.bridge(&call) {
                 BridgeReply::Answer { fields, writes } => (Some(fields), writes),
@@ -183,7 +190,7 @@ impl<D: Driver> Machine<D> {
                     .filter(|(f, _)| self.bridge_reads.reads(&tag, f))
                     .map(|(f, p)| (f.as_str(), p.as_str()))
                     .unzip();
-                self.driver.emit(json!({
+                let mut rec = json!({
                     "position": addr(cmd),
                     "kind": "plugin",
                     "tag": tag,
@@ -192,7 +199,11 @@ impl<D: Driver> Machine<D> {
                     "unresolvedEffects": paths,
                     "unanswered": fields,
                     "note": "external bridge call — no `bridges:` answer; halted at the call",
-                }));
+                });
+                if let Some(stamps) = stamps {
+                    rec["stamps"] = Json::Object(stamps.clone());
+                }
+                self.driver.emit(rec);
                 return false;
             }
             None => None,
@@ -211,6 +222,9 @@ impl<D: Driver> Machine<D> {
         rec.insert("kind".into(), Json::String("plugin".into()));
         rec.insert("tag".into(), Json::String(tag.clone()));
         rec.insert("attrs".into(), attrs);
+        if let Some(stamps) = stamps {
+            rec.insert("stamps".into(), Json::Object(stamps.clone()));
+        }
         rec.insert("external".into(), Json::Bool(true));
         rec.insert("unresolvedEffects".into(), json!(unresolved));
         match &answered {

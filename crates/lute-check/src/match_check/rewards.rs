@@ -128,9 +128,10 @@ struct RewardTargetEnv<'a> {
 pub const E_REWARD_TARGET: &str = "E-REWARD-TARGET";
 
 /// dsl 0.26.0 §2.5: `r.target` against its kind's `target:` contract. A
-/// missing target fails only `required: true`; a present one must be a
-/// member of the `entity:` kind (did-you-mean) or an id of the `provider:`
-/// catalog (a stale snapshot only warns, as for a `providerRef` attr).
+/// missing target fails only `required: true`; a present one fails
+/// `forbidden: true` (0.49.0 §3.3), and must otherwise be a member of the
+/// `entity:` kind (did-you-mean) or an id of the `provider:` catalog (a
+/// stale snapshot only warns, as for a `providerRef` attr).
 fn check_reward_target(
     r: &Reward,
     contract: &RewardTarget,
@@ -151,6 +152,17 @@ fn check_reward_target(
         });
     };
     let at = r.target_span.unwrap_or(r.span);
+    if contract.forbidden {
+        return Some(diag(
+            E_REWARD_TARGET,
+            Severity::Error,
+            format!(
+                "`<reward kind=\"{kind}\">` takes no `target=`: its reward kind declares \
+                 `target: {{ forbidden: true }}` — remove the attribute"
+            ),
+            at,
+        ));
+    }
     if let Some(entity) = contract.entity.as_deref() {
         let message = match env.kinds.get(entity).map(|d| &d.shape) {
             None if env.kinds.is_empty() => format!(

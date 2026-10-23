@@ -270,6 +270,11 @@ pub enum Await {
         /// command's `fields`, `occasion.target` bound to the raise's
         /// member (`{}` when none).
         attrs: BTreeMap<String, Json>,
+        /// 0.49.0 §3.1: the IR command's plugin stamps (its `stamps`
+        /// object), beside and never merged into `attrs`; omitted when the
+        /// command carries none.
+        #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+        stamps: BTreeMap<String, Json>,
         /// Each result field content reads, with its declared type.
         results: BTreeMap<String, lute_manifest::types::Type>,
     },
@@ -1139,6 +1144,7 @@ fn set_request(await_: Await, request: u64) -> Await {
             document,
             position,
             attrs,
+            stamps,
             results,
         } => Await::Bridge {
             request,
@@ -1146,6 +1152,7 @@ fn set_request(await_: Await, request: u64) -> Await {
             document,
             position,
             attrs,
+            stamps,
             results,
         },
         other => other,
@@ -1617,6 +1624,10 @@ impl Driver for ReplayDriver {
             attrs: call
                 .attrs
                 .map(|attrs| attrs.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+                .unwrap_or_default(),
+            stamps: call
+                .stamps
+                .map(|stamps| stamps.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
                 .unwrap_or_default(),
             results,
         });

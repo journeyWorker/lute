@@ -1,0 +1,21 @@
+---
+kind: lore
+id: arena
+state:
+  scene.battle.fight.outcome: { type: { enum: [win, lose] }, default: lose }
+plugins:
+  arena: {}
+---
+
+<beat id="fight" on="duel" target="kind:foe" once="false">
+  ::wave{to=occasion.target cue="bell"}
+  ::battle{foe=occasion.target resultKey="fight" cue="drums" tag="opening" tempo="3"}
+  <match subject="scene.battle.fight.outcome">
+    <when is="win">
+      @narrator{cue="hush"}: Won.
+    </when>
+    <otherwise>
+      @narrator: Lost.
+    </otherwise>
+  </match>
+</beat>

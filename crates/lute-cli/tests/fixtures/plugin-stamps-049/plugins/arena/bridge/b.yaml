@@ -1,0 +1,6 @@
+bridgeCapabilities:
+  - service: arena
+    operation: battle
+    replay: recorded
+    result:
+      - { name: outcome, type: { enum: [win, lose] } }

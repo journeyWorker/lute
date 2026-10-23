@@ -114,8 +114,8 @@ pub const REGISTRY: &[SemanticEntry] = &[
     },
 ];
 /// Serialized keys covered by the semantic-field invariant. Dynamic maps
-/// (`extra`, plugin `fields`, labels, and locale text) are intentionally
-/// traversed only at their containing key.
+/// (`extra`, plugin `stamps` and `fields`, labels, and locale text) are
+/// intentionally traversed only at their containing key.
 pub const FIELD_TABLE: &[&str] = &[
     "accept",
     "action",
@@ -305,6 +305,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "source",
     "speaker",
     "spentBy",
+    "stamps",
     "start",
     "state",
     "stop",
@@ -496,7 +497,7 @@ fn add_stamp(out: &mut Collected, stamp: &Stamp, addr: Option<&str>, owner: Sema
             "command timing",
         );
     }
-    if stamp.provenance.is_some() || stamp.source.is_some() || !stamp.extra.is_empty() {
+    if stamp.provenance.is_some() || stamp.source.is_some() || !stamp.stamps.is_empty() {
         out.add(CORE, addr, "record provenance or plugin stamp data");
     }
 }

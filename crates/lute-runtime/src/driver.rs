@@ -259,6 +259,10 @@ pub struct BridgeCall<'a> {
     /// dsl 0.41.0 §5.5: the call's attributes as executed — the IR
     /// command's `fields`, `occasion.target` bound to its member.
     pub attrs: Option<&'a serde_json::Map<String, Json>>,
+    /// 0.49.0 §3.1: the IR command's plugin stamps (its nested `stamps`
+    /// object), beside and never merged into `attrs`; `None` when the
+    /// command carries none.
+    pub stamps: Option<&'a serde_json::Map<String, Json>>,
 }
 
 /// The driver's answer to a [`BridgeCall`].

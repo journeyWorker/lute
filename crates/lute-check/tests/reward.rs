@@ -5,6 +5,7 @@
 //! through a reward guard.
 
 use lute_check::{check, CheckInput, CheckResult, Mode, SchemaImports};
+use lute_core_span::Severity;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::RewardKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -330,6 +331,60 @@ fn required_rejects_a_missing_target_and_only_then() {
             .count(),
         2,
         "quest- and objective-level rewards both need a target: {required:?}"
+    );
+}
+
+/// 0.49.0 §3.3 (#168): a kind declaring `target: { forbidden: true }`
+/// rejects a `<reward>` with `target=`, at the attribute, and accepts one
+/// without it.
+#[test]
+fn forbidden_rejects_a_target_at_the_attribute() {
+    let forbidden = || lute_manifest::schema::RewardTarget {
+        forbidden: true,
+        ..Default::default()
+    };
+    let none = reward_target_diags(
+        "<reward kind=\"ITEM\"/>\n",
+        forbidden(),
+        ProviderSet::default(),
+    );
+    assert!(none.is_empty(), "no target is clean: {none:?}");
+
+    let rewards = "<reward kind=\"ITEM\" target=\"goodRod\"/>\n";
+    let text = format!(
+        "---\nkind: quest\nentities:\n  bagItem: {{ members: [goodRod, potion] }}\n  \
+         loot: {{ open: engine }}\n---\n<quest id=\"q\">\n{rewards}</quest>\n"
+    );
+    let input = CheckInput::new(
+        text.clone(),
+        "reward".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snap_with_target(forbidden()),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
+    let diags: Vec<_> = check(&input)
+        .diagnostics
+        .into_iter()
+        .filter(|d| d.code == "E-REWARD-TARGET")
+        .collect();
+    assert_eq!(diags.len(), 1, "{diags:?}");
+    let d = &diags[0];
+    assert_eq!(d.severity, Severity::Error);
+    assert_eq!(
+        d.message,
+        "`<reward kind=\"ITEM\">` takes no `target=`: its reward kind declares \
+         `target: { forbidden: true }` — remove the attribute"
+    );
+    let at = text.find("goodRod\"/>").unwrap();
+    assert_eq!(
+        (d.span.byte_start, d.span.byte_end),
+        (at, at + "goodRod".len()),
+        "anchored at the `target=` value, like every `E-REWARD-TARGET`"
     );
 }
 

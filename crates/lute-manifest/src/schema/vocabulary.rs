@@ -196,8 +196,9 @@ pub struct RewardKindBody {
 /// declares (parallels [`crate::assemble::AssembleError::UnknownAssetKind`]).
 /// `entity` names a project entity kind instead (checked against the merged
 /// `entities:`). At most one of the two; `required: true` rejects a reward
-/// of this kind with no `target=` at all. The checker reports a violation
-/// as `E-REWARD-TARGET`.
+/// of this kind with no `target=` at all, and (0.49.0 §3.3) `forbidden:
+/// true` — alone — rejects one WITH a `target=`. The checker reports a
+/// violation as `E-REWARD-TARGET`.
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, try_from = "RawRewardTarget")]
 pub struct RewardTarget {
@@ -207,6 +208,10 @@ pub struct RewardTarget {
     pub entity: Option<String>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub required: bool,
+    /// 0.49.0 §3.3 (#168): the kind takes no `target=`. Exclusive with every
+    /// other key ([`RewardTarget::try_from`]).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub forbidden: bool,
 }
 
 #[derive(Deserialize)]
@@ -218,6 +223,8 @@ struct RawRewardTarget {
     entity: Option<String>,
     #[serde(default)]
     required: bool,
+    #[serde(default)]
+    forbidden: bool,
 }
 
 impl TryFrom<RawRewardTarget> for RewardTarget {
@@ -228,17 +235,26 @@ impl TryFrom<RawRewardTarget> for RewardTarget {
                 "a reward kind's `target:` takes `provider:` or `entity:`, not both".to_string(),
             ));
         }
+        if raw.forbidden && (raw.provider.is_some() || raw.entity.is_some() || raw.required) {
+            return Err(SchemaError::RewardTarget(
+                "a reward kind's `target:` takes `forbidden: true` alone — a kind that takes \
+                 no target cannot also name an id space or require one"
+                    .to_string(),
+            ));
+        }
         Ok(RewardTarget {
             provider: raw.provider,
             entity: raw.entity,
             required: raw.required,
+            forbidden: raw.forbidden,
         })
     }
 }
 
 /// Hand-written so a pre-0.26 `{ provider: p }` contract prints exactly as
 /// it did (`capabilitySnapshot` hashes [`RewardKindDecl`]'s `Debug`): only the
-/// fields a contract sets are shown.
+/// fields a contract sets are shown, so a contract without `forbidden`
+/// keeps its hash.
 impl std::fmt::Debug for RewardTarget {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = f.debug_struct("RewardTarget");
@@ -250,6 +266,9 @@ impl std::fmt::Debug for RewardTarget {
         }
         if self.required {
             s.field("required", &true);
+        }
+        if self.forbidden {
+            s.field("forbidden", &true);
         }
         s.finish()
     }

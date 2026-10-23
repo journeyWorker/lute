@@ -963,8 +963,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-INVALID-DIRECTIVE",
-        summary: "A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one).",
-        spec: &[],
+        summary: "A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one); or a directive attribute or `stampAttrs` entry is typed `list`, `map` or `record`, which no authored attribute value can satisfy.",
+        spec: &["dsl 0.49.0 §3.2"],
     },
     Code {
         code: "E-PLUGIN-IO",
@@ -1013,7 +1013,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-RESERVED-STAMP-ATTR",
-        summary: "A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`) that the core stamp already owns.",
+        summary: "A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp.",
         spec: &["plugin §14"],
     },
     Code {
@@ -1218,8 +1218,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-REWARD-TARGET",
-        summary: "A `<reward>`'s `target=` violates its reward kind's target contract: required but missing, or naming neither a declared entity-kind member nor a provider catalog id.",
-        spec: &["dsl 0.26.0 §2.5"],
+        summary: "A `<reward>`'s `target=` violates its reward kind's target contract: required but missing, present although the kind declares `target: { forbidden: true }`, or naming neither a declared entity-kind member nor a provider catalog id.",
+        spec: &["dsl 0.26.0 §2.5", "dsl 0.49.0 §3.3"],
     },
     Code {
         code: "E-RULE-AGGREGATE-CYCLE",

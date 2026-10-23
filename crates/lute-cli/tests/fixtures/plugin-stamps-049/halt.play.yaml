@@ -1,0 +1,2 @@
+steps:
+  - { occasion: duel, target: foe.kato }

@@ -52,10 +52,10 @@ pub struct CapabilitySnapshot {
     /// folded from every active plugin's `stampattrs` export. Admissible on
     /// EVERY directive and content line — the checker resolves an attr key
     /// against the record's own decls FIRST and falls back here — and lowered
-    /// into the IR record's stamp (`Stamp.extra`), never its own fields. A
-    /// name colliding with a reserved stamp key is rejected at assembly
-    /// (`E-PLUGIN-RESERVED-STAMP-ATTR`), so this map can never shadow the
-    /// core stamp.
+    /// into the IR record's nested `stamps` object (`Stamp.stamps`, 0.49.0
+    /// §3.1), never its own fields. A name colliding with a reserved stamp
+    /// key is rejected at assembly (`E-PLUGIN-RESERVED-STAMP-ATTR`), so a
+    /// plugin stamp never reads as the core stamp.
     pub stamp_attrs: BTreeMap<String, AttrDecl>,
     /// Plugin-declared reward kinds (dsl 0.16.0 §4 `rewardKinds:`) folded
     /// from every active plugin's `rewardKinds` export. Consumed by the

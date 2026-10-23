@@ -461,6 +461,36 @@ describe("lute.plugin.json — plugin manifest + export files", () => {
     expect(ok, JSON.stringify(errors)).toBe(true);
   });
 
+  test("real shipped rewardKinds exports validate", () => {
+    const { ajv, pluginSchema } = loadAjv();
+    for (const path of [
+      "docs/examples/games/monster-league/plugins/league.engine/rewardkinds/league.yaml",
+      "docs/examples/games/starfall-gacha/plugins/starfall.engine/rewardkinds/starfall.yaml",
+      "docs/examples/games/lamplight/plugins/lamplight.occasions/rewardkinds/case.yaml",
+    ]) {
+      const doc = Bun.YAML.parse(readFileSync(`${ROOT}/${path}`, "utf8"));
+      const { ok, errors } = validateAgainst(ajv, pluginSchema.$id, doc);
+      expect(ok, `${path}: ${JSON.stringify(errors)}`).toBe(true);
+    }
+  });
+
+  // 0.49.0 §3.3 (#168): `forbidden: true` is admitted, and only alone.
+  test("rewardKinds target: forbidden alone validates; combined with another key it does not", () => {
+    const { ajv, pluginSchema } = loadAjv();
+    const kinds = (target) => ({ rewardKinds: { COINS: { target } } });
+    expect(validateAgainst(ajv, pluginSchema.$id, kinds({ forbidden: true })).ok).toBe(true);
+    expect(validateAgainst(ajv, pluginSchema.$id, kinds({ provider: "items" })).ok).toBe(true);
+    for (const bad of [
+      { forbidden: true, provider: "items" },
+      { forbidden: true, entity: "keepsake" },
+      { forbidden: true, required: true },
+      { provider: "items", entity: "keepsake" },
+      { forbade: true },
+    ]) {
+      expect(validateAgainst(ajv, pluginSchema.$id, kinds(bad)).ok, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
   test("real shipped showcase.pack plugin.yaml (depends + options) validates", () => {
     const { ajv, pluginSchema } = loadAjv();
     const doc = Bun.YAML.parse(
