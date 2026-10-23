@@ -348,7 +348,7 @@ A content line admits `wait` (a bool) and no other timing key; `delay` and `dura
 `E-UNKNOWN-ATTR`. It compiles to the line record's `timing.wait`, and an absent `wait` leaves
 `timing` off the line. A line always waits for its own advance. `wait` says whether the staging cues
 that follow it, up to the next line, wait for the line: `true` (or absent) means they wait, `false`
-means they start while the line is presented. The next line still waits for the previous one.
+means they start while the line is presented. The next line still waits for the previous one, and so does a `presentation` cue, because it clears the dialogue window.
 
 ```lute
 @marina{wait="false"}: The fireworks start as I speak.

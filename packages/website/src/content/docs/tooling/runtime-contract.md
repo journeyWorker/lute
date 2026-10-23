@@ -108,7 +108,7 @@ it, up to the next line, wait for the line. `true` or absent means they wait
 (unchanged). `false` means they start while the line is presented. The next line
 still waits for the previous one. The reference player honours this: a line cue
 with `timing.wait === false` is forked, and the scheduler joins it before the
-next `line` cue and before the batch settles. `delay` and `duration` on a line
+next `line` cue, before a `presentation` cue (it clears the dialogue window, so it must not overlap the line) and before the batch settles. `delay` and `duration` on a line
 remain `E-UNKNOWN-ATTR`.
 
 ### Free-text input through a typed bridge

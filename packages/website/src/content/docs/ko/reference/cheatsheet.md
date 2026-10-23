@@ -375,7 +375,7 @@ state:
 | 섹션 | 모든 콘텐츠는 `## 제목` 섹션 아래에 둡니다. `## 제목 {#stable-id}`의 꼬리표는 안정적인 섹션 id이며(영문자로 시작하는 ASCII 토큰, 문서 안에서 유일, 중복은 `E-SECTION-DUP`), 점프 대상은 아닙니다. 본문의 `# 제목`은 `E-INERT-TITLE`입니다. |
 | 디렉티브 | 아래 표. 모든 연출 디렉티브는 타이밍 키 `duration`, `delay`(초), `wait="true"`(대기)를 받습니다. 캐스트가 선언되어 있으면 `::actor{character}`와 `::camera{focus}`도 그 안에 있어야 합니다(`E-CAST-UNKNOWN`). 필수 속성이 빠지면 `E-MISSING-ATTR`입니다. |
 | 주석 | `// …`는 줄 끝까지이며, 그 줄에 홀로 있거나 디렉티브 뒤에 올 수 있습니다(`::set{run.n += 1} // why`). 그리고 `/* … */`. `<tag>` 뒤에 쓰면 `E-TAG-INLINE-BODY`이고, 대사 텍스트 안의 `//`는 글자 그대로입니다. |
-| 줄의 `wait` | 0.49.0. `@mira{wait="false"}: …`는 허용되며(bool) 줄의 `timing.wait`로 컴파일됩니다. 줄의 `delay`와 `duration`은 계속 `E-UNKNOWN-ATTR`입니다. 줄은 항상 자기 진행을 기다리고, `wait`는 그 줄 뒤 다음 줄 전까지의 연출 큐가 줄을 기다리는지를 정합니다. `true`나 생략이면 기다리고 `false`이면 줄이 표시되는 동안 시작됩니다. 다음 줄은 여전히 기다립니다. |
+| 줄의 `wait` | 0.49.0. `@mira{wait="false"}: …`는 허용되며(bool) 줄의 `timing.wait`로 컴파일됩니다. 줄의 `delay`와 `duration`은 계속 `E-UNKNOWN-ATTR`입니다. 줄은 항상 자기 진행을 기다리고, `wait`는 그 줄 뒤 다음 줄 전까지의 연출 큐가 줄을 기다리는지를 정합니다. `true`나 생략이면 기다리고 `false`이면 줄이 표시되는 동안 시작됩니다. 다음 줄은 여전히 기다리며, 대화창을 비우는 `presentation` 큐도 마찬가지입니다. |
 | `::jump`, `::label`, `::clear` | 0.49.0. 스탬프를 싣지 않습니다. 이 디렉티브에 플러그인 스탬프 속성이나 코어 타이밍 키를 쓰면 `E-UNKNOWN-ATTR`입니다(`` `::jump` does not carry `cue`: it compiles to a `jump` record that has no stamp ``). 속성은 점프 앞, 라벨 뒤의 줄이나 디렉티브, 또는 직접 쓰는 `::actor{exit}`에 두세요 — `::clear`는 주입하는 퇴장에 스탬프를 넘기지 않습니다. |
 
 | 디렉티브 | 속성 | 산출물 `kind` |
