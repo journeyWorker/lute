@@ -713,8 +713,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-LINT-CONFIG",
-        summary: "`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id.",
-        spec: &[],
+        summary: "`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id. Since 0.49.0 it also covers an `asset-exists` `options.providers` key that is none of the selector shapes (`<tag>`, `<tag>.<attr>`, `@<attr>`).",
+        spec: &["dsl 0.49.0 §7.3"],
     },
     Code {
         code: "E-LINT-EXPR",
