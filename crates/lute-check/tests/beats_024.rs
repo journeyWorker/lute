@@ -43,16 +43,18 @@ fn snapshot() -> CapabilitySnapshot {
 }
 
 fn input(text: &str) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "beats024".into(),
-        snapshot: snapshot(),
-        providers: Default::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "beats024".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot(),
+            Default::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 const VOCAB: &str = "entities:\n  person: { members: [maud, oskar] }\n  \

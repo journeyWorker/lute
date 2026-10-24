@@ -113,16 +113,18 @@ fn check_scene(body: &str) -> Vec<lute_core_span::Diagnostic> {
          enums:\n  ending: {{ members: [none, good, bad], labels: {{ none: nothing }} }}\n\
          entities:\n  room: {{ members: [lobby, chapel] }}\n---\n## One\n{body}\n"
     );
-    lute_check::check(&lute_check::CheckInput {
+    lute_check::check(&lute_check::CheckInput::new(
         text,
-        uri: "strict027".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: lute_manifest::provider::ProviderSet::default(),
-        mode: lute_check::Mode::Author,
-        imports: lute_check::SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    })
+        "strict027".into(),
+        lute_check::Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            lute_manifest::provider::ProviderSet::default(),
+            lute_check::SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    ))
     .diagnostics
 }
 
@@ -232,10 +234,10 @@ fn a_per_family_declares_the_members_its_sub_kinds_add() {
         assert!(
             imp.state.decls.contains_key(path),
             "{path}: {:?}",
-            imp.state.decls.keys()
+            imp.state.decls.keys().collect::<Vec<_>>()
         );
     }
     assert!(!imp.state.decls.contains_key("user.bond.tavi"));
-    let sefa = &imp.state.decls["user.bond.sefa"];
+    let sefa = imp.state.decls.get("user.bond.sefa").expect("declared");
     assert_eq!(sefa.default, Some(lute_manifest::types::Literal::Int(5)));
 }

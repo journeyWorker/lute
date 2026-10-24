@@ -23,7 +23,7 @@ use yaml_serde::Value;
 
 use crate::cel_resolve::{compatible, ty_desc};
 use crate::ctx::ExpectedType;
-use crate::meta::{yaml_shape, StateSchema};
+use crate::meta::yaml_shape;
 use crate::set_type::{decide_raw, Decision, DefTypes};
 
 pub const E_DEF_DECL: &str = "E-DEF-DECL";
@@ -155,7 +155,7 @@ pub(crate) fn lift_def(name: &str, v: &Value, schema: bool) -> Result<Value, Str
 pub(crate) fn settle_def_type(
     name: &str,
     def: &mut Value,
-    schema: &StateSchema,
+    schema: &crate::StateView,
     defs: &DefTypes,
 ) -> Option<String> {
     if is_invalid(def) {
@@ -230,7 +230,7 @@ pub(crate) fn settle_defs(
     imported: &mut std::collections::BTreeMap<String, Value>,
     inline: &mut std::collections::BTreeMap<String, Value>,
     plugin: impl Iterator<Item = (String, Type)>,
-    schema: &StateSchema,
+    schema: &crate::StateView,
 ) -> (Vec<(String, String)>, Vec<(String, String)>) {
     let seed: DefTypes = plugin.collect();
     let known = |imported: &std::collections::BTreeMap<String, Value>,

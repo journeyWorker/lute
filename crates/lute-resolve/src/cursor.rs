@@ -25,9 +25,7 @@ use lute_syntax::ast::{
 /// existing sub-helper (`state_hover`, `state_path_items`, `def_info`,
 /// `def_items`) transparently resolves imported symbols with no further change.
 pub fn merge_imports(meta: &mut lute_check::TypedMeta, imports: &lute_check::SchemaImports) {
-    for (k, v) in &imports.state.decls {
-        meta.state.decls.insert(k.clone(), v.clone());
-    }
+    meta.state.decls.append(imports.state.decls.clone());
     for (k, v) in &imports.defs {
         meta.defs.entry(k.clone()).or_insert_with(|| v.clone());
     }

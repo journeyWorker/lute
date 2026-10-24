@@ -14,14 +14,15 @@ use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_syntax::ast::{Attr, AttrValue, Line};
 
-use crate::directives::{check_attr_value, check_domain_member};
+use crate::directives::{check_attr_value, check_domain_member, universal_timing_decl};
 
 /// Known content-line attribute keys (dsl 0.2.2 §7.1, §D7) — the keys a
 /// content line OWNS. `lute-compile`'s `lower_line` reads exactly these
 /// (`get(...)`/`attr_bool(...)`) and consumes this slice directly, so the two
-/// crates cannot drift: a key here is a record field, a key NOT here may be a
-/// plugin-declared cross-cutting `stampAttrs` entry, which lowers into the
-/// record's stamp instead (plugin §14.1).
+/// crates cannot drift: a key here is a record field (`wait`: the record's
+/// `timing.wait`, 0.49.0 §4.2), a key NOT here may be a plugin-declared
+/// cross-cutting `stampAttrs` entry, which lowers into the record's stamp
+/// instead (plugin §14.1). `duration`/`delay` are not line keys.
 pub const KNOWN_ATTRS: &[&str] = &[
     "code",
     "emotion",
@@ -32,7 +33,19 @@ pub const KNOWN_ATTRS: &[&str] = &[
     "os",
     "vo",
     "as",
+    "wait",
 ];
+
+/// The declared type of a content-line attribute whose value is typed by
+/// [`check_attr_value`] — `wait` (bool, 0.49.0 §4.2). A `@ref` value is
+/// checked against it in the walker (`E-REF-TYPE`) and, once folded, as the
+/// literal the record ships (`crate::def_inline`).
+pub(crate) fn typed_line_attr(key: &str) -> Option<lute_manifest::schema::AttrDecl> {
+    match key {
+        "wait" => universal_timing_decl(key),
+        _ => None,
+    }
+}
 
 /// `E-RENAMED-ATTR` (dsl 0.37.0 §4): an old attribute key whose message names
 /// the new spelling. Shared by directives and content lines.
@@ -245,6 +258,27 @@ pub fn check_content_line_attrs(
                 for mut d in scratch {
                     d.layer = Layer::Content;
                     diags.push(d);
+                }
+            }
+            // 0.49.0 §4.2: `wait` (bool) says whether the staging cues after
+            // the line, up to the next line, wait for it. Typed through the
+            // same synthetic decl an undeclared directive `wait` gets.
+            "wait" => {
+                if let Some(decl) = typed_line_attr(&attr.key) {
+                    let mut scratch = Vec::new();
+                    check_attr_value(
+                        &owner,
+                        &decl,
+                        attr,
+                        snapshot,
+                        providers,
+                        domains,
+                        &mut scratch,
+                    );
+                    for mut d in scratch {
+                        d.layer = Layer::Content;
+                        diags.push(d);
+                    }
                 }
             }
             _ => {}

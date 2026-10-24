@@ -1,6 +1,6 @@
 ---
 title: Player getting started
-description: Compile a Lute project, validate player.bindings.yaml, serve its bundle and wasm, and mount the 0.48 web player.
+description: Compile a Lute project, validate player.bindings.yaml, serve its bundle and wasm, and mount the 0.49 web player.
 ---
 
 This guide uses the repository's `examples/player-demo`; the same steps work for a project of your own.
@@ -20,7 +20,7 @@ The bundle directory must contain `project.index.json` and all referenced artifa
 Create `player.bindings.yaml` beside `lute.project.yaml`. It maps compiled staging ids to files and supplies the canvas and named effects. Paths are relative to `assetsBase` (default `assets/`). A minimal file is:
 
 ```yaml
-bindingsVersion: "0.48"
+bindingsVersion: "0.49"
 canvas: { width: 1280, height: 720 }
 volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
@@ -40,10 +40,10 @@ Whole-project `lute check` validates the schema, domain and cast keys, reference
 
 ## 3. Mount in a page
 
-Install the exact 0.48 packages:
+Install the exact 0.49 packages:
 
 ```console
-bun add @lute-lang/player-web@0.48.1 @lute-lang/player@0.48.1 @lute-lang/runtime@0.48.1 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.49.0 @lute-lang/player@0.49.0 @lute-lang/runtime@0.49.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player` declares `@lute-lang/runtime` and `effect` as peer dependencies, so the page installs them once and every package shares one `effect`.
@@ -148,7 +148,7 @@ Either way the cue ends with the actors visible (alpha 1, no mask) in the new fr
 The title screen's heading is `ui.title.text` when the bindings set it; without it the title draws no heading (player-web never shows a placeholder name). `ui.title.background` and `ui.title.music` are optional: without them the title has no backdrop and plays no music.
 
 ```yaml
-bindingsVersion: "0.48"
+bindingsVersion: "0.49"
 ui:
   title: { text: "The Signal at Low Tide", background: ui/title.png, music: ui/title.wav }
 ```

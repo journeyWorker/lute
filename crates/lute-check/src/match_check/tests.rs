@@ -1,5 +1,7 @@
 use super::*;
 use crate::ctx::Env;
+use crate::meta::StateSchema;
+use crate::StateView;
 use lute_core_span::StableId;
 use lute_syntax::ast::{CelKind, CelSlot};
 use std::collections::BTreeMap;
@@ -66,7 +68,7 @@ fn match_on_enum(_domain: &[&str], covered_arms: &[&str], has_otherwise: bool) -
 }
 
 /// `run.rank` declared as an enum WITH a default => finite, never unset.
-fn schema_enum_subject() -> StateSchema {
+fn schema_enum_subject() -> StateView {
     let mut decls = BTreeMap::new();
     decls.insert(
         "run.rank".to_string(),
@@ -77,14 +79,14 @@ fn schema_enum_subject() -> StateSchema {
             owner: None,
         },
     );
-    StateSchema {
-        decls,
+    StateView::from(StateSchema {
+        decls: decls.into_iter().collect(),
         ..Default::default()
-    }
+    })
 }
 
 /// `run.rank` declared as an enum WITHOUT a default => finite but maybe-unset.
-fn schema_maybe_unset_subject() -> StateSchema {
+fn schema_maybe_unset_subject() -> StateView {
     let mut decls = BTreeMap::new();
     decls.insert(
         "run.rank".to_string(),
@@ -95,10 +97,10 @@ fn schema_maybe_unset_subject() -> StateSchema {
             owner: None,
         },
     );
-    StateSchema {
-        decls,
+    StateView::from(StateSchema {
+        decls: decls.into_iter().collect(),
         ..Default::default()
-    }
+    })
 }
 
 fn ctx() -> Ctx<'static> {
@@ -143,7 +145,7 @@ fn match_with(subject: &str, arms: Vec<Arm>) -> Match {
     }
 }
 
-fn schema_bool(path: &str, default: Option<bool>) -> StateSchema {
+fn schema_bool(path: &str, default: Option<bool>) -> StateView {
     let mut decls = BTreeMap::new();
     decls.insert(
         path.to_string(),
@@ -154,10 +156,10 @@ fn schema_bool(path: &str, default: Option<bool>) -> StateSchema {
             owner: None,
         },
     );
-    StateSchema {
-        decls,
+    StateView::from(StateSchema {
+        decls: decls.into_iter().collect(),
         ..Default::default()
-    }
+    })
 }
 
 fn branch(id: &str, choice_ids: &[&str]) -> Branch {
@@ -199,10 +201,10 @@ fn otherwise_makes_infinite_domain_exhaustive() {
             owner: None,
         },
     );
-    let schema = StateSchema {
-        decls,
+    let schema = StateView::from(StateSchema {
+        decls: decls.into_iter().collect(),
         ..Default::default()
-    };
+    });
     let m = match_with(
         "run.n",
         vec![
@@ -229,10 +231,10 @@ fn infinite_domain_without_otherwise_is_nonexhaustive() {
             owner: None,
         },
     );
-    let schema = StateSchema {
-        decls,
+    let schema = StateView::from(StateSchema {
+        decls: decls.into_iter().collect(),
         ..Default::default()
-    };
+    });
     let m = match_with("run.n", vec![when_arm("$ == 1"), when_arm("$ == 2")]);
     let errs = check_match(&m, &schema, &ctx());
     assert!(errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"));
@@ -307,8 +309,8 @@ fn defaulted_enum_full_coverage_is_not_unset_uncovered() {
 
 #[test]
 fn defaulted_engine_clock_weekday_is_not_maybe_unset() {
-    let mut schema = StateSchema::default();
-    schema.decls.insert(
+    let mut schema = StateView::default();
+    schema.insert(
         lute_manifest::clock::CLOCK_WEEKDAY.to_string(),
         StateDecl {
             ty: Type::Int,
@@ -343,7 +345,7 @@ fn foreign_quest_state_full_coverage_no_otherwise_is_clean() {
             when_arm("$ == 'unset'"),
         ],
     );
-    let errs = check_match(&m, &StateSchema::default(), &ctx());
+    let errs = check_match(&m, &crate::StateView::default(), &ctx());
     assert!(
         errs.is_empty(),
         "foreign quest.state fully covered incl. unset should be clean: {errs:?}"
@@ -363,7 +365,7 @@ fn foreign_quest_state_missing_member_is_nonexhaustive() {
             when_arm("$ == 'unset'"),
         ],
     );
-    let errs = check_match(&m, &StateSchema::default(), &ctx());
+    let errs = check_match(&m, &crate::StateView::default(), &ctx());
     assert!(
         errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"),
         "missing `failed` member must still be E-NONEXHAUSTIVE: {errs:?}"
@@ -384,7 +386,7 @@ fn quest_state_null_arm_does_not_cover_unset() {
             when_arm("$ == null"),
         ],
     );
-    let errs = check_match(&m, &StateSchema::default(), &ctx());
+    let errs = check_match(&m, &crate::StateView::default(), &ctx());
     assert!(errs.iter().any(|e| e.code == "E-NONEXHAUSTIVE"), "{errs:?}");
 }
 
@@ -396,7 +398,7 @@ fn foreign_quest_objective_done_full_coverage_no_otherwise_is_clean() {
         "quest.foo.objectives.bar.done",
         vec![when_arm("$"), when_arm("!$")],
     );
-    let errs = check_match(&m, &StateSchema::default(), &ctx());
+    let errs = check_match(&m, &crate::StateView::default(), &ctx());
     assert!(
         errs.is_empty(),
         "foreign objective.done fully covered should be clean: {errs:?}"
@@ -417,10 +419,10 @@ fn age_gate_without_teen_or_otherwise_errors() {
             owner: None,
         },
     );
-    let schema = StateSchema {
-        decls,
+    let schema = StateView::from(StateSchema {
+        decls: decls.into_iter().collect(),
         ..Default::default()
-    };
+    });
     let m = match_with(
         "app.rating",
         vec![when_arm("$ == 'everyone'"), when_arm("$ == 'mature'")],
@@ -441,10 +443,10 @@ fn age_gate_with_teen_arm_ok() {
             owner: None,
         },
     );
-    let schema = StateSchema {
-        decls,
+    let schema = StateView::from(StateSchema {
+        decls: decls.into_iter().collect(),
         ..Default::default()
-    };
+    });
     let m = match_with(
         "app.rating",
         vec![
@@ -504,10 +506,10 @@ fn scene_choices_full_coverage_leaves_unset_to_definite_assignment() {
             owner: None,
         },
     );
-    let schema = StateSchema {
-        decls,
+    let schema = StateView::from(StateSchema {
+        decls: decls.into_iter().collect(),
         ..Default::default()
-    };
+    });
     let m = match_with(
         "scene.choices.couch",
         vec![when_arm("$ == 'help'"), when_arm("$ == 'ignore'")],
@@ -975,7 +977,7 @@ fn when_is(is_raw: Option<&str>, test_raw: &str) -> Arm {
 
 /// `run.rank` as the 4-member enum `fail|bronze|silver|gold`. With a default
 /// it is finite-and-never-unset; without, finite-but-maybe-unset.
-fn schema_rank4(with_default: bool) -> StateSchema {
+fn schema_rank4(with_default: bool) -> StateView {
     let mut decls = BTreeMap::new();
     decls.insert(
         "run.rank".to_string(),
@@ -991,10 +993,10 @@ fn schema_rank4(with_default: bool) -> StateSchema {
             owner: None,
         },
     );
-    StateSchema {
-        decls,
+    StateView::from(StateSchema {
+        decls: decls.into_iter().collect(),
         ..Default::default()
-    }
+    })
 }
 
 #[test]
@@ -1500,10 +1502,10 @@ fn is_exhaustive_agrees_with_number_coverage() {
                 owner: None,
             },
         );
-        StateSchema {
-            decls,
+        StateView::from(StateSchema {
+            decls: decls.into_iter().collect(),
             ..Default::default()
-        }
+        })
     };
     let split = match_with(
         "run.n",

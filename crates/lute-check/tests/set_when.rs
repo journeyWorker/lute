@@ -16,16 +16,18 @@ const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:
     warm: { type: bool, cel: \"run.b > 0\" }\n---\n## Shot 1.\n";
 
 fn codes(body: &str) -> Vec<String> {
-    let input = CheckInput {
-        text: format!("{HDR}{body}\n"),
-        uri: "set_when".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        format!("{HDR}{body}\n"),
+        "set_when".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()

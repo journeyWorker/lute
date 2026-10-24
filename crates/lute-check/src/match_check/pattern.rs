@@ -44,7 +44,7 @@ pub(super) fn arm_coverage(
     is: Option<&IsPattern>,
     test_raw: &str,
     subject: Option<&str>,
-    schema: &StateSchema,
+    schema: &crate::StateView,
 ) -> ArmCoverage {
     let test = analyze_arm(test_raw, subject);
     let Some(pat) = is else {
@@ -129,7 +129,7 @@ pub(crate) fn arm_takes_unset(
     is: Option<&IsPattern>,
     test_raw: &str,
     subject: Option<&str>,
-    schema: &StateSchema,
+    schema: &crate::StateView,
 ) -> bool {
     arm_coverage(is, test_raw, subject, schema).covers_unset
 }

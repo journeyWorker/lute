@@ -2,16 +2,18 @@ use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 
 fn codes(text: &str) -> Vec<String> {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()
@@ -144,16 +146,18 @@ fn guard_tainted(text: &str) -> std::collections::BTreeSet<String> {
     let (mut doc, _) = lute_syntax::parse(text);
     let mut arena = lute_cel::CelArena::default();
     lute_cel::fill_document(&mut arena, &mut doc);
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let (folded, _, _) = lute_check::fold_env(&doc, &input);
     folded.env.rel_vocab.guard_tainted.clone()
 }
@@ -195,16 +199,18 @@ fn negation_cycle_spanning_two_files_is_caught_post_merge() {
     )
     .unwrap();
     let imports = lute_check::resolve_imports(&dir, &["b.yaml".into()], &[], zero_span());
-    let input = lute_check::CheckInput {
-        text: scene_with(""),
-        uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: lute_manifest::provider::ProviderSet::default(),
-        mode: lute_check::Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = lute_check::CheckInput::new(
+        scene_with(""),
+        "t".into(),
+        lute_check::Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            lute_manifest::provider::ProviderSet::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let c: Vec<String> = lute_check::check(&input)
         .diagnostics
         .into_iter()

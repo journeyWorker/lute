@@ -175,6 +175,8 @@ state:
 
 우선순위는 낮은 순서에서 높은 순서로 적용됩니다. 문서의 `extends` 기반(재귀적으로) < 해당 문서의 `uses` 피어 < 문서 자체의 인라인 `state:`/`defs:`입니다. 저장된 상태는 안정적인 타입을 유지해야 하므로, 경로에 선언된 `type`을 변경하는 재정의는 `E-EXTENDS-STATE-TYPE`이고, 같은 타입의 `default`만 보강하는 것은 조용히 허용됩니다. `extends` 간선은 `uses:`와 동일한 사이클 / 파일 없음 / 파싱 진단(`E-USES-{CYCLE,NOT-FOUND,PARSE}`)을 재사용합니다.
 
+`per:` 패밀리는 인라인뿐 아니라 스키마 문서에서도 자신이 펼쳐지는 명시 경로와 같은 규칙을 따릅니다(0.49.0부터). 한 문서 안에서는 명시한 멤버가 패밀리보다 우선합니다. `run.rep: { default: 0, per: comp }` 옆의 `run.rep.corvin: { default: 4 }`는 4로 유지됩니다. `extends` 깊이를 가로질러서는 더 가까운 선언이 이깁니다. 자식의 `run.rep: { default: 3, per: comp }`는 기반 패밀리의 명시 멤버까지 모든 멤버를 보강하며, `type`을 바꾸면 `E-EXTENDS-STATE-TYPE`입니다. `uses` 피어끼리는 재선언이 오류입니다. 다른 피어가 선언한 멤버 위에 놓인 피어의 패밀리는 멤버마다 `E-USES-DUP-STATE`입니다(``state path `run.rep.corvin` is declared by two imports``). 0.49.0 전에는 다른 스키마의 종류에 대한 스키마 수준 `per:`가 보강, 중복, 타입 변경을 진단 없이 버렸습니다.
+
 ### 여러 파일에 걸쳐 조합되는 엔터티 종류: `add:`
 
 여러 작성자가 하나의 프로젝트를 공유하면 각 영역은 리드가 소유한 종류에 자신의 사람과 장소를

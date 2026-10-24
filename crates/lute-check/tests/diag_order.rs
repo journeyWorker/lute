@@ -1,6 +1,6 @@
 //! Regression (behavior-preservation): `check()`'s diagnostic byte-order
 //! contract. Two `E-EXTENDS-STATE-TYPE` diagnostics — one from import/extends
-//! resolution (`input.imports.diags`) and one from the scene's inline
+//! resolution (`input.import_diags`) and one from the scene's inline
 //! state-merge — land at the SAME frontmatter span with the SAME code, so the
 //! final stable sort on `(byte_start, code)` cannot reorder them: their relative
 //! order is exactly their INSERTION order.
@@ -69,16 +69,18 @@ fn import_extends_type_diag_precedes_inline_state_merge_at_same_span() {
         diags: vec![import_diag],
         ..Default::default()
     };
-    let input = CheckInput {
-        text: SCENE.into(),
-        uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        SCENE.into(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let diags = check(&input).diagnostics;
 
     let import_idx = diags

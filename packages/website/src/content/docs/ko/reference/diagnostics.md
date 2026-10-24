@@ -99,6 +99,8 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 값이 속해야 하는 닫힌 열거형, 도메인, 엔티티 종류의 구성원이 아닙니다. 예를 들어 콘텐츠 라인의 `emotion=`이 화자에게 선언된 `emotions:` 밖의 값이거나, 엔티티 id가 해당 종류 밖의 값입니다.
 
+0.49부터 플러그인 frontmatter 키도 같은 검사를 받습니다. 키의 타입이 `entity`, `domain`, `enumFromOption`, `providerRef`, `assetKind`이고 값이 YAML 문자열이면 구성원인지 확인하며(예: ``mirra`` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`?), 위치는 해당 frontmatter 키입니다. 해당 타입의 `list`는 요소마다 검사하고, 문자열이 아닌 값은 계속 `E-FRONTMATTER-SCHEMA`입니다.
+
 명세: [dsl 0.24.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
 
 
@@ -405,7 +407,7 @@ CEL 슬롯이나 비트 `when`이 컴파일 시점에 확장되지 못했습니�
 
 ### E-CONSTRAINT-DECL
 
-프로젝트 제약 선언이 잘못되었습니다. 알 수 없는 키/종류, 누락된 필수 필드, 잘못된 노드 참조 또는 중복 ID가 포함되어 있습니다.
+프로젝트 제약 선언이 잘못되었습니다. 알 수 없는 키/종류, 누락된 필수 필드, 잘못된 노드 참조 또는 중복 ID가 포함되어 있습니다. 0.49.0부터 `lute constraints` 보고서에서 이 항목은 `constraints`가 아니라 `diagnostics`에 들어갑니다.
 
 명세: [dsl 0.34.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.34.0.md)
 
@@ -611,7 +613,7 @@ diff 한쪽을 읽거나 안전하게 임시 materialize하거나 완전한 프�
 
 ### E-ENTITY-KIND-CLASH
 
-어떤 id가 서로 다른 두 엔티티 종류의 `members:`에 함께 나열되었지만, 한 종류가 다른 종류의 `subsetOf:`로 선언되지 않는 한 id는 정확히 하나의 종류에만 속해야 합니다.
+어떤 id가 서로 다른 두 엔티티 종류의 `members:`에 함께 나열되었지만, 한 종류가 다른 종류의 `subsetOf:`로 선언되지 않는 한 id는 정확히 하나의 종류에만 속해야 합니다. 두 종류가 id 공간이 다를 뿐 id의 철자(`{id}`)만 같다면, 두 공간의 멤버를 모두 나열하는 공유 루트 종류를 선언하고 각각을 그 하위 종류로 만드세요(`{first}: { subsetOf: <root>, members: […] }`). 모든 참조는 여전히 자신의 종류에 대해 검사됩니다(0.49.0).
 
 명세: [dsl 0.3.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md), [dsl 0.24.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
 
@@ -840,7 +842,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-LINT-CONFIG
 
-`lute.lint.yaml`가 잘못되었습니다 — 타입이 틀렸거나 알 수 없는 최상위 키, 잘못된 규칙 오버라이드, 또는 코어 규칙 id와 충돌하는 커스텀 규칙 id입니다.
+`lute.lint.yaml`가 잘못되었습니다 — 타입이 틀렸거나 알 수 없는 최상위 키, 잘못된 규칙 오버라이드, 또는 코어 규칙 id와 충돌하는 커스텀 규칙 id입니다. 0.49.0부터는 `options.providers`의 `asset-exists` 키가 셀렉터 형태(`<tag>`, `<tag>.<attr>`, `@<attr>`) 중 어느 것도 아닌 경우도 포함합니다.
+
+명세: [dsl 0.49.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-LINT-EXPR
 
@@ -1042,6 +1046,8 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 이름에 이름 규칙(글자, 숫자, `_`, `-`로 이루어지고 `-`로 시작하지 않음) 밖의 문자가 있습니다: 상태 경로 세그먼트, quest·objective·entry·branch·hub·choice·mark id, relation·enum·엔티티 종류 이름, enum·엔티티 멤버. def와 def 파라미터는 `@name`이나 def 본문에서 그대로 읽히므로 식별자(글자나 `_`로 시작하고 글자, 숫자, `_`로 이어지는 이름)여야 합니다. 또는 조건식에서 식별자가 아닌 이름을 `.` 뒤에 썼습니다(`quest.zero-coke-001.state`). CEL은 이를 뺄셈으로 읽으므로, 메시지가 대괄호 표기(`quest["zero-coke-001"].state`)를 알려 줍니다.
 
+엔티티·enum 멤버의 경우 0.49부터 메시지가 한 가지를 더 안내합니다. 이름이 아닌 다른 시스템의 id(`vendor:reply`)를 검증하려면 provider(`plugins/<id>/providers/`, `catalogDir`의 고정 스냅숏)를 선언하고 속성 타입을 `{ providerRef: <provider> }`로 지정하세요.
+
 명세: [dsl 0.30.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md), [dsl 0.30.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md), [dsl §8.4](/ko/spec/)
 
 ### E-PERMISSION-BRIDGE
@@ -1092,7 +1098,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-INVALID-DIRECTIVE
 
-플러그인 디렉티브 선언이 닫힌 어휘 밖의 `semantics:` 플래그를 사용했거나, 같은 속성 이름을 두 번 이상 선언했거나, 속성의 `type`에 속하지 않는 값을 `default:`로 선언했습니다(`double` 속성의 정수 기본값은 허용됩니다).
+플러그인 디렉티브 선언이 닫힌 어휘 밖의 `semantics:` 플래그를 사용했거나, 같은 속성 이름을 두 번 이상 선언했거나, 속성의 `type`에 속하지 않는 값을 `default:`로 선언했습니다(`double` 속성의 정수 기본값은 허용됩니다). 또한 속성 값은 스칼라 하나로 쓰므로(문자열, 숫자, bool, enum 또는 엔티티 멤버, provider 또는 asset id) 최상위 타입이 `list`, `map`, `record`인 디렉티브 속성이나 `stampAttrs` 항목은 어떤 `.lute` 값으로도 만족할 수 없어 플러그인 로드 시 거부됩니다. 메시지가 속성 이름을 알려 줍니다: `string`으로 선언해 호스트에서 파싱하거나, 필드마다 속성 하나로 나누세요.
+
+명세: [dsl 0.49.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-PLUGIN-IO
 
@@ -1224,6 +1232,17 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 명세: [dsl 0.2.0 §5.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.19.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md)
 
+### E-QUEST-START-CYCLE
+
+퀘스트의 `start`가 영영 성립할 수 없습니다(0.49.0). 각 `start`가 다음 퀘스트를 기다리고 순환 밖의 어떤 소스도 그중 하나를 시작시키지 않아, 앵커 엣지의 순환 위에서 교착됩니다. 강연결 집합마다 하나씩 가장 작은 퀘스트의 `start`에서 보고하며, 경로는 `E-CONN-CYCLE`처럼 표시합니다: ``quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` waits for the next and no source outside the cycle starts any of them; start one of them from something outside the cycle, or grant it with `accept="external"` ``. 순환 밖의 무언가에서 하나를 시작시키거나 `accept="external"`로 부여하세요. 외부에서 진입할 수 있는 순환은 오류가 아닙니다.
+
+명세: [dsl 0.49.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+
+### E-QUEST-START-SELF
+
+퀘스트가 자신의 `start`에서 자기 상태(`quest.<own id>.*`)를 읽습니다(0.49.0). 퀘스트가 시작되기 전에는 그 상태에 값이 없으므로 이 조건으로는 퀘스트를 의도대로 시작할 수 없습니다. 호스트만 부여하는 퀘스트는 `start` 없이 `accept="external"`로 씁니다. 자기 읽기만으로 인한 교착은 `E-QUEST-START-CYCLE`이 아니라 이 코드로 보고합니다.
+
+명세: [dsl 0.49.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 ### E-QUEST-TIER-MIX
 
 서브퀘스트의 실효 `tier`가 부모 퀘스트의 tier와 다릅니다.
@@ -1370,9 +1389,9 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 ### E-REWARD-ATTR
 
-`<reward>` 요소의 형식이 잘못되었습니다: 비어 있거나 없는 `kind`, 부호 있는 정수나 올바른 `N..M` 범위가 아닌 `amount=`, 또는 objective 수준 reward에 쓰인 `outcome=`이나 `"failed"`가 아닌 `outcome=` 값입니다.
+`<reward>` 요소의 형식이 잘못되었습니다: 비어 있거나 없는 `kind`, 부호 있는 정수나 올바른 `N..M` 범위가 아닌 `amount=`, objective 수준 reward에 쓰인 `outcome=`이나 `"failed"`가 아닌 `outcome=` 값, 또는 따옴표로 감싼 id가 아닌 `target=`(IR에 실을 수 없는 `@ref`나 값 없는 `target`)입니다.
 
-명세: [dsl 0.16.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.16.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md)
+명세: [dsl 0.16.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.16.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.49.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-REWARD-DUP
 
@@ -1388,9 +1407,9 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 ### E-REWARD-TARGET
 
-`<reward>`의 `target=`이 해당 reward kind의 target 계약을 위반합니다: 필수인데 없거나, 선언된 엔티티 종류의 멤버도 provider 카탈로그 id도 아닙니다.
+`<reward>`의 `target=`이 해당 reward kind의 target 계약을 위반합니다: 필수인데 없거나, 선언된 엔티티 종류의 멤버도 provider 카탈로그 id도 아닙니다. 0.49.0부터는 reward kind가 `target: { forbidden: true }`를 선언했는데 `<reward>`가 `target=`을 쓰는 경우도 포함합니다: `` `<reward kind="COINS">` takes no `target=`: its reward kind declares `target: { forbidden: true }` — remove the attribute ``. `forbidden: true`는 `provider`/`entity`/`required`와 함께 쓸 수 없습니다.
 
-명세: [dsl 0.26.0 §2.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)
+명세: [dsl 0.26.0 §2.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md), [dsl 0.49.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-RULE-AGGREGATE-CYCLE
 
@@ -1759,9 +1778,9 @@ CEL 슬롯, `::set` 대상, 또는 규칙 가드가 어떤 스키마에도 선�
 
 ### E-UNKNOWN-ATTR
 
-콘텐츠 줄이나 디렉티브가 콘텐츠 줄 문법 또는 해당 디렉티브 선언이 인식하지 못하는 속성 키를 가지고 있습니다.
+콘텐츠 줄이나 디렉티브가 콘텐츠 줄 문법 또는 해당 디렉티브 선언이 인식하지 못하는 속성 키를 가지고 있습니다. 스탬프를 실을 레코드가 없는 디렉티브(`::jump`, `::label`, `::clear`)에 타이밍 키(`wait`/`duration`/`delay`)나 플러그인 스탬프를 쓴 경우도 포함합니다. 그 값은 버려지기 때문입니다.
 
-명세: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md)
+명세: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-UNKNOWN-DIRECTIVE
 
@@ -1775,7 +1794,9 @@ CEL 슬롯, `::set` 대상, 또는 규칙 가드가 어떤 스키마에도 선�
 
 ### E-UNKNOWN-ID
 
-`providerRef` id를 참조하는 속성이 고정된 제공자 카탈로그에 없는 id를 지정합니다.
+`providerRef` id를 참조하는 속성이나 플러그인 프런트매터 키가 고정된 제공자 카탈로그에 없는 id를 지정합니다.
+
+명세: [dsl 0.49.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-UNKNOWN-KIND
 
@@ -1911,9 +1932,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-BRANCH-ID-SHARED
 
-한 프로젝트의 두 문서가 각각 같은 id의 `<branch>`나 `<hub>`를 선언합니다. id는 한 문서 안에서만 유일하면 되지만, 플레이나 테스트의 `choose:`는 메뉴를 id만으로 가리키므로 키 하나가 두 메뉴에 모두 답합니다(결정 목록을 쓰면 두 메뉴가 이어서 소비합니다).
+한 프로젝트의 두 문서가 각각 같은 id의 `<branch>`나 `<hub>`를 선언하고, 루트 아래의 플레이나 테스트 스크립트가 그 id를 `choose:` 키로 씁니다. id는 한 문서 안에서만 유일하면 되지만, `choose:`는 메뉴를 id만으로 가리키므로 그 키가 두 메뉴에 모두 답합니다(결정 목록을 쓰면 두 메뉴가 이어서 소비합니다). 어떤 스크립트도 쓰지 않는 id는 경고하지 않습니다.
 
-명세: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+명세: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.49.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### W-CAST-ABSENT
 
@@ -2095,6 +2116,11 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 명세: [dsl §11.2](/ko/spec/), [dsl 0.18.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md)
 
+### W-PROJECT-CHECK-SKIPPED
+
+단일 파일 `check`(와 언어 서버)가 문서와 그 import가 선언하지 않은 퀘스트 id의 `quest.<id>.*`를 읽었습니다. 퀘스트 참조는 전체 프로젝트 `lute check`(`lute check --project <DIR>`)만 해석하므로 이 검사는 그 참조를 판정하지 않았습니다. 심각도는 **info**이고 문서당 고유한 퀘스트 id마다 한 번 발생하며, `ok`는 달라지지 않습니다. 전체 프로젝트 check, compile, wasm 빌드는 이 코드를 내지 않습니다.
+
+명세: [dsl 0.49.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 ### W-PROJECT-INERT
 
 강제 지정된 `--project` 루트에서는 이 매니페스트가 적용되지 않으며 원래대로라면 다르게 해석되었을 것이므로, 그 설정이 어떤 문서에도 적용되지 않습니다.

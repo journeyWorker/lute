@@ -23,7 +23,7 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
     // domain's `default:`, the `action` domain's `exits:`), so the env must
     // declare the same vocabulary the snapshot does.
     let env = Env {
-        domains: lute_test_vocab::test_domains(),
+        domains: std::sync::Arc::new(lute_test_vocab::test_domains()),
         ..Default::default()
     };
     let mut cx = WalkCx {

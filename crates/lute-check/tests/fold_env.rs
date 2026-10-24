@@ -31,16 +31,18 @@ defs:
 
 #[test]
 fn fold_env_exposes_folded_schema_and_def_bodies() {
-    let input = CheckInput {
-        text: SCENE.to_string(),
-        uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: Default::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        SCENE.to_string(),
+        "t".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let (doc, _) = lute_syntax::parse(&input.text);
     let (folded, fold_diags, state_merge_diags) = fold_env(&doc, &input);
     assert!(
@@ -51,12 +53,11 @@ fn fold_env_exposes_folded_schema_and_def_bodies() {
         "{fold_diags:#?}\n{state_merge_diags:#?}"
     );
     // Inline decl folded.
-    assert!(folded.env.state.decls.contains_key("scene.affect.marina"));
+    assert!(folded.env.state.contains("scene.affect.marina"));
     // Implicit branch decl folded (§11.1).
     let choice = folded
         .env
         .state
-        .decls
         .get("scene.choices.number")
         .expect("implicit branch decl folded");
     assert_eq!(

@@ -11,16 +11,18 @@ use lute_manifest::provider::ProviderSet;
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n";
 
 fn codes(text: &str) -> Vec<String> {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "interp".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "interp".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()
@@ -291,16 +293,18 @@ fn ordinal_codes(text: &str) -> Vec<String> {
 }
 
 fn ordinal_diags(text: &str) -> Vec<lute_core_span::Diagnostic> {
-    let input = CheckInput {
-        text: format!("{HDR}{ORDINAL_STATE}---\n## Shot 1.\n@marina: {text}\n"),
-        uri: "interp".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        format!("{HDR}{ORDINAL_STATE}---\n## Shot 1.\n@marina: {text}\n"),
+        "interp".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input).diagnostics
 }
 

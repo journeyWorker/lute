@@ -31,14 +31,13 @@ use crate::cel_expand::{expand_cel, DefTable};
 use crate::check::{CheckInput, FoldedEnv};
 use crate::component_import::ComponentSet;
 use crate::decide::{decide_slot, DecideCtx, Decided};
-use crate::meta::StateSchema;
 
 pub const E_ATTR_DEF_DYNAMIC: &str = "E-ATTR-DEF-DYNAMIC";
 pub const E_INTERP_DEF: &str = "E-INTERP-DEF";
 
 /// Fold an attribute's `@ref` value (`raw`, expanded or not) to the constant
 /// it provably has on every run (§5.1). `None` = state-dependent.
-pub fn fold_attr_ref(raw: &str, defs: &DefTable<'_>, schema: &StateSchema) -> Option<Decided> {
+pub fn fold_attr_ref(raw: &str, defs: &DefTable<'_>, schema: &crate::StateView) -> Option<Decided> {
     let params = BTreeMap::new();
     let ctx = DecideCtx {
         schema,
@@ -161,7 +160,7 @@ pub(crate) fn check_def_inlining(
 
 struct Cx<'a> {
     defs: DefTable<'a>,
-    schema: &'a StateSchema,
+    schema: &'a crate::StateView,
     input: &'a CheckInput,
     domains: &'a BTreeMap<String, lute_manifest::snapshot::Domain>,
     diags: Vec<Diagnostic>,
@@ -172,7 +171,7 @@ impl Cx<'_> {
         for node in nodes {
             match node {
                 Node::Line(l) => {
-                    self.attrs(&l.attrs, None);
+                    self.line_attrs(l);
                     self.interps(&l.interps);
                 }
                 Node::Directive(d) if d.tag == "use" => self.use_args(d),
@@ -246,44 +245,90 @@ impl Cx<'_> {
     /// validated like the author had written it (`E-BAD-ENUM`, `E-ATTR-TYPE`,
     /// …) — the literal is what the record ships.
     fn attr(&mut self, a: &Attr, dir: Option<&Directive>) {
-        let AttrValue::Ref(slot) = &a.value else {
-            return;
-        };
-        if !all_refs_have_bodies(&slot.raw, &self.defs)
-            || expand_cel(&slot.raw, &self.defs, Some("$"), &mut Vec::new()).is_err()
-        {
-            return;
-        }
-        let Some(folded) = fold_attr_ref(&slot.raw, &self.defs, self.schema) else {
-            self.diags
-                .push(attr_def_dynamic_diag(&a.key, &slot.raw, a.value_span));
+        let Some(folded) = self.fold(a) else {
             return;
         };
         let Some(dir) = dir else {
             return;
         };
-        let snapshot = &self.input.snapshot;
+        let input = self.input;
+        let snapshot = input.snapshot();
+        // The directive's own attr, a plugin stamp, else an undeclared timing
+        // key's universal type (#193) on a known directive.
         let decl = snapshot
             .directive(&dir.tag)
             .and_then(|d| d.attrs.iter().find(|ad| ad.name == a.key))
-            .or_else(|| snapshot.stamp_attrs.get(&a.key));
+            .or_else(|| snapshot.stamp_attrs.get(&a.key))
+            .map(std::borrow::Cow::Borrowed)
+            .or_else(|| {
+                snapshot.directive(&dir.tag)?;
+                crate::directives::timing_ref_decl(&dir.tag, &a.key).map(std::borrow::Cow::Owned)
+            });
         if let Some(adecl) = decl {
-            let literal = Attr {
-                key: a.key.clone(),
-                value: AttrValue::Str(decided_literal(&folded)),
-                value_span: a.value_span,
-                span: a.span,
-            };
-            crate::directives::check_attr_value(
-                &format!("::{}", dir.tag),
-                adecl,
-                &literal,
-                snapshot,
-                &self.input.providers,
-                self.domains,
-                &mut self.diags,
-            );
+            self.check_folded(&format!("::{}", dir.tag), &adecl, a, &folded);
         }
+    }
+
+    /// A content line's `@ref` attrs fold like any other; a typed line
+    /// attribute (`wait`, 0.49.0 §4.2) then validates the folded literal, so a
+    /// non-bool constant is reported instead of vanishing from the record.
+    fn line_attrs(&mut self, l: &lute_syntax::ast::Line) {
+        for a in &l.attrs {
+            let Some(folded) = self.fold(a) else {
+                continue;
+            };
+            if let Some(adecl) = crate::content_line::typed_line_attr(&a.key) {
+                let before = self.diags.len();
+                self.check_folded(&format!("@{}", l.speaker), &adecl, a, &folded);
+                for d in &mut self.diags[before..] {
+                    d.layer = lute_core_span::Layer::Content;
+                }
+            }
+        }
+    }
+
+    /// The folded literal of a `@ref` attr; `None` for a literal attr, a ref
+    /// reported elsewhere, or one that does not fold (reported here).
+    fn fold(&mut self, a: &Attr) -> Option<String> {
+        let AttrValue::Ref(slot) = &a.value else {
+            return None;
+        };
+        if !all_refs_have_bodies(&slot.raw, &self.defs)
+            || expand_cel(&slot.raw, &self.defs, Some("$"), &mut Vec::new()).is_err()
+        {
+            return None;
+        }
+        let folded = fold_attr_ref(&slot.raw, &self.defs, self.schema);
+        if folded.is_none() {
+            self.diags
+                .push(attr_def_dynamic_diag(&a.key, &slot.raw, a.value_span));
+        }
+        folded.as_ref().map(decided_literal)
+    }
+
+    /// `literal` (a folded ref's value) judged as `a` ships it, against `adecl`.
+    fn check_folded(
+        &mut self,
+        owner: &str,
+        adecl: &lute_manifest::schema::AttrDecl,
+        a: &Attr,
+        literal: &str,
+    ) {
+        let literal = Attr {
+            key: a.key.clone(),
+            value: AttrValue::Str(literal.to_string()),
+            value_span: a.value_span,
+            span: a.span,
+        };
+        crate::directives::check_attr_value(
+            owner,
+            adecl,
+            &literal,
+            self.input.snapshot(),
+            self.input.providers(),
+            self.domains,
+            &mut self.diags,
+        );
     }
 
     fn interps(&mut self, interps: &[Interp]) {

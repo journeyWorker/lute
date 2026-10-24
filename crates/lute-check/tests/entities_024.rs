@@ -6,16 +6,18 @@ use lute_check::{check, fold_env, CheckInput, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 
 fn input(text: &str) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 fn diags(text: &str) -> Vec<(String, String)> {
@@ -149,23 +151,23 @@ fn per_state_folds_into_the_schema_with_defaults_and_prev_run_mirrors() {
     let text = party(RULES, "@narrator: hi\n");
     let (doc, _) = lute_syntax::parse(&text);
     let (folded, _, _) = fold_env(&doc, &input(&text));
-    let decls = &folded.env.state.decls;
+    let decls = &folded.env.state;
     for p in [
         "run.approval.isolde",
         "run.approval.corvin",
         "prev.run.approval.isolde",
     ] {
         assert!(
-            decls.contains_key(p),
+            decls.contains(p),
             "{p} missing: {:?}",
             decls.keys().collect::<Vec<_>>()
         );
     }
     assert!(
-        !decls.contains_key("run.approval"),
+        !decls.contains("run.approval"),
         "the family itself is not a path"
     );
-    assert!(!decls.contains_key("run.approval.oda"));
+    assert!(!decls.contains("run.approval.oda"));
     assert_eq!(
         folded
             .env

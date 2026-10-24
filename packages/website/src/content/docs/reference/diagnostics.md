@@ -842,7 +842,9 @@ Spec: [dsl §7.1](/spec/)
 
 ### E-LINT-CONFIG
 
-`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id.
+`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id. Since 0.49.0 it also covers an `asset-exists` `options.providers` key that is none of the selector shapes (`<tag>`, `<tag>.<attr>`, `@<attr>`).
+
+Spec: [dsl 0.49.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-LINT-EXPR
 
@@ -1094,7 +1096,9 @@ A plugin package declares the same id more than once within one export kind; the
 
 ### E-PLUGIN-INVALID-DIRECTIVE
 
-A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one).
+A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one); or a directive attribute or `stampAttrs` entry is typed `list`, `map` or `record`, which no authored attribute value can satisfy.
+
+Spec: [dsl 0.49.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-PLUGIN-IO
 
@@ -1150,7 +1154,7 @@ Spec: [dsl §10](/spec/), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute
 
 ### E-PLUGIN-RESERVED-STAMP-ATTR
 
-A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`) that the core stamp already owns.
+A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp.
 
 Spec: [plugin §14](/spec/)
 
@@ -1225,6 +1229,18 @@ Spec: [dsl 0.2.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/pro
 An `::set` writes a reserved, engine-populated path — `quest.<id>.state`, `objectives.<oid>.done`, an `entry.*` path, `prev.run.*`, `prev.season.*`, or `clock.*`.
 
 Spec: [dsl 0.2.0 §5.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.19.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md)
+
+### E-QUEST-START-CYCLE
+
+Quests' `start` conditions wait on each other around a cycle that no source outside it enters, so none of them can ever start; start one of them from something outside the cycle, or grant it with `accept="external"`.
+
+Spec: [dsl 0.49.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+
+### E-QUEST-START-SELF
+
+A quest's `start` reads the quest's own state (`quest.<id>.*`), which has no value before the quest starts; a quest only the host grants is written `accept="external"` without a `start`.
+
+Spec: [dsl 0.49.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-QUEST-TIER-MIX
 
@@ -1372,9 +1388,9 @@ Spec: [dsl 0.3.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/propo
 
 ### E-REWARD-ATTR
 
-A `<reward>` element is malformed: an empty/missing `kind`, an `amount=` that is not a signed integer or a valid `N..M` range, or an `outcome=` used on an objective-level reward or with a value other than `"failed"`.
+A `<reward>` element is malformed: an empty/missing `kind`, an `amount=` that is not a signed integer or a valid `N..M` range, an `outcome=` used on an objective-level reward or with a value other than `"failed"`, or a `target=` that is not a quoted id (an `@ref` or a bare `target`, which the IR cannot carry).
 
-Spec: [dsl 0.16.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.16.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md)
+Spec: [dsl 0.16.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.16.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.49.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-REWARD-DUP
 
@@ -1390,9 +1406,9 @@ Spec: [dsl 0.16.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-REWARD-TARGET
 
-A `<reward>`'s `target=` violates its reward kind's target contract: required but missing, or naming neither a declared entity-kind member nor a provider catalog id.
+A `<reward>`'s `target=` violates its reward kind's target contract: required but missing, present although the kind declares `target: { forbidden: true }`, or naming neither a declared entity-kind member nor a provider catalog id.
 
-Spec: [dsl 0.26.0 §2.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md)
+Spec: [dsl 0.26.0 §2.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md), [dsl 0.49.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-RULE-AGGREGATE-CYCLE
 
@@ -1764,9 +1780,9 @@ Spec: [dsl §8.1](/spec/)
 
 ### E-UNKNOWN-ATTR
 
-A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize.
+A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it.
 
-Spec: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md)
+Spec: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-UNKNOWN-DIRECTIVE
 
@@ -1780,7 +1796,9 @@ Spec: [dsl 0.2.0 §4.5](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 ### E-UNKNOWN-ID
 
-An attribute referencing a `providerRef` id names an id absent from the pinned provider catalog.
+An attribute or plugin frontmatter key referencing a `providerRef` id names an id absent from the pinned provider catalog.
+
+Spec: [dsl 0.49.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-UNKNOWN-KIND
 
@@ -1916,9 +1934,9 @@ Spec: [dsl 0.47.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/pr
 
 ### W-BRANCH-ID-SHARED
 
-Two documents of one project each declare a `<branch>` or `<hub>` with the same id. Ids need only be unique within a document, but a play's or test's `choose:` names a menu by its id alone, so one key answers both menus (and a list of decisions is consumed across both).
+Two documents of one project each declare a `<branch>` or `<hub>` with the same id, and a play or test script under the root names that id as a `choose:` key. Ids need only be unique within a document, but `choose:` names a menu by its id alone, so the key answers both menus (and a list of decisions is consumed across both). An id no script names is not warned.
 
-Spec: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+Spec: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.49.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### W-CAST-ABSENT
 
@@ -2099,6 +2117,12 @@ Spec: [dsl 0.4.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/pro
 Two `<when>` arms provably match the same value, so the later arm is unreachable under first-match-wins ordering.
 
 Spec: [dsl §11.2](/spec/), [dsl 0.18.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md)
+
+### W-PROJECT-CHECK-SKIPPED
+
+Info from a single-file `check` (and the LSP): the document reads `quest.<id>.*` for a quest it and its imports do not declare. Quest references are resolved only by whole-project `lute check`, so this check did not judge the read. Never raised by whole-project check, compile or wasm.
+
+Spec: [dsl 0.49.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### W-PROJECT-INERT
 

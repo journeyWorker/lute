@@ -38,10 +38,21 @@ fn diag(message: String, span: Span) -> Diagnostic {
 /// The first of `slots` refusing `name`, as an `E-RESERVED-NAME` at `span`;
 /// `what` names the declaration ("a def", "a `<choice>` id").
 pub(crate) fn refuse(slots: &[Slot], name: &str, what: &str, span: Span) -> Option<Diagnostic> {
+    refuse_at(slots, name, what, || span)
+}
+
+/// [`refuse`], locating the report only when there is one: a member's span
+/// costs a scan of its list, and a list of `n` members is judged `n` times.
+fn refuse_at(
+    slots: &[Slot],
+    name: &str,
+    what: &str,
+    span: impl FnOnce() -> Span,
+) -> Option<Diagnostic> {
     slots
         .iter()
         .find_map(|slot| refusal(*slot, name))
-        .map(|r| diag(r.message(what), span))
+        .map(|r| diag(r.message(what), span()))
 }
 
 /// A member list item that is not a name: a YAML number, boolean or null
@@ -65,7 +76,7 @@ fn member_diag(
     what: &str,
 ) -> Option<Diagnostic> {
     match item {
-        Value::String(name) => refuse(&[slot], name, what, member_span(meta, key, name)),
+        Value::String(name) => refuse_at(&[slot], name, what, || member_span(meta, key, name)),
         other => {
             let (written, number) = scalar_member(other)?;
             let span = member_span(meta, key, &written);
@@ -229,8 +240,8 @@ pub(crate) fn check_frontmatter(
                 .and_then(Value::as_sequence);
             for member in inline.into_iter().flatten().filter_map(Value::as_str) {
                 let what = format!("a member of `{path}`'s enum");
-                let at = member_span(meta, &["state", path], member);
-                if let Some(d) = refuse(&[Slot::EnumMember], member, &what, at) {
+                let at = || member_span(meta, &["state", path], member);
+                if let Some(d) = refuse_at(&[Slot::EnumMember], member, &what, at) {
                     diags.push(d);
                     typed.state.faulty.insert(path.to_string());
                 }

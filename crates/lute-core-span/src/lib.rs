@@ -73,6 +73,66 @@ impl<'a> TextIndex<'a> {
                 .map(|c| c.len_utf16() as u32)
                 .sum::<u32>()
     }
+
+    /// A [`SpanCursor`] at the start of the text.
+    pub fn cursor(&self) -> SpanCursor<'_, 'a> {
+        SpanCursor {
+            idx: self,
+            line_ix: 0,
+            byte: 0,
+            chars: 0,
+            utf16: 0,
+        }
+    }
+}
+
+/// [`Span::from_bytes`] for many offsets of one text, read in ascending
+/// order: the cursor walks each line once from where the previous offset
+/// left it, so `n` spans on one long line cost the line, not `n` times it.
+/// An offset behind the cursor restarts its line, so any order gives the
+/// same spans as [`Span::from_bytes`].
+pub struct SpanCursor<'i, 'a> {
+    idx: &'i TextIndex<'a>,
+    line_ix: usize,
+    /// Where the walk stands; on line `line_ix`.
+    byte: usize,
+    /// Characters between the line's start and `byte`.
+    chars: u32,
+    /// File-relative UTF-16 units before `byte`.
+    utf16: u32,
+}
+
+impl SpanCursor<'_, '_> {
+    /// `Span::from_bytes(idx, start, end)`.
+    pub fn span(&mut self, start: usize, end: usize) -> Span {
+        let (line, column, utf16_start) = self.seek(start);
+        let (_, _, utf16_end) = self.seek(end);
+        Span {
+            byte_start: start,
+            byte_end: end,
+            line,
+            column,
+            utf16_range: (utf16_start, utf16_end),
+        }
+    }
+
+    /// Move to `byte`: its 1-based line and character column, and the
+    /// UTF-16 units before it.
+    fn seek(&mut self, byte: usize) -> (u32, u32, u32) {
+        let line_ix = self.idx.line_of(byte);
+        if line_ix != self.line_ix || byte < self.byte {
+            self.line_ix = line_ix;
+            self.byte = self.idx.line_starts[line_ix];
+            self.chars = 0;
+            self.utf16 = self.idx.line_utf16[line_ix];
+        }
+        for c in self.idx.text[self.byte..byte].chars() {
+            self.chars += 1;
+            self.utf16 += c.len_utf16() as u32;
+        }
+        self.byte = byte;
+        (line_ix as u32 + 1, self.chars + 1, self.utf16)
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -604,6 +664,40 @@ mod tests {
         assert_eq!(s.line, 1);
         assert_eq!(s.column, 2); // 1-based character column
         assert_eq!(s.utf16_range, (1, 4));
+    }
+
+    /// The cursor gives [`Span::from_bytes`]'s span for every pair of
+    /// character boundaries, read forward, backward and interleaved.
+    #[test]
+    fn span_cursor_matches_from_bytes_in_any_order() {
+        let text = "a: [수아, b😀, c]\n\n  é: x\nlast";
+        let idx = TextIndex::new(text);
+        let bounds: Vec<usize> = text
+            .char_indices()
+            .map(|(i, _)| i)
+            .chain([text.len()])
+            .collect();
+        let pairs: Vec<(usize, usize)> = bounds
+            .iter()
+            .flat_map(|&s| {
+                bounds
+                    .iter()
+                    .filter(move |&&e| e >= s)
+                    .map(move |&e| (s, e))
+            })
+            .collect();
+        let mut forward = idx.cursor();
+        for &(s, e) in &pairs {
+            assert_eq!(forward.span(s, e), Span::from_bytes(&idx, s, e), "{s}..{e}");
+        }
+        let mut backward = idx.cursor();
+        for &(s, e) in pairs.iter().rev() {
+            assert_eq!(
+                backward.span(s, e),
+                Span::from_bytes(&idx, s, e),
+                "{s}..{e}"
+            );
+        }
     }
 
     /// T3-17: a spec citation leaves the sentence an author reads; the

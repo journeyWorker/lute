@@ -30,16 +30,18 @@ fn run(component: &str, lore: &str) -> (CheckInput, Vec<Diagnostic>) {
     let (doc, _) = lute_syntax::parse(lore);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
     let components: ComponentSet = resolve_components(&dir, &meta0.components, doc.meta.span);
-    let input = CheckInput {
-        text: lore.to_string(),
-        uri: "bonds.lute".into(),
-        snapshot: vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        lore.to_string(),
+        "bonds.lute".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            vocab_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
     let diags = check(&input).diagnostics;
     (input, diags)
 }
@@ -230,16 +232,18 @@ beat:\n  on: talk\n  id: nope\n  target: \"npc.@whom\"\n---\n";
 
 /// `text` (a component file) checked on its own, as `lute check` does.
 fn check_component(text: &str) -> Vec<Diagnostic> {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "bond.lute".into(),
-        snapshot: vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: SchemaImports::default(),
-        components: ComponentSet::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "bond.lute".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            vocab_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            ComponentSet::default(),
+            Default::default(),
+        ),
+    );
     check(&input).diagnostics
 }
 

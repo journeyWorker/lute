@@ -200,6 +200,23 @@ pub enum ManifestError {
         list: &'static str,
         detail: String,
     },
+    /// 0.49.0 §3.2 (#176): a directive attribute or a `stampAttrs` entry
+    /// declared `list`, `map` or `record`. An attribute value is authored as
+    /// one scalar, so no `.lute` value could satisfy the declaration.
+    StructuredAttr {
+        owner: AttrOwner,
+        attr: String,
+        ty: String,
+    },
+}
+
+/// Who declares an attribute [`ManifestError::StructuredAttr`] names.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AttrOwner {
+    /// A directive's own `attrs:` entry; the directive name.
+    Directive(String),
+    /// A `stampAttrs` export entry; the declaring plugin id.
+    Stamp(String),
 }
 
 impl ManifestError {
@@ -210,7 +227,8 @@ impl ManifestError {
         match self {
             ManifestError::UnknownSemanticsFlag { .. }
             | ManifestError::DuplicateAttr { .. }
-            | ManifestError::AttrDefaultType { .. } => "E-PLUGIN-INVALID-DIRECTIVE",
+            | ManifestError::AttrDefaultType { .. }
+            | ManifestError::StructuredAttr { .. } => "E-PLUGIN-INVALID-DIRECTIVE",
             ManifestError::UnknownLowerRecord { .. } => "E-LOWER-RECORD-UNKNOWN",
             ManifestError::LowerRecordField { .. } => "E-LOWER-RECORD-FIELD",
             ManifestError::EffectWrite { .. } | ManifestError::EffectFact { .. } => {
@@ -261,6 +279,22 @@ impl ManifestError {
                 list,
                 detail,
             } => format!("directive `::{directive}` effects.{list}: {detail}"),
+            ManifestError::StructuredAttr { owner, attr, ty } => {
+                let subject = match owner {
+                    AttrOwner::Directive(directive) => {
+                        format!("directive `::{directive}` declares attribute `{attr}`")
+                    }
+                    AttrOwner::Stamp(plugin) => {
+                        format!("plugin `{plugin}` declares stamp attribute `{attr}`")
+                    }
+                };
+                format!(
+                    "{subject} as `{ty}`; an attribute value is written as one scalar (string, \
+                     number, bool, an enum or entity member, a provider or asset id), so no \
+                     `.lute` value can satisfy a `list`, `map` or `record` — declare it `string` \
+                     and parse it in the host, or split it into one attribute per field"
+                )
+            }
         }
     }
 }
@@ -295,12 +329,28 @@ pub fn validate_directive(d: &DirectiveDecl) -> Vec<ManifestError> {
                 default: crate::types::lit_str(default),
             });
         }
+        if let Some(e) = structured_attr(AttrOwner::Directive(d.name.clone()), a) {
+            errs.push(e);
+        }
     }
     if let Lowering::Record { record, fields } = &d.lower {
         validate_record_lowering(d, record, fields, &mut errs);
     }
     errs.extend(validate_effects(d));
     errs
+}
+
+/// 0.49.0 §3.2: [`ManifestError::StructuredAttr`] when `a`'s top-level type is
+/// `list`, `map` or `record`. Plugin `options:`, frontmatter keys, state
+/// shapes and bridge results keep those types: YAML can write them.
+pub fn structured_attr(owner: AttrOwner, a: &crate::schema::AttrDecl) -> Option<ManifestError> {
+    matches!(a.ty, Type::List(_) | Type::Map { .. } | Type::Record(_)).then(|| {
+        ManifestError::StructuredAttr {
+            owner,
+            attr: a.name.clone(),
+            ty: crate::types::type_str(&a.ty),
+        }
+    })
 }
 
 /// Whether an attr's declared `default` is a value of its declared type: the

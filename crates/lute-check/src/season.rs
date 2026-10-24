@@ -5,13 +5,13 @@
 //! `lute_trace::exec::cadence`; the shared path arithmetic in
 //! [`lute_manifest::season`].
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::ident::is_name;
 use lute_manifest::season::{season_of_path, season_ref, SeasonDecl};
 
-use crate::meta::{Namespace, StateDecl, StateSchema};
+use crate::meta::{Namespace, StateDecl};
 
 /// A season declared or used wrongly (dsl 0.27.0 §5).
 pub const E_SEASON_DECL: &str = "E-SEASON-DECL";
@@ -208,31 +208,64 @@ pub fn undeclared(name: &str, what: &str, seasons: &Seasons) -> Option<String> {
 /// (`origins`, [`crate::rel_schema::DeclOrigins::state`]), once for the
 /// project; the document's own at `span`.
 pub fn check_state(
-    schema: &StateSchema,
+    schema: &crate::StateView,
     seasons: &Seasons,
     span: Span,
-    origins: &BTreeMap<String, crate::rel_schema::DeclOrigin>,
-) -> (Vec<(String, StateDecl)>, Vec<Diagnostic>) {
-    let mut mirrors = Vec::new();
+    origins: &crate::state_origins::StateOrigins,
+) -> (crate::meta::StateDecls, Vec<Diagnostic>) {
+    let mirror = |decl: &StateDecl| StateDecl {
+        ty: decl.ty.clone(),
+        default: None,
+        namespace: Namespace::Season,
+        owner: Some(lute_manifest::types::Owner::Engine),
+    };
+    let mut mirrors = crate::meta::StateDecls::default();
+    // A family whose every member is mirrored is mirrored as a family
+    // (spec 0.49.0 §9.3); the members mirrored of any other, one by one.
+    let mut families: BTreeMap<&str, (&crate::meta::StateFamily, Vec<String>)> = BTreeMap::new();
+    let mut reported: BTreeSet<&str> = BTreeSet::new();
     let mut diags = Vec::new();
-    for (path, decl) in &schema.decls {
-        let Some(name) = season_of_path(path) else {
+    for (path, decl) in schema.with_prefix("season.") {
+        let Some(name) = season_of_path(&path) else {
             continue;
         };
+        let family = schema.family_of(&path);
         match undeclared(name, &format!("state path `{path}`"), seasons) {
-            Some(msg) => diags.push(crate::rel_schema::at_origin(
-                diag(msg, span),
-                origins.get(path),
-            )),
-            None => mirrors.push((
-                format!("prev.{path}"),
-                StateDecl {
-                    ty: decl.ty.clone(),
-                    default: None,
-                    namespace: Namespace::Season,
-                    owner: Some(lute_manifest::types::Owner::Engine),
-                },
-            )),
+            Some(msg) => {
+                diags.push(crate::rel_schema::at_origin(
+                    diag(msg, span),
+                    origins.get(&path).as_deref(),
+                ));
+                if let Some((at, _)) = family {
+                    reported.insert(at);
+                }
+            }
+            None => match family {
+                Some((at, f)) => families
+                    .entry(at)
+                    .or_insert_with(|| (f, Vec::new()))
+                    .1
+                    .push(path.into_owned()),
+                None => mirrors.insert(format!("prev.{path}"), mirror(decl)),
+            },
+        }
+    }
+    for (at, (family, members)) in families {
+        if reported.contains(at) {
+            for path in members {
+                let decl = schema.get(&path).map(mirror);
+                if let Some(decl) = decl {
+                    mirrors.insert(format!("prev.{path}"), decl);
+                }
+            }
+        } else {
+            // A member an explicit declaration shadows was mirrored above,
+            // and that mirror shadows the family's.
+            mirrors.insert_family(
+                format!("prev.{at}"),
+                family.map_decl(mirror),
+                crate::meta::Precedence::KeepExisting,
+            );
         }
     }
     (mirrors, diags)

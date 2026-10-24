@@ -152,6 +152,23 @@ Set any rule to `level: error` to make it release-blocking for that project.
 | `variant-composition` | speaker and group | warn | `attr: variant`, optional `groupBy`, `minPerGroup: 2`, `minShare: 0.0`, `minLines: 10`. With `groupBy`, groups below `minPerGroup` fire. With `minShare > 0`, speakers meeting its own `minLines` whose `attrShare[attr]` is below the threshold fire. |
 | `asset-exists` | line/directive | error | `providers: {}` (inert), `sentinels: [clear, empty, false, none, null, stop]`. For each mapped directive tag, checks `assetId` against the pinned provider snapshot. Absent assets fire; stale catalog data downgrades the finding to warn. Sentinel values are case-insensitively exempt. |
 
+`asset-exists` `options.providers` keys are selectors (0.49.0):
+
+| key | checks |
+| --- | --- |
+| `<tag>` | `::<tag>`'s `assetId` (the pre-0.49 meaning) |
+| `<tag>.<attr>` | that attribute of that directive |
+| `@<attr>` | that attribute on every content line |
+
+```yaml
+asset-exists:
+  level: error
+  options:
+    providers: { bg: bg-catalog, sfx.voiceAssetId: voice-catalog, "@assetId": portrait-catalog }
+```
+
+Any other key shape is `E-LINT-CONFIG`. Only literal strings are checked, and `sentinels` apply. A `<tag>` finding reads as before; the others name their source, `` (`@mira` attribute `assetId`) `` for a line attribute and `` (`::sfx` attribute `voiceAssetId`) `` for a directive attribute.
+
 Since 0.22.0 the three linear-VN rules — `dialogue-ratio`,
 `scene-length-spread`, and `section-starts-with-background` — judge only linear
 scenes. A beat is presented into a moment the engine has already staged, and a

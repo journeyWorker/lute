@@ -1,0 +1,12 @@
+---
+kind: scene
+id: scene.s018
+uses: ../schema/world.schema.yaml
+---
+
+## Opening
+
+@narrator: A quiet room, number 18.
+@narrator: Something stirs.
+::set{user.s0.k0m0 += 1}
+

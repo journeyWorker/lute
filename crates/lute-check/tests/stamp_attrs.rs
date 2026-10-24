@@ -54,16 +54,18 @@ fn snap() -> CapabilitySnapshot {
 }
 
 fn codes_against(text: &str, snapshot: CapabilitySnapshot) -> Vec<String> {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "stamp_attrs".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "stamp_attrs".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()
@@ -78,16 +80,18 @@ fn codes(text: &str) -> Vec<String> {
 /// The one `E-ATTR-TYPE` message this snapshot produces, or a panic naming
 /// every code that fired.
 fn attr_type_message(text: &str) -> String {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "stamp_attrs".into(),
-        snapshot: snap(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "stamp_attrs".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snap(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let all = check(&input).diagnostics;
     all.iter()
         .find(|d| d.code == "E-ATTR-TYPE")

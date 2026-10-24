@@ -1,7 +1,7 @@
 ---
 kind: scene
 id: b
-luteVersion: "0.48.1"
+luteVersion: "0.49.0"
 title: b
 on: visit
 priority: 10

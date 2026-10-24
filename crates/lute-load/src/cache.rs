@@ -4,10 +4,10 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use lute_check::{ImportCache, Memo};
+use lute_check::{ImportCache, Memo, ProjectBase};
 use lute_manifest::project::{
-    load_project, project_providers, resolve_document_snapshot, ProjectConfig, ProjectLoadError,
-    ResolveDiag,
+    load_project, project_providers, resolve_document_snapshot, resolve_permissions, ProjectConfig,
+    ProjectLoadError, ResolveDiag,
 };
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -27,12 +27,25 @@ enum ProvidersKey {
     Project(Option<PathBuf>),
 }
 
+/// What a [`ProjectBase`] depends on: the root, the document's profile and
+/// plugin overrides, the permission profile and the providers directory.
+type BaseKey = (SnapshotKey, Option<String>, ProvidersKey);
+
+/// A memoized [`ProjectBase`] and the resolution diagnostics building it
+/// produced (snapshot resolution, then the permission profile's).
+#[derive(Debug)]
+pub struct ResolvedBase {
+    pub base: Arc<ProjectBase>,
+    pub diags: Vec<ResolveDiag>,
+}
+
 #[derive(Default)]
 pub struct InputCache {
     projects: Memo<PathBuf, LoadedProject>,
     providers: Memo<ProvidersKey, ProviderSet>,
     snapshots: Memo<SnapshotKey, (CapabilitySnapshot, Vec<ResolveDiag>)>,
     plugin_origins: Memo<PathBuf, lute_check::rel_schema::PluginOrigins>,
+    bases: Memo<BaseKey, ResolvedBase>,
     pub imports: ImportCache,
 }
 
@@ -81,6 +94,73 @@ impl InputCache {
     pub fn plugin_origins(&self, plugins_dir: &Path) -> Arc<lute_check::rel_schema::PluginOrigins> {
         self.plugin_origins
             .get_or_init(plugins_dir.to_path_buf(), || plugin_origins(plugins_dir))
+    }
+
+    /// The [`ProjectBase`] documents of `root` with this `profile` and
+    /// `plugins` frontmatter share (spec 0.49.0 §9.2): the snapshot with the
+    /// project's identity flag and the permission profile applied once, the
+    /// providers, the manifest's `defaults:` and the plugin origins.
+    pub fn base(
+        &self,
+        root: Option<&Path>,
+        project: Option<&ProjectConfig>,
+        providers: Option<&Path>,
+        profile: Option<&str>,
+        plugins: &BTreeMap<String, yaml_serde::Value>,
+        permission_profile: Option<&str>,
+    ) -> Arc<ResolvedBase> {
+        let providers_key = match providers {
+            Some(dir) => ProvidersKey::Explicit(dir.to_path_buf()),
+            None => ProvidersKey::Project(root.map(Path::to_path_buf)),
+        };
+        let key = (
+            (
+                root.map(Path::to_path_buf),
+                profile.map(str::to_string),
+                plugins.clone(),
+            ),
+            permission_profile.map(str::to_string),
+            providers_key,
+        );
+        self.bases.get_or_init(key, || {
+            let resolved = self.snapshot(root, project, profile, plugins);
+            let (mut snapshot, mut diags) = (resolved.0.clone(), resolved.1.clone());
+            snapshot.identity_require_stable =
+                project.is_some_and(ProjectConfig::identity_require_stable);
+            if let Some(name) = permission_profile {
+                match project {
+                    Some(config) => match resolve_permissions(config, name) {
+                        Ok(permissions) => snapshot.restrict_permissions(&permissions),
+                        Err(error) => diags.push(ResolveDiag {
+                            span: None,
+                            code: error.code().to_string(),
+                            message: error.to_string(),
+                        }),
+                    },
+                    None => diags.push(ResolveDiag {
+                        span: None,
+                        code: "E-PERMISSION-PROFILE".to_string(),
+                        message: format!(
+                            "`--permission-profile {name}` requires a loaded `lute.project.yaml` \
+                             from `--project <DIR>`"
+                        ),
+                    }),
+                }
+            }
+            let plugin_origins = project
+                .map(|p| self.plugin_origins(&p.plugins_dir))
+                .unwrap_or_default();
+            let base = ProjectBase::new(
+                Arc::new(snapshot),
+                self.providers(providers, root, project),
+                Arc::new(project.map(|p| p.defaults.clone()).unwrap_or_default()),
+                plugin_origins,
+            );
+            ResolvedBase {
+                base: Arc::new(base),
+                diags,
+            }
+        })
     }
 }
 

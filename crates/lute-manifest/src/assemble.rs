@@ -41,11 +41,12 @@ pub enum AssembleError {
         id: String,
         failed_with: Vec<&'static str>,
     },
-    /// A directive declaration rejected by [`crate::validate::validate_directive`].
-    /// `code` is the WRAPPED [`crate::validate::ManifestError`]'s own code — the
-    /// family spans the generic `E-PLUGIN-INVALID-DIRECTIVE` and the
-    /// declarative-lowering `E-LOWER-RECORD-*` pair, and a consumer keys on the
-    /// specific one.
+    /// A directive declaration rejected by [`crate::validate::validate_directive`],
+    /// or a `stampAttrs` entry rejected by [`crate::validate::structured_attr`]
+    /// (`directive` then names the stamp attribute). `code` is the WRAPPED
+    /// [`crate::validate::ManifestError`]'s own code — the family spans the
+    /// generic `E-PLUGIN-INVALID-DIRECTIVE` and the declarative-lowering
+    /// `E-LOWER-RECORD-*` pair, and a consumer keys on the specific one.
     InvalidDirective {
         plugin: String,
         directive: String,
@@ -227,10 +228,16 @@ fn reserved_why(
 /// declare any of these as one of its attribute names — doing so is an
 /// assembly-time error" — PLUS the remaining stamp keys `timeline`,
 /// `provenance`, `source`, and (dsl 0.37.0 §5.2) the nested `timing` object
-/// key, which plugin §14 / Appendix C4 folds into the same
-/// reservation now that `stampAttrs` lets a plugin write into the stamp
-/// directly. Enforced on BOTH plugin surfaces — per-directive `attrs` and the
+/// key. Enforced on BOTH plugin surfaces — per-directive `attrs` and the
 /// `stampAttrs` export — as `E-PLUGIN-RESERVED-STAMP-ATTR`.
+///
+/// Since 0.49.0 §3.1 plugin stamps serialize nested under `stamps`, so none of
+/// these names can collide with a record key in JSON any more. The
+/// reservation stays for the author: `at`/`duration`/`delay`/`wait`/
+/// `timeline` are authoring keys of the core stamp that compile into
+/// `timing`, and `timing`/`provenance`/`source` are flattened record keys, so
+/// a plugin stamp of one of those names would read as the core stamp. There
+/// is no wider, schema-derived reserved list.
 ///
 /// `lute.core` legitimately OWNS the timing keys on its own staging directives
 /// (`camera`'s `duration`/`delay`/`wait`, `video`'s `wait`), so — exactly like
@@ -454,15 +461,27 @@ pub fn assemble_snapshot(
         // plugin §14.1 `stampAttrs`: the CROSS-CUTTING attr vocabulary. A name
         // the core stamp owns is rejected here (never merged) — the same
         // reservation the per-directive `attrs` loop above enforces, so a
-        // plugin cannot reach a reserved key through either door. Surviving
-        // entries go through the SAME `merge_map` as the sibling maps, so a
-        // cross-plugin duplicate is dropped (first owner wins) and reported.
+        // plugin cannot reach a reserved key through either door — and so is
+        // a `list`/`map`/`record` type no authored value can satisfy (0.49.0
+        // §3.2). Surviving entries go through the SAME `merge_map` as the
+        // sibling maps, so a cross-plugin duplicate is dropped (first owner
+        // wins) and reported.
         let mut stamp_attrs: Vec<(String, AttrDecl)> = Vec::new();
         for a in &pkg.stamp_attrs {
             if RESERVED_STAMP_ATTR_NAMES.contains(&a.name.as_str()) {
                 errs.push(AssembleError::ReservedStampAttr {
                     plugin: ap.id.clone(),
                     name: a.name.clone(),
+                });
+                continue;
+            }
+            let owner = crate::validate::AttrOwner::Stamp(ap.id.clone());
+            if let Some(me) = crate::validate::structured_attr(owner, a) {
+                errs.push(AssembleError::InvalidDirective {
+                    plugin: ap.id.clone(),
+                    directive: a.name.clone(),
+                    code: me.code(),
+                    msg: me.message(),
                 });
                 continue;
             }

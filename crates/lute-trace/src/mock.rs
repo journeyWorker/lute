@@ -1000,7 +1000,7 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
         // checked against the reserved `bool` domain. A save that read the
         // entry is one fact with two tiers, so both flags go together.
         if let Some(id) = lute_manifest::semantics::cel_paths::reserved_entry_id(path) {
-            let referenced = folded.env.state.decls.contains_key(path)
+            let referenced = folded.env.state.contains(path)
                 || doc.entries.iter().any(|e| e.id == id)
                 || referenced_entry_reads
                     .get_or_insert_with(|| {
@@ -1027,7 +1027,7 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
             }
             continue;
         }
-        if let Some(decl) = folded.env.state.decls.get(path) {
+        if let Some(decl) = folded.env.state.get(path) {
             let ok = coerce_state_literal(&decl.ty, literal)
                 .is_some_and(|lit| type_accepts(&decl.ty, &lit));
             // dsl 0.27.0 §2 (T1-2): a `{ domain: K }` / `{ entity: K }` path
@@ -1057,11 +1057,11 @@ fn validate_state(mocks: &MockSet, folded: &FoldedEnv, doc: &Document) -> Vec<Di
 /// inline enum — naming the members and the nearest one; `None` when it is
 /// one, or the path has no such domain.
 pub fn state_member_problem(
-    schema: &lute_check::meta::StateSchema,
+    schema: &lute_check::StateView,
     path: &str,
     literal: &str,
 ) -> Option<String> {
-    let (domain, members) = match schema.domain_members.get(path) {
+    let (domain, members) = match schema.domain_members(path) {
         Some((domain, members)) => (domain.as_str(), members.as_slice()),
         // An inline `{ enum: […] }` has no name of its own: its path is it.
         None => (path, schema.string_members(path)?),
@@ -1476,9 +1476,12 @@ pub(crate) fn validate_entry(folded: &FoldedEnv, doc: &Document, id: &str) -> Ve
 /// canonical id `<document id>.<beat id>` is `id`. Returns the beat's index
 /// in `doc.beats` and its canonical id; [`E_TRACE_BEAT`] otherwise, naming
 /// the declared canonical ids so the fix is one copy away.
-#[expect(
-    clippy::result_large_err,
-    reason = "trace diagnostics are returned directly for source reporting"
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    expect(
+        clippy::result_large_err,
+        reason = "trace diagnostics are returned directly for source reporting"
+    )
 )]
 pub(crate) fn resolve_beat(
     folded: &FoldedEnv,
@@ -1662,8 +1665,9 @@ pub fn validate_bridges(
         }
         let fields: Vec<&str> = reads_of.iter().map(|(f, _)| *f).collect();
         let slot_type = |write: &lute_manifest::schema::WriteDecl| {
-            let decls = &folded.env.state.decls;
-            decls
+            folded
+                .env
+                .state
                 .iter()
                 .find(|(p, _)| write_lands_on(write, p))
                 .map(|(_, d)| &d.ty)
@@ -1709,7 +1713,6 @@ pub fn validate_bridges(
                 let slots: Vec<_> = folded
                     .env
                     .state
-                    .decls
                     .iter()
                     .filter(|(p, _)| write_lands_on(write, p))
                     .collect();

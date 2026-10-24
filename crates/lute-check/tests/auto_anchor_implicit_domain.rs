@@ -36,16 +36,18 @@ fn scene(enums: &str, body: &str) -> String {
 
 /// Run the real `check()` over `text` and return its error-severity codes.
 fn error_codes(text: &str) -> Vec<String> {
-    let input = CheckInput {
-        text: text.into(),
-        uri: "t".into(),
-        snapshot: load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.into(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            load_core_snapshot(),
+            ProviderSet::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let mut codes: Vec<String> = check(&input)
         .diagnostics
         .iter()

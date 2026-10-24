@@ -570,6 +570,9 @@ title: Across the river
 
 `failedBy`는 이 일곱 값의 enum이므로 위 match는 `<otherwise>` 없이도 모든 경우를 다룹니다. 오타가 난 arm(`is="superceded"`)은 `E-WHEN-LITERAL-DOMAIN`입니다. 놓친 목표와 `fail`이 같은 정착에서 퀘스트를 실패시키면 목표의 종류가 우선합니다. 어느 경로든 `state:`에 선언하면 `E-QUEST-RESERVED-DECL`이고, `::set`으로 쓰면 `E-QUEST-RESERVED-WRITE`입니다. run-tier 퀘스트의 `newRun` 초기화는 둘 다 지웁니다. `lute run`, `lute play`,
  `lute trace`, `lute test`는 이 값에 동의하며, `lute run --json`은 실패한 `quest` 레코드에 `failedBy`를 담습니다.
+
+0.49.0부터 프로젝트 전체 `lute check`는 조건뿐 아니라 이런 읽기를 모두 확인합니다. 줄이나 선택지 라벨의 `{{ quest.<id>.state }}` 보간, 보간 인자, `defs:`에 있는 def의 `cel:` 본문에서 그 id의 퀘스트가 프로젝트에 없으면 각각 `E-QUEST-REF-UNKNOWN`입니다(``quest.nope.state references quest nope, which no project quest defines``).
+
 ### `quest.<id>.activatedAt`
 
 `quest.<id>.state` 옆에는 모든 퀘스트가 두 번째 예약 경로 **`quest.<id>.activatedAt`**도 가집니다. 엔진이 `unset` → `active` 전환에서 찍는 `narrativeTime` 순간입니다. `quest.<id>.state`와 마찬가지로 엔진이 채우므로 작성자가 선언할 수 없고(`E-QUEST-RESERVED-DECL`), 작성자가 쓸 수도 없습니다(`E-QUEST-RESERVED-WRITE`). 하지만 콘텐츠는 이를 *읽을* 수 있으며 이것이 핵심입니다. `validAt(rel, t)`에는 없었던 시간 앵커입니다.

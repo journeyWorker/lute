@@ -583,6 +583,14 @@ pub struct ConnGraph {
     /// `edges` pair has a nonempty entry here and vice versa.
     pub edge_kinds: BTreeMap<NodeId, BTreeMap<NodeId, BTreeSet<EdgeKind>>>,
     pub topo_order: Vec<NodeId>,
+    /// dsl 0.49.0 §6.1: the `start` edges of [`Self::edges`] that close a
+    /// cycle, keyed `prerequisite -> dependents` like `edges`. They are drawn
+    /// but order nothing: [`Self::topo_order`], the layers and every
+    /// ordering walk ([`Self::orders`]) skip them.
+    pub back_edges: BTreeMap<NodeId, BTreeSet<NodeId>>,
+    /// dsl 0.49.0 §6.1–§6.2: every quest that can never start under the
+    /// declared routes because of a start cycle or a self-read, and why.
+    pub start_blocked: BTreeMap<NodeId, StartBlock>,
 }
 
 impl ConnGraph {
@@ -592,6 +600,45 @@ impl ConnGraph {
     pub fn edge_kinds_for(&self, from: &NodeId, to: &NodeId) -> Option<&BTreeSet<EdgeKind>> {
         self.edge_kinds.get(from).and_then(|by_dep| by_dep.get(to))
     }
+
+    /// Whether the drawn `from -> to` edge orders `from` before `to`: every
+    /// edge but a [`Self::back_edges`] one.
+    pub fn orders(&self, from: &NodeId, to: &NodeId) -> bool {
+        !self.back_edges.get(from).is_some_and(|t| t.contains(to))
+    }
+
+    /// The [`StartBlock`] `node` ends at: its own, or, through each
+    /// [`StartBlock::Behind`], the cycle or self-read it waits on, with the
+    /// quest that carries it.
+    pub fn start_block_root(&self, node: &NodeId) -> Option<(&NodeId, &StartBlock)> {
+        let (mut at, mut block) = self.start_blocked.get_key_value(node)?;
+        // `Behind` points at an earlier-classified quest, so the chain ends;
+        // the bound only guards a malformed map.
+        for _ in 0..=self.start_blocked.len() {
+            let StartBlock::Behind(next) = block else {
+                return Some((at, block));
+            };
+            (at, block) = self.start_blocked.get_key_value(next)?;
+        }
+        None
+    }
+}
+
+/// Why a quest can never start (dsl 0.49.0 §6.1–§6.2), in
+/// [`ConnGraph::start_blocked`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StartBlock {
+    /// It is on a cycle of `start` anchors that no source outside the cycle
+    /// enters ([`crate::connectivity::E_QUEST_START_CYCLE`]). The path is
+    /// the shortest such cycle through it, `prerequisite -> dependent`,
+    /// starting and ending at the quest.
+    Cycle(Vec<NodeId>),
+    /// Its `start` reads its own state and nothing else lets it start
+    /// (`E-QUEST-START-SELF`).
+    SelfRead,
+    /// It can start only through quests that can never start; the first
+    /// one of the anchor that fails.
+    Behind(NodeId),
 }
 
 /// dsl §2.4 (graph 1) / §4.1 (§A cycle): the topological-precedence DAG over

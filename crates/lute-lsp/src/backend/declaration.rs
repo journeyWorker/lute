@@ -70,10 +70,11 @@ impl Backend {
             Mode::Author,
         );
         // Declaration imports and the active project baseline come from the
-        // same model assembly used by scene analysis.
-        let imports = built.input.imports.clone();
-        diags.extend(imports.diags.clone());
-        let baseline = built.input.snapshot.clone();
+        // same model assembly used by scene analysis. The imports' own
+        // `diags` sit at a placeholder; the copy anchored here is reported.
+        let imports = built.input.imports().clone();
+        diags.extend(built.input.import_diags.iter().cloned());
+        let baseline = built.input.snapshot().clone();
         let mut rdiags = built.resolve_diags;
         if let Err(message) = request_cache.project(project_root).as_ref() {
             rdiags.push(lute_manifest::project::ResolveDiag {
@@ -98,9 +99,7 @@ impl Backend {
         // file's own inline `state:` overrides an imported decl of the same
         // path (mirrors `check.rs::fold_env`'s inline-over-imported precedence).
         let mut state = imports.state.clone();
-        for (path, decl) in &typed.state.decls {
-            state.decls.insert(path.clone(), decl.clone());
-        }
+        state.decls.append(typed.state.decls.clone());
 
         // The `@ref` existence/type tables `defs:` CEL bodies resolve `@name`
         // uses against: plugin/project baseline < imported < inline (same
@@ -125,7 +124,7 @@ impl Backend {
         }
         let env = lute_check::ctx::Env {
             mode: Mode::Author,
-            state,
+            state: lute_check::StateView::from(state),
             defs: def_names,
             def_types,
             // Arity/arg-type checks (`E-REF-ARITY`/`E-REF-ARG-TYPE`) on a

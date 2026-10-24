@@ -155,7 +155,7 @@ pub(crate) fn compile_gate_diags(input: &CheckInput) -> Vec<Diagnostic> {
     let mut arena = lute_cel::CelArena::default();
     let _ = lute_cel::fill_document(&mut arena, &mut doc);
     let (folded, _, _) = fold_env(&doc, input);
-    let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast);
+    let cast = lute_check::declared_cast(input.snapshot(), input.imports(), &folded.typed.cast);
     let mut diags = lute_compile::normalize::normalize_document(
         &mut doc,
         &input.components,
@@ -405,7 +405,7 @@ pub(crate) fn engine_semantic_diags(
                 found = true;
             }
             let meta_span = normalize_span_from_text(&input.text, doc.meta.span);
-            let origins = &input.imports.rel.origins;
+            let origins = &input.imports().rel.origins;
             let imported: Vec<lute_check::rel_schema::DeclOrigin> = match id {
                 "lute.knowledge.facts/1" => origins
                     .relations
@@ -526,16 +526,18 @@ fn schema_as_imported_diags(file: &Path) -> Vec<Diagnostic> {
         &CapabilitySnapshot::default(),
         lute_check::meta::MetaKind::Scene,
     );
-    let input = CheckInput {
-        uri: base.join("schema-check.lute").display().to_string(),
-        snapshot,
-        providers: context.providers,
-        mode: Mode::Ci,
-        imports: lute_check::resolve_imports(base, &meta.uses, &meta.extends, doc.meta.span),
-        components: lute_check::resolve_components(base, &[], doc.meta.span),
-        defaults: Default::default(),
+    let input = CheckInput::new(
         text,
-    };
+        base.join("schema-check.lute").display().to_string(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            context.providers,
+            lute_check::resolve_imports(base, &meta.uses, &meta.extends, doc.meta.span),
+            lute_check::resolve_components(base, &[], doc.meta.span),
+            Default::default(),
+        ),
+    );
     let here = canon.display().to_string();
     check(&input)
         .diagnostics
@@ -633,6 +635,15 @@ fn check_document(
         return Ok(Checked::ResolveFailed(resolve_failure(&resolve_lines)));
     }
     let mut result = check(&input);
+    // dsl 0.49.0 §7.1 (#175): name the quest references this single-file
+    // check left to whole-project `check`. Info only: `ok` is unchanged.
+    let (doc, _) = lute_syntax::parse(&input.text);
+    let notes =
+        lute_check::project_check_skipped(&input.text, &doc, &input.imports().imported_quest_ids);
+    if !notes.is_empty() {
+        result.diagnostics.extend(notes);
+        lute_check::order_diagnostics(&mut result.diagnostics);
+    }
 
     // dsl 0.10.0 §9:962: *"`lute trace` on a component and `lute check` on the
     // same file stop disagreeing"*. They disagreed because `check` stopped one

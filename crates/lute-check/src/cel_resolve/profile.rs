@@ -248,7 +248,7 @@ pub(crate) struct ProfileScope<'a> {
     pub(crate) bound: &'a [String],
     pub(crate) relations:
         Option<&'a std::collections::BTreeMap<String, lute_manifest::relations::RelationDecl>>,
-    pub(crate) schema: Option<&'a crate::meta::StateSchema>,
+    pub(crate) schema: Option<&'a crate::StateView>,
 }
 
 impl<'a> ProfileScope<'a> {
@@ -261,12 +261,15 @@ impl<'a> ProfileScope<'a> {
     }
 
     /// The first declared path whose last segment is `name` (any case).
-    fn path_ending_in(&self, name: &str) -> Option<&'a str> {
-        self.schema?.decls.keys().map(String::as_str).find(|k| {
-            !crate::cel_paths::is_engine_owned_path(k)
-                && k.rsplit_once('.')
-                    .is_some_and(|(_, last)| last.eq_ignore_ascii_case(name))
-        })
+    fn path_ending_in(&self, name: &str) -> Option<String> {
+        self.schema?
+            .keys()
+            .find(|k| {
+                !crate::cel_paths::is_engine_owned_path(k)
+                    && k.rsplit_once('.')
+                        .is_some_and(|(_, last)| last.eq_ignore_ascii_case(name))
+            })
+            .map(std::borrow::Cow::into_owned)
     }
 }
 
@@ -440,7 +443,7 @@ pub(crate) fn is_profile_operator(func_name: &str) -> bool {
 pub(crate) fn check_modulo_operands(
     expr: &Expr,
     span: Span,
-    schema: &crate::meta::StateSchema,
+    schema: &crate::StateView,
     diags: &mut Vec<Diagnostic>,
 ) {
     match expr {

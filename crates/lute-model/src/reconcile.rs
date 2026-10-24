@@ -307,6 +307,7 @@ pub fn reconcile_collected(
         let beat_foldeds: Vec<&lute_check::FoldedEnv> =
             group_full.iter().map(|(_, _, f)| f).collect();
         let mocked = mocked_accepts_under(root);
+        let choose_keys = crate::scripts::choose_keys(root);
         // The standalone project passes read only this root's documents —
         // never one another's output or the connectivity chain's — so they
         // run in parallel with it; every result is appended below in the
@@ -337,8 +338,8 @@ pub fn reconcile_collected(
             // fail (project-wide: a parent in another file can cascade-fail it).
             Box::new(|| lute_check::check_project_quest_handlers(&group)),
             Box::new(|| lute_check::connectivity::check_conn_episode_dup(&group)),
-            // Two documents' menus answered by one `choose:` key.
-            Box::new(|| lute_check::check_project_branch_ids(root, &group)),
+            // Two documents' menus answered by one `choose:` key a script writes.
+            Box::new(|| lute_check::check_project_branch_ids(root, &group, &choose_keys)),
             // dsl 0.28.0 §4: the manifest's `chapters:` names this root's scenes.
             Box::new(|| lute_check::chapters::check_project_chapters(root, &group, &beat_foldeds)),
             // dsl 0.26.0 §2.1: every declaration of one state path agrees.
@@ -384,7 +385,7 @@ pub fn reconcile_collected(
                 let quest_ids = lute_check::connectivity::quest_id_set(&group);
                 let node_diags =
                     lute_check::connectivity::resolve_nodes(&group, &key_set, &quest_ids);
-                let (conn_graph, cycle_diags) =
+                let (mut conn_graph, mut cycle_diags) =
                     lute_check::connectivity::assemble_graph(&group, &key_set, &quest_ids);
                 // T7/T14/Fix2 wiring: `compute_conn_fixpoint` iterates the
                 // reach/live-assert/may-set/dead-quest composition to a finite
@@ -400,6 +401,13 @@ pub fn reconcile_collected(
                     &quest_ids,
                     &ambiguous_quests,
                 );
+                // dsl 0.49.0 §6.1: start cycles, against the final verdicts.
+                cycle_diags.extend(lute_check::connectivity::resolve_start_blocks(
+                    &mut conn_graph,
+                    &group,
+                    &fp.reach,
+                    &fp.unreachable_quests,
+                ));
                 (
                     key_set,
                     node_diags,
@@ -633,7 +641,6 @@ pub fn reconcile_collected(
         // §4.3 spec lines 442-448), unioned across every doc's own resolved
         // schema in this root.
         let mut per_doc = envelope::PerDocEffects::default();
-        let mut envelope_d: BTreeSet<String> = BTreeSet::new();
         let mut reads_per_scene: BTreeMap<String, Vec<(String, Span)>> = BTreeMap::new();
         // Per non-tainted, in-scope, entry-dependent read site: the exact
         // per-file `E-MAYBE-UNSET` diagnostic it would earn, keyed by
@@ -645,19 +652,11 @@ pub fn reconcile_collected(
         // heuristic.
         let mut sites_per_scene: BTreeMap<String, Vec<(Span, String)>> = BTreeMap::new();
         // `owner: engine` paths: an unavailable read of one is advised a
-        // guard or a default, never an `after:` (no scene sets it).
-        let mut engine_owned: BTreeSet<String> = BTreeSet::new();
+        // guard or a default, never an `after:` (no scene sets it). Both
+        // unions read each shared base's summary once (spec 0.49.0 §9.2 R5).
+        let mut state_union = lute_check::StateUnion::default();
         for (_path, doc, folded) in group_full {
-            envelope_d.extend(envelope::schema_defaults(&folded.env.state));
-            engine_owned.extend(
-                folded
-                    .env
-                    .state
-                    .decls
-                    .iter()
-                    .filter(|(_, d)| d.owner == Some(lute_manifest::types::Owner::Engine))
-                    .map(|(p, _)| p.clone()),
-            );
+            state_union.add(&folded.env.state);
             for quest in &doc.quests {
                 if quest.id.is_empty() || ambiguous_quests.contains(&quest.id) {
                     continue;
@@ -668,6 +667,9 @@ pub fn reconcile_collected(
                 );
             }
         }
+        let envelope_d = state_union.defaults();
+        let engine_owned = state_union.engine_owned();
+        let families = state_union.families();
         for (key, occurrences) in &key_set {
             let Some((scene_path, _)) = occurrences.first() else {
                 continue;
@@ -703,13 +705,9 @@ pub fn reconcile_collected(
                     .iter()
                     .any(|s| s.byte_start == span.byte_start && s.byte_end == span.byte_end)
             };
-            per_doc.scene.insert(
-                key.clone(),
-                (
-                    envelope::guaranteed(&assigned),
-                    envelope::possible_writes(&all_nodes),
-                ),
-            );
+            per_doc
+                .scene
+                .insert(key.clone(), envelope::scene_effects(&assigned, &all_nodes));
             let maybe_unset_messages: Vec<&str> = local_diags
                 .iter()
                 .filter(|d| d.code == "E-MAYBE-UNSET")
@@ -738,7 +736,7 @@ pub fn reconcile_collected(
             sites_per_scene.insert(key.clone(), sites);
             reads_per_scene.insert(key.clone(), reads);
         }
-        let (envs, tainted) = envelope::propagate(&conn_graph, &per_doc, &envelope_d);
+        let (envs, tainted) = envelope::propagate(&conn_graph, &per_doc);
         // `check_envelope` returns BOTH grades together (see its own doc
         // comment); only the error grade joins `project_diags` -- the
         // warning grade is intentionally computed-and-discarded here (dsl
@@ -749,9 +747,11 @@ pub fn reconcile_collected(
         for (path, d) in envelope::check_envelope(
             &conn_graph,
             &envs,
+            &envelope_d,
             &tainted,
             &reads_per_scene,
             &engine_owned,
+            &families,
         ) {
             if d.severity == Severity::Error {
                 project_diags.push((path, d));

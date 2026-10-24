@@ -30,7 +30,7 @@ use lute_syntax::ast::{
 
 use crate::connectivity::{ConnGraph, NodeId, PrereqState};
 use crate::defassign::{check_definite_assignment, Assigned};
-use crate::meta::{Namespace, StateSchema};
+use crate::meta::Namespace;
 use lute_manifest::semantics::prereq::PrereqFormula;
 
 /// `true` when `path` resolves to the `run.*`/`user.*` tier — the two
@@ -77,6 +77,19 @@ pub fn possible_writes(nodes: &[Node]) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     scan_nodes(nodes, &mut out);
     out
+}
+
+/// A scene document's `(G, P)` pair for [`PerDocEffects::scene`]: `G` is
+/// [`guaranteed`] of its definite-assignment `writes`, and `P` is
+/// [`possible_writes`] ∪ `G`. `G` may hold a write `possible_writes` never
+/// scans — a blocking bridge call's result (0.49.0 §5.2) — and a guaranteed
+/// write is a possible one, so every consumer (propagation, writer
+/// attribution) sees `G ⊆ P`.
+pub fn scene_effects(assigned: &Assigned, nodes: &[Node]) -> (BTreeSet<String>, BTreeSet<String>) {
+    let g = guaranteed(assigned);
+    let mut p = possible_writes(nodes);
+    p.extend(g.iter().cloned());
+    (g, p)
 }
 
 fn scan_nodes(nodes: &[Node], out: &mut BTreeSet<String>) {
@@ -168,7 +181,7 @@ fn scan_choice_record(choice: &Choice, out: &mut BTreeSet<String>) {
 /// body was already validated by the real `check_definite_assignment` pass
 /// over the whole quest document; this is a read-only re-derivation of its
 /// guaranteed-write set, not a second source of diagnostics.
-fn body_guaranteed(nodes: &[Node], schema: &StateSchema) -> BTreeSet<String> {
+fn body_guaranteed(nodes: &[Node], schema: &crate::StateView) -> BTreeSet<String> {
     let (_diags, writes, _reads) =
         check_definite_assignment(nodes, &crate::defassign::Scope::bare(schema), None);
     guaranteed(&writes)
@@ -197,7 +210,7 @@ fn body_guaranteed(nodes: &[Node], schema: &StateSchema) -> BTreeSet<String> {
 /// (grammar admission, dsl 0.2.0 §6.7 — mirrors `match_check::check_quest`'s
 /// and `project_check`'s own top-level-only objective scans), so a single
 /// top-level pass over `q.body` is exhaustive.
-pub fn writes_on_complete(q: &Quest, schema: &StateSchema) -> BTreeSet<String> {
+pub fn writes_on_complete(q: &Quest, schema: &crate::StateView) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for node in &q.body {
         match node {
@@ -220,18 +233,30 @@ pub fn writes_on_complete(q: &Quest, schema: &StateSchema) -> BTreeSet<String> {
 /// `E-STATE-MAYBE-UNAVAILABLE`).
 ///
 /// `D` (the project's schema-default `run.*`/`user.*` set, spec lines
-/// 442-447) is UNIONED into BOTH sides of every node's envelope by
-/// [`propagate`], AFTER the table computation below — including a
+/// 442-447) belongs to BOTH sides of every node's envelope — including a
 /// `completed(Q)`-only formula, whose own table entry (`G = P =
 /// writesOnComplete(Q)`, spec line 416) does not mention `D` on its face —
 /// because a schema-defaulted path is seeded at scene entry regardless of
 /// which route reached this node (spec lines 445-447): `D ⊆ guaranteed(n)`
-/// must hold at EVERY node, not just ones whose formula happens to route
-/// through a `visited()` atom.
+/// holds at EVERY node. [`propagate`] returns each node's ROUTE part only
+/// and holds `D` once for the project (spec 0.49.0 §9.2 R5: `D` is
+/// project-wide data, never copied per node); [`Env::with_floor`] is the
+/// whole envelope. The table is unchanged by this: `∪` and `∩` with `D`
+/// unioned afterwards give what they gave with `D` in every operand.
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct Env {
     pub guaranteed: BTreeSet<String>,
     pub possible: BTreeSet<String>,
+}
+
+impl Env {
+    /// This route part with the entry floor `d` on both sides: the node's
+    /// whole envelope.
+    pub fn with_floor(mut self, d: &BTreeSet<String>) -> Self {
+        self.guaranteed.extend(d.iter().cloned());
+        self.possible.extend(d.iter().cloned());
+        self
+    }
 }
 
 /// Per-document effect data [`propagate`] needs to resolve `visited(Y)`/
@@ -276,16 +301,19 @@ pub struct PerDocEffects {
 /// its `after` formula, one linear pass over `g.topo_order` (dsl §4.3 spec
 /// lines 411-419): `visited(Y)`/`completed(Q)` atoms, `&&`/`||`
 /// composition, and the `Absent` entry base case `G = P = D`. Returns the
-/// per-node envelope map alongside a TAINTED node set (envelope-specific —
-/// see below, deliberately NOT [`crate::connectivity::check_reachability`]'s
-/// `Unknown` classification).
+/// per-node ROUTE envelope map — each node's whole envelope is its entry
+/// [`Env::with_floor`] the project's `D` ([`Env`]) — alongside a TAINTED
+/// node set (envelope-specific — see below, deliberately NOT
+/// [`crate::connectivity::check_reachability`]'s `Unknown`
+/// classification).
 ///
 /// ## Tainted nodes (soundness for `PrereqState::Invalid` + unresolvable atoms)
 /// A node with a malformed `after` ([`PrereqState::Invalid`], already
 /// reported once as `E-CONN-PROFILE`) has no well-defined envelope — its
 /// `possible` set cannot be trusted to be complete. Rather than invent an
 /// unbounded/"all paths possible" sentinel, this marks the node TAINTED and
-/// gives it a placeholder `D`/`D` envelope (never trusted downstream). A
+/// gives it a placeholder `D`/`D` envelope (an empty route part; never
+/// trusted downstream). A
 /// node is ALSO tainted when its formula contains an atom whose effect
 /// source `per_doc` cannot resolve at all — `visited(Y)` with `Y` absent
 /// from `per_doc.scene`, or `completed(Q)` with `Q` absent from
@@ -317,7 +345,6 @@ pub struct PerDocEffects {
 pub fn propagate(
     g: &ConnGraph,
     per_doc: &PerDocEffects,
-    d: &BTreeSet<String>,
 ) -> (BTreeMap<NodeId, Env>, BTreeSet<NodeId>) {
     let mut envs: BTreeMap<NodeId, Env> = BTreeMap::new();
     let mut tainted: BTreeSet<NodeId> = BTreeSet::new();
@@ -326,7 +353,7 @@ pub fn propagate(
         let Some(info) = g.nodes.get(id) else {
             continue;
         };
-        let (mut env, is_tainted) = match &info.prereq {
+        let (env, is_tainted) = match &info.prereq {
             // dsl 0.24.0 §2, 0.25.0 §4: an anchor is no `after` route — an
             // accepted quest activates mid-body of its anchor, a started one
             // whenever its `start` holds, so the anchor's writes are not
@@ -342,8 +369,6 @@ pub fn propagate(
                 }
             }
         };
-        env.guaranteed.extend(d.iter().cloned());
-        env.possible.extend(d.iter().cloned());
         if is_tainted {
             tainted.insert(id.clone());
         }
@@ -467,12 +492,11 @@ fn eval_formula(f: &PrereqFormula, per_doc: &PerDocEffects, envs: &BTreeMap<Node
 /// `defassign`'s own existing rule (`has_default` in `defassign.rs`)" —
 /// cross-schema default conflicts are already that layer's own job, so
 /// this never re-derives or re-resolves anything, only filters+extracts.
-pub fn schema_defaults(schema: &StateSchema) -> BTreeSet<String> {
+pub fn schema_defaults(schema: &crate::StateView) -> BTreeSet<String> {
     schema
-        .decls
         .iter()
         .filter(|(path, decl)| decl.default.is_some() && in_envelope_scope(path))
-        .map(|(path, _)| path.clone())
+        .map(|(path, _)| path.into_owned())
         .collect()
 }
 
@@ -552,7 +576,7 @@ pub fn quest_envelope(
         },
         Some(_) => match envs.get(&NodeId::Quest(q.id.clone())) {
             Some(env) => QuestEnv {
-                env: env.clone(),
+                env: env.clone().with_floor(d),
                 enrichment_note: false,
             },
             None => QuestEnv {
@@ -568,23 +592,39 @@ pub fn quest_envelope(
 /// BY DEFAULT). See [`check_envelope`].
 pub const E_STATE_MAYBE_UNAVAILABLE: &str = "E-STATE-MAYBE-UNAVAILABLE";
 
-fn maybe_unavailable_error(path: &str, span: Span, engine_owned: bool) -> Diagnostic {
+/// `guard` is the read's presence test ([`crate::cel_paths::presence_test`]),
+/// `None` when no guard can be written for the path.
+fn maybe_unavailable_error(
+    path: &str,
+    span: Span,
+    engine_owned: bool,
+    guard: Option<&str>,
+) -> Diagnostic {
     // An `owner: engine` path is written by the engine, never by a scene:
     // no `after:` route can set it (ledger LG28-8).
-    let message = if engine_owned {
-        format!(
+    let message = match (engine_owned, guard) {
+        (true, Some(guard)) => format!(
             "state path `{path}` may be unavailable under your declared routes — it is \
              `owner: engine`, so no scene sets it and the engine may not have written it \
-             before this read; guard the read with `isSet({path})`, or give it a `default:` \
+             before this read; guard the read with `{guard}`, or give it a `default:` \
              in the schema (dsl §4.3)"
-        )
-    } else {
-        format!(
+        ),
+        (true, None) => format!(
+            "state path `{path}` may be unavailable under your declared routes — it is \
+             `owner: engine`, so no scene sets it and the engine may not have written it \
+             before this read; give it a `default:` in the schema (dsl §4.3)"
+        ),
+        (false, Some(guard)) => format!(
             "state path `{path}` may be unavailable under your declared routes — no \
              declared `after` route sets it before this read; add an `after:` naming a \
              scene that sets it (e.g. `after: visited('<scene>')`), or guard the read \
-             with `isSet({path})` (dsl §4.3)"
-        )
+             with `{guard}` (dsl §4.3)"
+        ),
+        (false, None) => format!(
+            "state path `{path}` may be unavailable under your declared routes — no \
+             declared `after` route sets it before this read; add an `after:` naming a \
+             scene that sets it (e.g. `after: visited('<scene>')`) (dsl §4.3)"
+        ),
     };
     Diagnostic {
         code: E_STATE_MAYBE_UNAVAILABLE.to_string(),
@@ -600,15 +640,18 @@ fn maybe_unavailable_error(path: &str, span: Span, engine_owned: bool) -> Diagno
     }
 }
 
-fn maybe_unavailable_warning(path: &str, span: Span) -> Diagnostic {
+/// `guard` as for [`maybe_unavailable_error`].
+fn maybe_unavailable_warning(path: &str, span: Span, guard: Option<&str>) -> Diagnostic {
+    let guard = guard
+        .map(|guard| format!(", or guard the read with `{guard}`"))
+        .unwrap_or_default();
     Diagnostic {
         code: E_STATE_MAYBE_UNAVAILABLE.to_string(),
         severity: Severity::Warning,
         message: format!(
             "state path `{path}` is set under your declared routes on SOME routes \
              reaching this node, but not every one — not yet guaranteed; order this scene \
-             `after:` a scene every route passes that sets it, or guard the read with \
-             `isSet({path})` (dsl §4.3)"
+             `after:` a scene every route passes that sets it{guard} (dsl §4.3)"
         ),
         evidence: None,
         span,
@@ -647,7 +690,7 @@ fn maybe_unavailable_warning(path: &str, span: Span) -> Diagnostic {
 /// standalone for it regardless of the project's envelope, so classifying
 /// it here too could newly error a file `check()` proved clean. A
 /// schema-defaulted read is `∈ D ⊆ Guaranteed(X)` at every node (`D` is
-/// unioned into both sides of every [`Env`] by [`propagate`]) — clean
+/// on both sides of every node's envelope, [`Env`]) — clean
 /// either way, so it is harmless whether or not a caller includes it (T3's
 /// own `check_read` excludes it as a matter of course). A read that DOES
 /// fall back to entry state and ISN'T defaulted is EXACTLY what
@@ -676,14 +719,20 @@ fn maybe_unavailable_warning(path: &str, span: Span) -> Diagnostic {
 ///
 /// `engine_owned` names the `owner: engine` paths: no scene route can set
 /// one, so its error advises a guard or a schema `default:` instead of an
-/// `after:`.
+/// `after:`. `envs` are [`propagate`]'s route parts and `d` the entry floor
+/// every node's envelope also holds. `families` are the project's `per:`
+/// family paths: the guard a message names is
+/// [`crate::cel_paths::presence_test`]'s (0.49.0 §5.3).
 pub fn check_envelope(
     g: &ConnGraph,
     envs: &BTreeMap<NodeId, Env>,
+    d: &BTreeSet<String>,
     tainted: &BTreeSet<NodeId>,
     reads_per_scene: &BTreeMap<String, Vec<(String, Span)>>,
     engine_owned: &BTreeSet<String>,
+    families: &BTreeSet<String>,
 ) -> Vec<(PathBuf, Diagnostic)> {
+    let is_family = |p: &str| families.contains(p);
     let mut out = Vec::new();
     for (key, reads) in reads_per_scene {
         let id = NodeId::Scene(key.clone());
@@ -694,13 +743,14 @@ pub fn check_envelope(
             continue;
         };
         for (path, span) in reads {
-            if !in_envelope_scope(path) || env.guaranteed.contains(path) {
+            if !in_envelope_scope(path) || env.guaranteed.contains(path) || d.contains(path) {
                 continue;
             }
+            let guard = crate::cel_paths::presence_test(path, false, &is_family);
             let diag = if env.possible.contains(path) {
-                maybe_unavailable_warning(path, *span)
+                maybe_unavailable_warning(path, *span, guard.as_deref())
             } else {
-                maybe_unavailable_error(path, *span, engine_owned.contains(path))
+                maybe_unavailable_error(path, *span, engine_owned.contains(path), guard.as_deref())
             };
             out.push((info.path.clone(), diag));
         }
@@ -740,7 +790,7 @@ mod tests {
     /// Mirrors `defassign::tests::fixture` — parses + fills CEL + lifts the
     /// inline `state:` schema, needed only by the `guaranteed()`/divergence
     /// tests below (`possible_writes` needs no schema).
-    fn fixture(src: &str) -> (Vec<Node>, StateSchema) {
+    fn fixture(src: &str) -> (Vec<Node>, crate::StateView) {
         let (mut doc, _pd) = parse(src);
         let mut arena = CelArena::default();
         let _ = fill_document(&mut arena, &mut doc);
@@ -754,7 +804,7 @@ mod tests {
             .next()
             .map(|s| s.body)
             .unwrap_or_default();
-        (nodes, meta.state)
+        (nodes, meta.state.into())
     }
 
     /// Like `fixture`, but returns the first `<quest>` declaration itself
@@ -762,7 +812,7 @@ mod tests {
     /// `writes_on_complete` needs the `Quest` struct to read
     /// `Objective::optional`/`On::event`/`On::when`, which the flat node
     /// list `quest_nodes` returns loses.
-    fn quest_fixture(src: &str) -> (Quest, StateSchema) {
+    fn quest_fixture(src: &str) -> (Quest, crate::StateView) {
         let (mut doc, _pd) = parse(src);
         let mut arena = CelArena::default();
         let _ = fill_document(&mut arena, &mut doc);
@@ -775,7 +825,7 @@ mod tests {
             .into_iter()
             .next()
             .expect("quest_fixture src must declare a <quest>");
-        (quest, meta.state)
+        (quest, meta.state.into())
     }
 
     #[test]
@@ -1040,10 +1090,11 @@ mod tests {
             vec![node(bad.clone(), PrereqState::Invalid)],
             vec![bad.clone()],
         );
-        let (envs, tainted) = propagate(&g, &PerDocEffects::default(), &d);
+        let (envs, tainted) = propagate(&g, &PerDocEffects::default());
         assert!(tainted.contains(&bad));
-        assert_eq!(envs[&bad].guaranteed, d);
-        assert_eq!(envs[&bad].possible, d);
+        let env = envs[&bad].clone().with_floor(&d);
+        assert_eq!(env.guaranteed, d);
+        assert_eq!(env.possible, d);
     }
 
     #[test]
@@ -1068,7 +1119,7 @@ mod tests {
         per_doc
             .scene
             .insert("bad".to_string(), (BTreeSet::new(), BTreeSet::new()));
-        let (_envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
+        let (_envs, tainted) = propagate(&g, &per_doc);
         assert!(tainted.contains(&bad));
         assert!(
             tainted.contains(&n),
@@ -1092,7 +1143,7 @@ mod tests {
             )],
             vec![n.clone()],
         );
-        let (_envs, tainted) = propagate(&g, &PerDocEffects::default(), &BTreeSet::new());
+        let (_envs, tainted) = propagate(&g, &PerDocEffects::default());
         assert!(
             tainted.contains(&n),
             "visited() of an unresolvable key must taint the node"
@@ -1114,7 +1165,7 @@ mod tests {
             )],
             vec![n.clone()],
         );
-        let (_envs, tainted) = propagate(&g, &PerDocEffects::default(), &BTreeSet::new());
+        let (_envs, tainted) = propagate(&g, &PerDocEffects::default());
         assert!(
             tainted.contains(&n),
             "completed() of an unresolvable quest id must taint the node"
@@ -1145,7 +1196,7 @@ mod tests {
         per_doc
             .scene
             .insert("live".to_string(), (BTreeSet::new(), BTreeSet::new()));
-        let (_envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
+        let (_envs, tainted) = propagate(&g, &per_doc);
         assert!(
             !tainted.contains(&live),
             "live's own node must stay untainted"
@@ -1191,7 +1242,7 @@ mod tests {
         per_doc
             .scene
             .insert("live".to_string(), (BTreeSet::new(), BTreeSet::new()));
-        let (_envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
+        let (_envs, tainted) = propagate(&g, &per_doc);
         assert!(
             !tainted.contains(&live),
             "live's own arm must stay untainted"
@@ -1226,7 +1277,7 @@ mod tests {
         per_doc
             .scene
             .insert("live".to_string(), (BTreeSet::new(), BTreeSet::new()));
-        let (_envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
+        let (_envs, tainted) = propagate(&g, &per_doc);
         assert!(
             tainted.contains(&n),
             "&& with an invalid arm must taint the whole node"
@@ -1248,9 +1299,9 @@ mod tests {
         per_doc
             .quest_writes_on_complete
             .insert("q".to_string(), BTreeSet::from(["run.done".to_string()]));
-        let (envs, tainted) = propagate(&g, &per_doc, &d);
+        let (envs, tainted) = propagate(&g, &per_doc);
         assert!(!tainted.contains(&n));
-        let env = &envs[&n];
+        let env = &envs[&n].clone().with_floor(&d);
         assert!(
             env.guaranteed.contains("run.def"),
             "D must survive a completed(Q)-only node, got {:?}",
@@ -1295,7 +1346,7 @@ mod tests {
                 BTreeSet::from(["run.b".to_string(), "run.x".to_string()]),
             ),
         );
-        let (envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
+        let (envs, tainted) = propagate(&g, &per_doc);
         assert!(!tainted.contains(&n));
         let env = &envs[&n];
         assert!(env.guaranteed.contains("run.x"), "in both arms");
@@ -1340,7 +1391,7 @@ mod tests {
                 BTreeSet::from(["run.b".to_string()]),
             ),
         );
-        let (envs, _tainted) = propagate(&g, &per_doc, &BTreeSet::new());
+        let (envs, _tainted) = propagate(&g, &per_doc);
         let env = &envs[&n];
         assert!(env.guaranteed.contains("run.a") && env.guaranteed.contains("run.b"));
         assert!(env.possible.contains("run.a") && env.possible.contains("run.b"));
@@ -1365,13 +1416,16 @@ mod tests {
         per_doc
             .scene
             .insert("a".to_string(), (BTreeSet::new(), BTreeSet::new()));
-        let (envs, tainted) = propagate(&g, &per_doc, &d);
+        let (envs, tainted) = propagate(&g, &per_doc);
         assert!(
             tainted.is_empty(),
             "a fully-resolved graph must never taint"
         );
-        assert!(envs.values().all(|e| e.guaranteed.contains("run.def")));
-        assert!(envs.values().all(|e| e.possible.contains("run.def")));
+        for env in envs.values() {
+            let env = env.clone().with_floor(&d);
+            assert!(env.guaranteed.contains("run.def"));
+            assert!(env.possible.contains("run.def"));
+        }
     }
 
     // ---- algebraic identity (spec lines 432-440), property-based -----
@@ -1514,7 +1568,6 @@ mod tests {
     fn structural_recursion_equals_bruteforce_per_route() {
         let atom_names = ["x0", "x1", "x2"];
         let universe = ["run.p0", "run.p1", "run.p2", "run.p3"];
-        let d = BTreeSet::new();
         for seed in 0..500u64 {
             let mut rng = Rng(seed.wrapping_mul(0x2545_F491_4F6C_DD1D).wrapping_add(1));
             let atom_envs = random_atom_envs(&mut rng, &atom_names, &universe);
@@ -1527,7 +1580,7 @@ mod tests {
                 per_doc.scene.insert(name.clone(), (g.clone(), p.clone()));
             }
             let (graph, n) = graph_for_formula(&atom_names, f.clone());
-            let (envs, tainted) = propagate(&graph, &per_doc, &d);
+            let (envs, tainted) = propagate(&graph, &per_doc);
             assert!(
                 !tainted.contains(&n),
                 "seed {seed}: an all-`Absent`/`Valid` fixture must never taint"
@@ -1589,7 +1642,7 @@ mod tests {
             ),
         );
         let d = BTreeSet::new();
-        let (envs, tainted) = propagate(&g, &per_doc, &d);
+        let (envs, tainted) = propagate(&g, &per_doc);
         assert!(!tainted.contains(&quest_node));
 
         let qe = quest_envelope(&q, &g, &envs, &d);
@@ -1622,7 +1675,7 @@ mod tests {
         );
         let per_doc = PerDocEffects::default();
         let d = BTreeSet::from(["run.def".to_string()]);
-        let (envs, _tainted) = propagate(&g, &per_doc, &d);
+        let (envs, _tainted) = propagate(&g, &per_doc);
 
         let qe = quest_envelope(&q, &g, &envs, &d);
         assert!(qe.env.guaranteed.contains("run.def"));
@@ -1649,7 +1702,7 @@ mod tests {
         );
         let per_doc = PerDocEffects::default(); // "ghost" has no entry -> unresolvable
         let d = BTreeSet::from(["run.def".to_string()]);
-        let (envs, tainted) = propagate(&g, &per_doc, &d);
+        let (envs, tainted) = propagate(&g, &per_doc);
         assert!(tainted.contains(&quest_node));
 
         let qe = quest_envelope(&q, &g, &envs, &d);

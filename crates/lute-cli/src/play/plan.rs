@@ -17,8 +17,9 @@ use serde_json::Value as Json;
 
 use super::script::{
     in_file_order, scalar_text, AdvanceBy, PlayScript, RawWrite, RawWrites, ScriptBridgeAnswer,
-    ScriptStep, ScriptedPick, Segment, StepAction,
+    ScriptStep, Segment, StepAction,
 };
+use lute_model::scripts::ScriptedPick;
 
 /// One planned `bridges:` answer (0.41.1 §4.1): the field map the runtime
 /// already took, the long form's `writes` as written — what `--events`

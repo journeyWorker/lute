@@ -30,16 +30,18 @@ fn run(component: &str, scene: &str, cast: &[(&str, &str)]) -> Vec<Diagnostic> {
     for (id, name) in cast {
         snapshot.cast.insert((*id).into(), member(id, name));
     }
-    let input = CheckInput {
-        text: scene.to_string(),
-        uri: "scene".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        scene.to_string(),
+        "scene".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            Default::default(),
+            components,
+            Default::default(),
+        ),
+    );
     check(&input).diagnostics
 }
 
@@ -170,16 +172,18 @@ fn a_presentational_body_may_not_use_an_effects_component() {
     );
     let (doc, _) = lute_syntax::parse(&s);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
-    let input = CheckInput {
-        text: s.clone(),
-        uri: "scene".into(),
-        snapshot: load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: resolve_components(&dir, &meta0.components, doc.meta.span),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        s.clone(),
+        "scene".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            load_core_snapshot(),
+            ProviderSet::default(),
+            Default::default(),
+            resolve_components(&dir, &meta0.components, doc.meta.span),
+            Default::default(),
+        ),
+    );
     let ds = check(&input).diagnostics;
     assert!(
         ds.iter()

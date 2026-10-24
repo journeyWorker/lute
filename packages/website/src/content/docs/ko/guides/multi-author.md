@@ -192,8 +192,14 @@ Lute 프로젝트의 대부분 ID는 프로젝트 전체에서 사용되므로, 
 엔트리 ID에는 문서 접두사가 없으므로 충돌하기 가장 쉽습니다. 하나의 엔트리 ID를 선언한 두 문서는
 `E-ENTRY-ID-DUP`입니다. dsl 0.26.0부터 플레이와 테스트에서는 엔트리를
 `<document id>.<entry id>`(`north.guards.northGullAfterStorm`)로 이름 붙일 수 있어 플레이를 읽기 쉽게 만들지만,
-엔트리 ID 자체는 여전히 고유해야 합니다. 하나의 `<branch>` 또는 `<hub>` ID를 가진 두 문서는
-프로젝트 전체 `lute check`에서 `W-BRANCH-ID-SHARED`를 발생시킵니다. 하나의 `choose:` 키가 두 메뉴에 답하게 되기 때문입니다.
+하나의 `<branch>` 또는 `<hub>` ID를 가진 두 문서는 프로젝트 전체 `lute check`에서 `W-BRANCH-ID-SHARED`를
+발생시킵니다. 다만 0.49.0부터는 루트 아래의 `*.play.yaml` 또는 `*.test.yaml`이 그 ID를 `choose:` 키로
+(최상위 또는 step에서) 지정할 때만 발생합니다. 그때에만 하나의 키가 두 메뉴에 답하기 때문입니다.
+어떤 스크립트도 그 ID로 선택하지 않는 같은 ID는 조용합니다.
+
+ID가 `{id}`로 철자만 같은 두 ID 공간(각각 `first`를 가진 두 영역)은 하나의 종류가 아닙니다.
+`E-ENTITY-KIND-CLASH`가 보고하면 두 공간의 멤버를 모두 나열하는 공유 루트 종류를 선언하고 각 공간을
+그 하위 종류로 만드세요(`{first}: { subsetOf: <root>, members: […] }`). 모든 참조는 여전히 자신의 종류에 대해 검사됩니다.
 
 ## 표시 이름: 영역마다 캐스트 파일 하나를 둡니다
 
@@ -375,6 +381,11 @@ steps:
   `<doc>.<entry>`로 지정합니다.
 - 문서 외부에서 엔진이 수락하는 accept 기반 퀘스트(`accept="external"`, 퀘스트 보드)는 저장 시드 대신
   `engine: { accept: [northLostBuoy] }` step으로 플레이 중간에 수락합니다.
+- 호스트만 부여하는 퀘스트(퀘스트 보드, 상점, Lute 밖의 컷신)는 `start` 없이 `accept="external"`로 씁니다.
+  퀘스트 자신의 상태를 읽는 `start`를 쓰지 마세요(`E-QUEST-START-SELF`). 두 영역의 퀘스트가 서로를
+  기다리기만 하고 순환 밖에 둘 중 어느 것도 시작시키는 것이 없게 하지도 마세요(`E-QUEST-START-CYCLE`).
+  순환 밖의 씬이나 beat에서 하나를 시작시키거나 `accept="external"`로 부여하세요.
+  [도달 가능성](/ko/connectivity/reachability/#시작-순환과-피할-수-없는-교착)을 참고하세요.
 
 ### 시계 핸드오프
 

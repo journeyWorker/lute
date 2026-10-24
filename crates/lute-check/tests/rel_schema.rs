@@ -2,16 +2,18 @@ use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 
 fn codes(text: &str) -> Vec<String> {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()
@@ -22,16 +24,18 @@ fn codes(text: &str) -> Vec<String> {
 /// `codes` with the message kept — the did-you-mean assertions below are
 /// about wording, not about which code fired.
 fn messages(text: &str) -> Vec<(String, String)> {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()
@@ -214,16 +218,18 @@ fn inline_redeclaring_imported_relation_needs_matching_sig() {
         "entities:\n  c: { members: [x] }\nrelations:\n  r: { args: [c], tier: run }\n",
     );
     let imports = lute_check::resolve_imports(&dir, &["s.yaml".into()], &[], zero_span());
-    let input = lute_check::CheckInput {
-        text: scene_with("relations:\n  r: { args: [c], tier: user }\n"),
-        uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: lute_manifest::provider::ProviderSet::default(),
-        mode: lute_check::Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = lute_check::CheckInput::new(
+        scene_with("relations:\n  r: { args: [c], tier: user }\n"),
+        "t".into(),
+        lute_check::Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            lute_manifest::provider::ProviderSet::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let c: Vec<String> = lute_check::check(&input)
         .diagnostics
         .into_iter()
@@ -376,16 +382,18 @@ fn a_label_for_a_non_member_in_frontmatter_is_reported_at_the_label() {
         "entities:\n  place:\n    members: [council, musicRoom]\n    labels:\n      \
          musicRom: the old music room\n",
     );
-    let input = CheckInput {
+    let input = CheckInput::new(
         text,
-        uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let at: Vec<(u32, u32)> = check(&input)
         .diagnostics
         .iter()

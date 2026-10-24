@@ -206,19 +206,24 @@ pub fn assemble_graph(
         }
     }
     // Synthesized edges go in after every authored one — subquest, then
-    // `start`, then `::accept` — and each only where it closes no cycle: a
-    // source downstream of the quest it anchors (a scene whose `after` needs
-    // the quest) cannot be the quest's way in, and an anchor is no `after`
-    // clause for `E-CONN-CYCLE` to report. Such an anchor stays on the node;
-    // reachability reads it `Unknown` (it is never ordered before the
-    // quest). A child that declares its own `after` still hangs off its
-    // parent (dsl 0.25.0 §4).
+    // `start`, then `::accept`. A subquest or `::accept` edge goes in only
+    // where it closes no cycle: a source downstream of the quest it anchors
+    // (a scene whose `after` needs the quest) cannot be the quest's way in,
+    // and an anchor is no `after` clause for `E-CONN-CYCLE` to report. Such
+    // an anchor stays on the node; reachability reads it `Unknown`. A child
+    // that declares its own `after` still hangs off its parent (dsl 0.25.0
+    // §4). dsl 0.49.0 §6.1: every `start` edge is drawn; one that closes a
+    // cycle (a self-read included) is a back edge, which orders nothing.
+    let mut back_edges: BTreeMap<NodeId, BTreeSet<NodeId>> = BTreeMap::new();
     for (child, parent) in &decls.parents {
         let (from, to) = (
             NodeId::Quest(parent.to_string()),
             NodeId::Quest(child.to_string()),
         );
-        if nodes.contains_key(&from) && nodes.contains_key(&to) && !reaches(&edges, &to, &from) {
+        if nodes.contains_key(&from)
+            && nodes.contains_key(&to)
+            && !reaches(&edges, &back_edges, &to, &from)
+        {
             add_edge(&mut edges, &mut edge_kinds, from, &to, EdgeKind::Subquest);
         }
     }
@@ -232,15 +237,27 @@ pub fn assemble_graph(
                 .filter(|a| a.kind == kind)
                 .flat_map(|a| &a.from)
             {
-                if nodes.contains_key(from) && !reaches(&edges, &info.id, from) {
-                    add_edge(&mut edges, &mut edge_kinds, from.clone(), &info.id, kind);
+                if !nodes.contains_key(from) {
+                    continue;
                 }
+                let closes = reaches(&edges, &back_edges, &info.id, from);
+                if closes && kind == EdgeKind::Accept {
+                    continue;
+                }
+                let drawn = edges.get(from).is_some_and(|t| t.contains(&info.id));
+                if closes && !drawn {
+                    back_edges
+                        .entry(from.clone())
+                        .or_default()
+                        .insert(info.id.clone());
+                }
+                add_edge(&mut edges, &mut edge_kinds, from.clone(), &info.id, kind);
             }
         }
     }
 
     let mut diags = Vec::new();
-    detect_conn_cycles(&nodes, &edges, &mut diags);
+    detect_conn_cycles(&nodes, &edges, &back_edges, &mut diags);
 
     // Per-node cycle recovery (spec §4.1): build the order UNCONDITIONALLY.
     // Kahn's algorithm below never frees a cycle member (its in-degree never
@@ -248,14 +265,18 @@ pub fn assemble_graph(
     // are simply omitted — every cycle-INDEPENDENT node keeps its slot and a
     // sound verdict. `detect_conn_cycles` above still emits `E-CONN-CYCLE`;
     // we only stop blanking the whole root's order.
-    let topo_order = topo_sort(&nodes, &edges);
+    let topo_order = topo_sort(&nodes, &edges, &back_edges);
 
+    // `start_blocked` needs reachability: callers run
+    // `resolve_start_blocks` on the final verdicts (dsl 0.49.0 §6.1).
     (
         ConnGraph {
             nodes,
             edges,
             edge_kinds,
             topo_order,
+            back_edges,
+            start_blocked: BTreeMap::new(),
         },
         diags,
     )
@@ -278,9 +299,11 @@ pub(super) fn add_edge(
         .insert(kind);
 }
 
-/// Whether `to` is `from` or reachable from it along `edges`.
+/// Whether `to` is `from` or reachable from it along the ordering `edges`
+/// (every edge but a `back` one).
 pub(super) fn reaches(
     edges: &BTreeMap<NodeId, BTreeSet<NodeId>>,
+    back: &BTreeMap<NodeId, BTreeSet<NodeId>>,
     from: &NodeId,
     to: &NodeId,
 ) -> bool {
@@ -291,7 +314,14 @@ pub(super) fn reaches(
             return true;
         }
         if seen.insert(n) {
-            stack.extend(edges.get(n).into_iter().flatten());
+            let skip = back.get(n);
+            stack.extend(
+                edges
+                    .get(n)
+                    .into_iter()
+                    .flatten()
+                    .filter(|t| !skip.is_some_and(|s| s.contains(*t))),
+            );
         }
     }
     false
@@ -314,7 +344,7 @@ pub(super) struct QuestDecls<'a> {
 }
 
 impl<'a> QuestDecls<'a> {
-    fn new(docs: &'a [ProjectDoc<'a>]) -> Self {
+    pub(super) fn new(docs: &'a [ProjectDoc<'a>]) -> Self {
         let mut first: BTreeMap<&str, (&Path, &Quest)> = BTreeMap::new();
         let mut with_after = BTreeSet::new();
         let mut entries = BTreeMap::new();
@@ -398,8 +428,9 @@ pub(super) fn quest_anchors(
 /// dsl 0.25.0 §4: one [`EdgeKind::Start`] anchor per top-level `&&`
 /// conjunct of `quest`'s `start` that reads a graph node — `visited('K')`
 /// (a scene or bundle beat node), `entry.X.everRead` (bare or `== true`, a
-/// declared entry) or `quest.Y.state == '<state>'` (a declared quest other
-/// than `quest`, any state but `unset`) — or is an `||` of such reads (one
+/// declared entry) or `quest.Y.state == '<state>'` (any declared quest —
+/// `quest` itself too, a self-source, dsl 0.49.0 §6.2 — any state but
+/// `unset`) — or is an `||` of such reads (one
 /// anchor, several sources). Every other conjunct gates without anchoring;
 /// an unparseable `start` is the per-file check's and anchors nothing.
 pub(super) fn start_anchors(
@@ -420,7 +451,7 @@ pub(super) fn start_anchors(
     top_conjuncts(&root.expr, &mut conjuncts);
     conjuncts
         .into_iter()
-        .filter_map(|c| start_sources(c, &quest.id, decls, nodes))
+        .filter_map(|c| start_sources(c, decls, nodes))
         .map(|from| Anchor {
             kind: EdgeKind::Start,
             from,

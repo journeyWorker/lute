@@ -1,0 +1,4 @@
+stateShapes:
+  - name: textAnswer
+    fields:
+      - { name: answer, type: string, default: "" }

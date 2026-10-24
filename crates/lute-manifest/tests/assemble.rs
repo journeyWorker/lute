@@ -1,4 +1,4 @@
-use lute_manifest::assemble::assemble_snapshot;
+use lute_manifest::assemble::{assemble_snapshot, AssembleError};
 use lute_manifest::loader::LoadedPlugin;
 use lute_manifest::resolve::{ActivePlugin, InstalledPlugin, InstalledPlugins};
 use lute_manifest::schema::{
@@ -959,6 +959,114 @@ fn assemble_rejects_reserved_names_in_stamp_attrs_export() {
             snap.stamp_attrs.contains_key("bonusId"),
             "a non-reserved sibling in the same export must still merge"
         );
+    }
+}
+
+/// The three attribute types no authored scalar can satisfy (0.49.0 §3.2).
+fn structured_types() -> [Type; 3] {
+    use lute_manifest::types::Field;
+    [
+        Type::List(Box::new(Type::Enum(vec!["a".into(), "b".into()]))),
+        Type::Map {
+            key: Box::new(Type::Str),
+            value: Box::new(Type::Int),
+        },
+        Type::Record(vec![Field {
+            name: "x".into(),
+            ty: Type::Int,
+            default: None,
+            required: false,
+            shape: None,
+        }]),
+    ]
+}
+
+fn assemble_one(
+    p: LoadedPlugin,
+) -> (
+    lute_manifest::snapshot::CapabilitySnapshot,
+    Vec<AssembleError>,
+) {
+    let id = p.manifest.id.clone();
+    let reg = InstalledPlugins {
+        by_id: BTreeMap::from([(id.clone(), InstalledPlugin { loaded: p })]),
+        ..Default::default()
+    };
+    let active = vec![
+        ActivePlugin {
+            id: "lute.core".into(),
+            options: BTreeMap::new(),
+        },
+        ActivePlugin {
+            id,
+            options: BTreeMap::new(),
+        },
+    ];
+    assemble_snapshot(&active, &reg)
+}
+
+/// #176: a directive attribute declared `list`/`map`/`record` is refused as
+/// `E-PLUGIN-INVALID-DIRECTIVE`, naming the directive and the attribute.
+#[test]
+fn a_structured_directive_attr_type_is_refused() {
+    for ty in structured_types() {
+        let mut p = plugin_with_directive("arcia.minigame", "tagged");
+        p.directives[0].attrs[0].name = "tags".into();
+        p.directives[0].attrs[0].ty = ty.clone();
+        let (_, errs) = assemble_one(p);
+        let shown = lute_manifest::types::type_str(&ty);
+        assert_eq!(
+            errs,
+            [AssembleError::InvalidDirective {
+                plugin: "arcia.minigame".into(),
+                directive: "tagged".into(),
+                code: "E-PLUGIN-INVALID-DIRECTIVE",
+                msg: format!(
+                    "directive `::tagged` declares attribute `tags` as `{shown}`; an attribute \
+                     value is written as one scalar (string, number, bool, an enum or entity \
+                     member, a provider or asset id), so no `.lute` value can satisfy a `list`, \
+                     `map` or `record` — declare it `string` and parse it in the host, or split \
+                     it into one attribute per field"
+                ),
+            }]
+        );
+    }
+}
+
+/// #176: a `stampAttrs` entry declared `list`/`map`/`record` is refused the
+/// same way and never merged; a scalar sibling still merges.
+#[test]
+fn a_structured_stamp_attr_type_is_refused() {
+    for ty in structured_types() {
+        let mut p = plugin_with_directive("arcia.minigame", "minigame");
+        p.stamp_attrs = vec![
+            AttrDecl {
+                name: "tags".into(),
+                required: false,
+                ty: ty.clone(),
+                default: None,
+            },
+            AttrDecl {
+                name: "bonusId".into(),
+                required: false,
+                ty: Type::Str,
+                default: None,
+            },
+        ];
+        let (snap, errs) = assemble_one(p);
+        assert_eq!(errs.len(), 1, "{errs:?}");
+        assert_eq!(errs[0].code(), "E-PLUGIN-INVALID-DIRECTIVE");
+        let msg = errs[0].to_string();
+        assert!(
+            msg.starts_with(&format!(
+                "plugin `arcia.minigame` declares stamp attribute `tags` as `{}`; an attribute \
+                 value is written as one scalar",
+                lute_manifest::types::type_str(&ty)
+            )),
+            "{msg}"
+        );
+        assert!(!snap.stamp_attrs.contains_key("tags"));
+        assert!(snap.stamp_attrs.contains_key("bonusId"));
     }
 }
 

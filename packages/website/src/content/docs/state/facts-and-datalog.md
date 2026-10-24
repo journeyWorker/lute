@@ -68,6 +68,21 @@ A sub-kind lists its own `members:`. A parent the document does not declare, a p
 
 Whole-project `lute check`'s `W-DOMAIN-UNREAD` flags a kind that nothing reads. It counts a sub-kind's `subsetOf:` parent, a kind used as a `per:` index, and a kind atom in a rule body or a `holds(…)` condition as reads, alongside relation arguments. The warning lands on the line of the schema that declares the kind, or on the document's own `entities:` key, rather than on the first importer.
 
+### Two id spaces that spell an id the same
+
+If two kinds list the same member only because two id spaces spell `{id}` the same, do not merge them: declare a **shared root kind** listing both spaces' members and make each a sub-kind of it, `{first}: { subsetOf: <root>, members: […] }`. Every reference still checks against its own kind. Since 0.49.0 `E-ENTITY-KIND-CLASH` names this remedy:
+
+```yaml
+entities:
+  speaker: { members: [mira, vendor-reply] }
+  person:  { subsetOf: speaker, members: [mira] }
+  vendor:  { subsetOf: speaker, members: [vendor-reply] }
+```
+
+### Ids that are not names: `providerRef`
+
+An entity or enum member is a **name** — letters, digits, `_` or `-` — so an id from another system such as `vendor:reply` is `E-PATH-IDENT`. To validate ids that are not names, declare a provider (`plugins/<id>/providers/`, with a pinned snapshot in `catalogDir`) and type the attribute `{ providerRef: <provider> }`. Since 0.49.0 `E-PATH-IDENT` for an entity or enum member says so. See [Providers & catalog](/tooling/providers-and-catalog/).
+
 ### Exclusive relations: `excludes:`
 
 Some relations can never hold together on the same arguments. Nobody is seen alive after they fell; a witness is not both truthful and a liar. A relation may declare the relations it excludes (dsl 0.25.0 §1):

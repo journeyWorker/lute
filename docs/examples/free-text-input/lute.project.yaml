@@ -1,0 +1,5 @@
+pluginsDir: plugins/
+defaultProfile: prompt
+profiles:
+  prompt:
+    plugins: { prompt.text: true }

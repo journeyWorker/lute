@@ -1,0 +1,13 @@
+---
+kind: quest
+uses: ../schema/world.schema.yaml
+---
+
+<quest id="q0035" title="Quest 35" start="user.s5.k0m5 >= 0 && user.s6.k1m7 >= 0 && quest.q0034.state == 'complete'">
+  <objective id="a" title="Step A" done="user.s7.k2m8 >= 1"/>
+  <objective id="b" title="Step B" done="user.s8.k3m10 >= 2 || user.s9.k4m5 >= 1"/>
+  <on event="questComplete">
+    ::set{user.s0.k0m6 += 1}
+    ::set{user.s1.k1m7 += 1}
+  </on>
+</quest>

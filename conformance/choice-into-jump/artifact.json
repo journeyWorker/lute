@@ -1,0 +1,169 @@
+{
+  "kind": "scene",
+  "lute": "0.49.0",
+  "irVersion": "0.49.0",
+  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "requiredSemantics": [
+    "lute.core/1"
+  ],
+  "meta": {
+    "id": "hero.s01ep01",
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Choice into before a jump"
+  },
+  "state": [
+    {
+      "path": "run.dir",
+      "type": "enum",
+      "domain": [
+        "none",
+        "left",
+        "right"
+      ],
+      "default": "none"
+    },
+    {
+      "path": "scene.choices.path",
+      "type": "enum",
+      "domain": [
+        "left",
+        "right",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:path"
+    }
+  ],
+  "commands": [
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The road splits.",
+      "lineId": "hero.s01ep01.narrator_0010",
+      "voiceKey": "hero.s01ep01.narrator-0010"
+    },
+    {
+      "kind": "choice",
+      "family": "control",
+      "position": "001-0200",
+      "branchId": "path",
+      "selectionKey": "scene.choices.path",
+      "options": [
+        {
+          "id": "left",
+          "text": "Go left",
+          "lineId": "hero.s01ep01.path.left",
+          "target": "001-0300"
+        },
+        {
+          "id": "right",
+          "text": "Go right",
+          "lineId": "hero.s01ep01.path.right",
+          "target": "001-0700"
+        }
+      ],
+      "converge": "001-1000"
+    },
+    {
+      "kind": "set",
+      "family": "state",
+      "position": "001-0300",
+      "path": "run.dir",
+      "op": "=",
+      "value": {
+        "cel": "'left'",
+        "expr": {
+          "string": "left"
+        }
+      }
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0400",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Left it is.",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero.s01ep01.hero-0010"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-0500",
+      "target": "001-1100"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-0600",
+      "target": "001-1000"
+    },
+    {
+      "kind": "set",
+      "family": "state",
+      "position": "001-0700",
+      "path": "run.dir",
+      "op": "=",
+      "value": {
+        "cel": "'right'",
+        "expr": {
+          "string": "right"
+        }
+      }
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0800",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Right it is.",
+      "lineId": "hero.s01ep01.hero_0020",
+      "voiceKey": "hero.s01ep01.hero-0020"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-0900",
+      "target": "001-1000"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-1000",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The right road is long.",
+      "lineId": "hero.s01ep01.narrator_0020",
+      "voiceKey": "hero.s01ep01.narrator-0020"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-1100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The journey continues.",
+      "lineId": "hero.s01ep01.narrator_0030",
+      "voiceKey": "hero.s01ep01.narrator-0030"
+    }
+  ],
+  "sections": [
+    {
+      "section": 1,
+      "heading": "The Fork"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [],
+    "functions": []
+  }
+}

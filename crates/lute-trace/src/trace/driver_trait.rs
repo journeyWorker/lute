@@ -156,7 +156,7 @@ impl Driver for TraceDriver<'_> {
                 // A read the textual scan cannot see (a component body) still
                 // halts on UNKNOWN; its hint then names every field.
                 let read = mock::bridge_fields_read(&writes, self.cx.content_reads);
-                let decls = &self.cx.folded.env.state.decls;
+                let decls = &self.cx.folded.env.state;
                 lute_runtime::bridge_answer_shape(
                     call.reads
                         .iter()

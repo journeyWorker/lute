@@ -19,16 +19,18 @@ use lute_core_span::{Diagnostic, Severity};
 use lute_syntax::ast::{Document, Node};
 
 fn input_for(text: &str) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "test".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: Default::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "test".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            Default::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 /// The inline vocabulary every fixture document declares: `found` is

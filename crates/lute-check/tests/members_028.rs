@@ -40,16 +40,18 @@ fn input(text: &str) -> CheckInput {
             ..Default::default()
         },
     );
-    CheckInput {
-        text: text.to_string(),
-        uri: "members".into(),
-        snapshot,
-        providers: Default::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "members".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 /// `mara` is seeded on the deck and the roof, and nothing asserts `at` or
@@ -88,7 +90,7 @@ fn project(text: &str) -> Project {
     let (folded, _, _) = fold_env(&doc, &input);
     let result = check(&input);
     let mut per_file = result.diagnostics.clone();
-    let docs = ProjectDocs::parse(vec![(path.clone(), doc)], &input.snapshot);
+    let docs = ProjectDocs::parse(vec![(path.clone(), doc)], input.snapshot());
     let views = docs.views();
     let results = vec![(path.clone(), result)];
     let key_set = scene_key_set(&views);

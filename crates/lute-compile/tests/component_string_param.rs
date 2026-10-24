@@ -17,16 +17,18 @@ fn input_for(dir: &Path, scene_text: &str) -> CheckInput {
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
     let components = resolve_components(dir, &meta0.components, doc.meta.span);
     let imports = resolve_imports(dir, &meta0.uses, &meta0.extends, doc.meta.span);
-    CheckInput {
-        text: scene_text.to_string(),
-        uri: "scene.lute".into(),
-        snapshot: vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports,
-        components,
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        scene_text.to_string(),
+        "scene.lute".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            vocab_snapshot(),
+            ProviderSet::default(),
+            imports,
+            components,
+            Default::default(),
+        ),
+    )
 }
 
 const LAMPS_OUT: &str = "---\ncomponent: lampsOut\nparams:\n  memory: string\n---\n\

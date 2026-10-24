@@ -1,0 +1,17 @@
+state:
+  user.s0: { type: int, default: 0, per: kind0 }
+  user.s1: { type: int, default: 0, per: kind1 }
+  user.s2: { type: int, default: 0, per: kind2 }
+  user.s3: { type: int, default: 0, per: kind3 }
+  user.s4: { type: int, default: 0, per: kind4 }
+  user.s5: { type: int, default: 0, per: kind0 }
+  user.s6: { type: int, default: 0, per: kind1 }
+  user.s7: { type: int, default: 0, per: kind2 }
+  user.s8: { type: int, default: 0, per: kind3 }
+  user.s9: { type: int, default: 0, per: kind4 }
+entities:
+  kind0: { members: [k0m0, k0m1, k0m2, k0m3, k0m4, k0m5, k0m6, k0m7, k0m8, k0m9, k0m10, k0m11, k0m12, k0m13, k0m14] }
+  kind1: { members: [k1m0, k1m1, k1m2, k1m3, k1m4, k1m5, k1m6, k1m7, k1m8, k1m9, k1m10, k1m11, k1m12, k1m13, k1m14] }
+  kind2: { members: [k2m0, k2m1, k2m2, k2m3, k2m4, k2m5, k2m6, k2m7, k2m8, k2m9, k2m10, k2m11, k2m12, k2m13, k2m14] }
+  kind3: { members: [k3m0, k3m1, k3m2, k3m3, k3m4, k3m5, k3m6, k3m7, k3m8, k3m9, k3m10, k3m11, k3m12, k3m13, k3m14] }
+  kind4: { members: [k4m0, k4m1, k4m2, k4m3, k4m4, k4m5, k4m6, k4m7, k4m8, k4m9, k4m10, k4m11, k4m12, k4m13, k4m14] }

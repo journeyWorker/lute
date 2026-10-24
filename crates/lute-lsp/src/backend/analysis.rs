@@ -56,9 +56,9 @@ impl Backend {
             Mode::Author,
         );
         let input = built.input;
-        let providers = input.providers.clone();
+        let providers = input.providers().clone();
         let result = check(&input);
-        self.warn_if_older_than_stamp(&snapshot.text, &input.defaults)
+        self.warn_if_older_than_stamp(&snapshot.text, input.defaults())
             .await;
         // Opt-in lint (design §2, §3): publish alongside check diagnostics
         // when `<project root>/lute.lint.yaml` exists AND sets `lsp: true`.
@@ -70,6 +70,13 @@ impl Backend {
         // their fixits (spec §8 permits fixits on lint diagnostics; today
         // none of the v1 rules emit any, but the cache is the general seam).
         let mut all_diags = result.diagnostics;
+        // dsl 0.49.0 §7.1 (#175): the quest references only whole-project
+        // `check` resolves, named as info.
+        all_diags.extend(lute_check::project_check_skipped(
+            &snapshot.text,
+            &doc_ast,
+            &input.imports().imported_quest_ids,
+        ));
         if let Some(project_root) = project_root.as_deref() {
             let project = loaded_project
                 .as_deref()

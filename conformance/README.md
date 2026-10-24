@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.48.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.49.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -122,6 +122,7 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 | fixture | contract surface exercised |
 |---|---|
 | `choice-basic` | `choice` control flow — the mock forces one branch option; the chosen id lands in the `selectionKey` slot and the option body runs to the converge |
+| `choice-into-jump` | `<choice into=… value=…>` writes its record first (dsl 0.49.0 §5.1) — the forced `left` arm ends in a `::jump`, and its `set run.dir` precedes the arm's line, so the jump cannot skip it; `run.dir` is `left` at the end |
 | `match-otherwise` | `match` precedence — the seeded subject matches no arm, so the `otherwise` target is taken (execution-model.md `arm ?? otherwise ?? converge`) |
 | `match-range` | `match` over a numeric subject with range arms (dsl 0.18.0) — `..0`, `1..3`, `4..` lower to `>=`/`<=`/`&&` comparisons in `expr`; the seeded score `3` sits on the inclusive upper bound of `1..3`, so arm 2 is taken |
 | `hub-once-exit` | `hub` re-presentation — the mock forces `[probe, probe, leave]`; `probe` is `once` (the second force is refused) and `leave` is the `exit` option that leaves the hub |

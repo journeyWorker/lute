@@ -1,0 +1,4 @@
+# Force the `path` branch to its `left` choice, whose arm ends in a `::jump`:
+# the `into=` record is written first, so `run.dir` is `left` (0.49.0 §5.1).
+choose:
+  path: left

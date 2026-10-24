@@ -23,7 +23,7 @@ fn walk(body: &str) -> (Vec<Rec>, StageState) {
     // domain's `default:`, the `action` domain's `exits:`), so the env must
     // declare the same vocabulary the snapshot does.
     let env = Env {
-        domains: lute_test_vocab::test_domains(),
+        domains: std::sync::Arc::new(lute_test_vocab::test_domains()),
         ..Default::default()
     };
     let mut cx = WalkCx {

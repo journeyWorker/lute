@@ -1,3 +1,5 @@
+mod vocab;
+
 use std::collections::BTreeMap;
 use std::hint::black_box;
 use std::path::{Path, PathBuf};
@@ -8,11 +10,25 @@ use serde::Serialize;
 use yaml_serde::Value as Yaml;
 
 const MIN_SAMPLE: Duration = Duration::from_millis(200);
-const TIERS: [(&str, &str); 3] = [
+const TIERS: [(&str, &str); 4] = [
     ("tiny", "ledger"),
     ("medium", "drowned-crown"),
     ("large", "monster-league"),
+    VOCAB_TIER,
 ];
+/// The #173 project (`vocab::VocabParams::TIER`), generated per run into
+/// `$TMPDIR` rather than read from `docs/examples/games`.
+const VOCAB_TIER: (&str, &str) = ("vocab", "vocab");
+/// The phases measured on the generated project. It has no test or play
+/// scripts, so `playback` and `play-replay` would measure nothing.
+const VOCAB_PHASES: [Phase; 5] = [
+    Phase::ColdLoad,
+    Phase::Resolution,
+    Phase::Analysis,
+    Phase::Serialization,
+    Phase::PlayAssembly,
+];
+const USAGE: &str = "usage: lute-bench --root <checkout> --tier tiny|medium|large|vocab|all --phase <name>|all --samples <n> --json <path>|-\n       lute-bench generate-vocab <outdir> [-S scenes] [-N quests] [-M per-paths] [-K kinds] [-P members]";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
@@ -130,11 +146,15 @@ enum TestPresentation {
 }
 
 fn main() {
-    let config = match parse_args() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("generate-vocab") {
+        std::process::exit(generate_vocab(&args[1..]));
+    }
+    let config = match parse_args(args) {
         Ok(config) => config,
         Err(error) => {
             eprintln!("lute-bench: {error}");
-            eprintln!("usage: lute-bench --root <checkout> --tier tiny|medium|large|all --phase <name>|all --samples <n> --json <path>|-");
+            eprintln!("{USAGE}");
             std::process::exit(2);
         }
     };
@@ -162,8 +182,33 @@ fn main() {
     }
 }
 
-fn parse_args() -> Result<Config, String> {
-    let mut args = std::env::args().skip(1);
+/// `lute-bench generate-vocab <outdir> [gen.py flags]`: writes the #173
+/// project. Returns the process exit code.
+fn generate_vocab(args: &[String]) -> i32 {
+    let Some((out, flags)) = args.split_first() else {
+        eprintln!("lute-bench: generate-vocab requires an output directory");
+        eprintln!("{USAGE}");
+        return 2;
+    };
+    let params = match vocab::VocabParams::parse(flags) {
+        Ok(params) => params,
+        Err(error) => {
+            eprintln!("lute-bench: {error}");
+            eprintln!("{USAGE}");
+            return 2;
+        }
+    };
+    match vocab::generate(Path::new(out), params) {
+        Ok(()) => 0,
+        Err(error) => {
+            eprintln!("lute-bench: generate-vocab: {error}");
+            1
+        }
+    }
+}
+
+fn parse_args(args: Vec<String>) -> Result<Config, String> {
+    let mut args = args.into_iter();
     let mut root = PathBuf::from(".");
     let mut tier = "all".to_string();
     let mut phase = "all".to_string();
@@ -171,7 +216,7 @@ fn parse_args() -> Result<Config, String> {
     let mut json = "-".to_string();
 
     while let Some(arg) = args.next() {
-        let value = |name: &str, args: &mut std::iter::Skip<std::env::Args>| {
+        let value = |name: &str, args: &mut std::vec::IntoIter<String>| {
             args.next()
                 .ok_or_else(|| format!("{name} requires a value"))
         };
@@ -189,7 +234,7 @@ fn parse_args() -> Result<Config, String> {
             }
             "--json" => json = value("--json", &mut args)?,
             "--help" | "-h" => {
-                println!("usage: lute-bench --root <checkout> --tier tiny|medium|large --phase <name>|all --samples <n> --json <path>|-");
+                println!("{USAGE}");
                 std::process::exit(0);
             }
             other => return Err(format!("unknown argument `{other}`")),
@@ -201,6 +246,7 @@ fn parse_args() -> Result<Config, String> {
         "tiny" => vec![TIERS[0]],
         "medium" => vec![TIERS[1]],
         "large" => vec![TIERS[2]],
+        "vocab" => vec![VOCAB_TIER],
         other => return Err(format!("invalid tier `{other}`")),
     };
     let phases = match phase.as_str() {
@@ -214,6 +260,17 @@ fn parse_args() -> Result<Config, String> {
         "play-replay" => vec![Phase::PlayReplay],
         other => return Err(format!("invalid phase `{other}`")),
     };
+    if tier == VOCAB_TIER.0 && phase != "all" {
+        if let Some(phase) = phases
+            .iter()
+            .find(|phase| !measures(tier.as_str(), **phase))
+        {
+            return Err(format!(
+                "phase `{}` is not measured on tier `vocab`",
+                phase.name()
+            ));
+        }
+    }
     Ok(Config {
         root,
         tiers,
@@ -223,11 +280,51 @@ fn parse_args() -> Result<Config, String> {
     })
 }
 
+/// Whether `tier` measures `phase` (`--tier all` skips the other cells).
+fn measures(tier: &str, phase: Phase) -> bool {
+    tier != VOCAB_TIER.0 || VOCAB_PHASES.contains(&phase)
+}
+
 fn run(config: Config) -> Report {
     let mut corpus = BTreeMap::new();
     let mut samples = Vec::new();
     for (tier, project) in config.tiers {
-        let project_root = config.root.join("docs/examples/games").join(project);
+        let phases: Vec<Phase> = config
+            .phases
+            .iter()
+            .copied()
+            .filter(|phase| measures(tier, *phase))
+            .collect();
+        if phases.is_empty() {
+            continue;
+        }
+        // Held to the end of the tier: dropping it removes the project.
+        let generated = match (tier == VOCAB_TIER.0)
+            .then(GeneratedRoot::vocab)
+            .transpose()
+        {
+            Ok(generated) => generated,
+            Err(error) => {
+                corpus.insert(
+                    tier.to_string(),
+                    CorpusEntry {
+                        project: project.to_string(),
+                        project_revision: "error".to_string(),
+                    },
+                );
+                for phase in phases {
+                    for sample in 0..config.samples {
+                        let error = format!("cannot generate the vocab project: {error}");
+                        samples.push(failed_sample(tier, project, phase, sample, None, error));
+                    }
+                }
+                continue;
+            }
+        };
+        let project_root = generated.as_ref().map_or_else(
+            || config.root.join("docs/examples/games").join(project),
+            |generated| generated.path.clone(),
+        );
         let revision = revision_for(&project_root);
         corpus.insert(
             tier.to_string(),
@@ -236,9 +333,9 @@ fn run(config: Config) -> Report {
                 project_revision: revision,
             },
         );
-        for phase in &config.phases {
+        for phase in phases {
             for sample in 0..config.samples {
-                samples.push(run_sample(tier, project, &project_root, *phase, sample));
+                samples.push(run_sample(tier, project, &project_root, phase, sample));
             }
         }
     }
@@ -261,6 +358,35 @@ fn run(config: Config) -> Report {
         },
         corpus,
         samples,
+    }
+}
+
+/// A generated project under `$TMPDIR`, removed on drop.
+#[derive(Debug)]
+struct GeneratedRoot {
+    path: PathBuf,
+}
+
+impl GeneratedRoot {
+    /// Generates the tier `vocab` project into a fresh per-process directory.
+    fn vocab() -> Result<Self, vocab::GenerateError> {
+        let path = std::env::temp_dir().join(format!("lute-bench-vocab-{}", std::process::id()));
+        if path.exists() {
+            std::fs::remove_dir_all(&path)?;
+        }
+        // Owns the directory before writing, so a failed write cleans up too.
+        let root = Self { path };
+        vocab::generate(&root.path, vocab::VocabParams::TIER)?;
+        Ok(root)
+    }
+}
+
+impl Drop for GeneratedRoot {
+    fn drop(&mut self) {
+        // Best effort: a leftover directory only costs disk space in $TMPDIR.
+        if let Err(error) = std::fs::remove_dir_all(&self.path) {
+            eprintln!("lute-bench: cannot remove {}: {error}", self.path.display());
+        }
     }
 }
 
@@ -779,5 +905,28 @@ mod tests {
         assert_eq!(sample.exit, "error");
         assert!(sample.error.is_some());
         assert!(sample.test_count.is_none());
+    }
+
+    fn args(text: &str) -> Vec<String> {
+        text.split_whitespace().map(str::to_string).collect()
+    }
+
+    #[test]
+    fn vocab_tier_measures_only_its_phases() {
+        let error = parse_args(args("--tier vocab --phase playback")).unwrap_err();
+        assert_eq!(error, "phase `playback` is not measured on tier `vocab`");
+        let config = parse_args(args("--tier vocab")).unwrap();
+        assert_eq!(config.tiers, [VOCAB_TIER]);
+        let measured: Vec<Phase> = config
+            .phases
+            .into_iter()
+            .filter(|phase| measures("vocab", *phase))
+            .collect();
+        assert_eq!(measured, VOCAB_PHASES);
+        // `--tier all` keeps a phase the vocab tier does not measure.
+        let config = parse_args(args("--tier all --phase play-replay")).unwrap();
+        assert!(config.tiers.contains(&VOCAB_TIER));
+        assert!(measures("large", Phase::PlayReplay));
+        assert!(!measures("vocab", Phase::PlayReplay));
     }
 }

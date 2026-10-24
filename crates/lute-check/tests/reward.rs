@@ -5,21 +5,24 @@
 //! through a reward guard.
 
 use lute_check::{check, CheckInput, CheckResult, Mode, SchemaImports};
+use lute_core_span::Severity;
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::RewardKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
 
 fn run_with(text: &str, snapshot: CapabilitySnapshot) -> CheckResult {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "reward".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "reward".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
 }
 
@@ -184,12 +187,19 @@ fn foreign_kind_is_e_reward_kind_when_vocabulary_declared() {
 
 /// dsl 0.26.0 §2.5 (T1-8): a snapshot whose `ITEM` kind carries `target`.
 fn snap_with_target(target: lute_manifest::schema::RewardTarget) -> CapabilitySnapshot {
+    snap_with_target_contract(Some(target))
+}
+
+/// A snapshot whose `ITEM` kind has `target:` as given (absent when `None`).
+fn snap_with_target_contract(
+    target: Option<lute_manifest::schema::RewardTarget>,
+) -> CapabilitySnapshot {
     let mut snap = lute_manifest::core::load_core_snapshot();
     snap.reward_kinds.insert(
         "ITEM".into(),
         RewardKindDecl {
             name: "ITEM".into(),
-            target: Some(target),
+            target,
             ..Default::default()
         },
     );
@@ -206,16 +216,18 @@ fn reward_target_diags(
         "---\nkind: quest\nentities:\n  bagItem: {{ members: [goodRod, potion] }}\n  \
          loot: {{ open: engine }}\n---\n<quest id=\"q\">\n{rewards}</quest>\n"
     );
-    let input = CheckInput {
+    let input = CheckInput::new(
         text,
-        uri: "reward".into(),
-        snapshot: snap_with_target(target),
-        providers,
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+        "reward".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snap_with_target(target),
+            providers,
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()
@@ -327,6 +339,147 @@ fn required_rejects_a_missing_target_and_only_then() {
         2,
         "quest- and objective-level rewards both need a target: {required:?}"
     );
+}
+
+/// 0.49.0 §3.3 (#168): a kind declaring `target: { forbidden: true }`
+/// rejects a `<reward>` with `target=` — quoted, an `@ref`, or bare (the
+/// last two stay in the reward's residual attrs) — at the authored value,
+/// and accepts one without it.
+#[test]
+fn forbidden_rejects_a_target_at_the_attribute() {
+    let forbidden = || lute_manifest::schema::RewardTarget {
+        forbidden: true,
+        ..Default::default()
+    };
+    let none = reward_target_diags(
+        "<reward kind=\"ITEM\"/>\n",
+        forbidden(),
+        ProviderSet::default(),
+    );
+    assert!(none.is_empty(), "no target is clean: {none:?}");
+
+    // (authored attribute, the text the diagnostic spans)
+    for (attr, anchor) in [
+        ("target=\"goodRod\"", "goodRod"),
+        ("target=@goodRod", "@goodRod"),
+        ("target", "target"),
+    ] {
+        let text = format!(
+            "---\nkind: quest\nentities:\n  bagItem: {{ members: [goodRod, potion] }}\n  \
+             loot: {{ open: engine }}\n---\n<quest id=\"q\">\n<reward kind=\"ITEM\" {attr}/>\n\
+             </quest>\n"
+        );
+        let input = CheckInput::new(
+            text.clone(),
+            "reward".into(),
+            Mode::Author,
+            lute_check::InputSources::from_parts(
+                snap_with_target(forbidden()),
+                ProviderSet::default(),
+                SchemaImports::default(),
+                Default::default(),
+                Default::default(),
+            ),
+        );
+        let diags: Vec<_> = check(&input)
+            .diagnostics
+            .into_iter()
+            .filter(|d| d.code == "E-REWARD-TARGET" || d.code == "E-REWARD-ATTR")
+            .collect();
+        assert_eq!(diags.len(), 1, "{attr}: {diags:?}");
+        let d = &diags[0];
+        assert_eq!(d.severity, Severity::Error);
+        assert_eq!(
+            d.message,
+            "`<reward kind=\"ITEM\">` takes no `target=`: its reward kind declares \
+             `target: { forbidden: true }` — remove the attribute"
+        );
+        let at = text.find(attr).unwrap() + attr.find(anchor).unwrap();
+        assert_eq!(
+            &text[d.span.byte_start..d.span.byte_end],
+            anchor,
+            "{attr}: anchored at the authored value"
+        );
+        assert_eq!(d.span.byte_start, at, "{attr}");
+    }
+}
+
+/// 0.49.0 §3.3 (#192): only a quoted `target="…"` reaches the IR, so an
+/// `@ref` or a bare `target` is `E-REWARD-ATTR` at the value under every
+/// contract — `required: true` does not also call it missing, and an
+/// `entity:`/`provider:` contract (which cannot judge a reference) reports
+/// nothing more. A kind with no contract refuses it too.
+#[test]
+fn an_unquoted_target_is_refused_under_every_contract() {
+    let catalog = || {
+        ProviderSet::from_one(lute_manifest::provider::ProviderSnapshot {
+            manifest_version: "v".into(),
+            provider_version: "1".into(),
+            entries: [("items".to_string(), vec!["goodRod".to_string()])].into(),
+            stale: false,
+        })
+    };
+    let contracts = [
+        ("required", Some(entity_contract("bagItem", true))),
+        ("entity", Some(entity_contract("bagItem", false))),
+        (
+            "provider",
+            Some(lute_manifest::schema::RewardTarget {
+                provider: Some("items".into()),
+                ..Default::default()
+            }),
+        ),
+        // The kind declares no `target:` at all.
+        ("none", None),
+    ];
+    for (name, contract) in contracts {
+        for (attr, anchor, why) in [
+            (
+                "target=@goodRod",
+                "@goodRod",
+                "`target=@goodRod` is a reference",
+            ),
+            ("target", "target", "a bare `target` has no value"),
+        ] {
+            let text = format!(
+                "---\nkind: quest\nentities:\n  bagItem: {{ members: [goodRod, potion] }}\n---\n\
+                 <quest id=\"q\">\n<reward kind=\"ITEM\" {attr}/>\n</quest>\n"
+            );
+            let input = CheckInput::new(
+                text.clone(),
+                "reward".into(),
+                Mode::Author,
+                lute_check::InputSources::from_parts(
+                    snap_with_target_contract(contract.clone()),
+                    catalog(),
+                    SchemaImports::default(),
+                    Default::default(),
+                    Default::default(),
+                ),
+            );
+            let diags: Vec<_> = check(&input)
+                .diagnostics
+                .into_iter()
+                .filter(|d| d.code.starts_with("E-REWARD") || d.code == "W-CATALOG-STALE")
+                .collect();
+            assert_eq!(diags.len(), 1, "{name} {attr}: {diags:?}");
+            let d = &diags[0];
+            assert_eq!(d.code, "E-REWARD-ATTR", "{name} {attr}");
+            assert_eq!(
+                d.message,
+                format!(
+                    "`<reward target=…>` takes a quoted id, e.g. `target=\"potion\"`: {why}, and \
+                     a reward's target is static data the engine grants against (0.49.0 §3.3)"
+                ),
+                "{name} {attr}"
+            );
+            assert_eq!(
+                &text[d.span.byte_start..d.span.byte_end],
+                anchor,
+                "{name} {attr}"
+            );
+        }
+    }
 }
 
 #[test]

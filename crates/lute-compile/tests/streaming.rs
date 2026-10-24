@@ -7,16 +7,18 @@ use lute_compile::{compile_with_check, Command};
 use lute_manifest::project::IdentityTemplates;
 
 fn input(text: impl Into<String>) -> CheckInput {
-    CheckInput {
-        text: text.into(),
-        uri: "stream-test".into(),
-        snapshot: lute_test_vocab::vocab_snapshot(),
-        providers: Default::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.into(),
+        "stream-test".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            lute_test_vocab::vocab_snapshot(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 fn scene(body: &str, state: &str) -> String {

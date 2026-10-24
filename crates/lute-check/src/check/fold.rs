@@ -63,25 +63,577 @@ pub(crate) fn resolve_kinds(
 /// dup/choice-dup) emitted just before import diags, and `.2` = the state-merge
 /// diags (`E-EXTENDS-STATE-TYPE`/`E-STATE-REDECLARE`) emitted AFTER component
 /// validation. Pure and total; never panics.
+///
+/// spec 0.49.0 §9.2: the stages that read only project-wide data reuse the
+/// vocab's results ([`crate::vocab::BaseFold`]) while this document changes
+/// none of their inputs, and the state is the vocab's base state plus this
+/// document's overlay. The result equals [`fold_env_full_merge`]'s.
 pub fn fold_env(
     doc: &Document,
     input: &CheckInput,
 ) -> (FoldedEnv, Vec<Diagnostic>, Vec<Diagnostic>) {
+    fold_env_in(doc, input, Some(&input.vocab.fold))
+}
+
+/// [`fold_env`] with nothing shared: every stage runs over this document's
+/// own merged copy of the imports, as 0.48.1 did — the reference the
+/// shared fold is proven equal to (spec 0.49.0 §9.2).
+#[doc(hidden)]
+pub fn fold_env_full_merge(
+    doc: &Document,
+    input: &CheckInput,
+) -> (FoldedEnv, Vec<Diagnostic>, Vec<Diagnostic>) {
+    fold_env_in(doc, input, None)
+}
+
+/// Copies of `diags` anchored at `at` ([`crate::schema_import::AT_PLACEHOLDER`]).
+fn anchored(diags: &[Diagnostic], at: Span) -> Vec<Diagnostic> {
+    let mut out = diags.to_vec();
+    crate::schema_import::anchor_at(&mut out, at);
+    out
+}
+
+/// Whether the document declares anything `build_rel_vocab` /
+/// `merge_domains` read beside the imports: inline vocabulary, an inline
+/// `per:` family over its own kind, or a name whose imported origin it
+/// shadows. A document that declares none of them gets the vocab's result.
+fn changes_rel(typed: &crate::meta::TypedMeta, imports: &SchemaImports) -> bool {
+    let k = &typed.rel_kinds;
+    let r = &typed.rel_relations;
+    !(k.kinds.is_empty()
+        && k.order.is_empty()
+        && k.dups.is_empty()
+        && k.adds.is_empty()
+        && k.add_labels.is_empty()
+        && k.label_problems.is_empty()
+        && r.relations.is_empty()
+        && r.dups.is_empty()
+        && typed.domains.is_empty()
+        && typed.rel_rules.is_empty()
+        && typed.rel_facts.is_empty()
+        && typed.rel_rule_failed_heads.is_empty()
+        && typed.state_index.is_empty())
+        || typed
+            .defs
+            .keys()
+            .any(|n| imports.rel.origins.defs.contains_key(n))
+        || typed
+            .state
+            .decls
+            .keys()
+            .any(|p| imports.rel.origins.state.contains_key(&p))
+}
+
+/// The relational stage (dsl 0.3.0 §3/§4, data-catalog foundation A4): the
+/// merged domains and the merged, validated relational vocabulary, with the
+/// per-rule Datalog checks and the stratification. Returns the domain map,
+/// the vocab (rule guards not yet expanded) and the diagnostics in fold
+/// order.
+fn rel_stage(
+    snapshot: &CapabilitySnapshot,
+    imports: &SchemaImports,
+    plugin_origins: &crate::rel_schema::PluginOrigins,
+    typed: &crate::meta::TypedMeta,
+    meta: &lute_syntax::ast::Meta,
+    at: Span,
+) -> (
+    std::collections::BTreeMap<String, Domain>,
+    crate::rel_schema::RelVocab,
+    Vec<Diagnostic>,
+) {
+    // The FULL merged domain vocabulary: `snapshot.domains` (core baseline +
+    // active-plugin `enums`) UNION the project's domains — the schema
+    // imports AND this document's inline `enums:`/`entities:` projection
+    // (`typed.domains`), the same value `build_rel_vocab` gets, so the domain
+    // map and `RelVocab` never disagree about a name (A3's `merge_domains`).
+    let (mut domains, mut diags) = merge_domains(snapshot, imports, typed, at);
+    let (mut vocab, rel_diags) = crate::rel_schema::build_rel_vocab(imports, typed, &domains, meta);
+    vocab.effect_directives = crate::directive_facts::effect_directives(snapshot);
+    vocab.effect_origins = plugin_origins.effect_facts.clone();
+    // dsl 0.26.0 §2.3: a project kind's domain is the kind's final member
+    // list — this document's `add:`s and sub-kinds included — and (dsl 0.27.0
+    // §7) its final labels, so a `{ domain: K }` path renders them.
+    for (name, decl) in &vocab.kinds {
+        if let (lute_manifest::relations::KindShape::Members(ms), Some(d)) =
+            (&decl.shape, domains.get_mut(name))
+        {
+            if !snapshot.domains.contains_key(name) {
+                if d.members.len() != ms.len() {
+                    d.members = ms.clone();
+                }
+                let labels: std::collections::BTreeMap<String, String> = decl
+                    .labels
+                    .iter()
+                    .map(|(m, l)| (m.clone(), l.text.clone()))
+                    .collect();
+                if d.labels != labels {
+                    d.labels = labels;
+                }
+            }
+        }
+    }
+    diags.extend(rel_diags);
+    // Per-rule Datalog checks (dsl 0.3.0 §7.1/§7.2): heads, body atoms,
+    // safety — over the MERGED rule set.
+    diags.extend(crate::datalog_check::check_rules(&vocab, &domains));
+    // Negation-cycle stratification + the guard-taint closure; fills
+    // `guard_tainted` before the vocab is frozen into `Env`'s `Arc`.
+    diags.extend(crate::datalog_check::check_stratification(&mut vocab));
+    (domains, vocab, diags)
+}
+
+/// dsl 0.23.0 §6: the reserved, read-only `prev.run.<path>` mirror of every
+/// declared `run.<path>` among `decls` — same type, no default. A `run.*`
+/// family's mirror is the `prev.run.*` family over the same members.
+fn prev_run_mirrors(decls: &crate::meta::StateDecls) -> crate::meta::StateDecls {
+    let mirror = |decl: &crate::meta::StateDecl| crate::meta::StateDecl {
+        ty: decl.ty.clone(),
+        default: None,
+        namespace: crate::meta::Namespace::User,
+        owner: Some(lute_manifest::types::Owner::Engine),
+    };
+    let mut out = crate::meta::StateDecls::default();
+    for (path, family) in decls.families() {
+        // `<path>.<m>` is a `run.*` path exactly when `path` is `run` or a
+        // `run.*` path.
+        if path == "run" || path.starts_with("run.") {
+            out.insert_family(
+                format!("prev.{path}"),
+                family.map_decl(mirror),
+                crate::meta::Precedence::Replace,
+            );
+        }
+    }
+    for (path, decl) in decls.explicit() {
+        if let Some(prev) = lute_manifest::semantics::cel_paths::prev_run_path(path) {
+            out.insert(prev, mirror(decl));
+        }
+    }
+    out
+}
+
+/// The def tables (dsl §8.1), each merged plugin < imported < inline: the
+/// produced types (`E-REF-TYPE`), the ordered params (`@name(args)` arity),
+/// and the raw CEL bodies (the D4 expander). A component's declared params
+/// are 0-arity value refs of its own body (`params`).
+type DefTables = (
+    std::collections::BTreeMap<String, Type>,
+    std::collections::BTreeMap<String, Vec<(String, Type)>>,
+    std::collections::BTreeMap<String, String>,
+);
+
+fn def_tables<'a>(
+    snapshot: &CapabilitySnapshot,
+    defs: impl Iterator<Item = &'a std::collections::BTreeMap<String, yaml_serde::Value>> + Clone,
+    params: &[lute_manifest::schema::DefParam],
+) -> DefTables {
+    let settled = |v: &yaml_serde::Value| {
+        v.get("type")
+            .filter(|_| !crate::def_decl::is_invalid(v))
+            .cloned()
+            .and_then(|tv| yaml_serde::from_value::<Type>(tv).ok())
+    };
+    // Plugin defs are already typed; imported and inline defs are untyped
+    // YAML whose `type:` `settle_defs` settled — a def whose type could not
+    // be settled has no entry (never a panic); `E-DEF-DECL` names it.
+    let mut def_types: std::collections::BTreeMap<String, Type> = snapshot
+        .defs
+        .iter()
+        .map(|(name, d)| (name.clone(), d.ty.clone()))
+        .collect();
+    let mut def_params: std::collections::BTreeMap<String, Vec<(String, Type)>> = snapshot
+        .defs
+        .iter()
+        .map(|(name, d)| {
+            let ps = d.params.iter().map(|p| (p.name.clone(), p.ty.clone()));
+            (name.clone(), ps.collect())
+        })
+        .collect();
+    let mut def_bodies: std::collections::BTreeMap<String, String> = snapshot
+        .defs
+        .iter()
+        .map(|(name, d)| (name.clone(), d.cel.clone()))
+        .collect();
+    for table in defs {
+        for (name, v) in table {
+            if let Some(t) = settled(v) {
+                def_types.insert(name.clone(), t);
+            }
+            def_params.insert(name.clone(), params_from_yaml(v));
+            if let Some(c) = v.get("cel").and_then(|c| c.as_str()) {
+                def_bodies.insert(name.clone(), c.to_string());
+            }
+        }
+    }
+    // A standalone component body's `@param` use in a typed attr slot is
+    // type-checked, and a bare `@p` is well-formed while `@p(x)` is
+    // `E-REF-ARITY` — the SAME entries `component_env` seeds for the
+    // transitive `::use` path.
+    for param in params {
+        def_types.insert(param.name.clone(), param.ty.clone());
+        def_params.insert(param.name.clone(), Vec::new());
+    }
+    (def_types, def_params, def_bodies)
+}
+
+/// 0.41.0 §3.5: the defs a document sees that declare `host: true` — a
+/// schema file's or a plugin's.
+fn host_defs(
+    snapshot: &CapabilitySnapshot,
+    imported: &std::collections::BTreeMap<String, yaml_serde::Value>,
+) -> std::collections::BTreeSet<String> {
+    snapshot
+        .defs
+        .values()
+        .filter(|d| d.host)
+        .map(|d| d.name.clone())
+        .chain(
+            imported
+                .iter()
+                .filter(|(_, v)| crate::def_decl::is_host(v))
+                .map(|(n, _)| n.clone()),
+        )
+        .collect()
+}
+
+/// The `E-DEF-DECL` of an imported def, reported at the def's schema line
+/// and folded across importers (Prerelease N5, dsl 0.26.0 §2.7).
+fn imported_def_diag(imports: &SchemaImports, name: &str, message: String, at: Span) -> Diagnostic {
+    crate::rel_schema::at_origin(
+        Diagnostic {
+            code: crate::def_decl::E_DEF_DECL.to_string(),
+            severity: Severity::Error,
+            message,
+            evidence: None,
+            span: at,
+            layer: Layer::Content,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        },
+        imports.rel.origins.defs.get(name),
+    )
+}
+
+/// An `E-STATE-DECL` / `E-DOMAIN-UNKNOWN` at `span`.
+fn state_decl_report(code: &str, message: &str, span: Span) -> Diagnostic {
+    Diagnostic {
+        code: code.to_string(),
+        severity: Severity::Error,
+        message: message.to_string(),
+        evidence: None,
+        span,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    }
+}
+
+/// The plugin directives storing results under `value` (dsl 0.28.0 T3-45).
+fn results_under(snapshot: &CapabilitySnapshot, value: &str) -> Vec<String> {
+    snapshot
+        .directives
+        .iter()
+        .filter(|(_, d)| {
+            d.state.iter().flat_map(|s| &s.declares).any(|slot| {
+                let mut base = slot.scope.clone();
+                for seg in &slot.path {
+                    let lute_manifest::types::PathSegment::Literal(s) = seg else {
+                        break;
+                    };
+                    base = format!("{base}.{s}");
+                }
+                base == value
+                    || base.starts_with(&format!("{value}."))
+                    || value.starts_with(&format!("{base}."))
+            })
+        })
+        .map(|(tag, _)| tag.clone())
+        .collect()
+}
+
+/// The project-wide fold stages over `imports`, run once per vocab (spec
+/// 0.49.0 §9.2): what [`fold_env`] reuses for a document that changes none
+/// of their inputs. The frontmatter-reading stages run against an empty
+/// frontmatter spanning [`crate::vocab::KEY_PLACEHOLDER`]; a diagnostic that
+/// carries it depends on the document, and the stage is then rerun per
+/// document.
+pub(crate) fn base_fold(
+    base: &crate::vocab::ProjectBase,
+    imports: &SchemaImports,
+) -> crate::vocab::BaseFold {
+    use crate::schema_import::AT_PLACEHOLDER;
+    use crate::vocab::KEY_PLACEHOLDER;
+    use std::sync::Arc;
+    let snapshot = &*base.snapshot;
+    let meta = lute_syntax::ast::Meta {
+        raw_yaml: String::new(),
+        span: KEY_PLACEHOLDER,
+    };
+    let typed = crate::meta::TypedMeta::default();
+    let (domains_pre_clock, mut rel, rel_diags) = rel_stage(
+        snapshot,
+        imports,
+        &base.plugin_origins,
+        &typed,
+        &meta,
+        AT_PLACEHOLDER,
+    );
+    let mut state = imports.state.clone();
+    let mirrors = prev_run_mirrors(&state.decls);
+    state.decls.append(mirrors);
+    // The clock the imports declare, settled over the base state: its enums
+    // join the domains a document that changes nothing sees.
+    let clocks = imported_clocks(imports);
+    let view = crate::StateView::from(state);
+    let (clock, _) = crate::clock::check_clock(
+        &clocks,
+        &view,
+        &domains_pre_clock,
+        &snapshot.occasions,
+        AT_PLACEHOLDER,
+    );
+    let mut state = view.into_overlay();
+    let mut domains = domains_pre_clock.clone();
+    if let Some(clock) = &clock {
+        for (name, domain) in crate::clock::clock_domains(clock) {
+            domains.entry(name).or_insert(domain);
+        }
+    }
+    state.resolve_domains(&domains);
+    // By domain, the explicit paths and the families typed with it.
+    let by_domain = |decls: &mut dyn Iterator<Item = (&String, &crate::meta::StateDecl)>| {
+        let mut out: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        for (path, decl) in decls {
+            if let Type::Domain(name) | Type::Entity(name) = &decl.ty {
+                out.entry(name.clone()).or_default().push(path.clone());
+            }
+        }
+        out
+    };
+    let paths_by_domain = by_domain(&mut state.decls.explicit().iter());
+    let families_by_domain = by_domain(
+        &mut state
+            .decls
+            .families()
+            .iter()
+            .map(|(path, family)| (path, family.decl())),
+    );
+    let view = crate::StateView::over(Arc::new(state));
+    // The imported defs, settled against the base state.
+    let mut imported_defs = imports.defs.clone();
+    let (imported_def_msgs, _) = crate::def_decl::settle_defs(
+        &mut imported_defs,
+        &mut std::collections::BTreeMap::new(),
+        snapshot.defs.iter().map(|(n, d)| (n.clone(), d.ty.clone())),
+        &view,
+    );
+    let def_diags = imported_def_msgs
+        .into_iter()
+        .map(|(name, msg)| imported_def_diag(imports, &name, msg, AT_PLACEHOLDER))
+        .collect();
+    let mut def_reads = std::collections::BTreeSet::new();
+    for v in imports.defs.values() {
+        let Some(cel) = v.get("cel").and_then(|c| c.as_str()) else {
+            continue;
+        };
+        let mut arena = CelArena::default();
+        if let Some(root) =
+            lute_cel::parse_slot_marked_refs(&mut arena, cel).and_then(|h| arena.get(h))
+        {
+            crate::cel_paths::every_static_path(&root.expr, &mut def_reads);
+        }
+    }
+    let (def_types, def_params, def_bodies) =
+        def_tables(snapshot, std::iter::once(&imported_defs), &[]);
+    let pre_guard_rules = rel.rules.clone();
+    let guards_use_defs = rel.rules.iter().any(|r| {
+        r.rule.body.iter().any(|lit| {
+            matches!(lit, lute_syntax::datalog::BodyLiteral::Guard { cel, .. } if cel.contains('@'))
+        })
+    });
+    let guard_diags = crate::cel_resolve::expand_rule_guards(
+        &mut rel,
+        &DefTable {
+            bodies: &def_bodies,
+            params: &def_params,
+        },
+    );
+    let origins = &imports.rel.origins.state;
+    let value_prefix = crate::state_decls::value_prefix_by_path(
+        &view,
+        &crate::state_decls::ValuePrefixSite {
+            declared: &|path| origins.contains_key(path),
+            results_under: &|value| results_under(snapshot, value),
+            locate: &|path, message| {
+                let origin = origins.get(path)?;
+                let d = state_decl_report("E-STATE-DECL", message, AT_PLACEHOLDER);
+                Some(crate::rel_schema::at_origin(d, Some(&origin)))
+            },
+        },
+    );
+    let domain_types = crate::state_decls::domain_types_by_at(
+        &view,
+        &domains,
+        &rel.indexed_state,
+        &|path, _, message, code| {
+            // Its schema line, or the first member's for a `per:` family.
+            let origin = origins.at_or_under(path)?;
+            let d = state_decl_report(code, message, AT_PLACEHOLDER);
+            Some(crate::rel_schema::at_origin(d, Some(&origin)))
+        },
+    );
+    // Guard expansion reads no frontmatter: its diagnostics are the rules'.
+    let rel_shared = !crate::vocab::carries_span(&rel_diags, KEY_PLACEHOLDER);
+    let mut template_domains = snapshot.domains.clone();
+    template_domains.extend(imports.domains.clone());
+    crate::vocab::BaseFold {
+        domains_pre_clock: Arc::new(domains_pre_clock),
+        domains: Arc::new(domains),
+        clock,
+        rel: Arc::new(rel),
+        pre_guard_rules,
+        guards_use_defs,
+        rel_diags,
+        guard_diags,
+        rel_shared,
+        view,
+        paths_by_domain,
+        families_by_domain,
+        imported_defs: Arc::new(imported_defs),
+        def_diags,
+        def_reads,
+        def_types,
+        def_params,
+        def_bodies,
+        value_prefix,
+        domain_types,
+        template_domains: Arc::new(template_domains),
+    }
+}
+
+/// The clocks the imports declare, each with where it is declared.
+fn imported_clocks(
+    imports: &SchemaImports,
+) -> Vec<(crate::clock::ClockSite, lute_manifest::clock::ClockDecl)> {
+    imports
+        .clock
+        .iter()
+        .map(|(path, c, at)| {
+            let name = path.file_name().map_or_else(
+                || path.display().to_string(),
+                |n| n.to_string_lossy().into_owned(),
+            );
+            let at = Some((path.display().to_string(), *at));
+            (crate::clock::ClockSite { name, at }, c.clone())
+        })
+        .collect()
+}
+
+/// Whether a path the document declares is one an imported def body names,
+/// or lies above or below one — its type decision may differ from the
+/// base's (spec 0.49.0 §9.2 R3).
+fn touches_def_reads(state: &crate::StateView, reads: &std::collections::BTreeSet<String>) -> bool {
+    state.overlay().decls.keys().any(|path| {
+        if reads.contains(&*path) {
+            return true;
+        }
+        let mut end = path.len();
+        while let Some(dot) = path[..end].rfind('.') {
+            end = dot;
+            if reads.contains(&path[..end]) {
+                return true;
+            }
+        }
+        let below = format!("{path}.");
+        reads
+            .range::<str, _>((
+                std::ops::Bound::Included(below.as_str()),
+                std::ops::Bound::Unbounded,
+            ))
+            .next()
+            .is_some_and(|r| r.starts_with(&below))
+    })
+}
+
+/// Merges one inline state declaration into `schema` (dsl §9.2). Precedence
+/// depends on where the imported declaration came from
+/// ([`SchemaImports::is_overridable`]): a `uses`-peer path may not be
+/// redeclared (`E-STATE-REDECLARE`, the imported one stays), an
+/// `extends`-base path is refined by the inline declaration (a type change
+/// is `E-EXTENDS-STATE-TYPE`: persisted state keeps a stable type), and a
+/// path no import declares joins the document's state.
+fn merge_inline_decl(
+    schema: &mut crate::StateView,
+    imports: &SchemaImports,
+    path: &str,
+    decl: &crate::meta::StateDecl,
+    at: Span,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let report = |code: &str, message: String| Diagnostic {
+        code: code.to_string(),
+        severity: Severity::Error,
+        message,
+        evidence: None,
+        span: at,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    };
+    match imports.state.decls.get(path) {
+        Some(imported) if imports.is_overridable(path) => {
+            if decl.ty != imported.ty {
+                diags.push(report(
+                    "E-EXTENDS-STATE-TYPE",
+                    format!(
+                        "state path `{path}` overrides base declared type {:?} with {:?}; persisted state must keep a stable type",
+                        imported.ty, decl.ty
+                    ),
+                ));
+            }
+            schema.insert(path.to_string(), decl.clone());
+        }
+        Some(_) => diags.push(report(
+            "E-STATE-REDECLARE",
+            format!(
+                "state path `{path}` is declared by an imported schema (§9.2); a scene must not redeclare or override it"
+            ),
+        )),
+        None => schema.insert(path.to_string(), decl.clone()),
+    }
+}
+
+fn fold_env_in(
+    doc: &Document,
+    input: &CheckInput,
+    shared: Option<&crate::vocab::BaseFold>,
+) -> (FoldedEnv, Vec<Diagnostic>, Vec<Diagnostic>) {
+    use std::sync::Arc;
+    let snapshot = input.snapshot();
+    let imports = input.imports();
+    let at = doc.meta.span;
     // 3. Resolve the root document kind (dsl 0.2.0 §3.1) FIRST: it gates which
     //    per-kind frontmatter keys the meta parse below allows. Defaults to
     //    `Scene` — the degrade-safe path — when unresolved (missing/unknown
     //    `kind:`), so a mis-kinded doc still gets the scene-triad required-key
     //    treatment it had pre-0.2.0.
-    let (doc_kind, meta_kind, kind_diags) = resolve_kinds(doc, &input.defaults);
+    let (doc_kind, meta_kind, kind_diags) = resolve_kinds(doc, input.defaults());
 
     // 3b. Typed frontmatter + inline state schema, dispatched by the resolved
     //     kind (dsl 0.2.0 §3.1, §6.1): a Quest doc carries none of the scene
     //     triad and rejects it as an unknown key.
     let (mut typed, mut fold_diags) = crate::meta::parse_meta_kind_with_defaults(
         &doc.meta,
-        &input.snapshot,
+        snapshot,
         meta_kind,
-        &input.defaults,
+        input.defaults(),
     );
     fold_diags.splice(0..0, kind_diags);
     // dsl 0.21.0 §3.1: a scene beat's `when` slot is lifted from the raw
@@ -100,123 +652,147 @@ pub fn fold_env(
         }
     }
 
-    // 3c. The FULL merged domain vocabulary (data-catalog foundation A4):
-    //     `snapshot.domains` (A2 — core baseline + active-plugin `enums`)
-    //     UNION the PROJECT's domains — this scene's schema imports AND its own
-    //     inline `enums:`/`entities:` projection (`typed.domains`), which is the
-    //     same value `build_rel_vocab` gets one line below, so the domain map
-    //     and `RelVocab` can never disagree about a name either of them
-    //     declares (A3's `merge_domains`). Computed ONCE here (0.3.0 T7 moved
-    //     this from `check()`) so `lute-compile` (which calls `fold_env`
-    //     directly) sees the SAME vocabulary, never double-emitting
-    //     `E-DOMAIN-DUP`. Then the merged, validated relational vocabulary
-    //     (dsl 0.3.0 §3/§4): imports ∪ this document's inline
-    //     `entities:`/`relations:`/`enums:`/`facts:`/`rules:`, every
-    //     declaration checked (§3.1/§4) and every seed `facts:` entry
-    //     validated via `check_atom` (D12 wildcard-in-seed included).
-    let (mut domains, domain_diags) =
-        merge_domains(&input.snapshot, &input.imports, &typed, doc.meta.span);
-    let (mut vocab, rel_diags) =
-        crate::rel_schema::build_rel_vocab(&input.imports, &typed, &domains, &doc.meta);
-    vocab.effect_directives = crate::directive_facts::effect_directives(&input.snapshot);
-    vocab.effect_origins = input.imports.plugin_origins.effect_facts.clone();
-    // dsl 0.26.0 §2.3: a project kind's domain is the kind's final member
-    // list — this document's `add:`s and sub-kinds included — and (dsl 0.27.0
-    // §7) its final labels, so a `{ domain: K }` path renders them.
-    for (name, decl) in &vocab.kinds {
-        if let (lute_manifest::relations::KindShape::Members(ms), Some(d)) =
-            (&decl.shape, domains.get_mut(name))
-        {
-            if !input.snapshot.domains.contains_key(name) {
-                if d.members.len() != ms.len() {
-                    d.members = ms.clone();
-                }
-                let labels: std::collections::BTreeMap<String, String> = decl
-                    .labels
-                    .iter()
-                    .map(|(m, l)| (m.clone(), l.text.clone()))
-                    .collect();
-                if d.labels != labels {
-                    d.labels = labels;
-                }
+    // 3c. The merged domain vocabulary and relational vocabulary
+    //     ([`rel_stage`]), computed ONCE here so `lute-compile` (which calls
+    //     `fold_env` directly) sees the SAME vocabulary, never double-emitting
+    //     `E-DOMAIN-DUP`. The vocab's own result when this document declares
+    //     nothing they read; its diagnostics too, unless one of them
+    //     depends on the frontmatter text (then the stage reruns for them).
+    //     `rel_from_base`: the vocab's rule guards are already expanded.
+    let rel_from_base = shared.filter(|_| !changes_rel(&typed, imports));
+    let (domains_pre, mut vocab) = match rel_from_base {
+        Some(b) => {
+            if b.rel_shared {
+                fold_diags.extend(anchored(&b.rel_diags, at));
+            } else {
+                let (_, _, diags) = rel_stage(
+                    snapshot,
+                    imports,
+                    input.plugin_origins(),
+                    &typed,
+                    &doc.meta,
+                    at,
+                );
+                fold_diags.extend(diags);
             }
+            (Arc::clone(&b.domains_pre_clock), Arc::clone(&b.rel))
         }
-    }
-    fold_diags.extend(domain_diags);
-    fold_diags.extend(rel_diags);
-    // Per-rule Datalog checks (dsl 0.3.0 §7.1/§7.2, 0.3.0 T8): heads, body
-    // atoms, safety — over the MERGED rule set. Runs here (not in `check()`)
-    // so `lute-compile`'s direct `fold_env` caller sees the same diagnostics;
-    // the vocab is still a plain local here (not yet frozen into `Env`'s
-    // `Arc`), which Task 9's stratification/guard-taint pass relies on too.
-    fold_diags.extend(crate::datalog_check::check_rules(&vocab, &domains));
-    // Whole-rule-set graph analyses (dsl 0.3.0 §7.2/§6, 0.3.0 T9): negation-
-    // cycle stratification + the guard-taint closure. Mutates `vocab` in
-    // place (fills `guard_tainted`) BEFORE it is frozen into `Env`'s `Arc`
-    // below — the one place in this pipeline `vocab` is still a plain local.
-    fold_diags.extend(crate::datalog_check::check_stratification(&mut vocab));
+        None => {
+            let (domains, vocab, diags) = rel_stage(
+                snapshot,
+                imports,
+                input.plugin_origins(),
+                &typed,
+                &doc.meta,
+                at,
+            );
+            fold_diags.extend(diags);
+            (Arc::new(domains), Arc::new(vocab))
+        }
+    };
 
-    // 4. Fold every `<branch>`/`<hub>`'s implicit recording decls
-    //    (`scene.choices.<id>` + a hub's per-choice `scene.visited.<id>.*`) into
-    //    the schema BEFORE the checks that resolve against them (match subjects,
-    //    CEL state paths). This pre-pass owns the episode-wide `E-DUP-BRANCH`
-    //    detection (hub + branch ids share one domain) so the main walk never
-    //    double-counts ids.
-    // Merge imported schema (dsl §9.2) first, then the scene's inline `state:`.
-    // Precedence depends on WHERE the imported decl came from (see
-    // `SchemaImports::state_overridable`): a `uses`-peer path may NOT be
-    // redeclared (`E-STATE-REDECLARE`, imported wins), but an `extends`-base path
-    // MAY be refined by the scene's inline decl (the inline wins; a TYPE change is
-    // `E-EXTENDS-STATE-TYPE`, the persisted type must stay stable).
-    let mut schema = input.imports.state.clone();
+    // 4. Merge imported schema (dsl §9.2) first, then the scene's inline
+    //    `state:`. Precedence depends on WHERE the imported decl came from
+    //    (see `SchemaImports::state_overridable`): a `uses`-peer path may NOT
+    //    be redeclared (`E-STATE-REDECLARE`, imported wins), but an
+    //    `extends`-base path MAY be refined by the scene's inline decl (the
+    //    inline wins; a TYPE change is `E-EXTENDS-STATE-TYPE`, the persisted
+    //    type must stay stable). Shared: the imports are the vocab's base
+    //    state and every decl below goes to this document's overlay.
+    let mut schema = match shared {
+        Some(b) => b.view.clone(),
+        None => crate::StateView::from(imports.state.clone()),
+    };
     let mut state_merge_diags: Vec<Diagnostic> = Vec::new();
-    for (path, decl) in &typed.state.decls {
-        match input.imports.state.decls.get(path) {
-            Some(imported) if input.imports.state_overridable.contains(path) => {
-                // Extends-base override: the inline decl wins; guard the type.
-                if decl.ty != imported.ty {
-                    state_merge_diags.push(Diagnostic {
-                        code: "E-EXTENDS-STATE-TYPE".to_string(),
-                        severity: Severity::Error,
-                        message: format!(
-                            "state path `{path}` overrides base declared type {:?} with {:?}; persisted state must keep a stable type",
-                            imported.ty, decl.ty
-                        ),
-                        evidence: None,
-                        span: doc.meta.span,
-                        layer: Layer::Content,
-                        fixits: Vec::new(),
-                        provenance: None,
-                        covered: Vec::new(),
-                        related: Vec::new(),
-                    });
-                }
-                schema.decls.insert(path.clone(), decl.clone());
+    // An inline `per:` family no imported declaration names a member of
+    // joins whole (spec 0.49.0 §9.3); otherwise every path is merged one by
+    // one, in path order.
+    let whole = typed
+        .state
+        .decls
+        .families()
+        .iter()
+        .all(|(path, family)| !imports.state.decls.declares_member_of(path, family));
+    let inline: Box<dyn Iterator<Item = (std::borrow::Cow<'_, str>, &crate::meta::StateDecl)>> =
+        if whole {
+            for (path, family) in typed.state.decls.families() {
+                schema.insert_family(path.clone(), family.clone());
             }
-            Some(_) => {
-                // Uses-peer path: a scene must not redeclare it (imported wins).
-                state_merge_diags.push(Diagnostic {
-                    code: "E-STATE-REDECLARE".to_string(),
-                    severity: Severity::Error,
-                    message: format!(
-                        "state path `{path}` is declared by an imported schema (§9.2); a scene must not redeclare or override it"
-                    ),
-                    evidence: None,
-                    span: doc.meta.span,
-                    layer: Layer::Content,
-                    fixits: Vec::new(),
-                    provenance: None,
-                    covered: Vec::new(),
-                    related: Vec::new(),
-                });
-            }
-            None => {
-                schema.decls.insert(path.clone(), decl.clone());
+            Box::new(
+                typed
+                    .state
+                    .decls
+                    .explicit()
+                    .iter()
+                    .map(|(k, d)| (std::borrow::Cow::Borrowed(k.as_str()), d)),
+            )
+        } else {
+            Box::new(typed.state.decls.iter())
+        };
+    // dsl 0.28.0: an inline `per:` over a kind an imported schema declares.
+    // One nobody else declares a member of joins whole; the members of any
+    // other are merged against the imports as an inline path is (#190),
+    // except a member this document declares itself, which keeps that
+    // declaration.
+    let (per_families, per_index, per_faults) = crate::meta::expand_per_pending(
+        &typed.per_pending,
+        &vocab.kinds,
+        &mut std::collections::BTreeMap::new(),
+    );
+    let mut pending_members: Vec<(String, crate::meta::StateDecl)> = Vec::new();
+    for (path, family) in per_families {
+        if !schema.declares_member_of(&path, &family)
+            && !typed.state.decls.declares_member_of(&path, &family)
+        {
+            schema.insert_family(path, family);
+            continue;
+        }
+        for m in family.members() {
+            let key = format!("{path}.{m}");
+            if !typed.state.decls.contains_key(&key) {
+                let decl = family.member(m).unwrap_or(family.decl()).clone();
+                pending_members.push((key, decl));
             }
         }
     }
-    schema.faulty.extend(typed.state.faulty.iter().cloned());
-    schema.clock_rejected |= typed.state.clock_rejected;
+    pending_members.sort_by(|a, b| a.0.cmp(&b.0));
+    // One stream in path order, as for a family over the document's own
+    // kind: its diagnostics come out in the same order.
+    let mut pending_iter = pending_members.iter().peekable();
+    let mut inline = inline.peekable();
+    loop {
+        let take_pending = match (inline.peek(), pending_iter.peek()) {
+            (Some((a, _)), Some((b, _))) => b.as_str() < &**a,
+            (None, Some(_)) => true,
+            (_, None) => false,
+        };
+        let (path, decl) = if take_pending {
+            let Some((k, d)) = pending_iter.next() else {
+                break;
+            };
+            (std::borrow::Cow::Borrowed(k.as_str()), d)
+        } else {
+            let Some(item) = inline.next() else {
+                break;
+            };
+            item
+        };
+        merge_inline_decl(
+            &mut schema,
+            imports,
+            &path,
+            decl,
+            at,
+            &mut state_merge_diags,
+        );
+    }
+    // The stream borrows `typed`, which the folded environment takes below.
+    drop(inline);
+    {
+        let overlay = schema.overlay_mut();
+        overlay.faulty.extend(typed.state.faulty.iter().cloned());
+        overlay.clock_rejected |= typed.state.clock_rejected;
+    }
     {
         let mut own = crate::meta::StateSchema {
             invalid: typed.state.invalid.clone(),
@@ -227,53 +803,47 @@ pub fn fold_env(
             .map_or_else(|| input.uri.clone(), |n| n.to_string_lossy().into_owned());
         own.place_invalid(&file);
         for (path, decl) in own.invalid {
-            schema.invalid.entry(path).or_insert(decl);
+            if schema.invalid(&path).is_none() {
+                schema.overlay_mut().invalid.insert(path, decl);
+            }
         }
     }
-    // dsl 0.28.0: an inline `per:` over a kind an imported schema declares.
-    let (per_decls, per_index, per_faults) =
-        crate::meta::expand_per_pending(&typed.per_pending, &vocab.kinds);
-    for (path, decl) in per_decls {
-        schema.decls.entry(path).or_insert(decl);
+    if !per_index.is_empty() {
+        Arc::make_mut(&mut vocab).indexed_state.extend(per_index);
     }
-    vocab.indexed_state.extend(per_index);
     fold_diags.extend(per_faults);
+    // Fold every `<branch>`/`<hub>`'s implicit recording decls
+    // (`scene.choices.<id>` + a hub's per-choice `scene.visited.<id>.*`) into
+    // the schema BEFORE the checks that resolve against them. This pre-pass
+    // owns the episode-wide `E-DUP-BRANCH` detection (hub + branch ids share
+    // one domain) so the main walk never double-counts ids.
     let mut seen_branches = std::collections::BTreeSet::new();
-    fold_branches(doc, &mut schema, &mut seen_branches, &mut fold_diags);
+    fold_branches(
+        doc,
+        schema.overlay_mut(),
+        &mut seen_branches,
+        &mut fold_diags,
+    );
 
     // 4a. Fold every `<quest>`'s implicit reserved `quest.<id>.*` decls (dsl
-    //     0.2.0 §5.2) into the schema, threading a SEPARATE per-document `seen`
-    //     id set (quest ids key the `quest.<id>.*` tier, a namespace distinct
-    //     from `scene.choices.*`) so `E-QUEST-ID-DUP` fires exactly once per
-    //     duplicate. `seen_quests` is SEEDED from `input.imports.imported_quest_ids`
-    //     (dsl 0.2.0 §6.3: quest ids are unique PROJECT-WIDE, across the import
-    //     graph, not merely within this document) — redeclaring an
-    //     import-reachable id then fails the same `seen_quests.insert` check as
-    //     an in-document repeat, reusing `E-QUEST-ID-DUP` unchanged. A collision
-    //     BETWEEN two import-reachable docs that this document itself never
-    //     redeclares is instead caught in `resolve_imports` directly (this
-    //     document's own `<quest>` fold never sees it).
-    //
-    //     `quest.<id>.state` / `quest.<id>.objectives.<oid>.done` are RESERVED
-    //     (dsl 0.2.0 §5.2/§9.3: "implicitly declared and MUST NOT be
-    //     author-declared") — snapshot every state path that already exists
-    //     BEFORE any reserved decl is folded (the author's inline `state:` and
-    //     any imported schema, both merged above) so a reserved path that
-    //     collides with one of THOSE is flagged (`E-QUEST-RESERVED-DECL`)
-    //     instead of silently clobbered by `schema.decls.insert`. A collision
-    //     with a path THIS loop itself already folded (the `E-QUEST-ID-DUP`
-    //     repeat-id case, an identical decl either way) is NOT flagged — the
-    //     snapshot is frozen before the loop starts, so a same-id repeat
-    //     resolves against the pre-loop state and simply re-inserts the
-    //     identical decl.
-    let pre_existing_state: std::collections::BTreeSet<String> =
-        schema.decls.keys().cloned().collect();
+    //     0.2.0 §5.2), threading a per-document `seen` id set SEEDED from
+    //     the import-reachable quest ids (dsl 0.2.0 §6.3: quest ids are
+    //     unique PROJECT-WIDE), so `E-QUEST-ID-DUP` fires exactly once per
+    //     duplicate. `quest.<id>.state` / `quest.<id>.objectives.<oid>.done`
+    //     are RESERVED (dsl 0.2.0 §5.2/§9.3): a reserved path colliding with
+    //     a path that existed BEFORE this loop (inline or imported) is
+    //     `E-QUEST-RESERVED-DECL`; a same-id repeat re-inserts the identical
+    //     decl unflagged, since the set is frozen before the loop.
+    let pre_existing_overlay = schema.overlay().decls.clone();
+    let pre_existing = |path: &str, schema: &crate::StateView| {
+        pre_existing_overlay.contains_key(path) || schema.base().decls.contains_key(path)
+    };
     let mut seen_quests: std::collections::BTreeSet<String> =
-        input.imports.imported_quest_ids.keys().cloned().collect();
+        imports.imported_quest_ids.keys().cloned().collect();
     for quest in &doc.quests {
         let record = check_quest(quest, &mut seen_quests);
         for (path, decl) in record.decls {
-            if pre_existing_state.contains(&path) {
+            if pre_existing(&path, &schema) {
                 fold_diags.push(Diagnostic {
                     code: "E-QUEST-RESERVED-DECL".to_string(),
                     severity: Severity::Error,
@@ -283,7 +853,7 @@ pub fn fold_env(
                          `state:`"
                     ),
                     evidence: None,
-                    span: doc.meta.span,
+                    span: at,
                     layer: Layer::Content,
                     fixits: Vec::new(),
                     provenance: None,
@@ -291,134 +861,115 @@ pub fn fold_env(
                     related: Vec::new(),
                 });
             } else {
-                schema.decls.insert(path, decl);
+                schema.insert(path, decl);
             }
         }
         fold_diags.extend(record.diags);
-        // dsl 0.16.0 §2/§4/§6: reward shape/closure/vocabulary. Runs here
-        // (with `fold_diags`) so a shape/vocab fault surfaces alongside the
-        // rest of the quest fold — the Walker's `reward.when` Bool profile
-        // gate below owns only the CEL-side check.
+        // dsl 0.16.0 §2/§4/§6: reward shape/closure/vocabulary, alongside
+        // the rest of the quest fold.
         fold_diags.extend(check_quest_rewards(
             quest,
-            &input.snapshot,
-            &input.providers,
+            snapshot,
+            input.providers(),
             &vocab.kinds,
         ));
     }
     // dsl 0.23.0 §6: a subquest's `tier` equals its parent's — the
-    // same-document half of `E-QUEST-TIER-MIX` (whole-project check owns the
-    // cross-document edges).
+    // same-document half of `E-QUEST-TIER-MIX`.
     fold_diags.extend(crate::project_check::check_doc_quest_tiers(doc));
 
-    // 4a'. Fold every `<entry>`'s implicit reserved `entry.<id>.read` decl
-    //      (dsl 0.19.0 §5: `bool`, default `false`) and its attribute /
-    //      per-document identity diagnostics (`E-ENTRY-ATTR`,
-    //      `E-ENTRY-ID-DUP`, `E-ENTRY-SERIES-ORDER`) — the lore mirror of the
-    //      quest fold above, its id set seeded from the import-reachable
-    //      entry ids the same way `seen_quests` is. No reserved-decl
-    //      collision guard is needed: an `entry.*` path can never be
-    //      author-declared (`entry` is not a `state:` tier,
-    //      `E-STATE-NAMESPACE`).
-    //      The positions are the RESOLVED ones (dsl 0.19.0 §2.1): a lore
-    //      document's `series:` orders its entries by place in the file.
+    // 4a'. Every `<entry>`'s implicit reserved `entry.<id>.read` decl (dsl
+    //      0.19.0 §5) and its attribute / identity diagnostics — the lore
+    //      mirror of the quest fold above, at the RESOLVED positions (a lore
+    //      document's `series:` orders its entries by place in the file).
     let mut seen_entries: std::collections::BTreeSet<String> =
-        input.imports.imported_entry_ids.keys().cloned().collect();
+        imports.imported_entry_ids.keys().cloned().collect();
     let entry_record = crate::lore::check_entries(
         typed.series.as_deref(),
         &doc.entries,
         &mut seen_entries,
-        &input.snapshot,
+        snapshot,
     );
-    schema.decls.extend(entry_record.decls);
+    for (path, decl) in entry_record.decls {
+        schema.insert(path, decl);
+    }
     fold_diags.extend(entry_record.diags);
-    // 4a''. dsl 0.23.0 §6: `prev.run.<path>` is the reserved, read-only
-    //       mirror of every declared `run.<path>` — the value it had when the
-    //       previous run ended. Same type, no default: it is `unset` before
-    //       the first run ends, so a read needs `isSet` or an `unset` arm.
-    let prev_decls: Vec<(String, crate::meta::StateDecl)> = schema
-        .decls
-        .iter()
-        .filter_map(|(path, decl)| {
-            lute_manifest::semantics::cel_paths::prev_run_path(path).map(|prev| {
-                let mirror = crate::meta::StateDecl {
-                    ty: decl.ty.clone(),
-                    default: None,
-                    namespace: crate::meta::Namespace::User,
-                    owner: Some(lute_manifest::types::Owner::Engine),
-                };
-                (prev, mirror)
-            })
-        })
-        .collect();
-    schema.decls.extend(prev_decls);
+    // 4a''. dsl 0.23.0 §6: `prev.run.<path>` mirrors every declared
+    //       `run.<path>`. The base state holds the mirrors of the imported
+    //       paths; this document's own `run.*` decls mirror here.
+    let mirrors = prev_run_mirrors(&schema.overlay().decls);
+    schema.overlay_mut().decls.append(mirrors);
     // 4a'''. dsl 0.24.0 §1: the project's clock — its imports' `clock:` and,
     //        for a schema document, its own — checked against the folded
     //        schema; its reserved read-only `clock.*` paths join the schema.
-    let clocks: Vec<(crate::clock::ClockSite, lute_manifest::clock::ClockDecl)> = input
-        .imports
-        .clock
-        .iter()
-        .map(|(path, c, at)| {
-            let name = path.file_name().map_or_else(
-                || path.display().to_string(),
-                |n| n.to_string_lossy().into_owned(),
-            );
-            let at = Some((path.display().to_string(), *at));
-            (crate::clock::ClockSite { name, at }, c.clone())
-        })
-        .chain(typed.clock.clone().map(|c| {
-            (
-                crate::clock::ClockSite {
-                    name: "this schema".to_string(),
-                    at: None,
-                },
-                c,
-            )
-        }))
-        .collect();
+    //        A handful of lookups, so it runs for every document.
+    let clocks: Vec<(crate::clock::ClockSite, lute_manifest::clock::ClockDecl)> =
+        imported_clocks(imports)
+            .into_iter()
+            .chain(typed.clock.clone().map(|c| {
+                (
+                    crate::clock::ClockSite {
+                        name: "this schema".to_string(),
+                        at: None,
+                    },
+                    c,
+                )
+            }))
+            .collect();
     // A schema document's own clock is reported at its `clock:` key.
     let clock_span = if typed.clock.is_some() {
         crate::meta::meta_key_span(&doc.meta, "clock")
     } else {
-        doc.meta.span
+        at
     };
     let (clock, clock_diags) = crate::clock::check_clock(
         &clocks,
         &schema,
-        &domains,
-        &input.snapshot.occasions,
+        &domains_pre,
+        &snapshot.occasions,
         clock_span,
     );
     fold_diags.extend(clock_diags);
+    // `{ domain: clock.slot }` / `{ domain: clock.weekdayLabel }` name the
+    // clock's own enums: the vocab's domains when the clock is the vocab's.
+    let domains = match shared
+        .filter(|b| Arc::ptr_eq(&domains_pre, &b.domains_pre_clock) && clock == b.clock)
+    {
+        Some(b) => Arc::clone(&b.domains),
+        None => match &clock {
+            Some(c) => {
+                let mut d = (*domains_pre).clone();
+                for (name, domain) in crate::clock::clock_domains(c) {
+                    d.entry(name).or_insert(domain);
+                }
+                Arc::new(d)
+            }
+            None => Arc::clone(&domains_pre),
+        },
+    };
     if let Some(clock) = &clock {
-        schema
-            .decls
-            .extend(crate::clock::reserved_decls(clock, &schema));
+        let reserved = crate::clock::reserved_decls(clock, &schema);
         // dsl 0.24.0 §1 / 0.27.0 §4: `clock.weekday`, and a finite clock's
         // `clock.index` and day path, range over known whole numbers.
         let ranges = crate::clock::int_ranges(clock, &schema);
-        schema.int_ranges.extend(ranges);
         // dsl 0.28.0 (T3-40): a clock that ends on its first day narrows
         // its slot path to the slots it reaches.
         let members = crate::clock::slot_members(clock, &schema);
-        schema.clock_members.extend(members);
-        // `{ domain: clock.slot }` / `{ domain: clock.weekdayLabel }` name
-        // the clock's own enums.
-        for (name, domain) in crate::clock::clock_domains(clock) {
-            domains.entry(name).or_insert(domain);
-        }
-        schema.clock = Some(clock.clone());
+        let overlay = schema.overlay_mut();
+        overlay.decls.extend(reserved);
+        overlay.int_ranges.extend(ranges);
+        overlay.clock_members.extend(members);
+        overlay.clock = Some(clock.clone());
     }
     // T3-1: a written `clock:` that was rejected is the cause; what needs a
     // clock is not judged against its absence.
     if clock.is_some() {
-        schema.clock_rejected = false;
+        schema.overlay_mut().clock_rejected = false;
     } else if !clocks.is_empty() {
         // 0.41.0 §3.2: a clock over an invalid state row is not checked.
-        schema.clock_rejected = true;
+        schema.overlay_mut().clock_rejected = true;
     }
-    if !schema.clock_rejected {
+    if !schema.clock_rejected() {
         fold_diags.extend(crate::clock::check_once_needs_clock(
             doc,
             typed.beat.as_ref(),
@@ -428,12 +979,11 @@ pub fn fold_env(
     // dsl 0.27.0 §5: the project's seasons — its imports' and, for a schema
     // document, its own — and every use of one.
     let season_span = if typed.seasons.is_empty() {
-        doc.meta.span
+        at
     } else {
         crate::meta::meta_key_span(&doc.meta, "seasons")
     };
-    let season_names: Vec<String> = input
-        .imports
+    let season_names: Vec<String> = imports
         .seasons
         .iter()
         .map(|(path, _, _)| {
@@ -444,8 +994,7 @@ pub fn fold_env(
         })
         .collect();
     let (seasons, season_diags) = crate::season::fold_seasons(
-        input
-            .imports
+        imports
             .seasons
             .iter()
             .zip(&season_names)
@@ -466,13 +1015,13 @@ pub fn fold_env(
         crate::meta::meta_key_span(&doc.meta, "state"),
         &vocab.origins.state,
     );
-    schema.decls.extend(mirrors);
+    schema.overlay_mut().decls.append(mirrors);
     fold_diags.extend(season_diags);
     fold_diags.extend(crate::season::check_uses(
         doc,
         typed.beat.as_ref(),
         &seasons,
-        &input.defaults,
+        input.defaults(),
     ));
     fold_diags.extend(crate::season::check_relation_tiers(
         &vocab,
@@ -482,14 +1031,14 @@ pub fn fold_env(
     // dsl 0.21.0 §2: every entry beat's occasion against the vocabulary.
     fold_diags.extend(crate::beats::check_entry_occasions(
         &doc.entries,
-        &input.snapshot.occasions,
+        &snapshot.occasions,
     ));
     // dsl 0.23.0 §4: every bundle `<beat>`'s shape, id, and occasion.
     fold_diags.extend(crate::bundles::check_bundle_beats(
         typed.id.as_deref(),
         lute_manifest::yaml_text::key_span(&doc.meta.raw_yaml, &["id"]).is_some(),
         &doc.beats,
-        &input.snapshot.occasions,
+        &snapshot.occasions,
     ));
     // A bundle beat id repeated, or shared with an entry of the document.
     fold_diags.extend(crate::bundles::check_beat_ids(
@@ -502,36 +1051,35 @@ pub fn fold_env(
     if let Some(template) = &typed.beat_template {
         fold_diags.extend(crate::templates::check_template_header(
             template,
-            &input.snapshot.occasions,
+            &snapshot.occasions,
         ));
     }
     // dsl 0.21.0 §7a.2: every objective's `on` occasion, checked like a beat's.
     fold_diags.extend(crate::beats::check_objective_occasions(
         &doc.quests,
-        &input.snapshot.occasions,
+        &snapshot.occasions,
     ));
-    // dsl 0.22.0 §8: every beat target against its occasion's target domain
-    // (the entity kinds come from the merged vocabulary built above).
+    // dsl 0.22.0 §8: every beat target against its occasion's target domain.
     fold_diags.extend(crate::beats::check_beat_target_domains(
         doc,
         typed.beat.as_ref(),
-        &input.snapshot.occasions,
+        &snapshot.occasions,
         &vocab.kinds,
     ));
     // dsl 0.27.0 §3 (T2-10): every `for="kind:<kind>"` beat (a scene's `for:`).
     fold_diags.extend(crate::occasion_bind::check_for_kinds(
         doc,
         typed.beat.as_ref(),
-        &input.snapshot.occasions,
+        &snapshot.occasions,
         &vocab.kinds,
     ));
     // dsl 0.27.0 §3: a beat on an occasion declaring a typed `payload:`
     // reads each field as `occasion.payload.<field>` (engine-owned, bound
     // by the raise); a read in a beat of another occasion is `E-UNDECLARED`.
     let (payload_decls, payload_diags) =
-        crate::occasion_bind::payload_decls(doc, typed.beat.as_ref(), &input.snapshot.occasions);
+        crate::occasion_bind::payload_decls(doc, typed.beat.as_ref(), &snapshot.occasions);
     for (path, ty) in payload_decls {
-        schema.decls.insert(
+        schema.insert(
             path,
             crate::meta::StateDecl {
                 ty,
@@ -542,24 +1090,20 @@ pub fn fold_env(
         );
     }
     fold_diags.extend(payload_diags);
-    // dsl 0.26.0 §5: a kind beat reads the member it was raised for as
-    // `occasion.target` (engine-owned, always assigned while such a beat
-    // runs). The document's decl is typed by every kind its kind beats
-    // answer; each beat's own slots are checked with its own kind's members
+    // dsl 0.26.0 §5 / 0.27.0 §3: a kind beat reads the member it was raised
+    // for as `occasion.target`, typed by every kind its kind beats answer;
+    // each beat's own slots are checked with its own kind's members
     // (`FoldedEnv::env_at`, built below).
-    // dsl 0.27.0 §3: and each kind beat's own members, the scope a slot
-    // binding `occasion.target` as a fact argument / family index is judged
-    // over, once per member.
     let occasion_scopes = crate::occasion_bind::occasion_scopes(
         doc,
         typed.beat.as_ref(),
-        &input.snapshot.occasions,
+        &snapshot.occasions,
         &vocab.kinds,
     );
     let occasion_members = occasion_scopes.members();
     let target_scoped = !occasion_members.is_empty();
     if target_scoped {
-        schema.decls.insert(
+        schema.insert(
             lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
             crate::meta::StateDecl {
                 ty: lute_manifest::types::Type::Enum(occasion_members),
@@ -572,50 +1116,85 @@ pub fn fold_env(
     // dsl 0.24.0 §2: every `<on event target>`, checked like an objective's.
     fold_diags.extend(crate::on::check_on_targets(
         &doc.quests,
-        &input.snapshot.occasions,
+        &snapshot.occasions,
         &vocab.kinds,
     ));
     // dsl 0.25.0 §6: every relation's `changedOn:` occasion, checked like one.
     fold_diags.extend(crate::rel_schema::check_changed_on(
         &vocab,
-        &input.snapshot.occasions,
+        &snapshot.occasions,
         &doc.meta,
     ));
     // 0.27 prerelease G-6: a `{ domain: K }` payload field names a declared K.
     fold_diags.extend(crate::occasion_bind::check_payload_domains(
         doc,
         typed.beat.as_ref(),
-        &input.snapshot.occasions,
+        &snapshot.occasions,
         &domains,
-        &input.imports.plugin_origins,
+        input.plugin_origins(),
+    ));
+    // 0.49.0 §4.3: reference-typed plugin frontmatter values against the
+    // merged vocabulary (entity kinds, domains, providers, asset kinds).
+    fold_diags.extend(crate::meta::check_frontmatter_refs(
+        &typed,
+        &doc.meta,
+        snapshot,
+        input.providers(),
+        &domains,
     ));
 
-    // 4b. Expand every active directive's `state.declares[]` into concrete state
-    //     slots at each use site (plugin §8/§9): a `::minigame{resultKey="k"}`
-    //     opens `scene.minigame.k.<field>` for each field of its shape. This runs
-    //     before the walk + defassign so plugin-declared state resolves.
-    fold_directive_slots(doc, &input.snapshot, &input.components, &mut schema);
+    // 4b. Expand every active directive's `state.declares[]` into concrete
+    //     state slots at each use site (plugin §8/§9), before the walk +
+    //     defassign so plugin-declared state resolves.
+    fold_directive_slots(doc, snapshot, &input.components, schema.overlay_mut());
     // dsl 0.27.0 §2 (T1-2): a `{ domain: K }` / `{ entity: K }` path is
     // member-checked like an inline enum — its members, from the merged
-    // domains, ride on the schema every pass reads.
-    schema.resolve_domains(&domains);
+    // domains, ride on the schema every pass reads. The base state's are
+    // resolved against the vocab's domains; a base path whose domain this
+    // document changed is resolved again (spec 0.49.0 §9.2 R1).
+    schema.overlay_mut().resolve_domains(&domains);
+    let changed_domains = match shared {
+        Some(b) if !Arc::ptr_eq(&domains, &b.domains) => {
+            crate::vocab::changed_domains(&b.domains, &domains)
+        }
+        _ => std::collections::BTreeSet::new(),
+    };
+    if let Some(b) = shared {
+        for name in &changed_domains {
+            for path in b.paths_typed_by(name) {
+                if schema.overlay().decls.contains_key(&path) {
+                    continue;
+                }
+                match domains.get(name).filter(|d| !d.open) {
+                    Some(d) => {
+                        let members = (name.clone(), d.members.clone());
+                        schema
+                            .overlay_mut()
+                            .domain_members
+                            .insert(path.into_owned(), members);
+                    }
+                    None => schema.mask_domain(path.into_owned()),
+                }
+            }
+        }
+    }
 
     // The def names the `@ref` resolver validates against (dsl §8.1): inline
-    // frontmatter defs plus plugin-exported defs (both are declared refs).
+    // frontmatter defs plus plugin-exported and imported defs.
     let mut defs: std::collections::BTreeSet<String> = typed.defs.keys().cloned().collect();
-    defs.extend(input.snapshot.defs.keys().cloned());
-    defs.extend(input.imports.defs.keys().cloned());
+    defs.extend(snapshot.defs.keys().cloned());
+    defs.extend(imports.defs.keys().cloned());
     // A component's declared `params:` ARE the `@param` ref namespace for its
-    // OWN presentational body (dsl §13/§8.1) — already true when the
-    // component is expanded transitively via `::use` (`component_env`
-    // above). Seed the SAME names here so a STANDALONE `lute check` of the
-    // component file itself (which walks as `DocKind::Scene` per the
-    // fragment-shape inference above) resolves its own `@param` refs instead
-    // of false-flagging `E-UNDECLARED-REF`. Guarded to `MetaKind::Component`
-    // only — a normal scene/quest/schema doc's `defs` is untouched. The
-    // parallel `def_types` (E-REF-TYPE) and `def_params` (empty → 0-arity, so
-    // `@p(x)` is E-REF-ARITY, matching `component_env`) tables are seeded from
-    // `params:` under the SAME guard below — keep all three in sync.
+    // OWN presentational body (dsl §13/§8.1), so a STANDALONE `lute check` of
+    // the component file resolves its own `@param` refs. Guarded to
+    // `MetaKind::Component`; the `def_types`/`def_params` tables are seeded
+    // under the SAME guard below — keep all three in sync.
+    let component_params: &[lute_manifest::schema::DefParam] =
+        if meta_kind == crate::meta::MetaKind::Component {
+            &typed.params
+        } else {
+            &[]
+        };
     if meta_kind == crate::meta::MetaKind::Component {
         defs.extend(typed.params.iter().map(|p| p.name.clone()));
         // Round-5 T3-23: a literal param `default:` is judged once, here, at
@@ -629,156 +1208,65 @@ pub fn fold_env(
     }
 
     // dsl 0.21.0 §7b: settle every imported and inline def's produced type
-    // against the FOLDED schema. The meta parse already lifted each def to
-    // its long form (the shorthand `name: "<CEL>"` included), so the body is
-    // always at `cel:`; here an absent `type:` is inferred from that body and
-    // written back, and an explicit one must agree with it. Every table below
-    // then reads the settled values, so a shorthand def has a body, a type and
-    // a (0-arity) params entry exactly like a long-form one.
-    // Round-5 T3-14: in dependency order, so a def whose body calls another
-    // def takes that def's type.
-    let mut imported_defs = input.imports.defs.clone();
-    let (imported_def_msgs, inline_def_msgs) = crate::def_decl::settle_defs(
-        &mut imported_defs,
-        &mut typed.defs,
-        input
-            .snapshot
-            .defs
-            .iter()
-            .map(|(n, d)| (n.clone(), d.ty.clone())),
-        &schema,
-    );
-    for (name, msg) in imported_def_msgs {
-        // Prerelease N5: reported at the def's schema line and folded
-        // across importers (dsl 0.26.0 §2.7), not at every importer's 1:1.
-        fold_diags.push(crate::rel_schema::at_origin(
-            Diagnostic {
-                code: crate::def_decl::E_DEF_DECL.to_string(),
-                severity: Severity::Error,
-                message: msg,
-                evidence: None,
-                span: doc.meta.span,
-                layer: Layer::Content,
-                fixits: Vec::new(),
-                provenance: None,
-                covered: Vec::new(),
-                related: Vec::new(),
-            },
-            input.imports.rel.origins.defs.get(&name),
-        ));
-    }
-    for (name, msg) in inline_def_msgs {
-        fold_diags.push(Diagnostic {
-            code: crate::def_decl::E_DEF_DECL.to_string(),
-            severity: Severity::Error,
-            message: msg,
-            evidence: None,
-            span: crate::meta::meta_key_span(&doc.meta, &name),
-            layer: Layer::Content,
-            fixits: Vec::new(),
-            provenance: None,
-            covered: Vec::new(),
-            related: Vec::new(),
-        });
-    }
-
-    // The def name -> produced `Type` table the `@ref` type-context check
-    // (`E-REF-TYPE`, dsl §8) resolves against, merged from two sources.
-    let mut def_types: std::collections::BTreeMap<String, lute_manifest::types::Type> =
-        std::collections::BTreeMap::new();
-    // Plugin defs are already typed.
-    for (name, d) in &input.snapshot.defs {
-        def_types.insert(name.clone(), d.ty.clone());
-    }
-    // Imported schema defs (untyped YAML, `type:` settled above). Imported
-    // overrides plugin; inline (below) overrides imported.
-    for (name, v) in &imported_defs {
-        if let Some(t) = v
-            .get("type")
-            .filter(|_| !crate::def_decl::is_invalid(v))
-            .cloned()
-            .and_then(|tv| yaml_serde::from_value::<lute_manifest::types::Type>(tv).ok())
-        {
-            def_types.insert(name.clone(), t);
+    // against the FOLDED schema, in dependency order (Round-5 T3-14): an
+    // absent `type:` is inferred from the body and written back, an
+    // explicit one must agree with it. The vocab's settled imported defs
+    // stand while this document declares no def and no path one of them
+    // reads (spec 0.49.0 §9.2 R3); otherwise all of them settle again.
+    let base_defs =
+        shared.filter(|b| typed.defs.is_empty() && !touches_def_reads(&schema, &b.def_reads));
+    let (imported_defs, def_tables) = match base_defs {
+        Some(b) => {
+            fold_diags.extend(anchored(&b.def_diags, at));
+            let tables = if component_params.is_empty() {
+                (
+                    b.def_types.clone(),
+                    b.def_params.clone(),
+                    b.def_bodies.clone(),
+                )
+            } else {
+                def_tables(
+                    snapshot,
+                    std::iter::once(&*b.imported_defs),
+                    component_params,
+                )
+            };
+            (Arc::clone(&b.imported_defs), tables)
         }
-    }
-    // Inline frontmatter defs are stored untyped; extract the settled `type:`
-    // and deserialize it via the same serde path `Type` uses. A def whose type
-    // could not be settled has no entry (never a panic); `E-DEF-DECL` names it.
-    // Inline overrides plugin (scene-local).
-    for (name, v) in &typed.defs {
-        if let Some(t) = v
-            .get("type")
-            .filter(|_| !crate::def_decl::is_invalid(v))
-            .cloned()
-            .and_then(|tv| yaml_serde::from_value::<lute_manifest::types::Type>(tv).ok())
-        {
-            def_types.insert(name.clone(), t);
+        None => {
+            let mut imported_defs = imports.defs.clone();
+            let (imported_def_msgs, inline_def_msgs) = crate::def_decl::settle_defs(
+                &mut imported_defs,
+                &mut typed.defs,
+                snapshot.defs.iter().map(|(n, d)| (n.clone(), d.ty.clone())),
+                &schema,
+            );
+            for (name, msg) in imported_def_msgs {
+                fold_diags.push(imported_def_diag(imports, &name, msg, at));
+            }
+            for (name, msg) in inline_def_msgs {
+                fold_diags.push(Diagnostic {
+                    code: crate::def_decl::E_DEF_DECL.to_string(),
+                    severity: Severity::Error,
+                    message: msg,
+                    evidence: None,
+                    span: crate::meta::meta_key_span(&doc.meta, &name),
+                    layer: Layer::Content,
+                    fixits: Vec::new(),
+                    provenance: None,
+                    covered: Vec::new(),
+                    related: Vec::new(),
+                });
+            }
+            let tables = def_tables(
+                snapshot,
+                [&imported_defs, &typed.defs].into_iter(),
+                component_params,
+            );
+            (Arc::new(imported_defs), tables)
         }
-    }
-    // Same seed for the type table (drives `E-REF-TYPE`, dsl §8): a
-    // standalone component body's `@param` use in a typed attr slot must
-    // still be type-checked, not merely resolved.
-    if meta_kind == crate::meta::MetaKind::Component {
-        for param in &typed.params {
-            def_types.insert(param.name.clone(), param.ty.clone());
-        }
-    }
-
-    // Parallel table of ORDERED params per def (dsl §8.1), for `@name(args)`
-    // arity/arg-type checks. Same three sources & precedence as `def_types`
-    // (plugin < imported < inline).
-    let mut def_params: std::collections::BTreeMap<
-        String,
-        Vec<(String, lute_manifest::types::Type)>,
-    > = std::collections::BTreeMap::new();
-    // Plugin defs carry ordered `Vec<DefParam>` directly.
-    for (name, d) in &input.snapshot.defs {
-        def_params.insert(
-            name.clone(),
-            d.params
-                .iter()
-                .map(|p| (p.name.clone(), p.ty.clone()))
-                .collect(),
-        );
-    }
-    // Imported schema defs (untyped YAML): extract `params:` in order. Imported
-    // overrides plugin; inline (below) overrides imported.
-    for (name, v) in &imported_defs {
-        def_params.insert(name.clone(), params_from_yaml(v));
-    }
-    // Inline frontmatter defs (untyped YAML): same extraction; scene-local override.
-    for (name, v) in &typed.defs {
-        def_params.insert(name.clone(), params_from_yaml(v));
-    }
-    // A component's declared params are 0-ARITY value refs in its own body:
-    // a bare `@p` is well-formed, `@p(x)` is `E-REF-ARITY` — the SAME empty
-    // entries `component_env` seeds for the transitive `::use` path, so a
-    // STANDALONE check of the component file agrees with the transitive one on
-    // arity (final-review parity fix). Guarded to `MetaKind::Component`.
-    if meta_kind == crate::meta::MetaKind::Component {
-        for param in &typed.params {
-            def_params.insert(param.name.clone(), Vec::new());
-        }
-    }
-
-    // def name -> raw CEL body for the D4 expander. Same three sources and the
-    // same precedence as `def_types`: plugin < imported < inline.
-    let mut def_bodies: std::collections::BTreeMap<String, String> =
-        std::collections::BTreeMap::new();
-    for (name, d) in &input.snapshot.defs {
-        def_bodies.insert(name.clone(), d.cel.clone());
-    }
-    for (name, v) in &imported_defs {
-        if let Some(c) = v.get("cel").and_then(|c| c.as_str()) {
-            def_bodies.insert(name.clone(), c.to_string());
-        }
-    }
-    for (name, v) in &typed.defs {
-        if let Some(c) = v.get("cel").and_then(|c| c.as_str()) {
-            def_bodies.insert(name.clone(), c.to_string());
-        }
-    }
+    };
+    let (def_types, def_params, def_bodies) = def_tables;
     // dsl 0.26.0 §5, G-7: a read of `occasion.target` — direct or through a
     // def — outside the document's kind beats. A component without one is
     // judged where a use expands its beats.
@@ -790,21 +1278,32 @@ pub fn fold_env(
         ));
     }
     // dsl 0.24 T1-1: expand `@def`s in rule guards against the merged def
-    // table while `vocab` is still a local, so the guard checks, the compiled
-    // IR and trace's evaluator all read the expanded body.
-    fold_diags.extend(crate::cel_resolve::expand_rule_guards(
-        &mut vocab,
-        &crate::cel_expand::DefTable {
-            bodies: &def_bodies,
-            params: &def_params,
-        },
-    ));
+    // table, so the guard checks, the compiled IR and trace's evaluator all
+    // read the expanded body. The vocab's guards are expanded with the base
+    // def table: kept while this document's table is the same.
+    let deftable = crate::cel_expand::DefTable {
+        bodies: &def_bodies,
+        params: &def_params,
+    };
+    match rel_from_base {
+        Some(b) if !b.guards_use_defs || (typed.defs.is_empty() && component_params.is_empty()) => {
+            fold_diags.extend(anchored(&b.guard_diags, at));
+        }
+        Some(b) => {
+            let own = Arc::make_mut(&mut vocab);
+            own.rules.clone_from(&b.pre_guard_rules);
+            fold_diags.extend(crate::cel_resolve::expand_rule_guards(own, &deftable));
+        }
+        None => fold_diags.extend(crate::cel_resolve::expand_rule_guards(
+            Arc::make_mut(&mut vocab),
+            &deftable,
+        )),
+    }
 
     // dsl 0.27.0 §4: the project's `terminal:` — its imports' and, for a
     // schema document, its own; the game is over when any of them holds.
     // It persists when every declaration says its ending outlives runs.
-    let terminal_decls: Vec<(&str, bool)> = input
-        .imports
+    let terminal_decls: Vec<(&str, bool)> = imports
         .terminal
         .iter()
         .map(|t| (t.when.as_str(), t.persists.is_yes()))
@@ -819,108 +1318,130 @@ pub fn fold_env(
     let terminal_persists = terminal.is_some() && terminal_decls.iter().all(|(_, p)| *p);
     // dsl 0.28.0 (T3-45): a declared path that is also another's prefix — at
     // this document's own `state:` key, else at the schema that declares it.
-    let declared = |path: &str| {
-        typed.state.decls.contains_key(path) || input.imports.rel.origins.state.contains_key(path)
+    // The vocab's reports stand for every value path neither declared by
+    // this document nor above one of its paths.
+    let origins = &imports.rel.origins.state;
+    let declared = |path: &str| typed.state.decls.contains_key(path) || origins.contains_key(path);
+    let locate_value = |path: &str, message: &str| {
+        if typed.state.decls.contains_key(path) {
+            let span = crate::meta::meta_path_span(&doc.meta, &["state", path]);
+            Some(state_decl_report("E-STATE-DECL", message, span))
+        } else {
+            let origin = origins.get(path)?;
+            let d = state_decl_report("E-STATE-DECL", message, at);
+            Some(crate::rel_schema::at_origin(d, Some(&origin)))
+        }
     };
-    let results_under = |value: &str| {
-        input
-            .snapshot
-            .directives
-            .iter()
-            .filter(|(_, d)| {
-                d.state.iter().flat_map(|s| &s.declares).any(|slot| {
-                    let mut base = slot.scope.clone();
-                    for seg in &slot.path {
-                        let lute_manifest::types::PathSegment::Literal(s) = seg else {
-                            break;
-                        };
-                        base = format!("{base}.{s}");
+    let site = crate::state_decls::ValuePrefixSite {
+        declared: &declared,
+        results_under: &|value| results_under(snapshot, value),
+        locate: &locate_value,
+    };
+    // A path the document writes in its `state:` is placed at its own key
+    // even when the merge rejected it (a `uses:`-peer redeclaration), so the
+    // reports touching it are rebuilt whether or not it is in the overlay.
+    let authored = || {
+        schema
+            .overlay()
+            .decls
+            .keys()
+            .chain(typed.state.decls.keys())
+    };
+    match shared {
+        Some(b) => {
+            let mut affected: std::collections::BTreeSet<String> =
+                std::collections::BTreeSet::new();
+            for path in authored() {
+                let mut end = path.len();
+                while let Some(dot) = path[..end].rfind('.') {
+                    end = dot;
+                    if schema.contains(&path[..end]) {
+                        affected.insert(path[..end].to_string());
                     }
-                    base == value
-                        || base.starts_with(&format!("{value}."))
-                        || value.starts_with(&format!("{base}."))
-                })
-            })
-            .map(|(tag, _)| tag.clone())
-            .collect()
-    };
-    fold_diags.extend(crate::state_decls::check_value_prefix(
-        &schema,
-        &declared,
-        &results_under,
-        &|path, message| {
-            let d = |span| Diagnostic {
-                code: "E-STATE-DECL".to_string(),
-                severity: Severity::Error,
-                message: message.to_string(),
-                evidence: None,
-                span,
-                layer: Layer::Content,
-                fixits: Vec::new(),
-                provenance: None,
-                covered: Vec::new(),
-                related: Vec::new(),
-            };
-            if typed.state.decls.contains_key(path) {
-                Some(d(crate::meta::meta_path_span(&doc.meta, &["state", path])))
-            } else {
-                let origin = input.imports.rel.origins.state.get(path)?;
-                Some(crate::rel_schema::at_origin(d(doc.meta.span), Some(origin)))
+                }
+                affected.insert(path.into_owned());
             }
-        },
-    ));
+            let mut out: std::collections::BTreeMap<&str, Diagnostic> = b
+                .value_prefix
+                .iter()
+                .filter(|(v, _)| !affected.contains(v.as_str()))
+                .map(|(v, d)| (v.as_str(), d.clone()))
+                .collect();
+            for value in &affected {
+                if let Some(d) = crate::state_decls::value_prefix_at(&schema, value, &site) {
+                    out.insert(value, d);
+                }
+            }
+            fold_diags.extend(out.into_values());
+        }
+        None => fold_diags.extend(crate::state_decls::check_value_prefix(&schema, &site)),
+    }
     // A `{ domain: K }` / `{ entity: K }` path naming no declared K, or with a
     // `default:` outside K — at this document's key, else at the schema's.
-    fold_diags.extend(crate::state_decls::check_domain_types(
-        &schema,
-        &domains,
-        &vocab.indexed_state,
-        &|path, key, message, code| {
-            let d = |span| Diagnostic {
-                code: code.to_string(),
-                severity: Severity::Error,
-                message: message.to_string(),
-                evidence: None,
-                span,
-                layer: Layer::Content,
-                fixits: Vec::new(),
-                provenance: None,
-                covered: Vec::new(),
-                related: Vec::new(),
-            };
-            let own_family = typed.state_index.contains_key(path)
-                || typed.per_pending.iter().any(|p| p.path == path);
-            if typed.state.decls.contains_key(path) || own_family {
-                Some(d(crate::meta::meta_path_span(
-                    &doc.meta,
-                    &["state", path, key],
-                )))
-            } else {
-                let origins = &input.imports.rel.origins.state;
-                let member = format!("{path}.");
-                let origin = origins.get(path).or_else(|| {
-                    origins
-                        .iter()
-                        .find(|(p, _)| p.starts_with(&member))
-                        .map(|(_, o)| o)
-                })?;
-                Some(crate::rel_schema::at_origin(d(doc.meta.span), Some(origin)))
+    let locate_domain = |path: &str, key: &str, message: &str, code: &str| {
+        let own_family = typed.state_index.contains_key(path)
+            || typed.per_pending.iter().any(|p| p.path == path);
+        if typed.state.decls.contains_key(path) || own_family {
+            let span = crate::meta::meta_path_span(&doc.meta, &["state", path, key]);
+            Some(state_decl_report(code, message, span))
+        } else {
+            let origin = origins.at_or_under(path)?;
+            let d = state_decl_report(code, message, at);
+            Some(crate::rel_schema::at_origin(d, Some(&origin)))
+        }
+    };
+    let families_shared = typed.state_index.is_empty() && typed.per_pending.is_empty();
+    match shared.filter(|b| families_shared && vocab.indexed_state == b.rel.indexed_state) {
+        Some(b) => {
+            let families = &vocab.indexed_state;
+            let at_of = |p: &str| crate::state_decls::domain_type_at(p, families).to_string();
+            let mut affected: std::collections::BTreeSet<String> =
+                authored().map(|p| at_of(&p)).collect();
+            for name in &changed_domains {
+                affected.extend(b.paths_typed_by(name).map(|p| at_of(&p)));
             }
-        },
-    ));
+            if !changed_domains.is_empty() {
+                // A report names the declared domains in its hint.
+                affected.extend(b.domain_types.keys().cloned());
+            }
+            let mut out: std::collections::BTreeMap<String, Diagnostic> = b
+                .domain_types
+                .iter()
+                .filter(|(a, _)| !affected.contains(*a))
+                .map(|(_, (first, d))| (first.clone(), d.clone()))
+                .collect();
+            for a in &affected {
+                if let Some((first, d)) = crate::state_decls::domain_type_report_at(
+                    &schema,
+                    a,
+                    &domains,
+                    families,
+                    &locate_domain,
+                ) {
+                    out.insert(first, d);
+                }
+            }
+            fold_diags.extend(out.into_values());
+        }
+        None => fold_diags.extend(crate::state_decls::check_domain_types(
+            &schema,
+            &domains,
+            &vocab.indexed_state,
+            &locate_domain,
+        )),
+    }
     let env = Env {
         mode: input.mode,
         state: schema,
         defs,
         def_types,
         def_params,
-        rel_vocab: std::sync::Arc::new(vocab),
-        // 0.3.0 T11 fix: the SAME merged domains value moved into
-        // `FoldedEnv.domains` below — cloned (not moved) here so
-        // `check_fact_queries` (cel_resolve.rs) can validate a query
-        // pattern's domain-typed arg via `ctx.env.domains`, matching what
-        // `check_assert`/`check_retract`/`build_rel_vocab` already receive.
-        domains: domains.clone(),
+        rel_vocab: vocab,
+        // 0.3.0 T11 fix: the SAME merged domains value as
+        // `FoldedEnv.domains` below, so `check_fact_queries` validates a
+        // query pattern's domain-typed arg against what
+        // `check_assert`/`check_retract`/`build_rel_vocab` receive.
+        domains: Arc::clone(&domains),
         clock,
         terminal,
         terminal_persists,
@@ -928,32 +1449,21 @@ pub fn fold_env(
         occasion_scopes,
     };
     let member_envs = member_envs(&env);
-    let declared_cast = crate::cast::declared_cast(&input.snapshot, &input.imports, &typed.cast);
+    let declared_cast = crate::cast::declared_cast(snapshot, imports, &typed.cast);
     let use_lines = use_speaker_lines(doc, &input.components);
     (
         FoldedEnv {
             typed,
             env,
             def_bodies,
-            host_defs: input
-                .snapshot
-                .defs
-                .values()
-                .filter(|d| d.host)
-                .map(|d| d.name.clone())
-                .chain(
-                    imported_defs
-                        .iter()
-                        .filter(|(_, v)| crate::def_decl::is_host(v))
-                        .map(|(n, _)| n.clone()),
-                )
-                .collect(),
+            host_defs: host_defs(snapshot, &imported_defs),
             doc_kind,
             domains,
-            occasions: input.snapshot.occasions.clone(),
+            occasions: snapshot.occasions.clone(),
             cast: declared_cast,
             use_lines,
             member_envs,
+            snapshot: Arc::clone(&input.base.snapshot),
         },
         fold_diags,
         state_merge_diags,
@@ -983,6 +1493,7 @@ fn member_envs(env: &Env) -> Vec<(Vec<String>, Env)> {
             sorted.dedup();
             if let Some(decl) = scoped
                 .state
+                .overlay_mut()
                 .decls
                 .get_mut(lute_manifest::semantics::beats::OCCASION_TARGET)
             {

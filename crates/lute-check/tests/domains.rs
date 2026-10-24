@@ -234,7 +234,7 @@ fn merge_domains_flags_clash_with_snapshot_domain() {
 /// End-to-end through the real check pipeline: a scene `uses:` a schema
 /// declaring the `action` slot (`ACTION_SCHEMA`) checks clean (no
 /// `E-META-UNKNOWN-KEY`/`E-USES-PARSE` from the new frontmatter keys), and
-/// the same `input.snapshot`/`input.imports` the pipeline consumed, fed to
+/// the same `input.snapshot()`/`input.imports()` the pipeline consumed, fed to
 /// `merge_domains`, exposes `action` in the merged vocabulary.
 #[test]
 fn scene_uses_enum_schema_checks_clean_and_domain_is_merged() {
@@ -248,23 +248,25 @@ fn scene_uses_enum_schema_checks_clean_and_domain_is_merged() {
         imports.diags
     );
     let snapshot = load_core_snapshot();
-    let input = CheckInput {
-        text: text.into(),
-        uri: "t".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: imports.clone(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.into(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            imports.clone(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let result = check(&input);
     assert!(
         result.ok,
         "expected a clean check, got: {:?}",
         result.diagnostics
     );
-    let (merged, diags) = merge_domains(&input.snapshot, &imports, no_inline(), zero_span());
+    let (merged, diags) = merge_domains(input.snapshot(), &imports, no_inline(), zero_span());
     assert!(diags.is_empty());
     assert_eq!(
         merged.get("action").map(|d| d.members.clone()),
@@ -702,16 +704,18 @@ fn scene_codes(dir: &Path, text: &str, snapshot: CapabilitySnapshot) -> Vec<Stri
     let (doc, _) = lute_syntax::parse(text);
     let (meta, _) = lute_check::parse_meta(&doc.meta, &snapshot);
     let imports = resolve_imports(dir, &meta.uses, &meta.extends, doc.meta.span);
-    let input = CheckInput {
-        text: text.into(),
-        uri: "t".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.into(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let mut codes: Vec<String> = check(&input)
         .diagnostics
         .iter()

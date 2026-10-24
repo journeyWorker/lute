@@ -56,9 +56,10 @@ fn constraints_json_uses_named_field() {
     assert_eq!(output.status.code(), Some(0));
     let value = json(&output);
     assert_eq!(value["command"], "constraints");
-    assert_eq!(value["schemaVersion"], "0.43.0.constraints");
+    assert_eq!(value["schemaVersion"], "0.49.0.constraints");
     assert_eq!(value["ok"], true);
     assert!(value["constraints"].is_array());
+    assert!(value["diagnostics"].is_array());
 }
 
 #[test]

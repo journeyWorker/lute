@@ -21,7 +21,7 @@ use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
 use crate::config::{deep_merge, LintConfig, RuleOverride};
 use crate::eval::{eval, render_message, Env, Value};
 use crate::metrics::{
-    AxisStats, DirectiveRow, DocTables, GroupRow, LineRow, ProjectRow, SceneRow, SectionRow,
+    AttrOwner, AttrRow, AxisStats, DocTables, GroupRow, LineRow, ProjectRow, SceneRow, SectionRow,
     SpeakerRow, TopStats,
 };
 use crate::model::{
@@ -341,6 +341,12 @@ fn resolve_core(
         }
         None => default_options,
     };
+    if let CoreKind::Rust(RustRuleId::AssetExists, _) = entry.kind {
+        if let Err(msg) = check_asset_selectors(entry.id, &options) {
+            diags.push(config_diag(msg, config_span));
+            return None;
+        }
+    }
     let kind = match entry.kind {
         CoreKind::Data(_) => RuleKind::Data { when, message },
         CoreKind::Rust(rid, _) => RuleKind::Rust(rid),
@@ -459,7 +465,7 @@ fn config_diag(message: String, span: Span) -> Diagnostic {
 /// plugin/custom `when` and every core rule read the SAME bindings.
 pub struct DocContext<'a> {
     pub tables: &'a DocTables,
-    pub directives: &'a [DirectiveRow],
+    pub attrs: &'a [AttrRow],
     pub providers: &'a lute_manifest::provider::ProviderSet,
 }
 
@@ -816,18 +822,97 @@ fn eval_variant_composition(
     out
 }
 
+/// One `asset-exists` `options.providers` key (dsl 0.49.0 §7.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AssetSelector<'a> {
+    /// `<tag>`: `::<tag>`'s `assetId` (the 0.48.1 meaning).
+    Tag(&'a str),
+    /// `<tag>.<attr>`: that directive's attribute.
+    TagAttr(&'a str, &'a str),
+    /// `@<attr>`: that attribute on every content line.
+    Line(&'a str),
+}
+
+impl<'a> AssetSelector<'a> {
+    /// The selector `key` spells, or `None` for any other shape. Each part
+    /// is a tag or attribute name: ASCII letters, digits, `_` or `-`.
+    fn parse(key: &'a str) -> Option<Self> {
+        let part = |s: &str| {
+            !s.is_empty()
+                && s.bytes()
+                    .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        };
+        if let Some(attr) = key.strip_prefix('@') {
+            return part(attr).then_some(Self::Line(attr));
+        }
+        match key.split_once('.') {
+            Some((tag, attr)) => (part(tag) && part(attr)).then_some(Self::TagAttr(tag, attr)),
+            None => part(key).then_some(Self::Tag(key)),
+        }
+    }
+
+    fn selects(self, row: &AttrRow) -> bool {
+        match (self, &row.owner) {
+            (Self::Tag(tag), AttrOwner::Directive(t)) => t == tag && row.key == "assetId",
+            (Self::TagAttr(tag, attr), AttrOwner::Directive(t)) => t == tag && row.key == attr,
+            (Self::Line(attr), AttrOwner::Line(_)) => row.key == attr,
+            _ => false,
+        }
+    }
+
+    /// Where a finding says the id was written.
+    fn place(self, row: &AttrRow) -> String {
+        match (self, &row.owner) {
+            (Self::Tag(tag), _) => format!("`::{tag}`"),
+            (Self::TagAttr(tag, attr), _) => format!("`::{tag}` attribute `{attr}`"),
+            (Self::Line(attr), AttrOwner::Line(speaker)) if !speaker.is_empty() => {
+                format!("`@{speaker}` attribute `{attr}`")
+            }
+            (Self::Line(attr), _) => format!("narration attribute `{attr}`"),
+        }
+    }
+}
+
+/// `E-LINT-CONFIG` text for an `asset-exists` `options.providers` key that
+/// is no selector, or `Ok` when every key is one.
+fn check_asset_selectors(id: &str, options: &yaml_serde::Mapping) -> Result<(), String> {
+    let Some(yaml_serde::Value::Mapping(providers)) =
+        options.get(yaml_serde::Value::from("providers"))
+    else {
+        return Ok(());
+    };
+    for key in providers.keys() {
+        if key.as_str().and_then(AssetSelector::parse).is_none() {
+            let shown = key
+                .as_str()
+                .map_or_else(|| format!("{key:?}"), ToString::to_string);
+            return Err(format!(
+                "rule `{id}`: `providers` key `{shown}` is not a selector — write `<tag>` \
+                 (that directive's `assetId`), `<tag>.<attr>` (that directive's attribute) or \
+                 `@<attr>` (that attribute on every content line)"
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn eval_asset_exists(
     rule: &ResolvedRule,
     severity: Severity,
     ctx: &DocContext<'_>,
 ) -> Vec<Finding> {
     let opts = &rule.options;
-    // Directive-tag → provider-id map.
-    let providers_map = match opts.get(yaml_serde::Value::from("providers")) {
-        Some(yaml_serde::Value::Mapping(m)) => m.clone(),
-        _ => return Vec::new(),
-    };
-    if providers_map.is_empty() {
+    // Selector → provider id; a key that is no selector was refused when
+    // the rule resolved.
+    let selectors: Vec<(AssetSelector<'_>, &str)> =
+        match opts.get(yaml_serde::Value::from("providers")) {
+            Some(yaml_serde::Value::Mapping(m)) => m
+                .iter()
+                .filter_map(|(k, v)| Some((AssetSelector::parse(k.as_str()?)?, v.as_str()?)))
+                .collect(),
+            _ => return Vec::new(),
+        };
+    if selectors.is_empty() {
         return Vec::new();
     }
     // Sentinel values that skip validation.
@@ -844,50 +929,33 @@ fn eval_asset_exists(
     let code = diagnostic_code(&rule.id);
 
     let mut out = Vec::new();
-    for d in ctx.directives {
-        let Some(provider_val) = providers_map.get(yaml_serde::Value::from(d.tag.as_str())) else {
-            continue;
-        };
-        let Some(provider) = provider_val.as_str() else {
-            continue;
-        };
-        let Some(asset_id) = &d.assetId else { continue };
-        // `@ref` values are checked by the semantic layer, not lint.
-        if !d.asset_is_static {
+    // Only a quoted string names an id: `@ref` values are checked by the
+    // semantic layer, and a bare flag (`@mira{vo}`) names nothing.
+    for row in ctx.attrs.iter().filter(|row| row.is_static) {
+        if sentinels.contains(&row.value.to_ascii_lowercase()) {
             continue;
         }
-        if sentinels.contains(&asset_id.to_ascii_lowercase()) {
-            continue;
-        }
-        match ctx.providers.contains(provider, asset_id) {
-            lute_manifest::provider::IdStatus::Fresh => {}
-            lute_manifest::provider::IdStatus::Absent => {
-                out.push(Finding {
-                    code: code.clone(),
-                    severity,
-                    message: format!(
-                        "asset id `{}` not in provider `{}` (`::{}`)",
-                        asset_id, provider, d.tag
-                    ),
-                    span: d.assetId_span,
-                    related: Vec::new(),
-                    layer: None,
-                });
-            }
-            lute_manifest::provider::IdStatus::Stale => {
-                out.push(Finding {
-                    code: code.clone(),
-                    // Downgrade to Warning per spec §7.
-                    severity: Severity::Warning,
-                    message: format!(
-                        "asset id `{}` not in provider `{}` (`::{}`) — catalog is stale",
-                        asset_id, provider, d.tag
-                    ),
-                    span: d.assetId_span,
-                    related: Vec::new(),
-                    layer: None,
-                });
-            }
+        for &(selector, provider) in selectors.iter().filter(|(s, _)| s.selects(row)) {
+            let (severity, stale) = match ctx.providers.contains(provider, &row.value) {
+                lute_manifest::provider::IdStatus::Fresh => continue,
+                lute_manifest::provider::IdStatus::Absent => (severity, ""),
+                // Downgrade to Warning per spec §7.
+                lute_manifest::provider::IdStatus::Stale => {
+                    (Severity::Warning, " — catalog is stale")
+                }
+            };
+            out.push(Finding {
+                code: code.clone(),
+                severity,
+                message: format!(
+                    "asset id `{}` not in provider `{provider}` ({}){stale}",
+                    row.value,
+                    selector.place(row)
+                ),
+                span: row.span,
+                related: Vec::new(),
+                layer: None,
+            });
         }
     }
     out

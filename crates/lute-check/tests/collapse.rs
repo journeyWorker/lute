@@ -23,16 +23,18 @@ use std::path::Path;
 const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n";
 
 fn diagnose(text: &str) -> Vec<Diagnostic> {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "collapse".into(),
-        snapshot: load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "collapse".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input).diagnostics
 }
 
@@ -160,16 +162,18 @@ fn missing_uses_suppresses_dependents() {
     let dir = lute_scratch::ScratchDir::new();
     let imports = resolve_imports(&dir, &["nonexistent.yaml".to_string()], &[], zero_span());
     let t = format!("{HDR}---\n## Shot 1.\n@marina: {{{{run.x}}}}\n");
-    let input = CheckInput {
-        text: t,
-        uri: "collapse".into(),
-        snapshot: load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        t,
+        "collapse".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            load_core_snapshot(),
+            ProviderSet::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let diags = check(&input).diagnostics;
     let errors: Vec<&Diagnostic> = diags
         .iter()
@@ -206,16 +210,18 @@ fn component_parse_suppresses_undeclared_component() {
         &lute_manifest::snapshot::CapabilitySnapshot::default(),
     );
     let components = resolve_components(&dir, &meta0.components, doc.meta.span);
-    let input = CheckInput {
-        text: scene,
-        uri: "collapse".into(),
-        snapshot: load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        scene,
+        "collapse".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
     let diags = check(&input).diagnostics;
     let errors: Vec<&Diagnostic> = diags
         .iter()

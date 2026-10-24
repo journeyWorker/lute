@@ -17,11 +17,6 @@ import sys
 from pathlib import Path
 from typing import Any, NoReturn
 
-TIERS = (
-    ("tiny", "ledger"),
-    ("medium", "drowned-crown"),
-    ("large", "monster-league"),
-)
 PHASES = (
     "cold-load",
     "project-resolution",
@@ -30,6 +25,15 @@ PHASES = (
     "playback",
     "play-assembly",
     "play-replay",
+)
+# (tier, project, phases). `vocab` is the #173 project that lute-bench
+# generates into $TMPDIR (spec 0.49.0 section 9.8); it has no scripts, so it
+# measures neither playback phase.
+TIERS = (
+    ("tiny", "ledger", PHASES),
+    ("medium", "drowned-crown", PHASES),
+    ("large", "monster-league", PHASES),
+    ("vocab", "vocab", ("cold-load", "project-resolution", "analysis", "serialization", "play-assembly")),
 )
 SCHEMA = "0.36.0.bench"
 
@@ -70,6 +74,19 @@ def supports_phase(binary: Path, root: Path, phase: str) -> bool:
         text=True,
     )
     return not (completed.returncode == 2 and f"invalid phase `{phase}`" in completed.stderr)
+
+
+def supports_tier(binary: Path, root: Path, tier: str) -> bool:
+    """Whether `binary` knows `tier`. lute-bench validates `--tier` before
+    `--phase`, so an unknown phase probes the tier without running a sample: a
+    binary that predates the tier rejects it with `invalid tier`."""
+    completed = subprocess.run(
+        [str(binary), "--root", str(root), "--tier", tier, "--phase", "tier-probe", "--samples", "1", "--json", "-"],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    return not (completed.returncode == 2 and f"invalid tier `{tier}`" in completed.stderr)
 
 
 def run_sample(
@@ -180,9 +197,19 @@ def main(arguments: list[str]) -> int:
     for phase in PHASES:
         if phase not in base_phases:
             print(f"bench-ab: base predates phase {phase}; head-only samples")
+    # A tier the base predates is skipped on both sides: compare-bench.py
+    # requires both reports to cover the same corpus tiers.
+    tiers = []
+    for tier, project, phases in TIERS:
+        if not supports_tier(options.head, options.head_root, tier):
+            error(f"head does not know tier {tier}")
+        if supports_tier(options.base, options.base_root, tier):
+            tiers.append((tier, project, phases))
+        else:
+            print(f"bench-ab: base predates tier {tier}; skipped")
 
-    for tier, project in TIERS:
-        for phase in PHASES:
+    for tier, project, phases in tiers:
+        for phase in phases:
             for sample in range(options.samples):
                 order = ("base", "head") if sample % 2 == 0 else ("head", "base")
                 for label in order:
@@ -212,7 +239,7 @@ def main(arguments: list[str]) -> int:
         )
     print(
         f"bench-ab: collected {options.samples} samples for "
-        f"{len(TIERS)} tiers x {len(PHASES)} phases (runner={runner})"
+        f"{len(tiers)} tiers x up to {len(PHASES)} phases (runner={runner})"
     )
     return 0
 

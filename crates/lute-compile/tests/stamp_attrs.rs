@@ -1,7 +1,8 @@
 //! plugin §14.1 `stampAttrs` at lowering: a plugin-declared CROSS-CUTTING attr
-//! rides the record's STAMP (`Stamp.extra`), typed by its `AttrDecl`, instead
-//! of the record's own fields — on core directives, plugin directives, and
-//! content lines alike. A document that authors none is byte-identical to one
+//! rides the record's STAMP (`Stamp.stamps`, serialized as the nested
+//! `stamps` object, 0.49.0 §3.1), typed by its `AttrDecl`, instead of the
+//! record's own fields — on core directives, plugin directives, and content
+//! lines alike. A document that authors none is byte-identical to one
 //! compiled against a snapshot that never declared the vocabulary.
 
 use std::collections::BTreeMap;
@@ -56,16 +57,18 @@ fn snap_with_stamp_attrs() -> CapabilitySnapshot {
 }
 
 fn input(text: &str, snapshot: CapabilitySnapshot) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "stamp_attrs".into(),
-        snapshot,
-        providers: Default::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "stamp_attrs".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            Default::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 fn commands(text: &str, snapshot: CapabilitySnapshot) -> Vec<serde_json::Value> {
@@ -89,14 +92,15 @@ fn stamp_attrs_land_in_the_stamp_typed_by_their_decl() {
     let cmds = commands(&text, snap_with_stamp_attrs());
     let sfx = find(&cmds, "sfx");
     assert_eq!(sfx["assetId"], serde_json::json!("x"));
-    // Flattened alongside the reserved stamp keys, NOT nested and NOT a field.
-    assert_eq!(sfx["bonusId"], serde_json::json!("b1"));
+    // Nested under `stamps` (0.49.0 §3.1), NOT a top-level key and NOT a field.
+    assert_eq!(sfx["stamps"]["bonusId"], serde_json::json!("b1"));
+    assert!(sfx.get("bonusId").is_none(), "{sfx:#?}");
     // Typed by the decl: `number` is a JSON number, not the authored string.
-    assert_eq!(sfx["bonusScore"], serde_json::json!(7.0));
+    assert_eq!(sfx["stamps"]["bonusScore"], serde_json::json!(7.0));
     assert!(
-        sfx["bonusScore"].is_number(),
+        sfx["stamps"]["bonusScore"].is_number(),
         "`bonusScore` must be typed by its AttrDecl, got {}",
-        sfx["bonusScore"]
+        sfx["stamps"]["bonusScore"]
     );
 }
 
@@ -105,8 +109,8 @@ fn stamp_attrs_land_on_a_content_line_record() {
     let text = format!("{HDR}@elena{{bonusId=\"b1\" bonusScore=\"7\"}}: text\n");
     let cmds = commands(&text, snap_with_stamp_attrs());
     let line = find(&cmds, "line");
-    assert_eq!(line["bonusId"], serde_json::json!("b1"));
-    assert_eq!(line["bonusScore"], serde_json::json!(7.0));
+    assert_eq!(line["stamps"]["bonusId"], serde_json::json!("b1"));
+    assert_eq!(line["stamps"]["bonusScore"], serde_json::json!(7.0));
 }
 
 #[test]
@@ -121,7 +125,7 @@ fn stamp_attrs_bypass_the_plugin_passthrough_fields_map() {
         p["fields"].get("bonusId").is_none(),
         "a cross-cutting stamp attr must not also appear in `fields`: {p:#?}"
     );
-    assert_eq!(p["bonusId"], serde_json::json!("b1"));
+    assert_eq!(p["stamps"]["bonusId"], serde_json::json!("b1"));
 }
 
 #[test]
@@ -135,7 +139,7 @@ fn unauthored_stamp_attrs_are_never_injected() {
     let cmds = commands(&text, snap);
     let sfx = find(&cmds, "sfx");
     assert!(
-        sfx.get("bonusId").is_none(),
+        sfx.get("bonusId").is_none() && sfx.get("stamps").is_none(),
         "an unauthored stamp attr must never be default-injected: {sfx:#?}"
     );
 }
@@ -170,6 +174,14 @@ fn a_document_authoring_none_is_byte_identical() {
 /// needs the `action`/`anchor` domains and the core snapshot ships no members
 /// (dsl 0.9.0 D-A).
 fn snap_with_plugin_declared_pose() -> CapabilitySnapshot {
+    assembled_snapshot(Vec::new(), &["pose"])
+}
+
+/// A third-party plugin `third.party` exporting `directives` and one `string`
+/// `stampAttrs` entry per name in `stamps`, assembled onto `lute.core`
+/// through [`assemble_snapshot`] (which must admit it), plus the shared test
+/// vocabulary.
+fn assembled_snapshot(directives: Vec<DirectiveDecl>, stamps: &[&str]) -> CapabilitySnapshot {
     let pkg = LoadedPlugin {
         manifest: PluginManifest {
             id: "third.party".into(),
@@ -179,7 +191,7 @@ fn snap_with_plugin_declared_pose() -> CapabilitySnapshot {
             exports: BTreeMap::new(),
             options: Vec::new(),
         },
-        directives: Vec::new(),
+        directives,
         enums: BTreeMap::new(),
         state_shapes: Vec::new(),
         state_templates: Vec::new(),
@@ -189,13 +201,16 @@ fn snap_with_plugin_declared_pose() -> CapabilitySnapshot {
         frontmatter: BTreeMap::new(),
         asset_kinds: Vec::new(),
         events: Vec::new(),
-        // `stampAttrs:\n  - name: pose\n    type: string`
-        stamp_attrs: vec![AttrDecl {
-            name: "pose".to_string(),
-            required: false,
-            ty: Type::Str,
-            default: None,
-        }],
+        // `stampAttrs:\n  - name: <name>\n    type: string`, per name
+        stamp_attrs: stamps
+            .iter()
+            .map(|name| AttrDecl {
+                name: (*name).to_string(),
+                required: false,
+                ty: Type::Str,
+                default: None,
+            })
+            .collect(),
         reward_kinds: Vec::new(),
         occasions: Vec::new(),
         lints: Vec::new(),
@@ -220,13 +235,15 @@ fn snap_with_plugin_declared_pose() -> CapabilitySnapshot {
     let (mut snap, errs) = assemble_snapshot(&active, &installed);
     assert!(
         errs.is_empty(),
-        "a third-party plugin must be free to own `pose` — nothing reserves it: {errs:?}"
+        "a third-party plugin must be free to own {stamps:?} — nothing reserves them: {errs:?}"
     );
-    assert!(
-        snap.stamp_attrs.contains_key("pose"),
-        "the `pose` stampAttr must merge into the snapshot, got {:?}",
-        snap.stamp_attrs.keys().collect::<Vec<_>>()
-    );
+    for name in stamps {
+        assert!(
+            snap.stamp_attrs.contains_key(*name),
+            "the `{name}` stampAttr must merge into the snapshot, got {:?}",
+            snap.stamp_attrs.keys().collect::<Vec<_>>()
+        );
+    }
     for (name, dom) in lute_test_vocab::test_domains() {
         snap.enums.insert(name.clone(), dom.members.clone());
         snap.domains.insert(name, dom);
@@ -245,7 +262,7 @@ fn snap_with_plugin_declared_pose() -> CapabilitySnapshot {
 /// plugin MAY own the name — and *should* be allowed to, because plugin
 /// metadata is the plugin's own business.
 ///
-/// That is only correct because a `stampAttr` lands in `Stamp.extra` and
+/// That is only correct because a `stampAttr` lands in `Stamp.stamps` and
 /// carries NO sprite semantics. Task 7 deleted `lute-check/src/inject.rs`'s
 /// two `pose` reads (`line_is_stateful`, and the `stage_bookkeeping_line`
 /// pose write) as unreachable; a plugin declaring `pose` would have made them
@@ -275,11 +292,11 @@ fn a_plugin_declared_pose_lowers_to_the_stamp_and_never_to_sprite_state() {
     let lines: Vec<&serde_json::Value> = cmds.iter().filter(|c| c["kind"] == "line").collect();
     assert_eq!(lines.len(), 2, "{cmds:#?}");
 
-    // (2) The value rides the record's STAMP, flattened like any other
+    // (2) The value rides the record's STAMP, nested like any other
     // cross-cutting attr — and only on the record that authored it.
-    assert_eq!(lines[0]["pose"], serde_json::json!("crouch"));
+    assert_eq!(lines[0]["stamps"]["pose"], serde_json::json!("crouch"));
     assert!(
-        lines[1].get("pose").is_none(),
+        lines[1].get("stamps").is_none(),
         "the stamp attr must not leak onto the next record: {:#?}",
         lines[1]
     );
@@ -320,5 +337,135 @@ fn a_plugin_declared_pose_lowers_to_the_stamp_and_never_to_sprite_state() {
             .iter()
             .any(|c| c["kind"] == "actor" && c["posReset"] == serde_json::json!(true)),
         "control: the real sprite slot must still inject a `posReset`: {control:#?}"
+    );
+}
+
+/// A JSON value walk that FAILS on a repeated object key — Python's
+/// `json.loads(…, object_pairs_hook=…)` check of 0.49.0 §3.1. `serde_json`'s
+/// own `Value` keeps the last of two equal keys silently, which is exactly
+/// how #155/#156 went unseen.
+struct NoDuplicateKeys;
+
+impl<'de> serde::Deserialize<'de> for NoDuplicateKeys {
+    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+        d.deserialize_any(NoDuplicateKeysVisitor)
+    }
+}
+
+struct NoDuplicateKeysVisitor;
+
+impl<'de> serde::de::Visitor<'de> for NoDuplicateKeysVisitor {
+    type Value = NoDuplicateKeys;
+    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("any JSON value")
+    }
+    fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E> {
+        Ok(NoDuplicateKeys)
+    }
+    fn visit_i64<E>(self, _: i64) -> Result<Self::Value, E> {
+        Ok(NoDuplicateKeys)
+    }
+    fn visit_u64<E>(self, _: u64) -> Result<Self::Value, E> {
+        Ok(NoDuplicateKeys)
+    }
+    fn visit_f64<E>(self, _: f64) -> Result<Self::Value, E> {
+        Ok(NoDuplicateKeys)
+    }
+    fn visit_str<E>(self, _: &str) -> Result<Self::Value, E> {
+        Ok(NoDuplicateKeys)
+    }
+    fn visit_unit<E>(self) -> Result<Self::Value, E> {
+        Ok(NoDuplicateKeys)
+    }
+    fn visit_seq<A: serde::de::SeqAccess<'de>>(self, mut seq: A) -> Result<Self::Value, A::Error> {
+        while seq.next_element::<NoDuplicateKeys>()?.is_some() {}
+        Ok(NoDuplicateKeys)
+    }
+    fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
+        let mut seen = std::collections::BTreeSet::new();
+        while let Some(key) = map.next_key::<String>()? {
+            if !seen.insert(key.clone()) {
+                return Err(serde::de::Error::custom(format!("duplicate key `{key}`")));
+            }
+            map.next_value::<NoDuplicateKeys>()?;
+        }
+        Ok(NoDuplicateKeys)
+    }
+}
+
+/// The compiled artifact as `lute compile` writes it, checked for duplicate
+/// keys, then parsed.
+fn strict_commands(text: &str, snapshot: CapabilitySnapshot) -> Vec<serde_json::Value> {
+    let artifact = compile(&input(text, snapshot)).expect("compiles clean");
+    let json = serde_json::to_string(&artifact).expect("artifact serializes");
+    if let Err(e) = serde_json::from_str::<NoDuplicateKeys>(&json) {
+        panic!("the compiled JSON repeats a key: {e}\n{json}");
+    }
+    let value: serde_json::Value = serde_json::from_str(&json).expect("artifact parses");
+    value["commands"]
+        .as_array()
+        .expect("commands array")
+        .clone()
+}
+
+/// #155: a plugin stamp named like its carrier's own key (`tag` on a
+/// `plugin` record, `kind`/`position` on any record) no longer writes that
+/// key twice: the record keeps its key and the stamp sits under `stamps`
+/// (0.49.0 §3.1).
+#[test]
+fn a_stamp_named_like_a_record_key_nests_instead_of_repeating_it() {
+    let signal = DirectiveDecl {
+        name: "signal".to_string(),
+        layer: None,
+        attrs: vec![AttrDecl {
+            name: "value".to_string(),
+            required: false,
+            ty: Type::Str,
+            default: None,
+        }],
+        semantics: Vec::new(),
+        state: None,
+        effects: None,
+        bridge: None,
+        lower: Lowering::Passthrough,
+    };
+    let snap = assembled_snapshot(vec![signal], &["tag", "kind", "position"]);
+    let text = format!(
+        "{HDR}::signal{{value=\"puzzle\" tag=\"warmup\"}}\n\
+         ::sfx{{assetId=\"x\" kind=\"loud\" position=\"left\"}}\n\
+         @narrator: hi\n"
+    );
+    let cmds = strict_commands(&text, snap);
+    let plugin = find(&cmds, "plugin");
+    assert_eq!(plugin["tag"], serde_json::json!("signal"));
+    assert_eq!(plugin["fields"], serde_json::json!({ "value": "puzzle" }));
+    assert_eq!(plugin["stamps"], serde_json::json!({ "tag": "warmup" }));
+    let sfx = find(&cmds, "sfx");
+    assert_eq!(sfx["kind"], serde_json::json!("sfx"));
+    assert!(
+        sfx["position"].as_str().is_some_and(|p| p != "left"),
+        "{sfx:#?}"
+    );
+    assert_eq!(
+        sfx["stamps"],
+        serde_json::json!({ "kind": "loud", "position": "left" })
+    );
+}
+
+/// #156: content-line stamps named `speaker`/`text`/`kind` keep the line's
+/// own keys and sit under `stamps`.
+#[test]
+fn line_stamps_named_speaker_text_kind_keep_the_line_keys() {
+    let snap = assembled_snapshot(Vec::new(), &["speaker", "text", "kind"]);
+    let text =
+        format!("{HDR}@elena{{speaker=\"ghost\" text=\"alt\" kind=\"aside\"}}: real words\n");
+    let cmds = strict_commands(&text, snap);
+    let line = find(&cmds, "line");
+    assert_eq!(line["kind"], serde_json::json!("line"));
+    assert_eq!(line["speaker"], serde_json::json!("elena"));
+    assert_eq!(line["text"], serde_json::json!("real words"));
+    assert_eq!(
+        line["stamps"],
+        serde_json::json!({ "kind": "aside", "speaker": "ghost", "text": "alt" })
     );
 }

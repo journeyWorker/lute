@@ -36,16 +36,18 @@ fn with_occasions() -> CapabilitySnapshot {
 }
 
 fn diags_with(text: &str, snapshot: CapabilitySnapshot) -> Vec<Diagnostic> {
-    check(&CheckInput {
-        text: text.to_string(),
-        uri: "quest_occasions".into(),
-        snapshot,
-        providers: Default::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    })
+    check(&CheckInput::new(
+        text.to_string(),
+        "quest_occasions".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    ))
     .diagnostics
 }
 

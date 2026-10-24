@@ -978,7 +978,7 @@ fn subject(
 ) -> Subject {
     let lore = folded.doc_kind == lute_check::DocKind::Lore;
     // The cast's display names, as `lute trace` and `lute play` pass them.
-    let names = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast)
+    let names = lute_check::declared_cast(input.snapshot(), input.imports(), &folded.typed.cast)
         .into_iter()
         .filter_map(|(id, c)| Some((id, c.name?)))
         .collect();

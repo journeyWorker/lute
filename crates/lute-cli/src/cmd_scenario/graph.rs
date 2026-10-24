@@ -16,16 +16,19 @@ use crate::project::{ByRoot, DocGroup};
 /// the flat order). A node stuck in a prerequisite cycle never becomes
 /// ready and is simply absent from every layer (already `E-CONN-CYCLE`'s
 /// problem, reported by whole-project `check`, not this read-only view's).
+/// dsl 0.49.0 §6.1: a back edge orders nothing, and a quest on a start
+/// cycle ([`start_cycle_quests`]) is in no layer — it is listed apart.
 pub(crate) fn topo_layers(
     g: &lute_check::connectivity::ConnGraph,
 ) -> Vec<Vec<lute_check::connectivity::NodeId>> {
     let mut in_degree: BTreeMap<lute_check::connectivity::NodeId, usize> =
         g.nodes.keys().map(|id| (id.clone(), 0)).collect();
-    for targets in g.edges.values() {
-        for target in targets {
+    for (from, targets) in &g.edges {
+        for target in targets.iter().filter(|t| g.orders(from, t)) {
             *in_degree.entry(target.clone()).or_insert(0) += 1;
         }
     }
+    let stuck = start_cycle_quests(g);
     let mut layers = Vec::new();
     loop {
         let mut ready: Vec<lute_check::connectivity::NodeId> = in_degree
@@ -40,16 +43,31 @@ pub(crate) fn topo_layers(
         for id in &ready {
             in_degree.remove(id);
             if let Some(targets) = g.edges.get(id) {
-                for target in targets {
+                for target in targets.iter().filter(|t| g.orders(id, t)) {
                     if let Some(d) = in_degree.get_mut(target) {
                         *d -= 1;
                     }
                 }
             }
         }
-        layers.push(ready);
+        ready.retain(|id| !stuck.contains(id));
+        if !ready.is_empty() {
+            layers.push(ready);
+        }
     }
     layers
+}
+
+/// dsl 0.49.0 §6.1–§6.2: the quests that can never start because they are
+/// on a start cycle or read their own state — not those merely behind one.
+pub(crate) fn start_cycle_quests(
+    g: &lute_check::connectivity::ConnGraph,
+) -> BTreeSet<lute_check::connectivity::NodeId> {
+    g.start_blocked
+        .iter()
+        .filter(|(_, b)| !matches!(b, lute_check::connectivity::StartBlock::Behind(_)))
+        .map(|(id, _)| id.clone())
+        .collect()
 }
 
 /// The comma-joined atom-kind token(s) justifying the `from -> to` edge
@@ -100,17 +118,26 @@ fn print_graph_for_root(
     }
     let layered: BTreeSet<lute_check::connectivity::NodeId> =
         layers.iter().flatten().cloned().collect();
-    if layered.len() < graph.nodes.len() {
-        let stuck: Vec<String> = graph
-            .nodes
-            .keys()
-            .filter(|id| !layered.contains(id))
-            .map(|n| n.to_string())
-            .collect();
+    let start_cycle = start_cycle_quests(graph);
+    let stuck: Vec<String> = graph
+        .nodes
+        .keys()
+        .filter(|id| !layered.contains(id) && !start_cycle.contains(id))
+        .map(|n| n.to_string())
+        .collect();
+    if !stuck.is_empty() {
         outln!(
             out,
             "    (unlayered -- part of a prerequisite cycle, E-CONN-CYCLE): {}",
             stuck.join(", ")
+        );
+    }
+    if !start_cycle.is_empty() {
+        let names: Vec<String> = start_cycle.iter().map(|n| n.to_string()).collect();
+        outln!(
+            out,
+            "    (unlayered -- part of a start cycle, E-QUEST-START-CYCLE): {}",
+            names.join(", ")
         );
     }
     outln!(out, "  edges (prerequisite -> dependent) [atom kind(s)]:");
@@ -231,7 +258,12 @@ fn print_omitted(out: &mut String, omitted: &[lute_check::connectivity::OmittedR
     }
 }
 
-pub(crate) fn run_scenario_graph(out: &mut String, by_root: &ByRoot, facts: bool) -> ExitCode {
+pub(crate) fn run_scenario_graph(
+    out: &mut String,
+    by_root: &ByRoot,
+    file_results: &[(std::path::PathBuf, lute_check::CheckResult)],
+    facts: bool,
+) -> ExitCode {
     if by_root.is_empty() {
         outln!(out, "lute: no .lute files found");
         return ExitCode::SUCCESS;
@@ -243,8 +275,23 @@ pub(crate) fn run_scenario_graph(out: &mut String, by_root: &ByRoot, facts: bool
             .collect();
         let key_set = lute_check::connectivity::scene_key_set(&docs);
         let quest_ids = lute_check::connectivity::quest_id_set(&docs);
-        let (graph, _cycle_diags) =
+        let (mut graph, _cycle_diags) =
             lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids);
+        // dsl 0.49.0 §6.1: start cycles, against the final reach verdicts.
+        let fp = lute_model::compute_conn_fixpoint(
+            &docs,
+            group_full,
+            file_results,
+            &graph,
+            &quest_ids,
+            &lute_check::connectivity::ambiguous_quest_ids(&docs),
+        );
+        let _ = lute_check::connectivity::resolve_start_blocks(
+            &mut graph,
+            &docs,
+            &fp.reach,
+            &fp.unreachable_quests,
+        );
         let when_visited = lute_check::connectivity::when_visited_unanchored(&docs, &graph);
         let fact_graph = facts.then(|| FactGraph::of(group_full, &docs, &graph));
         print_graph_for_root(
@@ -291,7 +338,13 @@ impl FactGraph {
                     return true;
                 }
                 if seen.insert(n) {
-                    stack.extend(g.edges.get(n).into_iter().flatten());
+                    stack.extend(
+                        g.edges
+                            .get(n)
+                            .into_iter()
+                            .flatten()
+                            .filter(|t| g.orders(n, t)),
+                    );
                 }
             }
             false
@@ -301,10 +354,11 @@ impl FactGraph {
             .map(|e| {
                 let joins = graph.nodes.contains_key(&e.from)
                     && graph.nodes.contains_key(&e.to)
-                    && (layered
+                    && ((layered
                         .edges
                         .get(&e.from)
                         .is_some_and(|t| t.contains(&e.to))
+                        && layered.orders(&e.from, &e.to))
                         || !reaches(&layered, &e.to, &e.from));
                 if joins {
                     layered

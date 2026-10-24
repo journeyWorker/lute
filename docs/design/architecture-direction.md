@@ -349,6 +349,29 @@ suggested order): [`runtime-player.md`](./runtime-player.md).
   product shape; the host settles (packaged: client; live: server after
   replay). This refines D1, which stays in force.
 
+### D14. Project-wide data is built once per project (2026-10-24)
+
+Measured cause (#173, spec `scenario-dsl/0.49.0.md` §9.1): every document
+held its own copy of the project vocabulary, so `check --project` cost grew
+with documents × slots (17× marginal CPU, 19× marginal RSS per document from
+150 to 4 800 slots).
+
+- Project-wide information (capability snapshot, providers, imported schemas,
+  state, domains, kinds, relations, facts, rules, `per:` families, their
+  checks and summaries) is built once per project root and shared by
+  reference.
+- A document holds only its own overlay.
+- A per-document copy of project-wide data is a defect unless the document
+  changes what is merged.
+- Cross-invocation caching stays out until measured (§6).
+
+This applies the Rust performance guideline's structural rules S1 (shared
+data is built once and shared), S2 (per-item variation is base + overlay),
+S3 (a product of two sets is not expanded; `per:` families stay one rule) and
+S5 (a cache returns the shared value, not an owned copy). It is enforced by
+`scripts/vocab-grid.py gate` (spec 0.49.0 §9.8) in `test.yml`, and by the
+`vocab` tier of the A/B benchmark gate.
+
 ## 3. Rejected
 
 | Proposal | Source | Why |
@@ -408,8 +431,9 @@ observable.
    unintended semantic diff and preserved-id changes.
 5. **Identity, migration, performance.** Identity source documented per
    node kind, stable component instance keys (D8); breaking-change classes in
-   CHANGELOG (D6); benchmark gates (D11). *Exit:* inserting a component use
-   renumbers nothing; benchmark regressions fail CI.
+   CHANGELOG (D6); benchmark gates (D11); project-wide data built once per
+   project (D14). *Exit:* inserting a component use renumbers nothing;
+   benchmark regressions fail CI.
 
 ## 6. Findings at HEAD that feed the roadmap
 

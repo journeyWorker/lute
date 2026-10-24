@@ -12,16 +12,18 @@ const HDR: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:
     run.flag: { type: bool, default: false }\n---\n## Shot 1.\n";
 
 fn run(body: &str) -> CheckResult {
-    let input = CheckInput {
-        text: format!("{HDR}{body}\n"),
-        uri: "cel_types_containers".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        format!("{HDR}{body}\n"),
+        "cel_types_containers".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
 }
 

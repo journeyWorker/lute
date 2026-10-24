@@ -865,6 +865,120 @@ fn reward_kind_target_takes_entity_and_required_but_not_both_sources() {
     assert!(msg.contains("not both"), "{msg}");
 }
 
+/// 0.49.0 §3.3 (#168): `target: { forbidden: true }` loads alone and is
+/// refused beside `provider:`, `entity:` or `required: true`.
+#[test]
+fn reward_kind_target_forbidden_is_exclusive() {
+    let pkg = |tag: &str, target: &str| {
+        let tmp = lute_scratch::ScratchDir::named(tag);
+        fs::create_dir_all(tmp.join("rewardkinds")).unwrap();
+        fs::write(
+            tmp.join("plugin.yaml"),
+            "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  rewardKinds: rewardkinds/\n",
+        )
+        .unwrap();
+        fs::write(
+            tmp.join("rewardkinds/a.yaml"),
+            format!("rewardKinds:\n  COINS: {{ target: {target} }}\n"),
+        )
+        .unwrap();
+        tmp
+    };
+    let ok = pkg("forbidden-ok", "{ forbidden: true }");
+    let loaded = load_plugin_dir(&ok).expect("`forbidden: true` alone loads");
+    let t = loaded.reward_kinds[0].target.as_ref().unwrap();
+    assert!(t.forbidden);
+    assert_eq!(
+        (t.provider.as_deref(), t.entity.as_deref(), t.required),
+        (None, None, false)
+    );
+
+    for (tag, target) in [
+        ("forbidden-provider", "{ forbidden: true, provider: items }"),
+        ("forbidden-entity", "{ forbidden: true, entity: bagItem }"),
+        ("forbidden-required", "{ forbidden: true, required: true }"),
+        (
+            "forbidden-not-required",
+            "{ forbidden: true, required: false }",
+        ),
+    ] {
+        let errs = load_plugin_dir(&pkg(tag, target)).expect_err(target);
+        let msg = format!("{errs:?}");
+        assert!(
+            msg.contains(
+                "a reward kind's `target:` takes `forbidden: true` alone — a kind that \
+                 takes no target cannot also name an id space or require one"
+            ),
+            "{target}: {msg}"
+        );
+    }
+    // A present `required:` must be a bool: `null` is not read as omitted,
+    // with or without `forbidden: true` (0.48.1 refused it as not a bool).
+    for (tag, target) in [
+        ("required-null", "{ required: null }"),
+        (
+            "forbidden-required-null",
+            "{ forbidden: true, required: null }",
+        ),
+    ] {
+        let errs = load_plugin_dir(&pkg(tag, target)).expect_err(target);
+        let msg = format!("{errs:?}");
+        assert!(
+            msg.contains(
+                "`rewardKinds.COINS.target.required` is empty, where `true` or `false` is expected"
+            ),
+            "{target}: {msg}"
+        );
+    }
+}
+
+/// 0.49.0 §3.3: `capabilitySnapshot` hashes `RewardTarget`'s `Debug`, which
+/// prints `forbidden` only when set — a contract without it keeps the
+/// 0.48.1 text and hash (the pinned digest was computed by 0.48.1).
+#[test]
+fn reward_target_debug_without_forbidden_keeps_the_048_hash() {
+    use lute_manifest::schema::{RewardKindDecl, RewardTarget};
+    let target = RewardTarget {
+        entity: Some("bagItem".into()),
+        required: true,
+        ..Default::default()
+    };
+    assert_eq!(
+        format!("{target:?}"),
+        r#"RewardTarget { entity: "bagItem", required: true }"#
+    );
+    let mut snap = lute_manifest::snapshot::CapabilitySnapshot::default();
+    for (name, target) in [
+        (
+            "ITEM",
+            RewardTarget {
+                provider: Some("items".into()),
+                ..Default::default()
+            },
+        ),
+        ("TM", target),
+    ] {
+        snap.reward_kinds.insert(
+            name.into(),
+            RewardKindDecl {
+                name: name.into(),
+                target: Some(target),
+                ..Default::default()
+            },
+        );
+    }
+    assert_eq!(
+        lute_manifest::snapshot::capability_version(&snap),
+        "d5e01c4e21f36c3c49ac738c09eab4b2a19be251634ec5b5fee326d12a1362ec"
+    );
+
+    let forbidden = RewardTarget {
+        forbidden: true,
+        ..Default::default()
+    };
+    assert_eq!(format!("{forbidden:?}"), "RewardTarget { forbidden: true }");
+}
+
 /// dsl 0.28.0 §6: the export keys are camelCase (`rewardKinds`, `assetKinds`,
 /// `stampAttrs`, like the files' own top-level keys); the old lowercase
 /// spelling is refused, naming the new one at its line in `plugin.yaml`, and

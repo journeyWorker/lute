@@ -64,6 +64,7 @@ pub mod set_type;
 pub(crate) mod solution;
 pub mod spent_by;
 pub mod state_decls;
+pub mod state_origins;
 pub mod tag;
 pub mod target_writes;
 pub mod templates;
@@ -71,6 +72,7 @@ pub mod temporal;
 pub mod time;
 pub mod timeline;
 pub mod usage;
+pub mod vocab;
 pub mod when_test_literal;
 
 /// The canonical Lute language-version string (dsl 0.6.1 §3, Appendix B).
@@ -80,7 +82,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.48.1";
+pub const LUTE_LANG_VERSION: &str = "0.49.0";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
@@ -91,8 +93,8 @@ pub fn desugar_document(
     doc: &mut lute_syntax::ast::Document,
     input: &CheckInput,
 ) -> Vec<lute_core_span::Diagnostic> {
-    meta::apply_quest_tier_default(doc, &input.defaults);
-    chapters::apply_chapters(doc, &input.defaults, &input.snapshot.occasions);
+    meta::apply_quest_tier_default(doc, input.defaults());
+    chapters::apply_chapters(doc, input.defaults(), &input.snapshot().occasions);
     if !doc
         .beats
         .iter()
@@ -105,8 +107,8 @@ pub fn desugar_document(
     // checker has a TypedMeta, so this is the one intentional entrance parse.
     let inline = yaml_serde::from_str::<yaml_serde::Value>(&doc.meta.raw_yaml).ok();
     let mut host_defs: std::collections::BTreeSet<String> =
-        input.snapshot.defs.keys().cloned().collect();
-    host_defs.extend(input.imports.defs.keys().cloned());
+        input.snapshot().defs.keys().cloned().collect();
+    host_defs.extend(input.imports().defs.keys().cloned());
     if let Some(defs) = inline.as_ref().and_then(|v| v.get("defs")?.as_mapping()) {
         host_defs.extend(defs.keys().filter_map(|k| k.as_str().map(str::to_string)));
     }
@@ -114,7 +116,7 @@ pub fn desugar_document(
     // reading a refused one is not derived). A document that declares its
     // own kinds or enums leaves membership to the checks.
     let mut host = templates::HostArgs::default();
-    for c in cast::declared_cast(&input.snapshot, &input.imports, &[]).into_values() {
+    for c in cast::declared_cast(input.snapshot(), input.imports(), &[]).into_values() {
         host.cast.insert(c.id.clone(), c.name.unwrap_or(c.id));
     }
     if let Some(cast) = inline.as_ref().and_then(|v| v.get("cast")?.as_mapping()) {
@@ -128,9 +130,7 @@ pub fn desugar_document(
         .as_ref()
         .is_some_and(|v| v.get("entities").is_some() || v.get("enums").is_some());
     if !own_vocab {
-        let mut domains = input.snapshot.domains.clone();
-        domains.extend(input.imports.domains.clone());
-        host.domains = Some(domains);
+        host.domains = Some(std::sync::Arc::clone(&input.vocab.fold.template_domains));
     }
     // A component only the manifest's `defaults.components` imports, when
     // this document's own `components:` replaced that list: the use names it.
@@ -147,7 +147,7 @@ pub fn desugar_document(
     templates::expand_beat_templates(
         doc,
         &input.components,
-        &input.snapshot.occasions,
+        &input.snapshot().occasions,
         &host_defs,
         &host,
         &replaced_hint,
@@ -178,9 +178,10 @@ pub use cel_resolve::{
     E_DATALOG_GUARD_FACT, E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED, VISITED_FN,
 };
 pub use check::{
-    check, check_host_condition, check_parsed, diagnostic_order, fold_env, order_diagnostics,
-    params_from_yaml, CheckInput, CheckResult, DomainUse, FoldedEnv, HostCondition, Resolved,
-    E_MONO_NO_POV, E_MONO_POV, E_SECTION_DUP, INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE,
+    check, check_host_condition, check_parsed, diagnostic_order, fold_env, fold_env_full_merge,
+    order_diagnostics, params_from_yaml, CheckInput, CheckResult, DomainUse, FoldedEnv,
+    HostCondition, Resolved, E_MONO_NO_POV, E_MONO_POV, E_SECTION_DUP, INHERITED_LUTE_VERSION,
+    W_LUTE_VERSION_STALE,
 };
 pub use component_effects::{display_args, splice_component_effects};
 pub use component_import::{resolve_components, ComponentDef, ComponentSet};
@@ -239,9 +240,10 @@ pub use project_check::{
     check_project_entry_refs, check_project_quest_handlers, check_project_quest_ids,
     check_project_quest_refs, check_project_quest_tree, check_project_subquest_unsatisfiable,
     colliding_entry_occurrences, colliding_occurrences, component_unverified_diag,
-    domain_reading_set, ComponentScope, E_QUEST_MULTI_PARENT, E_QUEST_REF_UNKNOWN,
-    E_QUEST_TIER_MIX, E_QUEST_TREE_CYCLE, W_BRANCH_ID_SHARED, W_COMPONENT_UNVERIFIED,
-    W_DOMAIN_UNREAD, W_QUEST_HANDLER_DEAD, W_QUEST_REF_UNKNOWN, W_QUEST_TIER_IMPLICIT,
+    domain_reading_set, project_check_skipped, ComponentScope, E_QUEST_MULTI_PARENT,
+    E_QUEST_REF_UNKNOWN, E_QUEST_TIER_MIX, E_QUEST_TREE_CYCLE, W_BRANCH_ID_SHARED,
+    W_COMPONENT_UNVERIFIED, W_DOMAIN_UNREAD, W_PROJECT_CHECK_SKIPPED, W_QUEST_HANDLER_DEAD,
+    W_QUEST_REF_UNKNOWN, W_QUEST_TIER_IMPLICIT,
 };
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use rule_index::evaluable_rules;
@@ -258,4 +260,5 @@ pub use usage::{
     check_project_usage, document_read_view, number_row_values, schema_sources, yaml_read_view,
     UsageDoc, W_DEF_UNUSED, W_RELATION_UNREAD,
 };
+pub use vocab::{InputSources, ProjectBase, ProjectVocab, StateSummary, StateUnion, StateView};
 pub use when_test_literal::{check_when_test_literals, test_as_is_pattern, W_WHEN_TEST_LITERAL};

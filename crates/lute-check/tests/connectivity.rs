@@ -13,16 +13,18 @@ fn permissive_providers() -> ProviderSet {
 }
 
 fn input_for(text: &str) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "test".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: permissive_providers(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "test".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            permissive_providers(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 #[test]
@@ -1273,16 +1275,18 @@ fn build_project_input(file: &PathBuf, project_dir: Option<&std::path::Path>) ->
     let base = file.parent().unwrap_or_else(|| std::path::Path::new("."));
     let imports = resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
     let components = resolve_components(base, &meta0.components, doc.meta.span);
-    CheckInput {
+    CheckInput::new(
         text,
-        uri: file.display().to_string(),
-        snapshot,
-        providers,
-        mode: Mode::Ci,
-        imports,
-        components,
-        defaults: Default::default(),
-    }
+        file.display().to_string(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            providers,
+            imports,
+            components,
+            Default::default(),
+        ),
+    )
 }
 
 fn parse_meta(
@@ -1417,12 +1421,14 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         );
         reads_per_scene.insert(key.clone(), reads);
     }
-    let (envs, tainted) = lute_check::envelope::propagate(&conn_graph, &per_doc, &d);
+    let (envs, tainted) = lute_check::envelope::propagate(&conn_graph, &per_doc);
     for (path, diag) in lute_check::envelope::check_envelope(
         &conn_graph,
         &envs,
+        &d,
         &tainted,
         &reads_per_scene,
+        &Default::default(),
         &Default::default(),
     ) {
         out.push((path, diag));
@@ -2436,7 +2442,7 @@ fn active_envelope_is_strictly_weaker_than_completed() {
         ["run.flag".to_string()].into_iter().collect(),
     );
 
-    let (envs, tainted) = propagate(&g, &per_doc, &BTreeSet::new());
+    let (envs, tainted) = propagate(&g, &per_doc);
     assert!(
         tainted.is_empty(),
         "both quest atoms resolve, so nothing may taint: {tainted:?}"
@@ -2985,17 +2991,25 @@ fn an_explicit_after_replaces_start_anchors_but_keeps_the_subquest_edge() {
 #[test]
 fn a_start_anchor_never_proves_the_quest_dead_nor_closes_a_cycle() {
     // The scene the quest starts on waits on the quest itself: the anchor
-    // cannot be its way in, so it is not drawn, and nothing is a cycle.
+    // cannot be its way in. dsl 0.49.0 §6.1: it is drawn as a back edge,
+    // which orders nothing, and nothing is a cycle.
     let road = quest_with_start("road", "visited('road.departure')");
     let looped = "---\nkind: scene\nid: road.departure\nafter: \"active('road')\"\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("s.lute", looped), ("q.lute", &road)]);
-    let g = graph_of(&docs.views());
+    let (g, cycle_diags) = assemble_graph(
+        &docs.views(),
+        &scene_key_set(&docs.views()),
+        &quest_id_set(&docs.views()),
+    );
+    assert!(cycle_diags.is_empty(), "{cycle_diags:?}");
     let (q, s) = (
         NodeId::Quest("road".into()),
         NodeId::Scene("road.departure".into()),
     );
     assert_eq!(kinds(&g, &q, &s), Some(vec![EdgeKind::Active]));
-    assert_eq!(kinds(&g, &s, &q), None, "{g:?}");
+    assert_eq!(kinds(&g, &s, &q), Some(vec![EdgeKind::Start]), "{g:?}");
+    assert!(!g.orders(&s, &q) && g.orders(&q, &s), "{g:?}");
+    assert_eq!(g.topo_order.len(), 2, "{g:?}");
 
     // A start on a provably dead scene reads Unknown, never E-CONN-UNREACHABLE.
     let dead = "---\nkind: scene\nid: road.departure\nafter: \"completed('deadQ')\"\n---\n## Shot 1.\n@a: hi\n";

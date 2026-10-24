@@ -20,4 +20,5 @@ serde_json = { workspace = true }
 yaml_serde = { workspace = true }
 
 [dev-dependencies]
+lute-load = { path = "../lute-load" }
 lute-scratch = { path = "../lute-scratch" }

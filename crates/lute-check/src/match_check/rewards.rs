@@ -128,17 +128,42 @@ struct RewardTargetEnv<'a> {
 pub const E_REWARD_TARGET: &str = "E-REWARD-TARGET";
 
 /// dsl 0.26.0 §2.5: `r.target` against its kind's `target:` contract. A
-/// missing target fails only `required: true`; a present one must be a
-/// member of the `entity:` kind (did-you-mean) or an id of the `provider:`
-/// catalog (a stale snapshot only warns, as for a `providerRef` attr).
+/// missing target fails only `required: true`; a present one fails
+/// `forbidden: true` (0.49.0 §3.3), and must otherwise be a member of the
+/// `entity:` kind (did-you-mean) or an id of the `provider:` catalog (a
+/// stale snapshot only warns, as for a `providerRef` attr).
 fn check_reward_target(
     r: &Reward,
     contract: &RewardTarget,
     env: &RewardTargetEnv<'_>,
 ) -> Option<Diagnostic> {
     let kind = r.kind.trim();
+    if contract.forbidden {
+        // Only a quoted `target="…"` is lifted into `r.target`; an `@ref` or
+        // a bare `target` stays in `attrs`, and is an authored target too.
+        let at = r.target_span.or_else(|| {
+            r.attrs
+                .iter()
+                .find(|a| a.key == "target")
+                .map(|a| a.value_span)
+        });
+        return at.map(|at| {
+            diag(
+                E_REWARD_TARGET,
+                Severity::Error,
+                format!(
+                    "`<reward kind=\"{kind}\">` takes no `target=`: its reward kind declares \
+                     `target: {{ forbidden: true }}` — remove the attribute"
+                ),
+                at,
+            )
+        });
+    }
     let Some(target) = r.target.as_deref() else {
-        return contract.required.then(|| {
+        // An `@ref` or bare `target` is written: [`refuse_unquoted_target`]
+        // refuses it, and no contract judges it as absent.
+        let written = r.attrs.iter().any(|a| a.key == "target");
+        return (contract.required && !written).then(|| {
             diag(
                 E_REWARD_TARGET,
                 Severity::Error,
@@ -397,11 +422,15 @@ fn check_one_reward(
         ));
     }
     // dsl 0.26.0 §2.5: the kind's `target:` contract.
-    if let Some(contract) = snapshot
+    let contract = snapshot
         .reward_kinds
         .get(r.kind.trim())
-        .and_then(|k| k.target.as_ref())
-    {
+        .and_then(|k| k.target.as_ref());
+    // A `forbidden` contract reports any written target itself (remove it).
+    if !contract.is_some_and(|c| c.forbidden) {
+        refuse_unquoted_target(r, diags);
+    }
+    if let Some(contract) = contract {
         diags.extend(check_reward_target(r, contract, targets));
     }
     // D-J attribute closure (dsl 0.16.0 §2 tag row) — E-UNKNOWN-ATTR at
@@ -409,4 +438,28 @@ fn check_one_reward(
     // `attrs`, but `amount` is in REWARD_ATTRS so it is not reported here;
     // its E-REWARD-ATTR emission above owns the diagnostic.
     crate::logic_attrs::check_reward_attrs(r, diags);
+}
+
+/// 0.49.0 §3.3 (#192): a reward's target is a quoted id. Only `target="…"`
+/// reaches the IR (`RewardEntry.target`, static data the engine grants
+/// against); an `@ref` or a bare `target` would be dropped, so it is
+/// `E-REWARD-ATTR` at the value, whatever the kind's target contract — no
+/// `entity:`/`provider:` contract can judge a reference.
+fn refuse_unquoted_target(r: &Reward, diags: &mut Vec<Diagnostic>) {
+    let Some(a) = r.attrs.iter().find(|a| a.key == "target") else {
+        return;
+    };
+    let written = match &a.value {
+        AttrValue::Ref(slot) => format!("`target={}` is a reference", slot.raw),
+        AttrValue::BoolTrue | AttrValue::Str(_) => "a bare `target` has no value".to_string(),
+    };
+    diags.push(diag(
+        E_REWARD_ATTR,
+        Severity::Error,
+        format!(
+            "`<reward target=…>` takes a quoted id, e.g. `target=\"potion\"`: {written}, and a \
+             reward's target is static data the engine grants against (0.49.0 §3.3)"
+        ),
+        a.value_span,
+    ));
 }

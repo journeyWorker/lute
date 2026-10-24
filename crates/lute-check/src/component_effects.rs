@@ -62,7 +62,6 @@ use crate::cel_expand::DefTable;
 use crate::component_import::{ComponentDef, ComponentSet};
 use crate::decide::{decide_slot, DecideCtx, Decided, DollarBinding};
 use crate::match_check::is_pattern_literals;
-use crate::meta::StateSchema;
 
 /// The type a `speaker` param has at a host (dsl 0.24.0 §4): the host's cast
 /// ids plus `narrator` (always a speaker) as an enum when any cast is
@@ -309,7 +308,7 @@ pub fn cel_string_literal(s: &str) -> String {
 /// `Node::Match` intact — it lowers to the ordinary `MatchCmd` later — but
 /// still recurse into every arm's body: an unrelated NESTED param `<match>`
 /// inside a residual arm may still fold on its own terms.
-pub fn fold_component_matches(nodes: &mut Vec<Node>, schema: &StateSchema) {
+pub fn fold_component_matches(nodes: &mut Vec<Node>, schema: &crate::StateView) {
     let mut i = 0;
     while i < nodes.len() {
         let selection = if let Node::Match(m) = &nodes[i] {
@@ -351,7 +350,7 @@ pub fn fold_component_matches(nodes: &mut Vec<Node>, schema: &StateSchema) {
 fn decide_component_expr(
     raw: &str,
     dollar: Option<Decided>,
-    schema: &StateSchema,
+    schema: &crate::StateView,
 ) -> Option<Decided> {
     let empty_bodies = BTreeMap::new();
     let empty_def_params = BTreeMap::new();
@@ -380,7 +379,7 @@ fn decide_component_expr(
 /// visited before it definitely does NOT fire; `None` the instant an arm's
 /// firing is itself undecided (§6.4 case 2). `<otherwise>` always selects
 /// when reached (exhaustiveness is proven statically, §6.3).
-fn select_component_arm(arms: &[Arm], subj: &Decided, schema: &StateSchema) -> Option<usize> {
+fn select_component_arm(arms: &[Arm], subj: &Decided, schema: &crate::StateView) -> Option<usize> {
     for (idx, arm) in arms.iter().enumerate() {
         match arm {
             Arm::Otherwise { .. } => return Some(idx),
@@ -519,7 +518,7 @@ fn use_writes(
     }
     let args = use_args_for(d, def);
     bind_writes(&mut writes, &args, &def.params);
-    fold_component_matches(&mut writes, &StateSchema::default());
+    fold_component_matches(&mut writes, &crate::StateView::default());
     stack.push(name.clone());
     expand_nested(&mut writes, components, snapshot, stack);
     stack.pop();
@@ -675,7 +674,7 @@ fn speaker_nodes(d: &Directive, components: &ComponentSet, stack: &mut Vec<Strin
     for node in &mut nodes {
         bind_skeleton(node, &args, &def.params);
     }
-    fold_component_matches(&mut nodes, &StateSchema::default());
+    fold_component_matches(&mut nodes, &crate::StateView::default());
     stack.push(name.clone());
     let mut out = Vec::with_capacity(nodes.len());
     for node in nodes {

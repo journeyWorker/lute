@@ -36,7 +36,7 @@ pub const E_MATCH_NO_SUBJECT: &str = "E-MATCH-NO-SUBJECT";
 /// A value that reads as a condition (`run.lamps >= 3`) is pointed at
 /// `test=`; otherwise the message names the one declared finite path whose
 /// members hold every `is` literal, when there is exactly one.
-pub(crate) fn check_match_has_subject(m: &Match, schema: &StateSchema) -> Vec<Diagnostic> {
+pub(crate) fn check_match_has_subject(m: &Match, schema: &crate::StateView) -> Vec<Diagnostic> {
     if !m.subject.raw.trim().is_empty() {
         return Vec::new();
     }
@@ -88,7 +88,7 @@ fn reads_as_condition(raw: &str) -> bool {
 
 /// The one declared path with a finite domain holding every member literal
 /// of `patterns`, if exactly one does.
-fn subject_for(patterns: &[&IsPattern], schema: &StateSchema) -> Option<String> {
+fn subject_for(patterns: &[&IsPattern], schema: &crate::StateView) -> Option<String> {
     let lits: Vec<IsLiteral> = patterns
         .iter()
         .flat_map(|p| is_alternatives(&p.raw))
@@ -99,15 +99,15 @@ fn subject_for(patterns: &[&IsPattern], schema: &StateSchema) -> Option<String> 
         return None;
     }
     // A `prev.*` mirror holds the last run's value of the path beside it.
-    let mut fits = schema.decls.keys().filter(|path| {
-        let info = infer_domain(Some(path.as_str()), schema);
+    let mut fits = schema.keys().filter(|path| {
+        let info = infer_domain(Some(path), schema);
         !path.starts_with("prev.")
             && matches!(info.domain, Domain::Finite(_))
             && info.resolved
             && !lits.iter().any(|lit| literal_is_foreign(lit, &info))
     });
     let one = fits.next()?;
-    fits.next().is_none().then(|| one.clone())
+    fits.next().is_none().then(|| one.into_owned())
 }
 
 /// Validate a `<match>` for exhaustiveness, unset coverage, the age-gate, and
@@ -115,7 +115,7 @@ fn subject_for(patterns: &[&IsPattern], schema: &StateSchema) -> Option<String> 
 /// domain from `schema` exactly as before, then delegates to
 /// [`check_match_with_domain`] (0.4.0 T7 — the SAME engine [`check_param_match`]
 /// drives over a component param's domain).
-pub fn check_match(m: &Match, schema: &StateSchema, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
+pub fn check_match(m: &Match, schema: &crate::StateView, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
     let subject = subject_path(m);
     let dom = infer_domain(subject.as_deref(), schema);
     check_match_with_domain(m, subject.as_deref(), dom, ctx, &|_| false)
@@ -379,7 +379,7 @@ fn not_covered(missing: &[String]) -> Option<String> {
 /// T4.4 (definite-assignment) so a domain-exhaustive match without `<otherwise>`
 /// is not treated as a possible fall-through (its arms' join is an intersection,
 /// not the pre-block set). See the report's "exhaustiveness result shape".
-pub fn is_exhaustive(m: &Match, schema: &StateSchema) -> bool {
+pub fn is_exhaustive(m: &Match, schema: &crate::StateView) -> bool {
     let subject = subject_path(m);
     let info = infer_domain(subject.as_deref(), schema);
     is_exhaustive_resolved(m, subject.as_deref(), &info, schema)
@@ -391,7 +391,7 @@ pub(crate) fn is_exhaustive_resolved(
     m: &Match,
     subject: Option<&str>,
     info: &DomainInfo,
-    schema: &StateSchema,
+    schema: &crate::StateView,
 ) -> bool {
     if m.arms.iter().any(|a| matches!(a, Arm::Otherwise { .. })) {
         return true;
@@ -428,7 +428,7 @@ pub(crate) fn is_exhaustive_resolved(
 pub(crate) fn handles_unset_resolved(
     m: &Match,
     subject: Option<&str>,
-    schema: &StateSchema,
+    schema: &crate::StateView,
 ) -> bool {
     m.arms.iter().any(|a| match a {
         Arm::Otherwise { .. } => true,

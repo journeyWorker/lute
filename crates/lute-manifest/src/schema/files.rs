@@ -196,10 +196,11 @@ pub struct EventsFile {
 /// Each entry is an ordinary [`AttrDecl`] — the SAME name/required/type/default
 /// surface a directive attr uses — but admissible on EVERY directive AND on
 /// content lines rather than on one directive, and lowered into the IR
-/// record's stamp (compile-IR §4.3 `Stamp.extra`) instead of the record's own
-/// fields. A name colliding with a reserved stamp key (`at`/`duration`/
-/// `delay`/`wait`/`timeline`/`provenance`/`source`) is an assembly-time
-/// `E-PLUGIN-RESERVED-STAMP-ATTR` (plugin §14, Appendix C4).
+/// record's stamp (`Stamp.stamps`, serialized as the nested `stamps` object,
+/// 0.49.0 §3.1) instead of the record's own fields. A name colliding with a
+/// reserved stamp key (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/
+/// `provenance`/`source`) is an assembly-time `E-PLUGIN-RESERVED-STAMP-ATTR`
+/// (plugin §14, Appendix C4).
 ///
 /// `required` and `default` are inert on this surface by construction: a
 /// cross-cutting attr is optional on every record (requiring one would make

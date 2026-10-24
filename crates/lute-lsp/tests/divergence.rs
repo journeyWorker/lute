@@ -44,16 +44,30 @@ type Norm = (String, u8, String, (u32, u32), (u32, u32));
 /// `lute-check/tests/examples.rs::input_for` so headless and LSP see identical
 /// analysis conditions.
 fn input_for(text: &str) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "test".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    input_with(
+        text,
+        lute_manifest::core::load_core_snapshot(),
+        SchemaImports::default(),
+    )
+}
+
+fn input_with(
+    text: &str,
+    snapshot: lute_manifest::snapshot::CapabilitySnapshot,
+    imports: SchemaImports,
+) -> CheckInput {
+    CheckInput::new(
+        text.to_string(),
+        "test".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 /// [`input_for`] plus the document's OWN `uses:`/`extends:` imports, resolved
@@ -70,10 +84,11 @@ fn input_for_in(text: &str, dir: &std::path::Path) -> CheckInput {
         &doc.meta,
         &lute_manifest::snapshot::CapabilitySnapshot::default(),
     );
-    CheckInput {
-        imports: lute_check::resolve_imports(dir, &meta0.uses, &meta0.extends, doc.meta.span),
-        ..input_for(text)
-    }
+    input_with(
+        text,
+        lute_manifest::core::load_core_snapshot(),
+        lute_check::resolve_imports(dir, &meta0.uses, &meta0.extends, doc.meta.span),
+    )
 }
 
 /// A `TextIndex` over the exact document text the diagnostics' byte offsets refer
@@ -203,15 +218,14 @@ fn headless_and_lsp_diagnostics_match() {
 fn permission_diagnostic_uses_the_shared_headless_lsp_surface() {
     let text =
         "---\nkind: scene\ncharacter: hero\nseason: 1\nepisode: 1\n---\n\n## Opening\n\n::end\n";
-    let mut input = input_for(text);
-    input
-        .snapshot
-        .restrict_permissions(&lute_manifest::permissions::Permissions {
-            layers: vec![lute_manifest::permissions::PermissionSet {
-                directives: Some(std::collections::BTreeSet::from(["camera".to_string()])),
-                ..Default::default()
-            }],
-        });
+    let mut snapshot = lute_manifest::core::load_core_snapshot();
+    snapshot.restrict_permissions(&lute_manifest::permissions::Permissions {
+        layers: vec![lute_manifest::permissions::PermissionSet {
+            directives: Some(std::collections::BTreeSet::from(["camera".to_string()])),
+            ..Default::default()
+        }],
+    });
+    let input = input_with(text, snapshot, SchemaImports::default());
     let result = check(&input);
     assert!(
         result
@@ -350,16 +364,18 @@ fn divergence_holds_under_plugin_project() {
     let dir = std::path::Path::new("../../docs/examples/arcia-project");
     let imports = lute_check::resolve_imports(dir, &meta0.uses, &meta0.extends, doc.meta.span);
 
-    let input = CheckInput {
-        text: text.clone(),
-        uri: "date-minigame".into(),
-        snapshot,
-        providers,
-        mode: Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.clone(),
+        "date-minigame".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            providers,
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let res = check(&input);
 
     // With the plugin loaded, the scene is error-clean (the point of the fixture).
@@ -473,16 +489,18 @@ fn divergence_holds_under_plugin_defs() {
         let (snapshot, _rd) =
             resolve_document_snapshot(Some(&proj), meta0.profile.as_deref(), &meta0.plugins);
         let providers = project_providers(Some(&proj));
-        check(&CheckInput {
-            text: text.to_string(),
-            uri: "plugindef-scene".into(),
-            snapshot,
-            providers,
-            mode: Mode::Author,
-            imports: SchemaImports::default(),
-            components: Default::default(),
-            defaults: Default::default(),
-        })
+        check(&CheckInput::new(
+            text.to_string(),
+            "plugindef-scene".into(),
+            Mode::Author,
+            lute_check::InputSources::from_parts(
+                snapshot,
+                providers,
+                SchemaImports::default(),
+                Default::default(),
+                Default::default(),
+            ),
+        ))
     };
 
     // (a) `@warm` (bool def) whole-slot in a bool guard: declared + type-compatible
@@ -566,16 +584,18 @@ fn divergence_holds_under_uses_import() {
         &lute_manifest::snapshot::CapabilitySnapshot::default(),
     );
     let imports = lute_check::resolve_imports(dir, &meta0.uses, &meta0.extends, doc.meta.span);
-    let input = CheckInput {
-        text: text.clone(),
-        uri: "carry-ep".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.clone(),
+        "carry-ep".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let res = check(&input);
     assert!(
         res.diagnostics
@@ -618,16 +638,18 @@ fn divergence_holds_under_uses_import() {
         &lute_manifest::snapshot::CapabilitySnapshot::default(),
     );
     let bimports = lute_check::resolve_imports(dir, &bmeta.uses, &bmeta.extends, bdoc.meta.span);
-    let binput = CheckInput {
-        text: bad.to_string(),
-        uri: "bad-import".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: bimports,
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let binput = CheckInput::new(
+        bad.to_string(),
+        "bad-import".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            bimports,
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let bres = check(&binput);
     assert!(
         bres.diagnostics
@@ -789,16 +811,18 @@ fn divergence_holds_under_components() {
         &lute_manifest::snapshot::CapabilitySnapshot::default(),
     );
     let components = lute_check::resolve_components(&dir, &meta0.components, doc.meta.span);
-    let input = CheckInput {
-        text: text.into(),
-        uri: "comp-scene".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.into(),
+        "comp-scene".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
     let res = check(&input);
     assert!(
         res.diagnostics
@@ -841,16 +865,18 @@ fn divergence_holds_under_components() {
         &lute_manifest::snapshot::CapabilitySnapshot::default(),
     );
     let bcomponents = lute_check::resolve_components(&dir, &bmeta.components, bdoc.meta.span);
-    let binput = CheckInput {
-        text: bad.to_string(),
-        uri: "ghost-scene".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: bcomponents,
-        defaults: Default::default(),
-    };
+    let binput = CheckInput::new(
+        bad.to_string(),
+        "ghost-scene".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            bcomponents,
+            Default::default(),
+        ),
+    );
     let bres = check(&binput);
     assert!(
         bres.diagnostics

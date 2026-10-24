@@ -39,7 +39,6 @@ use lute_syntax::ast::Set;
 use crate::cel_paths::select_path;
 use crate::cel_resolve::compatible;
 use crate::ctx::ExpectedType;
-use crate::meta::StateSchema;
 use crate::set_op::resolve_type;
 
 pub const E_SET_TYPE: &str = "E-SET-TYPE";
@@ -69,7 +68,11 @@ pub(crate) enum Decision {
 /// dsl 0.10.0 §3: type one `::set`'s right-hand side against the declared type
 /// of the path it writes. Returns an empty vec for everything §3 does not
 /// decide.
-pub(crate) fn check_set_type(set: &Set, arena: &CelArena, schema: &StateSchema) -> Vec<Diagnostic> {
+pub(crate) fn check_set_type(
+    set: &Set,
+    arena: &CelArena,
+    schema: &crate::StateView,
+) -> Vec<Diagnostic> {
     // §3.3 rule 8 plus its closing paragraph, in one gate. A WHOLE-slot `@ref`
     // already carries this position's expected type and a mismatch there is
     // the pre-existing `E-REF-TYPE` (`cel_resolve.rs:135-146`, driven by the
@@ -88,7 +91,7 @@ pub(crate) fn check_set_type(set: &Set, arena: &CelArena, schema: &StateSchema) 
     };
     // dsl 0.27.0 §2 (T1-2): a `{ domain: K }` / `{ entity: K }` target whose
     // `K` is known is checked as `{ enum: [K's members] }`.
-    let (declared_as, resolved) = match (declared, schema.domain_members.get(&set.path)) {
+    let (declared_as, resolved) = match (declared, schema.domain_members(&set.path)) {
         (Type::Domain(_) | Type::Entity(_), Some((name, ms))) => {
             let word = if matches!(declared, Type::Entity(_)) {
                 "entity"
@@ -182,7 +185,7 @@ pub(crate) fn check_set_type(set: &Set, arena: &CelArena, schema: &StateSchema) 
 
 /// §3.3 rules 1–8 over one expression node. Total: every shape the rules do
 /// not name is [`Decision::Undecidable`].
-pub(crate) fn decide(expr: &Expr, schema: &StateSchema, defs: &DefTypes) -> Decision {
+pub(crate) fn decide(expr: &Expr, schema: &crate::StateView, defs: &DefTypes) -> Decision {
     match expr {
         // Rule 1: a literal.
         Expr::Literal(v) => match v {
@@ -233,7 +236,11 @@ pub(crate) fn decide(expr: &Expr, schema: &StateSchema, defs: &DefTypes) -> Deci
 /// the body does not parse: malformed CEL is `E-CEL-PARSE`'s, never a type
 /// question. Parsed with each `@` kept as the ref marker, so a `@name` or
 /// `@name(args)` reference takes its type from `defs`.
-pub(crate) fn decide_raw(raw: &str, schema: &StateSchema, defs: &DefTypes) -> Option<Decision> {
+pub(crate) fn decide_raw(
+    raw: &str,
+    schema: &crate::StateView,
+    defs: &DefTypes,
+) -> Option<Decision> {
     let mut arena = CelArena::default();
     let handle = lute_cel::parse_slot_marked_refs(&mut arena, raw)?;
     let root = arena.get(handle)?;
@@ -248,7 +255,7 @@ fn ref_type(name: &str, defs: &DefTypes) -> Decision {
 
 /// Rules 3–7. Operators are synthetic `Call`s in this AST, so they and the
 /// profile functions dispatch through one `func_name` match.
-fn decide_call(c: &CallExpr, schema: &StateSchema, defs: &DefTypes) -> Decision {
+fn decide_call(c: &CallExpr, schema: &crate::StateView, defs: &DefTypes) -> Decision {
     match c.func_name.as_str() {
         // Rule 3: comparisons and logical operators produce `bool`.
         op::EQUALS
@@ -346,23 +353,18 @@ fn decide_call(c: &CallExpr, schema: &StateSchema, defs: &DefTypes) -> Decision 
 /// The type one element of `family` has: a declared map's value type, or —
 /// for an entity-indexed family (`per: <kind>`, declared as one path per
 /// member) — the members' declared type when they all agree.
-fn indexed_type(family: &str, schema: &StateSchema) -> Option<Type> {
+fn indexed_type(family: &str, schema: &crate::StateView) -> Option<Type> {
     if let Some(Type::Map { value, .. }) = resolve_type(family, schema) {
         return Some((**value).clone());
     }
-    let prefix = format!("{family}.");
-    let mut members = schema
-        .decls
-        .iter()
-        .filter(|(k, _)| k.strip_prefix(&prefix).is_some_and(|m| !m.contains('.')))
-        .map(|(_, d)| &d.ty);
+    let mut members = schema.members_of(family).map(|(_, d)| &d.ty);
     let first = members.next()?;
     members.all(|t| t == first).then(|| first.clone())
 }
 
 /// Rule 6: `+` is `number + number` or `string + string`. Two DECIDED sides
 /// that disagree are ill-typed; anything else is undecidable.
-fn decide_add(c: &CallExpr, schema: &StateSchema, defs: &DefTypes) -> Decision {
+fn decide_add(c: &CallExpr, schema: &crate::StateView, defs: &DefTypes) -> Decision {
     let (Some(l), Some(r)) = (c.args.first(), c.args.get(1)) else {
         return Decision::Undecidable;
     };
@@ -443,7 +445,7 @@ fn operand_subject(expr: &Expr) -> String {
 /// PATH cannot be proven integral here, so the runtime owns that half — a
 /// fractional value makes `%` unknown there (docs/runtime/cel-and-facts.md).
 /// The namespaced id family stays undecidable, as in rule 5.
-pub(crate) fn modulo_operand_fault(expr: &Expr, schema: &StateSchema) -> Option<String> {
+pub(crate) fn modulo_operand_fault(expr: &Expr, schema: &crate::StateView) -> Option<String> {
     integer_fault(expr, &decide(expr, schema, &NO_DEFS))
 }
 

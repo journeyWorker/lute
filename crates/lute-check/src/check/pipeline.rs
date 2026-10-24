@@ -71,7 +71,7 @@ fn def_body_diagnostics(
     doc: &Document,
     inline: &std::collections::BTreeMap<String, yaml_serde::Value>,
     imports: &SchemaImports,
-    schema: &crate::meta::StateSchema,
+    schema: &crate::StateView,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     let mut check_one = |name: &str, def: &yaml_serde::Value, span: Span, prefix: &str| {
@@ -175,7 +175,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     crate::component_effects::splice_component_effects(
         &mut doc,
         &input.components,
-        &input.snapshot,
+        input.snapshot(),
     );
 
     // 2. Fill every CEL slot; a parse failure is reported ONCE here and never
@@ -211,7 +211,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // (no cast, no clock, no kinds, no state from it): the import errors
     // are the cause, and the same stop applies.
     let meta_unparsed = fold_diags.iter().any(|d| d.code == "E-META-PARSE");
-    let schema_unparsed = input.imports.diags.iter().any(|d| {
+    let schema_unparsed = input.import_diags.iter().any(|d| {
         d.code == "E-USES-PARSE"
             && d.related
                 .iter()
@@ -219,8 +219,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     });
     if meta_unparsed || schema_unparsed {
         let import_diags = input
-            .imports
-            .diags
+            .import_diags
             .iter()
             .filter(|d| !meta_unparsed && d.code.starts_with("E-USES-"))
             .cloned();
@@ -274,7 +273,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let beat_when = parse_beat_slot(scene_beat.and_then(|b| b.when.as_ref()));
     let beat_spent_by = parse_beat_slot(scene_beat.and_then(|b| b.spent_by.as_ref()));
     let mut def_body_diags =
-        def_body_diagnostics(&doc, &folded.typed.defs, &input.imports, &folded.env.state);
+        def_body_diagnostics(&doc, &folded.typed.defs, input.imports(), &folded.env.state);
     check_use_def_enum_args(
         &doc,
         &input.components,
@@ -313,7 +312,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // (`component_effects::host_param_types`), the same table a `::use`
     // host builds in `validate_components`.
     let own_cast = if folded.typed.component.is_some() {
-        crate::cast::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast)
+        crate::cast::declared_cast(input.snapshot(), input.imports(), &folded.typed.cast)
     } else {
         std::collections::BTreeMap::new()
     };
@@ -341,8 +340,8 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // dsl 0.27.0 §2 (T1-10): a `::use` reads its omitted params' `@def` defaults.
     scope.components = Some(&input.components);
     let mut walker = Walker {
-        snapshot: &input.snapshot,
-        providers: &input.providers,
+        snapshot: input.snapshot(),
+        providers: input.providers(),
         domains,
         arena: &arena,
         diags: Vec::new(),
@@ -383,13 +382,13 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                 effects: folded.typed.effects,
                 speakers: &folded.typed.speaker_params,
                 cast: &own_cast,
-                own: component_own_slots(&doc, &input.snapshot, &input.components),
+                own: component_own_slots(&doc, input.snapshot(), &input.components),
             };
             for shot in &doc.sections {
                 walk_component_body(
                     &shot.body,
-                    &input.snapshot,
-                    &input.providers,
+                    input.snapshot(),
+                    input.providers(),
                     domains,
                     &arena,
                     &base_ctx,
@@ -549,7 +548,8 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     walker.diags.extend(crate::gates::check_seam_texts(
         &doc,
         &folded,
-        &input.imports,
+        input.imports(),
+        input.plugin_origins(),
         &base_ctx,
     ));
     // dsl 0.27.0 §5: every season's `live:`, judged in this document's
@@ -557,8 +557,8 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     walker.diags.extend(crate::season::check_live_texts(
         &doc,
         &folded.typed.seasons,
-        &input.imports.seasons,
-        &input.imports.season_lives,
+        &input.imports().seasons,
+        &input.imports().season_lives,
         &base_ctx,
         &scope,
     ));
@@ -692,7 +692,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     //     run of this same pass in `validate_components` (Task 7c).
     let line_code_diags = crate::match_check::check_line_codes_with_policy(
         &doc,
-        input.snapshot.identity_require_stable,
+        input.snapshot().identity_require_stable,
     );
     let mut instance_diags = Vec::new();
     for shot in &doc.sections {
@@ -743,7 +743,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
             &mut inject_state,
             &mut injections,
             domains,
-            &input.snapshot,
+            input.snapshot(),
             &input.components,
             &mut using,
         );
@@ -757,7 +757,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
             &mut beat_state,
             &mut injections,
             domains,
-            &input.snapshot,
+            input.snapshot(),
             &input.components,
             &mut using,
         );
@@ -810,7 +810,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     ));
     // A constant `rearm=`, and a subquest's `rearm=` (same-document parent).
     diags.extend(crate::project_check::check_doc_quest_rearm(&doc, &folded));
-    diags.extend(input.imports.diags.clone());
+    diags.extend(input.import_diags.iter().cloned());
     // Component-import resolution diagnostics (dsl §13) + the per-component
     // body validation and `::use` expansion-cycle diagnostics, reported at
     // the scene frontmatter span (a component file's own spans cannot be
@@ -823,7 +823,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // as before, so an existing consumer scanning it for e.g.
     // `E-COMPONENT-STATE` keeps finding it there regardless of whether the
     // SAME component also failed to parse.
-    let mut component_diags = input.components.diags.clone();
+    let mut component_diags = input.component_diags.clone();
     // A component file that reaches itself through `defaults: components:`
     // re-imports its own text: an import failure whose every cause lies in
     // THIS file is the file's own parse/frontmatter diagnostics a second time
@@ -838,8 +838,8 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     }
     let component_body_diags = validate_components(
         &input.components,
-        &input.snapshot,
-        &input.providers,
+        input.snapshot(),
+        input.providers(),
         domains,
         doc.meta.span,
         &component_use_sites(&doc, &input.components),
@@ -850,7 +850,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         } else {
             &[]
         },
-        input.snapshot.identity_require_stable,
+        input.snapshot().identity_require_stable,
     );
     let component_body_diags = crate::component_import::merge_component_body_diags(
         &mut component_diags,
@@ -917,7 +917,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     diags.extend(check_lute_version_stale(&folded.typed, &doc.meta));
     // 0.4.0 T4 (§5.2 whole-document reachability pass): E-ARM-DEAD (dead
     // guard + subsumption) + W-OTHERWISE-DEAD.
-    diags.extend(check_reachability(&doc, &folded, &input.snapshot));
+    diags.extend(check_reachability(&doc, &folded, input.snapshot()));
     // 0.21.1 T1-3/T1-4: a def in an attribute must fold to a constant
     // (E-ATTR-DEF-DYNAMIC) and a `{{@def}}` must inline into one standalone
     // expression (E-INTERP-DEF) — the artifact has no defs table.
@@ -942,7 +942,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     diags.extend(crate::admission::check_admission(
         &doc,
         folded.doc_kind,
-        &input.snapshot,
+        input.snapshot(),
     ));
     // An illegal `once` / `tier` value naming a declared season, and a
     // scene's legacy `season:` holding one.
@@ -1042,7 +1042,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let mut diags = crate::defaults_note::note_replaced_uses(&doc, &folded.typed, input, diags);
     // 0.41.0 §3.2: a use of an invalid plugin declaration is one note per
     // cause, not an "unknown" report per use.
-    crate::depends::attribute_unknown(&mut diags, &input.snapshot);
+    crate::depends::attribute_unknown(&mut diags, input.snapshot());
     crate::depends::fold_dependants(&mut diags);
 
     // Some-vs-None policy for the resolved view.
@@ -1079,7 +1079,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                 .cloned()
                 .collect(),
             read: {
-                let mut read = crate::project_check::domain_reading_set(&input.snapshot);
+                let mut read = crate::project_check::domain_reading_set(input.snapshot());
                 read.extend(crate::project_check::domain_reads_from_relations(
                     &env.rel_vocab,
                 ));

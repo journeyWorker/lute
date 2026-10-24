@@ -30,7 +30,7 @@ use lute_check::content_line::{CONTENT_LINE_DOMAIN_SLOTS, KNOWN_ATTRS};
 use lute_check::directives::UNIVERSAL_TIMING_ATTRS;
 use lute_check::{parse_meta, SchemaImports};
 use lute_core_span::Span;
-use lute_manifest::core::{CLEAR_DIRECTIVE, JUMP_DIRECTIVE, LABEL_DIRECTIVE, LABEL_NAME_ATTR};
+use lute_manifest::core::{JUMP_DIRECTIVE, LABEL_DIRECTIVE, LABEL_NAME_ATTR, UNSTAMPED_DIRECTIVES};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::schema::AssetKindDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -676,6 +676,7 @@ pub(crate) fn content_line_attr_detail(key: &str) -> Option<&'static str> {
         "os" => "flag — role `os`: spoken off-screen",
         "vo" => "flag — role `vo`: voice-over",
         "as" => "string",
+        "wait" => "bool — `false`: the staging after this line starts while it is presented",
         "when" => "condition",
         _ => return None,
     })
@@ -906,7 +907,7 @@ fn attr_key_items(
     let present = present_attr_keys(doc, off);
     let timing = UNIVERSAL_TIMING_ATTRS
         .iter()
-        .filter(|_| directive != CLEAR_DIRECTIVE)
+        .filter(|_| !UNSTAMPED_DIRECTIVES.contains(&directive))
         .filter(|(name, _)| !decl.attrs.iter().any(|a| a.name == *name))
         .map(|(name, ty)| (name.to_string(), ty));
     decl.attrs
@@ -1089,7 +1090,7 @@ fn state_path_items(meta: &lute_check::TypedMeta) -> Vec<CompletionItem> {
         .decls
         .iter()
         .map(|(path, decl)| CompletionItem {
-            label: path.clone(),
+            label: path.into_owned(),
             kind: Some(CompletionItemKind::PROPERTY),
             detail: Some(type_label(&decl.ty)),
             ..Default::default()

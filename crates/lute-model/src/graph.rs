@@ -542,7 +542,7 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
         );
     }
     for gate in feed.gates {
-        let is_occasion = d.input.snapshot.occasions.contains_key(&gate.target);
+        let is_occasion = d.input.snapshot().occasions.contains_key(&gate.target);
         let engine_owned = !gate.target.contains("visited") && !is_occasion;
         let target = if is_occasion {
             NodeKey::new(NodeKind::Occasion, gate.target.clone())
@@ -743,7 +743,7 @@ fn add_project_dependencies(g: &mut SemanticGraph, model: &ProjectModel) {
     let mut occasions_seen = BTreeSet::new();
     for d in model.documents() {
         for (name, body) in &d.folded.def_bodies {
-            let Some(path) = d.input.imports.def_origins.get(name).cloned() else {
+            let Some(path) = d.input.imports().def_origins.get(name).cloned() else {
                 continue;
             };
             let Some(origin) = d.folded.env.rel_vocab.origins.defs.get(name) else {
@@ -785,14 +785,14 @@ fn add_project_dependencies(g: &mut SemanticGraph, model: &ProjectModel) {
                 );
             }
         }
-        for (name, occasion) in &d.input.snapshot.occasions {
+        for (name, occasion) in &d.input.snapshot().occasions {
             let Some(raw) = occasion.raised_when.as_deref() else {
                 continue;
             };
             if !occasions_seen.insert(name.clone()) {
                 continue;
             }
-            let Some(origin) = d.input.imports.plugin_origins.gates.get(name) else {
+            let Some(origin) = d.input.plugin_origins().gates.get(name) else {
                 continue;
             };
             let path = origin.file.clone();

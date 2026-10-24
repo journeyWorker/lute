@@ -181,7 +181,7 @@ pub fn check_mocks_under(
         // YAML) leaves its resolved schema empty: every mock key naming what
         // it declares would fail. That import's own error is the report.
         if input.is_some_and(|i| {
-            i.imports.diags.iter().any(|d| {
+            i.import_diags.iter().any(|d| {
                 d.code == "E-USES-NOT-FOUND"
                     || d.code == "E-USES-PARSE"
                         && d.related
@@ -197,7 +197,7 @@ pub fn check_mocks_under(
             diags.extend(lute_trace::validate_bridges(
                 &mocks,
                 folded,
-                &input.snapshot,
+                input.snapshot(),
                 &reads,
             ));
         }

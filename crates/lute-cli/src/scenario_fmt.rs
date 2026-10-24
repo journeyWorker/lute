@@ -240,6 +240,7 @@ fn root_graph_json(
     docs: &[lute_check::ProjectDoc<'_>],
     facts: Option<&crate::FactGraph>,
 ) -> Value {
+    let start_cycle = crate::cmd_scenario::graph::start_cycle_quests(&scenario.graph);
     let nodes: Vec<Value> = scenario
         .graph
         .nodes
@@ -260,6 +261,10 @@ fn root_graph_json(
                 Value::String(reach_evidence(scenario, node).to_string()),
             );
             obj.insert("prereq".to_string(), prereq_json(scenario, node));
+            // dsl 0.49.0 §6.1: a quest on a start cycle (or a self-read).
+            if start_cycle.contains(node) {
+                obj.insert("startCycle".to_string(), Value::Bool(true));
+            }
             Value::Object(obj)
         })
         .collect();
@@ -531,14 +536,10 @@ fn envelope_json(
                 "tainted".to_string(),
                 Value::Bool(scenario.tainted.contains(&node_id)),
             );
-            let env = scenario
-                .envs
-                .get(&node_id)
-                .cloned()
-                .unwrap_or_else(|| envelope::Env {
-                    guaranteed: scenario.envelope_d.clone(),
-                    possible: scenario.envelope_d.clone(),
-                });
+            let env = scenario.env(&node_id).unwrap_or_else(|| envelope::Env {
+                guaranteed: scenario.envelope_d.clone(),
+                possible: scenario.envelope_d.clone(),
+            });
             (env, None, scenario.scene_must.get(key))
         }
         NodeRef::Quest(id) => {
@@ -553,7 +554,7 @@ fn envelope_json(
             let qe = envelope::quest_envelope(
                 quest,
                 &scenario.graph,
-                &scenario.envs,
+                &scenario.route_envs,
                 &scenario.envelope_d,
             );
             (qe.env, Some(qe.enrichment_note), None)
@@ -687,6 +688,7 @@ fn root_dot(root: &Path, scenario: &RootScenario, facts: Option<&crate::FactGrap
         "digraph {} {{\n",
         dot_quote(&root.display().to_string())
     ));
+    let start_cycle = crate::cmd_scenario::graph::start_cycle_quests(&scenario.graph);
     for node in scenario.graph.nodes.keys() {
         let shape = match node {
             NodeId::Scene(_) => "box",
@@ -700,9 +702,15 @@ fn root_dot(root: &Path, scenario: &RootScenario, facts: Option<&crate::FactGrap
             "cycle-degraded" => "orange",
             _ => "gray",
         };
+        // dsl 0.49.0 §6.1: a quest on a start cycle is bold, class `startCycle`.
+        let start = if start_cycle.contains(node) {
+            ", style=bold, class=\"startCycle\""
+        } else {
+            ""
+        };
         let label = node.to_string();
         s.push_str(&format!(
-            "  {} [shape={}, color={}, label={}];\n",
+            "  {} [shape={}, color={}{start}, label={}];\n",
             dot_quote(&label),
             shape,
             color,

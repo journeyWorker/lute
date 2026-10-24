@@ -28,22 +28,23 @@ pub(crate) fn collect_index_unions(model: &ProjectModel) -> IndexUnions {
     let mut world_events = BTreeSet::new();
     for document in &documents {
         let input = &document.input;
-        for (name, decl) in &input.snapshot.occasions {
+        for (name, decl) in &input.snapshot().occasions {
             unions
                 .occasions
                 .entry(name.clone())
                 .or_insert_with(|| IndexOccasion::from(decl));
         }
-        world_events.extend(input.snapshot.events.keys().cloned());
-        for (id, member) in lute_check::cast::declared_cast(&input.snapshot, &input.imports, &[]) {
+        world_events.extend(input.snapshot().events.keys().cloned());
+        for (id, member) in lute_check::cast::declared_cast(input.snapshot(), input.imports(), &[])
+        {
             if let Some(name) = member.name {
                 unions.cast.entry(id).or_insert(name);
             }
         }
-        for (tag, decl) in &input.snapshot.directives {
+        for (tag, decl) in &input.snapshot().directives {
             let Some(bridge) = &decl.bridge else { continue };
             let Some(capability) = input
-                .snapshot
+                .snapshot()
                 .bridge_capabilities
                 .get(&(bridge.service.clone(), bridge.operation.clone()))
             else {

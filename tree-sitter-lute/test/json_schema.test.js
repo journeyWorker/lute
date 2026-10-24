@@ -461,6 +461,38 @@ describe("lute.plugin.json — plugin manifest + export files", () => {
     expect(ok, JSON.stringify(errors)).toBe(true);
   });
 
+  test("real shipped rewardKinds exports validate", () => {
+    const { ajv, pluginSchema } = loadAjv();
+    for (const path of [
+      "docs/examples/games/monster-league/plugins/league.engine/rewardkinds/league.yaml",
+      "docs/examples/games/starfall-gacha/plugins/starfall.engine/rewardkinds/starfall.yaml",
+      "docs/examples/games/lamplight/plugins/lamplight.occasions/rewardkinds/case.yaml",
+    ]) {
+      const doc = Bun.YAML.parse(readFileSync(`${ROOT}/${path}`, "utf8"));
+      const { ok, errors } = validateAgainst(ajv, pluginSchema.$id, doc);
+      expect(ok, `${path}: ${JSON.stringify(errors)}`).toBe(true);
+    }
+  });
+
+  // 0.49.0 §3.3 (#168): `forbidden: true` is admitted, and only alone.
+  test("rewardKinds target: forbidden alone validates; combined with another key it does not", () => {
+    const { ajv, pluginSchema } = loadAjv();
+    const kinds = (target) => ({ rewardKinds: { COINS: { target } } });
+    expect(validateAgainst(ajv, pluginSchema.$id, kinds({ forbidden: true })).ok).toBe(true);
+    expect(validateAgainst(ajv, pluginSchema.$id, kinds({ provider: "items" })).ok).toBe(true);
+    expect(validateAgainst(ajv, pluginSchema.$id, kinds({ forbidden: false, required: true })).ok).toBe(true);
+    for (const bad of [
+      { forbidden: true, provider: "items" },
+      { forbidden: true, entity: "keepsake" },
+      { forbidden: true, required: true },
+      { forbidden: true, required: false },
+      { provider: "items", entity: "keepsake" },
+      { forbade: true },
+    ]) {
+      expect(validateAgainst(ajv, pluginSchema.$id, kinds(bad)).ok, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
   test("real shipped showcase.pack plugin.yaml (depends + options) validates", () => {
     const { ajv, pluginSchema } = loadAjv();
     const doc = Bun.YAML.parse(
@@ -595,8 +627,8 @@ options:
 
 describe("generated runtime contract schemas", () => {
   test("every conformance and contract-fixture line validates", () => {
-    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.48.schema.json`, "utf8"));
-    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.48.schema.json`, "utf8"));
+    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.49.schema.json`, "utf8"));
+    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.49.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     const eventValidate = ajv.compile(events);
     const snapshotValidate = ajv.compile(snapshots);
@@ -639,7 +671,7 @@ describe("generated runtime contract schemas", () => {
 // index types; every index the corpus compiles must validate against them.
 describe("generated IR index schema", () => {
   test("every compiled project.index.json validates as `projectIndex`", () => {
-    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.48.schema.json`, "utf8"));
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.49.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     ajv.addSchema(ir);
     const validate = ajv.compile({ $ref: `${ir.$id}#/$defs/projectIndex` });
@@ -671,7 +703,7 @@ describe("generated IR index schema", () => {
   });
 
   test("an index def row is closed to the documented shape", () => {
-    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.48.schema.json`, "utf8"));
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.49.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     ajv.addSchema(ir);
     const def = ajv.compile({ $ref: `${ir.$id}#/$defs/indexDef` });

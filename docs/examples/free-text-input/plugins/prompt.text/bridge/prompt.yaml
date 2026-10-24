@@ -1,0 +1,6 @@
+bridgeCapabilities:
+  - service: prompt
+    operation: ask
+    replay: recorded
+    result:
+      - { name: answer, type: string }

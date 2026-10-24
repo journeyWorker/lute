@@ -1,6 +1,6 @@
 // THIS FILE IS GENERATED — DO NOT EDIT.
 // Generator: packages/runtime/scripts/contract-codegen.ts
-// Sources: schemas/lute-events-0.48.schema.json, schemas/lute-snapshot-0.48.schema.json
+// Sources: schemas/lute-events-0.49.schema.json, schemas/lute-snapshot-0.49.schema.json
 
 import * as Schema from "effect/Schema";
 import type * as SchemaAST from "effect/SchemaAST";
@@ -57,6 +57,7 @@ export const Await = Schema.Union([
       Schema.check(Schema.isGreaterThanOrEqualTo(0))
     ),
     "results": Schema.Record(Schema.String, Schema.suspend(() => fieldType)),
+    "stamps": Schema.optionalKey(Schema.Record(Schema.String, Schema.Json)),
     "tag": Schema.String,
     "type": Schema.Literal("awaitBridge")
   }),

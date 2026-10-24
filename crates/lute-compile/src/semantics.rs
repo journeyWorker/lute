@@ -114,8 +114,8 @@ pub const REGISTRY: &[SemanticEntry] = &[
     },
 ];
 /// Serialized keys covered by the semantic-field invariant. Dynamic maps
-/// (`extra`, plugin `fields`, labels, and locale text) are intentionally
-/// traversed only at their containing key.
+/// (`extra`, plugin `stamps` and `fields`, labels, and locale text) are
+/// intentionally traversed only at their containing key.
 pub const FIELD_TABLE: &[&str] = &[
     "accept",
     "action",
@@ -305,6 +305,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "source",
     "speaker",
     "spentBy",
+    "stamps",
     "start",
     "state",
     "stop",
@@ -444,7 +445,13 @@ pub fn collect(ir: &ExecutionIr) -> Collected {
         );
     }
 
-    for state in &ir.state {
+    // Only `entry.*` and `quest.*` rows can add a semantic: read those
+    // ranges of the sorted table, in path order, instead of every row.
+    for state in ir
+        .state
+        .with_prefix("entry.")
+        .chain(ir.state.with_prefix("quest."))
+    {
         if state.path.starts_with("entry.")
             && (state.path.ends_with(".read") || state.path.ends_with(".everRead"))
         {
@@ -490,7 +497,7 @@ fn add_stamp(out: &mut Collected, stamp: &Stamp, addr: Option<&str>, owner: Sema
             "command timing",
         );
     }
-    if stamp.provenance.is_some() || stamp.source.is_some() || !stamp.extra.is_empty() {
+    if stamp.provenance.is_some() || stamp.source.is_some() || !stamp.stamps.is_empty() {
         out.add(CORE, addr, "record provenance or plugin stamp data");
     }
 }
@@ -892,8 +899,8 @@ mod tests {
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
             kind: DocKind::Scene,
-            lute: "0.48.1".into(),
-            ir_version: "0.48.1".into(),
+            lute: "0.49.0".into(),
+            ir_version: "0.49.0".into(),
             capability_snapshot: "cap".into(),
             identity_renames: vec![],
             required_semantics: vec![],
@@ -908,7 +915,7 @@ mod tests {
                 plugin: BTreeMap::new(),
                 beat: None,
             }),
-            state: vec![],
+            state: StateTable::default(),
             entities: vec![],
             enums: vec![],
             relations: vec![],

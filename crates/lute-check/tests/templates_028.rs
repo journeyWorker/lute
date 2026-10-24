@@ -23,16 +23,18 @@ fn run(component: &str, lore: &str) -> (CheckInput, Vec<Diagnostic>) {
     let (doc, _) = lute_syntax::parse(lore);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
     let components: ComponentSet = resolve_components(&dir, &meta0.components, doc.meta.span);
-    let input = CheckInput {
-        text: lore.to_string(),
-        uri: "bonds.lute".into(),
-        snapshot: vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        lore.to_string(),
+        "bonds.lute".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            vocab_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
     let diags = check(&input).diagnostics;
     (input, diags)
 }
@@ -273,16 +275,18 @@ beat:\n  on: evening\n  also: true\n---\n";
         let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
         let mut snapshot = vocab_snapshot();
         snapshot.occasions.extend(occasions.clone());
-        let input = CheckInput {
-            text: lore.to_string(),
-            uri: "talks.lute".into(),
-            snapshot,
-            providers: ProviderSet::default(),
-            mode: Mode::Ci,
-            imports: SchemaImports::default(),
-            components: resolve_components(&dir, &meta0.components, doc.meta.span),
-            defaults: Default::default(),
-        };
+        let input = CheckInput::new(
+            lore.to_string(),
+            "talks.lute".into(),
+            Mode::Ci,
+            lute_check::InputSources::from_parts(
+                snapshot,
+                ProviderSet::default(),
+                SchemaImports::default(),
+                resolve_components(&dir, &meta0.components, doc.meta.span),
+                Default::default(),
+            ),
+        );
         let n = check(&input)
             .diagnostics
             .iter()
@@ -325,16 +329,18 @@ fn check_in(dir: &std::path::Path, uri: &str, src: &str) -> Vec<Diagnostic> {
     let (doc, _) = lute_syntax::parse(src);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
     let components = resolve_components(dir, &meta0.components, doc.meta.span);
-    let input = CheckInput {
-        text: src.to_string(),
-        uri: dir.join(uri).display().to_string(),
-        snapshot: vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        src.to_string(),
+        dir.join(uri).display().to_string(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            vocab_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
     check(&input).diagnostics
 }
 

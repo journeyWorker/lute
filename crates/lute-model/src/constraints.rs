@@ -15,12 +15,18 @@ pub enum ConstraintVerdict {
     Unknown,
 }
 
+/// One evaluated constraint (dsl 0.49.0 §6.4). `counterexamples` and
+/// `related` are non-empty only on [`ConstraintVerdict::Violated`]; `reason`
+/// explains every verdict.
 #[derive(Clone, Debug, serde::Serialize)]
 pub struct ConstraintResult {
     pub id: String,
     pub kind: String,
+    /// What the constraint is about: `quest:first`, `speaker:mira`.
+    pub subject: String,
     pub verdict: ConstraintVerdict,
     pub evidence: Evidence,
+    pub reason: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<String>,
     pub declaration: Span,
@@ -30,6 +36,73 @@ pub struct ConstraintResult {
     #[serde(skip)]
     pub declaration_errors: Vec<Diagnostic>,
 }
+
+/// The `completable` reason when no script ran ([`ConstraintResult::reason`]).
+pub const NO_SCRIPT_REASON: &str = "no play or test script was run (--all-scripts / --script)";
+
+/// What one evaluator decides about a constraint.
+struct Outcome {
+    verdict: ConstraintVerdict,
+    evidence: Evidence,
+    reason: String,
+    scope: Option<String>,
+    counterexamples: Vec<String>,
+    related: Vec<Diagnostic>,
+}
+
+impl Outcome {
+    fn unknown(reason: impl Into<String>) -> Self {
+        Outcome {
+            verdict: ConstraintVerdict::Unknown,
+            evidence: Evidence::Unknown,
+            reason: reason.into(),
+            scope: None,
+            counterexamples: Vec::new(),
+            related: Vec::new(),
+        }
+    }
+
+    fn holds(evidence: Evidence, reason: impl Into<String>) -> Self {
+        Outcome {
+            verdict: ConstraintVerdict::Holds,
+            evidence,
+            ..Outcome::unknown(reason)
+        }
+    }
+
+    fn violated(
+        evidence: Evidence,
+        reason: impl Into<String>,
+        counterexamples: Vec<String>,
+        related: Vec<Diagnostic>,
+    ) -> Self {
+        Outcome {
+            verdict: ConstraintVerdict::Violated,
+            evidence,
+            counterexamples,
+            related,
+            ..Outcome::unknown(reason)
+        }
+    }
+}
+
+/// The subject of `c` ([`ConstraintResult::subject`]).
+fn subject(c: &ConstraintDecl) -> String {
+    match c.kind {
+        ConstraintKind::Reachable => c.node.clone().unwrap_or_default(),
+        ConstraintKind::Completable | ConstraintKind::NoSingleSlotProgress => c
+            .quest
+            .as_deref()
+            .map(|q| format!("quest:{q}"))
+            .unwrap_or_default(),
+        ConstraintKind::SpeaksOnlyWhen => c
+            .speaker
+            .as_deref()
+            .map(|s| format!("speaker:{s}"))
+            .unwrap_or_default(),
+    }
+}
+
 pub fn evaluate_constraints(
     root: &Path,
     project: &ProjectConfig,
@@ -54,7 +127,7 @@ pub fn evaluate_constraints_with_foldeds(
         .constraints
         .iter()
         .map(|c| {
-            let (verdict, evidence, scope, witnesses, counterexamples, related) = match c.kind {
+            let outcome = match c.kind {
                 ConstraintKind::Reachable => reachable(c, docs, foldeds, scenario),
                 ConstraintKind::Completable => completable(c, docs, scenario),
                 ConstraintKind::SpeaksOnlyWhen => speaks(c, docs, foldeds),
@@ -69,18 +142,21 @@ pub fn evaluate_constraints_with_foldeds(
             ConstraintResult {
                 id: c.id.clone(),
                 kind: c.kind.as_str().into(),
-                verdict,
-                evidence,
-                scope,
+                subject: subject(c),
+                verdict: outcome.verdict,
+                evidence: outcome.evidence,
+                reason: outcome.reason,
+                scope: outcome.scope,
                 declaration,
-                witnesses,
-                counterexamples,
-                related,
+                witnesses: Vec::new(),
+                counterexamples: outcome.counterexamples,
+                related: outcome.related,
                 declaration_errors,
             }
         })
         .collect()
 }
+
 fn validate_when(
     c: &ConstraintDecl,
     manifest_text: &str,
@@ -151,82 +227,69 @@ fn declaration_error(span: Span, message: &str) -> Diagnostic {
     }
 }
 
+/// dsl 0.49.0 §6.3: `reachable` reports [`crate::scenario::reach_claim`] —
+/// the claim `scenario reach` prints — so the two never disagree.
 fn reachable(
     c: &ConstraintDecl,
     docs: &[(PathBuf, Document)],
     foldeds: &[&lute_check::FoldedEnv],
     scenario: &crate::scenario::RootScenario,
-) -> (
-    ConstraintVerdict,
-    Evidence,
-    Option<String>,
-    Vec<String>,
-    Vec<String>,
-    Vec<Diagnostic>,
-) {
+) -> Outcome {
+    use crate::scenario::ReachVerdict;
     let Some(node) = c.node.as_deref() else {
-        return unknown();
+        return Outcome::unknown("the constraint names no `node`");
     };
     let Some((kind, id)) = node.split_once(':') else {
-        return unknown();
+        return Outcome::unknown(format!("`{node}` is not a `<kind>:<id>` node"));
     };
     let key = match kind {
         "scene" => lute_check::connectivity::NodeId::Scene(id.into()),
         "quest" => lute_check::connectivity::NodeId::Quest(id.into()),
         "beat" => lute_check::connectivity::NodeId::Beat(id.into()),
         "entry" => lute_check::connectivity::NodeId::Entry(id.into()),
-        "objective" | "line" => return unknown(),
-        _ => return unknown(),
+        _ => {
+            return Outcome::unknown(format!(
+                "connectivity decides no `{kind}` node; it decides scenes, quests, beats and \
+                 entries"
+            ))
+        }
     };
     let Some((path, span)) = docs
         .iter()
         .enumerate()
         .find_map(|(i, (path, doc))| find_node(node, path, doc, foldeds.get(i).map(|f| &f.typed)))
     else {
-        return unknown();
+        return Outcome::unknown(format!("`{node}` is declared nowhere in this project root"));
     };
-    match scenario.reach.get(&key).copied() {
-        Some(lute_check::connectivity::Reachability::Reachable) => (
-            ConstraintVerdict::Holds,
-            Evidence::Proven,
-            None,
-            Vec::new(),
-            Vec::new(),
-            vec![related(&path, span, "connectivity proves reachable")],
+    let claim = crate::scenario::reach_claim(scenario, &key);
+    match claim.verdict {
+        ReachVerdict::Reachable => {
+            Outcome::holds(Evidence::Proven, "connectivity proves reachable")
+        }
+        ReachVerdict::Unanchored => Outcome::holds(
+            claim.evidence,
+            "unanchored: available from the start of play",
         ),
-        Some(lute_check::connectivity::Reachability::Unreachable) => (
-            ConstraintVerdict::Violated,
-            Evidence::Proven,
-            None,
-            Vec::new(),
+        ReachVerdict::Unreachable => Outcome::violated(
+            claim.evidence,
+            claim.reason,
             vec![node.into()],
             vec![related(&path, span, "connectivity proves unreachable")],
         ),
-        _ => (
-            ConstraintVerdict::Unknown,
-            Evidence::Unknown,
-            None,
-            Vec::new(),
-            vec![node.into()],
-            Vec::new(),
-        ),
+        ReachVerdict::Unknown => Outcome::unknown(claim.reason),
     }
 }
 
+/// `completable` is decided by witnessed completions; without one it is
+/// `unknown` with the reason ([`NO_SCRIPT_REASON`], or the reach claim of a
+/// quest that can never start).
 fn completable(
     c: &ConstraintDecl,
     docs: &[(PathBuf, Document)],
     scenario: &crate::scenario::RootScenario,
-) -> (
-    ConstraintVerdict,
-    Evidence,
-    Option<String>,
-    Vec<String>,
-    Vec<String>,
-    Vec<Diagnostic>,
-) {
+) -> Outcome {
     let Some(quest) = c.quest.as_deref() else {
-        return unknown();
+        return Outcome::unknown("the constraint names no `quest`");
     };
     let Some((path, span)) = docs.iter().find_map(|(path, doc)| {
         doc.quests
@@ -234,43 +297,31 @@ fn completable(
             .find(|q| q.id == quest)
             .map(|q| (path, q.span))
     }) else {
-        return unknown();
+        return Outcome::unknown(format!(
+            "quest `{quest}` is declared nowhere in this project root"
+        ));
     };
     if scenario.unreachable_quests.contains(quest)
         || scenario.dead_required_objective_quests.contains(quest)
     {
-        (
-            ConstraintVerdict::Violated,
+        return Outcome::violated(
             Evidence::Proven,
-            None,
-            Vec::new(),
+            "quest analysis proves incompletable",
             vec![quest.into()],
             vec![related(path, span, "quest analysis proves incompletable")],
-        )
-    } else {
-        (
-            ConstraintVerdict::Unknown,
-            Evidence::Unknown,
-            None,
-            Vec::new(),
-            vec![quest.into()],
-            Vec::new(),
-        )
+        );
     }
+    let node = lute_check::connectivity::NodeId::Quest(quest.into());
+    if scenario.graph.start_blocked.contains_key(&node) {
+        return Outcome::unknown(crate::scenario::reach_claim(scenario, &node).reason);
+    }
+    Outcome::unknown(NO_SCRIPT_REASON)
 }
 
 fn slot_verdict(
     c: &ConstraintDecl,
     slots: &[lute_check::clock_positions::ObjectiveSlotResult],
-) -> (
-    ConstraintVerdict,
-    Evidence,
-    Option<String>,
-    Vec<String>,
-    Vec<String>,
-    Vec<Diagnostic>,
-) {
-    let scope = Some(CONSTRAINT_SCOPE.to_string());
+) -> Outcome {
     let mut related_diags = Vec::new();
     let mut violation = None;
     for slot in slots
@@ -293,44 +344,34 @@ fn slot_verdict(
             violation = Some(format!("{}.{}", slot.quest, slot.objective));
         }
     }
-    if let Some(objective) = violation {
-        return (
-            ConstraintVerdict::Violated,
-            Evidence::Bounded {
-                scope: CONSTRAINT_SCOPE.into(),
-            },
-            scope,
-            Vec::new(),
+    let bounded = Evidence::Bounded {
+        scope: CONSTRAINT_SCOPE.into(),
+    };
+    let outcome = match violation {
+        Some(objective) => Outcome::violated(
+            bounded,
+            format!("the progress of objective `{objective}` has one declared slot"),
             vec![objective],
             related_diags,
-        );
+        ),
+        None => Outcome::holds(
+            bounded,
+            "every objective's progress has more than one declared slot",
+        ),
+    };
+    Outcome {
+        scope: Some(CONSTRAINT_SCOPE.to_string()),
+        ..outcome
     }
-    (
-        ConstraintVerdict::Holds,
-        Evidence::Bounded {
-            scope: CONSTRAINT_SCOPE.into(),
-        },
-        scope,
-        Vec::new(),
-        Vec::new(),
-        related_diags,
-    )
 }
 
 fn speaks(
     c: &ConstraintDecl,
     docs: &[(PathBuf, Document)],
     foldeds: &[&lute_check::FoldedEnv],
-) -> (
-    ConstraintVerdict,
-    Evidence,
-    Option<String>,
-    Vec<String>,
-    Vec<String>,
-    Vec<Diagnostic>,
-) {
+) -> Outcome {
     let (Some(speaker), Some(target)) = (c.speaker.as_deref(), c.when.as_deref()) else {
-        return unknown();
+        return Outcome::unknown("the constraint names no `speaker` or no `when`");
     };
     let mut lines = Vec::new();
     for (index, (path, doc)) in docs.iter().enumerate() {
@@ -434,31 +475,22 @@ fn speaks(
         )
     });
     if violated {
-        (
-            ConstraintVerdict::Violated,
+        Outcome::violated(
             Evidence::Proven,
-            None,
-            Vec::new(),
+            format!("a guard of a `{speaker}` line proves the constraint condition false"),
             counterexamples,
             causes,
         )
     } else if undecided {
-        (
-            ConstraintVerdict::Unknown,
-            Evidence::Unknown,
-            None,
-            Vec::new(),
-            counterexamples,
-            causes,
-        )
+        Outcome::unknown(format!(
+            "the analysis cannot decide whether the guards of these `{speaker}` lines imply the \
+             constraint condition: {}",
+            counterexamples.join(", ")
+        ))
     } else {
-        (
-            ConstraintVerdict::Holds,
+        Outcome::holds(
             Evidence::Proven,
-            None,
-            Vec::new(),
-            Vec::new(),
-            causes,
+            format!("every `{speaker}` line's guard proves the constraint condition"),
         )
     }
 }
@@ -665,24 +697,6 @@ fn related(path: &Path, span: Span, reason: &str) -> Diagnostic {
     }
 }
 
-fn unknown() -> (
-    ConstraintVerdict,
-    Evidence,
-    Option<String>,
-    Vec<String>,
-    Vec<String>,
-    Vec<Diagnostic>,
-) {
-    (
-        ConstraintVerdict::Unknown,
-        Evidence::Unknown,
-        None,
-        Vec::new(),
-        Vec::new(),
-        Vec::new(),
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::target_guard;
@@ -737,6 +751,7 @@ mod tests {
             cast: Default::default(),
             use_lines: Default::default(),
             member_envs: vec![],
+            snapshot: Default::default(),
         };
         assert_eq!(
             target_guard("meet", Some("kind:heroes"), None, &folded).as_deref(),

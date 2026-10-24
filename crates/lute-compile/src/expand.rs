@@ -9,7 +9,6 @@
 //! table — output CEL is `@`/`$`-free.
 
 use lute_check::cel_expand::{expand_cel, DefTable};
-use lute_check::meta::StateSchema;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, ClipNode, Document, Node};
 
@@ -345,7 +344,7 @@ fn expand_slot(
 /// `E-ATTR-DEF-DYNAMIC` — checker-gated (`lute_check::def_inline`), kept here
 /// as the backstop so a value is never lost. Compile-only: `lute-trace` walks
 /// the expanded tree without it.
-pub fn fold_attr_refs(doc: &mut Document, schema: &StateSchema) -> Vec<Diagnostic> {
+pub fn fold_attr_refs(doc: &mut Document, schema: &lute_check::StateView) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     for shot in &mut doc.sections {
         fold_nodes(&mut shot.body, schema, &mut diags);
@@ -365,7 +364,7 @@ pub fn fold_attr_refs(doc: &mut Document, schema: &StateSchema) -> Vec<Diagnosti
     diags
 }
 
-fn fold_nodes(nodes: &mut [Node], schema: &StateSchema, diags: &mut Vec<Diagnostic>) {
+fn fold_nodes(nodes: &mut [Node], schema: &lute_check::StateView, diags: &mut Vec<Diagnostic>) {
     for node in nodes {
         match node {
             Node::Line(l) => fold_attrs(&mut l.attrs, schema, diags),
@@ -418,7 +417,11 @@ fn fold_nodes(nodes: &mut [Node], schema: &StateSchema, diags: &mut Vec<Diagnost
     }
 }
 
-fn fold_choice_attrs(attrs: &mut [Attr], schema: &StateSchema, diags: &mut Vec<Diagnostic>) {
+fn fold_choice_attrs(
+    attrs: &mut [Attr],
+    schema: &lute_check::StateView,
+    diags: &mut Vec<Diagnostic>,
+) {
     for a in attrs {
         if !lute_check::choice_attr_owned_elsewhere(&a.key) {
             fold_attr(a, schema, diags);
@@ -426,13 +429,13 @@ fn fold_choice_attrs(attrs: &mut [Attr], schema: &StateSchema, diags: &mut Vec<D
     }
 }
 
-fn fold_attrs(attrs: &mut [Attr], schema: &StateSchema, diags: &mut Vec<Diagnostic>) {
+fn fold_attrs(attrs: &mut [Attr], schema: &lute_check::StateView, diags: &mut Vec<Diagnostic>) {
     for a in attrs {
         fold_attr(a, schema, diags);
     }
 }
 
-fn fold_attr(a: &mut Attr, schema: &StateSchema, diags: &mut Vec<Diagnostic>) {
+fn fold_attr(a: &mut Attr, schema: &lute_check::StateView, diags: &mut Vec<Diagnostic>) {
     let AttrValue::Ref(slot) = &a.value else {
         return;
     };

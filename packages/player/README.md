@@ -1,12 +1,12 @@
 # @lute-lang/player
 
-The renderer-free Lute 0.48 visual-novel player core. It drives a compiled Lute bundle through the runtime, turns runtime records into scheduled cues, and provides interaction state, saves, read history, backlog, auto/skip, rollback, and host bridges. Rendering and audio are supplied through ports, so the same core can run behind PixiJS, a native renderer, or a test presenter.
+The renderer-free Lute 0.49 visual-novel player core. It drives a compiled Lute bundle through the runtime, turns runtime records into scheduled cues, and provides interaction state, saves, read history, backlog, auto/skip, rollback, and host bridges. Rendering and audio are supplied through ports, so the same core can run behind PixiJS, a native renderer, or a test presenter.
 
 ## Install
 
 ```sh
-bun add @lute-lang/player@0.48.1 @lute-lang/runtime@0.48.1 effect@4.0.2
-# npm install @lute-lang/player@0.48.1 @lute-lang/runtime@0.48.1 effect@4.0.2
+bun add @lute-lang/player@0.49.0 @lute-lang/runtime@0.49.0 effect@4.0.2
+# npm install @lute-lang/player@0.49.0 @lute-lang/runtime@0.49.0 effect@4.0.2
 ```
 
 `@lute-lang/runtime` (the same release version) and `effect@4.0.2` are **peer dependencies**: the host installs them once, so the player, the runtime and the host share one `effect` and one runtime. For unreleased local builds, depend on packed tarballs (`scripts/pack-local.sh`), not `file:` directory links — see "Local dogfooding" in `docs/runtime/typescript-runtime.md`.
@@ -145,10 +145,10 @@ With your own runtime session, build it with `RuntimeSession.layer({ snapshot: s
 
 ## API and guides
 
-- [Core architecture](https://github.com/journeyWorker/lute/blob/v0.48.1/docs/player/architecture.md)
-- [Bindings reference](https://github.com/journeyWorker/lute/blob/v0.48.1/docs/player/bindings.md)
+- [Core architecture](https://github.com/journeyWorker/lute/blob/v0.49.0/docs/player/architecture.md)
+- [Bindings reference](https://github.com/journeyWorker/lute/blob/v0.49.0/docs/player/bindings.md)
 - [Player overview](https://lute-lang.vercel.app/player/overview/)
 - [Custom hosts](https://lute-lang.vercel.app/player/custom-hosts/)
-- [Runtime event contract](https://github.com/journeyWorker/lute/blob/v0.48.1/docs/runtime/event-contract.md)
+- [Runtime event contract](https://github.com/journeyWorker/lute/blob/v0.49.0/docs/runtime/event-contract.md)
 
 Source and releases: [github.com/journeyWorker/lute](https://github.com/journeyWorker/lute).

@@ -115,6 +115,19 @@ fn scalar_or_flat_seq_to_json(value: &yaml_serde::Value) -> Option<serde_json::V
     }
 }
 
+/// [`lute_manifest::ident::name_fault`] for an enum or entity member, with
+/// the route for ids from another system that are not names (#161): a
+/// provider, whose ids an attribute is checked against without a path.
+pub(crate) fn member_name_fault(what: &str, name: &str) -> Option<String> {
+    lute_manifest::ident::name_fault(what, name).map(|message| {
+        format!(
+            "{message} — to validate ids from another system that are not names \
+             (`vendor:reply`), declare a provider (`plugins/<id>/providers/`, pinned \
+             snapshot in `catalogDir`) and type the attribute `{{ providerRef: <provider> }}`"
+        )
+    })
+}
+
 /// Whether `meta`'s frontmatter lifts to a mapping (an empty frontmatter
 /// included) — exactly when [`parse_meta_kind_with_defaults`] does NOT emit
 /// `E-META-PARSE`, including its duplicate-block-key retry. The project-wide
@@ -381,6 +394,15 @@ pub fn parse_meta_kind_with_defaults(
             ));
             continue;
         };
+        // 0.49.0 §4.3: a reference-typed key (or a list of one) whose value
+        // is a string (each element a string) is checked for membership in
+        // `fold_env`, once the merged vocabulary exists
+        // ([`check_frontmatter_refs`]). Any other value is the schema error
+        // below.
+        if let Some(r) = frontmatter_ref(key, ty, v) {
+            typed.frontmatter_refs.push(r);
+            continue;
+        }
         // plugin Appendix C2: "The checker MUST validate a scene's frontmatter
         // block against each active plugin's declared key schema; a value that
         // violates the schema is a static error." A value with no `Literal`
@@ -646,28 +668,35 @@ pub fn parse_meta_kind_with_defaults(
     // A name written twice (a member also listed under `exits:`, or in two
     // enums) is reported once, at its first occurrence.
     let mut reported = BTreeSet::new();
-    let mut name_diag = |what: &str, name: &str| {
-        if let Some(message) = lute_manifest::ident::name_fault(what, name) {
+    // `member`: an enum or entity member, whose fault names the providers
+    // route for ids that are not names (#161).
+    let mut name_diag = |what: &str, name: &str, member: bool| {
+        let fault = if member {
+            member_name_fault(what, name)
+        } else {
+            lute_manifest::ident::name_fault(what, name)
+        };
+        if let Some(message) = fault {
             if reported.insert(name.to_string()) {
                 diags.push(err_at(E_PATH_IDENT, message, meta_key_span(meta, name)));
             }
         }
     };
     for (name, decl) in &typed.rel_kinds.kinds {
-        name_diag("entity kind", name);
+        name_diag("entity kind", name, false);
         if let lute_manifest::relations::KindShape::Members(members) = &decl.shape {
             for member in members {
-                name_diag("entity member", member);
+                name_diag("entity member", member, true);
             }
         }
     }
     for name in typed.rel_relations.relations.keys() {
-        name_diag("relation", name);
+        name_diag("relation", name, false);
     }
     for (name, domain) in &project_enums {
-        name_diag("enum", name);
+        name_diag("enum", name, false);
         for member in &domain.members {
-            name_diag("enum member", member);
+            name_diag("enum member", member, true);
         }
     }
 
@@ -815,4 +844,83 @@ pub fn parse_meta_kind_with_defaults(
     ));
 
     (typed, diags)
+}
+
+/// 0.49.0 §4.3: `Some` for a reference-typed plugin frontmatter key
+/// (`entity`, `domain`, `enumFromOption`, `providerRef`, `assetKind`, or a
+/// `list` of one) whose value is a string, or a list of strings.
+fn frontmatter_ref(key: &str, ty: &Type, value: &yaml_serde::Value) -> Option<FrontmatterRef> {
+    let is_ref = |t: &Type| {
+        matches!(
+            t,
+            Type::Entity(_)
+                | Type::Domain(_)
+                | Type::EnumFromOption(_)
+                | Type::ProviderRef(_)
+                | Type::AssetKind(_)
+        )
+    };
+    let (elem, values) = match ty {
+        Type::List(inner) if is_ref(inner) => (
+            inner.as_ref(),
+            value
+                .as_sequence()?
+                .iter()
+                .map(|item| item.as_str().map(str::to_string))
+                .collect::<Option<Vec<_>>>()?,
+        ),
+        t if is_ref(t) => (t, vec![value.as_str()?.to_string()]),
+        _ => return None,
+    };
+    Some(FrontmatterRef {
+        key: key.to_string(),
+        ty: elem.clone(),
+        values,
+    })
+}
+
+/// 0.49.0 §4.3: each reference-typed plugin frontmatter value against the
+/// merged vocabulary, through the same `check_attr_value` a directive
+/// attribute uses (owner `frontmatter`, so its type-specific codes and
+/// did-you-mean hints are the attribute's), at the key.
+pub(crate) fn check_frontmatter_refs(
+    typed: &TypedMeta,
+    meta: &Meta,
+    snapshot: &CapabilitySnapshot,
+    providers: &lute_manifest::provider::ProviderSet,
+    domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
+) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    for r in &typed.frontmatter_refs {
+        let span = meta_key_span(meta, &r.key);
+        let decl = lute_manifest::schema::AttrDecl {
+            name: r.key.clone(),
+            required: false,
+            ty: r.ty.clone(),
+            default: None,
+        };
+        for value in &r.values {
+            let attr = lute_syntax::ast::Attr {
+                key: r.key.clone(),
+                value: lute_syntax::ast::AttrValue::Str(value.clone()),
+                value_span: span,
+                span,
+            };
+            crate::directives::check_attr_value(
+                "frontmatter",
+                &decl,
+                &attr,
+                snapshot,
+                providers,
+                domains,
+                &mut diags,
+            );
+        }
+    }
+    // The frontmatter's own layer, as `E-FRONTMATTER-SCHEMA` (`err_at`);
+    // `check_attr_value` stamps the staging layer of a directive attribute.
+    for d in &mut diags {
+        d.layer = Layer::Content;
+    }
+    diags
 }

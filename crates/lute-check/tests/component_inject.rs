@@ -94,16 +94,18 @@ fn result_with(
     components: ComponentSet,
     snapshot: CapabilitySnapshot,
 ) -> lute_check::CheckResult {
-    let input = CheckInput {
+    let input = CheckInput::new(
         text,
-        uri: "scene".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    };
+        "scene".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
     check(&input)
 }
 

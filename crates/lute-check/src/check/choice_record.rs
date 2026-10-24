@@ -100,8 +100,7 @@ pub(super) fn check_choice_record(
     let resolved = ctx
         .env
         .state
-        .domain_members
-        .get(into_path)
+        .domain_members(into_path)
         .map(|(_, ms)| Type::Enum(ms.clone()));
     check_into_value(
         resolved.as_ref().unwrap_or(ty),

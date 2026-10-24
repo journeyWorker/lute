@@ -32,16 +32,18 @@ fn compile_scene(dir: &Path, scene_text: &str) -> serde_json::Value {
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
     let components = resolve_components(dir, &meta0.components, doc.meta.span);
     let imports = resolve_imports(dir, &meta0.uses, &meta0.extends, doc.meta.span);
-    let input = CheckInput {
-        text: scene_text.to_string(),
-        uri: "scene.lute".into(),
-        snapshot: vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports,
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        scene_text.to_string(),
+        "scene.lute".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            vocab_snapshot(),
+            ProviderSet::default(),
+            imports,
+            components,
+            Default::default(),
+        ),
+    );
     let artifact =
         compile(&input).unwrap_or_else(|e| panic!("scene compiles clean: {e:#?}\n{scene_text}"));
     serde_json::to_value(&artifact).expect("artifact serializes")
@@ -327,16 +329,18 @@ fn existing_goldens_untouched() {
         let base = file.parent().unwrap();
         let imports = resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
         let components = resolve_components(base, &meta0.components, doc.meta.span);
-        let input = CheckInput {
-            text: text.clone(),
-            uri: path.to_string(),
-            snapshot,
-            providers,
-            mode: Mode::Ci,
-            imports,
-            components,
-            defaults: Default::default(),
-        };
+        let input = CheckInput::new(
+            text.clone(),
+            path.to_string(),
+            Mode::Ci,
+            lute_check::InputSources::from_parts(
+                snapshot,
+                providers,
+                imports,
+                components,
+                Default::default(),
+            ),
+        );
         let artifact = compile(&input).unwrap_or_else(|e| panic!("{path} compiles: {e:#?}"));
         let mut json = serde_json::to_string_pretty(&artifact).unwrap();
         json.push('\n');

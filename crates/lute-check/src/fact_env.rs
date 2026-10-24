@@ -225,6 +225,9 @@ pub struct RootVocab {
     pub(crate) relations: BTreeMap<String, RelationDecl>,
     conflicting: BTreeSet<String>,
     kinds: BTreeMap<String, KindShape>,
+    /// The members of each `kinds` entry listing members, as a set: a
+    /// document's members are merged in O(1) each, in first-seen order.
+    kind_members: BTreeMap<String, std::collections::HashSet<String>>,
     enums: BTreeMap<String, BTreeSet<String>>,
     /// Plugin/core/project domains (`Env::domains`): `None` = open.
     domains: BTreeMap<String, Option<BTreeSet<String>>>,
@@ -248,6 +251,19 @@ pub struct RootVocab {
     effect_directives: BTreeMap<String, lute_manifest::schema::DirectiveDecl>,
 }
 
+thread_local! {
+    /// Members [`RootVocab::add`] has merged into a kind another document
+    /// already listed, each one lookup.
+    static ROOT_MEMBER_PROBES: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many members this thread's [`RootVocab::add`] calls merged into an
+/// already-listed kind: a test bounds the merge's work with it.
+#[doc(hidden)]
+pub fn root_member_probe_count() -> usize {
+    ROOT_MEMBER_PROBES.with(std::cell::Cell::get)
+}
+
 impl RootVocab {
     /// Fold one document's merged vocabulary and domain catalog in.
     pub fn add(&mut self, vocab: &RelVocab, domains: &BTreeMap<String, Domain>) {
@@ -264,16 +280,31 @@ impl RootVocab {
         }
         for (name, kind) in &vocab.kinds {
             let merged = match (self.kinds.remove(name), &kind.shape) {
-                (None, shape) => shape.clone(),
+                (None, shape) => {
+                    if let KindShape::Members(a) = shape {
+                        self.kind_members
+                            .insert(name.clone(), a.iter().cloned().collect());
+                    }
+                    shape.clone()
+                }
                 (Some(KindShape::Members(mut a)), KindShape::Members(b)) => {
+                    let seen = self
+                        .kind_members
+                        .entry(name.clone())
+                        .or_insert_with(|| a.iter().cloned().collect());
+                    ROOT_MEMBER_PROBES.with(|n| n.set(n.get() + b.len()));
                     for m in b {
-                        if !a.contains(m) {
+                        if !seen.contains(m) {
+                            seen.insert(m.clone());
                             a.push(m.clone());
                         }
                     }
                     KindShape::Members(a)
                 }
-                (Some(_), _) => KindShape::Open,
+                (Some(_), _) => {
+                    self.kind_members.remove(name);
+                    KindShape::Open
+                }
             };
             self.kinds.insert(name.clone(), merged);
         }
@@ -993,7 +1024,7 @@ pub(crate) fn guard_decides(cel: &str, value: bool) -> bool {
         bodies: &bodies,
         params: &def_params,
     };
-    let schema = crate::meta::StateSchema::default();
+    let schema = crate::StateView::default();
     let params = BTreeMap::new();
     let ctx = crate::decide::DecideCtx {
         schema: &schema,
@@ -1834,5 +1865,68 @@ impl<'a> FactScope<'a> {
             return None;
         }
         self.env.count(self.path, self.span, q, column, self.wip)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn vocab(kind: &str, members: &[String]) -> RelVocab {
+        let mut v = RelVocab::default();
+        v.kinds.insert(
+            kind.to_string(),
+            lute_manifest::relations::EntityKindDecl {
+                shape: KindShape::Members(members.to_vec()),
+                subset_of: None,
+                labels: BTreeMap::new(),
+            },
+        );
+        v
+    }
+
+    fn members(root: &RootVocab, kind: &str) -> Vec<String> {
+        match &root.kinds[kind] {
+            KindShape::Members(m) => m.clone(),
+            other => panic!("{other:?}"),
+        }
+    }
+
+    /// A kind's members union in first-seen order: a document's own
+    /// repeats kept, a later document's repeats and known members dropped.
+    #[test]
+    fn kind_members_union_in_first_seen_order() {
+        let s = |v: &[&str]| v.iter().map(ToString::to_string).collect::<Vec<_>>();
+        let mut root = RootVocab::default();
+        let none = BTreeMap::new();
+        root.add(&vocab("npc", &s(&["b", "a", "b"])), &none);
+        root.add(&vocab("npc", &s(&["c", "a", "d", "c"])), &none);
+        root.add(&vocab("npc", &s(&["d", "e"])), &none);
+        assert_eq!(members(&root, "npc"), s(&["b", "a", "b", "c", "d", "e"]));
+    }
+
+    /// #191: 100 documents seeing one 10 000-member kind merge it in one
+    /// lookup per member per document, not a scan of the members so far.
+    #[test]
+    fn a_large_kind_merges_linearly_across_documents() {
+        const DOCS: usize = 100;
+        const MEMBERS: usize = 10_000;
+        let all: Vec<String> = (0..MEMBERS).map(|i| format!("m{i:05}")).collect();
+        let none = BTreeMap::new();
+        let mut root = RootVocab::default();
+        let before = root_member_probe_count();
+        for d in 0..DOCS {
+            // Each document lists the kind rotated, so every one brings
+            // members in a new order.
+            let mut own = all.clone();
+            own.rotate_left(d * 37 % MEMBERS);
+            root.add(&vocab("npc", &own), &none);
+        }
+        let probes = root_member_probe_count() - before;
+        assert!(
+            probes <= DOCS * MEMBERS,
+            "{probes} member comparisons for {DOCS} documents of {MEMBERS} members"
+        );
+        assert_eq!(members(&root, "npc"), all, "the first document's order");
     }
 }

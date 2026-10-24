@@ -19,16 +19,18 @@ fn input(text: &str) -> CheckInput {
             ..Default::default()
         },
     );
-    CheckInput {
-        text: text.to_string(),
-        uri: "kind_targets".into(),
-        snapshot,
-        providers: Default::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "kind_targets".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 fn errors(text: &str) -> Vec<(String, String)> {

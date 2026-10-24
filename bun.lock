@@ -7,7 +7,7 @@
     },
     "packages/cli": {
       "name": "@lute-lang/lute",
-      "version": "0.48.1",
+      "version": "0.49.0",
       "bin": {
         "lute": "./bin.js",
         "lute-lsp": "./lsp-bin.js",
@@ -17,26 +17,26 @@
         "typescript": "^5.0.0",
       },
       "optionalDependencies": {
-        "@lute-lang/lute-core-darwin-arm64": "0.48.1",
-        "@lute-lang/lute-core-linux-x64": "0.48.1",
-        "@lute-lang/lute-core-win32-x64": "0.48.1",
+        "@lute-lang/lute-core-darwin-arm64": "0.49.0",
+        "@lute-lang/lute-core-linux-x64": "0.49.0",
+        "@lute-lang/lute-core-win32-x64": "0.49.0",
       },
     },
     "packages/core-darwin-arm64": {
       "name": "@lute-lang/lute-core-darwin-arm64",
-      "version": "0.48.1",
+      "version": "0.49.0",
     },
     "packages/core-linux-x64": {
       "name": "@lute-lang/lute-core-linux-x64",
-      "version": "0.48.1",
+      "version": "0.49.0",
     },
     "packages/core-win32-x64": {
       "name": "@lute-lang/lute-core-win32-x64",
-      "version": "0.48.1",
+      "version": "0.49.0",
     },
     "packages/player": {
       "name": "@lute-lang/player",
-      "version": "0.48.1",
+      "version": "0.49.0",
       "dependencies": {
         "@xstate/effect": "0.1.0-alpha.7",
         "xstate": "6.0.0-alpha.65",
@@ -44,23 +44,23 @@
       },
       "devDependencies": {
         "@effect/vitest": "4.0.2",
-        "@lute-lang/runtime": "0.48.1",
+        "@lute-lang/runtime": "0.49.0",
         "@types/bun": "1.4.2",
         "effect": "4.0.2",
         "typescript": "7.0.2",
         "vitest": "5.0.3",
       },
       "peerDependencies": {
-        "@lute-lang/runtime": "0.48.1",
+        "@lute-lang/runtime": "0.49.0",
         "effect": "4.0.2",
       },
     },
     "packages/player-web": {
       "name": "@lute-lang/player-web",
-      "version": "0.48.1",
+      "version": "0.49.0",
       "dependencies": {
-        "@lute-lang/player": "0.48.1",
-        "@lute-lang/runtime": "0.48.1",
+        "@lute-lang/player": "0.49.0",
+        "@lute-lang/runtime": "0.49.0",
         "@pixi/sound": "6.0.1",
         "pixi.js": "8.22.0",
       },
@@ -81,7 +81,7 @@
     },
     "packages/runtime": {
       "name": "@lute-lang/runtime",
-      "version": "0.48.1",
+      "version": "0.49.0",
       "devDependencies": {
         "@effect/platform-browser": "4.0.2",
         "@effect/platform-bun": "4.0.2",

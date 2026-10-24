@@ -1,0 +1,6 @@
+file: ../scenes/password.lute
+bridges: { ask: [ { answer: "open sesame" } ] }
+expect:
+  end: complete
+  transcriptContains:
+    - "Wrong. Move along."

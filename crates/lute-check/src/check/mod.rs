@@ -120,17 +120,19 @@ use component_body::{
     component_def_reads, component_own_slots, component_use_sites, use_target, validate_components,
     walk_component_body, BodyScope,
 };
+pub(crate) use fold::base_fold;
 pub(crate) use fold::resolve_kinds;
 use fold::{attr_str, fold_directive_slots};
-pub use fold::{fold_env, params_from_yaml};
+pub use fold::{fold_env, fold_env_full_merge, params_from_yaml};
 pub(crate) use guard::directive_when_refused;
 use guard::{check_beat_when, check_directive_when, check_guard};
 pub use host::{check_host_condition, HostCondition};
 use injections::fold_injections;
+pub(crate) use interp::is_bare_ref;
 pub use interp::W_TEXT_LOOKS_LIKE_REF;
 use interp::{
-    check_interp_format, check_interp_referent, check_interps, interp_grammar_diag, is_bare_ref,
-    is_renderable, text_looks_like_ref,
+    check_interp_format, check_interp_referent, check_interps, interp_grammar_diag, is_renderable,
+    text_looks_like_ref,
 };
 use pipeline::cel_parse_diagnostics;
 pub use pipeline::{check, check_parsed};
@@ -153,32 +155,73 @@ pub use version::{version_triple, INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE};
 use walker::Walker;
 
 /// The input to one `check()` invocation — the document text plus the resolved
-/// capability surface it is validated against.
-#[derive(Clone)]
+/// capability surface it is validated against. The project-wide parts are
+/// shared (`Arc`) by every document of a project (spec 0.49.0 §9.2).
+#[derive(Clone, Debug)]
 pub struct CheckInput {
     /// Raw `.lute` document source.
     pub text: String,
     /// Document identity (LSP uri / CLI path); carried through for diagnostics.
     pub uri: String,
-    /// The resolved capability snapshot (directives, enums, defs, frontmatter).
-    pub snapshot: CapabilitySnapshot,
-    /// Pinned provider snapshots for `providerRef` id resolution (plugin §10).
-    pub providers: ProviderSet,
     /// Author (interactive LSP) vs. Ci (batch) analysis mode.
     pub mode: Mode,
-    /// Resolved `uses:` schema imports (dsl §9.2): imported state/defs merged
-    /// into this document's schema, plus resolution diagnostics. Empty when the
-    /// scene has no `uses:` (or on a surface that cannot resolve files).
-    pub imports: SchemaImports,
-    /// Resolved `components:` imports (dsl §13): the component name -> definition
-    /// table (params + presentational body) plus resolution diagnostics. Empty
-    /// when the scene has no `components:` (or on a surface that cannot resolve
-    /// files); validated against `::use` invocations in [`check`].
-    pub components: ComponentSet,
-    /// The governing manifest's `defaults:` (0.10.0 §6): frontmatter this
-    /// document did not have to retype. Empty for a loose document, for a
-    /// project with no `defaults:` block, and on any surface with no manifest.
-    pub defaults: lute_manifest::project::MetaDefaults,
+    /// The manifest's resolution for this document's profile: the capability
+    /// snapshot, providers, `defaults:` and plugin origins.
+    pub base: std::sync::Arc<crate::vocab::ProjectBase>,
+    /// The document's resolved `uses:`/`extends:` imports (dsl §9.2) and the
+    /// fold stages that read only them.
+    pub vocab: std::sync::Arc<crate::vocab::ProjectVocab>,
+    /// Resolved `components:` imports (dsl §13): the component name ->
+    /// definition table (params + presentational body). Empty when the scene
+    /// has no `components:` (or on a surface that cannot resolve files).
+    pub components: std::sync::Arc<ComponentSet>,
+    /// The import resolution diagnostics, anchored at this document.
+    pub import_diags: Vec<Diagnostic>,
+    /// The component resolution diagnostics, anchored at this document.
+    pub component_diags: Vec<Diagnostic>,
+}
+
+impl CheckInput {
+    pub fn new(text: String, uri: String, mode: Mode, sources: crate::vocab::InputSources) -> Self {
+        Self {
+            text,
+            uri,
+            mode,
+            base: sources.base,
+            vocab: sources.vocab,
+            components: sources.components,
+            import_diags: sources.import_diags,
+            component_diags: sources.component_diags,
+        }
+    }
+
+    /// The resolved capability snapshot (directives, enums, defs, frontmatter).
+    pub fn snapshot(&self) -> &CapabilitySnapshot {
+        &self.base.snapshot
+    }
+
+    /// Pinned provider snapshots for `providerRef` id resolution (plugin §10).
+    pub fn providers(&self) -> &ProviderSet {
+        &self.base.providers
+    }
+
+    /// The governing manifest's `defaults:` (0.10.0 §6). Empty for a loose
+    /// document and on any surface with no manifest.
+    pub fn defaults(&self) -> &lute_manifest::project::MetaDefaults {
+        &self.base.defaults
+    }
+
+    /// The resolved `uses:` schema imports (dsl §9.2). Their `diags` are
+    /// anchored at a placeholder: read [`Self::import_diags`].
+    pub fn imports(&self) -> &SchemaImports {
+        &self.vocab.imports
+    }
+
+    /// Where the installed plugins declare what a check judges but cannot
+    /// place (dsl 0.27.0 §4).
+    pub fn plugin_origins(&self) -> &crate::rel_schema::PluginOrigins {
+        &self.base.plugin_origins
+    }
 }
 
 /// Project-wide domain-read accounting (dsl 0.10.0 §11.1, **D-V**).
@@ -279,7 +322,7 @@ pub struct Resolved {
 /// `scene.choices.*` ∪ plugin-declared slots), and the merged def CEL bodies
 /// (`plugin < imported < inline`, mirroring `def_types`). One source of
 /// truth: `check()` itself consumes this fold.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct FoldedEnv {
     pub typed: crate::meta::TypedMeta,
     pub env: Env,
@@ -298,7 +341,7 @@ pub struct FoldedEnv {
     /// `check()`) so a caller that folds directly, like `lute-compile`, sees
     /// the SAME vocabulary without recomputing it or double-emitting
     /// `E-DOMAIN-DUP`.
-    pub domains: std::collections::BTreeMap<String, Domain>,
+    pub domains: std::sync::Arc<std::collections::BTreeMap<String, Domain>>,
     /// dsl 0.21.0 §2: the resolved occasion vocabulary this document was
     /// checked against (the snapshot's `occasions`; empty = shape-only) —
     /// what the project beat pass (`crate::beats::check_project_beats`) reads
@@ -318,6 +361,31 @@ pub struct FoldedEnv {
     /// one environment per member list, `occasion.target` typed by that list
     /// alone ([`Self::env_at`]). Empty otherwise — [`Self::env`] is exact.
     pub member_envs: Vec<(Vec<String>, Env)>,
+    /// The capability snapshot the document was checked against: the
+    /// directive declarations a definite-assignment walk reads a blocking
+    /// bridge call's result writes from (0.49.0 §5.2), in `check()` and in
+    /// the project recomputation alike. Shared with the [`CheckInput`]'s
+    /// base, never copied.
+    pub snapshot: std::sync::Arc<lute_manifest::snapshot::CapabilitySnapshot>,
+}
+
+/// Every field but [`FoldedEnv::snapshot`], which is the input's (and would
+/// print the whole capability vocabulary per document).
+impl std::fmt::Debug for FoldedEnv {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FoldedEnv")
+            .field("typed", &self.typed)
+            .field("env", &self.env)
+            .field("def_bodies", &self.def_bodies)
+            .field("host_defs", &self.host_defs)
+            .field("doc_kind", &self.doc_kind)
+            .field("domains", &self.domains)
+            .field("occasions", &self.occasions)
+            .field("cast", &self.cast)
+            .field("use_lines", &self.use_lines)
+            .field("member_envs", &self.member_envs)
+            .finish_non_exhaustive()
+    }
 }
 
 impl FoldedEnv {

@@ -1,0 +1,4 @@
+occasions:
+  begin: { select: first }
+  visit: { select: first }
+  tick: { select: first }

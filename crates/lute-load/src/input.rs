@@ -3,10 +3,9 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use lute_check::{CheckInput, Mode};
+use lute_check::{CheckInput, InputSources, Mode};
 use lute_core_span::Diagnostic;
-use lute_manifest::project::{resolve_permissions, ResolveDiag};
-use lute_manifest::provider::ProviderSet;
+use lute_manifest::project::ResolveDiag;
 use lute_manifest::snapshot::CapabilitySnapshot;
 
 use crate::cache::InputCache;
@@ -166,7 +165,6 @@ pub fn assemble_input_with_mode(
         }
         None => None,
     };
-    let providers = ProviderSet::clone(&cache.providers(providers, root, project));
     let defaults = project.map(|p| p.defaults.clone()).unwrap_or_default();
     let mut parsed = lute_syntax::parse(&text);
     lute_check::meta::apply_quest_tier_default(&mut parsed.0, &defaults);
@@ -178,19 +176,15 @@ pub fn assemble_input_with_mode(
         &defaults,
     );
     let meta_span = doc.meta.span;
-    let resolved = cache.snapshot(root, project, meta0.profile.as_deref(), &meta0.plugins);
-    let (mut snapshot, mut rdiags) = (resolved.0.clone(), resolved.1.clone());
-    snapshot.identity_require_stable =
-        project.is_some_and(lute_manifest::project::ProjectConfig::identity_require_stable);
-    if let Some(name) = permission_profile {
-        match project.as_ref() {
-            Some(config) => match resolve_permissions(config, name) {
-                Ok(permissions) => snapshot.restrict_permissions(&permissions),
-                Err(error) => rdiags.push(ResolveDiag { span: None, code: error.code().to_string(), message: error.to_string() }),
-            },
-            None => rdiags.push(ResolveDiag { span: None, code: "E-PERMISSION-PROFILE".to_string(), message: format!("`--permission-profile {name}` requires a loaded `lute.project.yaml` from `--project <DIR>`") }),
-        }
-    }
+    let resolved = cache.base(
+        root,
+        project,
+        providers,
+        meta0.profile.as_deref(),
+        &meta0.plugins,
+        permission_profile,
+    );
+    let rdiags = resolved.diags.clone();
     let mut resolve_error = !project_diags.is_empty();
     let mut resolve_blocks = resolve_error;
     for d in &rdiags {
@@ -206,32 +200,24 @@ pub fn assemble_input_with_mode(
         .as_ref()
         .map(|p| p.identity.clone())
         .unwrap_or_default();
-    let base = file.parent().unwrap_or_else(|| Path::new("."));
-    let mut imports = Arc::unwrap_or_clone(cache.imports.resolve(
-        base,
-        &meta0.uses,
-        &meta0.extends,
-        meta_span,
-    ));
-    if let Some(p) = project {
-        imports.plugin_origins = Arc::unwrap_or_clone(cache.plugin_origins(&p.plugins_dir));
-    }
-    let components = Arc::unwrap_or_clone(cache.imports.resolve_components(
-        base,
-        &meta0.components,
-        meta_span,
-    ));
+    let dir = file.parent().unwrap_or_else(|| Path::new("."));
+    let (vocab, import_diags) =
+        cache
+            .imports
+            .vocab(&resolved.base, dir, &meta0.uses, &meta0.extends, meta_span);
+    let (components, component_diags) =
+        cache
+            .imports
+            .resolve_components(dir, &meta0.components, meta_span);
+    let sources = InputSources {
+        base: Arc::clone(&resolved.base),
+        vocab,
+        components,
+        import_diags,
+        component_diags,
+    };
     let built = BuiltInput {
-        input: CheckInput {
-            text,
-            uri: file.display().to_string(),
-            snapshot,
-            providers,
-            mode,
-            imports,
-            components,
-            defaults: defaults.clone(),
-        },
+        input: CheckInput::new(text, file.display().to_string(), mode, sources),
         resolve_error,
         resolve_blocks,
         project_diags,

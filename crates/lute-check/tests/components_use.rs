@@ -18,16 +18,18 @@ fn codes(dir: &Path, scene: &str) -> Vec<String> {
     let (doc, _) = lute_syntax::parse(scene);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
     let components = resolve_components(dir, &meta0.components, doc.meta.span);
-    let input = CheckInput {
-        text: scene.to_string(),
-        uri: "scene".into(),
-        snapshot: load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        scene.to_string(),
+        "scene".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            load_core_snapshot(),
+            ProviderSet::default(),
+            Default::default(),
+            components,
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()
@@ -402,16 +404,18 @@ fn def_arg_to_enum_param_must_produce_members() {
 fn diagnostics(dir: &Path, text: &str) -> Vec<lute_core_span::Diagnostic> {
     let (doc, _) = lute_syntax::parse(text);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "doc".into(),
-        snapshot: load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: resolve_components(dir, &meta0.components, doc.meta.span),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "doc".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            load_core_snapshot(),
+            ProviderSet::default(),
+            Default::default(),
+            resolve_components(dir, &meta0.components, doc.meta.span),
+            Default::default(),
+        ),
+    );
     check(&input).diagnostics
 }
 

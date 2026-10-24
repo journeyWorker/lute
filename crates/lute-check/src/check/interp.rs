@@ -352,13 +352,8 @@ pub(super) fn check_interp_format(
                 // Every member path of a family shares its declared type.
                 Some(family) => env
                     .state
-                    .decls
-                    .iter()
-                    .find(|(k, _)| {
-                        k.strip_prefix(family.as_str())
-                            .and_then(|m| m.strip_prefix('.'))
-                            .is_some_and(|m| !m.contains('.'))
-                    })
+                    .members_of(&family)
+                    .next()
                     .map(|(_, d)| d.ty.clone()),
                 None => crate::cel_paths::text_state_path(raw)
                     .and_then(|p| crate::set_op::resolve_type(&p, &env.state).cloned()),
@@ -467,7 +462,7 @@ fn plural_form_problem(raw: &str, forms: Option<&[String]>) -> Option<String> {
 /// (dsl §7.6/§8.1): the OUTERMOST `@ref` starts at byte 0 and its bare/call group
 /// reaches the end — nothing before or trailing. Nested `@ref`s inside a
 /// `@fn(args)` argument are legitimate CEL (§8.1) and do not disqualify.
-pub(super) fn is_bare_ref(raw: &str) -> bool {
+pub(crate) fn is_bare_ref(raw: &str) -> bool {
     scan_refs(raw).iter().any(|r| {
         !r.is_dollar
             && r.span.byte_start == 0

@@ -43,7 +43,7 @@ mod test_cases {
             },
         );
         Env {
-            state: schema,
+            state: schema.into(),
             ..Env::default()
         }
     }
@@ -400,7 +400,7 @@ mod test_cases {
     #[test]
     fn integer_modulo_in_profile_non_integer_is_cel_type() {
         let mut env = env_with_state("run.day", Type::Int);
-        env.state.decls.insert(
+        env.state.insert(
             "run.flag".to_string(),
             crate::meta::StateDecl {
                 ty: Type::Bool,
@@ -459,7 +459,7 @@ mod test_cases {
     #[test]
     fn hyphenated_path_is_one_path_ident_error() {
         let mut env = env_with_state("run.day", Type::Int);
-        env.state.decls.insert(
+        env.state.insert(
             "run.other".to_string(),
             crate::meta::StateDecl {
                 ty: Type::Int,

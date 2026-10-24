@@ -533,6 +533,7 @@ pub(crate) fn check_seam_texts(
     doc: &lute_syntax::ast::Document,
     folded: &crate::check::FoldedEnv,
     imports: &crate::SchemaImports,
+    plugin_origins: &crate::rel_schema::PluginOrigins,
     ctx: &crate::ctx::Ctx<'_>,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
@@ -545,7 +546,7 @@ pub(crate) fn check_seam_texts(
         let Some(gate) = gate_of(&folded.occasions, &b.on) else {
             continue;
         };
-        let origin = imports.plugin_origins.gates.get(&b.on);
+        let origin = plugin_origins.gates.get(&b.on);
         if mentions_target(gate)
             && folded
                 .occasions
@@ -829,7 +830,7 @@ fn gate_hits(
     let schema = match members {
         Some(members) => {
             schema = folded.env.state.clone();
-            schema.decls.insert(
+            schema.insert(
                 lute_manifest::semantics::beats::OCCASION_TARGET.to_string(),
                 crate::meta::StateDecl {
                     ty: lute_manifest::types::Type::Enum(members),
@@ -897,7 +898,7 @@ fn folded_defs(folded: &crate::check::FoldedEnv) -> crate::cel_expand::DefTable<
 pub(crate) fn condition_literals(
     raw: &str,
     defs: &crate::cel_expand::DefTable<'_>,
-    schema: &crate::meta::StateSchema,
+    schema: &crate::StateView,
     text: Option<&str>,
     at: Span,
 ) -> Vec<Diagnostic> {
@@ -914,7 +915,7 @@ pub(crate) fn condition_literals(
 fn literal_hits(
     raw: &str,
     defs: &crate::cel_expand::DefTable<'_>,
-    schema: &crate::meta::StateSchema,
+    schema: &crate::StateView,
 ) -> Vec<crate::decide::LiteralCmpHit> {
     let params = BTreeMap::new();
     let ctx = crate::decide::DecideCtx {

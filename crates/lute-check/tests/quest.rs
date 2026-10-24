@@ -9,16 +9,18 @@ use lute_check::{check, CheckInput, CheckResult, Mode, SchemaImports};
 use lute_manifest::provider::ProviderSet;
 
 fn run(text: &str) -> CheckResult {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "quest".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "quest".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
 }
 
@@ -368,16 +370,18 @@ fn snapshot_with_minigame() -> lute_manifest::snapshot::CapabilitySnapshot {
 }
 
 fn codes_with(text: &str, snap: lute_manifest::snapshot::CapabilitySnapshot) -> Vec<String> {
-    let input = CheckInput {
-        text: text.into(),
-        uri: "quest".into(),
-        snapshot: snap,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.into(),
+        "quest".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snap,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()
@@ -511,16 +515,18 @@ fn duplicate_quest_id_does_not_spuriously_flag_reserved_decl() {
 // (dsl 0.2.0 §6.3) -----------------------------------------------------------
 
 fn codes_with_imports(text: &str, imports: SchemaImports) -> Vec<String> {
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: "quest".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        "quest".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()

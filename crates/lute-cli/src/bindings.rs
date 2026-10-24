@@ -78,7 +78,7 @@ pub(crate) fn check_model(model: &ProjectModel) -> Vec<(PathBuf, Diagnostic)> {
     // `occasions` — the vocabulary flow targets are checked against.
     let mut kinds = BTreeMap::<String, EntityKindDecl>::new();
     for document in model.documents() {
-        for (name, domain) in &document.folded.domains {
+        for (name, domain) in document.folded.domains.iter() {
             domains
                 .entry(name.clone())
                 .or_default()

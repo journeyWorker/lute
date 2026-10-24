@@ -44,16 +44,18 @@ fn folded_and_doc(text: &str, uri: &str, base: &Path) -> (FoldedEnv, Document) {
     );
     let imports = lute_check::resolve_imports(base, &meta0.uses, &meta0.extends, doc.meta.span);
     let components = lute_check::resolve_components(base, &meta0.components, doc.meta.span);
-    let input = CheckInput {
-        text: text.to_string(),
-        uri: uri.to_string(),
-        snapshot,
-        providers: lute_manifest::provider::ProviderSet::default(),
-        mode: Mode::Ci,
-        imports,
-        components,
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.to_string(),
+        uri.to_string(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            lute_manifest::provider::ProviderSet::default(),
+            imports,
+            components,
+            Default::default(),
+        ),
+    );
     let (folded, fd1, fd2) = lute_check::fold_env(&doc, &input);
     assert!(
         fd1.is_empty() && fd2.is_empty(),

@@ -27,7 +27,6 @@ pub(super) fn top_conjuncts<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
 /// node it reads, or every source of an `||` whose every arm reads one.
 pub(super) fn start_sources(
     e: &Expr,
-    own: &str,
     decls: &QuestDecls<'_>,
     nodes: &BTreeMap<NodeId, NodeInfo>,
 ) -> Option<Vec<NodeId>> {
@@ -35,8 +34,8 @@ pub(super) fn start_sources(
         Expr::Call(c)
             if c.func_name == op::LOGICAL_OR && c.target.is_none() && c.args.len() == 2 =>
         {
-            let mut from = start_sources(&c.args[0].expr, own, decls, nodes)?;
-            for n in start_sources(&c.args[1].expr, own, decls, nodes)? {
+            let mut from = start_sources(&c.args[0].expr, decls, nodes)?;
+            for n in start_sources(&c.args[1].expr, decls, nodes)? {
                 if !from.contains(&n) {
                     from.push(n);
                 }
@@ -51,14 +50,13 @@ pub(super) fn start_sources(
         | Expr::Map(_)
         | Expr::Select(_)
         | Expr::Struct(_)
-        | Expr::Unspecified => start_source(e, own, decls, nodes).map(|n| vec![n]),
+        | Expr::Unspecified => start_source(e, decls, nodes).map(|n| vec![n]),
     }
 }
 
 /// The graph node one anchoring read names (see [`start_anchors`]).
 pub(super) fn start_source(
     e: &Expr,
-    own: &str,
     decls: &QuestDecls<'_>,
     nodes: &BTreeMap<NodeId, NodeInfo>,
 ) -> Option<NodeId> {
@@ -77,7 +75,11 @@ pub(super) fn start_source(
             return None;
         }
         let id = path.split('.').nth(1)?;
-        (id != own && decls.first.contains_key(id)).then(|| NodeId::Quest(id.to_string()))
+        // dsl 0.49.0 §6.2: a read of the quest's own state is a self-source.
+        decls
+            .first
+            .contains_key(id)
+            .then(|| NodeId::Quest(id.to_string()))
     };
     let Expr::Call(c) = e else {
         return entry(e);
@@ -270,6 +272,7 @@ pub fn omitted_refs(
 pub(super) fn detect_conn_cycles(
     nodes: &BTreeMap<NodeId, NodeInfo>,
     edges: &BTreeMap<NodeId, BTreeSet<NodeId>>,
+    back: &BTreeMap<NodeId, BTreeSet<NodeId>>,
     diags: &mut Vec<(PathBuf, Diagnostic)>,
 ) {
     let mut on_stack: BTreeSet<NodeId> = BTreeSet::new();
@@ -281,6 +284,7 @@ pub(super) fn detect_conn_cycles(
                 start,
                 nodes,
                 edges,
+                back,
                 &mut on_stack,
                 &mut done,
                 &mut stack,
@@ -295,6 +299,7 @@ pub(super) fn dfs_conn_cycle(
     node: &NodeId,
     nodes: &BTreeMap<NodeId, NodeInfo>,
     edges: &BTreeMap<NodeId, BTreeSet<NodeId>>,
+    back: &BTreeMap<NodeId, BTreeSet<NodeId>>,
     on_stack: &mut BTreeSet<NodeId>,
     done: &mut BTreeSet<NodeId>,
     stack: &mut Vec<NodeId>,
@@ -303,7 +308,11 @@ pub(super) fn dfs_conn_cycle(
     on_stack.insert(node.clone());
     stack.push(node.clone());
     if let Some(targets) = edges.get(node) {
-        for nbr in targets {
+        let skip = back.get(node);
+        for nbr in targets
+            .iter()
+            .filter(|t| !skip.is_some_and(|s| s.contains(*t)))
+        {
             if on_stack.contains(nbr) {
                 // Back edge -> cycle: report the chain from `nbr` around to `node`.
                 let start_idx = stack.iter().position(|n| n == nbr).unwrap_or(0);
@@ -329,7 +338,7 @@ pub(super) fn dfs_conn_cycle(
                     ),
                 ));
             } else if !done.contains(nbr) {
-                dfs_conn_cycle(nbr, nodes, edges, on_stack, done, stack, diags);
+                dfs_conn_cycle(nbr, nodes, edges, back, on_stack, done, stack, diags);
             }
         }
     }
@@ -338,7 +347,8 @@ pub(super) fn dfs_conn_cycle(
     done.insert(node.clone());
 }
 
-/// Deterministic Kahn's-algorithm topological sort over `edges`. Runs
+/// Deterministic Kahn's-algorithm topological sort over `edges` minus the
+/// `back` edges (dsl 0.49.0 §6.1). Runs
 /// UNCONDITIONALLY even on a cyclic graph (spec §4.1 per-node cycle
 /// recovery): any node that never reaches in-degree 0 — every cycle member
 /// and everything transitively downstream of one — is simply omitted from
@@ -350,10 +360,19 @@ pub(super) fn dfs_conn_cycle(
 pub(super) fn topo_sort(
     nodes: &BTreeMap<NodeId, NodeInfo>,
     edges: &BTreeMap<NodeId, BTreeSet<NodeId>>,
+    back: &BTreeMap<NodeId, BTreeSet<NodeId>>,
 ) -> Vec<NodeId> {
+    let ordering = |from: &NodeId| {
+        let skip = back.get(from);
+        edges
+            .get(from)
+            .into_iter()
+            .flatten()
+            .filter(move |t| !skip.is_some_and(|s| s.contains(*t)))
+    };
     let mut in_degree: BTreeMap<NodeId, usize> = nodes.keys().map(|id| (id.clone(), 0)).collect();
-    for targets in edges.values() {
-        for target in targets {
+    for from in edges.keys() {
+        for target in ordering(from) {
             *in_degree.entry(target.clone()).or_insert(0) += 1;
         }
     }
@@ -365,13 +384,11 @@ pub(super) fn topo_sort(
     let mut order = Vec::with_capacity(nodes.len());
     while let Some(next) = ready.iter().next().cloned() {
         ready.remove(&next);
-        if let Some(targets) = edges.get(&next) {
-            for target in targets {
-                if let Some(degree) = in_degree.get_mut(target) {
-                    *degree -= 1;
-                    if *degree == 0 {
-                        ready.insert(target.clone());
-                    }
+        for target in ordering(&next) {
+            if let Some(degree) = in_degree.get_mut(target) {
+                *degree -= 1;
+                if *degree == 0 {
+                    ready.insert(target.clone());
                 }
             }
         }

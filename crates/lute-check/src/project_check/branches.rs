@@ -13,10 +13,13 @@ pub const W_BRANCH_ID_SHARED: &str = "W-BRANCH-ID-SHARED";
 /// [`W_BRANCH_ID_SHARED`] over `docs` (pre-sorted by path): every document
 /// after the first to declare an id is warned at its first menu with that
 /// id, naming the first document's menu relative to `root`. A repeat inside
-/// one document is that document's `E-DUP-BRANCH`, not this.
+/// one document is that document's `E-DUP-BRANCH`, not this. Only an id in
+/// `named` — a `choose:` key of some play or test script under the root
+/// (dsl 0.49.0 §7.2) — is warned: no other key can answer both menus.
 pub fn check_project_branch_ids(
     root: &Path,
     docs: &[ProjectDoc<'_>],
+    named: &BTreeSet<String>,
 ) -> Vec<(PathBuf, Diagnostic)> {
     fn menus<'a>(nodes: &'a [Node], out: &mut Vec<(&'a str, &'static str, Span)>) {
         for node in nodes {
@@ -62,6 +65,9 @@ pub fn check_project_branch_ids(
             }
         }
     }
+    if named.is_empty() {
+        return Vec::new();
+    }
     let shown = |p: &Path| {
         p.strip_prefix(root)
             .unwrap_or(p)
@@ -89,7 +95,7 @@ pub fn check_project_branch_ids(
         }
         let mut here: BTreeSet<&str> = BTreeSet::new();
         for (id, tag, span) in found {
-            if id.is_empty() || !here.insert(id) {
+            if id.is_empty() || !named.contains(id) || !here.insert(id) {
                 continue;
             }
             let Some(&(other, other_tag, other_span)) = first.get(id) else {

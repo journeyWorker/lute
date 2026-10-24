@@ -65,6 +65,15 @@ pub const SEQUENCE_DIRECTIVE: &str = "sequence";
 /// this tag and MUST agree.
 pub const CLEAR_DIRECTIVE: &str = "clear";
 
+/// The core directives with **no stamp carrier** (0.49.0 §4.1): `::jump`
+/// lowers to an unstamped `jump` record, `::label` to no record, and
+/// `::clear` to no record of its own (its injected exits depend on who is on
+/// stage, so an empty stage has none). A plugin `stampAttrs` attribute or a
+/// core timing key (`wait`/`duration`/`delay`) on one of these would be
+/// dropped, so the checker refuses it (`E-UNKNOWN-ATTR`). Every other core
+/// directive lowers to a stamped record.
+pub const UNSTAMPED_DIRECTIVES: [&str; 3] = [JUMP_DIRECTIVE, LABEL_DIRECTIVE, CLEAR_DIRECTIVE];
+
 /// Failure loading one of the embedded `lute.core` assets.
 #[derive(Clone, Debug)]
 pub enum CoreLoadError {

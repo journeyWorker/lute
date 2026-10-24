@@ -41,6 +41,9 @@
       "$ref": "#/definitions/stampAttrsFile"
     },
     {
+      "$ref": "#/definitions/rewardKindsFile"
+    },
+    {
       "$ref": "#/definitions/lintsFile"
     }
   ],
@@ -706,7 +709,7 @@
       }
     },
     "stampAttrsFile": {
-      "description": "schema.rs::StampAttrsFile (export `stampAttrs`, plugin §14.1). CROSS-CUTTING attribute vocabulary: each entry is an ordinary attrDecl, but admissible on EVERY directive AND on content lines, and lowered into the IR record's stamp rather than its own fields. A name colliding with a key the core stamp owns (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) is an assembly-time E-PLUGIN-RESERVED-STAMP-ATTR. `required` and `default` are inert on this surface: a cross-cutting attr is optional on every record, and an unauthored one is never default-injected.",
+      "description": "schema.rs::StampAttrsFile (export `stampAttrs`, plugin §14.1). CROSS-CUTTING attribute vocabulary: each entry is an ordinary attrDecl, but admissible on EVERY directive AND on content lines, and lowered into the IR record's nested `stamps` object (0.49.0 §3.1) rather than its own fields. A name colliding with a key the core stamp owns (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) is an assembly-time E-PLUGIN-RESERVED-STAMP-ATTR; a `list`/`map`/`record` type, which no authored attribute value can satisfy, is E-PLUGIN-INVALID-DIRECTIVE (0.49.0 §3.2). `required` and `default` are inert on this surface: a cross-cutting attr is optional on every record, and an unauthored one is never default-injected.",
       "type": "object",
       "required": [
         "stampAttrs"
@@ -776,6 +779,96 @@
         "options": {
           "type": "object"
         }
+      }
+    },
+    "rewardKindsFile": {
+      "description": "schema.rs::RewardKindsFile (export `rewardKinds/*.yaml`, dsl 0.16.0 §4): a `rewardKinds:` mapping keyed by the reward kind id.",
+      "type": "object",
+      "required": [
+        "rewardKinds"
+      ],
+      "properties": {
+        "rewardKinds": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/rewardKindBody"
+          }
+        }
+      }
+    },
+    "rewardKindBody": {
+      "description": "schema.rs::RewardKindBody (closed, as the loader refuses unknown keys). `credits` (dsl 0.23.0 §8) is the state path a grant of the kind adds its amount to.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "target": {
+          "$ref": "#/definitions/rewardTarget"
+        },
+        "attrs": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/attrDecl"
+          }
+        },
+        "credits": {
+          "type": "string"
+        }
+      }
+    },
+    "rewardTarget": {
+      "description": "schema.rs::RewardTarget (closed): the id space a `<reward target=…>` resolves against (dsl 0.16.0 §4, 0.26.0 §2.5). At most one of `provider`/`entity`; `required: true` rejects a reward with no `target=`. `forbidden: true` (0.49.0 §3.3) rejects a reward WITH a `target=`, and is exclusive with `provider`/`entity`/`required`.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "entity": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "forbidden": {
+          "type": "boolean"
+        }
+      },
+      "not": {
+        "anyOf": [
+          {
+            "required": [
+              "provider",
+              "entity"
+            ]
+          },
+          {
+            "properties": {
+              "forbidden": {
+                "const": true
+              }
+            },
+            "required": [
+              "forbidden"
+            ],
+            "anyOf": [
+              {
+                "required": [
+                  "provider"
+                ]
+              },
+              {
+                "required": [
+                  "entity"
+                ]
+              },
+              {
+                "required": [
+                  "required"
+                ]
+              }
+            ]
+          }
+        ]
       }
     },
     "assetKindsFile": {

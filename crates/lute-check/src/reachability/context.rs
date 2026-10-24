@@ -83,7 +83,7 @@ impl Assumption {
         bodies: &[&[Node]],
         defs: &DefTable<'_>,
         def_types: &BTreeMap<String, Type>,
-        schema: &crate::meta::StateSchema,
+        schema: &crate::StateView,
         snapshot: &CapabilitySnapshot,
     ) -> Option<Self> {
         let raw = when.raw.trim();
@@ -135,6 +135,7 @@ impl Assumption {
             def_types,
             preceded: false,
             components: None,
+            snapshot: None,
             parse_cache: std::rc::Rc::new(
                 std::cell::RefCell::new(std::collections::HashMap::new()),
             ),
@@ -152,7 +153,7 @@ impl Assumption {
         &self,
         path: &str,
         item: &CoverItem,
-        schema: &crate::meta::StateSchema,
+        schema: &crate::StateView,
     ) -> bool {
         let mut on_path = self
             .conjuncts

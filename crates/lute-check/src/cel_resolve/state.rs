@@ -150,12 +150,15 @@ pub(crate) fn check_state_path(
         // dsl 0.5.0 §2.2 "did you mean": suggest the nearest declared path
         // within a small edit distance, advisory text only (no new code).
         if let Some(kind) = ctx.env.rel_vocab.indexed_state.get(path) {
-            // dsl 0.24.0 §3: the family itself is not a value.
+            // dsl 0.24.0 §3: the family itself is not a value. 0.49.0 §5.3:
+            // `'<member>' in <family>` tests one member's presence.
+            let spelled = crate::cel_paths::cel_spelling(path);
             msg = format!(
                 "state path `{path}` is entity-indexed (`per: {kind}`), so read one member: \
                  `{path}.<member>` by name, `{path}[occasion.target]` for the beat's target, \
                  `{path}[@param]` in a component or a beat template header, or `{path}[X]` \
-                 with a rule variable inside a rule `cel()` guard"
+                 with a rule variable inside a rule `cel()` guard, or `'<member>' in {spelled}` \
+                 to test whether a member is set"
             );
         } else if let Some(field) = path
             .strip_prefix(lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD)
@@ -181,6 +184,7 @@ pub(crate) fn check_state_path(
             // unless an authored `scene.*` path is the nearer reading.
             let near = crate::cel_paths::nearest_declared_path(path, &ctx.env.state, 2);
             let engine = near
+                .as_ref()
                 .filter(|_| path.starts_with("scene."))
                 .is_none()
                 .then(|| crate::cel_paths::engine_path_hint(path, &|p| is_declared(p, ctx)))
@@ -206,14 +210,7 @@ pub(crate) fn check_state_path(
 /// lore flag `entry.<id>.read` (dsl 0.19.0 §5) is admitted by the same
 /// shape rule, wherever its `<entry>` lives.
 pub(crate) fn is_declared(path: &str, ctx: &Ctx<'_>) -> bool {
-    is_reserved_quest_path(path)
-        || is_reserved_entry_read(path)
-        || ctx
-            .env
-            .state
-            .decls
-            .keys()
-            .any(|k| path == k || path.starts_with(&format!("{k}.")))
+    is_reserved_quest_path(path) || is_reserved_entry_read(path) || ctx.env.state.covers(path)
 }
 
 /// Guard/condition slots (dsl §9.6): a `<match>` subject or any boolean guard.

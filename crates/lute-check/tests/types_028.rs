@@ -53,16 +53,18 @@ fn diagnostics(text: &str, imports: SchemaImports, explore_gate: &str) -> Vec<Di
             ..Default::default()
         },
     );
-    check(&CheckInput {
-        text: text.to_string(),
-        uri: "types".into(),
-        snapshot,
-        providers: Default::default(),
-        mode: Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    })
+    check(&CheckInput::new(
+        text.to_string(),
+        "types".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    ))
     .diagnostics
 }
 
@@ -398,16 +400,18 @@ fn with_tip(text: &str, writes: &[(&str, &[&str])]) -> Vec<Diagnostic> {
             lower: Lowering::Passthrough,
         },
     );
-    check(&CheckInput {
-        text: text.to_string(),
-        uri: "tip".into(),
-        snapshot,
-        providers: Default::default(),
-        mode: Mode::Author,
-        imports: world(""),
-        components: Default::default(),
-        defaults: Default::default(),
-    })
+    check(&CheckInput::new(
+        text.to_string(),
+        "tip".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            world(""),
+            Default::default(),
+            Default::default(),
+        ),
+    ))
     .diagnostics
 }
 

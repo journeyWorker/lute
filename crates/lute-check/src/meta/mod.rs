@@ -10,6 +10,7 @@ use crate::cel_paths::E_PATH_IDENT;
 use lute_manifest::semantics::cel_paths::is_reserved_quest_path;
 
 mod datalog;
+mod decl_table;
 mod diagnostic_helpers;
 mod diagnostics;
 mod frontmatter;
@@ -26,6 +27,7 @@ use diagnostics::*;
 use kind::*;
 use state::*;
 
+pub use decl_table::{Entries as DeclEntries, Precedence, StateDecls, StateFamily};
 pub use diagnostics::{
     ident_from_name, infer_meta_kind_from_shape, meta_key_span, meta_path_span, PendingPer,
 };
@@ -41,4 +43,6 @@ pub use types::{FactDecl, Namespace, RuleDecl, StateDecl, StateSchema, TypedMeta
 
 pub(crate) use diagnostic_helpers::yaml_key;
 pub(crate) use diagnostics::{expand_per_pending, yaml_shape};
+pub(crate) use frontmatter::check_frontmatter_refs;
 pub(crate) use state::{engine_namespace, namespace_of};
+pub(crate) use types::FrontmatterRef;

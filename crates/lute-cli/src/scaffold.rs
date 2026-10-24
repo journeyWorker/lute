@@ -1291,7 +1291,7 @@ fn created(kind: &str, id: &str, path: &Path, hint: &str) -> ExitCode {
 fn validate_beat(path: &Path, root: &Path, on: &str, target: Option<&str>) -> Result<(), String> {
     let built = build_input(path, None, Some(root), None)
         .ok_or_else(|| format!("cannot read back `{}`", path.display()))?;
-    let occasions = &built.input.snapshot.occasions;
+    let occasions = &built.input.snapshot().occasions;
     if occasions.is_empty() {
         return Ok(());
     }

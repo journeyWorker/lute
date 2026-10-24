@@ -7,23 +7,37 @@ use lute_manifest::schema::{
     AttrDecl, BridgeRef, DirectiveDecl, DirectiveEffects, DirectiveState, Lowering, SlotDecl,
     StateShape, WriteDecl, WriteValue,
 };
+use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::{Field, FromAttr, Literal, PathSegment, Type};
 
 fn input(text: &str, permissions: PermissionSet) -> CheckInput {
-    let mut snapshot = lute_manifest::core::load_core_snapshot();
+    input_with(
+        text,
+        restricted(lute_manifest::core::load_core_snapshot(), permissions),
+        ComponentSet::default(),
+    )
+}
+
+fn restricted(mut snapshot: CapabilitySnapshot, permissions: PermissionSet) -> CapabilitySnapshot {
     snapshot.restrict_permissions(&Permissions {
         layers: vec![permissions],
     });
-    CheckInput {
-        text: text.to_string(),
-        uri: "permissions".into(),
-        snapshot,
-        providers: Default::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    snapshot
+}
+
+fn input_with(text: &str, snapshot: CapabilitySnapshot, components: ComponentSet) -> CheckInput {
+    CheckInput::new(
+        text.to_string(),
+        "permissions".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            Default::default(),
+            components,
+            Default::default(),
+        ),
+    )
 }
 
 fn set(values: &[&str]) -> Option<BTreeSet<String>> {
@@ -132,14 +146,13 @@ facts:
 
 #[test]
 fn plugin_effect_shape_default_bridge_and_directive_are_independent_gates() {
-    let mut permissions = PermissionSet {
+    let permissions = PermissionSet {
         directives: set(&["remote"]),
         state_writes: set(&[]),
         bridges: set(&[]),
         ..Default::default()
     };
-    let mut input = input(
-        r#"---
+    let text = r#"---
 kind: scene
 character: x
 season: 1
@@ -148,11 +161,10 @@ episode: 1
 ## Shot
 ::remote{key="slot"}
 ::bg{location="room" time="day"}
-"#,
-        permissions.clone(),
-    );
+"#;
+    let mut snapshot = lute_manifest::core::load_core_snapshot();
 
-    input.snapshot.state_shapes.insert(
+    snapshot.state_shapes.insert(
         "remoteResult".into(),
         StateShape {
             name: "remoteResult".into(),
@@ -165,7 +177,7 @@ episode: 1
             }],
         },
     );
-    input.snapshot.directives.insert(
+    snapshot.directives.insert(
         "remote".into(),
         DirectiveDecl {
             name: "remote".into(),
@@ -214,12 +226,12 @@ episode: 1
             },
         },
     );
-    // Reapply the same policy to restamp the augmented capability surface.
-    permissions.directives = set(&["remote"]);
-    input.snapshot.permissions = Permissions::default();
-    input.snapshot.restrict_permissions(&Permissions {
-        layers: vec![permissions],
-    });
+    // Apply the policy to the augmented capability surface.
+    let input = input_with(
+        text,
+        restricted(snapshot, permissions),
+        ComponentSet::default(),
+    );
 
     let diagnostics = permission_diagnostics(&input);
     assert!(diagnostics
@@ -302,18 +314,21 @@ params: {}
         ..Default::default()
     };
 
-    let mut unused = input(
+    let unused = input_with(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot\n@narrator: quiet\n",
-        permissions.clone(),
+        restricted(
+            lute_manifest::core::load_core_snapshot(),
+            permissions.clone(),
+        ),
+        components.clone(),
     );
-    unused.components = components.clone();
     assert!(permission_diagnostics(&unused).is_empty());
 
-    let mut invoked = input(
+    let invoked = input_with(
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot\n::use{component=\"sound\"}\n",
-        permissions,
+        restricted(lute_manifest::core::load_core_snapshot(), permissions),
+        components,
     );
-    invoked.components = components;
     let diagnostics = permission_diagnostics(&invoked);
     let denied = diagnostics
         .iter()

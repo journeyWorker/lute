@@ -187,7 +187,10 @@ fn run_task_context(
         compile: true,
         wip: false,
     };
-    let model = match ProjectModel::build_single_root(&root, &opts) {
+    // One model of the root, which every witness script reads too (spec
+    // 0.49.0 §9.6).
+    let memo = lute_model::ModelMemo::selecting(opts.clone());
+    let model = match memo.single_root(&root, &opts) {
         Ok(model) => model,
         Err(error) => {
             return envelope::fail(CliError::io(
@@ -277,7 +280,7 @@ fn run_task_context(
         .map(|item| serde_json::to_value(item).unwrap_or_default())
         .collect::<Vec<_>>();
     sort_and_truncate(&mut affected, limit, "affected", &mut not_included);
-    let scripts = related_scripts(&model, &key, limit, scripts, &mut not_included);
+    let scripts = related_scripts(&memo, &model, &key, limit, scripts, &mut not_included);
     let vocabulary = vocabulary(&model, graph, &key, limit, &mut not_included);
     let excerpt = node
         .file
@@ -397,8 +400,8 @@ fn run_position_context(
             source: &source,
             byte_offset: offset,
         },
-        &built.input.imports,
-        &built.input.snapshot,
+        built.input.imports(),
+        built.input.snapshot(),
     ) {
         Ok(resolution) => resolution,
         Err(error) => {
@@ -545,6 +548,7 @@ struct Scripts {
 }
 
 fn related_scripts(
+    memo: &lute_model::ModelMemo,
     model: &ProjectModel,
     key: &NodeKey,
     limit: usize,
@@ -592,6 +596,7 @@ fn related_scripts(
         let selected = scripts.selects(&path);
         let witnessed = selected
             && crate::cmd_constraints::run_script_for_context(
+                memo,
                 model.root(),
                 &path,
                 key,
@@ -667,8 +672,8 @@ fn vocabulary(
     }
     let mut enums = Vec::new();
     for document in model.documents() {
-        for (path, declaration) in &document.folded.env.state.decls {
-            if !state_paths.contains(path) {
+        for (path, declaration) in document.folded.env.state.iter() {
+            if !state_paths.contains(path.as_ref()) {
                 continue;
             }
             if let Type::Enum(members) = &declaration.ty {
@@ -702,13 +707,13 @@ fn vocabulary(
 /// them), and marks every other engine-owned path `owner: engine`.
 fn authoring_surface(
     input: &CheckInput,
-    state: &lute_check::StateSchema,
+    state: &lute_check::StateView,
     rel_vocab: &RelVocab,
     branch_paths: &BTreeSet<String>,
     domains: &std::collections::BTreeMap<String, lute_manifest::snapshot::Domain>,
 ) -> serde_json::Value {
     use serde_json::{Map, Value};
-    let snap = &input.snapshot;
+    let snap = &input.snapshot();
 
     // Directives: BTreeMap key == directive name ⇒ iteration is name-sorted.
     // Attrs keep declaration order (their authoring/positional order).
@@ -779,7 +784,6 @@ fn authoring_surface(
 
     // Folded state schema: BTreeMap key == path ⇒ iteration is path-sorted.
     let state_schema: Vec<Value> = state
-        .decls
         .iter()
         .filter(|(path, _)| {
             lute_manifest::semantics::cel_paths::reserved_path(path).is_none()
@@ -790,9 +794,9 @@ fn authoring_surface(
             // slot: its authorable enum domain is choice ids ∪ `unset` (compile's
             // state-table domain), NOT the folded members alone. Author enums at
             // any other path are not in `branch_paths` and keep their members.
-            let (ty, domain) = state_type_str(branch_paths.contains(path), &decl.ty);
+            let (ty, domain) = state_type_str(branch_paths.contains(path.as_ref()), &decl.ty);
             let mut o = Map::new();
-            o.insert("path".into(), path.clone().into());
+            o.insert("path".into(), path.to_string().into());
             o.insert("type".into(), ty.into());
             o.insert("namespace".into(), namespace_str(decl.namespace).into());
             // dsl 0.22.0 §1.2: engine-owned paths are read-only to content —
@@ -803,7 +807,7 @@ fn authoring_surface(
                     "owner".into(),
                     serde_json::to_value(owner).unwrap_or(Value::Null),
                 );
-            } else if lute_check::cel_paths::is_engine_owned_path(path) {
+            } else if lute_check::cel_paths::is_engine_owned_path(&path) {
                 o.insert("owner".into(), "engine".into());
             }
             if let Some(def) = &decl.default {
@@ -993,7 +997,7 @@ fn authoring_surface(
     root.insert("rewardKinds".into(), reward_kinds);
     // dsl 0.23.0 §7: the declared cast (plugins ∪ imported schemas) the
     // speakers are checked against; omitted while speakers are shape-only.
-    let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &[]);
+    let cast = lute_check::declared_cast(input.snapshot(), input.imports(), &[]);
     if !cast.is_empty() {
         root.insert(
             "cast".into(),

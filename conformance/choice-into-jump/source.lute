@@ -1,0 +1,27 @@
+---
+kind: scene
+luteVersion: "0.49.0"
+character: hero
+season: 1
+episode: 1
+title: Choice into before a jump
+uses: ./schema.yaml
+---
+
+## The Fork
+
+@narrator: The road splits.
+
+<branch id="path">
+  <choice id="left" text="Go left" into="run.dir" value="left">
+    @hero: Left it is.
+    ::jump{to="after"}
+  </choice>
+  <choice id="right" text="Go right" into="run.dir" value="right">
+    @hero: Right it is.
+  </choice>
+</branch>
+
+@narrator: The right road is long.
+::label{name="after"}
+@narrator: The journey continues.

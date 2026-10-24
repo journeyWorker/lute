@@ -203,7 +203,7 @@ fn build_lint_input(
         lute_check::chapters::apply_chapters(
             &mut parsed.0,
             &built.defaults,
-            &built.input.snapshot.occasions,
+            &built.input.snapshot().occasions,
         );
         (text, parsed.0, Some(built))
     } else {
@@ -304,9 +304,24 @@ fn lint_target(
                 format!("lute: cannot walk {}: {e}", path.display()),
             ))
         })?;
+        // dsl 0.49.0 §7.4 (#188): the directory is linted inside its project
+        // — `--project`, else the nearest manifest at or above it — with
+        // every file spelled from that root, so grouping finds the root's
+        // `lute.lint.yaml` and findings print relative to it.
+        let walk_root = match floor {
+            Some(floor) => Some(floor.to_path_buf()),
+            None => nearest_manifest_dir(path).map(|dir| cwd_relative(&dir)),
+        };
+        let (walk_root, files) = match walk_root {
+            Some(root) => {
+                let files = respell_under(path, &root, files)?;
+                (root, files)
+            }
+            None => (path.to_path_buf(), files),
+        };
         let mut m: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
         for f in files {
-            let root = project_root_for(&f, floor.unwrap_or(path));
+            let root = project_root_for(&f, &walk_root);
             m.entry(root).or_default().push(f);
         }
         m
@@ -403,6 +418,55 @@ fn lint_target(
     Ok(aggregated)
 }
 
+/// `dir` (a canonical directory) spelled from the working directory when it
+/// lies under it (`.` for the working directory itself), else as given.
+fn cwd_relative(dir: &Path) -> PathBuf {
+    let cwd = std::env::current_dir().and_then(std::fs::canonicalize);
+    match cwd.as_deref().map(|cwd| dir.strip_prefix(cwd)) {
+        Ok(Ok(rel)) if rel.as_os_str().is_empty() => PathBuf::from("."),
+        Ok(Ok(rel)) => rel.to_path_buf(),
+        _ => dir.to_path_buf(),
+    }
+}
+
+/// `files` (found under the directory operand `dir`) spelled from `root`,
+/// the project `dir` is linted in. A `dir` outside `root` is `E-CLI-USAGE`
+/// (dsl 0.49.0 §7.4).
+fn respell_under(dir: &Path, root: &Path, files: Vec<PathBuf>) -> Result<Vec<PathBuf>, ExitCode> {
+    let canonical = |p: &Path| {
+        std::fs::canonicalize(p).map_err(|e| {
+            let e = lute_manifest::io_reason(&e);
+            envelope::fail(CliError::io(
+                p,
+                format!("lute: cannot read {}: {e}", p.display()),
+            ))
+        })
+    };
+    let (canonical_dir, canonical_root) = (canonical(dir)?, canonical(root)?);
+    let Ok(inside) = canonical_dir.strip_prefix(&canonical_root) else {
+        return Err(envelope::fail(
+            CliError::usage(format!(
+                "lute lint: {} is not inside the project {}",
+                dir.display(),
+                root.display()
+            ))
+            .with_argument(dir.display().to_string()),
+        ));
+    };
+    let base = if inside.as_os_str().is_empty() {
+        root.to_path_buf()
+    } else {
+        root.join(inside)
+    };
+    Ok(files
+        .into_iter()
+        .map(|file| match file.strip_prefix(dir) {
+            Ok(rel) => base.join(rel),
+            Err(_) => file,
+        })
+        .collect())
+}
+
 /// `W-DISPLAY-NAME-DUP` (dsl 0.26.0 §2.8) for one project root — the same
 /// pass whole-project `check` runs, each document's cast resolved the way `check`
 /// resolves it. `builts` is index-aligned with `inputs`; paths are the
@@ -418,9 +482,9 @@ fn display_name_dups(
         .zip(inputs)
         .map(|(built, input)| {
             (
-                lute_check::declared_cast(&built.input.snapshot, &built.input.imports, &[]),
+                lute_check::declared_cast(built.input.snapshot(), built.input.imports(), &[]),
                 lute_check::check::use_speaker_lines(&input.doc, &built.input.components),
-                built.input.imports.rel.origins.cast.clone(),
+                built.input.imports().rel.origins.cast.clone(),
             )
         })
         .collect();

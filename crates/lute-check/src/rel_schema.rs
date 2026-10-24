@@ -80,6 +80,53 @@ pub struct DeclOrigin {
     pub span: Span,
 }
 
+impl DeclOrigin {
+    /// `span` (a document offset of `idx`'s text, clamped to it) in `file`,
+    /// positioned.
+    pub(crate) fn located(
+        file: &std::path::Path,
+        idx: &lute_core_span::TextIndex<'_>,
+        span: Span,
+    ) -> Self {
+        let (start, end) = clamped(span, idx.text().len());
+        Self {
+            file: file.to_path_buf(),
+            span: Span::from_bytes(idx, start, end),
+        }
+    }
+
+    /// [`Self::located`] through `cursor` ([`positioned_by`]).
+    pub(crate) fn located_by(
+        file: &std::path::Path,
+        cursor: &mut lute_core_span::SpanCursor<'_, '_>,
+        len: usize,
+        span: Span,
+    ) -> Self {
+        Self {
+            file: file.to_path_buf(),
+            span: positioned_by(cursor, len, span),
+        }
+    }
+}
+
+/// `span` (a document offset of `cursor`'s text of `len` bytes, clamped to
+/// it) positioned, through `cursor`: spans read in file order are
+/// positioned in one walk of their lines.
+pub(crate) fn positioned_by(
+    cursor: &mut lute_core_span::SpanCursor<'_, '_>,
+    len: usize,
+    span: Span,
+) -> Span {
+    let (start, end) = clamped(span, len);
+    cursor.span(start, end)
+}
+
+/// `span`'s byte range inside a text of `len` bytes.
+fn clamped(span: Span, len: usize) -> (usize, usize) {
+    let end = span.byte_end.min(len);
+    (span.byte_start.min(end), end)
+}
+
 /// Imported declarations' homes, by kind of declaration (dsl 0.24 T3-6).
 /// `rules`/`facts` are keyed by their authored text (`RuleDecl::raw`).
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -91,8 +138,9 @@ pub struct DeclOrigins {
     pub facts: BTreeMap<String, DeclOrigin>,
     /// Every `enums:` / `entities:` domain the schema declares.
     pub domains: BTreeMap<String, DeclOrigin>,
-    /// dsl 0.26 §2.1/§2.7: every declared `state:` path.
-    pub state: BTreeMap<String, DeclOrigin>,
+    /// dsl 0.26 §2.1/§2.7: every declared `state:` path, `per:` families
+    /// kept whole (spec 0.49.0 §9.3).
+    pub state: crate::state_origins::StateOrigins,
     /// Prerelease N4: each member an entity kind's `members:` lists, keyed
     /// [`member_origin_key`] — where a duplicate `add:` names its first line.
     pub members: BTreeMap<String, DeclOrigin>,
@@ -114,9 +162,9 @@ pub struct DeclOrigins {
 }
 
 /// dsl 0.27.0 §4: plugin declarations a document's check judges, at their
-/// line in the plugin's export file (see [`SchemaImports::plugin_origins`]).
+/// line in the plugin's export file (see [`ProjectBase::plugin_origins`]).
 ///
-/// [`SchemaImports::plugin_origins`]: crate::SchemaImports::plugin_origins
+/// [`ProjectBase::plugin_origins`]: crate::ProjectBase::plugin_origins
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct PluginOrigins {
     /// Each gated occasion's `raisedWhen:` value.
@@ -866,9 +914,7 @@ pub fn build_rel_vocab(
     for name in typed.domains.keys() {
         origins.domains.remove(name);
     }
-    for path in typed.state.decls.keys() {
-        origins.state.remove(path);
-    }
+    origins.state.remove_declared(&typed.state.decls);
     for r in &typed.rel_rules {
         origins.rules.remove(&r.raw);
     }
@@ -1048,13 +1094,18 @@ pub fn build_rel_vocab(
                 } else {
                     ((name_a, a), (name_b, b))
                 };
+                // #160: two id spaces that only spell an id the same are two
+                // sub-kinds of one shared root, which may overlap.
                 let message = format!(
                     "id `{id}` is a member of both entity kinds `{first_kind}` ({}) and \
                      `{second_kind}` ({}); an id belongs to exactly one kind (dsl 0.3.0 §3.1) — \
                      if every `{first_kind}` is also a `{second_kind}` (or the other way round), \
                      declare one a sub-kind of the other with `subsetOf:` (dsl 0.24.0 §3); if \
                      the `{first_kind}` and the `{second_kind}` called `{id}` are two different \
-                     things, rename one of them",
+                     things, rename one of them; if they are two id spaces whose ids only spell \
+                     `{id}` the same, declare a shared root kind listing both spaces' members and \
+                     make each a sub-kind of it (`{first_kind}: {{ subsetOf: <root>, members: \
+                     […] }}`) — every reference still checks against its own kind",
                     place(&first),
                     place(&second),
                 );
@@ -1450,12 +1501,25 @@ pub fn check_member_dups(
 /// a flat `run.x:` key as written, a nested `run: { x: … }` at its last
 /// segment's key.
 pub fn state_key_span(meta: &Meta, path: &str) -> Span {
+    STATE_KEY_SPANS.with(|n| n.set(n.get() + 1));
     let needle = if meta.raw_yaml.contains(path) {
         path
     } else {
         path.rsplit('.').next().unwrap_or(path)
     };
     meta_key_span(meta, needle)
+}
+
+thread_local! {
+    /// How many times this thread ran [`state_key_span`], an O(file) scan.
+    static STATE_KEY_SPANS: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
+}
+
+/// How many times this thread has located a state path in its frontmatter
+/// ([`state_key_span`]): a test bounds the work a check does with it.
+#[doc(hidden)]
+pub fn state_key_span_count() -> usize {
+    STATE_KEY_SPANS.with(std::cell::Cell::get)
 }
 
 /// `span` (a [`meta_key_span`]-style, line-less document offset inside
@@ -1585,17 +1649,15 @@ pub fn kind_list_spans(meta: &Meta, kind: &str, sub: &str) -> Vec<(String, Span)
 /// the line scan found it ([`kind_list_spans`]); `None` when it found fewer.
 pub(crate) fn add_member_spans(meta: &Meta, kind: &str, members: &[String]) -> Vec<Option<Span>> {
     let written = kind_list_spans(meta, kind, "add:");
-    let mut taken = vec![false; written.len()];
+    // Each id's places, in written order; a listing takes the first left.
+    let mut places: std::collections::HashMap<&str, std::collections::VecDeque<Span>> =
+        std::collections::HashMap::new();
+    for (w, span) in &written {
+        places.entry(w.as_str()).or_default().push_back(*span);
+    }
     members
         .iter()
-        .map(|m| {
-            let i = written
-                .iter()
-                .enumerate()
-                .position(|(i, (w, _))| !taken[i] && w == m)?;
-            taken[i] = true;
-            Some(written[i].1)
-        })
+        .map(|m| places.get_mut(m.as_str())?.pop_front())
         .collect()
 }
 
@@ -1899,4 +1961,42 @@ fn closed_kind_owning<'a>(vocab: &'a RelVocab, id: &str) -> Option<&'a str> {
             }
             _ => None,
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The k-th listing of an id takes the k-th place it is written at; a
+    /// listing the line scan did not find has none.
+    #[test]
+    fn add_member_spans_pairs_repeated_ids_in_written_order() {
+        let raw = "entities:\n  npc: { add: [a, b, a] }\n";
+        let meta = Meta {
+            raw_yaml: raw.to_string(),
+            span: Span {
+                byte_start: 0,
+                byte_end: raw.len(),
+                line: 1,
+                column: 1,
+                utf16_range: (0, 0),
+            },
+        };
+        let members = ["a", "a", "b", "a", "c"].map(String::from);
+        let starts: Vec<Option<usize>> = add_member_spans(&meta, "npc", &members)
+            .into_iter()
+            .map(|s| s.map(|s| s.byte_start))
+            .collect();
+        let at = |needle: &str, nth: usize| raw.match_indices(needle).nth(nth).map(|(i, _)| i);
+        assert_eq!(
+            starts,
+            [
+                at("a,", 0),
+                at(" a]", 0).map(|i| i + 1),
+                at("b", 0),
+                None,
+                None
+            ]
+        );
+    }
 }

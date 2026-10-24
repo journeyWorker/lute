@@ -34,7 +34,8 @@ pub struct StateDecl {
 /// The document's inline `state:` schema (dsl §9), path -> decl.
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct StateSchema {
-    pub decls: BTreeMap<String, StateDecl>,
+    /// Path → decl, `per:` families kept as families (spec 0.49.0 §9.3).
+    pub decls: super::StateDecls,
     /// `number` paths known to hold only the whole numbers `lo..=hi` — the
     /// reserved `clock.weekday` (`0..length-1`, dsl 0.24.0 §1). A `<match>`
     /// over one is exhaustive once every whole number in range is covered.
@@ -46,6 +47,9 @@ pub struct StateSchema {
     /// `<match>` over it is exhaustive over `K`, exactly like an inline
     /// `{ enum: […] }` path. Filled by [`StateSchema::resolve_domains`].
     pub domain_members: BTreeMap<String, (String, Vec<String>)>,
+    /// [`Self::domain_members`] of every member of a `per:` family typed
+    /// `{ domain: K }` / `{ entity: K }`, once, by family path.
+    pub family_domain_members: BTreeMap<String, (String, Vec<String>)>,
     /// dsl 0.28.0 (T3-40): the slot members a finite clock that ends on
     /// its first day ever lets its slot path (and `clock.slot`) hold — the
     /// type's members from the starting slot to the last one. A literal
@@ -75,13 +79,23 @@ impl StateSchema {
     /// The finite string domain of a declared path: an inline enum's members,
     /// or a `{ domain: K }` / `{ entity: K }` path's `K` members.
     pub fn string_members(&self, path: &str) -> Option<&[String]> {
-        if let Some((_, ms)) = self.domain_members.get(path) {
+        if let Some((_, ms)) = self.domain_members_of(path) {
             return Some(ms);
         }
         match &self.decls.get(path)?.ty {
             Type::Enum(ms) => Some(ms),
             _ => None,
         }
+    }
+
+    /// The `{ domain: K }` name and members of `path`
+    /// ([`Self::domain_members`]), a family member's included.
+    pub fn domain_members_of(&self, path: &str) -> Option<&(String, Vec<String>)> {
+        if let Some(m) = self.domain_members.get(path) {
+            return Some(m);
+        }
+        let (family, _) = self.decls.family_of(path)?;
+        self.family_domain_members.get(family)
     }
 
     /// dsl 0.28.0 (T3-40): whether the finite clock never lets `path` hold
@@ -101,6 +115,12 @@ impl StateSchema {
         if self.clock_rejected && (path == "clock" || path.starts_with("clock.")) {
             return true;
         }
+        self.faulty_covers(path)
+    }
+
+    /// [`Self::is_faulty`] without the rejected-clock rule: `path` is in
+    /// [`Self::faulty`] or a member under a faulty dotted path.
+    pub fn faulty_covers(&self, path: &str) -> bool {
         self.faulty.contains(path)
             || self.faulty.iter().any(|f| {
                 f.contains('.')
@@ -113,13 +133,21 @@ impl StateSchema {
     /// Fill [`Self::domain_members`] from the merged domains (enums and entity
     /// kinds). An open kind, or a name no domain declares, stays unresolved.
     pub fn resolve_domains(&mut self, domains: &BTreeMap<String, lute_manifest::snapshot::Domain>) {
-        for (path, decl) in &self.decls {
+        let resolved = |decl: &StateDecl| {
             let (Type::Domain(name) | Type::Entity(name)) = &decl.ty else {
-                continue;
+                return None;
             };
-            if let Some(d) = domains.get(name).filter(|d| !d.open) {
-                self.domain_members
-                    .insert(path.clone(), (name.clone(), d.members.clone()));
+            let d = domains.get(name).filter(|d| !d.open)?;
+            Some((name.clone(), d.members.clone()))
+        };
+        for (path, decl) in self.decls.explicit() {
+            if let Some(members) = resolved(decl) {
+                self.domain_members.insert(path.clone(), members);
+            }
+        }
+        for (path, family) in self.decls.families() {
+            if let Some(members) = resolved(family.decl()) {
+                self.family_domain_members.insert(path.clone(), members);
             }
         }
     }
@@ -311,6 +339,21 @@ pub struct TypedMeta {
     pub terminal: Option<crate::gates::TerminalDecl>,
     /// dsl 0.27.0 §5: a schema document's `seasons:` (name -> `{ live }`).
     pub seasons: crate::season::Seasons,
+    /// 0.49.0 §4.3: each reference-typed plugin frontmatter key whose value
+    /// is a string (or a list of strings), for the membership check
+    /// [`crate::meta::check_frontmatter_refs`] runs once the merged
+    /// vocabulary is folded. In key order.
+    pub(crate) frontmatter_refs: Vec<FrontmatterRef>,
+}
+
+/// One reference-typed plugin frontmatter key (0.49.0 §4.3): `ty` is the
+/// element type (`entity`, `domain`, `enumFromOption`, `providerRef` or
+/// `assetKind`), `values` the authored string, or each element of a list.
+#[derive(Clone, Debug)]
+pub(crate) struct FrontmatterRef {
+    pub(crate) key: String,
+    pub(crate) ty: Type,
+    pub(crate) values: Vec<String>,
 }
 
 impl TypedMeta {

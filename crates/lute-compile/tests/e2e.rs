@@ -45,16 +45,12 @@ fn input_for(path: &str, project_dir: Option<&str>) -> CheckInput {
     }
     let imports = lute_check::resolve_imports(base, &uses, &meta0.extends, doc.meta.span);
     let components = lute_check::resolve_components(base, &meta0.components, doc.meta.span);
-    CheckInput {
+    CheckInput::new(
         text,
-        uri: path.to_string(),
-        snapshot,
-        providers,
-        mode: Mode::Ci,
-        imports,
-        components,
-        defaults,
-    }
+        path.to_string(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(snapshot, providers, imports, components, defaults),
+    )
 }
 
 /// Structural invariants every artifact must satisfy (§4, §7): unique ordered

@@ -82,7 +82,7 @@ pub(crate) fn present_faults(id: &str, cel: &str, span: Span) -> Vec<Diagnostic>
         )];
     }
     let prefix = format!("def `{id}`: ");
-    crate::cel_resolve::check_def_body(id, cel, &[], span, &crate::meta::StateSchema::default())
+    crate::cel_resolve::check_def_body(id, cel, &[], span, &crate::StateView::default())
         .into_iter()
         .filter(|d| d.code == crate::cel_resolve::E_CEL_PROFILE)
         .map(|mut d| {

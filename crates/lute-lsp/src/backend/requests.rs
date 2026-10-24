@@ -124,10 +124,10 @@ impl LanguageServer for Backend {
         let Some((built, doc)) = self.assemble(&pos.text_document.uri, text.clone()) else {
             return Ok(None);
         };
-        let snapshot = built.input.snapshot;
-        let imports = built.input.imports;
+        let snapshot = built.input.snapshot();
+        let imports = built.input.imports();
         let off = position_to_byte(&text, pos.position);
-        Ok(hover::hover_at(&doc, &snapshot, &imports, off))
+        Ok(hover::hover_at(&doc, snapshot, imports, off))
     }
 
     async fn completion(&self, params: CompletionParams) -> Result<Option<CompletionResponse>> {
@@ -141,11 +141,11 @@ impl LanguageServer for Backend {
         let Some((built, doc)) = self.assemble(&pos.text_document.uri, text.clone()) else {
             return Ok(None);
         };
-        let snapshot = built.input.snapshot;
-        let providers = built.input.providers;
-        let imports = built.input.imports;
+        let snapshot = built.input.snapshot();
+        let providers = built.input.providers();
+        let imports = built.input.imports();
         let off = position_to_byte(&text, pos.position);
-        let items = completion::complete_at(&doc, &text, &snapshot, &providers, &imports, off);
+        let items = completion::complete_at(&doc, &text, snapshot, providers, imports, off);
         if items.is_empty() {
             return Ok(None);
         }
@@ -167,12 +167,12 @@ impl LanguageServer for Backend {
         let Some((built, doc)) = self.assemble(&uri, text.clone()) else {
             return Ok(None);
         };
-        let snapshot = built.input.snapshot;
-        let imports = built.input.imports;
+        let snapshot = built.input.snapshot();
+        let imports = built.input.imports();
         let idx = TextIndex::new(&text);
         let off = position_to_byte(&text, pos.position);
         Ok(
-            nav::definition_at(&doc, &snapshot, &imports, off).map(|span| {
+            nav::definition_at(&doc, snapshot, imports, off).map(|span| {
                 GotoDefinitionResponse::Scalar(Location {
                     uri,
                     range: span_to_range(&span, &idx),
@@ -193,14 +193,14 @@ impl LanguageServer for Backend {
         let Some((built, doc)) = self.assemble(&uri, text.clone()) else {
             return Ok(None);
         };
-        let snapshot = built.input.snapshot;
-        let imports = built.input.imports;
+        let snapshot = built.input.snapshot();
+        let imports = built.input.imports();
         let idx = TextIndex::new(&text);
         let off = position_to_byte(&text, pos.position);
         let locs: Vec<Location> = nav::references_at(
             &doc,
-            &snapshot,
-            &imports,
+            snapshot,
+            imports,
             off,
             params.context.include_declaration,
         )

@@ -311,11 +311,11 @@ const host = {
 }
 ```
 
-The handler receives the typed `BridgeAwait` (`request`, `tag`, `document`, `position`, the call's `attrs` and the typed `results` it must answer) and returns a `BridgeAnswer { fields, writes? }`. The director sends `bridgeResult { request, fields, writes? }`, then continues cue playback; the writes land before the lines that follow. The handler runs on a fiber of its own, so menus keep working while the host plays. If no handler exists, the player emits a bridge-unhandled failure rather than inventing an answer.
+The handler receives the typed `BridgeAwait` (`request`, `tag`, `document`, `position`, the call's `attrs`, the plugin `stamps` (0.49: the directive's plugin stamp attributes, separate from `attrs`, absent when the command has none) and the typed `results` it must answer) and returns a `BridgeAnswer { fields, writes? }`. The director sends `bridgeResult { request, fields, writes? }`, then continues cue playback; the writes land before the lines that follow. The handler runs on a fiber of its own, so menus keep working while the host plays. If no handler exists, the player emits a bridge-unhandled failure rather than inventing an answer.
 
 ## Plugin records
 
-A non-blocking plugin directive reaches the host through `PlayerHost.plugin`, keyed by tag. The record becomes a waiting cue: the handler runs with a `PluginCall { tag, attrs, document, position }` at the record's place in the batch, the batch continues when it completes, and it runs in skip mode too (a game action is not presentation). Records of calls answered through a bridge are never handed to `plugin`. The cue factory returns exactly one cue per output event, in order, so a host may also wrap it.
+A non-blocking plugin directive reaches the host through `PlayerHost.plugin`, keyed by tag. The record becomes a waiting cue: the handler runs with a `PluginCall { tag, attrs, stamps?, document, position }` (`stamps` carries the command's plugin stamp attributes, separate from `attrs` and absent when it has none) at the record's place in the batch, the batch continues when it completes, and it runs in skip mode too (a game action is not presentation). Records of calls answered through a bridge are never handed to `plugin`. The cue factory returns exactly one cue per output event, in order, so a host may also wrap it.
 
 `Director.make` accepts the same `bundle`, `bindings`, optional cue-factory
 wrapper, and `host` options, so a hand-composed director does not need a
@@ -341,7 +341,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 
 ```json
 {
-  "saveVersion": "0.48",
+  "saveVersion": "0.49",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -350,7 +350,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 }
 ```
 
-The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion` (the release line, `"0.48"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
+The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion` (the release line, `"0.49"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
 
 Since 0.47 a profile also holds the **lineage** when one was written (see the cross-run model below). A profile of another `profileVersion` is never refused: its read marks and settings are kept, and it has no lineage.
 

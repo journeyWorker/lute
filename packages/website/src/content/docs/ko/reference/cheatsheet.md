@@ -306,6 +306,8 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`는 `bool`이고, `count
 제목은 프론트매터 `title:` 하나뿐이며, 본문의 `# 제목`은 `E-INERT-TITLE`입니다. 퀘스트의 그래프 간선은
 `<quest>`의 `follows=` 속성이며, 프론트매터 키가 아닙니다.
 
+플러그인 프론트매터 키 중 타입이 `entity`, `domain`, `enumFromOption`, `providerRef`, `assetKind`인 키는 해당 타입의 속성과 같은 타입별 검증으로 검사됩니다(0.49.0). `providerRef`는 `E-UNKNOWN-ID`(경우에 따라 `W-CATALOG-STALE`), 에셋 종류는 `E-ASSET-*`가 되고, 엔티티·enum 오타는 비슷한 이름 제안과 함께 `E-BAD-ENUM`입니다. 예를 들면 (`` `mirra` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`? ``). 그런 타입의 `list`는 각 원소를 검사하고, 문자열이 아닌 값은 계속 `E-FRONTMATTER-SCHEMA`입니다.
+
 → [프론트매터와 프로필](/ko/language/frontmatter-and-profiles/)
 
 ## 대사, 캐스트, 연출
@@ -373,6 +375,8 @@ state:
 | 섹션 | 모든 콘텐츠는 `## 제목` 섹션 아래에 둡니다. `## 제목 {#stable-id}`의 꼬리표는 안정적인 섹션 id이며(영문자로 시작하는 ASCII 토큰, 문서 안에서 유일, 중복은 `E-SECTION-DUP`), 점프 대상은 아닙니다. 본문의 `# 제목`은 `E-INERT-TITLE`입니다. |
 | 디렉티브 | 아래 표. 모든 연출 디렉티브는 타이밍 키 `duration`, `delay`(초), `wait="true"`(대기)를 받습니다. 캐스트가 선언되어 있으면 `::actor{character}`와 `::camera{focus}`도 그 안에 있어야 합니다(`E-CAST-UNKNOWN`). 필수 속성이 빠지면 `E-MISSING-ATTR`입니다. |
 | 주석 | `// …`는 줄 끝까지이며, 그 줄에 홀로 있거나 디렉티브 뒤에 올 수 있습니다(`::set{run.n += 1} // why`). 그리고 `/* … */`. `<tag>` 뒤에 쓰면 `E-TAG-INLINE-BODY`이고, 대사 텍스트 안의 `//`는 글자 그대로입니다. |
+| 줄의 `wait` | 0.49.0. `@mira{wait="false"}: …`는 허용되며(bool) 줄의 `timing.wait`로 컴파일됩니다. 줄의 `delay`와 `duration`은 계속 `E-UNKNOWN-ATTR`입니다. 줄은 항상 자기 진행을 기다리고, `wait`는 그 줄 뒤 다음 줄 전까지의 연출 큐가 줄을 기다리는지를 정합니다. `true`나 생략이면 기다리고 `false`이면 줄이 표시되는 동안 시작됩니다. 다음 줄은 여전히 기다리며, 대화창을 비우는 `presentation` 큐도 마찬가지입니다. |
+| `::jump`, `::label`, `::clear` | 0.49.0. 스탬프를 싣지 않습니다. 이 디렉티브에 플러그인 스탬프 속성이나 코어 타이밍 키를 쓰면 `E-UNKNOWN-ATTR`입니다(`` `::jump` does not carry `cue`: it compiles to a `jump` record that has no stamp ``). 속성은 점프 앞, 라벨 뒤의 줄이나 디렉티브, 또는 직접 쓰는 `::actor{exit}`에 두세요 — `::clear`는 주입하는 퇴장에 스탬프를 넘기지 않습니다. |
 
 | 디렉티브 | 속성 | 산출물 `kind` |
 |---|---|---|
@@ -689,6 +693,9 @@ rules:
 0.26.0부터 가드가 enum 경로, `occasion.target`, 퀘스트의 `state` / `failedBy`와 비교하는 문자열(`==`, `!=`,
 `in [...]`의 원소)은 그 멤버여야 합니다. `run.rank == 'silvr'`는 `is="silvr"`처럼
 `E-WHEN-LITERAL-DOMAIN`이며, 비슷한 이름을 제안합니다.
+
+0.49.0 `per:` 멤버의 존재 확인: `'look-around' in user.stepRank`는 `user.stepRank.look-around`의 존재 가드이며 식별자 경로의 `has()`와 같습니다(부정은 `!('look-around' in user.stepRank)`). 식별자가 아닌 멤버에 쓰세요. `has(user.stepRank["look-around"])`는 계속 `E-CEL-PARSE`이며 `'<m>' in <family>`로 쓰라는 힌트가 붙습니다. 존재 테스트를 언급하는 모든 메시지는 식별자 경로에는 `has(p)` / `!has(p)`, 그런 멤버에는 `'<m>' in <family>` / `!('<m>' in <family>)`로 표기하며, 식별자가 아닌 다른 세그먼트가 있는 경로는 `after:` / `default:` 해결책만 알려 줍니다.
+
 0.30.0: 작가가 쓰는 모든 이름은 **이름**입니다. 글자, 숫자, `_`, `-`로 이루어지고 `-`로 시작하지
 않으며, 점으로 이은 id는 이름을 `.`으로 잇습니다. 씬·비트·엔트리·퀘스트·objective·branch·허브·choice
 id, `::label` 이름, 문서 id의 각 부분, `share` 키, 시즌, relation, enum과 엔티티 종류와 그 멤버, 플러그인이
@@ -1640,6 +1647,8 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. 한 런에서 다시 읽힐 수 있는 엔트리(조회 엔트리, `once` 없음, 런보다 짧은 `once`, `spentBy`, `for`)가 `::set`, `::retract`, 또는 쓰기 효과만 가진 디렉티브를 씁니다: 쓰기는 한 런에서 처음 읽을 때만 적용됩니다. 반복되는 쓰기는 `<beat … once="false">`에, 아니면 `once="run"`이나 `when="!entry.<id>.read"` 가드를 쓰세요. `::assert`는 제외입니다. |
 | `E-COMPONENT-ARG` | `::use` 인자가 파라미터에 맞지 않거나 없는 파라미터를 가리킵니다. 0.26.0부터는 `speaker` 파라미터가 아닌 것에 쓴 `@@x:`나 컴포넌트 밖의 `@@x:`도 해당합니다. |
 | `E-UNKNOWN-ATTR` | 디렉티브가 선언하지 않은 속성입니다. 0.26.0부터는 내장 레코드로 로워링되는 디렉티브(`::bg`, `::sfx` 같은 코어 연출 디렉티브, `::end`, `::label`, 플러그인 `lower:` 레코드)의 `when=`과 `when`이라는 이름의 플러그인 속성도 해당합니다. |
+| `E-ENTITY-KIND-CLASH` | 두 종류가 같은 멤버를 나열합니다. 두 id 공간의 id가 철자만 같은 것이라면 두 공간의 멤버를 모두 나열하는 공유 루트 종류를 선언하고 각각을 그 하위 종류로 만드세요(`{first}: { subsetOf: <root>, members: […] }`). 모든 참조는 여전히 자기 종류에 대해 검사됩니다. |
+| `E-PATH-IDENT` | `.` 뒤에 쓴 이름 세그먼트가 식별자가 아닙니다. 엔터티/enum 멤버가 다른 시스템의 id(`vendor:reply`)라면 프로바이더를 선언하고 속성을 `{ providerRef: <provider> }`로 타입 지정하세요. |
 | `E-CONN-UNKNOWN-NODE` | `visited('…')`나 `after`가 프로젝트에 없는 씬(0.24.0부터는 번들 비트도 가능)을 가리킵니다. |
 | `E-CLOCK-DECL` | 0.24.0. 스키마의 `clock:`이 잘못되었습니다: `day` / `slot`이 선언되지 않았거나 타입이 틀렸거나 `owner: engine`이 아니거나(`` `day: run.day` must be declared `owner: engine` ``), `slots`가 슬롯 enum의 멤버가 아니거나 `slot` 없이 쓰였거나, 모르는 `raise` 계기(플러그인이 계기를 선언할 때)나 `payload:`가 있는 `raise` 계기(0.28.0)이거나, 두 번째 시계입니다. |
 | `E-SEASON-DECL` | 0.27.0. `seasons:` 항목이 잘못되었거나(맵이 아님, `live`가 없거나 비어 있음, 알 수 없는 키, 잘못된 이름), 두 스키마가 한 시즌을 다르게 선언했거나, `season.<name>.*` 경로·`once: season:<name>`·`tier="season:<name>"`가 선언되지 않은 시즌을 가리킵니다. `prev.season.*`에 쓰면 `prev.run.*`처럼 `E-QUEST-RESERVED-WRITE`입니다. |

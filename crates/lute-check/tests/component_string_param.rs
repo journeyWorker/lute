@@ -12,16 +12,18 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 use std::path::Path;
 
 fn check_with(text: &str, components: ComponentSet) -> Vec<Diagnostic> {
-    check(&CheckInput {
-        text: text.to_string(),
-        uri: "doc".into(),
-        snapshot: load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components,
-        defaults: Default::default(),
-    })
+    check(&CheckInput::new(
+        text.to_string(),
+        "doc".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            load_core_snapshot(),
+            ProviderSet::default(),
+            Default::default(),
+            components,
+            Default::default(),
+        ),
+    ))
     .diagnostics
 }
 

@@ -14,7 +14,7 @@ use serde_json::Value as Json;
 use super::events::ScriptAnswer;
 use super::plan::PlannedBridgeAnswer;
 use super::producers::{decisions_of, Decision, Premises, Producers};
-use super::script::ScriptedPick;
+use lute_model::scripts::ScriptedPick;
 /// The CLI-owned state used to drive and resume play walks.
 ///
 /// Choices, bridge queues, and condition-dump observation are deliberately

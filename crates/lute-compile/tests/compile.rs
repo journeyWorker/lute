@@ -5,16 +5,30 @@ use lute_check::{CheckInput, Mode};
 use lute_compile::{compile, ArtifactMeta, Command, Role};
 
 fn input(text: &str) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "test".into(),
-        snapshot: lute_test_vocab::vocab_snapshot(),
-        providers: Default::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    input_with(
+        text,
+        lute_test_vocab::vocab_snapshot(),
+        lute_check::ComponentSet::default(),
+    )
+}
+
+fn input_with(
+    text: &str,
+    snapshot: lute_manifest::snapshot::CapabilitySnapshot,
+    components: lute_check::ComponentSet,
+) -> CheckInput {
+    CheckInput::new(
+        text.to_string(),
+        "test".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            Default::default(),
+            components,
+            Default::default(),
+        ),
+    )
 }
 
 /// Unwrap a scene execution IR's untagged `meta` (0.2.0 kind envelope) — these
@@ -108,13 +122,13 @@ episode: 40
   </choice>
 </branch>
 "#;
-    let mut input = input(DOC);
-    input
-        .snapshot
+    let mut snapshot = lute_test_vocab::vocab_snapshot();
+    snapshot
         .domains
         .get_mut("musicPlayback")
         .expect("core musicPlayback")
         .stops = vec!["fadeOut".into()];
+    let input = input_with(DOC, snapshot, lute_check::ComponentSet::default());
     let artifact = compile(&input).expect("timed choice and music stop compile");
     let json = serde_json::to_value(&artifact).unwrap();
     let music = json["commands"]
@@ -331,9 +345,9 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     let inp = input(SCENE);
     let artifact = compile(&inp).expect("clean compile");
     // A9 envelope hardening: language pin, IR schema version, capability stamp.
-    assert_eq!(artifact.lute, "0.48.1");
-    assert_eq!(artifact.ir_version, "0.48.1");
-    assert_eq!(artifact.capability_snapshot, inp.snapshot.version);
+    assert_eq!(artifact.lute, "0.49.0");
+    assert_eq!(artifact.ir_version, "0.49.0");
+    assert_eq!(artifact.capability_snapshot, inp.snapshot().version);
     assert!(
         !artifact.capability_snapshot.is_empty(),
         "capabilitySnapshot must be a non-empty snapshot stamp"
@@ -351,7 +365,10 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     // Folded state envelope: author decl + implicit branch decl (§4.1).
     let paths: Vec<&str> = artifact.state.iter().map(|s| s.path.as_str()).collect();
     assert_eq!(paths, vec!["scene.affect.marina", "scene.choices.number"]);
-    let choice_entry = &artifact.state[1];
+    let choice_entry = artifact
+        .state
+        .get("scene.choices.number")
+        .expect("choice slot");
     assert_eq!(choice_entry.ty, "enum");
     assert_eq!(
         choice_entry.domain.as_deref(),
@@ -361,7 +378,10 @@ fn clean_doc_compiles_with_envelope_expansion_and_ids() {
     // §4.1: an implicit choice slot is seeded `default: "unset"` so the runtime
     // can init the branch record key before any choice is taken.
     assert_eq!(choice_entry.default, Some(serde_json::json!("unset")));
-    let affect = &artifact.state[0];
+    let affect = artifact
+        .state
+        .get("scene.affect.marina")
+        .expect("affect slot");
     assert_eq!(affect.ty, "int");
     assert_eq!(affect.default, Some(serde_json::json!(0)));
 
@@ -1240,8 +1260,7 @@ episode: 1
   </choice>
 </hub>
 "#;
-    let mut inp = input(HUB_USE);
-    inp.components = comps;
+    let inp = input_with(HUB_USE, lute_test_vocab::vocab_snapshot(), comps);
 
     let check_result = lute_check::check(&inp);
     assert!(
@@ -1975,8 +1994,8 @@ title: Legacy
     assert_eq!(actual["meta"]["episodeId"], pinned_014["meta"]["episodeId"]);
     assert_eq!(actual["meta"]["title"], pinned_014["meta"]["title"]);
     assert_eq!(actual["meta"]["id"], serde_json::json!("marina.s01ep02"));
-    assert_eq!(actual["lute"], serde_json::json!("0.48.1"));
-    assert_eq!(actual["irVersion"], serde_json::json!("0.48.1"));
+    assert_eq!(actual["lute"], serde_json::json!("0.49.0"));
+    assert_eq!(actual["irVersion"], serde_json::json!("0.49.0"));
 }
 
 /// dsl 0.15.0 §3: the authored `extra:` block lands under `meta.extra`

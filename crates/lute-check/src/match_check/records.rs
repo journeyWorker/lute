@@ -33,6 +33,11 @@ pub const E_OBJECTIVE_QUEST_DONE: &str = "E-OBJECTIVE-QUEST-DONE";
 /// the offending `quest=` attribute value.
 pub const E_QUEST_TREE_CYCLE: &str = "E-QUEST-TREE-CYCLE";
 
+/// `E-QUEST-START-SELF` (dsl 0.49.0 §6.2): a quest's `start` reads the
+/// quest's own state (`quest.<id>.*`), which has no value before the quest
+/// starts. Anchored at the `start` value.
+pub const E_QUEST_START_SELF: &str = "E-QUEST-START-SELF";
+
 /// One branch's recording result: the implicit `scene.choices.<id>` decl to fold
 /// into the schema, plus any diagnostic (`E-DUP-BRANCH`).
 #[derive(Clone, Debug)]
@@ -384,6 +389,21 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
     let id = quest.id.as_str();
     let mut diags = Vec::new();
     crate::logic_attrs::check_quest_attrs(quest, &mut diags);
+    if let Some(start) = quest.start.as_ref().filter(|_| !id.is_empty()) {
+        if let Some(path) = start_self_read(id, &start.raw) {
+            diags.push(diag(
+                E_QUEST_START_SELF,
+                Severity::Error,
+                format!(
+                    "`start` of quest `{id}` reads its own state (`{path}`), which has no value \
+                     before the quest starts, so this condition can never start it as intended; \
+                     a quest that only the host grants is written `accept=\"external\"` without \
+                     a `start`"
+                ),
+                start.span,
+            ));
+        }
+    }
 
     if id.is_empty() {
         diags.push(diag(
@@ -571,6 +591,27 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
     }
 
     QuestRecord { decls, diags }
+}
+
+/// dsl 0.49.0 §6.2: the first (in path order) read of `quest.<id>.*` in a
+/// quest's own `start`, in CEL spelling; `None` when it reads none or does
+/// not parse (the per-file CEL check reports that).
+fn start_self_read(id: &str, raw: &str) -> Option<String> {
+    let mut arena = lute_cel::CelArena::default();
+    let root = lute_cel::parse_slot_marked_refs(&mut arena, raw).and_then(|h| arena.get(h))?;
+    let mut paths = BTreeSet::new();
+    crate::cel_paths::every_static_path(&root.expr, &mut paths);
+    let own = format!("quest.{id}.");
+    let reads: Vec<&String> = paths.iter().filter(|p| p.starts_with(&own)).collect();
+    // `every_static_path` also lists each path's prefixes; name the full read.
+    reads
+        .iter()
+        .find(|p| {
+            !reads
+                .iter()
+                .any(|q| q.len() > p.len() && q.starts_with(p.as_str()))
+        })
+        .map(|p| crate::cel_paths::cel_spelling(p))
 }
 
 /// The plain string value of the attr keyed `key`, if present and a string

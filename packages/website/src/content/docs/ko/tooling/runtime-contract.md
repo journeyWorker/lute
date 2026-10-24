@@ -11,7 +11,7 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)에 있습니다.
 `lute.engine.yaml` 매트릭스 형식은
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix)에
-[`schemas/lute-ir-0.48.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.48.schema.json)
+[`schemas/lute-ir-0.49.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.49.schema.json)
 (JSON Schema draft 2020-12)입니다.
 
 ## 런타임 이벤트 계약과 `lute-runtime`
@@ -80,6 +80,66 @@ const hud = Effect.gen(function* () {
 정렬에는 숫자 위치를 사용하고, 표시 문자열에는 `ClockView.slot`과
 `ClockView.weekdayLabel`을 사용하세요.
  
+## 0.49 런타임 추가 사항
+
+**플러그인 스탬프는 중첩된 `stamps` 객체 하나입니다.** 작성자가 디렉티브나 콘텐츠 줄에 쓴 횡단 플러그인
+[`stampAttrs`](/ko/plugins/manifests/#교차-속성stampattrs) 값은 더 이상 레코드에 평탄화되지 않습니다.
+스탬프가 붙는 모든 명령(`jump`와 `barrier`를 제외한 전부)은 `timing`, `provenance`, `source` 뒤에
+`"stamps": { "<attr>": <value>, … }`를 가집니다. 작성된 스탬프가 없으면 객체는 생략되므로 스탬프가 없는
+레코드는 0.48.1과 바이트 단위로 같습니다. 따라서 레코드 키와 같은 이름의 스탬프(`tag`, `speaker`, `text`,
+`label` 등)도 더 이상 충돌하지 않습니다. 코어 스탬프 멤버 `timing`, `provenance`, `source`는 그대로
+평탄화되며, 예약된 여덟 이름도 바뀌지 않습니다.
+
+같은 객체가 모든 플러그인 경로에서 호스트에 전달되며, `attrs`와 분리되고 절대 `attrs`에 병합되지 않습니다.
+정상 및 중단된 `plugin` 이벤트 레코드, `awaitBridge`, 브리지 요청, 이를 담는 중단된 스냅숏이 각각
+선택적 `stamps`를 가지며 비어 있으면 생략됩니다. 스테이징 레코드는 코어 필드 `attrs`를 유지하며 스탬프는
+섞이지 않습니다.
+
+**콘텐츠 줄의 `timing.wait`.** 줄은 `wait`(불리언)를 받습니다. 이는 줄 레코드의 `timing.wait`로
+컴파일되며 작성하지 않으면 생략됩니다. 줄은 항상 자신의 진행을 기다립니다. `wait`는 그 줄 뒤부터 다음
+줄 앞까지의 스테이징 큐가 그 줄을 기다리는지를 말합니다. `true`이거나 없으면 기다립니다(기존과 같음).
+`false`이면 줄이 표시되는 동안 시작합니다. 다음 줄은 여전히 이전 줄을 기다립니다. 레퍼런스 플레이어는
+이를 따릅니다. `timing.wait === false`인 줄 큐는 포크되며, 스케줄러는 다음 `line` 큐 앞, `presentation` 큐 앞(대화창을 비우므로 줄과 겹치면 안 됨), 배치가
+정착하기 전에 이를 조인합니다. 줄의 `delay`와 `duration`은 여전히 `E-UNKNOWN-ATTR`입니다.
+
+### 타입이 지정된 브리지를 통한 자유 텍스트 입력
+
+Lute에는 자유 텍스트 구성물이 없습니다. "플레이어에게 무언가를 입력하게 한다"의 호스트 쪽 절반은
+결과가 `string`이고 상태 슬롯에 쓰이는 브리지입니다:
+
+```yaml
+# bridge/prompt.yaml
+bridgeCapabilities:
+  - service: prompt
+    operation: ask
+    replay: recorded
+    result:
+      - { name: answer, type: string }
+```
+
+```yaml
+# directives/ask.yaml
+directives:
+  - name: ask
+    layer: bridge
+    attrs:
+      - { name: slot, required: true, type: { slotId: { namespace: scene.ask } } }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [ask, { fromAttr: { name: slot, slotType: localId } }], shape: textAnswer }
+    effects:
+      writes:
+        - { scope: scene, path: [ask, { fromAttr: { name: slot } }, answer], value: { fromBridgeResult: answer } }
+    bridge: { service: prompt, operation: ask }
+```
+
+런타임은 `awaitBridge`로 중단됩니다. 호스트는 호출의 `attrs`(여기서는 `slot`)로 자체 텍스트 프롬프트를
+열고 `bridgeResult { request, fields: { "answer": "<플레이어가 입력한 값>" } }`로 답합니다. 런타임은
+`string`을 검증하고 선언된 쓰기를 적용하므로, 호출 뒤의 줄은 일반 상태를 통해 답을 읽습니다. Lute는
+입력 채널을 보지 못하며, 답은 다른 브리지 결과와 같은 데이터입니다. `.test.yaml`을 포함한 전체 프로젝트는
+[`docs/examples/free-text-input/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/free-text-input)입니다.
+
 ## 0.44 런타임 추가 사항
 
 **엔딩에 속한 쓰기.** 런타임이 `ended`로 응답한 뒤에는 `newRun`이나 `outsideRun` 계기만 받습니다. 그래서 끝난 런에 속한 호스트 쓰기(엔딩 메타데이터, 최종 점수)는 종료를 일으키는 입력이 쓰기를 실을 수 있다면 그 입력의 `writes`에 실어야 합니다. `raiseOccasion`, `advanceClock`, `bridgeResult`, `hostWrite`가 그런 입력이며, 이들의 쓰기는 종료 전환보다 먼저 적용됩니다(`{"type": "raiseOccasion", "occasion": "dawn", "writes": {"state": [{"path": "run.endedBy", "value": "dawnSeven"}]}}`). `choose`, `timeout`, `worldEvent`는 쓰기를 싣지 않으므로, 이들이 일으키는 엔딩은 그 상태를 스토리(끝나는 갈래의 `::set`)나 그 전에 보낸 `hostWrite`에 기록합니다. `newRun`의 쓰기는 새로 시작하는 런의 초기값이며, 그 런에서 끝난 런의 `run.*` 값은 `prev.run.*`로 읽힙니다. 엔딩 뒤의 `hostWrite`는 여전히 상태를 바꾸지 않고 `E-RUNTIME-BUSY`로 거절되며, 이제 메시지가 그 쓰기가 어디에 실려야 하는지 알려 줍니다.
@@ -99,7 +159,7 @@ bridge가 대기 중일 때는 해당 응답만 받습니다. 호스트는 `cand
 
 ## 0.42 런타임 추가 사항
 
-모든 스테이징 레코드 — `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence` — 는 `plugin` 레코드의 `attrs`처럼 명령의 해석된 필드를 `attrs`로 담습니다. 작성한 값과 lowering이 채운 기본값이 들어가고(`cg`의 `display: "show"`, actor의 선언된 기본 `anchor`), 없는 선택 필드는 생략되며 `attrs`는 항상 객체입니다. 레코드 엔벨로프(`kind`, `position`), `timing`, provenance, 플러그인 `stampAttrs`는 원래 자리에 있으므로 호스트는 아티팩트에서 명령을 찾지 않고 스테이징 레코드를 읽습니다. `volume`은 여전히 프로젝트 `volume` 도메인의 멤버이며, 플레이어가 [`volumes`](/ko/player/bindings/)로 gain으로 바꿉니다.
+모든 스테이징 레코드 — `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence` — 는 `plugin` 레코드의 `attrs`처럼 명령의 해석된 필드를 `attrs`로 담습니다. 작성한 값과 lowering이 채운 기본값이 들어가고(`cg`의 `display: "show"`, actor의 선언된 기본 `anchor`), 없는 선택 필드는 생략되며 `attrs`는 항상 객체입니다. 레코드 엔벨로프(`kind`, `position`), `timing`, provenance, 중첩된 플러그인 `stamps`는 원래 자리에 있으며(스탬프는 `attrs`에 섞이지 않습니다), 호스트는 아티팩트에서 명령을 찾지 않고 스테이징 레코드를 읽습니다. `volume`은 여전히 프로젝트 `volume` 도메인의 멤버이며, 플레이어가 [`volumes`](/ko/player/bindings/)로 gain으로 바꿉니다.
 
 | kind | `attrs` |
 | --- | --- |
@@ -220,16 +280,17 @@ Lute의 정적 분석도 한계를 정직하게 드러냅니다 — 도달 가�
 
 ### 명령 레코드
 
-모든 명령 레코드에는 필수 필드 세 개와 선택적 형제 필드 세 개가 있습니다.
+모든 명령 레코드에는 필수 필드 세 개와 선택적 형제 필드 네 개가 있습니다.
 
 | 필드 | 의미 |
 | ----- | ------- |
 | `kind` | 레코드 종류입니다. 알 수 없는 `kind`는 치명적 오류입니다. |
 | `family` | `kind`의 규범적 그룹화입니다(아래 참조). `kind`보다 먼저 디스패치에서 읽습니다. |
 | `position` | 빌드에 국한된 레코드 실행 위치입니다([위치](#위치) 참고). |
-| `timing` | 선택적 `{ wait?, duration?, delay?, at?, timeline? }`입니다. 모든 멤버가 없으면 생략됩니다. |
+| `timing` | 선택적 `{ wait?, duration?, delay?, at?, timeline? }`입니다. 모든 멤버가 없으면 생략됩니다. `line`은 `wait`를 가질 수 있습니다([0.49](#049-런타임-추가-사항) 참고). |
 | `provenance` | 컴파일러가 합성한 레코드에 붙는 선택적 `{ by, explanation }`입니다. |
 | `source` | 선택적 소스 위치입니다. |
+| `stamps` | 스탬프가 붙는 모든 명령에 있는 플러그인 `stampAttrs` 값의 선택적 객체(`{ "<attr>": <value> }`)입니다. 비어 있으면 생략되며, `jump`와 `barrier`에는 없습니다. |
 
 | `family` | 종류 |
 | -------- | ----- |
@@ -300,14 +361,14 @@ Lute의 정적 분석도 한계를 정직하게 드러냅니다 — 도달 가�
 
 모든 호스트는 플레이백 세션을 열기 전에 다음 순서로 협상합니다.
 
-1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.48` 엔진은 `0.48.*` 아티팩트만 받아들이고 `0.47.*` 및 `0.49.*`는 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
+1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.49` 엔진은 `0.49.*` 아티팩트만 받아들이고 `0.48.*` 및 `0.50.*`는 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
 2. **의미 캐퍼빌리티 게이트.** 변경할 수 없는 `lute.engine.yaml` 매트릭스를 로드하고 모든 아티팩트의 `requiredSemantics` ID를 `supportedIds`와 비교합니다. `engine`, `irVersion`, 고유한 `supportedIds`는 필수이며, `version`과 `description`은 설명용입니다. 전체 레지스트리는 [0.33.0 제안서 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry)에 있습니다.
 
 매트릭스 예시는 다음과 같습니다.
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.48.1"
+irVersion: "0.49.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -323,7 +384,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 ID가 누락되면 플레이백 전에 종료 코드 **2**와 함께
 `E-ENGINE-SEMANTICS`로 거부합니다. 명령, 조건, 에셋 또는 브리지는 실행되지 않습니다.
 형식이 잘못된 매트릭스에는 `E-ENGINE-MATRIX`를 사용합니다. 매트릭스의 정확한
-major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.48.1` 매트릭스에 대한
+major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.49.0` 매트릭스에 대한
 `0.41.*` 아티팩트)에는 `E-ENGINE-IR-VERSION`을 사용합니다. 알 수 없는 아티팩트 또는
 레지스트리 ID에는 `E-SEMANTICS-UNKNOWN`을 사용합니다. `lute run`은 제거된 0.36 필드를
 여전히 담은 아티팩트를 `E-IR-REMOVED-FIELD`로 거부합니다.

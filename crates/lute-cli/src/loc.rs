@@ -577,7 +577,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
         let mut arena = lute_cel::CelArena::default();
         let _ = lute_cel::fill_document(&mut arena, &mut doc);
         let (folded, _meta_diags, _cel_diags) = lute_check::fold_env(&doc, &input);
-        let cast = lute_check::declared_cast(&input.snapshot, &input.imports, &folded.typed.cast);
+        let cast = lute_check::declared_cast(input.snapshot(), input.imports(), &folded.typed.cast);
         let _ = lute_compile::normalize::normalize_document(
             &mut doc,
             &input.components,

@@ -41,16 +41,18 @@ fn check_codes(
     components: ComponentSet,
     snapshot: CapabilitySnapshot,
 ) -> Vec<String> {
-    let input = CheckInput {
+    let input = CheckInput::new(
         text,
-        uri: "scene".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    };
+        "scene".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
     sorted(check(&input).diagnostics.into_iter().map(|d| d.code))
 }
 
@@ -230,16 +232,18 @@ fn nested_match_arm_line_is_checked() {
     let (doc, _) = lute_syntax::parse(&text);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
     let components = resolve_components(&dir, &meta0.components, doc.meta.span);
-    let input = CheckInput {
+    let input = CheckInput::new(
         text,
-        uri: "scene".into(),
-        snapshot: vocab_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    };
+        "scene".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            vocab_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
     let cs = sorted(check(&input).diagnostics.into_iter().map(|d| d.code));
     assert!(
         cs.contains(&"E-BAD-ENUM".to_string()),

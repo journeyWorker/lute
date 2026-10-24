@@ -49,121 +49,31 @@ fn quote_cel_string(s: &str) -> String {
     serde_json::to_string(s).expect("String -> JSON serialization is infallible")
 }
 
-/// The evidence level for a reachability claim. Structural fallback cases
-/// mirror the text verdict and preserve cycle-degraded uncertainty.
+/// The evidence token of `node`'s reachability claim
+/// ([`lute_model::reach_claim`]): `proven` or `unknown`.
 pub(crate) fn reach_evidence(
     scenario: &RootScenario,
     node: &lute_check::connectivity::NodeId,
 ) -> &'static str {
-    use lute_check::connectivity::{NodeId, Reachability};
-    if let Some(r) = scenario.reach.get(node) {
-        return match r {
-            Reachability::Reachable | Reachability::Unreachable => "proven",
-            Reachability::Unknown => "unknown",
-        };
-    }
-    match node {
-        NodeId::Quest(id) if scenario.ambiguous_quests.contains(id) => "unknown",
-        NodeId::Quest(id) if scenario.dead_required_objective_quests.contains(id) => "proven",
-        NodeId::Quest(id) if scenario.unreachable_quests.contains(id) => "proven",
-        NodeId::Quest(id) if !scenario.quest_ids.contains(id) => "unknown",
-        NodeId::Quest(id)
-            if !scenario
-                .graph
-                .nodes
-                .contains_key(&NodeId::Quest(id.clone())) =>
-        {
-            "proven"
-        }
-        NodeId::Scene(key) if !scenario.key_set.contains_key(key) => "unknown",
-        _ => "unknown",
+    match lute_model::reach_claim(scenario, node).evidence {
+        lute_core_span::Evidence::Unknown => "unknown",
+        _ => "proven",
     }
 }
 
-/// The reachability claim for `node`, under the declared routes. A plain
-/// quest with no `after` is unanchored; omitted graph nodes are cycle-degraded.
+/// `node`'s reachability claim as text ([`lute_model::reach_claim`]), with
+/// `[unknown]` appended when its evidence is unknown.
 pub(crate) fn reach_verdict_text(
     scenario: &RootScenario,
     node: &lute_check::connectivity::NodeId,
 ) -> String {
-    use lute_check::connectivity::{NodeId, Reachability};
-    let text = if let Some(r) = scenario.reach.get(node) {
-        match r {
-            Reachability::Reachable => {
-                "Reachable — a satisfiable route exists under your declared routes.".to_string()
-            }
-            Reachability::Unreachable => "Unreachable — no satisfiable route exists under your \
-                 declared routes (E-CONN-UNREACHABLE)."
-                .to_string(),
-            Reachability::Unknown => "Unknown — this analysis cannot prove reachability either \
-                 way under your declared routes."
-                .to_string(),
-        }
+    let claim = lute_model::reach_claim(scenario, node);
+    if claim.evidence == lute_core_span::Evidence::Unknown {
+        format!("{} [unknown]", claim.reason)
     } else {
-        match node {
-            NodeId::Quest(id) if scenario.ambiguous_quests.contains(id) => {
-                "Unknown — ambiguous quest id (more than one declaration) under your declared \
-                 routes."
-                    .to_string()
-            }
-            NodeId::Quest(id) if scenario.dead_required_objective_quests.contains(id) => {
-                "Unreachable — this quest has a provably dead REQUIRED objective, so it can never \
-                 complete (E-OBJECTIVE-UNSATISFIABLE), under your \
-                 declared routes."
-                    .to_string()
-            }
-            NodeId::Quest(id) if scenario.unreachable_quests.contains(id) => {
-                "Unreachable — quest lifecycle proves this quest can never complete \
-                 (E-QUEST-UNREACHABLE), under your declared routes."
-                    .to_string()
-            }
-            // Main review fix: an id referenced by a formula but never declared
-            // anywhere in this root (E-CONN-UNKNOWN-NODE's own concern) must
-            // read Unknown -- checked BEFORE the "plain quest, no `follows`"
-            // fallback below, since an undeclared id is trivially also absent
-            // from `graph.nodes` and would otherwise be misreported Reachable.
-            NodeId::Quest(id) if !scenario.quest_ids.contains(id) => {
-                "Unknown — this quest id is not declared anywhere in this project root \
-                 (E-CONN-UNKNOWN-NODE), under your declared routes."
-                    .to_string()
-            }
-            // dsl 0.21.0 §7a.5: a declared quest without `follows=` is not a graph
-            // node at all — UNANCHORED, available from the start of play.
-            NodeId::Quest(id)
-                if !scenario
-                    .graph
-                    .nodes
-                    .contains_key(&NodeId::Quest(id.clone())) =>
-            {
-                UNANCHORED_VERDICT.to_string()
-            }
-            // Same fix for a `visited(Y)` atom targeting an undeclared scene
-            // key -- every DECLARED scene is unconditionally a graph node.
-            NodeId::Scene(key) if !scenario.key_set.contains_key(key) => {
-                "Unknown — this scene key is not declared anywhere in this project root \
-                 (E-CONN-UNKNOWN-NODE), under your declared routes."
-                    .to_string()
-            }
-            _ => "Unknown — this node is on or downstream of a prerequisite cycle \
-                  (E-CONN-CYCLE); its reachability is unavailable under your declared routes."
-                .to_string(),
-        }
-    };
-    if reach_evidence(scenario, node) == "unknown" {
-        format!("{text} [unknown]")
-    } else {
-        text
+        claim.reason
     }
 }
-
-/// dsl 0.21.0 §7a.5: the reach verdict of a declared quest without `follows=`.
-/// Its leading word is the JSON/DOT `unanchored` token's source
-/// ([`scenario_fmt`]'s `reach_token` keys off it, like every other verdict).
-///
-/// [`scenario_fmt`]: crate::scenario_fmt
-const UNANCHORED_VERDICT: &str = "Unanchored — a quest with no declared `follows` edge: \
-     available from the start of play; the connectivity layer holds no prerequisites for it, so \
-     only its quest lifecycle (`start`, or an accept) decides when it activates.";
 
 /// dsl 0.21.0 §7a.5: the declared quests the prerequisite graph does not
 /// hold (no `follows=`, no `::accept` anchor — dsl 0.24.0 §2 — and no

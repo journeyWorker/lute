@@ -33,16 +33,18 @@ fn compile_body(body: &str) -> serde_json::Value {
             },
         );
     }
-    let input = CheckInput {
-        text: text.clone(),
-        uri: "scene.lute".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Ci,
-        imports: Default::default(),
-        components: resolve_components(&dir, &meta0.components, doc.meta.span),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.clone(),
+        "scene.lute".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            Default::default(),
+            resolve_components(&dir, &meta0.components, doc.meta.span),
+            Default::default(),
+        ),
+    );
     let artifact = compile(&input).unwrap_or_else(|e| panic!("compiles clean: {e:#?}\n{text}"));
     serde_json::to_value(&artifact).unwrap()
 }

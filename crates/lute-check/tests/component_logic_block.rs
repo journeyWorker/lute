@@ -36,16 +36,18 @@ fn check_codes(
     components: ComponentSet,
     snapshot: CapabilitySnapshot,
 ) -> Vec<String> {
-    let input = CheckInput {
+    let input = CheckInput::new(
         text,
-        uri: "scene".into(),
-        snapshot,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components,
-        defaults: Default::default(),
-    };
+        "scene".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
     let mut v: Vec<String> = check(&input)
         .diagnostics
         .into_iter()

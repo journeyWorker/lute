@@ -10,16 +10,18 @@ const FM: &str = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\
                   run.labB2: { type: int, default: 0 }\n---\n";
 
 fn errors(body: &str) -> Vec<Diagnostic> {
-    let input = CheckInput {
-        text: format!("{FM}## Shot 1.\n{body}\n@narrator: end.\n"),
-        uri: "paths_030".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        format!("{FM}## Shot 1.\n{body}\n@narrator: end.\n"),
+        "paths_030".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()

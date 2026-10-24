@@ -101,6 +101,23 @@ Lint CEL fragment는 ground-only입니다. `@ref`나 `$` DSL token, 상태 경�
 | `variant-composition` | speaker 및 group | warn | `attr: variant`, 선택적 `groupBy`, `minPerGroup: 2`, `minShare: 0.0`, `minLines: 10`. `groupBy`를 쓰면 `minPerGroup` 미만인 group이 실행됩니다. `minShare > 0`이면 자체 `minLines`를 만족하면서 `attrShare[attr]`가 threshold 미만인 화자가 실행됩니다. |
 | `asset-exists` | line/directive | error | `providers: {}`(동작하지 않음), `sentinels: [clear, empty, false, none, null, stop]`. 매핑된 directive tag마다 `assetId`를 고정된 provider snapshot과 대조합니다. 없는 asset은 결과를 내며 오래된 catalog data는 결과를 warn으로 낮춥니다. Sentinel 값은 대소문자를 구분하지 않고 제외됩니다. |
 
+`asset-exists`의 `options.providers` 키는 셀렉터입니다(0.49.0):
+
+| 키 | 검사 대상 |
+| --- | --- |
+| `<tag>` | `::<tag>`의 `assetId`(0.49 이전의 의미) |
+| `<tag>.<attr>` | 해당 directive의 그 attribute |
+| `@<attr>` | 모든 콘텐츠 줄의 그 attribute |
+
+```yaml
+asset-exists:
+  level: error
+  options:
+    providers: { bg: bg-catalog, sfx.voiceAssetId: voice-catalog, "@assetId": portrait-catalog }
+```
+
+그 밖의 키 형태는 `E-LINT-CONFIG`입니다. 리터럴 문자열만 검사하며 `sentinels`가 적용됩니다. `<tag>` 결과는 이전과 같고, 나머지는 출처를 밝힙니다. 줄 attribute는 `` (`@mira` attribute `assetId`) ``, directive attribute는 `` (`::sfx` attribute `voiceAssetId`) ``입니다.
+
 0.22.0부터 세 선형-VN 규칙 — `dialogue-ratio`, `scene-length-spread`, `section-starts-with-background` — 은 선형 씬만 판정합니다. beat는 엔진이 이미 stage를 만든 순간에 제시되고, component·quest·lore entry는 다른 사람의 staging에 삽입되므로, [beats와 occasions](/ko/tooling/play/)를 기반으로 만든 프로젝트에서 모든 bark마다 `L-SECTION-STARTS-WITH-BACKGROUND`가 쏟아지지 않습니다. beat에 자체 규범을 적용하려면 `scene.kind == "beat"`(또는 `section.kind == "beat"`)로 가드하는 `custom:` 규칙을 작성하세요.
 ## 표시 이름
 

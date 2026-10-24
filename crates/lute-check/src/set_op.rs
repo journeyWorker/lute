@@ -39,7 +39,7 @@ use lute_manifest::types::Type;
 use lute_syntax::ast::Set;
 
 use crate::cel_paths::is_entry_path;
-use crate::meta::{namespace_of, Namespace, StateSchema};
+use crate::meta::{namespace_of, Namespace};
 use crate::Ctx;
 use lute_manifest::semantics::cel_paths::is_reserved_quest_path;
 
@@ -88,7 +88,7 @@ pub enum WriteOwner {
 /// dsl 0.22.0 §1.2). Path shape decides the reserved tiers; the schema
 /// decides `owner: engine` (the exact decl, or the nearest declared ancestor
 /// a field path descends from).
-pub(crate) fn classify_write(path: &str, schema: &StateSchema) -> WriteOwner {
+pub(crate) fn classify_write(path: &str, schema: &crate::StateView) -> WriteOwner {
     if namespace_of(path) == Some(Namespace::App) {
         WriteOwner::AppReadonly
     } else if is_reserved_quest_path(path) {
@@ -112,19 +112,12 @@ pub(crate) fn classify_write(path: &str, schema: &StateSchema) -> WriteOwner {
 
 /// `path` is declared `owner: engine`, directly or through the declared
 /// ancestor it is a field of.
-fn engine_owned(path: &str, schema: &StateSchema) -> bool {
+fn engine_owned(path: &str, schema: &crate::StateView) -> bool {
     let owned = |d: &crate::meta::StateDecl| d.owner == Some(lute_manifest::types::Owner::Engine);
-    if let Some(decl) = schema.decls.get(path) {
+    if let Some(decl) = schema.get(path) {
         return owned(decl);
     }
-    schema
-        .decls
-        .iter()
-        .filter(|(k, _)| {
-            path.starts_with(k.as_str()) && path.as_bytes().get(k.len()) == Some(&b'.')
-        })
-        .max_by_key(|(k, _)| k.len())
-        .is_some_and(|(_, d)| owned(d))
+    schema.nearest_ancestor(path).is_some_and(|(_, d)| owned(d))
 }
 
 /// Why the engine owns `path` — a scene record, an `occasion.*` path or an
@@ -133,7 +126,7 @@ fn engine_owned(path: &str, schema: &StateSchema) -> bool {
 fn reserved_write_why(
     owner: &WriteOwner,
     path: &str,
-    schema: &StateSchema,
+    schema: &crate::StateView,
 ) -> (&'static str, &'static str) {
     let scene_record = matches!(owner, WriteOwner::SceneRecord);
     let occasion = matches!(owner, WriteOwner::OccasionReserved);
@@ -163,8 +156,7 @@ fn reserved_write_why(
              comes from the raise (`target:` on the `occasion:` step)",
         )
     } else if schema
-        .clock
-        .as_ref()
+        .clock()
         .is_some_and(|c| c.day == path || c.slot.as_deref() == Some(path))
     {
         // dsl 0.28.0 (T3-52): the clock's own paths move only with the
@@ -195,7 +187,7 @@ fn reserved_write_why(
 /// (`foo.bar`) are undeclared. `None` for a declared content path.
 pub(crate) fn write_fault(
     path: &str,
-    schema: &StateSchema,
+    schema: &crate::StateView,
     writer: &str,
 ) -> Option<(&'static str, String)> {
     match classify_write(path, schema) {
@@ -289,15 +281,15 @@ pub(crate) fn write_fault(
 
 /// The declared `season.<name>.<rest>` path a `season.<rest>` (the season
 /// left out) means, when exactly one season declares `<rest>`.
-fn season_path_for(path: &str, schema: &StateSchema) -> Option<String> {
+fn season_path_for(path: &str, schema: &crate::StateView) -> Option<String> {
     let rest = path.strip_prefix("season.")?;
-    let mut hits = schema.decls.keys().filter(|k| {
+    let mut hits = schema.with_prefix("season.").map(|(k, _)| k).filter(|k| {
         k.strip_prefix("season.")
             .and_then(|s| s.split_once('.'))
             .is_some_and(|(_, r)| r == rest)
     });
     let first = hits.next()?;
-    hits.next().is_none().then(|| first.clone())
+    hits.next().is_none().then(|| first.into_owned())
 }
 
 /// Check a `::set` directive's target write-policy and op/type compatibility
@@ -305,7 +297,7 @@ fn season_path_for(path: &str, schema: &StateSchema) -> Option<String> {
 /// parity with the other `check_*` entrypoints and for future modes. A target
 /// spelled with a name that is not an identifier after a `.` is the parser's
 /// `E-PATH-IDENT`; the path it names is judged here as any other.
-pub fn check_set(set: &Set, schema: &StateSchema, _ctx: &Ctx<'_>) -> Vec<Diagnostic> {
+pub fn check_set(set: &Set, schema: &crate::StateView, _ctx: &Ctx<'_>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
 
     // Write policy (dsl §9.5, dsl 0.2.0 §5.4) and declaredness (§7.3.4/§9.4):
@@ -349,17 +341,13 @@ fn is_compound_op(op: &str) -> bool {
 /// `state:` key, or a descendant field reached by walking `Record`/`Map` types
 /// from the nearest declared ancestor. Returns `None` when no declared ancestor
 /// covers the path (→ `E-UNDECLARED`).
-pub(crate) fn resolve_type<'s>(path: &str, schema: &'s StateSchema) -> Option<&'s Type> {
-    if let Some(decl) = schema.decls.get(path) {
+pub(crate) fn resolve_type<'s>(path: &str, schema: &'s crate::StateView) -> Option<&'s Type> {
+    if let Some(decl) = schema.get(path) {
         return Some(&decl.ty);
     }
     // Nearest declared ancestor (longest matching key prefix), then descend the
     // remaining dotted segments through Record fields / Map values.
-    let (key, decl) = schema
-        .decls
-        .iter()
-        .filter(|(k, _)| path.starts_with(&format!("{k}.")))
-        .max_by_key(|(k, _)| k.len())?;
+    let (key, decl) = schema.nearest_ancestor(path)?;
     let rest = &path[key.len() + 1..];
     descend(&decl.ty, rest)
 }
@@ -421,7 +409,8 @@ fn diag(code: &str, message: String, span: Span) -> Diagnostic {
 mod tests {
     use super::*;
     use crate::ctx::Env;
-    use crate::meta::StateDecl;
+    use crate::meta::{StateDecl, StateSchema};
+    use crate::StateView;
     use lute_core_span::Span;
     use lute_manifest::types::Type;
     use lute_syntax::ast::{CelKind, CelSlot, Set};
@@ -457,21 +446,21 @@ mod tests {
         }
     }
 
-    fn schema_of(path: &str, ty: Type, namespace: Namespace) -> StateSchema {
+    fn schema_of(path: &str, ty: Type, namespace: Namespace) -> StateView {
         let mut s = StateSchema::default();
         s.decls.insert(path.to_string(), decl(ty, namespace));
-        s
+        s.into()
     }
 
-    fn schema_app_lang() -> StateSchema {
+    fn schema_app_lang() -> StateView {
         schema_of("app.lang", Type::Str, Namespace::App)
     }
 
-    fn schema_bool_flag() -> StateSchema {
+    fn schema_bool_flag() -> StateView {
         schema_of("scene.flags.saw", Type::Bool, Namespace::Scene)
     }
 
-    fn schema_number() -> StateSchema {
+    fn schema_number() -> StateView {
         schema_of("scene.affect.marina", Type::Int, Namespace::Scene)
     }
 
@@ -515,7 +504,11 @@ mod tests {
     #[test]
     fn undeclared_state_target_errors() {
         // A state-tier path absent from the schema → E-UNDECLARED.
-        let errs = check_set(&set("run.hp", "=", "1"), &StateSchema::default(), &ctx());
+        let errs = check_set(
+            &set("run.hp", "=", "1"),
+            &crate::StateView::default(),
+            &ctx(),
+        );
         assert!(errs.iter().any(|e| e.code == "E-UNDECLARED"), "{errs:?}");
     }
 
@@ -577,7 +570,7 @@ mod tests {
                 Namespace::Run,
             ),
         );
-        let errs = check_set(&set("run.player.name", "+=", "'x'"), &schema, &ctx());
+        let errs = check_set(&set("run.player.name", "+=", "'x'"), &schema.into(), &ctx());
         assert!(errs.iter().any(|e| e.code == "E-SET-OP-TYPE"), "{errs:?}");
     }
 
@@ -586,7 +579,11 @@ mod tests {
         // C3 (dsl §7.3.4/§9.1): a `::set` target with no known tier (`foo.bar`) is
         // not a declared state path — §9.1 admits no bare, un-namespaced names — so
         // it MUST be reported, not silently accepted.
-        let errs = check_set(&set("foo.bar", "+=", "1"), &StateSchema::default(), &ctx());
+        let errs = check_set(
+            &set("foo.bar", "+=", "1"),
+            &crate::StateView::default(),
+            &ctx(),
+        );
         assert!(
             errs.iter().any(|e| e.code == "E-UNDECLARED"),
             "non-tier ::set target must be diagnosed, got {errs:?}"

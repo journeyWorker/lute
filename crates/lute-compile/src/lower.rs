@@ -59,11 +59,17 @@ pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
         // (`normalize::backfill_component_codes`); an authored code wins.
         code: get("code").or_else(|| get(crate::normalize::COMPONENT_CODE_ATTR)),
         stamp: Stamp {
+            // 0.49.0 §4.2: an authored `wait` only; absent stays omitted (a
+            // line always waits for its own advance).
+            timing: Timing {
+                wait: attr_bool(&line.attrs, "wait"),
+                ..Timing::default()
+            },
             // plugin §14.1: a content line carries cross-cutting stamp attrs
             // like any other record. The built-in content-line keys win (they
             // ARE the record's own fields above) — the same precedence the
             // checker applies in `content_line::check_content_line_attrs`.
-            extra: stamp_extra(&line.attrs, snapshot, |k| {
+            stamps: plugin_stamps(&line.attrs, snapshot, |k| {
                 lute_check::content_line::KNOWN_ATTRS.contains(&k)
             }),
             ..Stamp::default()
@@ -255,7 +261,7 @@ pub fn lower_directive(
         // itself stays the record's own field — the same precedence the
         // checker applies in `directives::check_directive` — so this only
         // lifts the genuinely cross-cutting ones.
-        extra: stamp_extra(&dir.attrs, snapshot, |k| declares_attr(decl, k)),
+        stamps: plugin_stamps(&dir.attrs, snapshot, |k| declares_attr(decl, k)),
         authored: Some(authored_directive(dir, decl)),
         ..Stamp::default()
     };
@@ -442,7 +448,7 @@ pub fn lower_directive(
                     continue; // already resolved into the stamp
                 }
                 // A cross-cutting stamp attr this directive does not declare
-                // itself already rode into `stamp.extra` above; it must not be
+                // itself already rode into `stamp.stamps` above; it must not be
                 // duplicated as one of the record's own `fields`.
                 if !declares_attr(decl, &a.key) && snapshot.stamp_attrs.contains_key(&a.key) {
                     continue;
@@ -732,7 +738,7 @@ fn declares_attr(decl: Option<&DirectiveDecl>, key: &str) -> bool {
 }
 
 /// Lift the plugin-declared CROSS-CUTTING attrs (plugin §14.1 `stampAttrs`)
-/// out of `attrs` into a record's `Stamp.extra`, each value typed by its
+/// out of `attrs` into a record's `Stamp.stamps`, each value typed by its
 /// declaring `AttrDecl` through the SAME [`attr_json_typed`] path a directive
 /// field uses. `own` reports the keys the record itself consumes: those WIN
 /// and stay put, mirroring the checker's admission order (the record's own
@@ -741,28 +747,31 @@ fn declares_attr(decl: Option<&DirectiveDecl>, key: &str) -> bool {
 /// Byte-stability: an UNAUTHORED stamp attr is never injected, not even when
 /// its decl carries a `default` — absent means absent, so a document that
 /// authors none serializes exactly as it did before the vocabulary existed.
-/// A reserved stamp key can never appear here (assembly rejects one,
-/// `E-PLUGIN-RESERVED-STAMP-ATTR`), so `extra` can never shadow the core stamp.
-fn stamp_extra(
+/// The map serializes nested under `stamps` (0.49.0 §3.1), so a stamp named
+/// like a key of its record cannot collide with it. The core stamp names
+/// (`at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`,
+/// `source`) stay reserved at assembly (`E-PLUGIN-RESERVED-STAMP-ATTR`):
+/// they would read as the core stamp to an author.
+fn plugin_stamps(
     attrs: &[Attr],
     snapshot: &CapabilitySnapshot,
     own: impl Fn(&str) -> bool,
 ) -> BTreeMap<String, serde_json::Value> {
-    let mut extra = BTreeMap::new();
+    let mut stamps = BTreeMap::new();
     // Overwhelmingly the common case: no plugin declares a cross-cutting
     // vocabulary, so skip the per-attr map lookups entirely.
     if snapshot.stamp_attrs.is_empty() {
-        return extra;
+        return stamps;
     }
     for a in attrs {
         if own(&a.key) {
             continue;
         }
         if let Some(sdecl) = snapshot.stamp_attrs.get(&a.key) {
-            extra.insert(a.key.clone(), attr_json_typed(a, Some(&sdecl.ty)));
+            stamps.insert(a.key.clone(), attr_json_typed(a, Some(&sdecl.ty)));
         }
     }
-    extra
+    stamps
 }
 
 fn attr_json(attr: &Attr, decl: Option<&DirectiveDecl>) -> serde_json::Value {

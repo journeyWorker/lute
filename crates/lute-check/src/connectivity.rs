@@ -5,13 +5,14 @@ mod graph_nodes;
 mod graph_sources;
 mod identity;
 mod reachability;
+mod start_cycles;
 #[cfg(test)]
 mod tests;
 
 pub use graph_assembly::assemble_graph;
 pub use graph_nodes::{
     cycle_diag, quest_id_set, resolve_nodes, Anchor, ConnGraph, EdgeKind, NodeId, NodeInfo,
-    PrereqState, E_CONN_CYCLE, E_CONN_UNKNOWN_NODE,
+    PrereqState, StartBlock, E_CONN_CYCLE, E_CONN_UNKNOWN_NODE,
 };
 pub use graph_sources::{omitted_refs, OmittedRef};
 pub use identity::{
@@ -23,3 +24,4 @@ pub use reachability::{
     collect_asserts, live_assert_relations, live_assert_sites, unreachable_quest_ids, Reachability,
     E_CONN_FORMULA_TOO_COMPLEX, E_CONN_UNREACHABLE,
 };
+pub use start_cycles::{resolve_start_blocks, E_QUEST_START_CYCLE};

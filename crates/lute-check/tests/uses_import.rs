@@ -11,16 +11,18 @@ use lute_manifest::types::{Literal, Type};
 use std::path::Path;
 
 fn check_codes(text: &str, imports: SchemaImports) -> Vec<String> {
-    let input = CheckInput {
-        text: text.into(),
-        uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.into(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()
@@ -639,16 +641,18 @@ fn single_imported_quest_id_is_recorded_without_a_dup() {
 
 /// Every diagnostic `check` produced for `text`, spans already normalized.
 fn check_diags(text: &str) -> Vec<lute_core_span::Diagnostic> {
-    let input = CheckInput {
-        text: text.into(),
-        uri: "t".into(),
-        snapshot: lute_manifest::core::load_core_snapshot(),
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.into(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input).diagnostics
 }
 

@@ -8,16 +8,18 @@ use lute_manifest::schema::{CastMember, RewardKindDecl};
 use lute_manifest::snapshot::CapabilitySnapshot;
 
 fn run(text: &str, snapshot: CapabilitySnapshot, imports: SchemaImports) -> Vec<Diagnostic> {
-    check(&CheckInput {
-        text: text.to_string(),
-        uri: "vocab".into(),
-        snapshot,
-        providers: Default::default(),
-        mode: Mode::Author,
-        imports,
-        components: Default::default(),
-        defaults: Default::default(),
-    })
+    check(&CheckInput::new(
+        text.to_string(),
+        "vocab".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            Default::default(),
+            imports,
+            Default::default(),
+            Default::default(),
+        ),
+    ))
     .diagnostics
 }
 

@@ -46,7 +46,7 @@ description: 모든 lute 하위 명령 — init, new, check, compile, expr, run,
 |---|---|---|
 | `check` | `--json` | `0.48.0.check` |
 | `impact` | `--json` | `0.43.0.impact` |
-| `constraints` | `--json` | `0.43.0.constraints` |
+| `constraints` | `--json` | `0.49.0.constraints` |
 | `lint` | `--json` | `0.43.0.lint` |
 | `compile` | `--json` | `0.43.0.compile` |
 | `compile` | `--stream` | (NDJSON 스트림, 보고서 아님) |
@@ -112,7 +112,7 @@ $ lute schema [<COMMAND>]…
 `lute`를 실행할 때마다 Lute 상태 디렉터리의 `telemetry.jsonl`에 한 줄을 추가합니다. `XDG_STATE_HOME`이 절대 경로면 `$XDG_STATE_HOME/lute`, 아니면 `$HOME/.local/state/lute`, Windows에서는 `%LOCALAPPDATA%\lute`입니다.
 
 ```json
-{"v":1,"ts":1760400000000,"lute":"0.48.1","command":"check","json":true,"exit":0,"durationMs":12}
+{"v":1,"ts":1760400000000,"lute":"0.49.0","command":"check","json":true,"exit":0,"durationMs":12}
 ```
 
 이것이 기록의 전부입니다. 명령 id(또는 `null`), JSON 모드 여부, 종료 코드, 걸린 시간, 툴체인 버전입니다. 인자나 플래그 값, 경로, 파일 내용, 출력, 환경은 기록하지 않고 어디로도 보내지 않습니다. 파일은 내 컴퓨터에만 남습니다. 1 MiB가 되면 `telemetry.jsonl.1`로 돌리며, 기록은 best-effort라 명령의 출력이나 종료 코드를 바꾸지 않습니다. `LUTE_TELEMETRY=0`(또는 `false`, `off`, `no`)이나 `DO_NOT_TRACK=1`로 끕니다. `lute doctor`가 상태를 보여 줍니다(`• Telemetry: off (LUTE_TELEMETRY)`, 켜져 있으면 파일 경로). 저장소의 테스트, 스크립트, CI는 꺼진 상태로 실행합니다.
@@ -198,6 +198,8 @@ $ lute check --project . --wip
 
 요약 줄은 심각도별로 셉니다(0.41.0). 문서 모드 `lute check`는 파일마다 `ok: <path> (W warning(s))` 또는 `failed: <path> (E error(s), W warning(s))`로, 전체 프로젝트 모드는 `ok: <dir> (F file(s), W project-wide warning(s))` 또는 `failed: <dir> (F file(s), E project-wide error(s), W project-wide warning(s))`로 끝납니다. `info` 진단은 경고로 세지 않습니다. 실행에 info가 있으면 개수를 뒤에 덧붙이고(`, I info` / `, I project-wide info`), 없으면 위 줄을 그대로 출력합니다. `hint` 진단은 세지 않으며, `--deny`로 승격된 진단은 오류로만 셉니다.
 
+단일 파일 check(와 언어 서버)는 문서당 고유한 퀘스트 id마다 한 번 심각도 **info**의 `W-PROJECT-CHECK-SKIPPED`를 추가할 수 있습니다. 문서와 그 import가 선언하지 않은 id의 `quest.<id>.*`를 처음 읽는 곳이 판정하지 않은 것으로 표시되는데, 퀘스트 참조는 전체 프로젝트 `lute check`(`lute check --project <DIR>`)만 해석하기 때문입니다. 전체 프로젝트 check, `compile`, wasm 빌드는 이 코드를 내지 않습니다. `ok`는 달라지지 않으며 요약 줄에 info 개수가 나타납니다. 예: `ok: quests/q.lute (0 warning(s), 1 info)`.
+
 파싱되지 않는 선언은 더 이상 연쇄 오류를 만들지 않습니다(0.41.0). 0.31에서 제거된 `type: number`는 `number` 위치에서 `E-TYPE-NUMBER`로 보고되며, `int`와 `double` 중 무엇을 고를지 알려 줍니다(그 선언이 받는 값이 모두 정수이면 `int`를 제안합니다). 선언은 이름으로 환경에 남습니다. 그런 선언이 든 export가 있는 플러그인도 나머지 항목은 그대로 불러오고, 그 선언에 기대는 곳은 선언을 고칠 때까지 검사하지 않습니다. `E-CLOCK-DECL`이나 사용처마다의 `E-UNKNOWN-DIRECTIVE` 대신, 잘못된 선언 하나당 첫 사용처에 `W-DEPENDS-ON-INVALID` 안내(info) 하나가 붙고 나머지는 개수로 셉니다.
 
 ## impact
@@ -259,11 +261,45 @@ constraints:
 
 각 결과는 `holds`, `violated`, `unknown` 중 하나이며 `evidence`를 포함합니다. bounded 결과에는 `scope: "declared clock windows; no path search"`가 포함됩니다. 보고서는 성립과 미확정 결과를 포함해 모든 제약을 항상 나열합니다. `--all-scripts`는 프로젝트의 모든 `*.play.yaml`과 `*.test.yaml` 스크립트를 실행하고 `completable`을 위해 관찰된 퀘스트 완료 전환을 기록합니다. `--script <FILE>`(반복 가능)은 이름 붙인 스크립트만 실행하며, 디렉터리는 그 아래 모든 스크립트를 선택합니다. 둘은 함께 쓸 수 없습니다(`E-CLI-USAGE`). 전체 프로젝트 `check`는 위반(`E-CONSTRAINT-VIOLATED`)과 잘못된 선언(`E-CONSTRAINT-DECL`)만 보고하며 `W-CONSTRAINT-UNKNOWN`은 없습니다.
 
+0.49.0 보고서(`schemaVersion` `0.49.0.constraints`)는 모든 행에 `subject`와 `reason`을 담습니다:
+
+```json
+{
+  "command": "constraints",
+  "constraints": [
+    {
+      "counterexamples": [],
+      "declaration": {…},
+      "declarationErrors": [],
+      "evidence": "proven",
+      "id": "first-reachable",
+      "kind": "reachable",
+      "reason": "unanchored: available from the start of play",
+      "related": [],
+      "root": ".",
+      "scope": null,
+      "subject": "quest:first",
+      "verdict": "holds",
+      "witnesses": []
+    }
+  ],
+  "diagnostics": [],
+  "ok": true,
+  "schemaVersion": "0.49.0.constraints"
+}
+```
+
+- `reason`은 모든 판정에 설정됩니다. `holds`는 근거(예: `connectivity proves reachable`), `unknown`은 판정하지 못한 이유(예: `no play or test script was run (--all-scripts / --script)`, ``2 script(s) ran; none completed quest `first` ``, 또는 도달 가능성 이유)입니다. 텍스트 출력은 `unknown` 아래에 `  reason: …` 줄로 출력합니다.
+- `counterexamples`와 `related`(`E-CONSTRAINT-VIOLATED`)는 `violated`일 때만 비어 있지 않습니다.
+- `reachable`과 `scenario reach`는 하나의 도달 가능성 주장을 씁니다. 앵커가 없는 퀘스트는 `reachable holds [proven]`입니다([도달 가능성](/ko/connectivity/reachability/) 참고).
+- `E-CONSTRAINT-DECL` 항목은 `constraints`가 아니라 `diagnostics`에 있습니다.
+- `lute.project.yaml`이 있지만 불러오지 못하는 루트는 전체 프로젝트 `check`가 출력하는 매니페스트 진단을 출력하고 종료 코드 `1`로 끝납니다. JSON은 `ok: false`, `constraints: []`, 그리고 진단(`path` = 매니페스트)을 담습니다. 선언된 제약은 진단 없이 생략되지 않습니다.
+
 ## Evidence levels
 
 `proven`은 건전한 정적 증명이고, `witnessed`는 제공된 실행 또는 트레이스에서 나오며, `bounded`는 선언된 유한 범위 안에서만 건전하고, `heuristic`은 보수적인 안내이며, `unknown`은 분석이 판정하지 못했다는 뜻입니다. 진단에는 선택적 JSON `evidence` 및 `scope` 필드가 포함될 수 있습니다(bounded 진단에는 비어 있지 않은 scope가 반드시 있어야 합니다). `trace`, `play`, `test`, `calendar`, `scenario`, `beats`는 각 verdict/result에 `evidence`를 추가하며, calendar 집계 결과에는 `scope`도 포함됩니다. 파싱, 타입, 선언 오류에는 evidence가 없습니다.
 
-impact 및 constraints 섹션은 역사적인 0.34.0 계약에서 도입되었습니다. 저장소의 현재 릴리스는 0.48.1이며 AI 편집 루프 명령은 아래에 설명되어 있습니다.
+impact 및 constraints 섹션은 역사적인 0.34.0 계약에서 도입되었습니다. 저장소의 현재 릴리스는 0.49.0이며 AI 편집 루프 명령은 아래에 설명되어 있습니다.
 ## compile
 
 ```console
@@ -859,7 +895,7 @@ $ lute play --script <FILE> [--project <DIR>] [--providers <DIR>] [--permission-
 프로젝트 **전체**를 발생한 **계기(occasion)**의 시퀀스로 스토리를 플레이합니다(dsl 0.21.0). [비트와 계기](/ko/tooling/play/)의 참조 런타임 소비자입니다. 프로젝트(`--project` 또는 발견된 프로젝트)는 메모리에서 한 번 컴파일되며, 프로젝트 `compile`이 사용하는 것과 같은 게이트와 선언 유합(씬, 퀘스트, 로어 문서)을 사용합니다. `--engine <FILE>`은 `lute.engine.yaml`을 로드하고 정확한 major.minor IR 게이트를 먼저 수행한 다음 프로젝트 인덱스의 `requiredSemantics` 유합을 `supportedIds`와 비교합니다. id가 없으면 어떤 스텝, 명령, 조건, 에셋, 브리지도 실행하기 전에 종료 **2**와 `E-ENGINE-SEMANTICS`로 거부합니다. 잘못된 매트릭스와 지원하지 않는 IR 라인은 `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`을 사용합니다. 생략하면 내장 `reference` 매트릭스를 사용합니다. 필수 `--script`는 닫힌 키 집합을 가진 `*.play.yaml` 파일입니다. 각 `steps:`는 계기 `occasion:` 발생(그리고 `target:`, `pick:`, 해당 제시에서 스크립트의 `choose:` 키를 키별로 대체하는 스텝 로컬 `choose:`), `newRun:` 시작, `engine:`을 통한 엔진 소유 내용 쓰기(`state:` 리터럴 또는 `{ add: <n> }`, `facts:`, `retract:`), 월드 `event:` 발생, 선언된 시계를 `advance: slot | day | <n>`으로 이동(dsl 0.24.0: 시계의 경로를 쓰고, 퀘스트를 정산하며, 시계의 `raise:`에 따라 지나는 자정마다 `dayEnd` / `dayStart`를, 멈춘 곳에서 `slot` 계기를 한 번 발생시킵니다. 같은 순간의 `engine:` 쓰기를 함께 실을 수 있으며, 이 쓰기는 시계가 도착한 곳에 적용됩니다 — 도중의 `dayEnd` / `dayStart` 이후, 마지막 정산과 발생 이전), 또는 `end: true`로 플레이스루를 끝냅니다. 그리고 어떤 스텝이든 `label:`, `repeat: <n>`, 자체 `bridges:` 응답, `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`를 가질 수 있으며, `- include: <file>`은 다른 파일의 스텝을 그 자리에 이어 붙입니다. `steps:` 외에도 스크립트는 `state:`, `facts:`, `choose:`, `bridges:`에 대해 `lute trace --mock` 문법을, 시작점이 되는 세이브(`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, 그리고 플레이의 끝을 판정하는 최상위 `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }`(dsl 0.22.0)를 받습니다. 각 계기 스텝은 계기의 후보 비트와 그 판정을 나열하고, 승자(또는 `select: all` 계기에서는 스텝의 `pick`; `pick: none`이거나 자격 있는 비트가 없을 때 `pick`이 없으면 아무것도 제시하지 않음)를 `lute run`의 참조 평가기로 제시하며, 모든 퀘스트 생애주기를 진행시키므로 이후의 `when` 조건과 `after: completed(…)`가 실제 진행을 봅니다. `--json`은 같은 트랜스크립트를 하나의 객체로 내보냅니다.
 
 dsl 0.26.0부터 `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }`는 다음 해당 위치로 시계를 이동합니다(앞으로만, 0단계는 불가). 스텝 `expect:`는 `clock: { weekday, slot, day }`를 받고(0.28부터 `ended`도 가능), `engine: { accept: [quest ids] }`는 플레이 도중 수락 방식 퀘스트를 수락합니다(`quest <id> accepted (engine)`). 엔트리는 `pick:`, `entriesRead:`, 선택 기대값에서 `<document id>.<entry id>`로 이름 붙일 수 있습니다. `kind:<kind>`를 대상으로 하는 비트는 해당 종류의 모든 멤버에 응답합니다. 실행되지 않은 가드 디렉티브는 `skip ::give{item="potion"} — when: false`를 출력합니다. 브리지 응답은 결과 슬롯 또는 capability의 `result:`로 타입이 정해지며, 타입 없는 응답은 거부됩니다(종료 **2**). 문서가 하나의 상태 경로를 두 타입으로 선언하는 프로젝트도 거부됩니다(종료 **1**). 프로젝트는 플레이마다 한 번만 로드됩니다 — Monster League에서 플레이 로드 시간이 약 12초에서 약 1.5초로 줄었습니다. [스토리 플레이](/ko/tooling/play/)를 참고하세요.
-`--events`는 재개 가능한 런타임 이벤트 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 seed와 그 출력이 들어가고, 이후 플레이어가 취한 각 입력은 출력과 짝을 이룹니다(`choose`와 `bridgeResult` 응답 포함). 모든 출력에는 `eventVersion: "0.48.1"`이 들어갑니다. `--json`, `--ir`, `--derivation`, `--conditions-output`과 함께 사용할 수 없습니다.
+`--events`는 재개 가능한 런타임 이벤트 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 seed와 그 출력이 들어가고, 이후 플레이어가 취한 각 입력은 출력과 짝을 이룹니다(`choose`와 `bridgeResult` 응답 포함). 모든 출력에는 `eventVersion: "0.49.0"`이 들어갑니다. `--json`, `--ir`, `--derivation`, `--conditions-output`과 함께 사용할 수 없습니다.
 
 `--no-derive`(또는 스크립트의 `derive: false`; 플래그가 우선)는 프로젝트의 Datalog 규칙 적용을 중지하므로 mock하지 않은 파생 atom은 unknown이 되고 walk가 미완료로 멈춥니다. `--derivation <ATOM>`(반복 가능)은 플레이 후 ground atom의 도출 트리를 출력합니다. 사용된 규칙과 각 전제의 자체 근거(시드 fact, 단언, 또는 차례로 파생)가 나오고, 부정 전제는 `(absent)`로 표시됩니다. 성립하지 않으면 이를 결론낼 수 있는 모든 규칙과 실패한 전제를 출력합니다. `--json`에서는 같은 트리가 `explain` 아래에 들어갑니다. `--deny <CODE>`/`--deny-warnings`는 프로젝트 compile 게이트의 진단을 승격합니다. `--conditions-output <FILE>`은 CEL 조건을 평가할 때마다 JSONL 레코드 하나를 `<FILE>`에 추가합니다.
 
@@ -998,6 +1034,8 @@ $ lute lint [<PATH>] [--project <DIR>] [--providers <DIR>] [--deny <CODE>]… [-
 ```
 
 권고 콘텐츠 lint를 파일 또는 디렉터리 트리(기본값: 현재 디렉터리)에 실행합니다. 검사 항목은 줄 길이, 대사 비율, 감정 연속, 누락된 에셋, 프로젝트 로컬 규칙입니다. 선형 VN 규범(`L-SECTION-STARTS-WITH-BACKGROUND`, `L-DIALOGUE-RATIO`, `L-SCENE-LENGTH-SPREAD`)은 선형 씬만 판정하며 비트, 컴포넌트, 퀘스트, 로어는 판정하지 않습니다. 문서는 가장 가까운 `lute.project.yaml`별로 그룹화되고, 각 프로젝트의 `lute.lint.yaml`(또는 `--config <FILE>`)이 규칙 수준, 임계값, 무시 glob, `custom:` 규칙을 정합니다. 결과는 `lute check`와 별개의 `L-*` 코드이며 lint는 capability snapshot에 들어가거나 아티팩트를 변경하지 않습니다. `--deny`/`--deny-warnings`는 `check`와 같은 방식으로 결과를 승격합니다. 하위 오류 결과만 있거나 깨끗하면 종료 **0**, 오류 심각도 결과(`E-LINT-CONFIG`/`E-LINT-EXPR` 포함)가 있으면 **1**, I/O, 잘못된 YAML 또는 사용법 오류면 **2**입니다. 규칙, 메트릭, 설정 형식은 [Linting](/ko/tooling/linting/)을 참고하세요. `--project <DIR>`를 주면 `<PATH>`가 없을 때 `<DIR>`를 검사하고, 각 문서는 `<P>` 이하에서 가장 가까운 프로젝트에 대해 해석되며(`<P>`는 다른 디렉터리 명령과 같이 순회 바닥), 각 루트의 `lute.lint.yaml`이 적용됩니다(`--config`가 있으면 그것).
+
+`lute lint <DIR>`는 프로젝트를 사용합니다(0.49.0). `<DIR>` 또는 그 상위의 가장 가까운 `lute.project.yaml`을 찾아 그 프로젝트의 `lute.lint.yaml`을 적용하고, 결과를 프로젝트 루트 기준 상대 경로로 출력합니다. `lute lint <DIR> --project <P>`는 `<P>` 안의 `<DIR>`를 검사하며, `<P>` 밖의 `<DIR>`는 `E-CLI-USAGE`(`lute lint: <DIR> is not inside the project <P>`)입니다.
 
 0.26.0부터 lint는 `W-DISPLAY-NAME-DUP`도 보고하며 권고 전체 프로젝트 `check`도 보고합니다. 대화 상자가 같은 이름으로 표시할 두 화자, 즉 동일한 `name:`을 가진 두 cast 항목, `::use{… name="…"}` 표시 문자열과 같은 cast 이름, 또는 서로 다른 화자의 두 문자열(`who=`)이 대상입니다. `sharedName: true`로 표시된 cast 항목은 여러 화자가 공유하는 의도된 역할 이름이므로 집계하지 않습니다. 이 코드는 `lute.lint.yaml` 규칙이 아니며 `--deny W-DISPLAY-NAME-DUP`로 오류로 만들 수 있습니다. [Linting](/ko/tooling/linting/#표시-이름)을 참고하세요.
 

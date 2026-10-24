@@ -160,64 +160,53 @@ pub fn check_reachability(
     unreachable_quests: &BTreeSet<String>,
 ) -> (BTreeMap<NodeId, Reachability>, Vec<(PathBuf, Diagnostic)>) {
     let mut reach: BTreeMap<NodeId, Reachability> = BTreeMap::new();
-    let mut diags = Vec::new();
+    // dsl 0.49.0 §6.1: a back edge feeds a source evaluated after its
+    // dependent, so the pass repeats until nothing changes — the least fixed
+    // point, from "not yet known" (`Unknown`). Values only ever refine
+    // (`Unknown` to a verdict), so it ends; one pass suffices without back
+    // edges.
+    for _ in 0..=g.nodes.len() {
+        let mut changed = false;
+        for id in &g.topo_order {
+            let Some(info) = g.nodes.get(id) else {
+                continue;
+            };
+            let r = node_reach(
+                info,
+                g,
+                &reach,
+                quest_ids,
+                ambiguous_quest_ids,
+                unreachable_quests,
+            );
+            changed |= reach.insert(id.clone(), r) != Some(r);
+        }
+        if !changed || g.back_edges.is_empty() {
+            break;
+        }
+    }
 
+    let mut diags = Vec::new();
     for id in &g.topo_order {
         let Some(info) = g.nodes.get(id) else {
             continue;
         };
-        let r = match &info.prereq {
-            PrereqState::Absent => Reachability::Reachable,
-            PrereqState::Invalid => Reachability::Unknown,
-            PrereqState::Valid(f) => {
-                let count = atoms(f).len();
-                if count > MAX_FORMULA_ATOMS {
-                    diags.push((
-                        info.path.clone(),
-                        too_complex_diag(
-                            format!(
-                                "{id}'s `after` formula has {count} atoms, over the \
-                                 {MAX_FORMULA_ATOMS}-atom complexity cap"
-                            ),
-                            info.span,
+        if let PrereqState::Valid(f) = &info.prereq {
+            let count = atoms(f).len();
+            if count > MAX_FORMULA_ATOMS {
+                diags.push((
+                    info.path.clone(),
+                    too_complex_diag(
+                        format!(
+                            "{id}'s `after` formula has {count} atoms, over the \
+                             {MAX_FORMULA_ATOMS}-atom complexity cap"
                         ),
-                    ));
-                    Reachability::Unknown
-                } else {
-                    eval_reach(
-                        f,
-                        g,
-                        &reach,
-                        quest_ids,
-                        ambiguous_quest_ids,
-                        unreachable_quests,
-                    )
-                }
+                        info.span,
+                    ),
+                ));
             }
-            // Synthesized anchors never prove a quest dead: the engine may
-            // accept it outside any `::accept` (dsl 0.24.0 §2), and `after`
-            // stays the declared route (dsl 0.25.0 §4). Every anchor must
-            // hold; one source of each suffices.
-            PrereqState::Anchored(anchors) => {
-                let source = |n: &NodeId| match n {
-                    NodeId::Quest(q) if ambiguous_quest_ids.contains(q) => Reachability::Unknown,
-                    NodeId::Quest(q) if unreachable_quests.contains(q) => Reachability::Unreachable,
-                    _ => reach.get(n).copied().unwrap_or(Reachability::Unknown),
-                };
-                let all = anchors.iter().fold(Reachability::Reachable, |all, a| {
-                    let any = a
-                        .from
-                        .iter()
-                        .fold(Reachability::Unreachable, |any, n| or_reach(any, source(n)));
-                    and_reach(all, any)
-                });
-                match all {
-                    Reachability::Unreachable => Reachability::Unknown,
-                    r => r,
-                }
-            }
-        };
-        if r == Reachability::Unreachable {
+        }
+        if reach.get(id) == Some(&Reachability::Unreachable) {
             diags.push((
                 info.path.clone(),
                 unreachable_diag(
@@ -226,10 +215,56 @@ pub fn check_reachability(
                 ),
             ));
         }
-        reach.insert(id.clone(), r);
     }
 
     (reach, diags)
+}
+
+/// One node's reachability given the verdicts in `reach` so far (a missing
+/// one reads `Unknown`); see [`check_reachability`].
+fn node_reach(
+    info: &NodeInfo,
+    g: &ConnGraph,
+    reach: &BTreeMap<NodeId, Reachability>,
+    quest_ids: &BTreeSet<String>,
+    ambiguous_quest_ids: &BTreeSet<String>,
+    unreachable_quests: &BTreeSet<String>,
+) -> Reachability {
+    match &info.prereq {
+        PrereqState::Absent => Reachability::Reachable,
+        PrereqState::Invalid => Reachability::Unknown,
+        PrereqState::Valid(f) if atoms(f).len() > MAX_FORMULA_ATOMS => Reachability::Unknown,
+        PrereqState::Valid(f) => eval_reach(
+            f,
+            g,
+            reach,
+            quest_ids,
+            ambiguous_quest_ids,
+            unreachable_quests,
+        ),
+        // Synthesized anchors never prove a quest dead: the engine may
+        // accept it outside any `::accept` (dsl 0.24.0 §2), and `after`
+        // stays the declared route (dsl 0.25.0 §4). Every anchor must
+        // hold; one source of each suffices.
+        PrereqState::Anchored(anchors) => {
+            let source = |n: &NodeId| match n {
+                NodeId::Quest(q) if ambiguous_quest_ids.contains(q) => Reachability::Unknown,
+                NodeId::Quest(q) if unreachable_quests.contains(q) => Reachability::Unreachable,
+                _ => reach.get(n).copied().unwrap_or(Reachability::Unknown),
+            };
+            let all = anchors.iter().fold(Reachability::Reachable, |all, a| {
+                let any = a
+                    .from
+                    .iter()
+                    .fold(Reachability::Unreachable, |any, n| or_reach(any, source(n)));
+                and_reach(all, any)
+            });
+            match all {
+                Reachability::Unreachable => Reachability::Unknown,
+                r => r,
+            }
+        }
+    }
 }
 
 /// Recurse [`check_reachability`]'s tri-state lattice directly over `f`'s

@@ -112,16 +112,18 @@ fn snapshot_with_minigame() -> CapabilitySnapshot {
 }
 
 fn check_codes(text: &str, snap: CapabilitySnapshot) -> Vec<String> {
-    let input = CheckInput {
-        text: text.into(),
-        uri: "t".into(),
-        snapshot: snap,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.into(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snap,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()
@@ -221,16 +223,18 @@ fn cyclic_state_shapes_do_not_overflow() {
         },
     );
     let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::cyc{k=\"slot\"}\n";
-    let input = CheckInput {
-        text: text.into(),
-        uri: "cyc".into(),
-        snapshot: snap,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.into(),
+        "cyc".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snap,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     // Must return without stack-overflow (no-panic contract).
     let _ = check(&input);
 }
@@ -242,16 +246,18 @@ fn unknown_tag_from_inactive_plugin_gets_fixit() {
         .insert("minigame".into(), "arcia.minigame".into());
     let text =
         "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n::minigame{kind=\"rhythm\"}\n";
-    let input = CheckInput {
-        text: text.into(),
-        uri: "t".into(),
-        snapshot: snap,
-        providers: ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        text.into(),
+        "t".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snap,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     let res = check(&input);
     let d = res
         .diagnostics

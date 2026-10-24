@@ -713,8 +713,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-LINT-CONFIG",
-        summary: "`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id.",
-        spec: &[],
+        summary: "`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id. Since 0.49.0 it also covers an `asset-exists` `options.providers` key that is none of the selector shapes (`<tag>`, `<tag>.<attr>`, `@<attr>`).",
+        spec: &["dsl 0.49.0 §7.3"],
     },
     Code {
         code: "E-LINT-EXPR",
@@ -963,8 +963,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-INVALID-DIRECTIVE",
-        summary: "A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one).",
-        spec: &[],
+        summary: "A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one); or a directive attribute or `stampAttrs` entry is typed `list`, `map` or `record`, which no authored attribute value can satisfy.",
+        spec: &["dsl 0.49.0 §3.2"],
     },
     Code {
         code: "E-PLUGIN-IO",
@@ -1013,7 +1013,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-RESERVED-STAMP-ATTR",
-        summary: "A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`) that the core stamp already owns.",
+        summary: "A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp.",
         spec: &["plugin §14"],
     },
     Code {
@@ -1080,6 +1080,16 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-QUEST-RESERVED-WRITE",
         summary: "An `::set` writes a reserved, engine-populated path — `quest.<id>.state`, `objectives.<oid>.done`, an `entry.*` path, `prev.run.*`, `prev.season.*`, or `clock.*`.",
         spec: &["dsl 0.2.0 §5.4", "dsl 0.19.0 §5"],
+    },
+    Code {
+        code: "E-QUEST-START-CYCLE",
+        summary: "Quests' `start` conditions wait on each other around a cycle that no source outside it enters, so none of them can ever start; start one of them from something outside the cycle, or grant it with `accept=\"external\"`.",
+        spec: &["dsl 0.49.0 §6.1"],
+    },
+    Code {
+        code: "E-QUEST-START-SELF",
+        summary: "A quest's `start` reads the quest's own state (`quest.<id>.*`), which has no value before the quest starts; a quest only the host grants is written `accept=\"external\"` without a `start`.",
+        spec: &["dsl 0.49.0 §6.2"],
     },
     Code {
         code: "E-QUEST-TIER-MIX",
@@ -1203,8 +1213,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-REWARD-ATTR",
-        summary: r#"A `<reward>` element is malformed: an empty/missing `kind`, an `amount=` that is not a signed integer or a valid `N..M` range, or an `outcome=` used on an objective-level reward or with a value other than `"failed"`."#,
-        spec: &["dsl 0.16.0 §2", "dsl 0.16.0 §6"],
+        summary: r#"A `<reward>` element is malformed: an empty/missing `kind`, an `amount=` that is not a signed integer or a valid `N..M` range, an `outcome=` used on an objective-level reward or with a value other than `"failed"`, or a `target=` that is not a quoted id (an `@ref` or a bare `target`, which the IR cannot carry)."#,
+        spec: &["dsl 0.16.0 §2", "dsl 0.16.0 §6", "dsl 0.49.0 §3.3"],
     },
     Code {
         code: "E-REWARD-DUP",
@@ -1218,8 +1228,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-REWARD-TARGET",
-        summary: "A `<reward>`'s `target=` violates its reward kind's target contract: required but missing, or naming neither a declared entity-kind member nor a provider catalog id.",
-        spec: &["dsl 0.26.0 §2.5"],
+        summary: "A `<reward>`'s `target=` violates its reward kind's target contract: required but missing, present although the kind declares `target: { forbidden: true }`, or naming neither a declared entity-kind member nor a provider catalog id.",
+        spec: &["dsl 0.26.0 §2.5", "dsl 0.49.0 §3.3"],
     },
     Code {
         code: "E-RULE-AGGREGATE-CYCLE",
@@ -1548,8 +1558,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-UNKNOWN-ATTR",
-        summary: "A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize.",
-        spec: &["dsl 0.1.0 §7.1"],
+        summary: "A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it.",
+        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1"],
     },
     Code {
         code: "E-UNKNOWN-DIRECTIVE",
@@ -1563,8 +1573,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-UNKNOWN-ID",
-        summary: "An attribute referencing a `providerRef` id names an id absent from the pinned provider catalog.",
-        spec: &[],
+        summary: "An attribute or plugin frontmatter key referencing a `providerRef` id names an id absent from the pinned provider catalog.",
+        spec: &["dsl 0.49.0 §4.3"],
     },
     Code {
         code: "E-UNKNOWN-KIND",
@@ -1688,8 +1698,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-BRANCH-ID-SHARED",
-        summary: "Two documents of one project each declare a `<branch>` or `<hub>` with the same id. Ids need only be unique within a document, but a play's or test's `choose:` names a menu by its id alone, so one key answers both menus (and a list of decisions is consumed across both).",
-        spec: &["dsl 0.28.0 §7"],
+        summary: "Two documents of one project each declare a `<branch>` or `<hub>` with the same id, and a play or test script under the root names that id as a `choose:` key. Ids need only be unique within a document, but `choose:` names a menu by its id alone, so the key answers both menus (and a list of decisions is consumed across both). An id no script names is not warned.",
+        spec: &["dsl 0.28.0 §7", "dsl 0.49.0 §7.2"],
     },
     Code {
         code: "W-CAST-ABSENT",
@@ -1840,6 +1850,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-OVERLAP-ARMS",
         summary: "Two `<when>` arms provably match the same value, so the later arm is unreachable under first-match-wins ordering.",
         spec: &["dsl §11.2", "dsl 0.18.0 §4"],
+    },
+    Code {
+        code: "W-PROJECT-CHECK-SKIPPED",
+        summary: "Info from a single-file `check` (and the LSP): the document reads `quest.<id>.*` for a quest it and its imports do not declare. Quest references are resolved only by whole-project `lute check`, so this check did not judge the read. Never raised by whole-project check, compile or wasm.",
+        spec: &["dsl 0.49.0 §7.1"],
     },
     Code {
         code: "W-PROJECT-INERT",

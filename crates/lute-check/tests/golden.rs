@@ -16,16 +16,18 @@ use lute_check::{check, CheckInput, Mode, SchemaImports};
 /// interactive `Author` mode — the same shape the example integration tests
 /// use (`tests/examples.rs`).
 fn input_for(text: &str) -> CheckInput {
-    CheckInput {
-        text: text.to_string(),
-        uri: "test".into(),
-        snapshot: lute_test_vocab::vocab_snapshot(),
-        providers: lute_manifest::provider::ProviderSet::default(),
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    }
+    CheckInput::new(
+        text.to_string(),
+        "test".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_test_vocab::vocab_snapshot(),
+            lute_manifest::provider::ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    )
 }
 
 /// A golden that pins only the diagnostics stream.

@@ -158,7 +158,7 @@ pub(super) fn parse_state(
                             if let Type::Enum(members) = &raw.ty {
                                 for member in members {
                                     if let Some(message) =
-                                        lute_manifest::ident::name_fault("enum member", member)
+                                        super::frontmatter::member_name_fault("enum member", member)
                                     {
                                         diags.push(err_at(
                                             E_PATH_IDENT,
@@ -233,8 +233,9 @@ pub(super) fn parse_state(
                                         .decls
                                         .insert(path.to_string(), StateDecl { default, ..decl });
                                 }
-                                // dsl 0.24.0 §3: one decl per member of a
-                                // closed kind. A kind this document does not
+                                // dsl 0.24.0 §3: `<path>.<m>` for every member
+                                // of a closed kind, kept as one family (spec
+                                // 0.49.0 §9.3). A kind this document does not
                                 // declare is resolved against the schemas it
                                 // imports ([`expand_per_pending`], dsl 0.28.0).
                                 Some(kind) if !typed.rel_kinds.kinds.contains_key(&kind) => {
@@ -248,24 +249,21 @@ pub(super) fn parse_state(
                                 }
                                 Some(kind) => match per_members(&typed.rel_kinds, &kind) {
                                     Ok(members) => {
-                                        let defaults = per_member_defaults(
+                                        let family = per_family(
                                             path,
                                             &kind,
                                             &members,
-                                            &decl.ty,
+                                            sorted_members(&members),
+                                            decl,
                                             raw.default,
                                             diags,
                                             key_span,
                                         );
-                                        for (m, default) in members.iter().zip(defaults) {
-                                            typed.state.decls.insert(
-                                                format!("{path}.{m}"),
-                                                StateDecl {
-                                                    default,
-                                                    ..decl.clone()
-                                                },
-                                            );
-                                        }
+                                        typed.state.decls.insert_family(
+                                            path.to_string(),
+                                            family,
+                                            Precedence::Replace,
+                                        );
                                         typed.state_index.insert(path.to_string(), kind);
                                     }
                                     Err(why) => diags.push(err_at(

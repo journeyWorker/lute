@@ -41,16 +41,18 @@ fn codes_for_scene(scene: &str) -> Vec<String> {
     // The scene declares no `profile:`/`plugins:` inline -> default profile.
     let (snapshot, _rdiags) = resolve_document_snapshot(project.as_ref(), None, &BTreeMap::new());
     let providers = project_providers(project.as_ref());
-    let input = CheckInput {
-        text: scene.to_string(),
-        uri: scene_path.display().to_string(),
-        snapshot,
-        providers,
-        mode: Mode::Author,
-        imports: SchemaImports::default(),
-        components: Default::default(),
-        defaults: Default::default(),
-    };
+    let input = CheckInput::new(
+        scene.to_string(),
+        scene_path.display().to_string(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            providers,
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
     check(&input)
         .diagnostics
         .into_iter()

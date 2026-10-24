@@ -23,7 +23,7 @@ pub(crate) fn replaced(
     key: &str,
 ) -> Option<Vec<String>> {
     frontmatter?.get(key)?;
-    let paths: Vec<String> = match input.defaults.get(key)? {
+    let paths: Vec<String> = match input.defaults().get(key)? {
         yaml_serde::Value::String(s) => vec![s.clone()],
         yaml_serde::Value::Sequence(v) => v
             .iter()
@@ -55,7 +55,8 @@ pub(crate) fn note_replaced_uses(
     input: &CheckInput,
     mut diags: Vec<Diagnostic>,
 ) -> Vec<Diagnostic> {
-    if input.defaults.get("uses").is_none() || !diags.iter().any(|d| d.severity == Severity::Error)
+    if input.defaults().get("uses").is_none()
+        || !diags.iter().any(|d| d.severity == Severity::Error)
     {
         return diags;
     }
@@ -64,7 +65,7 @@ pub(crate) fn note_replaced_uses(
     };
     let defaults =
         crate::schema_import::resolve_imports(Path::new("."), &paths, &[], doc.meta.span);
-    let missing = missing_names(&defaults, &input.imports);
+    let missing = missing_names(&defaults, input.imports());
     if missing.is_empty() {
         return diags;
     }
@@ -94,22 +95,30 @@ fn missing_names(
     have.extend(own.rel.enums.keys().map(String::as_str));
     have.extend(own.defs.keys().map(String::as_str));
     have.extend(own.domains.keys().map(String::as_str));
-    have.extend(own.state.decls.keys().map(String::as_str));
     have.extend(own.cast.keys().map(String::as_str));
     let o = &defaults.rel.origins;
-    [
-        &o.relations,
-        &o.kinds,
-        &o.domains,
-        &o.defs,
-        &o.state,
-        &o.cast,
-    ]
-    .into_iter()
-    .flatten()
-    .filter(|(name, _)| !have.contains(name.as_str()))
-    .map(|(name, origin)| (name.clone(), origin.file.clone()))
-    .collect()
+    let named = [&o.relations, &o.kinds, &o.domains, &o.defs]
+        .into_iter()
+        .flatten()
+        .map(|(name, origin)| {
+            (
+                std::borrow::Cow::Borrowed(name.as_str()),
+                origin.file.as_path(),
+            )
+        });
+    let state = o.state.iter().map(|(path, origin)| (path, origin.file()));
+    let cast = o.cast.iter().map(|(name, origin)| {
+        (
+            std::borrow::Cow::Borrowed(name.as_str()),
+            origin.file.as_path(),
+        )
+    });
+    named
+        .chain(state)
+        .chain(cast)
+        .filter(|(name, _)| !have.contains(name.as_ref()) && !own.state.decls.contains_key(name))
+        .map(|(name, file)| (name.into_owned(), file.to_path_buf()))
+        .collect()
 }
 
 fn annotate(d: &mut Diagnostic, missing: &BTreeMap<String, PathBuf>) {

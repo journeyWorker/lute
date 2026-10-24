@@ -121,9 +121,12 @@ fn spent_beats<'d>(doc: &'d Document, folded: &'d FoldedEnv) -> Vec<SpentBeat<'d
 /// The verdicts a beat's own document decides before the start of play is
 /// judged: `Err(diagnostic)` for an unreachable beat, `Err(None)` when a
 /// reported literal or a `when` already false alone is the verdict.
-#[expect(
-    clippy::result_large_err,
-    reason = "diagnostic ownership is part of this checker result contract"
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    expect(
+        clippy::result_large_err,
+        reason = "diagnostic ownership is part of this checker result contract"
+    )
 )]
 fn own_verdict(
     b: &SpentBeat<'_>,
@@ -273,14 +276,12 @@ type QuestStarts = BTreeMap<String, Option<&'static str>>;
 /// The start of play in one document's environment (see the module doc).
 struct StartWorld {
     env: crate::FactEnv,
-    pins: BTreeMap<String, Val>,
 }
 
 impl StartWorld {
     fn new(folded: &FoldedEnv) -> Self {
         Self {
             env: initial_facts(folded),
-            pins: start_values(folded),
         }
     }
 
@@ -315,7 +316,7 @@ impl StartWorld {
                 wip: false,
             }),
         };
-        decide_at_start(raw, &defs, &self.pins, quests, &ctx)
+        decide_at_start(raw, &defs, &folded.env.state, quests, &ctx)
     }
 
     /// `raw` already holds at the start of play.
@@ -380,11 +381,13 @@ pub fn check_project_spent_by(
     foldeds: &[&FoldedEnv],
 ) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
+    // A document without a `spentBy` beat has nothing judged below.
     let spent: Vec<(usize, Vec<SpentBeat<'_>>)> = docs
         .iter()
         .zip(foldeds)
         .enumerate()
         .map(|(i, (item, folded))| (i, spent_beats(item.doc, folded)))
+        .filter(|(_, beats)| !beats.is_empty())
         .collect();
     if spent.is_empty() {
         return out;
@@ -740,32 +743,25 @@ fn seeds(folded: &FoldedEnv) -> Vec<crate::fact_env::MustFact> {
         .collect()
 }
 
-/// The value every persistent state path holds at the start of play: its
-/// declared scalar default (`run.*` / `user.*` / `app.*` / `season.*`). A path without
-/// one stays a read with no value.
-fn start_values(folded: &FoldedEnv) -> BTreeMap<String, Val> {
-    folded
-        .env
-        .state
-        .decls
-        .iter()
-        .filter(|(_, d)| {
-            matches!(
-                d.namespace,
-                Namespace::Run | Namespace::User | Namespace::App | Namespace::Season
-            )
-        })
-        .filter_map(|(path, d)| {
-            let v = match d.default.as_ref()? {
-                Literal::Bool(b) => Val::Boolean(*b),
-                Literal::Int(n) => Val::Int(*n),
-                Literal::Double(n) => Val::Double(*n),
-                Literal::Str(s) => Val::String(s.clone()),
-                Literal::List(_) | Literal::Map(_) => return None,
-            };
-            Some((path.clone(), v))
-        })
-        .collect()
+/// The value `path` holds at the start of play: its declared scalar default
+/// when it is persistent (`run.*` / `user.*` / `app.*` / `season.*`). A path
+/// without one stays a read with no value. Looked up per read, so a
+/// document never walks the project's state (spec 0.49.0 §9.2).
+fn start_value(state: &crate::StateView, path: &str) -> Option<Val> {
+    let d = state.get(path)?;
+    if !matches!(
+        d.namespace,
+        Namespace::Run | Namespace::User | Namespace::App | Namespace::Season
+    ) {
+        return None;
+    }
+    match d.default.as_ref()? {
+        Literal::Bool(b) => Some(Val::Boolean(*b)),
+        Literal::Int(n) => Some(Val::Int(*n)),
+        Literal::Double(n) => Some(Val::Double(*n)),
+        Literal::Str(s) => Some(Val::String(s.clone())),
+        Literal::List(_) | Literal::Map(_) => None,
+    }
 }
 
 /// Decide `raw` at the start of play: its `@def`s expanded, every state
@@ -775,7 +771,7 @@ fn start_values(folded: &FoldedEnv) -> BTreeMap<String, Val> {
 fn decide_at_start(
     raw: &str,
     defs: &DefTable<'_>,
-    pins: &BTreeMap<String, Val>,
+    pins: &crate::StateView,
     quests: &QuestStarts,
     ctx: &DecideCtx<'_>,
 ) -> Option<Decided> {
@@ -785,14 +781,14 @@ fn decide_at_start(
 }
 
 /// Replace, in place, every read [`decide_at_start`] knows the start value of.
-fn pin_start(e: &mut IdedExpr, pins: &BTreeMap<String, Val>, quests: &QuestStarts) {
+fn pin_start(e: &mut IdedExpr, pins: &crate::StateView, quests: &QuestStarts) {
     if let Some(path) = crate::cel_paths::select_path(&e.expr) {
         let quest = || {
             let id = path.strip_prefix("quest.")?.split('.').next()?;
             *quests.get(id)?
         };
-        let start = if let Some(v) = pins.get(&path) {
-            Some(v.clone())
+        let start = if let Some(v) = start_value(pins, &path) {
+            Some(v)
         } else if crate::cel_paths::is_reserved_quest_state(&path) {
             quest().map(|s| Val::String(s.to_string()))
         } else if lute_manifest::semantics::cel_paths::is_reserved_quest_objective_done(&path) {

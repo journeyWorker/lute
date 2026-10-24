@@ -1,7 +1,7 @@
 {
   "kind": "scene",
-  "lute": "0.48.1",
-  "irVersion": "0.48.1",
+  "lute": "0.49.0",
+  "irVersion": "0.49.0",
   "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
   "requiredSemantics": [
     "lute.core/1"
@@ -71,19 +71,9 @@
       "converge": "001-0900"
     },
     {
-      "kind": "line",
-      "family": "content",
-      "position": "001-0300",
-      "role": "dialogue",
-      "speaker": "hero",
-      "text": "Left it is.",
-      "lineId": "hero.s01ep01.hero_0010",
-      "voiceKey": "hero.s01ep01.hero-0010"
-    },
-    {
       "kind": "set",
       "family": "state",
-      "position": "001-0400",
+      "position": "001-0300",
       "path": "run.dir",
       "op": "=",
       "value": {
@@ -94,25 +84,25 @@
       }
     },
     {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0400",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Left it is.",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero.s01ep01.hero-0010"
+    },
+    {
       "kind": "jump",
       "family": "control",
       "position": "001-0500",
       "target": "001-0900"
     },
     {
-      "kind": "line",
-      "family": "content",
-      "position": "001-0600",
-      "role": "dialogue",
-      "speaker": "hero",
-      "text": "Right it is.",
-      "lineId": "hero.s01ep01.hero_0020",
-      "voiceKey": "hero.s01ep01.hero-0020"
-    },
-    {
       "kind": "set",
       "family": "state",
-      "position": "001-0700",
+      "position": "001-0600",
       "path": "run.dir",
       "op": "=",
       "value": {
@@ -121,6 +111,16 @@
           "string": "right"
         }
       }
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0700",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Right it is.",
+      "lineId": "hero.s01ep01.hero_0020",
+      "voiceKey": "hero.s01ep01.hero-0020"
     },
     {
       "kind": "jump",
