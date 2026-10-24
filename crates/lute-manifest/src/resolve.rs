@@ -312,6 +312,8 @@ impl OptionError {
 impl std::fmt::Display for OptionError {
     /// Author-facing prose: the fix (a name typo, a wrong literal shape) is
     /// only actionable with the declared set / expected type spelled out.
+    /// Each message is one literal, which `scripts/check-doc-snippets.py`
+    /// pins the docs' quotes against.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OptionError::UnknownOption {
@@ -319,13 +321,18 @@ impl std::fmt::Display for OptionError {
                 name,
                 declared,
             } => {
-                write!(f, "plugin `{plugin}` has no option `{name}` (declared: ")?;
                 if declared.is_empty() {
-                    f.write_str("none")?;
+                    write!(
+                        f,
+                        "plugin `{plugin}` has no option `{name}` (declared: none)"
+                    )
                 } else {
-                    f.write_str(&declared.join(", "))?;
+                    let list = declared.join(", ");
+                    write!(
+                        f,
+                        "plugin `{plugin}` has no option `{name}` (declared: {list})"
+                    )
                 }
-                f.write_str(")")
             }
             OptionError::OptionType {
                 plugin,
@@ -948,6 +955,19 @@ mod tests {
         assert_eq!(
             errs[0].message(),
             "plugin `arcia.minigame` has no option `resultScop` (declared: resultScope, rounds)"
+        );
+    }
+
+    #[test]
+    fn unknown_option_message_names_no_declared_option() {
+        let err = OptionError::UnknownOption {
+            plugin: "arcia.minigame".into(),
+            name: "rounds".into(),
+            declared: Vec::new(),
+        };
+        assert_eq!(
+            err.to_string(),
+            "plugin `arcia.minigame` has no option `rounds` (declared: none)"
         );
     }
 
