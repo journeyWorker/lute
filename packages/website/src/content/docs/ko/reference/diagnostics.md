@@ -1407,7 +1407,7 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 ### E-REWARD-TARGET
 
-`<reward>`의 `target=`이 해당 reward kind의 target 계약을 위반합니다: 필수인데 없거나, 선언된 엔티티 종류의 멤버도 provider 카탈로그 id도 아닙니다. 0.49.0부터는 reward kind가 `target: { forbidden: true }`를 선언했는데 `<reward>`가 `target=`을 쓰는 경우도 포함합니다: ``<reward kind="COINS"> takes no `target=`: its reward kind declares `target: { forbidden: true }` — remove the attribute``. `forbidden: true`는 `provider`/`entity`/`required`와 함께 쓸 수 없습니다.
+`<reward>`의 `target=`이 해당 reward kind의 target 계약을 위반합니다: 필수인데 없거나, 선언된 엔티티 종류의 멤버도 provider 카탈로그 id도 아닙니다. 0.49.0부터는 reward kind가 `target: { forbidden: true }`를 선언했는데 `<reward>`가 `target=`을 쓰는 경우도 포함합니다: `` `<reward kind="COINS">` takes no `target=`: its reward kind declares `target: { forbidden: true }` — remove the attribute ``. `forbidden: true`는 `provider`/`entity`/`required`와 함께 쓸 수 없습니다.
 
 명세: [dsl 0.26.0 §2.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md), [dsl 0.49.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 

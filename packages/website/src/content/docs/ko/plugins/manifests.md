@@ -297,7 +297,7 @@ rewardKinds:
 | `required: true` | 해당 종류의 보상에 `target=`이 없으면 `E-REWARD-TARGET`입니다. 이 키가 없으면 대상을 생략할 수 있습니다. |
 | `forbidden: true` | 해당 종류는 대상을 받지 않습니다. 이 종류의 `<reward>`에 `target=`이 있으면 `target=` 속성 위치에서 `E-REWARD-TARGET`입니다(0.49부터). |
 
-계약은 `entity:` 또는 `provider:` 중 하나를 지정하며 둘 다 지정하지는 않습니다. 둘 다 지정하면 플러그인 로드가 실패합니다(`E-PLUGIN-PARSE`). `target:`이 없는 종류는 이전과 같이 어떤 `target=`이든 받을 수 있고 생략할 수도 있습니다. 대상을 받지 않는 종류는 `target: { forbidden: true }`로 이를 선언하며, 이 키는 **단독**으로만 쓸 수 있습니다. `provider`, `entity`, `required`와 함께 쓰면 플러그인 로드가 실패합니다. 대상을 받지 않는 종류가 id 공간을 이름으로 지정하거나 대상을 요구할 수는 없기 때문입니다. `COINS: { target: { forbidden: true } }`라면 ``<reward kind="COINS" target="x"/>``는 `E-REWARD-TARGET`입니다: `` <reward kind="COINS"> takes no `target=`: its reward kind declares `target: { forbidden: true }` — remove the attribute``. `forbidden: true`가 없는 선언은 `capabilitySnapshot`을 그대로 유지하고, 이를 설정하면 스냅숏이 바뀝니다. 위의 ITEM 계약은 수동으로 관리하는 목록이 놓치는 두 실수를 모두 잡아냅니다.
+계약은 `entity:` 또는 `provider:` 중 하나를 지정하며 둘 다 지정하지는 않습니다. 둘 다 지정하면 플러그인 로드가 실패합니다(`E-PLUGIN-PARSE`). `target:`이 없는 종류는 이전과 같이 어떤 `target=`이든 받을 수 있고 생략할 수도 있습니다. 대상을 받지 않는 종류는 `target: { forbidden: true }`로 이를 선언하며, 이 키는 **단독**으로만 쓸 수 있습니다. `provider`, `entity`, `required`와 함께 쓰면 플러그인 로드가 실패합니다. 대상을 받지 않는 종류가 id 공간을 이름으로 지정하거나 대상을 요구할 수는 없기 때문입니다. `COINS: { target: { forbidden: true } }`라면 ``<reward kind="COINS" target="x"/>``는 `E-REWARD-TARGET`입니다: `` `<reward kind="COINS">` takes no `target=`: its reward kind declares `target: { forbidden: true }` — remove the attribute ``. `forbidden: true`가 없는 선언은 `capabilitySnapshot`을 그대로 유지하고, 이를 설정하면 스냅숏이 바뀝니다. 위의 ITEM 계약은 수동으로 관리하는 목록이 놓치는 두 실수를 모두 잡아냅니다.
 
 <!-- lute-diagnostics -->
 ```
