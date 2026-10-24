@@ -216,10 +216,12 @@ listed. About 600 of them are autofix.
 
 - Decision: an item is private, `pub(crate)` or `pub` (Ed Page
   P-VISIBILITY). `pub(super)` and `pub(in path)` are not used.
-- Today there are 698 such sites: `lute-check` 286, `lute-cli` 188,
-  `lute-trace` 146, `lute-runtime` 29, `lute-syntax` 27 and `lute-lsp` 22.
-  0.49.1 rewrites them to `pub(crate)`. Runtime behaviour cannot change, since
-  this only widens visibility inside one crate. Compile-time results can:
+- At `b8b7cdba` there were 698 such sites: `lute-check` 286, `lute-cli` 188,
+  `lute-trace` 146, `lute-runtime` 29, `lute-syntax` 27 and `lute-lsp` 22; at
+  `f34f141f` (v0.49.0) there were 696 (`lute-check` 285, `lute-cli` 187,
+  the rest unchanged). 0.49.1 rewrote them to `pub(crate)`. Runtime
+  behaviour cannot change, since this only widens visibility inside one
+  crate. Compile-time results can:
   an item that becomes visible to the whole crate may change `dead_code`
   reachability, or expose a private type in its signature
   (`private_interfaces`). The step is done when the clippy job is clean
@@ -429,6 +431,9 @@ as a patch on the 0.49 line. The counts in §1–§5 above were measured at
 `b8b7cdba` and are kept as the record of this note's analysis. The sweep
 starts from the re-measure at `f34f141f` (v0.49.0) in the header of
 `docs/superpowers/plans/2026-10-25-lute-0.49.1-coding-rules.md`.
+
+Applied in 0.49.1 (plan `2026-10-25-lute-0.49.1-coding-rules.md`): every
+count of §1–§4, re-measured, is zero.
 
 ## Amendments (2026-10-25)
 

@@ -3,3 +3,6 @@
 
 # 0.42.1: rustfmt over the whole workspace (default configuration)
 806e73fc9f19afed72903f3bf21052273d9d2fc1
+
+# 0.49.1 S1: cargo clippy --fix + cargo fmt (machine only)
+60d0123b8b8eac3ba29278293cac93312ef2be9f

@@ -4,6 +4,6 @@ profiles:
   tally:
     plugins: { tally.occasions: true }
 defaults:
-  luteVersion: "0.49.0"
+  luteVersion: "0.49.1"
   contentLang: en-US
   uses: [world.schema.yaml]

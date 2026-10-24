@@ -1,6 +1,6 @@
 ---
 kind: scene
-luteVersion: "0.49.0"
+luteVersion: "0.49.1"
 character: hero
 season: 1
 episode: 41
