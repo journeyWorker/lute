@@ -79,6 +79,19 @@ pub fn possible_writes(nodes: &[Node]) -> BTreeSet<String> {
     out
 }
 
+/// A scene document's `(G, P)` pair for [`PerDocEffects::scene`]: `G` is
+/// [`guaranteed`] of its definite-assignment `writes`, and `P` is
+/// [`possible_writes`] ∪ `G`. `G` may hold a write `possible_writes` never
+/// scans — a blocking bridge call's result (0.49.0 §5.2) — and a guaranteed
+/// write is a possible one, so every consumer (propagation, writer
+/// attribution) sees `G ⊆ P`.
+pub fn scene_effects(assigned: &Assigned, nodes: &[Node]) -> (BTreeSet<String>, BTreeSet<String>) {
+    let g = guaranteed(assigned);
+    let mut p = possible_writes(nodes);
+    p.extend(g.iter().cloned());
+    (g, p)
+}
+
 fn scan_nodes(nodes: &[Node], out: &mut BTreeSet<String>) {
     for node in nodes {
         match node {
@@ -420,10 +433,6 @@ fn eval_formula(f: &PrereqFormula, per_doc: &PerDocEffects, envs: &BTreeMap<Node
             let mut env = envs.get(&target).cloned().unwrap_or_default();
             if let Some((doc_g, doc_p)) = per_doc.scene.get(key) {
                 env.guaranteed.extend(doc_g.iter().cloned());
-                // A guaranteed write is a possible one: `G` may hold a
-                // blocking bridge result `P` (`possible_writes`) never counts
-                // (0.49.0 §5.2).
-                env.possible.extend(doc_g.iter().cloned());
                 env.possible.extend(doc_p.iter().cloned());
             }
             env

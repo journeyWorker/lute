@@ -306,3 +306,198 @@ fn trace_and_run_evaluate_member_presence() {
     let (_, set) = run(&dir, &["run", "ir.json", "--mock", "set.yaml"]);
     assert!(set.contains("Gold.") && !set.contains("Not yet."), "{set}");
 }
+
+// ---- review F3 ----------------------------------------------------------
+
+/// A two-scene project whose `ask` directive writes two `run.res.*` results
+/// and a `fromAttr` slot; `b` runs `after: visited('a')`.
+fn bridge_project(tag: &str, a_body: &str, b_body: Option<&str>) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
+    let mut files = vec![
+        ("lute.project.yaml", MANIFEST_158.to_string()),
+        (
+            "plugins/acme.stage/plugin.yaml",
+            "id: acme.stage\nversion: 0.1.0\nkind: capability\ndepends:\n  - { id: lute.core, range: \"^0.0.1\" }\nexports:\n  bridge: bridge/\n  directives: directives/\n".to_string(),
+        ),
+        (
+            "plugins/acme.stage/bridge/b.yaml",
+            "bridgeCapabilities:\n  - service: s\n    operation: ask\n    replay: recorded\n    result:\n      - { name: a, type: string }\n      - { name: b, type: string }\n".to_string(),
+        ),
+        (
+            "plugins/acme.stage/directives/d.yaml",
+            "directives:\n  - name: ask\n    layer: bridge\n    semantics: [ \"bridgeCall\" ]\n    effects:\n      writes:\n        - { scope: run, path: [res, a], value: { fromBridgeResult: a } }\n        - { scope: run, path: [res, b], value: { fromBridgeResult: b } }\n    bridge: { service: s, operation: ask }\n  - name: askSlot\n    layer: bridge\n    attrs:\n      - { name: key, required: true, type: string }\n    semantics: [ \"bridgeCall\" ]\n    effects:\n      writes:\n        - { scope: run, path: [slot, { fromAttr: { name: key } }], value: { fromBridgeResult: a } }\n    bridge: { service: s, operation: ask }\n".to_string(),
+        ),
+        (
+            "schema/world.schema.yaml",
+            "state:\n  run.res.a: { type: string }\n  run.res.b: { type: string }\n  run.slot.k1: { type: string }\n  run.e: { type: { enum: [x, y] }, default: x }\ncast:\n  mira: { name: Mira }\ndefs:\n  off: { type: bool, cel: \"false\", host: true }\n  on: { type: bool, cel: \"true\", host: true }\n".to_string(),
+        ),
+        ("scenes/a.lute", format!("---\nkind: scene\nid: a\n---\n\n## H {{#h}}\n\n{a_body}\n")),
+    ];
+    if let Some(b) = b_body {
+        files.push((
+            "scenes/b.lute",
+            format!("---\nkind: scene\nid: b\nafter: visited('a')\n---\n\n## H {{#h}}\n\n{b}\n"),
+        ));
+    }
+    let refs: Vec<(&str, &str)> = files.iter().map(|(p, t)| (*p, t.as_str())).collect();
+    write(&dir, &refs);
+    dir
+}
+
+#[test]
+fn bridge_result_reaches_a_later_scene_and_names_its_writer() {
+    let dir = bridge_project(
+        "dataflow-049-f31",
+        "@mira: hi\n::ask{}",
+        Some("@mira: {{run.res.a}}"),
+    );
+    let (code, out) = run(&dir, &["check", "--project", "."]);
+    assert_eq!(code, 0, "{out}");
+    let (code, out) = run(
+        &dir,
+        &["scenario", "envelope", "--node", "b", "--project", "."],
+    );
+    assert_eq!(code, 0, "{out}");
+    assert!(out.contains("run.res.a   written by: scene(a)"), "{out}");
+    for (i, call) in ["::ask{when=\"run.e == 'y'\"}", "::ask{wait=\"false\"}"]
+        .iter()
+        .enumerate()
+    {
+        let dir = bridge_project(
+            &format!("dataflow-049-f31-none-{i}"),
+            &format!("@mira: hi\n{call}"),
+            Some("@mira: {{run.res.a}}"),
+        );
+        let (code, out) = run(&dir, &["check", "--project", "."]);
+        assert_eq!(code, 1, "{call}\n{out}");
+        assert!(
+            out.contains("[E-STATE-MAYBE-UNAVAILABLE] state path `run.res.a`"),
+            "{call}\n{out}"
+        );
+    }
+}
+
+#[test]
+fn bridge_wait_and_placement_matrix() {
+    let read = "@mira: {{run.res.a}}";
+    let cases = [
+        (format!("::ask{{wait=\"true\"}}\n{read}"), true),
+        (format!("::ask{{wait=@on}}\n{read}"), true),
+        (format!("::ask{{wait=@off}}\n{read}"), false),
+        ("::ask{}\n@mira: {{run.res.b}}".to_string(), true),
+        ("::askSlot{key=\"k1\"}\n@mira: {{run.slot.k1}}".to_string(), true),
+        (format!("<match subject=\"run.e\">\n<when is=\"x\">\n::ask{{}}\n</when>\n<when is=\"y\">\n::ask{{}}\n</when>\n</match>\n{read}"), true),
+        (format!("<match subject=\"run.e\">\n<when is=\"x\">\n::ask{{}}\n</when>\n<otherwise>\n@mira: no\n</otherwise>\n</match>\n{read}"), false),
+        (format!("<hub id=\"hb\">\n<choice id=\"c1\" text=\"A\">\n::ask{{}}\n{read}\n</choice>\n<choice id=\"c2\" text=\"B\" exit>\n@mira: bye\n</choice>\n</hub>"), true),
+        (format!("<hub id=\"hb\">\n<choice id=\"c1\" text=\"A\">\n::ask{{}}\n</choice>\n<choice id=\"c2\" text=\"B\" exit>\n@mira: bye\n</choice>\n</hub>\n{read}"), false),
+    ];
+    for (i, (body, clean)) in cases.iter().enumerate() {
+        let dir = bridge_project(&format!("dataflow-049-matrix-{i}"), body, None);
+        let (code, out) = run(&dir, &["check", "scenes/a.lute", "--project", "."]);
+        assert_eq!(code == 0, *clean, "{body}\n{out}");
+        assert_eq!(out.contains("E-MAYBE-UNSET"), !clean, "{body}\n{out}");
+    }
+}
+
+#[test]
+fn quoted_member_unset_arm_compiles_runs_and_traces() {
+    let body = "<match subject=\"user.stepRank['look-around']\">\n  <when is=\"unset\">\n    @mira: Not yet.\n  </when>\n  <otherwise>\n    @mira: Played.\n  </otherwise>\n</match>";
+    let dir = project_180("dataflow-049-unset-arm", body);
+    write(
+        &dir,
+        &[
+            ("unset.yaml", "state:\n  user.stepRank.intro: gold\n"),
+            ("set.yaml", "state:\n  user.stepRank.look-around: gold\n"),
+        ],
+    );
+    let (code, out) = run(
+        &dir,
+        &[
+            "compile",
+            "scenes/intro.lute",
+            "--project",
+            ".",
+            "-o",
+            "ir.json",
+        ],
+    );
+    assert_eq!(code, 0, "{out}");
+    let ir = std::fs::read_to_string(dir.join("ir.json")).unwrap();
+    assert!(
+        ir.contains(r#""cel": "(!(\"look-around\" in user.stepRank))""#),
+        "{ir}"
+    );
+    for (mock, want, not) in [
+        ("unset.yaml", "Not yet.", "Played."),
+        ("set.yaml", "Played.", "Not yet."),
+    ] {
+        let (_, ran) = run(&dir, &["run", "ir.json", "--mock", mock]);
+        assert!(ran.contains(want) && !ran.contains(not), "{mock}\n{ran}");
+        let (_, traced) = run(
+            &dir,
+            &[
+                "trace",
+                "scenes/intro.lute",
+                "--project",
+                ".",
+                "--mock",
+                mock,
+            ],
+        );
+        assert!(
+            traced.contains(want) && !traced.contains(not),
+            "{mock}\n{traced}"
+        );
+    }
+}
+
+/// The text between the backticks after `marker` in `out`.
+fn backticked_after<'o>(out: &'o str, marker: &str) -> &'o str {
+    let rest = &out[out
+        .find(marker)
+        .unwrap_or_else(|| panic!("no `{marker}` in {out}"))
+        + marker.len()..];
+    let rest = rest.strip_prefix('`').expect("a backticked spelling");
+    &rest[..rest.find('`').expect("a closing backtick")]
+}
+
+#[test]
+fn emitted_guards_round_trip_through_check() {
+    let cases = [
+        (
+            "user.stepRank['look-around']",
+            "user.stepRank['look-around'] == 'gold'",
+        ),
+        ("user.stepRank.intro", "user.stepRank.intro == 'gold'"),
+        (
+            "user['big-fam']['look-around']",
+            "user['big-fam']['look-around'] == 'gold'",
+        ),
+    ];
+    let schema_extra = "  user.big-fam: { type: { domain: rank }, per: step }\n";
+    for (i, (path, read)) in cases.iter().enumerate() {
+        let with = |tag: &str, when: &str| {
+            let dir = project_180(tag, &format!("@mira{{when=\"{when}\"}}: x"));
+            let schema = dir.join("schema/world.schema.yaml");
+            let text = std::fs::read_to_string(&schema)
+                .unwrap()
+                .replace("cast:", &format!("{schema_extra}cast:"));
+            std::fs::write(&schema, text).unwrap();
+            run(&dir, &["check", "--project", "."])
+        };
+        let (_, out) = with(&format!("dataflow-049-rt-read-{i}"), read);
+        let guard = backticked_after(&out, "guard the read with ").to_string();
+        let (code, back) = with(
+            &format!("dataflow-049-rt-guard-{i}"),
+            &format!("{guard} && {read}"),
+        );
+        assert_eq!(code, 0, "{path}: `{guard}`\n{back}");
+        let (_, out) = with(
+            &format!("dataflow-049-rt-unset-{i}"),
+            &format!("{path} == 'unset'"),
+        );
+        let negated = backticked_after(&out, "Test for unset with ").to_string();
+        let (code, back) = with(&format!("dataflow-049-rt-neg-{i}"), &negated);
+        assert_eq!(code, 0, "{path}: `{negated}`\n{back}");
+    }
+}

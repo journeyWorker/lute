@@ -1825,7 +1825,8 @@ fn expr_to_cel(expr: &ExprNode) -> String {
             LitVal::Bool(v) => v.to_string(),
             LitVal::Str(v) => cel_quote(v),
         },
-        ExprNode::Path { path } => path.clone(),
+        // A segment that is not an identifier is a quoted index (`quest["find-key"].state`).
+        ExprNode::Path { path } => lute_manifest::text::bracket_spelling_of(path),
         ExprNode::Param { param } => param.clone(),
         ExprNode::Unary { op, l } => format!("({op}{})", expr_to_cel(l)),
         ExprNode::Binary { op, l, r } => {
@@ -1852,7 +1853,23 @@ fn expr_to_cel(expr: &ExprNode) -> String {
             "{call}({})",
             args.iter().map(expr_to_cel).collect::<Vec<_>>().join(", ")
         ),
-        ExprNode::Has { has } => format!("has({has})"),
+        ExprNode::Has { has } => has_to_cel(has),
+    }
+}
+
+/// `has(<path>)` as CEL text: `has(a.b)` when every segment after the root
+/// is an identifier; a last segment that is not one is a member test,
+/// `('<m>' in <family>)` (0.49.0 §5.3); an earlier one is a quoted index
+/// (`has(a["x-y"].b)`).
+fn has_to_cel(path: &str) -> String {
+    let Some((family, member)) = path.rsplit_once('.') else {
+        return format!("has({path})");
+    };
+    let spelled = lute_manifest::text::bracket_spelling_of(family);
+    if lute_manifest::ident::is_ident(member) {
+        format!("has({spelled}.{member})")
+    } else {
+        format!("({} in {spelled})", cel_quote(member))
     }
 }
 

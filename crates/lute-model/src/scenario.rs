@@ -122,13 +122,9 @@ pub fn assemble_root_scenario(
                     .any(|s| s.byte_start == span.byte_start && s.byte_end == span.byte_end)
             })
             .collect();
-        per_doc.scene.insert(
-            key.clone(),
-            (
-                envelope::guaranteed(&assigned),
-                envelope::possible_writes(&all_nodes),
-            ),
-        );
+        per_doc
+            .scene
+            .insert(key.clone(), envelope::scene_effects(&assigned, &all_nodes));
         reads_per_scene.insert(key.clone(), reads);
     }
     let (route_envs, tainted) = envelope::propagate(&graph, &per_doc);

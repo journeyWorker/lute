@@ -60,9 +60,9 @@
 //! writes (0.49.0 §5.2); [`check_definite_assignment`] returns `writes`'
 //! end-of-document join as the envelope's guaranteed-write must-set `G`
 //! (`crate::envelope::guaranteed`, dsl §4.3), so a guard proof can never leak
-//! into `G` without a matching write. `possible_writes` (`P`) counts no
-//! directive effect, so a scene's `G` also joins its `Possible` side
-//! (`envelope::eval_formula`): `Guaranteed ⊆ Possible` holds per node.
+//! into `G` without a matching write. `possible_writes` counts no directive
+//! effect, so a scene's `P` is `possible_writes ∪ G`
+//! (`envelope::scene_effects`): `G ⊆ P` holds per document.
 //!
 //! ## Spans (cel-parser 0.10.1 carry-forward, T3.1/T4.3)
 //! Per-node CEL byte offsets are unavailable, so a read diagnostic falls back to

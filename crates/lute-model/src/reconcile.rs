@@ -697,13 +697,9 @@ pub fn reconcile_collected(
                     .iter()
                     .any(|s| s.byte_start == span.byte_start && s.byte_end == span.byte_end)
             };
-            per_doc.scene.insert(
-                key.clone(),
-                (
-                    envelope::guaranteed(&assigned),
-                    envelope::possible_writes(&all_nodes),
-                ),
-            );
+            per_doc
+                .scene
+                .insert(key.clone(), envelope::scene_effects(&assigned, &all_nodes));
             let maybe_unset_messages: Vec<&str> = local_diags
                 .iter()
                 .filter(|d| d.code == "E-MAYBE-UNSET")
