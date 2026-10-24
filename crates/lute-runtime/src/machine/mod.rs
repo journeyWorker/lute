@@ -89,6 +89,23 @@ pub(crate) enum Step {
     Halt,
 }
 
+/// Why a runner walk stopped short ([`Machine::run`],
+/// [`Machine::advance_quests`], [`Machine::run_deferred_handlers`]): an
+/// unknown command kind or malformed record, or a walk-time refusal
+/// ([`Machine::refused`] tells which). `Display` is the message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WalkError {
+    pub message: String,
+}
+
+impl std::fmt::Display for WalkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for WalkError {}
+
 /// The `line` record fields that carry a line's identity, delivery and
 /// rendered translations — what a play transcript shows and `lute run
 /// --json` (the conformance contract) leaves out.
@@ -584,7 +601,7 @@ impl<D: Driver> Machine<D> {
 
     /// Drive the whole walk: `lute run` once per artifact; `lute play` (dsl
     /// 0.21.0 §6) once per presented beat, then [`Machine::into_carry`].
-    pub fn run(&mut self) -> Result<(), String> {
+    pub fn run(&mut self) -> Result<(), WalkError> {
         if self.code.kind == "quest" {
             self.run_quest();
         } else if self.code.kind == "lore" {
@@ -597,8 +614,14 @@ impl<D: Driver> Machine<D> {
             self.run_range(0, self.code.commands.len());
         }
         self.store.derive();
+        self.take_fatal()
+    }
+
+    /// The walk's outcome: `Err` with the fatal message it recorded, which
+    /// it takes.
+    pub(crate) fn take_fatal(&mut self) -> Result<(), WalkError> {
         match self.fatal.take() {
-            Some(msg) => Err(msg),
+            Some(message) => Err(WalkError { message }),
             None => Ok(()),
         }
     }

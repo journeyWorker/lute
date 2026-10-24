@@ -102,7 +102,7 @@ pub(crate) fn resolve_script_bridges(
             )
         })
         .collect();
-    resolve_bridges(p, at, &fields)?;
+    resolve_bridges(p, at, &fields).map_err(|e| e.to_string())?;
     bridge_queues(p, at, raw)
 }
 
@@ -127,8 +127,11 @@ pub(crate) fn bridge_queues(
                     .state
                     .iter()
                     .map(|w| w.path.as_str())
-                    .find(|path| resolve_state(p, path, "").is_err_and(|m| m == e));
-                let e = path.map_or_else(|| e.clone(), |path| format!("state `{path}` {e}"));
+                    .find(|path| {
+                        matches!(&e, lute_runtime::HostWriteError::Resolve(why)
+                            if resolve_state(p, path, "").err().as_ref() == Some(why))
+                    });
+                let e = path.map_or_else(|| e.to_string(), |path| format!("state `{path}` {e}"));
                 format!("{at}: `bridges.{tag}` answer {} `writes`: {e}", index + 1)
             })?;
             planned.push_back(PlannedBridgeAnswer {
@@ -172,15 +175,21 @@ fn resolve_writes(
             continue;
         }
         let write = match write {
-            RawWrite::Lit(lit) => resolve_state(p, path, lit).map(Write::Set),
+            RawWrite::Lit(lit) => resolve_state(p, path, lit)
+                .map(Write::Set)
+                .map_err(|e| e.to_string()),
             RawWrite::Add(d) => {
                 let ty = p
                     .state_table
                     .get(path)
                     .map(|e| e.get("type").and_then(Json::as_str));
                 let why = match ty {
-                    _ if path.starts_with("scene.") => resolve_state(p, path, "").err(),
-                    None if entry_flag(path).is_none() => resolve_state(p, path, "").err(),
+                    _ if path.starts_with("scene.") => {
+                        resolve_state(p, path, "").err().map(|e| e.to_string())
+                    }
+                    None if entry_flag(path).is_none() => {
+                        resolve_state(p, path, "").err().map(|e| e.to_string())
+                    }
                     Some(Some("int" | "double" | "number")) => None,
                     _ => Some(
                         "is not an `int` or `double` path, so it takes no `{ add: … }`".to_string(),

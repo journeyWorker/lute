@@ -326,7 +326,7 @@ fn run_one(mut m: Machine<Oracle>) -> RunResult {
         facts,
         quests: out.quest_status,
         flags: RunFlags {
-            error: result.err(),
+            error: result.err().map(|e| e.message),
             refused: out.refused,
             incomplete: out.incomplete,
         },

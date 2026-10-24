@@ -267,7 +267,7 @@ impl WalkDriver for PlayDriverState {
     }
     fn halt(
         &self,
-        result: Result<(), String>,
+        result: Result<(), lute_runtime::WalkError>,
         outcome: &Walked,
         what: &str,
         doc_json: &Json,
@@ -360,7 +360,7 @@ pub(crate) fn outcome_halt(outcome: &Walked, what: &str, doc_json: &Json) -> Opt
 }
 
 pub(crate) fn walk_stop(
-    result: Result<(), String>,
+    result: Result<(), lute_runtime::WalkError>,
     outcome: &Walked,
     what: &str,
     doc_json: &Json,

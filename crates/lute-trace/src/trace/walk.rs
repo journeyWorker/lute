@@ -27,7 +27,7 @@ pub(crate) fn run_walk(m: &mut Machine<&mut TraceDriver<'_>>) -> Walked {
     let refused = m.refused();
     let (incomplete, terminated) = (m.incomplete(), m.terminated());
     match result {
-        Err(msg) => Walked::Refused(vec![m.driver_mut().refusal(msg, refused)]),
+        Err(e) => Walked::Refused(vec![m.driver_mut().refusal(e.message, refused)]),
         Ok(()) if incomplete => Walked::Incomplete,
         Ok(()) if terminated => Walked::Ended,
         Ok(()) => {

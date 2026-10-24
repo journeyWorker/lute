@@ -317,9 +317,9 @@ pub fn run_artifact(
         m.bind_occasion_target(None);
     }
     match result {
-        Err(msg) => envelope::fail(CliError::input(
+        Err(e) => envelope::fail(CliError::input(
             artifact,
-            format!("lute run: {}", lute_core_span::plain_message(&msg)),
+            format!("lute run: {}", lute_core_span::plain_message(&e.message)),
         )),
         Ok(()) => {
             if json_out {

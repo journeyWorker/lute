@@ -403,7 +403,7 @@ pub struct NewRunReport {
 /// cleared; then the long form's seed (§1.1). `user.*`/`app.*`, user-tier
 /// quests, `entry.<id>.everRead`, other facts, `visited` and `once: user`
 /// spending persist.
-pub fn new_run(p: &ExecProject, w: &mut World, seed: &Writes) -> Result<NewRunReport, String> {
+pub fn new_run(p: &ExecProject, w: &mut World, seed: &Writes) -> Result<NewRunReport, AddError> {
     let run_tier = |path: &str| {
         path.starts_with("run.")
             || entry_flag(path).is_some_and(|(_, flag)| flag == "read")
@@ -495,10 +495,30 @@ pub fn new_run(p: &ExecProject, w: &mut World, seed: &Writes) -> Result<NewRunRe
     })
 }
 
+/// An `add` write [`apply_writes`] cannot make: `path` holds no number, or
+/// adding `add` to its `int` overflows.
+#[derive(Clone, Debug, PartialEq)]
+pub struct AddError {
+    pub path: String,
+    pub add: f64,
+}
+
+impl std::fmt::Display for AddError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "`{}` has no number value to add {} to",
+            self.path, self.add
+        )
+    }
+}
+
+impl std::error::Error for AddError {}
+
 /// Apply an `engine:` step's (or a `newRun` seed's) writes — `state:`, then
 /// `facts:`, then `retract:` — returning one transcript record per write in
 /// the runner's own record shapes (`set` / `assert` / `retract`).
-pub fn apply_writes(w: &mut World, writes: &Writes) -> Result<Vec<Json>, String> {
+pub fn apply_writes(w: &mut World, writes: &Writes) -> Result<Vec<Json>, AddError> {
     let mut records = Vec::new();
     for (path, write) in &writes.state {
         #[expect(
@@ -513,7 +533,10 @@ pub fn apply_writes(w: &mut World, writes: &Writes) -> Result<Vec<Json>, String>
                 Some(Value::Double(n)) => Some(Value::Double(n + d)),
                 _ => None,
             }
-            .ok_or_else(|| format!("`{path}` has no number value to add {d} to"))?,
+            .ok_or_else(|| AddError {
+                path: path.clone(),
+                add: *d,
+            })?,
         };
         records.push(json!({ "kind": "set", "path": path, "value": value_to_json(&v) }));
         w.state.insert(path.clone(), v);

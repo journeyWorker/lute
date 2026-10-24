@@ -30,13 +30,14 @@ pub use input::{
 };
 pub use machine::{
     render_fact, value_to_json, value_to_string, BridgeReads, Carry, EvalObserver, EvalSnapshot,
-    Machine, Seed, LINE_DELIVERY_KEYS, MENU_MARK_KEYS, NOTE_NO_DECISION, NOTE_NO_ELIGIBLE,
-    NOTE_SKIPPED,
+    Machine, Seed, WalkError, LINE_DELIVERY_KEYS, MENU_MARK_KEYS, NOTE_NO_DECISION,
+    NOTE_NO_ELIGIBLE, NOTE_SKIPPED,
 };
 pub use runtime::{
-    resolve_bridge_writes, AdvanceBy, Await, ClockPosition, Continuation, Evaluation, Event, Input,
-    MenuAwait, MenuOptionAwait, Output, Phase, PickInput, Rejected, Runtime, SaveInput,
-    Seed as RuntimeSeed, Snapshot, SnapshotJsonInput, State, StateWrite, StreamLine, WritesInput,
+    resolve_bridge_writes, AdvanceBy, Await, ClockPosition, Continuation, Evaluation, Event,
+    HostWriteError, Input, MenuAwait, MenuOptionAwait, Output, Phase, PickInput, Rejected, Runtime,
+    SaveInput, Seed as RuntimeSeed, Snapshot, SnapshotJsonInput, State, StateWrite, StreamLine,
+    WritesInput,
 };
 pub use stage::{Stage, StageActor, StageBackground, StageCg, StageMusic, StageVideo};
 pub use value::{value_text, UnresolvedAtom, Value};

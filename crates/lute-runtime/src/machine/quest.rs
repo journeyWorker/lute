@@ -9,7 +9,7 @@ use std::sync::Arc;
 use serde_json::{json, Value as Json};
 
 use super::format::value_to_json;
-use super::{addr, fold_op, Code, Machine, Site};
+use super::{addr, fold_op, Code, Machine, Site, WalkError};
 use crate::driver::{Driver, SiteKind};
 use crate::eval::Read;
 use crate::expr::{Expr, Slot};
@@ -168,7 +168,7 @@ impl<D: Driver> Machine<D> {
     /// before` raise answered ([`Machine::with_deferred_handlers`]) — after
     /// the occasion's beats, in the order they fired. Their `when` was
     /// decided when they fired; a `::end` in one ends the rest.
-    pub fn run_deferred_handlers(&mut self, bodies: &[String]) -> Result<(), String> {
+    pub fn run_deferred_handlers(&mut self, bodies: &[String]) -> Result<(), WalkError> {
         self.quest_resume = true;
         let (_, _, seg_starts) = self.quest_program();
         for body in bodies {
@@ -178,10 +178,7 @@ impl<D: Driver> Machine<D> {
             self.run_segment(body, &seg_starts);
         }
         self.store.derive();
-        match self.fatal.take() {
-            Some(msg) => Err(msg),
-            None => Ok(()),
-        }
+        self.take_fatal()
     }
 
     pub(crate) fn run_quest(&mut self) {
@@ -406,14 +403,11 @@ impl<D: Driver> Machine<D> {
     /// RESUMED ([`Machine::quest_resume`]): nothing already active, terminal or
     /// done transitions again. Called once per quest artifact after every
     /// presentation, so later beat conditions see real quest progress.
-    pub fn advance_quests(&mut self) -> Result<(), String> {
+    pub fn advance_quests(&mut self) -> Result<(), WalkError> {
         self.quest_resume = true;
         self.run_quest();
         self.store.derive();
-        match self.fatal.take() {
-            Some(msg) => Err(msg),
-            None => Ok(()),
-        }
+        self.take_fatal()
     }
 
     /// Re-evaluate the quest lifecycle to a fixpoint: referenced-child

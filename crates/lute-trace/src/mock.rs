@@ -1087,7 +1087,9 @@ pub fn state_member_problem(
         // An inline `{ enum: […] }` has no name of its own: its path is it.
         None => (path, schema.string_members(path)?),
     };
-    lute_runtime::session::member_of(domain, members, literal).err()
+    lute_runtime::session::member_of(domain, members, literal)
+        .err()
+        .map(|e| e.to_string())
 }
 
 /// `E-TRACE-MOCK-UNDECLARED` for `path` (dsl 0.4.0 §4.3, 0.1 §11.1.1) —

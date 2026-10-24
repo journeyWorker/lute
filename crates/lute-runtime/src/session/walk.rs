@@ -123,7 +123,7 @@ pub fn describe_atoms(atoms: &[UnresolvedAtom]) -> String {
 /// How a finished runner walk halts the playthrough, if it does.
 pub fn walk_stop<F: super::WalkDriver>(
     factory: &F,
-    result: Result<(), String>,
+    result: Result<(), crate::WalkError>,
     outcome: &Walked,
     what: &str,
     doc_json: &Json,

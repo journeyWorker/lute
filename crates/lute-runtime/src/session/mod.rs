@@ -66,7 +66,7 @@ pub trait WalkDriver {
     fn finish(&mut self, machine: Machine<Self::Driver>) -> Walked;
     fn halt(
         &self,
-        result: Result<(), String>,
+        result: Result<(), crate::WalkError>,
         outcome: &Walked,
         what: &str,
         doc_json: &Json,

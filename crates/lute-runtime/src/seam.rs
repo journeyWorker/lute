@@ -61,13 +61,30 @@ fn decide<D: Driver>(
     })
 }
 
+/// The project's `terminal:` condition could not be decided
+/// ([`terminal_holds`]): `reason` names what was unknown, `atoms` are the
+/// reads that left it so.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UndecidedError {
+    pub reason: String,
+    pub atoms: Vec<crate::UnresolvedAtom>,
+}
+
+impl std::fmt::Display for UndecidedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.reason)
+    }
+}
+
+impl std::error::Error for UndecidedError {}
+
 /// Whether the project's `terminal:` holds in `w` (`Ok(false)` without
 /// one); `Err` names what was unknown.
 pub fn terminal_holds(
     p: &ExecProject,
     w: &World,
     observer: Option<SessionEvalObserver>,
-) -> Result<bool, String> {
+) -> Result<bool, UndecidedError> {
     match &p.conds.terminal {
         None => Ok(false),
         Some(t) => decide(
@@ -80,7 +97,7 @@ pub fn terminal_holds(
                 .with_visited(&w.visited),
             t,
         )
-        .map_err(|(why, _)| why),
+        .map_err(|(reason, atoms)| UndecidedError { reason, atoms }),
     }
 }
 
