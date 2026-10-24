@@ -253,12 +253,19 @@ impl Cx<'_> {
         };
         let input = self.input;
         let snapshot = input.snapshot();
+        // The directive's own attr, a plugin stamp, else an undeclared timing
+        // key's universal type (#193) on a known directive.
         let decl = snapshot
             .directive(&dir.tag)
             .and_then(|d| d.attrs.iter().find(|ad| ad.name == a.key))
-            .or_else(|| snapshot.stamp_attrs.get(&a.key));
+            .or_else(|| snapshot.stamp_attrs.get(&a.key))
+            .map(std::borrow::Cow::Borrowed)
+            .or_else(|| {
+                snapshot.directive(&dir.tag)?;
+                crate::directives::timing_ref_decl(&dir.tag, &a.key).map(std::borrow::Cow::Owned)
+            });
         if let Some(adecl) = decl {
-            self.check_folded(&format!("::{}", dir.tag), adecl, a, &folded);
+            self.check_folded(&format!("::{}", dir.tag), &adecl, a, &folded);
         }
     }
 

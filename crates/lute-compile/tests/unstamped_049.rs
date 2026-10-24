@@ -179,3 +179,21 @@ fn a_line_wait_bool_reference_lowers_to_timing_wait() {
         "{line:#?}"
     );
 }
+
+/// #193: a bool constant reference on a directive's undeclared `wait` folds
+/// into the record's `timing.wait`, overriding the kind's default.
+#[test]
+fn a_directive_wait_bool_reference_lowers_to_timing_wait() {
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+                defs:\n  off: { type: bool, cel: \"false\" }\n---\n\n## Shot 1.\n\n\
+                ::bg{location=\"cafe\" wait=@off}\n@narrator: a\n";
+    let bg = commands(text)
+        .into_iter()
+        .find(|c| c["kind"] == "bg")
+        .expect("a bg record");
+    assert_eq!(
+        bg["timing"],
+        serde_json::json!({ "wait": false }),
+        "{bg:#?}"
+    );
+}

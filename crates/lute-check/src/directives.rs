@@ -455,6 +455,34 @@ pub(crate) fn universal_timing_decl(key: &str) -> Option<AttrDecl> {
     })
 }
 
+/// The type an undeclared timing key (`wait`/`duration`/`delay`) on `::tag`
+/// holds a `@ref` value to, as a literal is held by
+/// [`universal_timing_decl`] (#193): `None` for any other key, and on a
+/// directive with no stamp carrier, where the key is refused outright
+/// (0.49.0 §4.1). Callers consult it after the directive's own declaration.
+pub(crate) fn timing_ref_decl(tag: &str, key: &str) -> Option<AttrDecl> {
+    if lute_manifest::core::UNSTAMPED_DIRECTIVES.contains(&tag) {
+        return None;
+    }
+    universal_timing_decl(key)
+}
+
+/// The type a `@ref` value of attribute `key` on a known `::tag` is checked
+/// against (`E-REF-TYPE`): the directive's own declaration, else an
+/// undeclared timing key's universal type ([`timing_ref_decl`], #193).
+pub(crate) fn directive_ref_type(
+    snapshot: &CapabilitySnapshot,
+    tag: &str,
+    key: &str,
+) -> Option<Type> {
+    let decl = snapshot.directive(tag)?;
+    decl.attrs
+        .iter()
+        .find(|a| a.name == key)
+        .map(|a| a.ty.clone())
+        .or_else(|| timing_ref_decl(tag, key).map(|a| a.ty))
+}
+
 /// A declared attr `default` as the authored attribute value it stands in
 /// for. `None` for a list or map default, which no attribute spelling writes.
 fn default_attr_value(default: &Literal) -> Option<AttrValue> {

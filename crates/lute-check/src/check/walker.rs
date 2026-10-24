@@ -634,14 +634,16 @@ impl Walker<'_> {
 
     /// Validate every `@ref`-valued attribute's CEL slot in the current scope.
     /// `directive_tag` is `Some` only for directive attrs, letting a `@ref` attr
-    /// value be typed against the attr's declared type (`E-REF-TYPE`, dsl §8).
+    /// value be typed against the attr's declared type (`E-REF-TYPE`, dsl §8),
+    /// or an undeclared timing key's universal type (#193).
     fn check_attr_refs(&mut self, attrs: &[Attr], ctx: &Ctx<'_>, directive_tag: Option<&str>) {
         for attr in attrs {
             if let AttrValue::Ref(slot) = &attr.value {
                 let expected = directive_tag
-                    .and_then(|tag| self.snapshot.directive(tag))
-                    .and_then(|decl| decl.attrs.iter().find(|a| a.name == attr.key))
-                    .map(|a| ExpectedType::Ty(a.ty.clone()));
+                    .and_then(|tag| {
+                        crate::directives::directive_ref_type(self.snapshot, tag, &attr.key)
+                    })
+                    .map(ExpectedType::Ty);
                 self.diags
                     .extend(check_cel_slot(slot, self.arena, ctx, expected.as_ref()));
             }

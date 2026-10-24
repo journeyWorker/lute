@@ -1096,10 +1096,10 @@ fn body_attr_refs(
     for attr in attrs {
         if let AttrValue::Ref(slot) = &attr.value {
             let expected = match of {
-                RefsOf::Directive(tag) => snapshot
-                    .directive(tag)
-                    .and_then(|decl| decl.attrs.iter().find(|a| a.name == attr.key))
-                    .map(|a| ExpectedType::Ty(a.ty.clone())),
+                RefsOf::Directive(tag) => {
+                    crate::directives::directive_ref_type(snapshot, tag, &attr.key)
+                        .map(ExpectedType::Ty)
+                }
                 RefsOf::Line => {
                     crate::content_line::typed_line_attr(&attr.key).map(|a| ExpectedType::Ty(a.ty))
                 }

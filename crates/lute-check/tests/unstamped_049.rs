@@ -452,3 +452,69 @@ fn a_component_line_wait_param_must_be_a_bool() {
     assert_eq!(refs.len(), 1, "only `@hold` is no bool: {ds:#?}");
     assert!(refs[0].contains("hold"), "{refs:?}");
 }
+
+const TIMING_DEFS: &str = "defs:\n  n: { type: int, cel: \"1\" }\n  s: { type: string, cel: \"'x'\" }\n  \
+                           off: { type: bool, cel: \"false\" }\n  half: { type: double, cel: \"0.5\" }\n";
+
+/// #193: a `@ref` timing value on a directive that does not declare the key
+/// is held to the universal timing type (`wait` bool, `duration`/`delay`
+/// number); before, `::bg{wait=@n}` checked clean and the value vanished.
+#[test]
+fn an_undeclared_directive_timing_reference_is_typed() {
+    for body in [
+        "::bg{location=\"cafe\" wait=@n}\n@narrator: a\n",
+        "::bg{location=\"cafe\" wait=@s}\n@narrator: a\n",
+        "::sfx{assetId=\"x\" duration=@s}\n@narrator: a\n",
+        "::sfx{assetId=\"x\" delay=@off}\n@narrator: a\n",
+    ] {
+        let ds = diagnostics(&scene(TIMING_DEFS, body));
+        assert!(
+            errors(&ds).iter().any(|(c, _)| *c == "E-REF-TYPE"),
+            "{body}: {ds:#?}"
+        );
+    }
+    let ok = diagnostics(&scene(
+        TIMING_DEFS,
+        "::bg{location=\"cafe\" wait=@off}\n::sfx{assetId=\"x\" duration=@half delay=@half}\n@narrator: a\n",
+    ));
+    assert!(errors(&ok).is_empty(), "{ok:#?}");
+}
+
+/// #193 inside a component: a directive timing key bound to an int param is
+/// `E-REF-TYPE`; a bool param is clean.
+#[test]
+fn a_component_directive_timing_param_is_typed() {
+    let dir = lute_scratch::ScratchDir::new();
+    std::fs::write(
+        dir.join("c.lute"),
+        "---\ncomponent: c\nparams:\n  hold: int\n  go: bool\n---\n## Scene 1.\n\
+         ::bg{location=\"a\" wait=@hold}\n::bg{location=\"b\" wait=@go}\n@narrator: a\n",
+    )
+    .unwrap();
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\n---\n\
+                ## Shot 1.\n::use{component=\"c\" hold=\"1\" go=\"false\"}\n"
+        .to_string();
+    let (doc, _) = lute_syntax::parse(&text);
+    let (meta0, _) = lute_check::parse_meta(&doc.meta, &CapabilitySnapshot::default());
+    let components = lute_check::resolve_components(&dir, &meta0.components, doc.meta.span);
+    let input = CheckInput::new(
+        text,
+        "scene".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot(),
+            providers(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
+    let ds = check(&input).diagnostics;
+    let refs: Vec<&str> = errors(&ds)
+        .into_iter()
+        .filter(|(c, _)| *c == "E-REF-TYPE")
+        .map(|(_, m)| m)
+        .collect();
+    assert_eq!(refs.len(), 1, "only `@hold` is no bool: {ds:#?}");
+    assert!(refs[0].contains("hold"), "{refs:?}");
+}
