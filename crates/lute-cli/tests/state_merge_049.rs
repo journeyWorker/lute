@@ -144,6 +144,40 @@ fn an_extends_type_change_over_an_imported_kind_is_refused() {
     );
 }
 
+/// F5b review R2: an inline family over an imported kind beside an
+/// explicit member of it reports its members in path order — the order the
+/// family over the scene's own kind gives — for a `uses` redeclaration and
+/// an `extends` retype alike.
+#[test]
+fn a_family_beside_an_explicit_member_reports_in_path_order() {
+    for (link, code) in [
+        ("uses", "E-STATE-REDECLARE"),
+        ("extends", "E-EXTENDS-STATE-TYPE"),
+    ] {
+        let state = "  run.rep: { type: string, default: x, per: npc }\n  \
+                     run.rep.tavi: { type: string, default: y }\n";
+        let pending = scene_project(&format!("state-merge-049-r2-{link}"), link, state, "");
+        let own = scene_project(
+            &format!("state-merge-049-r2-{link}-own"),
+            link,
+            state,
+            OWN_NPC,
+        );
+        let (_, out) = run(&pending, &["check", "--project", "."]);
+        let (_, own_out) = run(&own, &["check", "--project", "."]);
+        assert_eq!(
+            state_errors(&out, code),
+            ["run.rep.brann", "run.rep.tavi"],
+            "{link}: {out}"
+        );
+        assert_eq!(
+            state_errors(&out, code),
+            state_errors(&own_out, code),
+            "{link}: {own_out}"
+        );
+    }
+}
+
 // ---- #196: the schema tier ---------------------------------------------
 
 /// A base schema declaring `npc` and `run.rep` per `npc`, a second schema
@@ -243,4 +277,42 @@ fn an_extends_schema_family_retyping_an_imported_kind_is_refused() {
         ["run.rep.brann", "run.rep.tavi"],
         "{out}"
     );
+}
+
+/// F5b review R1: the winning schema's family over another schema's kind
+/// is where its paths are declared. Its default outside the enum is
+/// `E-STATE-DECL` at its own key in `b.schema.yaml` — whether the base
+/// family in `a` is itself over another schema's kind (`c`) or over `a`'s
+/// own.
+#[test]
+fn a_refined_family_over_an_imported_kind_is_located_at_the_refinement() {
+    const B: &str = "extends: a.schema.yaml\nstate:\n  \
+                     run.rep: { type: { domain: mood }, default: bad, per: npc }\n";
+    const SCENE: &str = "---\nkind: scene\nid: s\nuses: b.schema.yaml\n---\n\n## X\n\n\
+                         @narrator: {{run.rep.tavi}}\n";
+    let kinds = "entities:\n  npc: { members: [tavi] }\nenums:\n  mood: [good]\n";
+    let family = "  run.rep: { type: { domain: mood }, default: good, per: npc }\n";
+    let in_c = format!("uses: c.schema.yaml\nstate:\n{family}");
+    let in_a = format!("{kinds}state:\n{family}");
+    for (name, files) in [
+        (
+            "kind-in-c",
+            vec![("c.schema.yaml", kinds), ("a.schema.yaml", in_c.as_str())],
+        ),
+        ("kind-in-a", vec![("a.schema.yaml", in_a.as_str())]),
+    ] {
+        let dir = lute_scratch::ScratchDir::named(&format!("state-merge-049-r1-{name}"));
+        let mut all = files;
+        all.extend([("b.schema.yaml", B), ("s.lute", SCENE)]);
+        write(&dir, &all);
+        let (code, out) = run(&dir, &["check", "s.lute"]);
+        assert_eq!(code, 1, "{name}: {out}");
+        assert!(
+            out.contains(
+                "    b.schema.yaml:3:3: error [E-STATE-DECL] `run.rep`'s `default: bad` is not a \
+                 member of enum `mood` [good]"
+            ),
+            "{name}: {out}"
+        );
+    }
 }

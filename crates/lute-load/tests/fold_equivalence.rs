@@ -296,6 +296,13 @@ fn an_inline_family_over_an_imported_kind_merges_identically() {
             "retype.lute",
             &scene("extends", "  run.bond: { type: string, per: npc }\n"),
         ),
+        (
+            "redeclare-member.lute",
+            &scene(
+                "uses",
+                "  run.bond: { type: string, per: npc }\n  run.bond.tavi: { type: string }\n",
+            ),
+        ),
     ]);
 }
 
@@ -341,6 +348,60 @@ fn a_schema_family_over_an_imported_kind_merges_identically() {
             &scene("peer.schema.yaml", "  run.seen: { type: bool }\n"),
         ),
     ]);
+}
+
+/// F5b review R1: a schema family over another schema's kind that wins the
+/// merge is where its paths are declared — its default outside the enum is
+/// rejected at that schema (`b.schema.yaml`) on the shared fold and on the
+/// full merge alike, whether the base family's kind is another schema's or
+/// the base's own.
+#[test]
+fn a_winning_family_over_an_imported_kind_is_located_at_its_schema() {
+    let kinds = "entities:\n  npc: { members: [tavi] }\nenums:\n  mood: [good]\n";
+    let family = "  run.rep: { type: { domain: mood }, default: good, per: npc }\n";
+    let in_c = format!("uses: c.schema.yaml\nstate:\n{family}");
+    let in_a = format!("{kinds}state:\n{family}");
+    for files in [
+        vec![("c.schema.yaml", kinds), ("a.schema.yaml", in_c.as_str())],
+        vec![("a.schema.yaml", in_a.as_str())],
+    ] {
+        let dir = lute_scratch::ScratchDir::named("fold-eq-r1");
+        let mut all = files;
+        all.push((
+            "b.schema.yaml",
+            "extends: a.schema.yaml\nstate:\n  \
+             run.rep: { type: { domain: mood }, default: bad, per: npc }\n",
+        ));
+        all.push((
+            "s.lute",
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nuses: b.schema.yaml\n---\n\
+             ## Shot 1.\n@narrator: hi\n",
+        ));
+        for (name, text) in &all {
+            std::fs::write(dir.join(name), text).expect("write a fixture");
+        }
+        let file = dir.join("s.lute");
+        let cache = InputCache::default();
+        assert_equivalent(&cache, &file, None);
+        let text = std::fs::read_to_string(&file).expect("read the document");
+        let (built, (doc, _)) = assemble_input(&cache, &file, text, None, None, None);
+        for (how, (_, diags, _)) in [
+            ("shared", fold_env(&doc, &built.input)),
+            ("full", fold_env_full_merge(&doc, &built.input)),
+        ] {
+            let rejected: Vec<_> = diags
+                .iter()
+                .filter(|d| d.code == "E-STATE-DECL" && d.message.contains("default: bad"))
+                .collect();
+            assert_eq!(rejected.len(), 1, "{how}: {diags:#?}");
+            assert!(
+                rejected[0]
+                    .message
+                    .contains("(declared in schema import `b.schema.yaml`)"),
+                "{how}: {rejected:#?}"
+            );
+        }
+    }
 }
 
 /// 0.49.0 §4.3 (#178): a reference-typed plugin frontmatter key is checked

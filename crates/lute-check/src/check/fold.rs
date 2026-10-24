@@ -729,7 +729,54 @@ fn fold_env_in(
         } else {
             Box::new(typed.state.decls.iter())
         };
-    for (path, decl) in inline {
+    // dsl 0.28.0: an inline `per:` over a kind an imported schema declares.
+    // One nobody else declares a member of joins whole; the members of any
+    // other are merged against the imports as an inline path is (#190),
+    // except a member this document declares itself, which keeps that
+    // declaration.
+    let (per_families, per_index, per_faults) = crate::meta::expand_per_pending(
+        &typed.per_pending,
+        &vocab.kinds,
+        &mut std::collections::BTreeMap::new(),
+    );
+    let mut pending_members: Vec<(String, crate::meta::StateDecl)> = Vec::new();
+    for (path, family) in per_families {
+        if !schema.declares_member_of(&path, &family)
+            && !typed.state.decls.declares_member_of(&path, &family)
+        {
+            schema.insert_family(path, family);
+            continue;
+        }
+        for m in family.members() {
+            let key = format!("{path}.{m}");
+            if !typed.state.decls.contains_key(&key) {
+                let decl = family.member(m).unwrap_or(family.decl()).clone();
+                pending_members.push((key, decl));
+            }
+        }
+    }
+    pending_members.sort_by(|a, b| a.0.cmp(&b.0));
+    // One stream in path order, as for a family over the document's own
+    // kind: its diagnostics come out in the same order.
+    let mut pending_iter = pending_members.iter().peekable();
+    let mut inline = inline.peekable();
+    loop {
+        let take_pending = match (inline.peek(), pending_iter.peek()) {
+            (Some((a, _)), Some((b, _))) => b.as_str() < &**a,
+            (None, Some(_)) => true,
+            (_, None) => false,
+        };
+        let (path, decl) = if take_pending {
+            let Some((k, d)) = pending_iter.next() else {
+                break;
+            };
+            (std::borrow::Cow::Borrowed(k.as_str()), d)
+        } else {
+            let Some(item) = inline.next() else {
+                break;
+            };
+            item
+        };
         merge_inline_decl(
             &mut schema,
             imports,
@@ -739,6 +786,8 @@ fn fold_env_in(
             &mut state_merge_diags,
         );
     }
+    // The stream borrows `typed`, which the folded environment takes below.
+    drop(inline);
     {
         let overlay = schema.overlay_mut();
         overlay.faulty.extend(typed.state.faulty.iter().cloned());
@@ -757,30 +806,6 @@ fn fold_env_in(
             if schema.invalid(&path).is_none() {
                 schema.overlay_mut().invalid.insert(path, decl);
             }
-        }
-    }
-    // dsl 0.28.0: an inline `per:` over a kind an imported schema declares.
-    let (per_families, per_index, per_faults) = crate::meta::expand_per_pending(
-        &typed.per_pending,
-        &vocab.kinds,
-        &mut std::collections::BTreeMap::new(),
-    );
-    for (path, family) in per_families {
-        if !schema.declares_member_of(&path, &family) {
-            schema.insert_family(path, family);
-            continue;
-        }
-        // #190: a member this document declares itself keeps that
-        // declaration (merged above); every other member is merged against
-        // the imports as an inline path is — a `uses`-peer redeclaration is
-        // refused, an `extends` refinement applies with its type guarded.
-        for m in family.members() {
-            let key = format!("{path}.{m}");
-            if typed.state.decls.contains_key(&key) {
-                continue;
-            }
-            let decl = family.member(m).unwrap_or(family.decl());
-            merge_inline_decl(&mut schema, imports, &key, decl, at, &mut state_merge_diags);
         }
     }
     if !per_index.is_empty() {

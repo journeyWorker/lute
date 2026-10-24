@@ -187,12 +187,19 @@ fn foreign_kind_is_e_reward_kind_when_vocabulary_declared() {
 
 /// dsl 0.26.0 §2.5 (T1-8): a snapshot whose `ITEM` kind carries `target`.
 fn snap_with_target(target: lute_manifest::schema::RewardTarget) -> CapabilitySnapshot {
+    snap_with_target_contract(Some(target))
+}
+
+/// A snapshot whose `ITEM` kind has `target:` as given (absent when `None`).
+fn snap_with_target_contract(
+    target: Option<lute_manifest::schema::RewardTarget>,
+) -> CapabilitySnapshot {
     let mut snap = lute_manifest::core::load_core_snapshot();
     snap.reward_kinds.insert(
         "ITEM".into(),
         RewardKindDecl {
             name: "ITEM".into(),
-            target: Some(target),
+            target,
             ..Default::default()
         },
     );
@@ -413,16 +420,17 @@ fn an_unquoted_target_is_refused_under_every_contract() {
         })
     };
     let contracts = [
-        ("required", entity_contract("bagItem", true)),
-        ("entity", entity_contract("bagItem", false)),
+        ("required", Some(entity_contract("bagItem", true))),
+        ("entity", Some(entity_contract("bagItem", false))),
         (
             "provider",
-            lute_manifest::schema::RewardTarget {
+            Some(lute_manifest::schema::RewardTarget {
                 provider: Some("items".into()),
                 ..Default::default()
-            },
+            }),
         ),
-        ("none", lute_manifest::schema::RewardTarget::default()),
+        // The kind declares no `target:` at all.
+        ("none", None),
     ];
     for (name, contract) in contracts {
         for (attr, anchor, why) in [
@@ -442,7 +450,7 @@ fn an_unquoted_target_is_refused_under_every_contract() {
                 "reward".into(),
                 Mode::Author,
                 lute_check::InputSources::from_parts(
-                    snap_with_target(contract.clone()),
+                    snap_with_target_contract(contract.clone()),
                     catalog(),
                     SchemaImports::default(),
                     Default::default(),

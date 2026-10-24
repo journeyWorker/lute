@@ -1135,7 +1135,7 @@ fn resolve_imports_in(
     by_depth.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(b.1)));
     let mut origins = crate::rel_schema::DeclOrigins::default();
     let mut unparsed_heads = BTreeSet::new();
-    for (_, _, doc) in &by_depth {
+    for (_, canon, doc) in &by_depth {
         for (dst, src) in [
             (&mut origins.relations, &doc.origins.relations),
             (&mut origins.kinds, &doc.origins.kinds),
@@ -1153,6 +1153,15 @@ fn resolve_imports_in(
             }
         }
         origins.state.merge_first(&doc.origins.state);
+        // Its families over another schema's kind (#196), after its own
+        // declarations: the same closest-first order as the state merge.
+        for p in pending_of(canon) {
+            origins.state.add_family_at(
+                &p.path,
+                std::sync::Arc::clone(p.family.shared_members()),
+                p.origin.clone(),
+            );
+        }
         unparsed_heads.extend(doc.failed_heads.iter().cloned());
     }
     // Where each imported `add:` member is written — the first `add:` of it

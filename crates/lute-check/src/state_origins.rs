@@ -38,7 +38,17 @@ pub struct StateOrigins {
 struct FamilyOrigin {
     /// Sorted, as [`crate::meta::StateFamily::members`].
     members: Arc<[String]>,
-    home: Arc<StateHome>,
+    home: FamilyHome,
+}
+
+/// Where a family's members are declared.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum FamilyHome {
+    /// In the file's `state:`, each member located on demand.
+    File(Arc<StateHome>),
+    /// At the family's key: a `per:` over a kind another schema declares
+    /// lists no member in its own file (dsl 0.28.0).
+    Key(DeclOrigin),
 }
 
 impl FamilyOrigin {
@@ -46,6 +56,13 @@ impl FamilyOrigin {
         self.members
             .binary_search_by(|m| m.as_str().cmp(member))
             .is_ok()
+    }
+
+    fn origin(&self) -> StateOrigin<'_> {
+        match &self.home {
+            FamilyHome::File(home) => StateOrigin::Member(home),
+            FamilyHome::Key(at) => StateOrigin::At(at),
+        }
     }
 }
 
@@ -154,7 +171,7 @@ impl StateOrigins {
             .map(|(path, family)| {
                 let origin = FamilyOrigin {
                     members: Arc::clone(family.shared_members()),
-                    home: Arc::clone(&home),
+                    home: FamilyHome::File(Arc::clone(&home)),
                 };
                 (path.clone(), vec![origin])
             })
@@ -181,7 +198,7 @@ impl StateOrigins {
             .get(family)?
             .iter()
             .find(|f| f.has(member))
-            .map(|f| StateOrigin::Member(&f.home))
+            .map(FamilyOrigin::origin)
     }
 
     /// Where `path` is declared, else where the first declared path under
@@ -227,7 +244,7 @@ impl StateOrigins {
                     .filter(move |m| !origins[..i].iter().any(|e| e.has(m)))
                     .map(move |m| format!("{path}.{m}"))
                     .filter(|key| !self.explicit.contains_key(key))
-                    .map(move |key| (Cow::Owned(key), StateOrigin::Member(&f.home)))
+                    .map(move |key| (Cow::Owned(key), f.origin()))
             })
         });
         explicit.chain(members)
@@ -246,6 +263,19 @@ impl StateOrigins {
                 .or_default()
                 .extend(origins.iter().cloned());
         }
+    }
+
+    /// Add the `per:` family at `path` over `members` (sorted) whose members
+    /// are declared at `at`, its key, after every family already there; an
+    /// explicit path or an earlier family keeps a member it names.
+    pub(crate) fn add_family_at(&mut self, path: &str, members: Arc<[String]>, at: DeclOrigin) {
+        self.families
+            .entry(path.to_string())
+            .or_default()
+            .push(FamilyOrigin {
+                members,
+                home: FamilyHome::Key(at),
+            });
     }
 
     /// Drop every path `decls` declares.
