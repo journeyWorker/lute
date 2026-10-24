@@ -224,15 +224,18 @@ pub(crate) fn check_occasion(
 /// domain's prefix, and for any `<prefix>.<id>` of an `open:` kind (its
 /// members are engine-populated). A domain with a `members:` subset admits
 /// exactly `<prefix>.<member>` for a listed member — and every listed member
-/// must belong to a closed kind (an `open:` kind's cannot be known). The
-/// `Err` is the whole reason, with a did-you-mean over the legal
-/// `<prefix>.<member>` targets (or, for a stray listed member, over the
-/// kind's members) when one is close.
+/// must belong to a closed kind (an `open:` kind's cannot be known).
+///
+/// # Errors
+///
+/// [`BeatTargetError`], whose text is the whole reason, with a did-you-mean
+/// over the legal `<prefix>.<member>` targets (or, for a stray listed
+/// member, over the kind's members) when one is close.
 pub fn occasion_target_ok(
     decl: &OccasionDecl,
     target: &str,
     kinds: &BTreeMap<String, EntityKindDecl>,
-) -> Result<(), String> {
+) -> Result<(), BeatTargetError> {
     let OccasionTarget::Domain {
         prefix,
         entity,
@@ -243,10 +246,10 @@ pub fn occasion_target_ok(
     };
     let on = &decl.name;
     let Some(kind) = kinds.get(entity) else {
-        return Err(format!(
-            "occasion `{on}` draws its targets from entity kind `{entity}`, which the project \
-             does not declare under `entities:`"
-        ));
+        return Err(BeatTargetError::UndeclaredEntity {
+            on: on.clone(),
+            entity: entity.clone(),
+        });
     };
     // `open:` members are engine-populated: only the prefix is checked. An
     // invalid kind is `E-ENTITY-KIND-SHAPE`'s, never this rule's.
@@ -256,105 +259,261 @@ pub fn occasion_target_ok(
     };
     if let (Some(subset), Some(ms)) = (subset, kind_members) {
         if let Some(stray) = subset.iter().find(|m| !ms.contains(m)) {
-            let hint = lute_manifest::suggest::nearest(stray, ms.iter().map(String::as_str), 2)
-                .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
-            return Err(format!(
-                "occasion `{on}` lists `{stray}` in its target `members:`, but `{stray}` is not \
-                 a member of entity kind `{entity}`{hint}"
-            ));
+            return Err(BeatTargetError::StrayMember {
+                on: on.clone(),
+                stray: stray.clone(),
+                entity: entity.clone(),
+                near: lute_manifest::suggest::nearest(stray, ms.iter().map(String::as_str), 2)
+                    .map(str::to_string),
+            });
         }
     }
     let member = target
         .strip_prefix(prefix.as_str())
         .and_then(|rest| rest.strip_prefix('.'))
         .filter(|m| !m.is_empty());
+    let outside = |domain: Option<Vec<String>>| {
+        let near = domain.as_ref().and_then(|d| {
+            lute_manifest::suggest::nearest(target, d.iter().map(String::as_str), 2)
+                .map(str::to_string)
+        });
+        BeatTargetError::Outside(Box::new(OutsideDomain {
+            target: target.to_string(),
+            on: on.clone(),
+            prefix: prefix.clone(),
+            entity: entity.clone(),
+            domain,
+            subset: subset.is_some(),
+            near,
+        }))
+    };
     let Some(legal) = decl.target.domain_members(kind_members) else {
         return match member {
             Some(_) => Ok(()),
-            None => Err(format!(
-                "target `{target}` is outside occasion `{on}`'s domain: its targets are \
-                 `{prefix}.<{entity}>`"
-            )),
+            None => Err(outside(None)),
         };
     };
     if member.is_some_and(|m| legal.iter().any(|x| x == m)) {
         return Ok(());
     }
-    let domain: Vec<String> = legal.iter().map(|m| format!("{prefix}.{m}")).collect();
-    let hint = lute_manifest::suggest::nearest(target, domain.iter().map(String::as_str), 2)
-        .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
-    // A long domain is named by its first few members; the did-you-mean
-    // carries the one that matters.
-    pub(crate) const SHOWN: usize = 8;
-    let mut listed = domain
-        .iter()
-        .take(SHOWN)
-        .map(|t| format!("`{t}`"))
-        .collect::<Vec<_>>()
-        .join(", ");
-    if domain.len() > SHOWN {
-        listed.push_str(&format!(", … {} more", domain.len() - SHOWN));
-    }
-    Err(if subset.is_some() {
-        format!(
-            "target `{target}` is outside occasion `{on}`'s member list ({listed}), a subset of \
-             entity kind `{entity}`{hint}"
-        )
-    } else {
-        format!(
-            "target `{target}` is outside occasion `{on}`'s domain `{prefix}.<{entity}>` \
-             ({listed}){hint}"
-        )
-    })
+    Err(outside(Some(
+        legal.iter().map(|m| format!("{prefix}.{m}")).collect(),
+    )))
 }
 
 /// dsl 0.26.0 §5: the targets a `target="kind:<kind>"` beat on `decl`
 /// answers — the domain's prefix and the kind's members (a sub-kind's
 /// members are already its parent's). The one rule `lute check` (beat
 /// targets, [`E_BEAT_ATTR`]), the compiler (the beat's `targetKind`) and
-/// `lute play` (candidates) share. `Err` when the occasion draws no targets
-/// from an entity kind, the kind is unknown (with a did-you-mean) or `open:`,
-/// or a member lies outside the occasion's domain.
+/// `lute play` (candidates) share.
+///
+/// # Errors
+///
+/// [`BeatTargetError`] when the occasion draws no targets from an entity
+/// kind, the kind is unknown (with a did-you-mean) or `open:`, or a member
+/// lies outside the occasion's domain.
 pub fn kind_target_members(
     decl: &OccasionDecl,
     kind: &str,
     kinds: &BTreeMap<String, EntityKindDecl>,
-) -> Result<(String, Vec<String>), String> {
+) -> Result<(String, Vec<String>), BeatTargetError> {
     let on = &decl.name;
     let OccasionTarget::Domain { prefix, entity, .. } = &decl.target else {
-        return Err(format!(
-            "`target=\"kind:{kind}\"` answers occasion `{on}` for every member of a kind, but \
-             `{on}` does not draw its targets from an entity kind (declare its `target:` as \
-             `{{ prefix, entity }}`) (dsl 0.26.0 §5)"
-        ));
+        return Err(BeatTargetError::KindWithoutDomain {
+            kind: kind.to_string(),
+            on: on.clone(),
+        });
     };
     let Some(decl_kind) = kinds.get(kind) else {
-        let hint = lute_manifest::suggest::nearest(kind, kinds.keys().map(String::as_str), 2)
-            .map_or_else(String::new, |near| {
-                format!(" — did you mean `kind:{near}`?")
-            });
-        return Err(format!(
-            "`target=\"kind:{kind}\"`: `{kind}` is not a declared entity kind{hint} (dsl 0.26.0 §5)"
-        ));
+        return Err(BeatTargetError::UnknownKind {
+            kind: kind.to_string(),
+            near: lute_manifest::suggest::nearest(kind, kinds.keys().map(String::as_str), 2)
+                .map(str::to_string),
+        });
     };
     let KindShape::Members(members) = &decl_kind.shape else {
-        return Err(format!(
-            "`target=\"kind:{kind}\"`: entity kind `{kind}` is `open:`, so its members are not \
-             known to check or play; target a kind that lists its `members:` (dsl 0.26.0 §5)"
-        ));
+        return Err(BeatTargetError::OpenKind {
+            kind: kind.to_string(),
+        });
     };
     let entity_members = match kinds.get(entity).map(|k| &k.shape) {
         Some(KindShape::Members(ms)) => Some(ms.as_slice()),
         _ => None,
     };
     let legal = decl.target.domain_members(entity_members);
-    let outside: Vec<&str> = members
+    let outside: Vec<String> = members
         .iter()
         .filter(|m| legal.is_none_or(|l| !l.contains(m)))
-        .map(String::as_str)
+        .cloned()
         .collect();
     if !outside.is_empty() {
-        return Err(format!(
+        return Err(BeatTargetError::KindOutside(Box::new(KindOutside {
+            kind: kind.to_string(),
+            on: on.clone(),
+            prefix: prefix.clone(),
+            entity: entity.clone(),
+            outside,
+        })));
+    }
+    Ok((prefix.clone(), members.clone()))
+}
+
+/// Why a beat target is outside its occasion's target domain
+/// ([`occasion_target_ok`], a `kind:` target [`kind_target_members`]). The
+/// text is the whole `E-BEAT-ATTR` reason.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BeatTargetError {
+    /// Occasion `on` draws its targets from an entity kind the project does
+    /// not declare.
+    UndeclaredEntity { on: String, entity: String },
+    /// Occasion `on` lists a target member that is not a member of its
+    /// entity kind; `near` is the closest member.
+    StrayMember {
+        on: String,
+        stray: String,
+        entity: String,
+        near: Option<String>,
+    },
+    /// A concrete target outside the occasion's domain.
+    Outside(Box<OutsideDomain>),
+    /// A `kind:` target on an occasion that draws no targets from an entity
+    /// kind.
+    KindWithoutDomain { kind: String, on: String },
+    /// A `kind:` target naming no declared kind; `near` is the closest one.
+    UnknownKind { kind: String, near: Option<String> },
+    /// A `kind:` target naming an `open:` kind.
+    OpenKind { kind: String },
+    /// A `kind:` target with members outside the occasion's domain.
+    KindOutside(Box<KindOutside>),
+}
+
+/// [`BeatTargetError::Outside`]: `domain` is the legal `<prefix>.<member>`
+/// targets (`None` for an `open:` kind, whose targets are any
+/// `<prefix>.<id>`); `subset` when the occasion lists `members:`; `near` is
+/// the closest legal target.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OutsideDomain {
+    pub target: String,
+    pub on: String,
+    pub prefix: String,
+    pub entity: String,
+    pub domain: Option<Vec<String>>,
+    pub subset: bool,
+    pub near: Option<String>,
+}
+
+/// [`BeatTargetError::KindOutside`]: the members of `kind` outside occasion
+/// `on`'s domain `<prefix>.<entity>`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct KindOutside {
+    pub kind: String,
+    pub on: String,
+    pub prefix: String,
+    pub entity: String,
+    pub outside: Vec<String>,
+}
+
+impl std::fmt::Display for BeatTargetError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BeatTargetError::UndeclaredEntity { on, entity } => write!(
+                f,
+                "occasion `{on}` draws its targets from entity kind `{entity}`, which the project \
+                 does not declare under `entities:`"
+            ),
+            BeatTargetError::StrayMember {
+                on,
+                stray,
+                entity,
+                near,
+            } => write!(
+                f,
+                "occasion `{on}` lists `{stray}` in its target `members:`, but `{stray}` is not \
+                 a member of entity kind `{entity}`{}",
+                did_you_mean("", near.as_deref())
+            ),
+            BeatTargetError::Outside(outside) => outside.fmt(f),
+            BeatTargetError::KindWithoutDomain { kind, on } => write!(
+                f,
+                "`target=\"kind:{kind}\"` answers occasion `{on}` for every member of a kind, but \
+                 `{on}` does not draw its targets from an entity kind (declare its `target:` as \
+                 `{{ prefix, entity }}`) (dsl 0.26.0 §5)"
+            ),
+            BeatTargetError::UnknownKind { kind, near } => write!(
+                f,
+                "`target=\"kind:{kind}\"`: `{kind}` is not a declared entity kind{} (dsl 0.26.0 §5)",
+                did_you_mean("kind:", near.as_deref())
+            ),
+            BeatTargetError::OpenKind { kind } => write!(
+                f,
+                "`target=\"kind:{kind}\"`: entity kind `{kind}` is `open:`, so its members are not \
+                 known to check or play; target a kind that lists its `members:` (dsl 0.26.0 §5)"
+            ),
+            BeatTargetError::KindOutside(outside) => outside.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for BeatTargetError {}
+
+impl std::fmt::Display for OutsideDomain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let OutsideDomain {
+            target,
+            on,
+            prefix,
+            entity,
+            domain,
+            subset,
+            near,
+        } = self;
+        let Some(domain) = domain else {
+            return write!(
+                f,
+                "target `{target}` is outside occasion `{on}`'s domain: its targets are \
+                 `{prefix}.<{entity}>`"
+            );
+        };
+        // A long domain is named by its first few members; the did-you-mean
+        // carries the one that matters.
+        const SHOWN: usize = 8;
+        let mut listed = domain
+            .iter()
+            .take(SHOWN)
+            .map(|t| format!("`{t}`"))
+            .collect::<Vec<_>>()
+            .join(", ");
+        if domain.len() > SHOWN {
+            listed.push_str(&format!(", … {} more", domain.len() - SHOWN));
+        }
+        let hint = did_you_mean("", near.as_deref());
+        if *subset {
+            write!(
+                f,
+                "target `{target}` is outside occasion `{on}`'s member list ({listed}), a subset of \
+                 entity kind `{entity}`{hint}"
+            )
+        } else {
+            write!(
+                f,
+                "target `{target}` is outside occasion `{on}`'s domain `{prefix}.<{entity}>` \
+                 ({listed}){hint}"
+            )
+        }
+    }
+}
+
+impl std::fmt::Display for KindOutside {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let KindOutside {
+            kind,
+            on,
+            prefix,
+            entity,
+            outside,
+        } = self;
+        write!(
+            f,
             "`target=\"kind:{kind}\"`: {} outside occasion `{on}`'s domain `{prefix}.<{entity}>`; \
              a kind target names `{entity}` or one of its sub-kinds (dsl 0.26.0 §5)",
             outside
@@ -363,9 +522,15 @@ pub fn kind_target_members(
                 .collect::<Vec<_>>()
                 .join(", ")
                 + if outside.len() == 1 { " is" } else { " are" }
-        ));
+        )
     }
-    Ok((prefix.clone(), members.clone()))
+}
+
+/// ` — did you mean `<prefix><near>`?`, or nothing without a `near`.
+pub(crate) fn did_you_mean(prefix: &str, near: Option<&str>) -> String {
+    near.map_or_else(String::new, |near| {
+        format!(" — did you mean `{prefix}{near}`?")
+    })
 }
 
 /// dsl 0.22.0 §8: every beat target of one document — the scene's own
@@ -420,8 +585,10 @@ pub(crate) fn check_beat_target_domains(
                      `for=\"kind:{kind}\"` instead of `target`"
                 ))
             }
-            Some(kind) => kind_target_members(decl, kind, kinds).map(drop),
-            None => occasion_target_ok(decl, target, kinds),
+            Some(kind) => kind_target_members(decl, kind, kinds)
+                .map(drop)
+                .map_err(|e| e.to_string()),
+            None => occasion_target_ok(decl, target, kinds).map_err(|e| e.to_string()),
         };
         if let Err(why) = verdict {
             diags.push(beat_diag(E_BEAT_ATTR, Severity::Error, why, span, layer));

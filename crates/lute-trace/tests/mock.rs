@@ -840,3 +840,26 @@ fn parse_mock_surfaces_keeps_the_grammar_open() {
     assert!(m.choose.contains_key("g"));
     assert!(!m.choose.contains_key("h"));
 }
+
+/// 0.49.1: `parse_bridges`' typed refusal renders the 0.49.0 reason text.
+#[test]
+fn parse_bridges_error_text_is_the_0_49_0_message() {
+    let text = |yaml: &str| {
+        lute_trace::parse_bridges(&yaml_serde::from_str(yaml).unwrap())
+            .unwrap_err()
+            .to_string()
+    };
+    let shape = "`bridges:` must be a mapping of plugin directive tag -> a list of answers, each \
+                 a mapping of bridge result field -> literal";
+    assert_eq!(text("[a]"), shape);
+    assert_eq!(text("{check: 1}"), shape);
+    assert_eq!(
+        text("{check: [{passed: true}, 2]}"),
+        "`bridges.check` answer 2 must be a mapping of bridge result field -> literal, e.g. \
+         `{ passed: true }`"
+    );
+    assert_eq!(
+        text("{check: [{passed: [1]}]}"),
+        "`bridges.check` answer 1 must map field names to scalar literals (bool/number/string)"
+    );
+}

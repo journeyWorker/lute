@@ -100,26 +100,86 @@ pub const E_RULE_GUARD_DEF: &str = "E-RULE-GUARD-DEF";
 /// project's def table (dsl 0.24 T1-1). The output is `@`-free; an argument
 /// naming a rule variable (`@open(L)`) is spliced as `(L)` and bound by the
 /// evaluator exactly as an inline `L` is. A guard without refs is returned
-/// verbatim. `Err` says why the guard cannot be expanded.
+/// verbatim.
+///
+/// # Errors
+///
+/// [`RuleGuardError`], whose text says why the guard cannot be expanded.
 pub fn expand_rule_guard(
     cel: &str,
     defs: &crate::cel_expand::DefTable<'_>,
-) -> Result<String, String> {
+) -> Result<String, RuleGuardError> {
     for r in lute_cel::scan_refs(cel) {
         if r.is_dollar {
-            return Err("`$` (a match subject) has no meaning in a rule guard".to_string());
+            return Err(RuleGuardError::Subject);
         }
         let Some(params) = defs.bodies.get(&r.name).map(|_| defs.params.get(&r.name)) else {
-            return Err(format!("`@{}` names no def", r.name));
+            return Err(RuleGuardError::NoDef { name: r.name });
         };
         let want = params.map_or(0, Vec::len);
         let got = r.call.as_ref().map_or(0, |c| c.args.len());
         if want != got {
-            return Err(format!("`@{}` takes {want} arg(s), got {got}", r.name));
+            return Err(RuleGuardError::Arity {
+                name: r.name,
+                want,
+                got,
+            });
         }
     }
-    crate::cel_expand::expand_cel(cel, defs, None, &mut Vec::new())
-        .map_err(|error| error.to_string())
+    Ok(crate::cel_expand::expand_cel(
+        cel,
+        defs,
+        None,
+        &mut Vec::new(),
+    )?)
+}
+
+/// Why a rule guard cannot be expanded ([`expand_rule_guard`]): the
+/// [`E_RULE_GUARD_DEF`] reason.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RuleGuardError {
+    /// The guard uses the match subject `$`.
+    Subject,
+    /// `@name` names no def with a body.
+    NoDef { name: String },
+    /// `@name` is called with `got` args; the def takes `want`.
+    Arity {
+        name: String,
+        want: usize,
+        got: usize,
+    },
+    /// The expansion itself failed (for example a cycle).
+    Expand(crate::cel_expand::ExpandError),
+}
+
+impl From<crate::cel_expand::ExpandError> for RuleGuardError {
+    fn from(error: crate::cel_expand::ExpandError) -> Self {
+        RuleGuardError::Expand(error)
+    }
+}
+
+impl std::fmt::Display for RuleGuardError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RuleGuardError::Subject => {
+                f.write_str("`$` (a match subject) has no meaning in a rule guard")
+            }
+            RuleGuardError::NoDef { name } => write!(f, "`@{name}` names no def"),
+            RuleGuardError::Arity { name, want, got } => {
+                write!(f, "`@{name}` takes {want} arg(s), got {got}")
+            }
+            RuleGuardError::Expand(error) => error.fmt(f),
+        }
+    }
+}
+
+impl std::error::Error for RuleGuardError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            RuleGuardError::Expand(error) => Some(error),
+            _ => None,
+        }
+    }
 }
 
 /// dsl 0.24 T1-1: rewrite every rule guard of `vocab` to its def-expanded

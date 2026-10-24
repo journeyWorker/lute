@@ -285,6 +285,15 @@ impl ExpectError {
     }
 }
 
+/// The reason alone; the script adds where the entry is.
+impl std::fmt::Display for ExpectError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.msg)
+    }
+}
+
+impl std::error::Error for ExpectError {}
+
 /// Validate one `expect:` block. `top_level` selects the end-of-play key set
 /// ([`PLAY_EXPECT_KEYS`]) over the step set ([`STEP_EXPECT_KEYS`]). Every
 /// malformed key is reported, in the block's order — each a usage error

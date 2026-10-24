@@ -210,6 +210,8 @@ impl std::fmt::Display for IndexError {
     }
 }
 
+impl std::error::Error for IndexError {}
+
 /// Accumulate one name-keyed vocabulary axis, rejecting a same-name /
 /// different-signature redeclaration. "Signature" is the entry's own SERIALIZED
 /// form — exactly the bytes that would reach an artifact — so the comparison can

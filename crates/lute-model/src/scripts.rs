@@ -42,16 +42,18 @@ pub fn collect_scripts(dir: &Path) -> Vec<PathBuf> {
 ///
 /// # Errors
 ///
-/// The message `lute play` reports for a `choose:` that is not a mapping of
-/// branch/hub id to choice id(s) or `{ timeout: true }`.
-pub fn parse_choose(v: &yaml_serde::Value) -> Result<BTreeMap<String, Vec<ScriptedPick>>, String> {
+/// [`ChooseError`], whose text `lute play` reports for a `choose:` that is
+/// not a mapping of branch/hub id to choice id(s) or `{ timeout: true }`.
+pub fn parse_choose(
+    v: &yaml_serde::Value,
+) -> Result<BTreeMap<String, Vec<ScriptedPick>>, ChooseError> {
     let yaml_serde::Value::Mapping(entries) = v else {
-        return Err("`choose:` must be a mapping of branch/hub id to choice id(s)".into());
+        return Err(ChooseError::NotMapping);
     };
     let mut out = BTreeMap::new();
     for (key, value) in entries {
         let Some(id) = key.as_str() else {
-            return Err("`choose:` keys must be branch or hub ids".into());
+            return Err(ChooseError::KeyNotId);
         };
         let values = match value {
             yaml_serde::Value::Sequence(items) => items
@@ -70,11 +72,11 @@ fn parse_pick(
     id: &str,
     value: &yaml_serde::Value,
     item: Option<usize>,
-) -> Result<ScriptedPick, String> {
-    let where_ = item.map_or_else(
-        || format!("`choose.{id}`"),
-        |i| format!("`choose.{id}` list item {i}"),
-    );
+) -> Result<ScriptedPick, ChooseError> {
+    let at = || PickAt {
+        id: id.to_string(),
+        item,
+    };
     match value {
         yaml_serde::Value::String(option) if !option.trim().is_empty() => {
             Ok(ScriptedPick::Option(option.trim().to_string()))
@@ -82,22 +84,71 @@ fn parse_pick(
         yaml_serde::Value::Mapping(fields) => {
             let timeout = fields.get(yaml_serde::Value::String("timeout".into()));
             if fields.len() != 1 || timeout.is_none() {
-                return Err(format!(
-                    "{where_} mapping must be exactly `{{ timeout: true }}`"
-                ));
+                return Err(ChooseError::NotTimeoutMapping(at()));
             }
             if timeout.and_then(yaml_serde::Value::as_bool) != Some(true) {
-                return Err(format!(
-                    "{where_} timeout mapping must set `timeout` to `true`"
-                ));
+                return Err(ChooseError::TimeoutNotTrue(at()));
             }
             Ok(ScriptedPick::Timeout)
         }
-        _ => Err(format!(
-            "{where_} must be a choice id or `{{ timeout: true }}`"
-        )),
+        _ => Err(ChooseError::NotPick(at())),
     }
 }
+
+/// A `choose:` answer's place: `choose.<id>`, and its 1-based list item
+/// when the answers are a list.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PickAt {
+    pub id: String,
+    pub item: Option<usize>,
+}
+
+impl std::fmt::Display for PickAt {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let id = &self.id;
+        match self.item {
+            None => write!(f, "`choose.{id}`"),
+            Some(i) => write!(f, "`choose.{id}` list item {i}"),
+        }
+    }
+}
+
+/// Why [`parse_choose`] refused a `choose:` value.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ChooseError {
+    /// `choose:` is not a mapping.
+    NotMapping,
+    /// A `choose:` key that is not a string.
+    KeyNotId,
+    /// A mapping answer other than `{ timeout: <x> }`.
+    NotTimeoutMapping(PickAt),
+    /// `{ timeout: <x> }` with `<x>` not `true`.
+    TimeoutNotTrue(PickAt),
+    /// Neither a choice id nor a mapping.
+    NotPick(PickAt),
+}
+
+impl std::fmt::Display for ChooseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ChooseError::NotMapping => {
+                f.write_str("`choose:` must be a mapping of branch/hub id to choice id(s)")
+            }
+            ChooseError::KeyNotId => f.write_str("`choose:` keys must be branch or hub ids"),
+            ChooseError::NotTimeoutMapping(at) => {
+                write!(f, "{at} mapping must be exactly `{{ timeout: true }}`")
+            }
+            ChooseError::TimeoutNotTrue(at) => {
+                write!(f, "{at} timeout mapping must set `timeout` to `true`")
+            }
+            ChooseError::NotPick(at) => {
+                write!(f, "{at} must be a choice id or `{{ timeout: true }}`")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ChooseError {}
 
 /// The steps of one `include:` target (dsl 0.24.0 §1), read for `lute play`
 /// and [`choose_keys`].
@@ -124,6 +175,27 @@ pub enum IncludeError {
     /// `steps:` holding one.
     Shape { file: PathBuf },
 }
+
+/// `lute play` adds the `include:` text as written to a [`IncludeError::Read`].
+impl std::fmt::Display for IncludeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            IncludeError::Read { file, reason } => {
+                write!(f, "cannot read {}: {reason}", file.display())
+            }
+            IncludeError::Yaml { file, reason } => {
+                write!(f, "{}: malformed YAML: {reason}", file.display())
+            }
+            IncludeError::Shape { file } => write!(
+                f,
+                "{}: an included file is a list of steps or `steps: […]`",
+                file.display()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for IncludeError {}
 
 /// `include: <rel>` written in `includer`: resolved against the includer's
 /// directory and read as a list of steps or `steps: […]`.
@@ -227,5 +299,59 @@ fn step_choose_keys(
         stack.push(included.canonical);
         step_choose_keys(&included.steps, &included.file, stack, out);
         stack.pop();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 0.49.1: the typed refusal renders the 0.49.0 `lute play` text.
+    #[test]
+    fn choose_error_text_is_the_0_49_0_message() {
+        let text = |yaml: &str| {
+            parse_choose(&yaml_serde::from_str(yaml).unwrap())
+                .unwrap_err()
+                .to_string()
+        };
+        assert_eq!(
+            text("[a]"),
+            "`choose:` must be a mapping of branch/hub id to choice id(s)"
+        );
+        assert_eq!(text("{1: a}"), "`choose:` keys must be branch or hub ids");
+        assert_eq!(
+            text("{m: {timeout: true, x: 1}}"),
+            "`choose.m` mapping must be exactly `{ timeout: true }`"
+        );
+        assert_eq!(
+            text("{m: [a, {timeout: false}]}"),
+            "`choose.m` list item 2 timeout mapping must set `timeout` to `true`"
+        );
+        assert_eq!(
+            text("{m: 3}"),
+            "`choose.m` must be a choice id or `{ timeout: true }`"
+        );
+    }
+
+    #[test]
+    fn include_error_text() {
+        let file = PathBuf::from("steps/a.yaml");
+        let read = IncludeError::Read {
+            file: file.clone(),
+            reason: "No such file or directory".into(),
+        };
+        assert_eq!(
+            read.to_string(),
+            "cannot read steps/a.yaml: No such file or directory"
+        );
+        let yaml = IncludeError::Yaml {
+            file: file.clone(),
+            reason: "bad".into(),
+        };
+        assert_eq!(yaml.to_string(), "steps/a.yaml: malformed YAML: bad");
+        assert_eq!(
+            IncludeError::Shape { file }.to_string(),
+            "steps/a.yaml: an included file is a list of steps or `steps: […]`"
+        );
     }
 }

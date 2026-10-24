@@ -1,7 +1,7 @@
 //! Reverse dependency impact queries over [`lute_semantic::SemanticGraph`].
 use crate::ProjectModel;
 use lute_core_span::{Evidence, Span};
-use lute_manifest::fact::parse_fact;
+use lute_manifest::fact::{parse_fact, DatalogError};
 use lute_semantic::{fact_overlap, NodeKey, NodeKind, SemanticGraph};
 use serde::Serialize;
 use std::collections::{BTreeMap, VecDeque};
@@ -17,19 +17,57 @@ pub struct ImpactTarget {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
 }
+
+/// Why [`ImpactTarget::parse`] refused a CLI target.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ImpactTargetError {
+    /// `fact:rel(…` without the closing `)`.
+    UnclosedFact,
+    /// `fact:rel(args)` that is not a fact pattern.
+    MalformedFact(DatalogError),
+    /// No `kind:` prefix.
+    NotKindKey,
+    /// A kind with no impact query, or an empty key.
+    UnknownOrEmpty,
+    /// A `state:` path with an empty segment.
+    MalformedState,
+}
+
+impl std::fmt::Display for ImpactTargetError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            ImpactTargetError::UnclosedFact => "fact target must end with `)`",
+            ImpactTargetError::MalformedFact(_) => "malformed fact target",
+            ImpactTargetError::NotKindKey => "target must be kind:key",
+            ImpactTargetError::UnknownOrEmpty => "unknown or empty impact target",
+            ImpactTargetError::MalformedState => "malformed state target",
+        })
+    }
+}
+
+impl std::error::Error for ImpactTargetError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ImpactTargetError::MalformedFact(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
 impl ImpactTarget {
     /// Parse a CLI target into its structured representation.
-    pub fn parse(raw: &str) -> Result<Self, String> {
+    ///
+    /// # Errors
+    ///
+    /// [`ImpactTargetError`]: `raw` is neither `kind:key` for a queryable
+    /// kind nor `fact:relation(args)`.
+    pub fn parse(raw: &str) -> Result<Self, ImpactTargetError> {
         if let Some((rel, rest)) = raw.strip_prefix("fact:").and_then(|s| s.split_once('(')) {
             let args = rest
                 .strip_suffix(')')
-                .ok_or_else(|| "fact target must end with `)`".to_string())?;
-            #[expect(
-                clippy::map_err_ignore,
-                reason = "the message is the pinned CLI text; S5 types this fn and keeps the fact parse error as `source()`"
-            )]
-            let parsed = parse_fact(&format!("{rel}({args})"))
-                .map_err(|_| "malformed fact target".to_string())?;
+                .ok_or(ImpactTargetError::UnclosedFact)?;
+            let parsed =
+                parse_fact(&format!("{rel}({args})")).map_err(ImpactTargetError::MalformedFact)?;
             return Ok(Self {
                 kind: "fact".into(),
                 relation: Some(parsed.relation),
@@ -49,9 +87,7 @@ impl ImpactTarget {
                 key: None,
             });
         }
-        let (kind, key) = raw
-            .split_once(':')
-            .ok_or_else(|| "target must be kind:key".to_string())?;
+        let (kind, key) = raw.split_once(':').ok_or(ImpactTargetError::NotKindKey)?;
         if !matches!(
             kind,
             "state"
@@ -66,10 +102,10 @@ impl ImpactTarget {
                 | "component"
         ) || key.trim().is_empty()
         {
-            return Err("unknown or empty impact target".into());
+            return Err(ImpactTargetError::UnknownOrEmpty);
         }
         if kind == "state" && key.split('.').any(str::is_empty) {
-            return Err("malformed state target".into());
+            return Err(ImpactTargetError::MalformedState);
         }
         Ok(Self {
             kind: kind.into(),
@@ -366,6 +402,27 @@ fn evidence_name(e: &Evidence) -> &'static str {
 mod tests {
     use super::*;
     use lute_semantic::{GraphEdge, GraphNode, IdentityMetadata};
+
+    /// 0.49.1: the typed refusal renders the 0.49.0 `lute impact` text; a
+    /// malformed fact keeps the fact parser's error as its `source()`.
+    #[test]
+    fn parse_error_text_is_the_0_49_0_message() {
+        let text = |raw: &str| ImpactTarget::parse(raw).unwrap_err().to_string();
+        assert_eq!(text("fact:knows(kai"), "fact target must end with `)`");
+        assert_eq!(text("nokind"), "target must be kind:key");
+        assert_eq!(text("shot:x"), "unknown or empty impact target");
+        assert_eq!(text("state: "), "unknown or empty impact target");
+        assert_eq!(text("state:a..b"), "malformed state target");
+        let malformed = ImpactTarget::parse("fact:knows(f(x))").unwrap_err();
+        assert_eq!(malformed.to_string(), "malformed fact target");
+        let ImpactTargetError::MalformedFact(cause) = &malformed else {
+            panic!("expected a fact parse error, got {malformed:?}");
+        };
+        assert_eq!(
+            std::error::Error::source(&malformed).map(ToString::to_string),
+            Some(cause.to_string())
+        );
+    }
 
     #[test]
     fn reverse_closure_terminates_on_cycles_and_excludes_self_reads() {

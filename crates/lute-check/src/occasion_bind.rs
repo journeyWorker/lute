@@ -107,18 +107,22 @@ type Kinds = std::collections::BTreeMap<String, lute_manifest::relations::Entity
 /// dsl 0.27.0 §3 (T2-10): the members a `for="kind:<kind>"` beat on `on` is
 /// presented for — the kind's members, in member order (a sub-kind's
 /// already its parent's). The one rule the checker (`E-BEAT-ATTR`), the
-/// compiler (the beat's `forKind`) and `lute play` share. `Err` is the
-/// whole reason: not a `kind:` value, a `target` beside it, an occasion
-/// that is raised for a target or is not `select: sequence`, or a kind that
-/// is unknown (with a did-you-mean) or `open:`. An undeclared occasion is
-/// `E-OCCASION-UNKNOWN`'s, so it is `Ok` with no members here.
+/// compiler (the beat's `forKind`) and `lute play` share. An undeclared
+/// occasion is `E-OCCASION-UNKNOWN`'s, so it is `Ok` here.
+///
+/// # Errors
+///
+/// [`ForKindError`], whose text is the whole reason: not a `kind:` value, a
+/// `target` beside it, an occasion that is raised for a target or is not
+/// `select: sequence`, or a kind that is unknown (with a did-you-mean) or
+/// `open:`.
 pub fn for_kind_members(
     on: &str,
     raw: &str,
     has_target: bool,
     occasions: &Occasions,
     kinds: &Kinds,
-) -> Result<(String, Vec<String>), String> {
+) -> Result<(String, Vec<String>), ForKindError> {
     let Some(kind) = crate::kind_target(raw) else {
         // `for="villager"`: the kind named without its `kind:` prefix.
         let bare = raw.trim();
@@ -126,51 +130,110 @@ pub fn for_kind_members(
             .contains_key(bare)
             .then_some(bare)
             .or_else(|| lute_manifest::suggest::nearest(bare, kinds.keys().map(String::as_str), 2));
-        let hint = near.map_or_else(String::new, |k| {
-            format!(" — did you mean `for=\"kind:{k}\"`?")
+        return Err(ForKindError::NotKind {
+            raw: raw.to_string(),
+            near: near.map(str::to_string),
         });
-        return Err(format!(
-            "`for=\"{raw}\"` must name a kind, `for=\"kind:<kind>\"`{hint}"
-        ));
     };
     if has_target {
-        return Err(format!(
-            "`for=\"kind:{kind}\"` presents the beat once per member of an occasion raised for no \
-             target; a beat with `target` answers one raise — remove one of the two (dsl 0.27.0 §3)"
-        ));
+        return Err(ForKindError::BesideTarget {
+            kind: kind.to_string(),
+        });
     }
     if let Some(decl) = occasions.get(on) {
         if decl.target.takes_target() {
-            return Err(format!(
-                "`for=\"kind:{kind}\"` needs an occasion raised for no target, but `{on}` is \
-                 raised for one — use `target=\"kind:{kind}\"` instead (dsl 0.27.0 §3)"
-            ));
+            return Err(ForKindError::TargetedOccasion {
+                kind: kind.to_string(),
+                on: on.to_string(),
+            });
         }
         if decl.select != lute_manifest::schema::OccasionSelect::Sequence {
-            return Err(format!(
-                "`for=\"kind:{kind}\"` presents the beat once per member, one after another, \
-                 which needs a `select: sequence` occasion; `{on}` is `select: {}` (dsl 0.27.0 §3)",
-                decl.select.as_str()
-            ));
+            return Err(ForKindError::NotSequence {
+                kind: kind.to_string(),
+                on: on.to_string(),
+                select: decl.select,
+            });
         }
     }
     let Some(decl) = kinds.get(kind) else {
-        let hint = lute_manifest::suggest::nearest(kind, kinds.keys().map(String::as_str), 2)
-            .map_or_else(String::new, |near| {
-                format!(" — did you mean `kind:{near}`?")
-            });
-        return Err(format!(
-            "`for=\"kind:{kind}\"`: `{kind}` is not a declared entity kind{hint} (dsl 0.27.0 §3)"
-        ));
+        return Err(ForKindError::UnknownKind {
+            kind: kind.to_string(),
+            near: lute_manifest::suggest::nearest(kind, kinds.keys().map(String::as_str), 2)
+                .map(str::to_string),
+        });
     };
     match &decl.shape {
         lute_manifest::relations::KindShape::Members(ms) => Ok((kind.to_string(), ms.clone())),
-        _ => Err(format!(
-            "`for=\"kind:{kind}\"`: entity kind `{kind}` is `open:`, so its members are not \
-             known to check or play; name a kind that lists its `members:` (dsl 0.27.0 §3)"
-        )),
+        _ => Err(ForKindError::OpenKind {
+            kind: kind.to_string(),
+        }),
     }
 }
+
+/// Why a `for=` value names no members ([`for_kind_members`]). The text is
+/// the whole `E-BEAT-ATTR` reason.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ForKindError {
+    /// `for="<raw>"` without the `kind:` prefix; `near` is the kind it
+    /// probably meant.
+    NotKind { raw: String, near: Option<String> },
+    /// A `target` beside `for=`.
+    BesideTarget { kind: String },
+    /// Occasion `on` is raised for a target.
+    TargetedOccasion { kind: String, on: String },
+    /// Occasion `on` is not `select: sequence`.
+    NotSequence {
+        kind: String,
+        on: String,
+        select: lute_manifest::schema::OccasionSelect,
+    },
+    /// `kind` is not a declared entity kind; `near` is the closest one.
+    UnknownKind { kind: String, near: Option<String> },
+    /// `kind` is `open:`.
+    OpenKind { kind: String },
+}
+
+impl std::fmt::Display for ForKindError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ForKindError::NotKind { raw, near } => write!(
+                f,
+                "`for=\"{raw}\"` must name a kind, `for=\"kind:<kind>\"`{}",
+                near.as_ref().map_or_else(String::new, |k| {
+                    format!(" — did you mean `for=\"kind:{k}\"`?")
+                })
+            ),
+            ForKindError::BesideTarget { kind } => write!(
+                f,
+                "`for=\"kind:{kind}\"` presents the beat once per member of an occasion raised for no \
+                 target; a beat with `target` answers one raise — remove one of the two (dsl 0.27.0 §3)"
+            ),
+            ForKindError::TargetedOccasion { kind, on } => write!(
+                f,
+                "`for=\"kind:{kind}\"` needs an occasion raised for no target, but `{on}` is \
+                 raised for one — use `target=\"kind:{kind}\"` instead (dsl 0.27.0 §3)"
+            ),
+            ForKindError::NotSequence { kind, on, select } => write!(
+                f,
+                "`for=\"kind:{kind}\"` presents the beat once per member, one after another, \
+                 which needs a `select: sequence` occasion; `{on}` is `select: {}` (dsl 0.27.0 §3)",
+                select.as_str()
+            ),
+            ForKindError::UnknownKind { kind, near } => write!(
+                f,
+                "`for=\"kind:{kind}\"`: `{kind}` is not a declared entity kind{} (dsl 0.27.0 §3)",
+                crate::beats::did_you_mean("kind:", near.as_deref())
+            ),
+            ForKindError::OpenKind { kind } => write!(
+                f,
+                "`for=\"kind:{kind}\"`: entity kind `{kind}` is `open:`, so its members are not \
+                 known to check or play; name a kind that lists its `members:` (dsl 0.27.0 §3)"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ForKindError {}
 
 /// dsl 0.27.0 §3: every `for=` of the document's entries and bundle beats,
 /// and a scene's `for:`, against [`for_kind_members`]; a bad one is
@@ -199,6 +262,7 @@ pub(crate) fn check_for_kinds(
     let from_scene = usize::from(scene.is_some());
     for (i, (on, (raw, span), has_target)) in scene.into_iter().chain(elements).enumerate() {
         if let Err(why) = for_kind_members(on, raw, has_target, occasions, kinds) {
+            let why = why.to_string();
             // A scene writes these keys in its frontmatter: `for: "kind:K"`.
             let message = if i < from_scene {
                 why.replace("`for=\"", "`for: \"")

@@ -120,36 +120,37 @@ impl ChooseSpans {
 }
 
 /// Parse a `bridges:` value (dsl 0.24.0 §5) — `{ <tag>: [ {<field>: value},
-/// … ] }` — shared by the mock grammar and `lute play`'s per-step key. `Err`
-/// is the reason, unprefixed.
-pub fn parse_bridges(v: &yaml_serde::Value) -> Result<BTreeMap<String, Vec<BridgeAnswer>>, String> {
-    let shape = "`bridges:` must be a mapping of plugin directive tag -> a list of answers, \
-                 each a mapping of bridge result field -> literal";
+/// … ] }` — shared by the mock grammar and `lute play`'s per-step key.
+///
+/// # Errors
+///
+/// [`BridgesError`], whose text is the reason, unprefixed.
+pub fn parse_bridges(
+    v: &yaml_serde::Value,
+) -> Result<BTreeMap<String, Vec<BridgeAnswer>>, BridgesError> {
     let yaml_serde::Value::Mapping(m) = v else {
-        return Err(shape.to_string());
+        return Err(BridgesError::Shape);
     };
     let mut out = BTreeMap::new();
     for (tag, answers) in m {
         let (Some(tag), yaml_serde::Value::Sequence(answers)) = (tag.as_str(), answers) else {
-            return Err(shape.to_string());
+            return Err(BridgesError::Shape);
         };
         let mut list = Vec::with_capacity(answers.len());
         for (i, answer) in answers.iter().enumerate() {
             let yaml_serde::Value::Mapping(fields) = answer else {
-                return Err(format!(
-                    "`bridges.{tag}` answer {} must be a mapping of bridge result field -> \
-                     literal, e.g. `{{ passed: true }}`",
-                    i + 1
-                ));
+                return Err(BridgesError::AnswerNotMapping {
+                    tag: tag.to_string(),
+                    answer: i + 1,
+                });
             };
             let mut one = Vec::with_capacity(fields.len());
             for (field, value) in fields {
                 let (Some(field), Some(lit)) = (field.as_str(), scalar_to_text(value)) else {
-                    return Err(format!(
-                        "`bridges.{tag}` answer {} must map field names to scalar literals \
-                         (bool/number/string)",
-                        i + 1
-                    ));
+                    return Err(BridgesError::FieldNotScalar {
+                        tag: tag.to_string(),
+                        answer: i + 1,
+                    });
                 };
                 one.push((field.to_string(), lit));
             }
@@ -159,6 +160,40 @@ pub fn parse_bridges(v: &yaml_serde::Value) -> Result<BTreeMap<String, Vec<Bridg
     }
     Ok(out)
 }
+
+/// Why [`parse_bridges`] refused a `bridges:` value. `answer` is 1-based.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BridgesError {
+    /// Not a mapping of directive tag to a list of answers.
+    Shape,
+    /// Answer `answer` of `bridges.<tag>` is not a mapping.
+    AnswerNotMapping { tag: String, answer: usize },
+    /// Answer `answer` of `bridges.<tag>` maps a field to a non-scalar.
+    FieldNotScalar { tag: String, answer: usize },
+}
+
+impl std::fmt::Display for BridgesError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BridgesError::Shape => f.write_str(
+                "`bridges:` must be a mapping of plugin directive tag -> a list of answers, \
+                 each a mapping of bridge result field -> literal",
+            ),
+            BridgesError::AnswerNotMapping { tag, answer } => write!(
+                f,
+                "`bridges.{tag}` answer {answer} must be a mapping of bridge result field -> \
+                 literal, e.g. `{{ passed: true }}`"
+            ),
+            BridgesError::FieldNotScalar { tag, answer } => write!(
+                f,
+                "`bridges.{tag}` answer {answer} must map field names to scalar literals \
+                 (bool/number/string)"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for BridgesError {}
 
 /// A state path as a seed or expectation writes it — bare
 /// (`run.visits.lab2`) or quoted (`run.visits["lab-b2"]`) — in its canonical
@@ -720,7 +755,8 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
 
     // dsl 0.24.0 §5: `bridges:` answers plugin calls, per tag, in order.
     if let Some(v) = top.get("bridges") {
-        mocks.bridges = parse_bridges(v).map_err(|e| diag(E_TRACE_MOCK_PARSE, e, span))?;
+        mocks.bridges =
+            parse_bridges(v).map_err(|e| diag(E_TRACE_MOCK_PARSE, e.to_string(), span))?;
         mocks.bridge_spans = BridgeSpans::locate(text, &mocks.bridges);
     }
 

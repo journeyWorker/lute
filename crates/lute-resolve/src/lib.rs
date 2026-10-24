@@ -50,6 +50,19 @@ pub enum ResolveError {
     Invalid(String),
 }
 
+impl std::fmt::Display for ResolveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResolveError::OutOfBounds => {
+                f.write_str("the byte offset is outside the source or not on a character boundary")
+            }
+            ResolveError::Unresolved(reason) | ResolveError::Invalid(reason) => f.write_str(reason),
+        }
+    }
+}
+
+impl std::error::Error for ResolveError {}
+
 /// Resolve a byte cursor using the same typed frontmatter/import precedence as
 /// the checker. The result is intentionally free of LSP types.
 pub fn resolve_position(

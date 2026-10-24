@@ -17,10 +17,23 @@
 use crate::parser::is_ident_byte;
 use lute_core_span::Span;
 
+/// Why comment stripping failed.
 #[derive(Debug, PartialEq)]
 pub enum CommentError {
+    /// EOF inside a `/* … */` block comment.
     Unterminated,
 }
+
+impl std::fmt::Display for CommentError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            // The `E-COMMENT-UNTERMINATED` diagnostic message.
+            CommentError::Unterminated => f.write_str("unterminated `/* … */` block comment"),
+        }
+    }
+}
+
+impl std::error::Error for CommentError {}
 
 /// Peel a leading YAML `---` … `---` frontmatter block off `text`.
 ///

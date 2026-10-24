@@ -1324,6 +1324,7 @@ fn validate_beat(path: &Path, root: &Path, on: &str, target: Option<&str>) -> Re
             let (doc, _) = lute_syntax::parse(&built.input.text);
             let (folded, _, _) = lute_check::fold_env(&doc, &built.input);
             lute_check::occasion_target_ok(decl, t, &folded.env.rel_vocab.kinds)
+                .map_err(|e| e.to_string())
         }
     }
 }

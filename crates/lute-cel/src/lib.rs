@@ -48,6 +48,15 @@ pub struct CelParseError {
     pub span: Span,
 }
 
+/// The backend's message; the span is located by the caller.
+impl std::fmt::Display for CelParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for CelParseError {}
+
 /// A DSL-level `@ref` or `$` (subject) token found in raw CEL source.
 #[derive(Clone, Debug)]
 pub struct RefUse {

@@ -613,11 +613,13 @@ fn parse_play_bridges(
         writes: WritesInput::default(),
     };
     if !has_long_form(value) {
-        return lute_trace::parse_bridges(value).map(|tags| {
-            tags.into_iter()
-                .map(|(tag, answers)| (tag, answers.into_iter().map(legacy).collect()))
-                .collect()
-        });
+        return lute_trace::parse_bridges(value)
+            .map(|tags| {
+                tags.into_iter()
+                    .map(|(tag, answers)| (tag, answers.into_iter().map(legacy).collect()))
+                    .collect()
+            })
+            .map_err(|e| e.to_string());
     }
     let flat = |tag: &str, n: usize, what: &str, m: &yaml_serde::Mapping| {
         m.iter()
@@ -639,7 +641,8 @@ fn parse_play_bridges(
             return lute_trace::parse_bridges(&yaml_serde::Value::Mapping(
                 [(tag.clone(), answers.clone())].into_iter().collect(),
             ))
-            .map(|_| BTreeMap::new());
+            .map(|_| BTreeMap::new())
+            .map_err(|e| e.to_string());
         };
         let mut parsed = Vec::with_capacity(answers.len());
         for (index, answer) in answers.iter().enumerate() {
@@ -733,7 +736,7 @@ fn parse_top<'v>(
             },
             "choose" => match parse_choose(v) {
                 Ok(value) => choose = value,
-                Err(e) => refuse(&[key], e),
+                Err(e) => refuse(&[key], e.to_string()),
             },
             _ if MOCK_SURFACES.contains(&key) => {
                 surfaces.insert(k.clone(), v.clone());
@@ -989,7 +992,7 @@ fn expand_includes(
                         })?;
                 }
                 "choose" => {
-                    choose = parse_choose(v).map_err(|e| err(key, e))?;
+                    choose = parse_choose(v).map_err(|e| err(key, e.to_string()))?;
                 }
                 "bridges" => {
                     bridges = parse_play_bridges(v).map_err(|e| err(key, e))?;
@@ -1026,13 +1029,7 @@ fn expand_includes(
                     file.display()
                 ),
             ),
-            lute_model::scripts::IncludeError::Yaml { file, reason } => {
-                format!("{}: malformed YAML: {reason}", file.display())
-            }
-            lute_model::scripts::IncludeError::Shape { file } => format!(
-                "{}: an included file is a list of steps or `steps: […]`",
-                file.display()
-            ),
+            other => other.to_string(),
         };
         let lute_model::scripts::IncludedSteps {
             file,

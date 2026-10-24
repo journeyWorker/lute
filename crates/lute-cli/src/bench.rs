@@ -11,17 +11,47 @@ use crate::play::{run_play_for_test, PlayProject};
 pub struct Project(PlayProject);
 
 /// Compile the project at `dir` for play: model build, manifest gate and
-/// `ExecProject` assembly. `Err` names why no play can run over it.
-pub fn compile(dir: &Path) -> Result<Project, String> {
+/// `ExecProject` assembly.
+///
+/// # Errors
+///
+/// [`BenchError::Compile`]: why no play can run over the project.
+pub fn compile(dir: &Path) -> Result<Project, BenchError> {
     let project = PlayProject::compile(dir, &crate::play::Build::default());
     match project.error() {
-        Some(e) => Err(e.to_string()),
+        Some(e) => Err(BenchError::Compile(e.to_string())),
         None => Ok(Project(project)),
     }
 }
 
 /// Run the play script at `script` over `project`, judging its `expect:`
 /// blocks. Returns the number of missed expectations.
-pub fn play(project: &Project, script: &Path) -> Result<usize, String> {
-    run_play_for_test(&project.0, script, true).map(|run| run.misses.len())
+///
+/// # Errors
+///
+/// [`BenchError::Play`]: the script does not load or plan.
+pub fn play(project: &Project, script: &Path) -> Result<usize, BenchError> {
+    run_play_for_test(&project.0, script, true)
+        .map(|run| run.misses.len())
+        .map_err(BenchError::Play)
 }
+
+/// Why a benchmark sample could not run. Each holds the message `lute test`
+/// reports for the same failure.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BenchError {
+    /// The project does not compile for play.
+    Compile(String),
+    /// A play script does not load or plan.
+    Play(String),
+}
+
+impl std::fmt::Display for BenchError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BenchError::Compile(message) | BenchError::Play(message) => f.write_str(message),
+        }
+    }
+}
+
+impl std::error::Error for BenchError {}

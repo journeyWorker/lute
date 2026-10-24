@@ -504,7 +504,7 @@ fn run_sample(tier: &str, project: &str, root: &Path, phase: Phase, sample: usiz
         Phase::PlayAssembly => loop_until(
             root,
             || {
-                black_box(lute_cli::bench::compile(root)?);
+                black_box(lute_cli::bench::compile(root).map_err(|e| e.to_string())?);
                 Ok(())
             },
             &mut iterations,
@@ -515,6 +515,7 @@ fn run_sample(tier: &str, project: &str, root: &Path, phase: Phase, sample: usiz
             let compiled = match lute_cli::bench::compile(root) {
                 Ok(compiled) => compiled,
                 Err(error) => {
+                    let error = error.to_string();
                     return failed_sample(tier, project, phase, sample, test_count, error);
                 }
             };
@@ -532,7 +533,8 @@ fn run_sample(tier: &str, project: &str, root: &Path, phase: Phase, sample: usiz
                 root,
                 || {
                     for play in &plays {
-                        let misses = lute_cli::bench::play(&compiled, play)?;
+                        let misses =
+                            lute_cli::bench::play(&compiled, play).map_err(|e| e.to_string())?;
                         if misses > 0 {
                             return Err(format!(
                                 "{}: {misses} missed expectation(s)",

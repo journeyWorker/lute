@@ -161,7 +161,7 @@ pub use accept::{
 pub use admission::{check_admission, node_kind, NodeKind};
 pub use beats::{
     advances_from_attr, check_project_beats, occasion_target_ok, parse_beat_priority,
-    project_beats, BeatMeta, ProjectBeat, ProjectBeatKind, BEAT_KEYS, E_BEAT_ATTR,
+    project_beats, BeatMeta, BeatTargetError, ProjectBeat, ProjectBeatKind, BEAT_KEYS, E_BEAT_ATTR,
     E_BEAT_UNREACHABLE, E_OCCASION_UNKNOWN, W_BEAT_ONCE_RUN_USER, W_BEAT_PRIORITY_TIE,
     W_BEAT_SHADOWED,
 };
@@ -194,7 +194,7 @@ pub use decide::{apply_op, decide, decide_slot, DecideCtx, Decided, DollarBindin
 pub use def_decl::E_DEF_DECL;
 pub use def_inline::{
     attr_def_dynamic_diag, choice_attr_owned_elsewhere, decided_literal, fold_attr_ref,
-    inline_interp_ref, interp_def_diag, E_ATTR_DEF_DYNAMIC, E_INTERP_DEF,
+    inline_interp_ref, interp_def_diag, InterpRefError, E_ATTR_DEF_DYNAMIC, E_INTERP_DEF,
 };
 pub use defassign::{check_definite_assignment, check_quest_guard_defassign};
 pub use directives::E_AT_CONTEXT;

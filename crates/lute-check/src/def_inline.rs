@@ -27,7 +27,7 @@ use lute_syntax::ast::{
     Arm, Attr, AttrValue, ClipNode, Directive, Document, Interp, InterpKind, Node,
 };
 
-use crate::cel_expand::{expand_cel, DefTable};
+use crate::cel_expand::{expand_cel, DefTable, ExpandError};
 use crate::check::{CheckInput, FoldedEnv};
 use crate::component_import::ComponentSet;
 use crate::decide::{decide_slot, DecideCtx, Decided};
@@ -59,17 +59,58 @@ pub fn decided_literal(d: &Decided) -> String {
 }
 
 /// Expand a `{{@def}}` / `{{@fn(args)}}` referent into the standalone CEL an
-/// engine evaluates to render it. `Err` carries the reason it cannot be.
-#[expect(
-    clippy::map_err_ignore,
-    reason = "the message is the pinned diagnostic text; S5 types this fn and keeps the CEL parse error as `source()`"
-)]
-pub fn inline_interp_ref(raw: &str, defs: &DefTable<'_>) -> Result<String, String> {
-    let body = expand_cel(raw, defs, None, &mut Vec::new()).map_err(|error| error.to_string())?;
+/// engine evaluates to render it.
+///
+/// # Errors
+///
+/// [`InterpRefError`], whose text is the reason it cannot be.
+pub fn inline_interp_ref(raw: &str, defs: &DefTable<'_>) -> Result<String, InterpRefError> {
+    let body = expand_cel(raw, defs, None, &mut Vec::new())?;
     let mut arena = lute_cel::CelArena::default();
-    lute_cel::parse_slot(&mut arena, &body, 0)
-        .map(|_| body.clone())
-        .map_err(|_| format!("its expansion `{body}` is not a well-formed CEL expression"))
+    match lute_cel::parse_slot(&mut arena, &body, 0) {
+        Ok(_) => Ok(body),
+        Err(source) => Err(InterpRefError::Parse { body, source }),
+    }
+}
+
+/// Why a `{{@def}}` interpolation cannot be rendered ([`inline_interp_ref`]):
+/// the `E-INTERP-DEF` reason.
+#[derive(Clone, Debug)]
+pub enum InterpRefError {
+    /// The referent does not expand.
+    Expand(ExpandError),
+    /// The expansion `body` is not one CEL expression.
+    Parse {
+        body: String,
+        source: lute_cel::CelParseError,
+    },
+}
+
+impl From<ExpandError> for InterpRefError {
+    fn from(error: ExpandError) -> Self {
+        InterpRefError::Expand(error)
+    }
+}
+
+impl std::fmt::Display for InterpRefError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            InterpRefError::Expand(error) => error.fmt(f),
+            InterpRefError::Parse { body, .. } => write!(
+                f,
+                "its expansion `{body}` is not a well-formed CEL expression"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for InterpRefError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            InterpRefError::Expand(error) => Some(error),
+            InterpRefError::Parse { source, .. } => Some(source),
+        }
+    }
 }
 
 /// Whether an attr key on a `<choice>` is owned by another gate: `into`/
@@ -341,7 +382,8 @@ impl Cx<'_> {
                 continue;
             }
             if let Err(reason) = inline_interp_ref(&i.raw, &self.defs) {
-                self.diags.push(interp_def_diag(&i.raw, &reason, i.span));
+                self.diags
+                    .push(interp_def_diag(&i.raw, &reason.to_string(), i.span));
             }
         }
     }

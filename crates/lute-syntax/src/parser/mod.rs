@@ -242,12 +242,12 @@ fn parse_body(
     let body_slice = &text[body_start..];
     match strip_comments_checked(body_slice) {
         Ok(stripped) => stripped,
-        Err(CommentError::Unterminated) => {
+        Err(error @ CommentError::Unterminated) => {
             let pos = find_unterminated_comment(body_slice);
             diags.push(Diagnostic {
                 code: E_COMMENT_UNTERMINATED.into(),
                 severity: Severity::Error,
-                message: "unterminated `/* … */` block comment".into(),
+                message: error.to_string(),
                 evidence: None,
                 span: Span::from_bytes(idx, body_start + pos, text.len()),
                 layer: Layer::Content,
@@ -295,12 +295,12 @@ pub(crate) fn parse_body_fragment(text: &str) -> (Vec<Node>, Vec<Diagnostic>) {
     let mut diags = Vec::new();
     let body = match strip_comments_checked(text) {
         Ok(stripped) => stripped,
-        Err(CommentError::Unterminated) => {
+        Err(error @ CommentError::Unterminated) => {
             let pos = find_unterminated_comment(text);
             diags.push(Diagnostic {
                 code: E_COMMENT_UNTERMINATED.into(),
                 severity: Severity::Error,
-                message: "unterminated `/* … */` block comment".into(),
+                message: error.to_string(),
                 evidence: None,
                 span: Span::from_bytes(&idx, pos, text.len()),
                 layer: Layer::Content,

@@ -35,7 +35,7 @@ pub use scenario::{
 };
 
 pub use diff::{diff_models, ChangeKind, DiffError, SemanticChange, SemanticDiff};
-pub use impact::{ImpactItem, ImpactReport, ImpactTarget};
+pub use impact::{ImpactItem, ImpactReport, ImpactTarget, ImpactTargetError};
 pub use memo::{Built, ModelMemo};
 pub use patch::{
     apply_patch, apply_patch_to, PatchBase, PatchEdit, PatchRefusal, PatchReport, PatchRequest,

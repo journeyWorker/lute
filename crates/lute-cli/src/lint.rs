@@ -40,7 +40,7 @@ use lute_manifest::resolve::resolve_activation;
 /// `W-DISPLAY-NAME-DUP`. Anything else is a clap usage error (exit 2),
 /// matching the "a typo'd `--deny` MUST NOT silently protect nothing"
 /// contract (spec §5).
-pub fn parse_lint_deny_code(raw: &str) -> Result<String, String> {
+pub(crate) fn parse_lint_deny_code(raw: &str) -> Result<String, String> {
     if is_lint_deniable(raw) {
         Ok(raw.to_string())
     } else {
@@ -191,8 +191,8 @@ fn build_lint_input(
 ) -> Result<(LintDocInput, Option<BuiltInput>), ExitCode> {
     let (text, doc, built) = if with_project {
         let Some(built) = build_input(file, providers, Some(root), None) else {
-            if let Err(message) = read_document(file) {
-                return Err(envelope::fail_quietly(CliError::io(file, message)));
+            if let Err(e) = read_document(file) {
+                return Err(envelope::fail_quietly(CliError::io(file, e.to_string())));
             }
             return Err(envelope::fail(CliError::input(
                 file,
@@ -210,7 +210,7 @@ fn build_lint_input(
         (text, parsed.0, Some(built))
     } else {
         let text =
-            read_document(file).map_err(|message| envelope::fail(CliError::io(file, message)))?;
+            read_document(file).map_err(|e| envelope::fail(CliError::io(file, e.to_string())))?;
         let doc = lute_syntax::parse(&text).0;
         (text, doc, None)
     };

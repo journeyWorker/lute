@@ -181,7 +181,7 @@ impl ProjectModel {
         let mut documents: Vec<ModelDocument> = files
             .into_par_iter()
             .map(|path| {
-                let text = read_document(&path).map_err(ModelError::Input)?;
+                let text = read_document(&path).map_err(|e| ModelError::Input(e.to_string()))?;
                 let (built, parsed) = assemble_input_with_mode(
                     &cache,
                     &path,
@@ -654,7 +654,7 @@ fn ledger_diagnostics(
     errors: Vec<lute_semantic::RenameError>,
 ) -> impl Iterator<Item = (PathBuf, Diagnostic)> + '_ {
     errors.into_iter().map(move |error| {
-        let mut diagnostic = resolution_diagnostic(&format!("{}: {}", error.code, error.message));
+        let mut diagnostic = resolution_diagnostic(&error.to_string());
         if let Some(span) = error.span {
             diagnostic.span = span;
         }

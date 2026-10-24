@@ -52,5 +52,8 @@ pub(crate) use validation::{
     also_fault, check_beat_target_domains, check_objective_occasions, check_occasion,
     check_occasion_target_scope, occasion_target_scope_message, scene_when_scene_reads,
 };
-pub(crate) use validation::{beat_unreachable_message, scene_beat_name};
-pub use validation::{kind_target_members, occasion_target_members, occasion_target_ok};
+pub(crate) use validation::{beat_unreachable_message, did_you_mean, scene_beat_name};
+pub use validation::{
+    kind_target_members, occasion_target_members, occasion_target_ok, BeatTargetError, KindOutside,
+    OutsideDomain,
+};

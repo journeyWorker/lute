@@ -137,7 +137,7 @@ fn check_on_target(
             Some(decl) if decl.target.takes_target() => {
                 match occasion_target_ok(decl, target, kinds) {
                     Ok(()) => return,
-                    Err(why) => why,
+                    Err(why) => why.to_string(),
                 }
             }
             Some(_) => format!(

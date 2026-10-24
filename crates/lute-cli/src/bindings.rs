@@ -851,7 +851,9 @@ fn flow_ref(
         return;
     };
     let refused = if decl.target.takes_target() {
-        lute_check::occasion_target_ok(decl, target, kinds).err()
+        lute_check::occasion_target_ok(decl, target, kinds)
+            .err()
+            .map(|e| e.to_string())
     } else {
         Some(format!(
             "occasion `{occasion}` is not declared `target: true`, so it cannot be raised for \

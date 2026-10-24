@@ -484,7 +484,11 @@ pub fn inline_ref_placeholders(
                         );
                         *expr = Some(CelPair::from_slot(&slot));
                     }
-                    Err(reason) => diags.push(lute_check::interp_def_diag(reference, &reason, at)),
+                    Err(reason) => diags.push(lute_check::interp_def_diag(
+                        reference,
+                        &reason.to_string(),
+                        at,
+                    )),
                 }
             }
         }

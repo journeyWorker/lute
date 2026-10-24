@@ -108,6 +108,15 @@ impl EvalError {
     }
 }
 
+/// The reason alone; the engine adds the row path for `E-LINT-EXPR`.
+impl std::fmt::Display for EvalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for EvalError {}
+
 /// Evaluate a top-level CEL expression under `env`.
 pub fn eval(expr: &Expr, env: &Env) -> Result<Value, EvalError> {
     match expr {

@@ -26,7 +26,8 @@ pub use core::{
 };
 pub use profile::{visited_call_target, visited_targets, VISITED_FN};
 pub use rules::{
-    check_rule_guards, expand_rule_guard, expand_rule_guards, E_RULE_GUARD_DEF, W_QUEST_STATE_HAS,
+    check_rule_guards, expand_rule_guard, expand_rule_guards, RuleGuardError, E_RULE_GUARD_DEF,
+    W_QUEST_STATE_HAS,
 };
 
 pub(crate) use core::group_per_member;

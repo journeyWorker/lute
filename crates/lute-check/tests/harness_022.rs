@@ -303,11 +303,13 @@ fn occasion_target_ok_is_shared_with_play() {
     lute_check::occasion_target_ok(talk, "npc.maud", &kinds).unwrap();
     assert!(lute_check::occasion_target_ok(talk, "npc.mud", &kinds)
         .unwrap_err()
+        .to_string()
         .contains("did you mean `npc.maud`?"));
     // Unknown entity kind.
     let visit = &snap.occasions["visit"];
     assert!(lute_check::occasion_target_ok(visit, "place.x", &kinds)
         .unwrap_err()
+        .to_string()
         .contains("does not declare"));
     // Shape-only occasions accept anything.
     lute_check::occasion_target_ok(&snap.occasions["examine"], "x.y", &kinds).unwrap();
