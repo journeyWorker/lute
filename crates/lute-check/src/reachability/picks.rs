@@ -279,17 +279,22 @@ fn pin_picks(e: &mut cel_parser::ast::IdedExpr, picks: &[Pick], used: &mut Vec<u
                 pin_picks(a, picks, used);
             }
         }
-        Expr::List(l) => l
-            .elements
-            .iter_mut()
-            .for_each(|x| pin_picks(x, picks, used)),
-        Expr::Map(m) => m.entries.iter_mut().for_each(|x| match &mut x.expr {
-            EntryExpr::MapEntry(me) => {
-                pin_picks(&mut me.key, picks, used);
-                pin_picks(&mut me.value, picks, used);
+        Expr::List(l) => {
+            for x in &mut l.elements {
+                pin_picks(x, picks, used);
             }
-            EntryExpr::StructField(f) => pin_picks(&mut f.value, picks, used),
-        }),
+        }
+        Expr::Map(m) => {
+            for x in &mut m.entries {
+                match &mut x.expr {
+                    EntryExpr::MapEntry(me) => {
+                        pin_picks(&mut me.key, picks, used);
+                        pin_picks(&mut me.value, picks, used);
+                    }
+                    EntryExpr::StructField(f) => pin_picks(&mut f.value, picks, used),
+                }
+            }
+        }
         Expr::Select(sel) => pin_picks(&mut sel.operand, picks, used),
         _ => {}
     }

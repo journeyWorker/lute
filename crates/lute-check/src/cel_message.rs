@@ -49,6 +49,7 @@ use lute_syntax::ast::CelKind;
 /// `line`/`column`/`utf16_range` are left zeroed — the house zero-then-
 /// normalize convention (`check.rs`'s `normalize_spans` fills them in from one
 /// shared `TextIndex`, same as every other ad hoc span producer in this crate).
+#[derive(Debug)]
 pub struct Translation {
     /// `E-CEL-PARSE`, or `E-PATH-IDENT` when the slot failed because a
     /// name that is not an identifier follows a `.` (`run.visits.001`).

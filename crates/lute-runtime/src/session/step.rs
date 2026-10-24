@@ -19,7 +19,7 @@ use super::world::{json_to_value, render_fact, value_to_json, World};
 use crate::Value;
 
 /// A `pick:` on a `select: all` occasion.
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Pick {
     /// Present this beat.
     Beat(String),
@@ -29,6 +29,7 @@ pub enum Pick {
 }
 
 /// One script step's record.
+#[derive(Debug)]
 pub enum StepBody {
     Occasion {
         occasion: String,
@@ -375,6 +376,7 @@ pub fn run_occasion<F: super::WalkDriver>(
 }
 
 /// What a `newRun` did beyond its seed writes, for the transcript.
+#[derive(Debug)]
 pub struct NewRunReport {
     /// The seed's write records.
     pub writes: Vec<Json>,

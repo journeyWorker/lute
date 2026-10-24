@@ -7,6 +7,7 @@ use std::path::Path;
 use crate::play::{run_play_for_test, PlayProject};
 
 /// A project compiled for play, as `lute test` compiles it once per run.
+#[derive(Debug)]
 pub struct Project(PlayProject);
 
 /// Compile the project at `dir` for play: model build, manifest gate and

@@ -151,6 +151,7 @@ fn is_scalar(ty: &lute_manifest::types::Type) -> bool {
 }
 
 /// One document's contribution to the index.
+#[derive(Debug)]
 pub struct IndexInput<'a> {
     /// Source path, forward-slash relative to the project root.
     pub path: String,

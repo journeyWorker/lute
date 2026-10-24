@@ -459,14 +459,15 @@ fn splice_nodes(nodes: &mut Vec<Node>, components: &ComponentSet, snapshot: &Cap
                 use_writes(d, components, snapshot, &mut Vec::new())
             }
             Node::Branch(b) => {
-                b.choices
-                    .iter_mut()
-                    .for_each(|c| splice_nodes(&mut c.body, components, snapshot));
+                for c in &mut b.choices {
+                    splice_nodes(&mut c.body, components, snapshot);
+                }
                 Vec::new()
             }
             Node::Hub(h) => {
-                h.bodies_mut()
-                    .for_each(|b| splice_nodes(b, components, snapshot));
+                for b in h.bodies_mut() {
+                    splice_nodes(b, components, snapshot);
+                }
                 Vec::new()
             }
             Node::Match(m) => {
@@ -725,10 +726,14 @@ fn bind_skeleton(node: &mut Node, args: &BTreeMap<String, AttrValue>, params: &[
                 match arm {
                     Arm::When { test, body, .. } => {
                         bind_slot_raw(test, args, params);
-                        body.iter_mut().for_each(|n| bind_skeleton(n, args, params));
+                        for n in body {
+                            bind_skeleton(n, args, params);
+                        }
                     }
                     Arm::Otherwise { body, .. } => {
-                        body.iter_mut().for_each(|n| bind_skeleton(n, args, params));
+                        for n in body {
+                            bind_skeleton(n, args, params);
+                        }
                     }
                 }
             }
@@ -783,7 +788,9 @@ fn guard_lines(node: &mut Node, guard: &CelSlot) {
         Node::Match(m) => {
             for arm in &mut m.arms {
                 let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
-                body.iter_mut().for_each(|n| guard_lines(n, guard));
+                for n in body {
+                    guard_lines(n, guard);
+                }
             }
         }
         _ => {}

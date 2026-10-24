@@ -67,6 +67,7 @@ impl std::error::Error for ExpandError {}
 
 /// The merged def table (plugin < imported < inline), borrowed from
 /// `FoldedEnv { def_bodies, env.def_params }` (`crate::check::FoldedEnv`).
+#[derive(Debug)]
 pub struct DefTable<'a> {
     pub bodies: &'a BTreeMap<String, String>,
     pub params: &'a BTreeMap<String, Vec<(String, Type)>>,

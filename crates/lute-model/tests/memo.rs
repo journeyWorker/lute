@@ -96,5 +96,5 @@ fn a_failed_build_is_replayed_to_every_consumer() {
         panic!("the failure is shared")
     };
     assert!(Arc::ptr_eq(&first, &second));
-    assert!(memo.roots_under(&dir, &opts(false)).is_err());
+    memo.roots_under(&dir, &opts(false)).unwrap_err();
 }

@@ -9,6 +9,7 @@
 
 use std::ops::Range;
 /// One step of a path into a YAML document.
+#[derive(Debug)]
 pub enum YamlStep<'a> {
     Key(&'a str),
     Item(usize),

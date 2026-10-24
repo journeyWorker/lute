@@ -29,6 +29,7 @@ enum DeclKind {
 }
 
 /// One walked document: its path, its source text, its AST, its fold.
+#[derive(Debug)]
 pub struct UsageDoc<'a> {
     pub path: &'a Path,
     pub text: &'a str,
@@ -288,7 +289,11 @@ pub fn yaml_read_view(text: &str) -> String {
                 out.push_str(s);
                 out.push('\n');
             }
-            yaml_serde::Value::Sequence(items) => items.iter().for_each(|i| push_scalars(i, out)),
+            yaml_serde::Value::Sequence(items) => {
+                for i in items {
+                    push_scalars(i, out);
+                }
+            }
             yaml_serde::Value::Mapping(m) => {
                 for (k, v) in m {
                     push_scalars(k, out);
@@ -410,8 +415,16 @@ fn scan<'n>(nodes: &'n [Node], f: &mut impl FnMut(&'n Node)) {
     for node in nodes {
         f(node);
         match node {
-            Node::Branch(b) => b.choices.iter().for_each(|c| scan(&c.body, f)),
-            Node::Hub(h) => h.bodies().for_each(|b| scan(b, f)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    scan(&c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    scan(b, f);
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;

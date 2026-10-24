@@ -68,8 +68,16 @@ impl AstIndex {
                         self.next_to.insert(key(&d.span), to);
                     }
                 }
-                Node::Branch(b) => b.choices.iter().for_each(|c| self.nodes(&c.body)),
-                Node::Hub(h) => h.bodies().for_each(|b| self.nodes(b)),
+                Node::Branch(b) => {
+                    for c in &b.choices {
+                        self.nodes(&c.body);
+                    }
+                }
+                Node::Hub(h) => {
+                    for b in h.bodies() {
+                        self.nodes(b);
+                    }
+                }
                 Node::Match(m) => {
                     for arm in &m.arms {
                         match arm {

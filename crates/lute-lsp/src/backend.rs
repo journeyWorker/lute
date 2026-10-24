@@ -39,6 +39,7 @@ use version::{binary_id, BinaryId};
 
 /// The Lute language server: an LSP client handle plus the concurrent map of open
 /// documents keyed by their [`Uri`].
+#[derive(Debug)]
 pub struct Backend {
     client: Client,
     docs: DashMap<Uri, DocumentSnapshot>,

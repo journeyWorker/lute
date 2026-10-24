@@ -930,7 +930,7 @@ impl Included {
     fn source(&self, index: usize) -> StepSource {
         StepSource {
             file: self.file.clone(),
-            text: self.text.clone(),
+            text: Arc::clone(&self.text),
             under_steps: self.under_steps,
             index,
             via: self.via.clone(),
@@ -1067,7 +1067,7 @@ fn expand_includes(
             }
             let inner = Included {
                 file: file.clone(),
-                text: text.clone(),
+                text: Arc::clone(&text),
                 under_steps,
                 via: via.clone(),
                 segments,

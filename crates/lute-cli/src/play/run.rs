@@ -567,7 +567,7 @@ fn enter_scopes(
             })
             .collect();
         open.push(OpenScope {
-            scope: scope.clone(),
+            scope: Arc::clone(scope),
             choose,
             bridges,
             used,

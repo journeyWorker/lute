@@ -49,6 +49,7 @@ fn label_forms_map(forms: &Json) -> BTreeMap<String, LabelForms> {
 /// Immutable, project-invariant evaluator data decoded from an artifact's
 /// state/rules/entity declarations.  Each machine owns only the mutable
 /// values, facts and evaluation bookkeeping that is layered over this schema.
+#[derive(Debug)]
 pub(crate) struct StoreSchema {
     pub(crate) types: std::sync::Arc<BTreeMap<String, String>>,
     pub(crate) labels: std::sync::Arc<BTreeMap<String, BTreeMap<String, String>>>,
@@ -68,6 +69,7 @@ pub(crate) struct StoreSchema {
     last_closure: std::sync::Mutex<Option<LastClosure>>,
 }
 
+#[derive(Debug)]
 pub(crate) struct Store {
     pub(crate) store_schema: std::sync::Arc<StoreSchema>,
     /// Live scalar state (path → value).
@@ -259,15 +261,15 @@ impl Store {
             None => (schema.defaults.clone(), seed_facts(art, schema.derive)),
         };
         Self {
-            store_schema: schema.clone(),
-            types: schema.types.clone(),
-            labels: schema.labels.clone(),
-            kind_labels: schema.kind_labels.clone(),
-            label_forms: schema.label_forms.clone(),
-            kind_label_forms: schema.kind_label_forms.clone(),
+            store_schema: std::sync::Arc::clone(&schema),
+            types: std::sync::Arc::clone(&schema.types),
+            labels: std::sync::Arc::clone(&schema.labels),
+            kind_labels: std::sync::Arc::clone(&schema.kind_labels),
+            label_forms: std::sync::Arc::clone(&schema.label_forms),
+            kind_label_forms: std::sync::Arc::clone(&schema.kind_label_forms),
             values,
-            vocab: schema.vocab.clone(),
-            program: schema.program.clone(),
+            vocab: std::sync::Arc::clone(&schema.vocab),
+            program: std::sync::Arc::clone(&schema.program),
             derive: schema.derive,
             rules_read_state: schema.rules_read_state,
             rules_read_occasion_target: schema.rules_read_occasion_target,
@@ -599,6 +601,7 @@ pub(crate) fn json_to_value(j: &Json) -> Option<Value> {
 /// facts and state exactly. Over one schema the closure is a function of
 /// those two alone (the rules and declared state types are the schema's), so
 /// an exact match returns the same closure the fixpoint would.
+#[derive(Debug)]
 struct LastClosure {
     base: BTreeSet<Fact>,
     values: BTreeMap<String, Value>,

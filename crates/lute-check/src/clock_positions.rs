@@ -331,7 +331,11 @@ impl Formula {
     fn visit<'f>(&'f self, f: &mut impl FnMut(&'f Formula)) {
         f(self);
         match self {
-            Formula::And(fs) | Formula::Or(fs) => fs.iter().for_each(|x| x.visit(f)),
+            Formula::And(fs) | Formula::Or(fs) => {
+                for x in fs {
+                    x.visit(f);
+                }
+            }
             Formula::Not(x) => x.visit(f),
             _ => {}
         }

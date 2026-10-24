@@ -23,6 +23,7 @@ use lute_load::normalize_span_from_text;
 /// `completed()` that scene becomes unreachable -> its own `::assert`
 /// producer drops -> a relation elsewhere goes non-producible -> ANOTHER
 /// quest's required objective dies -> repeat).
+#[derive(Debug)]
 pub struct ConnFixpoint {
     pub reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
     pub reach_diags: Vec<(PathBuf, Diagnostic)>,

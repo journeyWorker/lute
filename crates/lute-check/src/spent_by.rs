@@ -543,25 +543,38 @@ impl Reads {
                     }
                     // A bare `count(…)` (outside a comparison) moves either way.
                     (n, _) if self.atom(e, if n == "holds" { pol } else { Pol::Both }) => {}
-                    _ => c.args.iter().for_each(|a| self.walk(&a.expr, Pol::Both)),
+                    _ => {
+                        for a in &c.args {
+                            self.walk(&a.expr, Pol::Both);
+                        }
+                    }
                 }
             }
             Expr::Call(c) => {
-                c.target.iter().for_each(|t| self.walk(&t.expr, Pol::Both));
-                c.args.iter().for_each(|a| self.walk(&a.expr, Pol::Both));
+                if let Some(t) = &c.target {
+                    self.walk(&t.expr, Pol::Both);
+                }
+                for a in &c.args {
+                    self.walk(&a.expr, Pol::Both);
+                }
             }
             Expr::Select(s) => self.walk(&s.operand.expr, Pol::Both),
-            Expr::List(l) => l
-                .elements
-                .iter()
-                .for_each(|x| self.walk(&x.expr, Pol::Both)),
-            Expr::Map(m) => m.entries.iter().for_each(|x| match &x.expr {
-                EntryExpr::MapEntry(m) => {
-                    self.walk(&m.key.expr, Pol::Both);
-                    self.walk(&m.value.expr, Pol::Both);
+            Expr::List(l) => {
+                for x in &l.elements {
+                    self.walk(&x.expr, Pol::Both);
                 }
-                EntryExpr::StructField(f) => self.walk(&f.value.expr, Pol::Both),
-            }),
+            }
+            Expr::Map(m) => {
+                for x in &m.entries {
+                    match &x.expr {
+                        EntryExpr::MapEntry(m) => {
+                            self.walk(&m.key.expr, Pol::Both);
+                            self.walk(&m.value.expr, Pol::Both);
+                        }
+                        EntryExpr::StructField(f) => self.walk(&f.value.expr, Pol::Both),
+                    }
+                }
+            }
             Expr::Comprehension(c) => {
                 for x in [
                     &c.iter_range,

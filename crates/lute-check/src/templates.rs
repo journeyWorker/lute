@@ -1147,8 +1147,16 @@ pub fn check_body_markers(doc: &Document, template_component: bool) -> Vec<Diagn
 fn collect_nested<'a>(nodes: &'a [Node], out: &mut Vec<&'a Directive>) {
     for node in nodes {
         match node {
-            Node::Branch(b) => b.choices.iter().for_each(|c| collect_all(&c.body, out)),
-            Node::Hub(h) => h.bodies().for_each(|b| collect_all(b, out)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    collect_all(&c.body, out);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    collect_all(b, out);
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {

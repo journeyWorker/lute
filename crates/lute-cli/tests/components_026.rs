@@ -61,9 +61,15 @@ fn commands(dir: &Path, scene: &str) -> Vec<serde_json::Value> {
                 if let Some(serde_json::Value::Array(cs)) = m.get("commands") {
                     out.extend(cs.iter().cloned());
                 }
-                m.values().for_each(|v| walk(v, out));
+                for v in m.values() {
+                    walk(v, out);
+                }
             }
-            serde_json::Value::Array(a) => a.iter().for_each(|v| walk(v, out)),
+            serde_json::Value::Array(a) => {
+                for v in a {
+                    walk(v, out);
+                }
+            }
             _ => {}
         }
     }

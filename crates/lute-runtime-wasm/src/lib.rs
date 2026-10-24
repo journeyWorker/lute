@@ -16,13 +16,14 @@ use wasm_bindgen::prelude::*;
 
 /// An opaque immutable state handle.
 #[wasm_bindgen]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct State {
     inner: RuntimeState,
 }
 
 /// The result of beginning or stepping a program.
 #[wasm_bindgen]
+#[derive(Debug)]
 pub struct StepResult {
     ok: bool,
     state: Option<State>,
@@ -32,6 +33,7 @@ pub struct StepResult {
 
 /// The result of restoring a snapshot.
 #[wasm_bindgen]
+#[derive(Debug)]
 pub struct RestoreResult {
     ok: bool,
     state: Option<State>,
@@ -40,6 +42,7 @@ pub struct RestoreResult {
 
 /// The result of loading a bundle.
 #[wasm_bindgen]
+#[derive(Debug)]
 pub struct LoadResult {
     ok: bool,
     program: Option<Program>,
@@ -49,6 +52,7 @@ pub struct LoadResult {
 /// The result of a query (`evaluate`, `def`, `gate`): its answer JSON
 /// (`Evaluation`, `Gate`) or a rejection.
 #[wasm_bindgen]
+#[derive(Debug)]
 pub struct QueryResult {
     ok: bool,
     value: Option<String>,
@@ -57,7 +61,7 @@ pub struct QueryResult {
 
 /// A loaded execution bundle.
 #[wasm_bindgen]
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Program {
     runtime: Rc<Runtime>,
 }

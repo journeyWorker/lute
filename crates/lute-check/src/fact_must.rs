@@ -463,7 +463,9 @@ impl<'a> Root<'a> {
                             else {
                                 return;
                             };
-                            facts.asserts.iter().for_each(&mut asserts);
+                            for p in &facts.asserts {
+                                asserts(p);
+                            }
                             retracts.extend(
                                 facts
                                     .retracts
@@ -616,8 +618,16 @@ fn scan<'n>(nodes: &'n [Node], f: &mut impl FnMut(&'n Node)) {
     for node in nodes {
         f(node);
         match node {
-            Node::Branch(b) => b.choices.iter().for_each(|c| scan(&c.body, f)),
-            Node::Hub(h) => h.bodies().for_each(|b| scan(b, f)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    scan(&c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    scan(b, f);
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;

@@ -75,6 +75,7 @@ impl fmt::Display for ModelError {
 }
 impl std::error::Error for ModelError {}
 
+#[derive(Debug)]
 pub struct ModelDocument {
     pub path: PathBuf,
     pub input: CheckInput,
@@ -106,6 +107,7 @@ impl ModelDocument {
     }
 }
 
+#[derive(Debug)]
 pub struct ReconciledOutputs {
     pub checks: Vec<(PathBuf, CheckResult)>,
     pub diagnostics: Vec<(PathBuf, Diagnostic)>,
@@ -114,6 +116,7 @@ pub struct ReconciledOutputs {
     pub scenarios: BTreeMap<PathBuf, crate::scenario::RootScenario>,
 }
 
+#[derive(Debug)]
 pub struct ProjectModel {
     root: PathBuf,
     manifest: Option<lute_manifest::project::ProjectConfig>,

@@ -110,6 +110,7 @@ use lute_manifest::semantics::cel_paths::{
 /// What a definite-assignment walk resolves names against: the folded state
 /// schema, the def table every `@def` use expands through, and the def result
 /// types a `<match subject="@def">` subject takes its domain from (dsl 0.24.0).
+#[derive(Debug)]
 pub struct Scope<'a> {
     pub schema: &'a crate::StateView,
     pub defs: DefTable<'a>,

@@ -41,11 +41,13 @@ pub enum ScriptAnswer {
 
 /// What `lute play`'s report path produced for the script: its machine
 /// records, in order, and the final world.
+#[derive(Debug)]
 pub struct Reference {
     pub records: Vec<(String, Value)>,
     pub world: World,
 }
 
+#[derive(Debug)]
 pub struct ScriptRun {
     pub runtime: Runtime,
     pub seed: Seed,
@@ -145,6 +147,7 @@ pub(crate) fn script_run_with(
     clippy::large_enum_variant,
     reason = "rejected input retains the full state needed for diagnostics"
 )]
+#[derive(Debug)]
 pub enum DriveEnd {
     /// Every input ran.
     Done,
@@ -159,6 +162,7 @@ pub enum DriveEnd {
 }
 
 /// The state and last output a driven script left, and why it stopped.
+#[derive(Debug)]
 pub struct Driven {
     pub state: State,
     pub output: Output,

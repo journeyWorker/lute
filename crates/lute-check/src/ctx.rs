@@ -108,7 +108,7 @@ pub struct Env {
 /// entering a `<match>` arm is a cheap re-borrow (copying a reference plus two
 /// small fields) rather than a deep clone of the schema/def tables. Read env
 /// fields via `ctx.env.<field>`; `in_match`/`match_subject` are the scope.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Ctx<'a> {
     /// The immutable analysis environment (schema, def tables, mode).
     pub env: &'a Env,

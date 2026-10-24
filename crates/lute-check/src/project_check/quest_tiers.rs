@@ -488,10 +488,11 @@ fn reads_seasons(
                 reads_seasons(e, relations, out);
             }
         }
-        Expr::List(l) => l
-            .elements
-            .iter()
-            .for_each(|e| reads_seasons(&e.expr, relations, out)),
+        Expr::List(l) => {
+            for e in &l.elements {
+                reads_seasons(&e.expr, relations, out);
+            }
+        }
         _ => {}
     }
 }

@@ -118,8 +118,16 @@ fn collect_staged<'a>(nodes: &'a [Node], out: &mut Vec<(&'static str, &'a str, S
                     }
                 }
             }
-            Node::Branch(b) => b.choices.iter().for_each(|c| collect_staged(&c.body, out)),
-            Node::Hub(h) => h.bodies().for_each(|b| collect_staged(b, out)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    collect_staged(&c.body, out);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    collect_staged(b, out);
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {

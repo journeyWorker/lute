@@ -892,7 +892,11 @@ fn expr_paths(node: &Json, out: &mut BTreeSet<String>) {
                 }
             }
         }
-        Json::Array(items) => items.iter().for_each(|n| expr_paths(n, out)),
+        Json::Array(items) => {
+            for n in items {
+                expr_paths(n, out);
+            }
+        }
         _ => {}
     }
 }

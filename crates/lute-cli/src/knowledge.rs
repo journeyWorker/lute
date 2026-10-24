@@ -223,7 +223,11 @@ fn queried(raw: &str) -> BTreeSet<Read> {
                     walk(&a.expr, keeps && negated, out);
                 }
             }
-            Expr::List(l) => l.elements.iter().for_each(|e| walk(&e.expr, false, out)),
+            Expr::List(l) => {
+                for e in &l.elements {
+                    walk(&e.expr, false, out);
+                }
+            }
             Expr::Select(s) => walk(&s.operand.expr, false, out),
             _ => {}
         }
@@ -1171,9 +1175,15 @@ fn guard_reads(cel: &str) -> String {
                 if let Some(t) = &c.target {
                     walk(&t.expr, out);
                 }
-                c.args.iter().for_each(|a| walk(&a.expr, out));
+                for a in &c.args {
+                    walk(&a.expr, out);
+                }
             }
-            Expr::List(l) => l.elements.iter().for_each(|e| walk(&e.expr, out)),
+            Expr::List(l) => {
+                for e in &l.elements {
+                    walk(&e.expr, out);
+                }
+            }
             Expr::Select(s) => walk(&s.operand.expr, out),
             _ => {}
         }

@@ -492,8 +492,16 @@ pub fn inline_ref_placeholders(
     for cmd in commands {
         match cmd {
             Command::Line(l) => fill(&mut l.placeholders),
-            Command::Choice(c) => c.options.iter_mut().for_each(|o| fill(&mut o.placeholders)),
-            Command::Hub(h) => h.options.iter_mut().for_each(|o| fill(&mut o.placeholders)),
+            Command::Choice(c) => {
+                for o in &mut c.options {
+                    fill(&mut o.placeholders);
+                }
+            }
+            Command::Hub(h) => {
+                for o in &mut h.options {
+                    fill(&mut o.placeholders);
+                }
+            }
             _ => {}
         }
     }
@@ -538,14 +546,16 @@ pub fn type_occasion_target_placeholders(commands: &mut [Command], scene_kind: O
                     .or_else(|| b.for_kind.as_ref().map(|k| k.kind.clone()));
             }
             Command::Line(l) => fix(&mut l.placeholders, &kind),
-            Command::Choice(c) => c
-                .options
-                .iter_mut()
-                .for_each(|o| fix(&mut o.placeholders, &kind)),
-            Command::Hub(h) => h
-                .options
-                .iter_mut()
-                .for_each(|o| fix(&mut o.placeholders, &kind)),
+            Command::Choice(c) => {
+                for o in &mut c.options {
+                    fix(&mut o.placeholders, &kind);
+                }
+            }
+            Command::Hub(h) => {
+                for o in &mut h.options {
+                    fix(&mut o.placeholders, &kind);
+                }
+            }
             _ => {}
         }
     }

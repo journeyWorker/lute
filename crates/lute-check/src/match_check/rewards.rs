@@ -308,8 +308,16 @@ fn collect_sets<'a>(nodes: &'a [Node], out: &mut Vec<&'a lute_syntax::ast::Set>)
     for node in nodes {
         match node {
             Node::Set(s) => out.push(s),
-            Node::Branch(b) => b.choices.iter().for_each(|c| collect_sets(&c.body, out)),
-            Node::Hub(h) => h.bodies().for_each(|b| collect_sets(b, out)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    collect_sets(&c.body, out);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    collect_sets(b, out);
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {

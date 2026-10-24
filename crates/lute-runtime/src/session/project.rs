@@ -17,6 +17,7 @@ use crate::store::{Store, StoreSchema};
 use crate::{BridgeReads, Slot};
 
 /// Everything the playthrough reads from the compiled project.
+#[derive(Debug)]
 pub struct ExecProject {
     /// project-relative path -> compiled artifact JSON.
     pub artifacts: BTreeMap<String, Json>,
@@ -109,14 +110,14 @@ pub struct ExecProject {
 /// assembly (spec 0.38.0 §13): the seam's `terminal` and occasion gates,
 /// and each beat's `when` / `spentBy`, keyed by `(document, beat id)` —
 /// the artifacts' `{cel, expr}` pairs (the index carries their text only).
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct Conds {
     pub(crate) terminal: Option<Arc<Slot>>,
     pub(crate) gates: BTreeMap<String, Arc<Slot>>,
     pub(crate) beats: BTreeMap<(String, String), BeatConds>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub(crate) struct BeatConds {
     pub(crate) when: Option<Arc<Slot>>,
     pub(crate) spent_by: Option<Arc<Slot>>,

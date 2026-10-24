@@ -136,11 +136,16 @@ fn visit_lines(nodes: &mut [Node], f: &mut dyn FnMut(&mut Line)) {
     for node in nodes {
         match node {
             Node::Line(l) => f(l),
-            Node::Branch(b) => b
-                .choices
-                .iter_mut()
-                .for_each(|c| visit_lines(&mut c.body, f)),
-            Node::Hub(h) => h.bodies_mut().for_each(|b| visit_lines(b, f)),
+            Node::Branch(b) => {
+                for c in &mut b.choices {
+                    visit_lines(&mut c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies_mut() {
+                    visit_lines(b, f);
+                }
+            }
             Node::Match(m) => {
                 for arm in &mut m.arms {
                     match arm {
@@ -283,23 +288,28 @@ fn expand_target_uses(nodes: &mut Vec<Node>, targets: &OccasionScopes) {
         };
         let Some(members) = members else {
             match &mut nodes[i] {
-                Node::Branch(b) => b
-                    .choices
-                    .iter_mut()
-                    .for_each(|c| expand_target_uses(&mut c.body, targets)),
+                Node::Branch(b) => {
+                    for c in &mut b.choices {
+                        expand_target_uses(&mut c.body, targets);
+                    }
+                }
                 Node::Hub(h) => {
-                    h.choices
-                        .iter_mut()
-                        .for_each(|c| expand_target_uses(&mut c.body, targets));
+                    for c in &mut h.choices {
+                        expand_target_uses(&mut c.body, targets);
+                    }
                     if let Some(r) = &mut h.on_return {
                         expand_target_uses(&mut r.body, targets);
                     }
                 }
-                Node::Match(m) => m.arms.iter_mut().for_each(|arm| match arm {
-                    Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                        expand_target_uses(body, targets);
+                Node::Match(m) => {
+                    for arm in &mut m.arms {
+                        match arm {
+                            Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                                expand_target_uses(body, targets);
+                            }
+                        }
                     }
-                }),
+                }
                 Node::On(on) => expand_target_uses(&mut on.body, targets),
                 Node::Objective(o) => expand_target_uses(&mut o.body, targets),
                 _ => {}

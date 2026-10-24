@@ -46,6 +46,7 @@ pub enum Decided {
 
 /// What `$` denotes while deciding (`parse_slot`/`parse_slot_marked_refs`
 /// substitutes `$` -> `Ident("_")`).
+#[derive(Debug)]
 pub enum DollarBinding<'a> {
     /// Checker contexts: `$` is a finite-domain subject, value unknown (R2).
     Domain(&'a DomainInfo),
@@ -55,6 +56,7 @@ pub enum DollarBinding<'a> {
     Value(Decided),
 }
 
+#[derive(Debug)]
 pub struct DecideCtx<'a> {
     pub schema: &'a crate::StateView,
     pub dollar: Option<DollarBinding<'a>>,

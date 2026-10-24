@@ -19,6 +19,7 @@ use crate::source_map::{SourceMap, SourceMarker};
 /// document-wide identity scope, byte-identical to 0.1.0); the quest loop
 /// sets `{questId}` per quest (one scope per quest — code back-fill counters
 /// reset per quest, IR addendum §4).
+#[derive(Debug)]
 pub struct ShotRecords {
     pub shot: i64,
     pub prefix: String,

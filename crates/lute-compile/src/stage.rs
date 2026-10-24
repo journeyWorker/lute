@@ -31,6 +31,7 @@ use lute_ir::{CelPair, ForKind, TargetKind};
 /// stack (sentinel-driven: each open expansion's name and its
 /// `{component}#{n}` identity segment) + the document-order timeline counter
 /// (Task 10).
+#[derive(Debug)]
 pub struct WalkCx<'a> {
     pub snapshot: &'a CapabilitySnapshot,
     pub env: &'a Env,
@@ -39,7 +40,7 @@ pub struct WalkCx<'a> {
 }
 
 /// Timeline-clip stamp for records emitted inside a `<timeline>` (Task 10).
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct ClipStamp {
     pub timeline: u32,
     pub at: f64,

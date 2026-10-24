@@ -12,6 +12,7 @@ use crate::UnresolvedAtom;
 use crate::{BridgeQueues, Carry, Machine, Seed};
 
 /// A finished walk: its carry and host-collected transcript.
+#[derive(Debug)]
 pub struct Walked {
     pub carry: Carry,
     pub transcript: Vec<Json>,
@@ -50,6 +51,7 @@ pub fn absorb(w: &mut World, outcome: &Walked) {
 }
 
 /// Why the playthrough stopped short of its last step.
+#[derive(Debug)]
 pub enum PlayHalt {
     /// exit 1 — a `pick` that is not eligible, or a scripted `choose:`
     /// decision the runner refused (`E-TRACE-CHOICE`: guard false, or a
@@ -148,10 +150,10 @@ pub fn play_machine<F: super::WalkDriver>(
         seed.clone(),
         carry,
         factory.new_driver(doc, choose, w),
-        p.store_schemas[usize::from(seed.derive)].clone(),
+        std::sync::Arc::clone(&p.store_schemas[usize::from(seed.derive)]),
     )
     .with_visited(&w.visited)
-    .with_bridge_reads(p.bridge_reads.clone());
+    .with_bridge_reads(std::sync::Arc::clone(&p.bridge_reads));
     let Some(observer) = factory.observer() else {
         return machine;
     };

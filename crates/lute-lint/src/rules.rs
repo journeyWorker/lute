@@ -461,6 +461,7 @@ fn config_diag(message: String, span: Span) -> Diagnostic {
 
 /// Everything a single-document rule pass needs. Kept as one struct so a
 /// plugin/custom `when` and every core rule read the SAME bindings.
+#[derive(Debug)]
 pub struct DocContext<'a> {
     pub tables: &'a DocTables,
     pub attrs: &'a [AttrRow],

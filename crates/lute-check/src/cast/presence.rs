@@ -259,6 +259,7 @@ pub fn check_presence(
 /// every `::assert` site of the root ([`fact_producers`]) and (dsl 0.25.0
 /// §6) the occasions each unit of the document follows in the scenario
 /// graph ([`occasions_before`], keyed like [`FactProducers`]' units).
+#[derive(Debug)]
 pub struct PresenceProject<'a> {
     pub env: &'a FactEnv,
     pub ladder: &'a BTreeMap<usize, Vec<String>>,

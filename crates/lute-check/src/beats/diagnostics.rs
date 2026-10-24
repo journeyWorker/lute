@@ -654,24 +654,33 @@ pub(crate) fn read_tiers(
                 read_tiers(e, tiers, out);
             }
         }
-        Expr::List(l) => l
-            .elements
-            .iter()
-            .for_each(|e| read_tiers(&e.expr, tiers, out)),
-        Expr::Map(m) => m.entries.iter().for_each(|e| match &e.expr {
-            EntryExpr::MapEntry(m) => {
-                read_tiers(&m.key.expr, tiers, out);
-                read_tiers(&m.value.expr, tiers, out);
+        Expr::List(l) => {
+            for e in &l.elements {
+                read_tiers(&e.expr, tiers, out);
             }
-            EntryExpr::StructField(f) => read_tiers(&f.value.expr, tiers, out),
-        }),
-        Expr::Struct(s) => s.entries.iter().for_each(|e| match &e.expr {
-            EntryExpr::MapEntry(m) => {
-                read_tiers(&m.key.expr, tiers, out);
-                read_tiers(&m.value.expr, tiers, out);
+        }
+        Expr::Map(m) => {
+            for e in &m.entries {
+                match &e.expr {
+                    EntryExpr::MapEntry(m) => {
+                        read_tiers(&m.key.expr, tiers, out);
+                        read_tiers(&m.value.expr, tiers, out);
+                    }
+                    EntryExpr::StructField(f) => read_tiers(&f.value.expr, tiers, out),
+                }
             }
-            EntryExpr::StructField(f) => read_tiers(&f.value.expr, tiers, out),
-        }),
+        }
+        Expr::Struct(s) => {
+            for e in &s.entries {
+                match &e.expr {
+                    EntryExpr::MapEntry(m) => {
+                        read_tiers(&m.key.expr, tiers, out);
+                        read_tiers(&m.value.expr, tiers, out);
+                    }
+                    EntryExpr::StructField(f) => read_tiers(&f.value.expr, tiers, out),
+                }
+            }
+        }
         Expr::Comprehension(c) => {
             for e in [
                 &c.iter_range,

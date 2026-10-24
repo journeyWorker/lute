@@ -558,7 +558,11 @@ fn ir_read_paths(v: &Json, in_expr: bool, out: &mut BTreeSet<String>) {
                 }
             }
         }
-        Json::Array(items) => items.iter().for_each(|i| ir_read_paths(i, in_expr, out)),
+        Json::Array(items) => {
+            for i in items {
+                ir_read_paths(i, in_expr, out);
+            }
+        }
         _ => {}
     }
 }

@@ -90,8 +90,16 @@ fn walk<'a>(
         match node {
             Node::Line(l) => line(l),
             Node::Directive(d) if d.tag == "use" => uses(d),
-            Node::Branch(b) => b.choices.iter().for_each(|c| walk(&c.body, line, uses)),
-            Node::Hub(h) => h.bodies().for_each(|b| walk(b, line, uses)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    walk(&c.body, line, uses);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    walk(b, line, uses);
+                }
+            }
             Node::On(o) => walk(&o.body, line, uses),
             Node::Objective(o) => walk(&o.body, line, uses),
             Node::Match(m) => {

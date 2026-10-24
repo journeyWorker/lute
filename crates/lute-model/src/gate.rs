@@ -18,6 +18,7 @@ use lute_load::normalize_span_from_text;
 /// project-wide diagnostics. Produced by [`reconciled_project_results`] over a
 /// SINGLE-ROOT collection (the whole `--project <dir>` is ONE root — §5's
 /// single-root rule), reusing the SAME [`reconcile_collected`] analysis
+#[derive(Debug)]
 pub struct ReconciledProject {
     pub per_doc: BTreeMap<PathBuf, lute_check::CheckResult>,
     pub project_diagnostics: Vec<(PathBuf, Diagnostic)>,

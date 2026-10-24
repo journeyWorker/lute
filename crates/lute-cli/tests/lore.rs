@@ -163,9 +163,15 @@ fn check_project_reports_bundle_id_and_resolved_series_collisions() {
                         msg.as_str().unwrap_or_default().to_string(),
                     ));
                 }
-                m.values().for_each(|x| walk(x, found));
+                for x in m.values() {
+                    walk(x, found);
+                }
             }
-            serde_json::Value::Array(a) => a.iter().for_each(|x| walk(x, found)),
+            serde_json::Value::Array(a) => {
+                for x in a {
+                    walk(x, found);
+                }
+            }
             _ => {}
         }
     }

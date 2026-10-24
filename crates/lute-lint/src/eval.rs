@@ -71,7 +71,7 @@ impl Value {
 /// A binding table for the target-row env (`line`, `shot`, `scene`,
 /// `speaker`, `group`, `project`, `options`). Undeclared bindings resolve
 /// to a missing-field error the moment they're read.
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Env {
     pub bindings: BTreeMap<String, Value>,
 }

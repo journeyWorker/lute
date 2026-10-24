@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Precomputed line-start table for byte <-> (line, col, utf16) mapping.
+#[derive(Debug)]
 pub struct TextIndex<'a> {
     text: &'a str,
     line_starts: Vec<usize>, // byte offset of each line start
@@ -91,6 +92,7 @@ impl<'a> TextIndex<'a> {
 /// left it, so `n` spans on one long line cost the line, not `n` times it.
 /// An offset behind the cursor restarts its line, so any order gives the
 /// same spans as [`Span::from_bytes`].
+#[derive(Debug)]
 pub struct SpanCursor<'i, 'a> {
     idx: &'i TextIndex<'a>,
     line_ix: usize,

@@ -29,7 +29,7 @@ pub mod walk;
 pub use walk::{walk, Flow, Node};
 
 /// Owns every parsed CEL AST and hands out opaque [`CelAstHandle`]s indexing into it.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct CelArena {
     asts: Vec<cel_parser::ast::IdedExpr>,
 }

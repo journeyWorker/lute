@@ -500,7 +500,7 @@ pub(super) fn candidates(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
+            Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
             observer,
         )
         .with_visited(&w.visited);
@@ -537,6 +537,7 @@ pub(super) fn candidates(
 /// own beats are judged under it: a `judge: before` judgement, or an
 /// earlier beat of a `select: sequence` raise, that makes `terminal:` hold
 /// does not close the beats of the raise already made.
+#[derive(Debug)]
 pub struct RaiseSeam(BTreeMap<(usize, Option<String>), Option<crate::seam::Closed>>);
 impl RaiseSeam {
     pub fn decide(
@@ -549,7 +550,7 @@ impl RaiseSeam {
         let mut eval = w
             .evaluator_with_schema(
                 &p.eval_json,
-                p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
+                Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
                 observer,
             )
             .with_visited(&w.visited);
@@ -605,7 +606,7 @@ pub(super) fn rejudge(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
+            Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
             observer,
         )
         .with_visited(&w.visited);

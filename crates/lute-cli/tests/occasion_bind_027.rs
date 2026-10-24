@@ -350,9 +350,15 @@ fn for_kinds(v: &Json, out: &mut Vec<Json>) {
             if let Some(fk) = m.get("forKind") {
                 out.push(fk.clone());
             }
-            m.values().for_each(|x| for_kinds(x, out));
+            for x in m.values() {
+                for_kinds(x, out);
+            }
         }
-        Json::Array(a) => a.iter().for_each(|x| for_kinds(x, out)),
+        Json::Array(a) => {
+            for x in a {
+                for_kinds(x, out);
+            }
+        }
         _ => {}
     }
 }

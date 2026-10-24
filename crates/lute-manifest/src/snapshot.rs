@@ -222,7 +222,7 @@ impl CapabilitySnapshot {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct SnapshotBuilder {
     plugins: BTreeMap<String, ResolvedPlugin>,
 }

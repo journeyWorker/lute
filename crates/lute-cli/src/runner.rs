@@ -976,9 +976,15 @@ impl ExprIndex {
                     if let Some(cel) = map.get("cel").and_then(Json::as_str) {
                         first.entry(cel).or_insert(map.get("expr"));
                     }
-                    map.values().for_each(|v| collect(v, first));
+                    for v in map.values() {
+                        collect(v, first);
+                    }
                 }
-                Json::Array(items) => items.iter().for_each(|v| collect(v, first)),
+                Json::Array(items) => {
+                    for v in items {
+                        collect(v, first);
+                    }
+                }
                 _ => {}
             }
         }

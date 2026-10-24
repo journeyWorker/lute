@@ -70,10 +70,16 @@ fn fill(value: &mut Value, project: &str, files: &BTreeMap<String, String>) {
                     .clone();
             }
         }
-        Value::Array(items) => items.iter_mut().for_each(|item| fill(item, project, files)),
-        Value::Object(items) => items
-            .values_mut()
-            .for_each(|item| fill(item, project, files)),
+        Value::Array(items) => {
+            for item in items {
+                fill(item, project, files);
+            }
+        }
+        Value::Object(items) => {
+            for item in items.values_mut() {
+                fill(item, project, files);
+            }
+        }
         _ => {}
     }
 }

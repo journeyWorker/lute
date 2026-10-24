@@ -352,8 +352,16 @@ pub(crate) fn walk<'a>(nodes: &'a [Node], f: &mut impl FnMut(&'a Directive)) {
     for node in nodes {
         match node {
             Node::Directive(d) if d.is_accept() => f(d),
-            Node::Branch(b) => b.choices.iter().for_each(|c| walk(&c.body, f)),
-            Node::Hub(h) => h.bodies().for_each(|b| walk(b, f)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    walk(&c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    walk(b, f);
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {

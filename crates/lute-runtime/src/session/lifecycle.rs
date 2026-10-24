@@ -13,6 +13,7 @@ use crate::input::str_of;
 use crate::machine::Seed;
 
 /// One quest document's lifecycle transitions from one advance.
+#[derive(Debug)]
 pub struct QuestAdvance {
     pub document: String,
     pub transcript: Vec<Json>,
@@ -74,7 +75,7 @@ pub fn advance_quests<F: super::WalkDriver>(
 }
 
 /// A moment raised for the quest lifecycles.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub enum Raise<'a> {
     /// dsl 0.21.0 §7a.2: judges active quests' `on="<occasion>"` objectives;
     /// the target it was raised for, if any, judges only the objectives

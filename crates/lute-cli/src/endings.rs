@@ -637,7 +637,11 @@ fn read_paths(expanded: &str) -> BTreeSet<String> {
                     walk(&a.expr, out);
                 }
             }
-            Expr::List(l) => l.elements.iter().for_each(|x| walk(&x.expr, out)),
+            Expr::List(l) => {
+                for x in &l.elements {
+                    walk(&x.expr, out);
+                }
+            }
             Expr::Select(s) => walk(&s.operand.expr, out),
             _ => {}
         }

@@ -10,6 +10,7 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 
 use crate::cache::InputCache;
 
+#[derive(Debug)]
 pub struct BuiltInput {
     pub input: CheckInput,
     pub resolve_error: bool,

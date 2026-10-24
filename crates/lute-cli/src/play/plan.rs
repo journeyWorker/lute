@@ -420,7 +420,7 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
         let mut segments = Vec::with_capacity(step.segments.len());
         for seg in &step.segments {
             if let Some((_, scope)) = scopes.iter().find(|(s, _)| Arc::ptr_eq(s, seg)) {
-                segments.push(scope.clone());
+                segments.push(Arc::clone(scope));
                 continue;
             }
             match resolve_script_bridges(p, &format!("step {n}: {}", seg.include), &seg.bridges) {
@@ -430,7 +430,7 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
                         choose: seg.choose.clone(),
                         bridges,
                     });
-                    scopes.push((seg.clone(), scope.clone()));
+                    scopes.push((Arc::clone(seg), Arc::clone(&scope)));
                     segments.push(scope);
                 }
                 Err(e) => errs.push(e),

@@ -15,6 +15,7 @@ use super::world::{clock_at, refresh_clock, World};
 use crate::Value;
 
 /// One transcript an `advance:` played at a midnight.
+#[derive(Debug)]
 pub enum Played<'a> {
     Quest(&'a QuestAdvance),
     Beat(&'a Presented),
@@ -24,6 +25,7 @@ pub enum Played<'a> {
 /// midnight: the move that brought the clock there (its `set` records) and
 /// the settle after it, then the occasion raised at `at` and the quests'
 /// answer to it.
+#[derive(Debug)]
 pub struct DayRaise {
     pub at: String,
     pub writes: Vec<Json>,
@@ -39,6 +41,7 @@ pub struct DayRaise {
 /// it started and where it stopped, at which the clock's `raise.slot`
 /// occasion was not raised — it is raised once, where the clock stops.
 /// `beats`: how many beats answer that occasion.
+#[derive(Debug)]
 pub struct PassedRaise {
     pub occasion: String,
     pub at: Vec<PassedAt>,
@@ -47,6 +50,7 @@ pub struct PassedRaise {
 
 /// One position a [`PassedRaise`] names: its day and slot (`None` on a
 /// clock without slots).
+#[derive(Debug)]
 pub struct PassedAt {
     pub day: i64,
     pub slot: Option<String>,

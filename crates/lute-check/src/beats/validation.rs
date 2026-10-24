@@ -593,12 +593,24 @@ pub(crate) fn check_occasion_target_scope(
         for n in nodes {
             match n {
                 Node::Line(l) => f(l),
-                Node::Branch(b) => b.choices.iter().for_each(|c| lines(&c.body, f)),
-                Node::Hub(h) => h.bodies().for_each(|b| lines(b, f)),
-                Node::Match(m) => m.arms.iter().for_each(|arm| match arm {
-                    lute_syntax::ast::Arm::When { body, .. }
-                    | lute_syntax::ast::Arm::Otherwise { body, .. } => lines(body, f),
-                }),
+                Node::Branch(b) => {
+                    for c in &b.choices {
+                        lines(&c.body, f);
+                    }
+                }
+                Node::Hub(h) => {
+                    for b in h.bodies() {
+                        lines(b, f);
+                    }
+                }
+                Node::Match(m) => {
+                    for arm in &m.arms {
+                        match arm {
+                            lute_syntax::ast::Arm::When { body, .. }
+                            | lute_syntax::ast::Arm::Otherwise { body, .. } => lines(body, f),
+                        }
+                    }
+                }
                 Node::Objective(o) => lines(&o.body, f),
                 Node::On(o) => lines(&o.body, f),
                 _ => {}

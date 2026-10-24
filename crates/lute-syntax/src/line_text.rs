@@ -52,6 +52,7 @@ pub fn interp_sites(text: &str) -> InterpSites<'_> {
 }
 
 /// The iterator [`interp_sites`] returns.
+#[derive(Debug)]
 pub struct InterpSites<'a> {
     text: &'a str,
     at: usize,
@@ -104,7 +105,7 @@ pub fn interp_markers(text: &str) -> impl Iterator<Item = (usize, usize)> + '_ {
 /// IR encoding: a literal `{{` as `\{{`, each literal backslash directly
 /// before a `{{` doubled. Adjacent literal pieces join first, so a literal
 /// `{{` split across pieces is still encoded.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct IrText {
     out: String,
     literal: String,

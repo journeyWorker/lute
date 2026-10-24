@@ -533,6 +533,7 @@ pub(crate) enum Answer {
 }
 
 /// The loaded executable project and its host-facing operations.
+#[derive(Debug)]
 pub struct Runtime {
     project: Arc<ExecProject>,
     /// The bundle's identity (spec 0.38.0 §7.2), what snapshots carry.
@@ -600,7 +601,7 @@ impl Runtime {
             project: self.fingerprint.clone(),
             await_: state.current_await(),
             request: state.request,
-            world: state.world.clone(),
+            world: Arc::clone(&state.world),
             continuation: state.continuation.clone(),
         }
     }
@@ -843,7 +844,7 @@ impl Runtime {
         occasion: &str,
         target: Option<&str>,
     ) -> Vec<crate::session::Candidate> {
-        let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
+        let mut f = ReplayFactory::new(Arc::clone(&self.project), Vec::new());
         let s = Session::resume(&self.project, (*state.world).clone(), &mut f);
         s.candidates(occasion, target)
     }
@@ -853,7 +854,7 @@ impl Runtime {
         beat: &str,
         member: Option<&str>,
     ) -> Option<crate::session::Candidate> {
-        let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
+        let mut f = ReplayFactory::new(Arc::clone(&self.project), Vec::new());
         let s = Session::resume(&self.project, (*state.world).clone(), &mut f);
         s.eligibility(beat, member)
     }
@@ -869,11 +870,11 @@ impl Runtime {
         }
     }
     pub fn terminal(&self, state: &State) -> bool {
-        let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
+        let mut f = ReplayFactory::new(Arc::clone(&self.project), Vec::new());
         Session::resume(&self.project, (*state.world).clone(), &mut f).terminal()
     }
     pub fn view(&self, state: &State, with_facts: bool) -> crate::session::WorldView {
-        let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
+        let mut f = ReplayFactory::new(Arc::clone(&self.project), Vec::new());
         Session::resume(&self.project, (*state.world).clone(), &mut f).view(with_facts)
     }
 
@@ -1042,7 +1043,7 @@ impl Runtime {
         delivered: usize,
         request: u64,
     ) -> Result<(State, Output), Rejected> {
-        let mut factory = ReplayFactory::replaying(self.project.clone(), answers.clone())
+        let mut factory = ReplayFactory::replaying(Arc::clone(&self.project), answers.clone())
             .map_err(|m| reject("E-RUNTIME-INPUT", m))?;
         let (stop, final_world, ended) = {
             let mut session = Session::resume(&self.project, world.clone(), &mut factory);
@@ -1655,13 +1656,13 @@ impl WalkDriver for ReplayFactory {
         self.document = document.into();
         ReplayDriver {
             choices: self.answers.clone(),
-            writes: self.writes.clone(),
+            writes: Arc::clone(&self.writes),
             cursor: self.answer_cursor,
             document: document.into(),
             events: Vec::new(),
             pending: None,
             pending_cut: None,
-            project: self.project.clone(),
+            project: Arc::clone(&self.project),
         }
     }
     fn finish(&mut self, machine: Machine<Self::Driver>) -> Walked {

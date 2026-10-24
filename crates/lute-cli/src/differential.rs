@@ -1148,7 +1148,7 @@ fn enumerate(roots: &[Root], only: Option<&str>) -> Corpus {
                     }
                     corpus.cases.push(Case::Doc(DocCase {
                         id,
-                        subject: subject.clone(),
+                        subject: Arc::clone(&subject),
                         present,
                         mock: input.mock.clone(),
                     }));
@@ -1206,13 +1206,13 @@ fn presentation_cases(
         let doc = project.join(&pr.document);
         let canon = std::fs::canonicalize(&doc).unwrap_or(doc.clone());
         let subject = match subjects.get(&canon) {
-            Some(s) => s.clone(),
+            Some(s) => Arc::clone(s),
             None => {
                 let rel = display_name(root, &doc).ok_or("document outside the corpus")?;
                 let s = Arc::new(
                     prepare(&doc, rel, Some(&project), gates).ok_or("cannot read the document")?,
                 );
-                subjects.insert(canon, s.clone());
+                subjects.insert(canon, Arc::clone(&s));
                 s
             }
         };
@@ -1541,7 +1541,7 @@ fn run_cases(cases: &[Case], verbose: bool) -> Tally {
                     Ok(mock) => {
                         let concrete = Case::Doc(DocCase {
                             id: c.id.clone(),
-                            subject: c.subject.clone(),
+                            subject: Arc::clone(&c.subject),
                             present: c.present.clone(),
                             mock,
                         });

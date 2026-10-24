@@ -677,6 +677,7 @@ pub(crate) struct PlayTestRun {
 /// A project compiled once for every play of one `lute test` run (T2-1):
 /// `Err` is why no play can run over it — the usage error, or that it does
 /// not compile (the compile gate's diagnostics are already printed).
+#[derive(Debug)]
 pub(crate) struct PlayProject(
     Result<
         (

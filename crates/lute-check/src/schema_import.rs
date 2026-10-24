@@ -401,6 +401,7 @@ impl ImportCache {
 /// Entries are stored behind `Arc`; cache hits clone only the pointer. The
 /// per-key `OnceLock` keeps unrelated keys independent while avoiding holding
 /// the map lock during an expensive parse.
+#[derive(Debug)]
 pub struct Memo<K, V> {
     map: Mutex<HashMap<K, Arc<OnceLock<Arc<V>>>>>,
 }
@@ -421,9 +422,9 @@ impl<K: Eq + std::hash::Hash, V> Memo<K, V> {
                 .map
                 .lock()
                 .unwrap_or_else(std::sync::PoisonError::into_inner);
-            map.entry(key).or_default().clone()
+            Arc::clone(map.entry(key).or_default())
         };
-        cell.get_or_init(|| Arc::new(init())).clone()
+        Arc::clone(cell.get_or_init(|| Arc::new(init())))
     }
 }
 

@@ -231,27 +231,41 @@ fn visit_nodes(doc: &Document, f: &mut impl FnMut(&Node)) {
         for n in nodes {
             f(n);
             match n {
-                Node::Branch(b) => b.choices.iter().for_each(|c| body(&c.body, f)),
+                Node::Branch(b) => {
+                    for c in &b.choices {
+                        body(&c.body, f);
+                    }
+                }
                 Node::Hub(h) => {
-                    h.choices.iter().for_each(|c| body(&c.body, f));
+                    for c in &h.choices {
+                        body(&c.body, f);
+                    }
                     if let Some(r) = &h.on_return {
                         body(&r.body, f);
                     }
                 }
-                Node::Match(m) => m.arms.iter().for_each(|arm| match arm {
-                    lute_syntax::ast::Arm::When { body: arm_body, .. } => body(arm_body, f),
-                    lute_syntax::ast::Arm::Otherwise { body: arm_body, .. } => body(arm_body, f),
-                }),
-                Node::Timeline(t) => t.tracks.iter().for_each(|tr| {
-                    tr.clips.iter().for_each(|c| {
-                        if let lute_syntax::ast::ClipNode::Directive(d) = &c.node {
-                            f(&Node::Directive(d.clone()));
+                Node::Match(m) => {
+                    for arm in &m.arms {
+                        match arm {
+                            lute_syntax::ast::Arm::When { body: arm_body, .. } => body(arm_body, f),
+                            lute_syntax::ast::Arm::Otherwise { body: arm_body, .. } => {
+                                body(arm_body, f);
+                            }
                         }
-                        if let lute_syntax::ast::ClipNode::Set(s) = &c.node {
-                            f(&Node::Set(s.clone()));
+                    }
+                }
+                Node::Timeline(t) => {
+                    for tr in &t.tracks {
+                        for c in &tr.clips {
+                            if let lute_syntax::ast::ClipNode::Directive(d) = &c.node {
+                                f(&Node::Directive(d.clone()));
+                            }
+                            if let lute_syntax::ast::ClipNode::Set(s) = &c.node {
+                                f(&Node::Set(s.clone()));
+                            }
                         }
-                    });
-                }),
+                    }
+                }
                 Node::Objective(o) => body(&o.body, f),
                 Node::On(o) => body(&o.body, f),
                 _ => {}

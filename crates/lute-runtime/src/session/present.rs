@@ -25,7 +25,7 @@ pub const MAX_ADVANCE_CASCADE: usize = 64;
 /// `bridges` / `member` captures for the differential harness
 /// (`crate::differential`, docs/design/runtime-unification.md §4.3), which
 /// replays each presentation through trace from exactly this world.
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct Presented {
     pub id: String,
     pub kind: BeatKind,
@@ -57,7 +57,7 @@ pub struct Presented {
 /// every `dayEnd` / `dayStart` raise it made and every raise it found
 /// closed. The raise of the clock's `slot` occasion where the clock stops is
 /// [`Presented::raised`].
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct BeatAdvance {
     pub by: String,
     pub from: String,
@@ -66,7 +66,7 @@ pub struct BeatAdvance {
 }
 
 /// One clock raise of a [`BeatAdvance`].
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub enum ClockRaise {
     /// A beat the raise presented.
     Raised(Box<Presented>),

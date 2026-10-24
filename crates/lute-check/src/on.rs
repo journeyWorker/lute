@@ -171,8 +171,16 @@ fn for_each_on<'a>(nodes: &'a [Node], f: &mut impl FnMut(&'a On)) {
                 f(o);
                 for_each_on(&o.body, f);
             }
-            Node::Branch(b) => b.choices.iter().for_each(|c| for_each_on(&c.body, f)),
-            Node::Hub(h) => h.bodies().for_each(|b| for_each_on(b, f)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    for_each_on(&c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    for_each_on(b, f);
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {

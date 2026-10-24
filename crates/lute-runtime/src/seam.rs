@@ -74,7 +74,7 @@ pub fn terminal_holds(
             &mut w
                 .evaluator_with_schema(
                     &p.eval_json,
-                    p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
+                    std::sync::Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
                     observer,
                 )
                 .with_visited(&w.visited),
@@ -107,7 +107,7 @@ pub fn closed(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
+            std::sync::Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
             observer,
         )
         .with_visited(&w.visited);
@@ -126,7 +126,7 @@ pub fn gate(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
+            std::sync::Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
             None,
         )
         .with_visited(&w.visited);

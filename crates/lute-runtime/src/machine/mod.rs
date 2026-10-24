@@ -312,14 +312,21 @@ fn collect_slots(v: &Json, out: &mut HashMap<usize, Arc<Slot>>) {
                 }
                 return;
             }
-            map.values().for_each(|c| collect_slots(c, out));
+            for c in map.values() {
+                collect_slots(c, out);
+            }
         }
-        Json::Array(items) => items.iter().for_each(|c| collect_slots(c, out)),
+        Json::Array(items) => {
+            for c in items {
+                collect_slots(c, out);
+            }
+        }
         _ => {}
     }
 }
 
 /// A read-only snapshot supplied to an [`EvalObserver`].
+#[derive(Debug)]
 pub struct EvalSnapshot<'a> {
     pub state: &'a BTreeMap<String, Value>,
     pub state_types: &'a BTreeMap<String, String>,
@@ -439,6 +446,19 @@ pub struct Machine<D: Driver> {
     /// occasion's beats ([`Machine::run_deferred_handlers`]). `None`: bodies
     /// run where they fire.
     deferred_handlers: Option<Vec<String>>,
+}
+
+impl<D: Driver> std::fmt::Debug for Machine<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // `driver` and `eval_observer` are not `Debug`.
+        f.debug_struct("Machine")
+            .field("occasion_target", &self.occasion_target)
+            .field("incomplete", &self.incomplete)
+            .field("terminated", &self.terminated)
+            .field("fatal", &self.fatal)
+            .field("refused", &self.refused)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<D: Driver> Machine<D> {

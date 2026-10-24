@@ -153,6 +153,7 @@ pub fn parse_fact(input: &str) -> Result<FactPattern, DatalogError> {
 }
 
 /// A byte cursor over the parsed input, shared by the fact and rule grammars.
+#[derive(Debug)]
 pub struct Cur<'a> {
     pub b: &'a [u8],
     pub i: usize,

@@ -26,7 +26,7 @@ use crate::{
 pub type SessionEvalObserver =
     Rc<dyn for<'a> Fn(&str, &Value, &[UnresolvedAtom], EvalSnapshot<'a>)>;
 /// A driver used only by evaluator machines; it cannot make a play decision.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct NoDecisionDriver;
 
 impl Driver for NoDecisionDriver {
@@ -283,7 +283,7 @@ pub fn unknown_id<'a>(
 }
 
 /// The save a playthrough starts from (dsl 0.22.0 §3), as written.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct SaveSeed {
     pub visited: Vec<String>,
     pub presented_user: Vec<String>,
@@ -297,6 +297,7 @@ pub struct SaveSeed {
 
 /// Everything a world is seeded from: the trace-mock surfaces (`state:`,
 /// `facts:`, `choose:`, `bridges:`), the save, and the `derive:` setting.
+#[derive(Debug)]
 pub struct WorldSeed<'a, B = (), C = ()> {
     pub surfaces: &'a MockSet<B, C>,
     pub save: &'a SaveSeed,
@@ -573,7 +574,7 @@ pub fn exclusive_violations(p: &ExecProject, w: &World) -> Vec<String> {
     }
     let evaluator = w.evaluator_with_schema(
         &p.eval_json,
-        p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
+        std::sync::Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
         None,
     );
     let facts = evaluator.all_facts();
@@ -639,7 +640,7 @@ pub fn world_view(p: &ExecProject, w: &World, with_facts: bool) -> WorldView {
     let facts = if with_facts {
         w.evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
+            std::sync::Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
             None,
         )
         .all_facts()

@@ -1019,8 +1019,16 @@ fn typed_param_sinks(
                         walk(body, f, out);
                     }
                 }
-                Node::Branch(b) => b.choices.iter().for_each(|c| walk(&c.body, f, out)),
-                Node::Hub(h) => h.bodies().for_each(|b| walk(b, f, out)),
+                Node::Branch(b) => {
+                    for c in &b.choices {
+                        walk(&c.body, f, out);
+                    }
+                }
+                Node::Hub(h) => {
+                    for b in h.bodies() {
+                        walk(b, f, out);
+                    }
+                }
                 Node::On(o) => walk(&o.body, f, out),
                 Node::Objective(o) => walk(&o.body, f, out),
                 Node::Line(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}
@@ -1195,11 +1203,16 @@ pub(super) fn collect_use_directives<'a>(nodes: &'a [Node], out: &mut Vec<&'a Di
         match node {
             Node::Directive(d) if d.tag == "use" => out.push(d),
             Node::Directive(_) => {}
-            Node::Branch(b) => b
-                .choices
-                .iter()
-                .for_each(|c| collect_use_directives(&c.body, out)),
-            Node::Hub(h) => h.bodies().for_each(|b| collect_use_directives(b, out)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    collect_use_directives(&c.body, out);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    collect_use_directives(b, out);
+                }
+            }
             Node::On(o) => collect_use_directives(&o.body, out),
             Node::Objective(o) => collect_use_directives(&o.body, out),
             Node::Match(m) => {

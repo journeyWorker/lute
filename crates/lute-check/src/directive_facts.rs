@@ -403,8 +403,16 @@ pub fn for_each_call<'d>(nodes: &'d [Node], f: &mut impl FnMut(&'d Directive)) {
                     for_each_call(body, f);
                 }
             }
-            Node::Branch(b) => b.choices.iter().for_each(|c| for_each_call(&c.body, f)),
-            Node::Hub(h) => h.bodies().for_each(|b| for_each_call(b, f)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    for_each_call(&c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    for_each_call(b, f);
+                }
+            }
             Node::On(o) => for_each_call(&o.body, f),
             Node::Objective(o) => for_each_call(&o.body, f),
             Node::Timeline(t) => {

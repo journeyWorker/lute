@@ -102,6 +102,7 @@ pub fn occasions_before(
     clippy::type_complexity,
     reason = "producer records retain document, unit, and optional arguments"
 )]
+#[derive(Debug)]
 pub struct FactProducers(BTreeMap<String, Vec<(std::path::PathBuf, usize, Vec<Option<String>>)>>);
 
 impl FactProducers {

@@ -101,6 +101,7 @@ fn parse_pick(
 
 /// The steps of one `include:` target (dsl 0.24.0 §1), read for `lute play`
 /// and [`choose_keys`].
+#[derive(Debug)]
 pub struct IncludedSteps {
     /// The target as written, joined to the includer's directory.
     pub file: PathBuf,
@@ -113,6 +114,7 @@ pub struct IncludedSteps {
 }
 
 /// Why an `include:` target gave no steps.
+#[derive(Debug)]
 pub enum IncludeError {
     /// The file cannot be resolved or read (an [`lute_manifest::io_reason`]).
     Read { file: PathBuf, reason: String },

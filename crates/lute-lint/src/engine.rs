@@ -28,6 +28,7 @@ use crate::rules::{active_group_bys, evaluate_rule, resolve_rules, DocContext};
 /// `lute-check` policy) after the manifest's `chapters:` derivation
 /// ([`lute_check::chapters::apply_chapters`]), so a scene a chain lists is
 /// classified by the `on:` the chain gives it ([`crate::metrics::doc_kind`]).
+#[derive(Debug)]
 pub struct LintDocInput {
     pub path: PathBuf,
     pub doc: Document,
