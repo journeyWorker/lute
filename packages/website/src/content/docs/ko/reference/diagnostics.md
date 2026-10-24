@@ -1384,9 +1384,9 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 ### E-REWARD-ATTR
 
-`<reward>` 요소의 형식이 잘못되었습니다: 비어 있거나 없는 `kind`, 부호 있는 정수나 올바른 `N..M` 범위가 아닌 `amount=`, 또는 objective 수준 reward에 쓰인 `outcome=`이나 `"failed"`가 아닌 `outcome=` 값입니다.
+`<reward>` 요소의 형식이 잘못되었습니다: 비어 있거나 없는 `kind`, 부호 있는 정수나 올바른 `N..M` 범위가 아닌 `amount=`, objective 수준 reward에 쓰인 `outcome=`이나 `"failed"`가 아닌 `outcome=` 값, 또는 따옴표로 감싼 id가 아닌 `target=`(IR에 실을 수 없는 `@ref`나 값 없는 `target`)입니다.
 
-명세: [dsl 0.16.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.16.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md)
+명세: [dsl 0.16.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.16.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.49.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### E-REWARD-DUP
 

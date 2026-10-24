@@ -377,7 +377,7 @@ fn forbidden_rejects_a_target_at_the_attribute() {
         let diags: Vec<_> = check(&input)
             .diagnostics
             .into_iter()
-            .filter(|d| d.code == "E-REWARD-TARGET")
+            .filter(|d| d.code == "E-REWARD-TARGET" || d.code == "E-REWARD-ATTR")
             .collect();
         assert_eq!(diags.len(), 1, "{attr}: {diags:?}");
         let d = &diags[0];
@@ -394,6 +394,83 @@ fn forbidden_rejects_a_target_at_the_attribute() {
             "{attr}: anchored at the authored value"
         );
         assert_eq!(d.span.byte_start, at, "{attr}");
+    }
+}
+
+/// 0.49.0 §3.3 (#192): only a quoted `target="…"` reaches the IR, so an
+/// `@ref` or a bare `target` is `E-REWARD-ATTR` at the value under every
+/// contract — `required: true` does not also call it missing, and an
+/// `entity:`/`provider:` contract (which cannot judge a reference) reports
+/// nothing more. A kind with no contract refuses it too.
+#[test]
+fn an_unquoted_target_is_refused_under_every_contract() {
+    let catalog = || {
+        ProviderSet::from_one(lute_manifest::provider::ProviderSnapshot {
+            manifest_version: "v".into(),
+            provider_version: "1".into(),
+            entries: [("items".to_string(), vec!["goodRod".to_string()])].into(),
+            stale: false,
+        })
+    };
+    let contracts = [
+        ("required", entity_contract("bagItem", true)),
+        ("entity", entity_contract("bagItem", false)),
+        (
+            "provider",
+            lute_manifest::schema::RewardTarget {
+                provider: Some("items".into()),
+                ..Default::default()
+            },
+        ),
+        ("none", lute_manifest::schema::RewardTarget::default()),
+    ];
+    for (name, contract) in contracts {
+        for (attr, anchor, why) in [
+            (
+                "target=@goodRod",
+                "@goodRod",
+                "`target=@goodRod` is a reference",
+            ),
+            ("target", "target", "a bare `target` has no value"),
+        ] {
+            let text = format!(
+                "---\nkind: quest\nentities:\n  bagItem: {{ members: [goodRod, potion] }}\n---\n\
+                 <quest id=\"q\">\n<reward kind=\"ITEM\" {attr}/>\n</quest>\n"
+            );
+            let input = CheckInput::new(
+                text.clone(),
+                "reward".into(),
+                Mode::Author,
+                lute_check::InputSources::from_parts(
+                    snap_with_target(contract.clone()),
+                    catalog(),
+                    SchemaImports::default(),
+                    Default::default(),
+                    Default::default(),
+                ),
+            );
+            let diags: Vec<_> = check(&input)
+                .diagnostics
+                .into_iter()
+                .filter(|d| d.code.starts_with("E-REWARD") || d.code == "W-CATALOG-STALE")
+                .collect();
+            assert_eq!(diags.len(), 1, "{name} {attr}: {diags:?}");
+            let d = &diags[0];
+            assert_eq!(d.code, "E-REWARD-ATTR", "{name} {attr}");
+            assert_eq!(
+                d.message,
+                format!(
+                    "`<reward target=…>` takes a quoted id, e.g. `target=\"potion\"`: {why}, and \
+                     a reward's target is static data the engine grants against (0.49.0 §3.3)"
+                ),
+                "{name} {attr}"
+            );
+            assert_eq!(
+                &text[d.span.byte_start..d.span.byte_end],
+                anchor,
+                "{name} {attr}"
+            );
+        }
     }
 }
 
