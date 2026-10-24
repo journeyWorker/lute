@@ -305,7 +305,7 @@ pub(crate) fn run_scenario(
     // from a bare `println!`.
     let mut out = String::new();
     let code = match command {
-        None => run_scenario_graph(&mut out, &by_root, facts),
+        None => run_scenario_graph(&mut out, &by_root, &file_results, facts),
         Some(ScenarioCommand::Reach {
             endings: Some(occasion),
             ..

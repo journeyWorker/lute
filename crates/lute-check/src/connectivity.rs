@@ -24,4 +24,4 @@ pub use reachability::{
     collect_asserts, live_assert_relations, live_assert_sites, unreachable_quest_ids, Reachability,
     E_CONN_FORMULA_TOO_COMPLEX, E_CONN_UNREACHABLE,
 };
-pub use start_cycles::E_QUEST_START_CYCLE;
+pub use start_cycles::{resolve_start_blocks, E_QUEST_START_CYCLE};

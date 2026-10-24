@@ -59,7 +59,8 @@ pub fn assemble_root_scenario(
     let key_set = lute_check::connectivity::scene_key_set(&project_docs);
     let quest_ids = lute_check::connectivity::quest_id_set(&project_docs);
     let beat_keys = lute_check::connectivity::bundle_beat_key_set(&project_docs);
-    let (graph, _) = lute_check::connectivity::assemble_graph(&project_docs, &key_set, &quest_ids);
+    let (mut graph, _) =
+        lute_check::connectivity::assemble_graph(&project_docs, &key_set, &quest_ids);
     let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(&project_docs);
     let fp = compute_conn_fixpoint(
         &project_docs,
@@ -68,6 +69,13 @@ pub fn assemble_root_scenario(
         &graph,
         &quest_ids,
         &ambiguous_quests,
+    );
+    // dsl 0.49.0 §6.1: start cycles, against the final verdicts.
+    let _ = lute_check::connectivity::resolve_start_blocks(
+        &mut graph,
+        &project_docs,
+        &fp.reach,
+        &fp.unreachable_quests,
     );
     let mut per_doc = envelope::PerDocEffects::default();
     let mut reads_per_scene = BTreeMap::new();

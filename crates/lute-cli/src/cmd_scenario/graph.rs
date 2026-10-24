@@ -258,7 +258,12 @@ fn print_omitted(out: &mut String, omitted: &[lute_check::connectivity::OmittedR
     }
 }
 
-pub(crate) fn run_scenario_graph(out: &mut String, by_root: &ByRoot, facts: bool) -> ExitCode {
+pub(crate) fn run_scenario_graph(
+    out: &mut String,
+    by_root: &ByRoot,
+    file_results: &[(std::path::PathBuf, lute_check::CheckResult)],
+    facts: bool,
+) -> ExitCode {
     if by_root.is_empty() {
         outln!(out, "lute: no .lute files found");
         return ExitCode::SUCCESS;
@@ -270,8 +275,23 @@ pub(crate) fn run_scenario_graph(out: &mut String, by_root: &ByRoot, facts: bool
             .collect();
         let key_set = lute_check::connectivity::scene_key_set(&docs);
         let quest_ids = lute_check::connectivity::quest_id_set(&docs);
-        let (graph, _cycle_diags) =
+        let (mut graph, _cycle_diags) =
             lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids);
+        // dsl 0.49.0 §6.1: start cycles, against the final reach verdicts.
+        let fp = lute_model::compute_conn_fixpoint(
+            &docs,
+            group_full,
+            file_results,
+            &graph,
+            &quest_ids,
+            &lute_check::connectivity::ambiguous_quest_ids(&docs),
+        );
+        let _ = lute_check::connectivity::resolve_start_blocks(
+            &mut graph,
+            &docs,
+            &fp.reach,
+            &fp.unreachable_quests,
+        );
         let when_visited = lute_check::connectivity::when_visited_unanchored(&docs, &graph);
         let fact_graph = facts.then(|| FactGraph::of(group_full, &docs, &graph));
         print_graph_for_root(
@@ -334,10 +354,11 @@ impl FactGraph {
             .map(|e| {
                 let joins = graph.nodes.contains_key(&e.from)
                     && graph.nodes.contains_key(&e.to)
-                    && (layered
+                    && ((layered
                         .edges
                         .get(&e.from)
                         .is_some_and(|t| t.contains(&e.to))
+                        && layered.orders(&e.from, &e.to))
                         || !reaches(&layered, &e.to, &e.from));
                 if joins {
                     layered

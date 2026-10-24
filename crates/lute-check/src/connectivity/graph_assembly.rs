@@ -266,8 +266,9 @@ pub fn assemble_graph(
     // sound verdict. `detect_conn_cycles` above still emits `E-CONN-CYCLE`;
     // we only stop blanking the whole root's order.
     let topo_order = topo_sort(&nodes, &edges, &back_edges);
-    let start_blocked = super::start_cycles::start_blocks(&nodes, &topo_order, &decls, &mut diags);
 
+    // `start_blocked` needs reachability: callers run
+    // `resolve_start_blocks` on the final verdicts (dsl 0.49.0 §6.1).
     (
         ConnGraph {
             nodes,
@@ -275,7 +276,7 @@ pub fn assemble_graph(
             edge_kinds,
             topo_order,
             back_edges,
-            start_blocked,
+            start_blocked: BTreeMap::new(),
         },
         diags,
     )
@@ -343,7 +344,7 @@ pub(super) struct QuestDecls<'a> {
 }
 
 impl<'a> QuestDecls<'a> {
-    fn new(docs: &'a [ProjectDoc<'a>]) -> Self {
+    pub(super) fn new(docs: &'a [ProjectDoc<'a>]) -> Self {
         let mut first: BTreeMap<&str, (&Path, &Quest)> = BTreeMap::new();
         let mut with_after = BTreeSet::new();
         let mut entries = BTreeMap::new();

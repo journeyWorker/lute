@@ -2,7 +2,9 @@
 //! anchors wait on each other (a start cycle) or on the quest itself.
 
 use super::graph_assembly::QuestDecls;
-use super::graph_nodes::{Anchor, EdgeKind, NodeId, NodeInfo, PrereqState, StartBlock};
+use super::graph_nodes::{Anchor, ConnGraph, EdgeKind, NodeId, NodeInfo, PrereqState, StartBlock};
+use super::reachability::Reachability;
+use crate::ProjectDoc;
 use lute_core_span::{Diagnostic, Layer, Severity};
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::PathBuf;
@@ -36,26 +38,50 @@ fn reads_itself(quest: &NodeId, info: &NodeInfo) -> bool {
         if anchors.iter().any(|a| a.kind == EdgeKind::Start && a.from.contains(quest)))
 }
 
+/// dsl 0.49.0 §6.1–§6.2: sets [`ConnGraph::start_blocked`] of `g` from the
+/// reachability `reach` that [`super::check_reachability`] computed over it
+/// with `unreachable_quests`, and returns one [`E_QUEST_START_CYCLE`] per
+/// strongly connected set of deadlocked quests.
+///
+/// Reachability never depends on *can-start* — a dead anchor reads
+/// `Unknown`, never `Unreachable` — so the two reach a joint fixed point
+/// when this runs once on the final `reach`: a node the lifecycle proves
+/// unreachable is no way in.
+pub fn resolve_start_blocks(
+    g: &mut ConnGraph,
+    docs: &[ProjectDoc<'_>],
+    reach: &BTreeMap<NodeId, Reachability>,
+    unreachable_quests: &BTreeSet<String>,
+) -> Vec<(PathBuf, Diagnostic)> {
+    let decls = QuestDecls::new(docs);
+    let mut diags = Vec::new();
+    let routable = |id: &NodeId| {
+        reach.get(id) != Some(&Reachability::Unreachable)
+            && !matches!(id, NodeId::Quest(q) if unreachable_quests.contains(q))
+    };
+    let blocked = start_blocks(&g.nodes, &g.topo_order, &decls, &routable, &mut diags);
+    g.start_blocked = blocked;
+    diags
+}
+
 /// The least fixed point of *can-start* (dsl 0.49.0 §6.1) and, for every
 /// quest outside it that a start cycle or a self-read blocks, the
 /// [`StartBlock`]. Pushes one [`E_QUEST_START_CYCLE`] per strongly connected
 /// set of deadlocked quests that do not read themselves, at its least quest's
 /// `start`.
 ///
-/// A node without gating anchors is decided by the graph: it is routable
-/// when it is in `topo_order` (not on or past an `after` cycle). The
-/// graph knows no `Unreachable` node — that verdict comes from the quest
-/// lifecycle the reachability pass reads — so this never reports a deadlock
-/// the lifecycle would have to prove.
-pub(super) fn start_blocks(
+/// A node without gating anchors can start (is a way in) when it is in
+/// `topo_order` (not on or past an `after` cycle) and `routable`.
+fn start_blocks(
     nodes: &BTreeMap<NodeId, NodeInfo>,
     topo_order: &[NodeId],
     decls: &QuestDecls<'_>,
+    routable: &dyn Fn(&NodeId) -> bool,
     diags: &mut Vec<(PathBuf, Diagnostic)>,
 ) -> BTreeMap<NodeId, StartBlock> {
     let mut can: BTreeSet<&NodeId> = topo_order
         .iter()
-        .filter(|id| nodes.get(*id).is_some_and(|info| gating(info).is_none()))
+        .filter(|id| nodes.get(*id).is_some_and(|info| gating(info).is_none()) && routable(id))
         .collect();
     let gated: Vec<(&NodeId, &NodeInfo)> = topo_order
         .iter()
@@ -84,8 +110,9 @@ pub(super) fn start_blocks(
         }
     }
 
-    // The start graph over the quests that cannot start: `source ->
-    // dependent` for each quest source of a `start` anchor.
+    // The anchor graph over the quests that cannot start: `source ->
+    // dependent` for each blocked source of a gating anchor (the same
+    // anchors the fixed point reads).
     let blocked: BTreeSet<&NodeId> = nodes
         .iter()
         .filter(|(id, info)| gating(info).is_some() && !can.contains(id))
@@ -93,12 +120,9 @@ pub(super) fn start_blocks(
         .collect();
     let mut next: BTreeMap<&NodeId, BTreeSet<&NodeId>> = BTreeMap::new();
     for &id in &blocked {
-        let PrereqState::Anchored(anchors) = &nodes[id].prereq else {
-            continue;
-        };
-        for source in anchors
-            .iter()
-            .filter(|a| a.kind == EdgeKind::Start)
+        for source in gating(&nodes[id])
+            .into_iter()
+            .flatten()
             .flat_map(|a| &a.from)
             .filter(|s| blocked.contains(s))
         {

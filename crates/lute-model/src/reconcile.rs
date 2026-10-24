@@ -384,7 +384,7 @@ pub fn reconcile_collected(
                 let quest_ids = lute_check::connectivity::quest_id_set(&group);
                 let node_diags =
                     lute_check::connectivity::resolve_nodes(&group, &key_set, &quest_ids);
-                let (conn_graph, cycle_diags) =
+                let (mut conn_graph, mut cycle_diags) =
                     lute_check::connectivity::assemble_graph(&group, &key_set, &quest_ids);
                 // T7/T14/Fix2 wiring: `compute_conn_fixpoint` iterates the
                 // reach/live-assert/may-set/dead-quest composition to a finite
@@ -400,6 +400,13 @@ pub fn reconcile_collected(
                     &quest_ids,
                     &ambiguous_quests,
                 );
+                // dsl 0.49.0 §6.1: start cycles, against the final verdicts.
+                cycle_diags.extend(lute_check::connectivity::resolve_start_blocks(
+                    &mut conn_graph,
+                    &group,
+                    &fp.reach,
+                    &fp.unreachable_quests,
+                ));
                 (
                     key_set,
                     node_diags,
