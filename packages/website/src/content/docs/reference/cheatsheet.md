@@ -289,6 +289,8 @@ Every root kind also accepts `title`, `luteVersion`, `contentLang`, `profile`, `
 spelling. `title:` is the only document title: a `# Title` line in the body is `E-INERT-TITLE`. A
 quest's graph edge is the `follows=` attribute on `<quest>`. It is not a frontmatter key.
 
+A plugin frontmatter key typed `entity`, `domain`, `enumFromOption`, `providerRef` or `assetKind` is checked (0.49.0) with the same type-specific validation as an attribute of that type: `providerRef` gives `E-UNKNOWN-ID` (and possibly `W-CATALOG-STALE`), asset kinds give `E-ASSET-*`, and an entity or enum typo is `E-BAD-ENUM` with a did-you-mean, for example (`` `mirra` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`? ``), a `list` of such a type checks each element, and a non-string value stays `E-FRONTMATTER-SCHEMA`.
+
 → [Frontmatter & profiles](/language/frontmatter-and-profiles/)
 
 ## Lines, cast & staging
@@ -353,6 +355,8 @@ state:
 | sections | All content sits under a `## Heading` (`E-CONTENT-OUTSIDE-SECTION` before the first). `## Heading {#id}` gives the section a stable id, unique in the document (`E-SECTION-DUP`); it is identity metadata, never a jump target. |
 | directives | `::bg{location time assetId}`, `::music{playback mood volume assetId}`, `::sfx{sound assetId}`, `::vfx{type label transition}`, `::actor{character anchor action emotion costume}` (entrance, pose, exit: an `action` in `exits:` takes the actor off stage), `::camera{focus framing move transition}` (at least one, else `E-CAMERA-EMPTY`), `::cg{assetId display layout}` and `::video{assetId display}` (`display` is `show` or `hide`, default `show`), `::sequence{name}` (names a cinematic the engine owns; `wait` defaults to `true`), `::end`, and `::clear` (0.24.0: everyone on stage exits; background and music stay). Timing keys: `duration`, `delay` (seconds), `wait="true"` (blocks). With a cast declared, `::actor{character}` and `::camera{focus}` must be in it (`E-CAST-UNKNOWN`). |
 | comments | `// …` to the end of the line, on a line of its own or after a directive (`::set{run.n += 1} // why`), and `/* … */`. After a `<tag>` it is `E-TAG-INLINE-BODY`, and inside a content line's text `//` is literal. |
+| `wait` on a line | 0.49.0. `@mira{wait="false"}: …` is admitted (a bool) and compiles to the line's `timing.wait`; `delay` and `duration` on a line stay `E-UNKNOWN-ATTR`. A line always waits for its own advance; `wait` says whether the staging cues after it, up to the next line, wait for the line: `true` or absent they wait, `false` they start while the line is presented. The next line still waits, and so does a `presentation` cue (it clears the dialogue window). |
+| `::jump`, `::label`, `::clear` | 0.49.0. They carry no stamp: a plugin stamp attribute or a core timing key on them is `E-UNKNOWN-ATTR` (`` `::jump` does not carry `cue`: it compiles to a `jump` record that has no stamp ``). Put the attribute on the line or directive before a jump, after a label, or on the `::actor{exit}` you write — `::clear` does not hand stamps to the exits it injects. |
 
 → [Dialogue & cast](/language/dialogue-and-cast/) · [Core directives](/language/directives/)
 
@@ -663,6 +667,8 @@ write `quest.q.state == 'unset'`, because `has(quest.q.state)` is always true
 (`W-QUEST-STATE-HAS`). Since 0.26.0 a string a guard compares with an enum path, `occasion.target`
 or a quest's `state` / `failedBy` (`==`, `!=`, or an `in [...]` element) must be one of its members:
 `run.rank == 'silvr'` is `E-WHEN-LITERAL-DOMAIN`, with a did-you-mean, as `is="silvr"` is.
+
+0.49.0 presence of a `per:` member: `'look-around' in user.stepRank` is a presence guard of `user.stepRank.look-around`, the same as `has()` of an identifier path (and `!('look-around' in user.stepRank)` for the negation); use it for a member that is not an identifier. `has(user.stepRank["look-around"])` stays `E-CEL-PARSE`, with the hint to write `'<m>' in <family>`. Every message that names a presence test spells it `has(p)` / `!has(p)` for identifier paths and `'<m>' in <family>` / `!('<m>' in <family>)` for such a member; a path with any other non-identifier segment names only the `after:` / `default:` remedies.
 
 0.30.0: every name you write is a **name** — letters, digits, `_` or `-`, not starting with `-` —
 and a dotted id joins names with `.`: scene, beat, entry, quest, objective, branch, hub, choice and
@@ -1642,6 +1648,8 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. An entry that can be read again in a run (a lookup entry, no `once`, a `once` shorter than the run, `spentBy`, `for`) `::set`s, `::retract`s or calls an effect-only directive that writes: its writes apply on the first read in a run only. Use `<beat … once="false">` for a repeating write, `once="run"`, or a `when="!entry.<id>.read"` guard. `::assert` is exempt. |
 | `E-COMPONENT-ARG` | A `::use` argument does not fit its param, or names none. Since 0.26.0 also `@@x:` for a param that is not a `speaker` param, or outside a component. |
 | `E-UNKNOWN-ATTR` | An attribute the directive does not declare. Since 0.26.0 also `when=` on a directive that lowers to a built-in record (the core staging directives such as `::bg` and `::sfx`, `::end`, `::label`, a plugin `lower:` record), and a plugin attribute named `when`. |
+| `E-ENTITY-KIND-CLASH` | Two kinds list the same member. If they are two id spaces whose ids only spell the same, declare a shared root kind listing both spaces' members and make each a sub-kind of it (`{first}: { subsetOf: <root>, members: […] }`); every reference still checks against its own kind. |
+| `E-PATH-IDENT` | A name segment that is not an identifier written after a `.`. For an entity or enum member that is an id from another system (`vendor:reply`), declare a provider and type the attribute `{ providerRef: <provider> }`. |
 | `E-CONN-UNKNOWN-NODE` | `visited('…')` or `after` names no scene (or, since 0.24.0, bundle beat) in the project. |
 | `E-CLOCK-DECL` | 0.24.0. The schema's `clock:` is malformed: `day` / `slot` undeclared, mistyped, or not `owner: engine` (`` `day: run.day` must be declared `owner: engine` ``), `slots` not the slot enum's members or given without `slot`, an unknown `raise` occasion (once a plugin declares occasions) or one with a `payload:` (0.28.0), or a second clock. |
 | `E-SEASON-DECL` | 0.27.0. A `seasons:` entry is malformed (not a map, no or empty `live`, unknown key, bad name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season. A write to `prev.season.*` is `E-QUEST-RESERVED-WRITE`, as for `prev.run.*`. |

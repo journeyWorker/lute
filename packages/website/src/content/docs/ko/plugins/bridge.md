@@ -1,6 +1,6 @@
 ---
 title: 타입이 지정된 브리지 디렉티브
-description: 플러그인이 타입이 지정된 런타임 브리지를 선언하는 방법, 이를 호출하는 디렉티브, 디렉티브가 쓰는 선언된 결과 상태, 동기화 시점, 결과 슬롯에 대한 match입니다.
+description: 플러그인이 타입이 지정된 런타임 브리지를 선언하는 방법, 이를 호출하는 디렉티브, 디렉티브가 쓰는 선언된 결과 상태, 동기화 의미론, 결과 슬롯에 대한 match입니다.
 ---
 
 **브리지(bridge)**는 엔진이 소유하는 타입 지정 런타임 호출입니다 — 미니게임, 서비스, 외부 비트가 그 예입니다. DSL은 데이터만 방출하고, 엔진이 브리지를 실행하며, 스토리 제어 흐름은 디렉티브가 쓰는 **선언된 상태만** 관찰하고 원시 브리지 출력은 관찰하지 않습니다. 이것이 언어를 전체적으로 유지합니다. 브리지 호출은 임의의 도구 호출이 아니라 데이터입니다.
@@ -64,7 +64,7 @@ directives:
     bridge: { service: minigame, operation: play }
 ```
 
-모든 쓰기 경로는 슬롯의 shape로 선언되어야 **합니다(MUST)**. 블로킹 브리지는 플러그인이 소유하는 `sync` 속성을 사용합니다 — 예약된 DSL 타이밍 키 `wait`가 아닙니다. `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`, `source`는 코어 스탬프가 소유하는 여덟 이름입니다. 플러그인이 이 중 하나를 속성으로 선언하면 조립 시 [`E-PLUGIN-RESERVED-STAMP-ATTR`](/ko/plugins/manifests/)로 거부됩니다.
+모든 쓰기 경로는 슬롯의 shape로 선언되어야 **합니다(MUST)**. 호스트는 `sync` 같은 자체 옵션을 둘 수 있으며, 플러그인은 호출의 블로킹 여부를 정하는 예약된 DSL 타이밍 키 `wait`를 다시 선언하지 않습니다([동기화 의미론](#동기화-의미론) 참조). `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`, `source`는 코어 스탬프가 소유하는 여덟 이름입니다. 플러그인이 이 중 하나를 속성으로 선언하면 조립 시 [`E-PLUGIN-RESERVED-STAMP-ATTR`](/ko/plugins/manifests/)로 거부됩니다.
 
 호출이 블로킹되는 것(호스트의 답을 기다리는 것)은 `effects.writes` 항목이 bridge 결과를 읽기 때문입니다. `layer: bridge`와 `bridgeCall`을 선언했지만 `fromBridgeResult` 쓰기가 없는 디렉티브는 아무것도 기다리지 않는 레코드로 컴파일되므로, 0.41.1부터 선언 위치에서 [`E-BRIDGE-NO-RESULT-WRITE`](/ko/reference/diagnostics/#e-bridge-no-result-write)가 되고 쓰기를 추가하거나 `layer: bridge`를 지울 때까지 프로젝트가 컴파일되지 않습니다.
 
@@ -92,10 +92,20 @@ directives:
 
 `rank`는 유한 enum `[fail, bronze, silver, gold]`이므로 `<match>`는 먼저 일치하는 것이 이기며 `<otherwise>`가 `fail`을 포괄합니다.
 
-## 동기화 의미론과 오래된 기본값 함정
+## 동기화 의미론
 
-`sync="true"`(블로킹 브리지의 기본값)에서는 쓰기가 바로 뒤의 읽기를 **지배**하므로 `<match>`가 생성된 결과를 봅니다. `sync="false"`에서는 그렇지 않습니다. 결과 슬롯은 보통 shape의 기본값으로 정해지기 때문에(예: `rank: fail`), 뒤따르는 읽기는 `E-MAYBE-UNSET`이 **아닙니다** — 결과가 아니라 **기본값**을 조용히 읽습니다.
+결과를 쓰는 브리지 호출은 블로킹되며, 그 결과 쓰기는 **호출 이후의 확정 할당**입니다(0.49부터). *블로킹 브리지 호출*은 선언에 `fromBridgeResult` 값을 가진 `effects.writes` 항목이 하나 이상 있고 유효한 코어 `wait`가 `false`가 아닌 플러그인 디렉티브 호출입니다. 체커는 보호되지 않은 블로킹 호출의 해석된 각 결과 경로를 호출 시점부터 할당된 것으로 취급하므로, 위의 `<match>`는 `E-MAYBE-UNSET` 없이 `scene.minigame.service01.rank`를 읽으며 `<otherwise>` arm을 지우면(`fail`이 처리되지 않은 채 남음) `E-NONEXHAUSTIVE`가 보고됩니다. `when=` 가드 아래에서는 쓰기가 가드된 분기에만 속합니다.
 
-**현재 이를 진단하는 것은 아무것도 없습니다.** *결과가 생성되기 전 읽기* 검사는 명세되어 있지만 구현되지 않았습니다. 체커가 현재 묻지 않는 데이터 흐름 질문 — "이 읽기가 그것을 생성하는 브리지 호출에 의해 지배되는가?" — 이 필요하기 때문입니다. 이는 매니페스트 검증이 아니라 체커 코어 분석이며, 반쪽짜리로 제공하는 대신 연기되었습니다. 따라서 논블로킹 브리지의 결과를 너무 일찍 읽으면 검사는 깨끗하게 통과하고 컴파일도 깨끗하게 통과하지만 실행은 잘못됩니다.
+`wait`는 언어의 블로킹 키입니다. **`wait="false"`**이면 호출은 fire-and-continue이고, 쓰기는 할당된 것으로 가정되지 *않으며*, 이어지는 결과 읽기는 `E-MAYBE-UNSET`을 유지합니다.
 
-이 기능이 들어오기 전까지 지킬 규칙은 여러분의 몫입니다: **스토리 로직이 결과에 따라 분기할 때는 블로킹 브리지를 사용하고**, 같은 씬에서 결과를 읽는 것이 아무것도 없는 브리지에만 `sync="false"`를 남겨 두세요.
+위의 `sync` 속성 같은 호스트 옵션은 플러그인 자체의 것입니다. **Lute는 `sync`를 읽지 않습니다.** 호스트 옵션이 "실행하고 계속 진행"을 뜻하는 디렉티브(`sync="false"`)는 반드시 `wait="false"`로도 작성해야 합니다. 그렇지 않으면 호스트는 결과를 기다리지 않는데 체커는 결과가 할당된 것으로 취급합니다.
+
+```lute
+::minigame{kind="rhythm" id="marina_service_01" resultKey="service01" sync="false" wait="false"}
+```
+
+스토리 로직이 결과에 따라 분기할 때는 블로킹 브리지를 사용하고, 같은 씬에서 결과를 읽는 것이 아무것도 없는 브리지에만 `wait="false"`를 남겨 두세요.
+
+## 호스트가 받는 것
+
+플러그인 레코드, 브리지 요청, `awaitBridge`는 호출의 `attrs`(`fields`)를 담고, 디렉티브에 횡단 [`stampAttrs`](/ko/plugins/manifests/#교차-속성stampattrs) 값이 붙어 있으면 별도의 `stamps` 객체도 담습니다. 비어 있으면 생략되며 `attrs`에 병합되지 않습니다.

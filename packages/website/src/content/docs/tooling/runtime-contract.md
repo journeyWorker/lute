@@ -82,6 +82,75 @@ const hud = Effect.gen(function* () {
 Keep the numeric position for ordering, and use `ClockView.slot` and
 `ClockView.weekdayLabel` for display text.
  
+## 0.49 runtime additions
+
+**Plugin stamps are one nested `stamps` object.** A cross-cutting plugin
+[`stampAttrs`](/plugins/manifests/#cross-cutting-attributes-stampattrs) value an
+author wrote on a directive or content line is no longer flattened onto the
+record. Every stamped command (all but `jump` and `barrier`) carries
+`"stamps": { "<attr>": <value>, … }`, after `timing`, `provenance` and `source`;
+the object is omitted when no stamp was authored, so a record without one is
+byte-identical to 0.48.1. A stamp named like a record key (`tag`, `speaker`,
+`text`, `label`, …) can therefore no longer collide with it. The core stamp
+members `timing`, `provenance` and `source` stay flattened, and the eight
+reserved names are unchanged.
+
+The same object reaches the host on every plugin path, separate from `attrs` and
+never merged into it: a normal and a halted `plugin` event record, `awaitBridge`,
+the bridge request, and the suspended snapshot that carries it each have an
+optional `stamps`, omitted when empty. Staging records keep their core-field
+`attrs`; stamps are not mixed in.
+
+**`timing.wait` on a content line.** A line admits `wait` (a boolean). It
+compiles to the line record's `timing.wait` and is omitted when not authored. A
+line always waits for its own advance; `wait` says whether the staging cues after
+it, up to the next line, wait for the line. `true` or absent means they wait
+(unchanged). `false` means they start while the line is presented. The next line
+still waits for the previous one. The reference player honours this: a line cue
+with `timing.wait === false` is forked, and the scheduler joins it before the
+next `line` cue, before a `presentation` cue (it clears the dialogue window, so it must not overlap the line) and before the batch settles. `delay` and `duration` on a line
+remain `E-UNKNOWN-ATTR`.
+
+### Free-text input through a typed bridge
+
+Lute has no free-text construct. The host half of "ask the player to type
+something" is a bridge whose result is a `string`, written into a state slot:
+
+```yaml
+# bridge/prompt.yaml
+bridgeCapabilities:
+  - service: prompt
+    operation: ask
+    replay: recorded
+    result:
+      - { name: answer, type: string }
+```
+
+```yaml
+# directives/ask.yaml
+directives:
+  - name: ask
+    layer: bridge
+    attrs:
+      - { name: slot, required: true, type: { slotId: { namespace: scene.ask } } }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [ask, { fromAttr: { name: slot, slotType: localId } }], shape: textAnswer }
+    effects:
+      writes:
+        - { scope: scene, path: [ask, { fromAttr: { name: slot } }, answer], value: { fromBridgeResult: answer } }
+    bridge: { service: prompt, operation: ask }
+```
+
+The runtime suspends with `awaitBridge`. The host opens its own text prompt from
+the call's `attrs` (here `slot`), and answers `bridgeResult { request, fields:
+{ "answer": "<what the player typed>" } }`. The runtime validates the `string` and
+applies the declared write, so the lines after the call read the answer through
+ordinary state. Lute never sees the input channel, and the answer is data like
+any other bridge result. The complete project, with its `.test.yaml`, is
+[`docs/examples/free-text-input/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/free-text-input).
+
 ## 0.44 runtime additions
 
 **Writes that belong to the ending.** Once the runtime answers `ended`, it accepts only `newRun` or an `outsideRun` raise. A host write that belongs to the ending run — ending metadata, a final score — rides as `writes` on the input that causes the terminal transition, when that input carries writes: `raiseOccasion`, `advanceClock`, `bridgeResult` or `hostWrite`, whose writes land before the transition (`{"type": "raiseOccasion", "occasion": "dawn", "writes": {"state": [{"path": "run.endedBy", "value": "dawnSeven"}]}}`). `choose`, `timeout` and `worldEvent` carry no writes: an ending they cause records its state in the story (a `::set` in the branch that ends) or in a `hostWrite` sent before them. `newRun`'s writes seed the run it starts, where the ended run's `run.*` values read as `prev.run.*`. A `hostWrite` after the ending is still refused `E-RUNTIME-BUSY` with the state unchanged; its message now says where the write belongs.
@@ -103,7 +172,7 @@ and the [full event contract](https://github.com/journeyWorker/lute/blob/main/do
 
 ## 0.42 runtime additions
 
-Every staging record — `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video` and `sequence` — carries `attrs`: the command's resolved fields, as a `plugin` record's `attrs` already do. Authored values and the defaults lowering filled in are present (a `cg`'s `display: "show"`, an actor's declared default `anchor`); an absent optional field is omitted; `attrs` is always an object. The record envelope (`kind`, `position`), `timing`, provenance and plugin `stampAttrs` stay where they were, so a host reads a staging record without looking its command up in the artifact. `volume` stays a member of the project's `volume` domain; the player turns it into a gain through [`volumes`](/player/bindings/).
+Every staging record — `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video` and `sequence` — carries `attrs`: the command's resolved fields, as a `plugin` record's `attrs` already do. Authored values and the defaults lowering filled in are present (a `cg`'s `display: "show"`, an actor's declared default `anchor`); an absent optional field is omitted; `attrs` is always an object. The record envelope (`kind`, `position`), `timing`, provenance and the nested plugin `stamps` stay where they were (stamps are not mixed into `attrs`), so a host reads a staging record without looking its command up in the artifact. `volume` stays a member of the project's `volume` domain; the player turns it into a gain through [`volumes`](/player/bindings/).
 
 | kind | `attrs` |
 | --- | --- |
@@ -245,16 +314,17 @@ this page intentionally does not duplicate that registry.
 
 ### Command records
 
-Every command record has three required fields and three optional siblings:
+Every command record has three required fields and four optional siblings:
 
 | field | meaning |
 | ----- | ------- |
 | `kind` | the record kind; an unknown `kind` is a hard error. |
 | `family` | the normative grouping of `kind` (below), read by dispatch before `kind`. |
 | `position` | the record's build-local execution position (see [Positions](#positions)). |
-| `timing` | optional `{ wait?, duration?, delay?, at?, timeline? }`; omitted when every member is absent. |
+| `timing` | optional `{ wait?, duration?, delay?, at?, timeline? }`; omitted when every member is absent. A `line` may carry `wait` (see [0.49](#049-runtime-additions)). |
 | `provenance` | optional `{ by, explanation }` on a record the compiler synthesized. |
 | `source` | optional source location. |
+| `stamps` | optional object of plugin `stampAttrs` values (`{ "<attr>": <value> }`), on every stamped command; omitted when empty. A `jump` and a `barrier` carry none. |
 
 | `family` | kinds |
 | -------- | ----- |

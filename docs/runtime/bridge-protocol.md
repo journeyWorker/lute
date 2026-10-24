@@ -47,8 +47,15 @@ A plugin directive with a bridge lowers to a `Command::Plugin`, serialized as
   (0.41.0 §5.5). Plugin-owned call options such as `sync` live here. The
   stamp's attrs do not: the core timing attrs `wait`, `duration` and `delay`
   belong to the record's `timing` object, and a plugin cross-cutting
-  `stampAttrs` attr the directive does not declare itself is a top-level key
-  of the record beside `timing`.
+  `stampAttrs` attr the directive does not declare itself is an entry of the
+  record's nested `stamps` object (0.49; below).
+- `stamps` — optional object of the plugin `stampAttrs` values authored on the
+  call, `{ "<attr>": <value> }`, typed by the declaring plugin's `AttrDecl`.
+  Omitted when empty. It is separate from `fields` and never merged into it, so
+  a stamp can no longer collide with a record key. The core `timing`,
+  `provenance` and `source` stay flattened; `at`/`duration`/`delay`/`wait`/
+  `timeline`/`timing`/`provenance`/`source` remain reserved attribute names
+  (`E-PLUGIN-RESERVED-STAMP-ATTR`).
 - `effects` — the resolved state-write bindings (`PluginCmd.effects`); **absent**
   when the directive declares none.
 - `retracts` / `asserts` — the facts the call retracts and then asserts,
@@ -82,7 +89,13 @@ NOT redeclare that reserved attribute in its manifest. A plugin may declare a
 distinct host-owned option such as `sync`, as the bundled minigame example
 does. The host implementation must define and honor its blocking contract:
 suspend the parent walk until the operation completes, apply its declared
-effects, then continue with the next ordinary command. Fire-and-continue
+effects, then continue with the next ordinary command. Lute does not read
+`sync`: for a call that writes a bridge result, the language's own blocking key
+is `wait`. Since 0.49 the checker treats the result writes of an unguarded call
+whose effective `wait` is not `false` as **definitely assigned after the call**;
+with `wait="false"` a following read keeps `E-MAYBE-UNSET`. A host option that
+means fire-and-continue (`sync="false"`) MUST therefore be written
+`wait="false"` too. Fire-and-continue
 scheduling is host policy, not a second language control-flow implementation
 inside the compiler. Do not assume that every plugin blocks merely because it
 has a bridge binding.
@@ -127,7 +140,9 @@ A call whose `bridgeResult` effects land on paths content reads suspends the
 walk with `awaitBridge`: `attrs` is the record's `fields` as executed
 (`occasion.target` bound to the raise's member, `{}` when none) and
 `results` maps each result field content reads to its declared type (index
-`bridgeResults`). The host answers with `bridgeResult { request, fields,
+`bridgeResults`), and `stamps` is the record's plugin stamp object (omitted when
+empty, separate from `attrs`, never merged into it; the bridge request and the
+suspended snapshot carry it the same way). The host answers with `bridgeResult { request, fields,
 writes? }`; `fields` are validated against `results`
 (`E-RUNTIME-BRIDGE-SHAPE`), and the optional `writes` — `hostWrite`'s
 `state` / `facts` / `retract` / `accept` — resolve when the answer arrives
@@ -138,7 +153,8 @@ presentation read them. A replay re-applies them; a suspended snapshot
 carries them in `continuation.answers[*].writes`.
 
 A plugin call that does not block (no result content reads) is write-free:
-its `plugin` record (with `attrs`) is data for the host, which writes with
+its `plugin` record (with `attrs`, and `stamps` when the call was stamped —
+normal and halted event records alike) is data for the host, which writes with
 `hostWrite` at the next `idle`. A host action whose effect later lines must
 see is declared as a bridge.
 

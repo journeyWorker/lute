@@ -40,7 +40,7 @@ options:                   # OPTIONAL — typed activation options
 
 ## Export 파일
 
-각 export 종류에는 규범 스키마가 있습니다. 모두 하나의 작은 매니페스트 타입 시스템(`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, 그리고 `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, shape 참조)으로 타입이 지정됩니다. dsl 0.26.0부터 디렉티브 속성은 `{ entity: <kind> }`로도 타입을 지정할 수 있습니다([엔진 id를 엔티티 종류로 타입 지정](#엔티티-종류로-형식이-지정된-엔진-id) 참고). 상태 경로는 `$name` 보간이 아니라 **구조화된 세그먼트**를 사용합니다.
+각 export 종류에는 규범 스키마가 있습니다. 모두 하나의 작은 매니페스트 타입 시스템(`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, 그리고 `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, shape 참조)으로 타입이 지정됩니다. dsl 0.26.0부터 디렉티브 속성은 `{ entity: <kind> }`로도 타입을 지정할 수 있습니다([엔진 id를 엔티티 종류로 타입 지정](#엔티티-종류로-형식이-지정된-엔진-id) 참고). 상태 경로는 `$name` 보간이 아니라 **구조화된 세그먼트**를 사용합니다. *디렉티브 속성*이나 `stampAttrs` 항목의 최상위 타입은 `list`, `map`, `record`일 수 없습니다(0.49부터). 속성 값은 스칼라 하나로 쓰므로 어떤 `.lute` 값도 이를 만족시킬 수 없고, 플러그인 로드는 속성 이름을 밝히며(스탬프는 `` stamp attribute `tags` ``) `E-PLUGIN-INVALID-DIRECTIVE`로 실패합니다. 호스트에서 파싱할 `string`으로 선언하거나 필드마다 속성 하나로 나누라고 안내합니다. 플러그인 `options:`, frontmatter 키, 상태 shape, 브리지 결과는 YAML로 쓸 수 있으므로 이 타입을 그대로 유지합니다.
 
 - `directives/*.yaml` — `::name` 디렉티브 선언([브리지](/ko/plugins/bridge/) 참고)입니다.
 - `state/*.yaml` — 재사용 가능한 타입 지정 레코드 shape(`stateShapes:`)와 구조화된 경로 템플릿(`stateTemplates:`)입니다. 한 파일에 둘 다 둘 수 있습니다(0.24.0부터, 이전에는 두 번째 항목이 버려졌습니다).
@@ -295,8 +295,9 @@ rewardKinds:
 | `entity: <kind>` | 대상이 해당 프로젝트 엔티티 종류의 멤버입니다. 멤버가 아니면 did-you-mean이 포함된 `E-REWARD-TARGET`입니다. |
 | `provider: <name>` | 대상이 해당 프로바이더 카탈로그의 id입니다. 프로바이더가 활성 상태여야 하며(그렇지 않으면 플러그인 로드가 실패합니다), 알 수 없는 id는 `E-REWARD-TARGET`이고 오래된 스냅숏은 경고만 냅니다(`W-CATALOG-STALE`). |
 | `required: true` | 해당 종류의 보상에 `target=`이 없으면 `E-REWARD-TARGET`입니다. 이 키가 없으면 대상을 생략할 수 있습니다. |
+| `forbidden: true` | 해당 종류는 대상을 받지 않습니다. 이 종류의 `<reward>`에 `target=`이 있으면 `target=` 속성 위치에서 `E-REWARD-TARGET`입니다(0.49부터). |
 
-계약은 `entity:` 또는 `provider:` 중 하나를 지정하며 둘 다 지정하지는 않습니다. 둘 다 지정하면 플러그인 로드가 실패합니다(`E-PLUGIN-PARSE`). `target:`이 없는 종류는 이전과 같이 어떤 `target=`이든 받을 수 있고 생략할 수도 있습니다. 위의 ITEM 계약은 수동으로 관리하는 목록이 놓치는 두 실수를 모두 잡아냅니다.
+계약은 `entity:` 또는 `provider:` 중 하나를 지정하며 둘 다 지정하지는 않습니다. 둘 다 지정하면 플러그인 로드가 실패합니다(`E-PLUGIN-PARSE`). `target:`이 없는 종류는 이전과 같이 어떤 `target=`이든 받을 수 있고 생략할 수도 있습니다. 대상을 받지 않는 종류는 `target: { forbidden: true }`로 이를 선언하며, 이 키는 **단독**으로만 쓸 수 있습니다. `provider`, `entity`, `required`와 함께 쓰면 플러그인 로드가 실패합니다. 대상을 받지 않는 종류가 id 공간을 이름으로 지정하거나 대상을 요구할 수는 없기 때문입니다. `COINS: { target: { forbidden: true } }`라면 ``<reward kind="COINS" target="x"/>``는 `E-REWARD-TARGET`입니다: `` <reward kind="COINS"> takes no `target=`: its reward kind declares `target: { forbidden: true }` — remove the attribute``. `forbidden: true`가 없는 선언은 `capabilitySnapshot`을 그대로 유지하고, 이를 설정하면 스냅숏이 바뀝니다. 위의 ITEM 계약은 수동으로 관리하는 목록이 놓치는 두 실수를 모두 잡아냅니다.
 
 <!-- lute-diagnostics -->
 ```
@@ -332,20 +333,22 @@ stampAttrs:
 
 엔트리는 일반적인 `AttrDecl`입니다. 즉, 디렉티브 속성이 사용하는 것과 동일한 `{ name, required?, type, default? }` 형태이지만, 모든 디렉티브와 콘텐츠 라인(`@speaker{…}: text`)에서 해당 표면 자체의 속성에 더해 사용할 수 있습니다. 해석은 엄격합니다. 표면 자체의 선언이 먼저 적용되고, 그다음 `stampAttrs`, 그다음 `E-UNKNOWN-ATTR`이 적용됩니다. 값 형식 지정은 기존 속성 경로를 따르므로 잘못 입력하면 새 규칙이 아니라 일반적인 `E-ATTR-TYPE` / `E-BAD-ENUM`이 됩니다.
 
-`::sfx{sound="chime" bonusId="b-02"}` 다음에 `@marina{code="0010" bonusId="b-01" bonusScore="7"}: Welcome back.`이 오면, 각각의 레코드가 핵심 키(`kind`, `family`, `position`, `timing`) 옆의 레코드 최상위에 **평탄화된 상태로** 속성을 담은 두 레코드로 컴파일됩니다. 레코드 자체의 `fields` 안에는 절대로 들어가지 않습니다.
+`::sfx{sound="chime" bonusId="b-02"}` 다음에 `@marina{code="0010" bonusId="b-01" bonusScore="7"}: Welcome back.`이 오면, 각각의 레코드가 핵심 키(`kind`, `family`, `position`, `timing`) 뒤의 **중첩된 `stamps` 객체 하나**(0.49부터)에 속성을 담은 두 레코드로 컴파일됩니다. 레코드 자체의 키 옆에 평탄화되지도, 레코드의 `fields` 안에 들어가지도 않습니다.
 
 ```json
-{ "kind": "sfx", "family": "staging", "position": "001-0100", "sound": "chime", "bonusId": "b-02" }
+{ "kind": "sfx", "family": "staging", "position": "001-0100", "sound": "chime", "stamps": { "bonusId": "b-02" } }
 { "kind": "line", "family": "content", "position": "001-0200", "role": "dialogue",
   "speaker": "marina", "text": "Welcome back.", "lineId": "marina.s01ep01.marina_0010",
-  "voiceKey": "marina.s01ep01.marina-0010", "bonusId": "b-01", "bonusScore": 7 }
+  "voiceKey": "marina.s01ep01.marina-0010", "stamps": { "bonusId": "b-01", "bonusScore": 7 } }
 ```
+
+각 항목의 JSON 값은 이전처럼 선언한 플러그인의 속성 선언으로 타입이 지정됩니다. 작성된 스탬프가 없으면 객체는 생략되므로 스탬프가 없는 레코드는 바뀌지 않습니다. 스탬프가 자기 키 아래에 있으므로, 운반하는 레코드의 키(`tag`, `speaker`, `text`, `label`, `name`, `id` 등)와 같은 이름의 플러그인 스탬프도 더 이상 충돌하지 않습니다. 0.49 이전에는 그런 스탬프가 같은 키를 두 번 썼습니다. 같은 `stamps` 객체는 플러그인 이벤트 레코드와 [브리지](/ko/plugins/bridge/) 호출의 `attrs` 옆에, `attrs`에 병합되지 않은 채 호스트에 전달됩니다.
 
 **작성되지 않은** 스탬프 속성은 선언에 `default`가 있어도 주입되지 않습니다. 없다는 것은 없는 것이므로, 교차 어휘를 선언하고 그중 아무것도 작성하지 않으면 아티팩트는 바이트 단위로 동일합니다. 다만 선언이 무료인 것은 아닙니다. `stampAttrs`는 `capabilitySnapshot`에 참여합니다. 교차 어휘가 변경되면 capability 표면이 변경된 것이고 엔진이 불일치를 거부할 수 있어야 하기 때문입니다.
 
 ### 예약된 스탬프 키
 
-코어 스탬프는 `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`, `source`라는 8개의 이름을 소유합니다. 플러그인이 그중 하나로 속성을 선언하면 assembly에서 **`E-PLUGIN-RESERVED-STAMP-ATTR`**과 함께 거부됩니다.
+코어 스탬프는 `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`, `source`라는 8개의 이름을 소유합니다. `at`, `duration`, `delay`, `wait`, `timeline`은 `timing`으로 컴파일되는 작성용 키이고, `timing`, `provenance`, `source`는 평탄화된 레코드 키로 남습니다. 중첩된 `stamps` 객체는 그 외의 모든 이름에서 *JSON* 충돌을 없애지만, 이 여덟 이름은 계속 예약됩니다. 같은 이름의 플러그인 스탬프는 작성자에게 여전히 모호하기 때문입니다. 플러그인이 그중 하나로 속성을 선언하면 assembly에서 **`E-PLUGIN-RESERVED-STAMP-ATTR`**과 함께 거부됩니다.
 
 <!-- lute-diagnostics -->
 ```

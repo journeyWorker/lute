@@ -224,7 +224,7 @@ platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earli
 
 ## `::clear` — 무대 비우기
 
-`::clear`(dsl 0.24.0 §4)는 모든 캐릭터를 한 번에 무대에서 내립니다. 속성은 없습니다. 배경과 음악은 유지되며, 이것이 `::bg` 씬 변경과 구별되는 점입니다:
+`::clear`(dsl 0.24.0 §4)는 모든 캐릭터를 한 번에 무대에서 내립니다. 속성은 없습니다 — 타이밍 키도, 0.49.0부터는 플러그인 스탬프도 받지 않습니다(`E-UNKNOWN-ATTR`, [스탬프를 싣지 않는 디렉티브](#스탬프를-싣지-않는-디렉티브) 참고). 배경과 음악은 유지되며, 이것이 `::bg` 씬 변경과 구별되는 점입니다:
 
 ```lute check
 ---
@@ -272,7 +272,7 @@ platform.lute:25:1: warning [W-STAGE-ABSENT] `marina` was taken off stage by an 
 
 ## 타이밍과 `wait` 모델
 
-`duration`, `delay`, `wait`는 `::clear`를 제외한 모든 디렉티브에 쓸 수 있는 예약된 **연출** 타이밍 키입니다:
+`duration`, `delay`, `wait`는 `::clear`, `::jump`, `::label`을 제외한 모든 디렉티브에 쓸 수 있는 예약된 **연출** 타이밍 키입니다:
 
 - **`duration`** — 변환 길이(초)(예: `duration="0.6"`).
 - **`delay`** — 디렉티브 자체 슬롯 시작에서부터의 오프셋(초).
@@ -288,6 +288,24 @@ platform.lute:25:1: warning [W-STAGE-ABSENT] `marina` was taken off stage by an 
 아티팩트에서는 해석된 값이 레코드의 `timing` 객체에 놓입니다 — `"timing": {"wait": true, "duration": 0.5}` — 설정된 값이 없으면 `timing`을 생략합니다.
 
 `at` 키는 연출 타이밍 속성이 아닙니다. [`<timeline>`](/ko/language/timeline-and-property-tracks/) 안 클립에서만 유효한 타임라인 위치 키입니다.
+
+콘텐츠 줄은 `wait`(bool)만 받고 다른 타이밍 키는 받지 않습니다. 줄의 `delay`와 `duration`은 계속 `E-UNKNOWN-ATTR`입니다. `wait`는 줄 레코드의 `timing.wait`로 컴파일되며, `wait`가 없으면 줄에 `timing`이 붙지 않습니다. 줄은 항상 자기 진행(advance)을 기다립니다. `wait`는 그 줄 뒤에서 다음 줄 전까지 나오는 연출 큐가 그 줄을 기다리는지를 정합니다. `true`(또는 생략)이면 기다리고, `false`이면 줄이 표시되는 동안 시작됩니다. 다음 줄은 여전히 앞의 줄을 기다리며, 대화창을 비우는 `presentation` 큐도 마찬가지입니다.
+
+```lute
+@marina{wait="false"}: The fireworks start as I speak.
+::cg{assetId="CUT.rooftop.fireworks" display="show"}   /* 줄이 표시되는 동안 시작 */
+@oskar: Look at that.                                  /* marina의 줄은 여전히 기다림 */
+```
+
+### 스탬프를 싣지 않는 디렉티브
+
+`::jump`, `::label`, `::clear`는 스탬프가 붙는 레코드를 내보내지 않습니다. `::jump`는 스탬프 없는 `jump` 레코드로, `::label`은 레코드 없이 컴파일되고, `::clear`는 자기 레코드가 없습니다(무대에 있는 캐릭터마다 actor 퇴장 하나를 주입할 뿐이며, 빈 무대에서는 아무것도 주입하지 않습니다). 이 디렉티브들에 플러그인 스탬프 속성이나 코어 타이밍 키를 쓰면 조용히 버려지는 대신 해당 속성 위치에서 `E-UNKNOWN-ATTR`입니다:
+
+- `::jump`: `` `::jump` does not carry `cue`: it compiles to a `jump` record that has no stamp — put the attribute on the line or directive before it ``
+- `::label`: `` `::label` does not carry `cue`: it compiles to no record — put the attribute on the line or directive after it ``
+- `::clear`: "속성을 받지 않으며, 무대의 모든 캐릭터는 각자의 퇴장으로 나갑니다"라는 기존 메시지가 이제 스탬프 속성에도 적용됩니다.
+
+`::clear`는 자신이 주입하는 퇴장에 스탬프를 넘겨주지 않습니다. 퇴장이 있는지는 무대 상태에 달려 있어서, 빈 무대에서는 값이 버려지기 때문입니다. 스탬프는 직접 쓰는 `::actor{exit}`에 두세요.
 
 ## `::end` — 보행 종료
 
@@ -351,6 +369,8 @@ state:
 ```
 
 문서에 `::label`이 없는 이름을 `to`로 지정하면 `E-JUMP-UNDEFINED`이고, 점프 위치와 같거나 그 위에 있는 라벨은 `E-JUMP-BACKWARD`입니다. 가드되지 않은 `::jump` 뒤의 같은 본문 콘텐츠는 실행되지 않으며 `W-CODE-AFTER-JUMP`입니다. 줄로 이동하려면 그 줄 바로 앞에 `::label`을 두세요.
+
+`::jump`와 `::label`은 스탬프를 싣지 않습니다. 플러그인 스탬프나 `wait` 같은 타이밍 키는 `E-UNKNOWN-ATTR`입니다([스탬프를 싣지 않는 디렉티브](#스탬프를-싣지-않는-디렉티브) 참고). 속성은 점프 앞의 줄이나 디렉티브에, 또는 라벨 뒤의 줄이나 디렉티브에 두세요.
 
 ## 예약된 디렉티브
 

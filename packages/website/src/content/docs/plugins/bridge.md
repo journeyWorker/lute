@@ -1,6 +1,6 @@
 ---
 title: Typed bridge directives
-description: How a plugin declares a typed runtime bridge, the directive that invokes it, the declared result state it writes, sync timing, and the match over its result slot.
+description: How a plugin declares a typed runtime bridge, the directive that invokes it, the declared result state it writes, sync semantics, and the match over its result slot.
 ---
 
 A **bridge** is a typed runtime call the engine owns — a minigame, a service, an external beat. The DSL emits only data; the engine executes the bridge; and story control-flow observes **only the declared state** a directive writes, never raw bridge output. This is what keeps the language total: a bridge call is data, not an arbitrary tool call.
@@ -70,7 +70,7 @@ directives:
     bridge: { service: minigame, operation: play }
 ```
 
-Every written path MUST be declared by the slot's shape. A blocking bridge uses a plugin-owned `sync` attribute — **not** the reserved dsl timing key `wait`. `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance` and `source` are the eight names the core stamp owns; a plugin declaring an attribute under any of them is rejected at assembly with [`E-PLUGIN-RESERVED-STAMP-ATTR`](/plugins/manifests/).
+Every written path MUST be declared by the slot's shape. A host may keep its own option such as `sync` — a plugin never redeclares the reserved dsl timing key `wait`, which is what makes a call blocking or not (see [Sync semantics](#sync-semantics)). `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance` and `source` are the eight names the core stamp owns; a plugin declaring an attribute under any of them is rejected at assembly with [`E-PLUGIN-RESERVED-STAMP-ATTR`](/plugins/manifests/).
 
 A call blocks — waits for the host's answer — because an `effects.writes` entry reads a bridge result. A directive that declares `layer: bridge` and `bridgeCall` but has no `fromBridgeResult` write would compile to a record nothing waits for, so since 0.41.1 it is [`E-BRIDGE-NO-RESULT-WRITE`](/reference/diagnostics/#e-bridge-no-result-write) at its declaration, and the project does not compile until you add the write or remove `layer: bridge`.
 
@@ -98,10 +98,20 @@ The scene writes nothing by hand. It runs the bridge, then reads the declared sl
 
 `rank` is a finite enum `[fail, bronze, silver, gold]`, so the `<match>` is first-match-wins with `<otherwise>` covering `fail`.
 
-## Sync semantics & the stale-default trap
+## Sync semantics
 
-With `sync="true"` (the default for a blocking bridge) the writes **dominate** the immediately following read — the `<match>` sees the produced outcome. With `sync="false"` they do *not*: because result slots are typically shape-defaulted (e.g. `rank: fail`), a following read is **not** `E-MAYBE-UNSET` — it silently reads the **default**, not the outcome.
+A bridge call that writes a result blocks, and its result writes are a **definite assignment after the call** (since 0.49). A *blocking bridge call* is a plugin directive call whose declaration has at least one `effects.writes` entry valued `fromBridgeResult` and whose effective core `wait` is not `false`. The checker treats each resolved result path of an unguarded blocking call as assigned from the call on, so the `<match>` above reads `scene.minigame.service01.rank` with no `E-MAYBE-UNSET`, and removing its `<otherwise>` arm (which leaves `fail` uncovered) reports `E-NONEXHAUSTIVE`. Under a `when=` guard the writes belong only to the guarded fork.
 
-**Nothing diagnoses that today.** The *result-read-before-produced* check is specified but not implemented: it needs a dataflow question the checker does not currently ask — "is this read dominated by the bridge call that produces it?" — which is checker-core analysis rather than manifest validation, and it was deferred rather than half-shipped. A non-blocking bridge whose result is read too early therefore checks clean, compiles clean, and plays wrong.
+`wait` is the language's blocking key. With **`wait="false"`** the call is fire-and-continue, the writes are *not* assumed, and a following read of the result keeps `E-MAYBE-UNSET`.
 
-Until it lands the rule is yours to keep: **use a blocking bridge whenever story logic branches on the result**, and reserve `sync="false"` for a bridge whose outcome nothing in the same scene reads.
+A host option such as the `sync` attribute above is the plugin's own: **Lute does not read `sync`.** A directive whose host option means "fire and continue" (`sync="false"`) MUST also be written `wait="false"`, or the checker will treat its result as assigned while the host does not wait for it:
+
+```lute
+::minigame{kind="rhythm" id="marina_service_01" resultKey="service01" sync="false" wait="false"}
+```
+
+Use a blocking bridge whenever story logic branches on the result, and reserve `wait="false"` for a bridge whose outcome nothing in the same scene reads.
+
+## What the host receives
+
+A plugin record, a bridge request and an `awaitBridge` carry the call's `attrs` (its `fields`) and, when the directive was stamped with a cross-cutting [`stampAttrs`](/plugins/manifests/#cross-cutting-attributes-stampattrs) value, a separate `stamps` object. It is omitted when empty and never merged into `attrs`.

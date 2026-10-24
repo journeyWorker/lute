@@ -44,7 +44,11 @@ description: 선택지 메커니즘 — 가드와 into= 실행 기록 축약 문
 
 ([`docs/examples/choice-persist.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/choice-persist.lute)에서 가져왔습니다.)
 
-`into="run.<path>"`만 지정하면 해당 분기에 `::set{run.<path> = <value>}`가 추가됩니다. 대상 경로는
+### `into=`는 먼저 씁니다
+
+`into="run.<path>"`(선택적 `value` 포함)는 `::set{run.<path> = <value>}`를 분기 안 **맨 앞**, 어떤 줄이나 디렉티브보다 먼저 두는 것과 같습니다. 0.49.0부터 검사기도 그렇게 봅니다. 분기 안에서 그 경로를 읽으면 이미 대입된 상태이므로 거기서 `has()` 가드나 `unset` 갈래가 필요 없습니다. `::jump`로 끝나는 분기도 떠나기 전에 쓰기를 기록합니다. `E-INTO-*` 진단과, 분기가 같은 경로를 이미 `::set`하는 경우의 오류는 그대로입니다.
+
+`into="run.<path>"`만 지정하면 그 `::set{run.<path> = <value>}`가 됩니다. 대상 경로는
 **`into`**로 이름을 지정하며 스키마에 선언되어 있어야 합니다. `value`는 bool 경로의 경우
 `true`로 기본 설정되며, `enum` 또는 숫자(`int` 또는 `double`) 경로에는 명시적인 `value`가
 필요합니다. (0.6.0에서 이전의 `persist="run"` 속성이 제거되었습니다. 남아 있는 `persist=`는 이제
@@ -61,6 +65,27 @@ description: 선택지 메커니즘 — 가드와 into= 실행 기록 축약 문
   </otherwise>
 </match>
 ```
+
+## 자유 텍스트 입력
+
+Lute에는 텍스트 입력 구성물이 없고, 필요하지도 않습니다. 플레이어에게 답을 입력받는 일은 [브리지](/ko/plugins/bridge/) 호출입니다. 플러그인이 `effects.writes` 항목이 `fromBridgeResult`를 읽는 블로킹 브리지 디렉티브를 선언하면, 호스트가 텍스트 상자를 띄우고 입력한 답이 디렉티브가 선언한 상태 슬롯에 들어갑니다. 이후 `<match>`나 `<branch>`가 그 슬롯을 다른 상태처럼 읽습니다.
+
+```lute
+@guard: Halt. What is the password?
+
+::ask{slot="password"}
+
+<match subject="scene.ask.password.answer">
+  <when is="swordfish">
+    @guard: Pass, friend.
+  </when>
+  <otherwise>
+    @guard: Wrong. Move along.
+  </otherwise>
+</match>
+```
+
+호출이 블로킹이므로 `scene.ask.password.answer`는 `::ask` 뒤에 대입된 상태가 되고([동기화 의미론](/ko/plugins/bridge/#동기화-의미론) 참고) `<match>`는 가드 없이 읽습니다. `wait="false"`는 호출하고 계속 진행하는 경우에만 쓰세요. 논블로킹 호출은 확정 할당 보장을 더하지 않으므로, 기본값이 없고 다른 것으로 보호되지 않는 결과를 읽으면 `E-MAYBE-UNSET`이 보고될 수 있습니다. 호스트 쪽 — 무엇을 받고 어떻게 답하는지 — 은 [런타임 계약](/ko/tooling/runtime-contract/)에 있습니다. 검사되는 예제는 [`docs/examples/free-text-input/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/free-text-input)이며, 맞는 답과 틀린 답에 대한 `lute test`가 있습니다.
 
 ## 컴파일된 기록
 
