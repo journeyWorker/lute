@@ -372,7 +372,7 @@ impl Driver for Oracle {
         self.run.unknown(site)
     }
     fn emit(&mut self, rec: Json) {
-        self.run.emit(rec)
+        self.run.emit(rec);
     }
     fn observe(&mut self, rec: Json) {
         if rec.get("kind").and_then(Json::as_str) != Some("armExpr") {
@@ -469,7 +469,7 @@ fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value 
             _ => Value::Unknown,
         },
         ("-", None) => match l {
-            Value::Int(n) => n.checked_neg().map(Value::Int).unwrap_or(Value::Unknown),
+            Value::Int(n) => n.checked_neg().map_or(Value::Unknown, Value::Int),
             Value::Double(n) => Value::Double(-n),
             _ => Value::Unknown,
         },
@@ -490,19 +490,17 @@ fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value 
         (">", Some(r)) => decided(cmp(&l, &r).map(|o| o == Greater)),
         (">=", Some(r)) => decided(cmp(&l, &r).map(|o| o != Less)),
         ("+", Some(r)) => match (l, r) {
-            (Value::Int(a), Value::Int(b)) => {
-                a.checked_add(b).map(Value::Int).unwrap_or(Value::Unknown)
-            }
+            (Value::Int(a), Value::Int(b)) => a.checked_add(b).map_or(Value::Unknown, Value::Int),
             (Value::Double(a), Value::Double(b)) => Value::Double(a + b),
             (Value::Str(a), Value::Str(b)) => Value::Str(format!("{a}{b}")),
             _ => Value::Unknown,
         },
         ("-" | "*" | "/" | "%", Some(r)) => match (l, r) {
             (Value::Int(a), Value::Int(b)) => match op {
-                "-" => a.checked_sub(b).map(Value::Int).unwrap_or(Value::Unknown),
-                "*" => a.checked_mul(b).map(Value::Int).unwrap_or(Value::Unknown),
-                "/" if b != 0 => a.checked_div(b).map(Value::Int).unwrap_or(Value::Unknown),
-                "%" if b != 0 => a.checked_rem(b).map(Value::Int).unwrap_or(Value::Unknown),
+                "-" => a.checked_sub(b).map_or(Value::Unknown, Value::Int),
+                "*" => a.checked_mul(b).map_or(Value::Unknown, Value::Int),
+                "/" if b != 0 => a.checked_div(b).map_or(Value::Unknown, Value::Int),
+                "%" if b != 0 => a.checked_rem(b).map_or(Value::Unknown, Value::Int),
                 _ => Value::Unknown,
             },
             (Value::Double(a), Value::Double(b)) => match op {
@@ -592,7 +590,7 @@ fn compare(
             case: case.to_string(),
             field,
             detail,
-        })
+        });
     };
     if trace.said != run.said {
         push("said", said_diff(&trace.said, &run.said));

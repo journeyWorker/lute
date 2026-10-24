@@ -258,7 +258,7 @@ impl ClockDecl {
                         out.push(format!(
                             "`last.slot: {s}` is not one of `slots:` ({})",
                             self.slots.join(", ")
-                        ))
+                        ));
                     }
                     _ => {}
                 }
@@ -462,10 +462,7 @@ impl ClockDecl {
     pub fn describe(&self, at: ClockAt) -> String {
         let slot = match &self.slot {
             None => String::new(),
-            Some(_) => format!(
-                " {}",
-                self.slots.get(at.slot).map(String::as_str).unwrap_or("?")
-            ),
+            Some(_) => format!(" {}", self.slots.get(at.slot).map_or("?", String::as_str)),
         };
         match self.weekday_label(at.day) {
             Some(label) => format!("day {} ({label}){slot}", at.day),
@@ -572,9 +569,7 @@ mod tests {
         .unwrap();
         let p = c.shape_problems();
         assert_eq!(p.len(), 3, "{p:?}");
-        assert!(
-            yaml_serde::from_str::<ClockDecl>("day: a\nslot: b\nslots: [x]\norder: [x]\n").is_err()
-        );
+        yaml_serde::from_str::<ClockDecl>("day: a\nslot: b\nslots: [x]\norder: [x]\n").unwrap_err();
         let stray: ClockDecl = yaml_serde::from_str("day: a\nslots: [x]\n").unwrap();
         assert_eq!(stray.shape_problems().len(), 1, "`slots:` without `slot:`");
     }

@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 
 mod arc_world {
-    use super::*;
+    use super::{Arc, Deserialize, Serialize};
     pub fn serialize<S: serde::Serializer>(
         v: &Arc<crate::session::World>,
         s: S,
@@ -1441,7 +1441,7 @@ fn execute_input<F: WalkDriver>(
                 .clock
                 .as_ref()
                 .and_then(|c| c.raise.as_ref())
-                .map_or_else(Default::default, |r| r.moments());
+                .map_or_else(Default::default, lute_manifest::clock::ClockRaise::moments);
             let p = pick.as_ref().map(PickInput::session).transpose()?;
             Ok(s.advance(0, by, &w, &raise, &p, &BTreeMap::new()))
         }

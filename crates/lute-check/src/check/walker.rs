@@ -1,6 +1,13 @@
 //! The per-node validator walk ([`Walker`]) over scene / quest / entry bodies.
 
-use super::*;
+use super::{
+    bare_param_ref, check_cel_slot, check_choice_record, check_directive, check_directive_when,
+    check_guard, check_interps, check_param_match, check_set, check_use, check_use_interp_args,
+    check_use_typed_args, resolve_timeline, resolve_type, scan_label_interps, text_looks_like_ref,
+    use_diag, Arm, Attr, AttrValue, CapabilitySnapshot, CelArena, ClipNode, ComponentSet, Ctx,
+    Diagnostic, Domain, DomainInfo, ExpectedType, Layer, Node, ProviderSet, ResolvedTimeline,
+    Severity, Span, E_COMPONENT_ARG,
+};
 
 /// The per-node validator walk. Holds the read-only capability surface and the
 /// mutable diagnostic/table/suppression accumulators; `Ctx` is passed per level

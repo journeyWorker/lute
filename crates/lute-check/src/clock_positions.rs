@@ -315,11 +315,7 @@ impl Formula {
                     Settle::Arrival => at <= *from,
                     Settle::Within => at < *from,
                 };
-                if before {
-                    Some(false)
-                } else {
-                    None
-                }
+                before.then_some(false)
             }
             Formula::Ended => {
                 if clock.last_at() == Some(at) {
@@ -1315,7 +1311,7 @@ fn collect_set_paths(nodes: &[Node], out: &mut BTreeSet<String>) {
                     match arm {
                         lute_syntax::ast::Arm::When { body, .. }
                         | lute_syntax::ast::Arm::Otherwise { body, .. } => {
-                            collect_set_paths(body, out)
+                            collect_set_paths(body, out);
                         }
                     }
                 }

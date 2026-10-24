@@ -921,7 +921,7 @@ impl<'a> Walk<'a> {
                     if let Some(when) = &r.when {
                         self.record(when, flow);
                     }
-                    self.retract(r, flow)
+                    self.retract(r, flow);
                 }
                 Node::Branch(b) => self.branch(&b.choices, flow),
                 Node::Hub(h) => self.hub(h, flow),

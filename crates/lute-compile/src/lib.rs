@@ -39,7 +39,10 @@ use lute_cel::CelArena;
 use lute_check::meta::{canonical_episode_id, canonical_scene_key};
 use lute_check::{check, fold_env, CheckInput, CheckResult, DefTable, FoldedEnv, StageState};
 use lute_core_span::{Diagnostic, Severity};
-use lute_ir::*;
+use lute_ir::{
+    AtomEntry, BodyEntry, CelPair, EntityKindEntry, EnumEntry, ForKind, GateEntry, PrereqEdge,
+    PrereqEdgeEntry, RelationEntry, RuleEntry, SeasonEntry, SeedFactEntry, TargetKind, TermEntry,
+};
 use lute_manifest::project::IdentityTemplates;
 use lute_manifest::relations::KindShape;
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -1286,7 +1289,7 @@ fn plugin_frontmatter(
     snapshot: &CapabilitySnapshot,
 ) -> BTreeMap<String, serde_json::Value> {
     let mut out = BTreeMap::new();
-    for (k, v) in map.iter() {
+    for (k, v) in map {
         let Some(key) = k.as_str() else { continue };
         let Some(ty) = snapshot.frontmatter.get(key) else {
             continue;
@@ -1671,7 +1674,7 @@ fn collect_branch_paths_nodes(nodes: &[Node], paths: &mut BTreeSet<String>) {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_branch_paths_nodes(body, paths)
+                            collect_branch_paths_nodes(body, paths);
                         }
                     }
                 }

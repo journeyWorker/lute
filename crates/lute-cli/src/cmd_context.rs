@@ -435,15 +435,16 @@ fn emit_context(value: serde_json::Value, json: bool) -> ExitCode {
             }
         }
     } else {
-        format!("{}\n", value)
+        format!("{value}\n")
     };
-    write_stdout(&text)
-        .map(|_| ExitCode::SUCCESS)
-        .unwrap_or_else(|_| {
+    write_stdout(&text).map_or_else(
+        |_| {
             envelope::fail_quietly(CliError::io_without_path(
                 "lute context: cannot write stdout",
             ))
-        })
+        },
+        |_| ExitCode::SUCCESS,
+    )
 }
 
 fn symbol_json(symbol: &lute_resolve::Symbol) -> serde_json::Value {
@@ -533,7 +534,7 @@ fn sort_and_truncate(
     kind: &str,
     not_included: &mut Vec<serde_json::Value>,
 ) {
-    items.sort_by_key(|item| item.to_string());
+    items.sort_by_key(std::string::ToString::to_string);
     let available = items.len();
     if available > limit {
         let omitted = available - limit;
@@ -681,10 +682,10 @@ fn vocabulary(
             }
         }
     }
-    relations.sort_by_key(|value| value.to_string());
-    state.sort_by_key(|value| value.to_string());
-    defs.sort_by_key(|value| value.to_string());
-    enums.sort_by_key(|value| value.to_string());
+    relations.sort_by_key(std::string::ToString::to_string);
+    state.sort_by_key(std::string::ToString::to_string);
+    defs.sort_by_key(std::string::ToString::to_string);
+    enums.sort_by_key(std::string::ToString::to_string);
     sort_and_truncate(&mut relations, limit, "vocabulary.relations", not_included);
     sort_and_truncate(&mut state, limit, "vocabulary.state", not_included);
     sort_and_truncate(&mut defs, limit, "vocabulary.defs", not_included);

@@ -746,10 +746,13 @@ fn run_one_test(
     let entries: Vec<String> = match (map.get("entry"), map.get("entries")) {
         (None, None) => Vec::new(),
         (Some(yaml_serde::Value::String(id)), None) => vec![id.clone()],
-        (None, Some(yaml_serde::Value::Sequence(ids))) if ids.iter().all(|i| i.is_string()) => ids
-            .iter()
-            .filter_map(|i| i.as_str().map(str::to_string))
-            .collect(),
+        (None, Some(yaml_serde::Value::Sequence(ids)))
+            if ids.iter().all(yaml_serde::Value::is_string) =>
+        {
+            ids.iter()
+                .filter_map(|i| i.as_str().map(str::to_string))
+                .collect()
+        }
         (Some(_), Some(_)) => {
             let message = format!(
                 "lute: {}: name the entries to present with ONE of `entry: <id>` or \

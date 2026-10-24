@@ -141,7 +141,7 @@ pub fn lint(
         .iter()
         .zip(scene_mask.iter())
         .filter(|(_, &is_scene)| is_scene)
-        .map(|((_, t, _), _)| t.scene.as_ref().map(|s| s.words).unwrap_or(0))
+        .map(|((_, t, _), _)| t.scene.as_ref().map_or(0, |s| s.words))
         .collect();
     let project = compute_project_row(&scene_words);
 

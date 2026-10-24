@@ -1,7 +1,7 @@
 //! Final diagnostic post-processing: suppressions, dedup, same-root collapse,
 //! and span normalization.
 
-use super::*;
+use super::{Diagnostic, Severity, Span, TextIndex};
 
 /// Diagnostics that only ever follow from something else being wrong: a
 /// guard that can never hold, a dead arm, a match left uncovered, a read

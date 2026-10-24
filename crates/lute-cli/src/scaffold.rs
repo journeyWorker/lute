@@ -1637,9 +1637,10 @@ fn project_docs(dest: &Destination) -> Vec<(PathBuf, lute_syntax::ast::Document)
 /// The alphabetically first scene id in the project `dest`, `None` outside
 /// a project or before its first scene.
 fn first_scene_id(dest: &Destination) -> Option<String> {
-    let snapshot = manifest_context(&dest.root)
-        .map(|context| context.snapshot)
-        .unwrap_or_else(|_| lute_manifest::core::load_core_snapshot());
+    let snapshot = manifest_context(&dest.root).map_or_else(
+        |_| lute_manifest::core::load_core_snapshot(),
+        |context| context.snapshot,
+    );
     let owned = lute_check::ProjectDocs::parse(project_docs(dest), &snapshot);
     let views = owned.views();
     lute_check::connectivity::scene_key_set(&views)
@@ -1651,9 +1652,10 @@ fn first_scene_id(dest: &Destination) -> Option<String> {
 /// quest or lore document of the project already declares: document ids are
 /// one namespace, so the new file would fail `lute check --project` at once.
 fn refuse_taken_id(dest: &Destination, id: &str) -> Result<(), ExitCode> {
-    let snapshot = manifest_context(&dest.root)
-        .map(|context| context.snapshot)
-        .unwrap_or_else(|_| lute_manifest::core::load_core_snapshot());
+    let snapshot = manifest_context(&dest.root).map_or_else(
+        |_| lute_manifest::core::load_core_snapshot(),
+        |context| context.snapshot,
+    );
     let owned = lute_check::ProjectDocs::parse(project_docs(dest), &snapshot);
     let views = owned.views();
     let taken = lute_check::connectivity::scene_key_set(&views)

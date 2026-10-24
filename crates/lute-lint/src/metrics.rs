@@ -272,7 +272,7 @@ pub fn compute_project_row(scene_words: &[u32]) -> ProjectRow {
     let scenes = scene_words.len() as u32;
     let (mut min, mut max, mut sum) = (f64::INFINITY, 0f64, 0f64);
     for &w in scene_words {
-        let w = w as f64;
+        let w = f64::from(w);
         if w < min {
             min = w;
         }
@@ -287,7 +287,7 @@ pub fn compute_project_row(scene_words: &[u32]) -> ProjectRow {
     let mean = if scenes == 0 {
         0.0
     } else {
-        sum / scenes as f64
+        sum / f64::from(scenes)
     };
     let stddev = if scenes < 2 {
         0.0
@@ -295,11 +295,11 @@ pub fn compute_project_row(scene_words: &[u32]) -> ProjectRow {
         let var: f64 = scene_words
             .iter()
             .map(|w| {
-                let d = *w as f64 - mean;
+                let d = f64::from(*w) - mean;
                 d * d
             })
             .sum::<f64>()
-            / scenes as f64;
+            / f64::from(scenes);
         var.sqrt()
     };
     let spread_ratio = if scenes < 2 || min == 0.0 {
@@ -440,7 +440,7 @@ impl Walker {
                     for arm in &m.arms {
                         match arm {
                             Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                                self.visit_nodes(body)
+                                self.visit_nodes(body);
                             }
                         }
                     }
@@ -515,14 +515,14 @@ impl Walker {
         let dialogue = self.dialogue_lines;
         let body_nodes = self.body_nodes;
         let avg = if !self.words_by_line.is_empty() {
-            self.total_words as f64 / self.words_by_line.len() as f64
+            f64::from(self.total_words) / self.words_by_line.len() as f64
         } else {
             0.0
         };
         let ratio = if body_nodes == 0 {
             0.0
         } else {
-            dialogue as f64 / body_nodes as f64
+            f64::from(dialogue) / f64::from(body_nodes)
         };
         SceneRow {
             kind: self.kind.clone(),
@@ -564,7 +564,7 @@ fn speakers_of(lines: &[LineRow]) -> BTreeMap<String, SpeakerRow> {
         }
         let mut attr_share = BTreeMap::new();
         for (k, c) in attr_counts {
-            attr_share.insert(k, c as f64 / lines.len() as f64);
+            attr_share.insert(k, f64::from(c) / lines.len() as f64);
         }
         // Axes.
         let axis = build_axes(&lines);
@@ -744,14 +744,13 @@ fn axis_from_buckets(buckets: &[String]) -> AxisStats {
     let (top_val, top_count) = counts
         .iter()
         .max_by(|a, b| a.1.cmp(b.1).then_with(|| b.0.cmp(a.0)))
-        .map(|(v, c)| ((*v).to_string(), *c))
-        .unwrap_or((String::new(), 0));
-    let share = top_count as f64 / buckets.len() as f64;
+        .map_or((String::new(), 0), |(v, c)| ((*v).to_string(), *c));
+    let share = f64::from(top_count) / buckets.len() as f64;
     AxisStats {
         run: best_run,
         runValue: best_run_value.clone(),
         streaks,
-        streakAvg: buckets.len() as f64 / streaks as f64,
+        streakAvg: buckets.len() as f64 / f64::from(streaks),
         distinct: counts.len() as u32,
         top: TopStats {
             value: top_val,
@@ -766,7 +765,7 @@ mod tests {
     use super::*;
 
     fn buckets(vs: &[&str]) -> Vec<String> {
-        vs.iter().map(|s| s.to_string()).collect()
+        vs.iter().map(std::string::ToString::to_string).collect()
     }
 
     #[test]

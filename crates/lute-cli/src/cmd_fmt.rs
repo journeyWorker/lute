@@ -60,7 +60,7 @@ fn collect(path: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
         return Ok(());
     }
     let mut entries = std::fs::read_dir(path)?.collect::<Result<Vec<_>, _>>()?;
-    entries.sort_by_key(|e| e.path());
+    entries.sort_by_key(std::fs::DirEntry::path);
     for entry in entries {
         collect(&entry.path(), out)?;
     }

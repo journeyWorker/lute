@@ -274,7 +274,7 @@ pub(crate) fn run_beats(
                 decls.entry(name.as_str()).or_insert(d);
             }
         }
-        known_occasions.extend(decls.keys().map(|k| k.to_string()));
+        known_occasions.extend(decls.keys().map(std::string::ToString::to_string));
         known_occasions.extend(beats.iter().map(|b| b.on.to_string()));
         let verdicts: Vec<Vec<&Diagnostic>> = beats
             .iter()
@@ -458,7 +458,7 @@ fn ladders<'a>(
             }
             push(
                 Some(label.to_string()),
-                rest.iter().map(|m| m.to_string()).collect(),
+                rest.iter().map(std::string::ToString::to_string).collect(),
                 rows_for(&|c| rest.iter().any(|m| c.answers(m))),
             );
         }

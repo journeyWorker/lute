@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    doc_bodies, visit, BTreeMap, BTreeSet, BeatOnce, FactPattern, FactTerm, FoldedEnv, Node, Path,
+    Span,
+};
 
 pub fn occasions_before(
     docs: &[crate::ProjectDoc<'_>],
@@ -129,25 +132,22 @@ pub fn fact_producers(
         {
             continue;
         }
-        let units = std::iter::once((
-            0,
-            doc.sections.iter().map(|s| &s.body[..]).collect::<Vec<_>>(),
-        ))
-        .chain(
-            doc.quests
-                .iter()
-                .map(|q| (q.span.byte_start, vec![&q.body[..]])),
-        )
-        .chain(
-            doc.entries
-                .iter()
-                .map(|e| (e.span.byte_start, vec![&e.body[..]])),
-        )
-        .chain(
-            doc.beats
-                .iter()
-                .map(|b| (b.span.byte_start, vec![&b.body[..]])),
-        );
+        let units = std::iter::once((0, doc.sections.iter().map(|s| &*s.body).collect::<Vec<_>>()))
+            .chain(
+                doc.quests
+                    .iter()
+                    .map(|q| (q.span.byte_start, vec![(&*q.body)])),
+            )
+            .chain(
+                doc.entries
+                    .iter()
+                    .map(|e| (e.span.byte_start, vec![(&*e.body)])),
+            )
+            .chain(
+                doc.beats
+                    .iter()
+                    .map(|b| (b.span.byte_start, vec![(&*b.body)])),
+            );
         for (key, bodies) in units {
             for body in bodies {
                 visit(body, &mut |node| match node {
@@ -228,10 +228,10 @@ pub(crate) fn fact_writes(
                 };
                 match node {
                     Node::Assert(a) => {
-                        push(&a.pattern, true, written("assert", &a.pattern), a.span)
+                        push(&a.pattern, true, written("assert", &a.pattern), a.span);
                     }
                     Node::Retract(r) => {
-                        push(&r.pattern, false, written("retract", &r.pattern), r.span)
+                        push(&r.pattern, false, written("retract", &r.pattern), r.span);
                     }
                     Node::Directive(d) => {
                         let Some(facts) = crate::directive_facts::lookup(effects, d) else {

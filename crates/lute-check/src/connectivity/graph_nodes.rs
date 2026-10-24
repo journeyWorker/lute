@@ -1,4 +1,4 @@
-use super::*;
+use super::bundle_beat_key_set;
 use crate::ProjectDoc;
 
 use crate::meta::{meta_key_span, resolve_doc_kind, DocKind};

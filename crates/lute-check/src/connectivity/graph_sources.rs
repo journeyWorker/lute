@@ -1,6 +1,8 @@
-use super::graph_assembly::*;
-use super::graph_nodes::*;
-use super::*;
+use super::graph_assembly::QuestDecls;
+use super::graph_nodes::{
+    atom_edge_kind, cycle_diag, ConnGraph, EdgeKind, NodeId, NodeInfo, PrereqState,
+};
+use super::{bundle_id, scene_key};
 use crate::ProjectDoc;
 
 use crate::meta::{resolve_doc_kind, DocKind};
@@ -152,7 +154,7 @@ pub(super) fn accept_sources<'a>(
         for quest in doc.quests.iter().filter(|q| !q.id.is_empty()) {
             let source = NodeId::Quest(quest.id.clone());
             crate::accept::walk(&quest.body, &mut |d| {
-                record(d, &source, Some(quest.id.as_str()))
+                record(d, &source, Some(quest.id.as_str()));
             });
         }
     }

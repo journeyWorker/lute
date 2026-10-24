@@ -439,11 +439,7 @@ pub fn apply_patch_to(
             path: path.clone(),
             message: error.to_string(),
         })?;
-        let actual = before
-            .files
-            .get(&path)
-            .map(|f| f.sha256.as_str())
-            .unwrap_or("");
+        let actual = before.files.get(&path).map_or("", |f| f.sha256.as_str());
         if !digest_equal(expected, actual) {
             return Err(PatchRefusal::Stale {
                 expected: expected.clone(),
@@ -596,11 +592,7 @@ pub fn apply_patch_to(
                     reason: error.to_string(),
                 })?;
                 let abs = root.join(&path);
-                let actual = before
-                    .files
-                    .get(&path)
-                    .map(|f| f.sha256.as_str())
-                    .unwrap_or("");
+                let actual = before.files.get(&path).map_or("", |f| f.sha256.as_str());
                 if !digest_equal(rev, actual) {
                     return Err(PatchRefusal::Edit {
                         index,
@@ -1261,9 +1253,9 @@ mod tests {
     use super::*;
     #[test]
     fn node_keys_are_strict() {
-        assert!(parse_node_key("scene:x").is_ok());
-        assert!(parse_node_key("bogus:x").is_err());
-        assert!(parse_node_key("scene:").is_err());
+        parse_node_key("scene:x").unwrap();
+        parse_node_key("bogus:x").unwrap_err();
+        parse_node_key("scene:").unwrap_err();
     }
 
     #[test]

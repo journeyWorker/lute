@@ -23,9 +23,13 @@ mod types;
 
 // Shared helpers the sibling submodules reach through `use super::*`.
 use diagnostic_helpers::{err_at, scalar_span};
-use diagnostics::*;
-use kind::*;
-use state::*;
+use diagnostics::{
+    map_prefix, per_family, per_fault, per_members, sanitize_dup_block_keys, scalar_default,
+    scan_block_dup_names, sorted_members, state_decl_message, unknown_state_row_keys,
+    yaml_parse_error, StateDeclRaw,
+};
+use kind::{kind_keys, unknown_key_hint, COMPONENT_ONLY_KEYS, REQUIRED_KEYS, UNIVERSAL_KEYS};
+use state::{get_i64, get_params, get_ref_list, get_str, get_sub_map};
 
 pub use decl_table::{Entries as DeclEntries, Precedence, StateDecls, StateFamily};
 pub use diagnostics::{

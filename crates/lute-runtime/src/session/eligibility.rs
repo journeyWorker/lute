@@ -500,7 +500,7 @@ pub(super) fn candidates(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
             observer,
         )
         .with_visited(&w.visited);
@@ -549,7 +549,7 @@ impl RaiseSeam {
         let mut eval = w
             .evaluator_with_schema(
                 &p.eval_json,
-                p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+                p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
                 observer,
             )
             .with_visited(&w.visited);
@@ -605,7 +605,7 @@ pub(super) fn rejudge(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
             observer,
         )
         .with_visited(&w.visited);

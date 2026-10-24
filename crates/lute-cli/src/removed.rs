@@ -284,16 +284,16 @@ fn spec_of(command: &[&str]) -> Spec {
     };
     let dir_operand = matches!(
         command,
-        ["impact"]
-            | ["constraints"]
-            | ["doctor"]
-            | ["play"]
+        ["impact"
+            | "constraints"
+            | "doctor"
+            | "play"
+            | "beats"
+            | "calendar"
+            | "scenario"
+            | "lore"
+            | "refs"]
             | ["loc", "export" | "report"]
-            | ["beats"]
-            | ["calendar"]
-            | ["scenario"]
-            | ["lore"]
-            | ["refs"]
     );
     Spec {
         renames,
@@ -328,7 +328,7 @@ fn rewrite(command: &[&str], rest: &[String]) -> Option<CliError> {
             if *valued {
                 match inline {
                     Some(value) => {
-                        *options.last_mut().expect("just pushed") = format!("{new}={value}")
+                        *options.last_mut().expect("just pushed") = format!("{new}={value}");
                     }
                     None => {
                         if let Some(value) = iter.next() {
@@ -415,7 +415,7 @@ fn rewrite(command: &[&str], rest: &[String]) -> Option<CliError> {
                 options.push("--node".to_string());
                 match inline {
                     Some(value) => {
-                        *options.last_mut().expect("just pushed") = format!("--node={value}")
+                        *options.last_mut().expect("just pushed") = format!("--node={value}");
                     }
                     None => options.extend(iter.next().cloned()),
                 }

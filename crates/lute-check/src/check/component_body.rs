@@ -1,7 +1,16 @@
 //! Component-body validation (dsl §13, 0.4.0 §6): [`validate_components`], the
 //! component-mode walk and its purity scans, and `::use` cycle detection.
 
-use super::*;
+use super::{
+    cel_parse_diagnostics, check_cel_slot, check_directive, check_directive_when, check_guard,
+    check_interp_format, check_interp_referent, check_param_match, check_speaker_args, check_use,
+    check_use_typed_args, collect_use_directives, directive_when_refused, fill_document,
+    fold_directive_slots, for_each_cel_slot, interp_grammar_diag, is_bare_ref, param_domain,
+    scan_refs, text_looks_like_ref, use_diag, Arm, Attr, AttrValue, CapabilitySnapshot, CelArena,
+    CelSlot, ClipNode, ComponentSet, Ctx, DecideCtx, DefTable, Diagnostic, Directive, Document,
+    Domain, DomainInfo, Env, ExpectedType, Interp, InterpKind, Mode, Node, PathBuf, ProviderSet,
+    Span, Type, E_COMPONENT_ARG, E_COMPONENT_BODY, E_COMPONENT_CYCLE, E_COMPONENT_STATE,
+};
 
 /// Validate every component this document `::use`s (dsl §13), directly or
 /// through another component's body: its presentational body plus the
@@ -346,13 +355,15 @@ pub(super) fn project_relative_display(src: &std::path::Path) -> String {
         .skip(1)
         .find(|dir| dir.join("lute.project.yaml").is_file())
         .and_then(|root| src.strip_prefix(root).ok())
-        .map(|rel| {
-            rel.components()
-                .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                .collect::<Vec<_>>()
-                .join("/")
-        })
-        .unwrap_or_else(|| src.display().to_string())
+        .map_or_else(
+            || src.display().to_string(),
+            |rel| {
+                rel.components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            },
+        )
 }
 
 /// The component-mode analysis environment (dsl §13): the params are the ONLY ref
@@ -1155,7 +1166,7 @@ fn collect_use_targets(nodes: &[Node], out: &mut Vec<String>) {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_use_targets(body, out)
+                            collect_use_targets(body, out);
                         }
                     }
                 }

@@ -1,7 +1,10 @@
 //! What a `<when>` arm provably matches: `is` literal patterns (incl. ranges,
 //! dsl 0.18.0 §2) and conservatively-analyzed `test` guards.
 
-use super::*;
+use super::{
+    classify_is_literal, is_alternatives, CelArena, Domain, DomainInfo, DomainValue, Expr,
+    Interval, IsLiteral, IsLiteralError, IsPattern, Span, Val,
+};
 
 /// What a single `<when>` arm provably matches.
 #[derive(Default)]

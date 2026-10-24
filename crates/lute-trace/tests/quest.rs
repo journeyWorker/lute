@@ -77,7 +77,7 @@ fn load_input(path: &str) -> CheckInput {
 /// is now `E-TRACE-EVENT`-rejected pre-walk, §4.3).
 fn quest_facts(facts: &[&str]) -> MockSet {
     MockSet {
-        facts: facts.iter().map(|f| f.to_string()).collect(),
+        facts: facts.iter().map(std::string::ToString::to_string).collect(),
         ..Default::default()
     }
 }
@@ -1685,7 +1685,10 @@ fn a_targeted_on_objective_is_judged_only_by_a_raise_for_its_target() {
     let input = input_for(targeted_fixture(), "targets.lute", Path::new("."));
     let raise = |occasions: &[&str]| {
         let mocks = MockSet {
-            occasions: occasions.iter().map(|s| s.to_string()).collect(),
+            occasions: occasions
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             ..Default::default()
         };
         trace_document(&input, mocks)

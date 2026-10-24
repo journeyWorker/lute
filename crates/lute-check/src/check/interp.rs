@@ -1,7 +1,10 @@
 //! `{{…}}` interpolation checks (dsl §7.6) and the `@ref`-looking content-line
 //! warning.
 
-use super::*;
+use super::{
+    bare_param_ref, check_cel_slot, parse_slot, scan_refs, CelArena, CelKind, CelSlot, Ctx,
+    Diagnostic, Interp, InterpKind, Layer, Severity, Span, Type,
+};
 
 /// Validate the `{{…}}` interpolation referents on a content line (dsl §7.6).
 /// An interpolation is a state READ, so each referent gets the SAME cel-layer

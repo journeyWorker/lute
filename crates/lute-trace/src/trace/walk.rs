@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    authored_when, eligible_of, exec, is_true, judge, logic_diag, mock, note_premise, premise_text,
+    prereq_condition, BTreeMap, BeatKind, Diagnostic, ExecProject, Head, Machine, MockSet, Premise,
+    Seed, SessionVerdict, Step, TraceDriver,
+};
 /// A seed for a resumed presentation: the carry already holds the seeded
 /// state and facts, so only the lifecycle surfaces ride along.
 pub(super) fn carried(seed: &Seed) -> Seed {

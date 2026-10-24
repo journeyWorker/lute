@@ -340,7 +340,7 @@ impl Sink<'_> {
                         .collect();
                     hit = keys.iter().any(|k| self.reached(inner, k, seen));
                 }
-            })
+            });
         });
         hit
     }

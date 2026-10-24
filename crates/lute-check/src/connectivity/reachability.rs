@@ -1,5 +1,5 @@
 use super::identity::scene_identity;
-use super::*;
+use super::{ConnGraph, NodeId, NodeInfo, PrereqState};
 use crate::ProjectDoc;
 
 use crate::check::CheckResult;

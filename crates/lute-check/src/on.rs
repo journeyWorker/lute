@@ -96,7 +96,7 @@ pub(crate) fn check_on_targets(
     let mut diags = Vec::new();
     for q in quests {
         for_each_on(&q.body, &mut |on| {
-            check_on_target(on, occasions, kinds, &mut diags)
+            check_on_target(on, occasions, kinds, &mut diags);
         });
     }
     diags
@@ -177,7 +177,7 @@ fn for_each_on<'a>(nodes: &'a [Node], f: &mut impl FnMut(&'a On)) {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            for_each_on(body, f)
+                            for_each_on(body, f);
                         }
                     }
                 }

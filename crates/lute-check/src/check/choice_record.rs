@@ -1,7 +1,10 @@
 //! The `<choice into=…>` run-record sugar (dsl 0.6.0 §2) and the
 //! `E-PERSIST-REMOVED` / `E-AS-REMOVED` migration fixits.
 
-use super::*;
+use super::{
+    resolve_type, type_accepts, Attr, AttrValue, Choice, Ctx, Diagnostic, Fixit, Layer, Literal,
+    Node, Severity, Span, TextEdit, Type,
+};
 
 /// Diagnostic codes for the `<choice … into="run.<path>">` run-record sugar
 /// (dsl 0.6.0 §2). `into=` alone records; the `persist=` attribute was REMOVED

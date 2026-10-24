@@ -384,7 +384,10 @@ fn plugin_with_enum(id: &str, dname: &str, ename: &str, members: &[&str]) -> Loa
     p.enums.insert(
         ename.into(),
         lute_manifest::snapshot::Domain {
-            members: members.iter().map(|m| m.to_string()).collect(),
+            members: members
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             ..Default::default()
         },
     );

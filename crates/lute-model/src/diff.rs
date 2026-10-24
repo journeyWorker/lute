@@ -545,7 +545,7 @@ fn edge_value(
             }));
         }
     }
-    edges.sort_by_key(|v| v.to_string());
+    edges.sort_by_key(std::string::ToString::to_string);
     if !edges.is_empty() {
         map.insert("edges".into(), Value::Array(edges));
     }

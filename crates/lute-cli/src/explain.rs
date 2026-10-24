@@ -210,7 +210,7 @@ impl Renderer<'_> {
                     out.push_str(&format!("{indent}{branch}{mark}{text}{note}\n"));
                 }
                 Premise::Unreached(text) => {
-                    out.push_str(&format!("{indent}{branch}· {text}  (not reached)\n"))
+                    out.push_str(&format!("{indent}{branch}· {text}  (not reached)\n"));
                 }
             }
         }

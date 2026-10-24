@@ -140,7 +140,7 @@ fn load_refuses_another_ir_line_and_unknown_kinds() {
     let project =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/session/hub-once/project");
     let bundle = compiled_bundle(&project, "gate");
-    assert!(Runtime::load(bundle.clone()).is_ok());
+    Runtime::load(bundle.clone()).unwrap();
 
     let mut older = bundle.clone();
     older.index["irVersion"] = Value::String("0.37.0".into());

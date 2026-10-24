@@ -279,7 +279,7 @@ mod tests {
     #[test]
     fn an_unknown_operator_is_refused() {
         let json = serde_json::json!({ "op": "<>", "l": { "path": "a" }, "r": { "path": "b" } });
-        assert!(serde_json::from_value::<ExprNode>(json).is_err());
+        serde_json::from_value::<ExprNode>(json).unwrap_err();
     }
 
     #[test]

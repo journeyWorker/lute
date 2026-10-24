@@ -1,4 +1,10 @@
-use super::*;
+use super::{
+    beat_when_note, carried, eligible_of, empty_report, exec, finish, judge, judging_project,
+    logic_diag, mock, note_premise, premise_text, present_beat, present_entry, raised_member,
+    run_walk, terminal_at, AstIndex, BTreeMap, BTreeSet, BeatKind, CheckInput, CheckResult,
+    DefTable, Diagnostic, Finish, Json, Machine, MockSet, Seed, SessionVerdict, Severity, Span,
+    Step, TraceContext, TraceDriver, TraceExit, TraceReport, Walked, World,
+};
 /// The §4.3/§4.4/§4.5 pipeline, end to end: check gate -> mock validation
 /// -> compile -> the walk -> the §4.5 report + exit code. Never panics —
 /// every degrade path returns a (possibly empty) report alongside the

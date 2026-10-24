@@ -1,7 +1,10 @@
 //! Per-cell evaluation: the columns a run evaluates, each column's outcome
 //! at a cell, and the `--relation` relations that hold there.
 
-use super::*;
+use super::{
+    deciding_unknown, eligible_at, is_candidate, presented, undecided_why, BTreeMap, BTreeSet,
+    Candidate, Column, ExecProject, Fact, FactsRel, OccasionSelect, Outcome, Seen, Verdict, World,
+};
 
 /// Per `--relation` relation, the facts of it that hold over the settled
 /// cell: the runner's fixpoint, as [`world_view`] derives them.

@@ -310,7 +310,9 @@ impl Ask<'_> {
                     .terms
                     .iter()
                     .map(|t| match t {
-                        RuleTerm::Var(v) => bound.get(v.as_str()).map(|s| s.to_string()),
+                        RuleTerm::Var(v) => {
+                            bound.get(v.as_str()).map(std::string::ToString::to_string)
+                        }
                         RuleTerm::Const(c) => Some(c.clone()),
                         RuleTerm::Bool(b) => Some(b.to_string()),
                     })

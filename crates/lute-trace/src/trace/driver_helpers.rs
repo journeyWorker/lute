@@ -1,4 +1,4 @@
-use super::*;
+use super::{report, Decision, Json, Span};
 pub(super) fn bare_decision(
     construct: &str,
     id: &str,
@@ -51,10 +51,7 @@ pub(super) fn json_text(v: Option<&Json>) -> String {
     match v {
         Some(Json::String(s)) => s.clone(),
         Some(Json::Bool(b)) => b.to_string(),
-        Some(Json::Number(n)) => n
-            .as_f64()
-            .map(report::format_num)
-            .unwrap_or_else(|| n.to_string()),
+        Some(Json::Number(n)) => n.as_f64().map_or_else(|| n.to_string(), report::format_num),
         _ => "unknown".to_string(),
     }
 }

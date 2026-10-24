@@ -828,7 +828,7 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
             ));
         }
         Step::Assert { text, effect_of } => {
-            out.push_str(&format!("    ::assert  {text}{}\n", effect_note(effect_of)))
+            out.push_str(&format!("    ::assert  {text}{}\n", effect_note(effect_of)));
         }
         Step::Retract { text, effect_of } => out.push_str(&format!(
             "    ::retract  {text}{}\n",
@@ -980,7 +980,7 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
             } else {
                 ""
             };
-            out.push_str(&format!("    quest {quest} accepted{queued}\n"))
+            out.push_str(&format!("    quest {quest} accepted{queued}\n"));
         }
         Step::Exclusive { text } => out.push_str(&format!("    ✗ exclusive: {text}\n")),
         Step::Jump { to } => out.push_str(&format!("    <jump -> {to}>\n")),

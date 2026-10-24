@@ -288,7 +288,10 @@ fn chapters(on: &str, scenes: &[&str]) -> lute_manifest::project::MetaDefaults {
     lute_manifest::project::MetaDefaults::default().with_chapters(vec![
         lute_manifest::project::Chain {
             on: on.to_string(),
-            scenes: scenes.iter().map(|s| s.to_string()).collect(),
+            scenes: scenes
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             applied: true,
         },
     ])
@@ -923,10 +926,7 @@ fn diagnostics_are_sorted_by_path_then_byte_then_code() {
         .iter()
         .map(|(p, _)| p.display().to_string())
         .collect();
-    assert!(
-        paths.first().map(|p| p == "a.lute").unwrap_or(false),
-        "{paths:?}"
-    );
+    assert!(paths.first().is_some_and(|p| p == "a.lute"), "{paths:?}");
 }
 
 // ---------------------------------------------------------------------------

@@ -80,7 +80,7 @@ fn impact_state_target() {
 fn impact_line_items_include_declaration_metadata() {
     let dir = fixture("line-metadata");
     let output = run(&dir, "state:run.score");
-    assert!(output.status.success(), "{:?}", output);
+    assert!(output.status.success(), "{output:?}");
     let report: Value = serde_json::from_slice(&output.stdout).unwrap();
     let line = report["items"]["lines"]
         .as_array()

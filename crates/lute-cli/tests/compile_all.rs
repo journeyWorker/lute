@@ -255,7 +255,10 @@ fn all_with_a_failing_document_exits_one_and_writes_nothing() {
     assert!(
         written.is_empty(),
         "a failing gate must leave NO partial output: {:?}",
-        written.iter().map(|e| e.path()).collect::<Vec<_>>()
+        written
+            .iter()
+            .map(std::fs::DirEntry::path)
+            .collect::<Vec<_>>()
     );
 }
 

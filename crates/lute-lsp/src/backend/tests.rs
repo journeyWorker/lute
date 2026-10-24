@@ -335,7 +335,7 @@ async fn analyze_publishes_project_resolver_diagnostics() {
         "resolver diagnostic must be sourced \"lute\""
     );
     assert_eq!(
-        resolver.get("severity").and_then(|s| s.as_u64()),
+        resolver.get("severity").and_then(serde_json::Value::as_u64),
         Some(1),
         "resolver diagnostic must be Error severity"
     );
@@ -348,8 +348,14 @@ async fn analyze_publishes_project_resolver_diagnostics() {
         .get("range")
         .and_then(|r| r.get("start"))
         .expect("range.start present");
-    assert_eq!(start.get("line").and_then(|l| l.as_u64()), Some(0));
-    assert_eq!(start.get("character").and_then(|c| c.as_u64()), Some(0));
+    assert_eq!(
+        start.get("line").and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
+    assert_eq!(
+        start.get("character").and_then(serde_json::Value::as_u64),
+        Some(0)
+    );
 }
 
 /// dsl 0.49.0 §7.1 (#175): the LSP publishes `W-PROJECT-CHECK-SKIPPED` as
@@ -402,7 +408,9 @@ async fn analyze_names_the_quest_references_it_cannot_judge() {
         .collect();
     assert_eq!(skipped.len(), 1, "{diags:?}");
     assert_eq!(
-        skipped[0].get("severity").and_then(|s| s.as_u64()),
+        skipped[0]
+            .get("severity")
+            .and_then(serde_json::Value::as_u64),
         Some(3),
         "information severity: {diags:?}"
     );

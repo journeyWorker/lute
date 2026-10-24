@@ -239,16 +239,13 @@ pub(super) fn execute(
             if matches!(step.action, Action::NewRun(_)) {
                 run_start = s.clock_at();
             }
-            let duplicate_advance_note =
-                if previous_beat_advanced && matches!(step.action, Action::Advance { .. }) {
-                    Some(
-                        "this `advance:` follows a beat that already declared `advances`; \
+            let duplicate_advance_note = (previous_beat_advanced
+                && matches!(step.action, Action::Advance { .. }))
+            .then(|| {
+                "this `advance:` follows a beat that already declared `advances`; \
                       both moves apply, so remove this step if it duplicates that movement"
-                            .to_string(),
-                    )
-                } else {
-                    None
-                };
+                    .to_string()
+            });
             let mut notes: Vec<String> = duplicate_advance_note
                 .into_iter()
                 .chain(clock_raised_note(

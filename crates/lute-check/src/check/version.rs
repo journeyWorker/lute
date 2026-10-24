@@ -1,6 +1,6 @@
 //! The `luteVersion` freshness signal (`W-LUTE-VERSION-STALE`, dsl 0.6.1 §3).
 
-use super::*;
+use super::{Diagnostic, Layer, Severity};
 
 /// dsl 0.6.1 §3: a document's frontmatter `luteVersion` stamp is present but
 /// differs from the toolchain's [`crate::LUTE_LANG_VERSION`].

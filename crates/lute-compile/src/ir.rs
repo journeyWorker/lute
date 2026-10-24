@@ -8,7 +8,11 @@ use std::sync::Arc;
 
 use serde::Serialize;
 
-use lute_ir::*;
+use lute_ir::{
+    AdvanceSpec, BeatOnce, CelPair, DocKind, EntityKindEntry, EnumEntry, ExprNode, ForKind,
+    GateEntry, LabelForms, LitVal, PrereqEdgeEntry, RelationEntry, RuleEntry, SeasonEntry,
+    SeedFactEntry, TargetKind,
+};
 
 /// Compiler-side resolution of a [`TargetKind`]: it needs the checker.
 pub trait TargetKindExt {
@@ -1945,13 +1949,10 @@ impl RewardEntry {
             Some(RewardAmount::Range(lo, hi)) => (None, Some(lo), Some(hi)),
         };
         let outcome = if owner_is_quest {
-            reward.outcome.as_deref().and_then(|v| {
-                if v == "failed" {
-                    Some("failed".to_string())
-                } else {
-                    None
-                }
-            })
+            reward
+                .outcome
+                .as_deref()
+                .and_then(|v| (v == "failed").then(|| "failed".to_string()))
         } else {
             None
         };

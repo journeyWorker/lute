@@ -96,8 +96,7 @@ pub fn lint_document(
     // published lint diagnostic reads the same as `lute lint`'s output.
     let rel_path: PathBuf = file_path
         .strip_prefix(project_root)
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| file_path.to_path_buf());
+        .map_or_else(|_| file_path.to_path_buf(), PathBuf::from);
     let input = LintDocInput {
         path: rel_path,
         doc: doc.clone(),

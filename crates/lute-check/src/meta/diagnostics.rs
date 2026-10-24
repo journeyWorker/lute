@@ -1,7 +1,10 @@
 use super::diagnostic_helpers::yaml_key;
 pub(crate) use super::diagnostic_helpers::yaml_shape;
 pub use super::diagnostic_helpers::{ident_from_name, infer_meta_kind_from_shape};
-use super::*;
+use super::{
+    lit_str, type_accepts, type_str, BTreeMap, Diagnostic, Layer, Literal, Meta, Severity, Span,
+    StateDecl, StateFamily, Type,
+};
 /// `E-STATE-DECL`'s whole message (#21, T10.2): what is wrong with this
 /// declaration and what the legal shape is, written from the YAML the author
 /// typed rather than from `yaml_serde`'s report of how it failed to

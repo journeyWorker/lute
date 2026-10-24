@@ -316,7 +316,7 @@ pub struct SeedError {
 impl SeedError {
     fn at(keys: &[&str], msg: String) -> Self {
         SeedError {
-            keys: keys.iter().map(|k| k.to_string()).collect(),
+            keys: keys.iter().map(std::string::ToString::to_string).collect(),
             item: None,
             msg,
         }
@@ -573,7 +573,7 @@ pub fn exclusive_violations(p: &ExecProject, w: &World) -> Vec<String> {
     }
     let evaluator = w.evaluator_with_schema(
         &p.eval_json,
-        p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+        p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
         None,
     );
     let facts = evaluator.all_facts();
@@ -639,7 +639,7 @@ pub fn world_view(p: &ExecProject, w: &World, with_facts: bool) -> WorldView {
     let facts = if with_facts {
         w.evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
             None,
         )
         .all_facts()

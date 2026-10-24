@@ -417,7 +417,10 @@ impl<K: Eq + std::hash::Hash, V> Memo<K, V> {
     /// Return the shared value for `key`, computing it once on first use.
     pub fn get_or_init(&self, key: K, init: impl FnOnce() -> V) -> Arc<V> {
         let cell = {
-            let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
+            let mut map = self
+                .map
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             map.entry(key).or_default().clone()
         };
         cell.get_or_init(|| Arc::new(init())).clone()
@@ -1509,7 +1512,7 @@ fn read_and_parse(
     };
     let is_yaml_decl = matches!(
         canon.extension().and_then(|e| e.to_str()),
-        Some("yaml") | Some("yml")
+        Some("yaml" | "yml")
     );
     let (tm, issue_diags, quest_ids, entry_ids, meta) = if is_yaml_decl {
         let byte_end = text.len();

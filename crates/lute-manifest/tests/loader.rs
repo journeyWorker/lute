@@ -567,7 +567,7 @@ fn loads_lints_export_round_trip() {
     assert_eq!(
         r0.options
             .get(yaml_serde::Value::String("max".into()))
-            .and_then(|v| v.as_i64()),
+            .and_then(yaml_serde::Value::as_i64),
         Some(6)
     );
     // level absent -> None (plugin declines to declare a default)

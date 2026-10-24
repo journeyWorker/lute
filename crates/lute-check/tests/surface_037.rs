@@ -241,7 +241,7 @@ fn core_vocabulary_is_lower_camel() {
         &lute_manifest::project::MANIFEST_KEYS,
         &lute_manifest::project::DEFAULTABLE_KEYS,
     ] {
-        keys.extend(list.iter().map(|k| k.to_string()));
+        keys.extend(list.iter().map(std::string::ToString::to_string));
     }
     let bad: Vec<&String> = keys.iter().filter(|k| !is_lower_camel(k)).collect();
     assert!(bad.is_empty(), "not lowerCamelCase: {bad:?}");

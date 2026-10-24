@@ -424,7 +424,7 @@ pub(crate) fn run_scenario_envelope(
     }
     match &node_ref {
         NodeRef::Scene(key) | NodeRef::Beat(key) => {
-            print_scene_envelope(out, &scenario, &docs, &node_ref_to_id(&node_ref), key, root)
+            print_scene_envelope(out, &scenario, &docs, &node_ref_to_id(&node_ref), key, root);
         }
         NodeRef::Quest(id) => {
             let Some(quest) = docs

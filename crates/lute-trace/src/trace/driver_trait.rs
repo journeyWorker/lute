@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    choice_diag, guard_premise, mock, plugin_call, report, BridgeCall, BridgeReply, CoverageCount,
+    Driver, Forced, Head, Json, Menu, MenuKind, MenuSeen, OnUnknown, Pick, SiteKind, TraceDriver,
+    UnknownSite, UnresolvedEntry, Verdict,
+};
 impl Driver for TraceDriver<'_> {
     fn is_preview(&self) -> bool {
         true
@@ -322,8 +326,7 @@ impl Driver for TraceDriver<'_> {
                     .beat_when
                     .iter()
                     .find(|(suffix, _)| site.id.ends_with(suffix.as_str()))
-                    .map(|(_, s)| *s)
-                    .unwrap_or_else(|| self.span_at(site.addr));
+                    .map_or_else(|| self.span_at(site.addr), |(_, s)| *s);
                 self.record_unresolved("beat", site.id, span, raw, site.atoms);
                 OnUnknown::Continue
             }
@@ -340,8 +343,7 @@ impl Driver for TraceDriver<'_> {
                     .map
                     .quests
                     .get(site.id)
-                    .map(|q| q.span)
-                    .unwrap_or_else(mock::synthetic_span);
+                    .map_or_else(mock::synthetic_span, |q| q.span);
                 self.record_unresolved("quest", site.id, span, raw, site.atoms);
                 OnUnknown::Continue
             }
@@ -350,8 +352,7 @@ impl Driver for TraceDriver<'_> {
                     .quest
                     .and_then(|q| self.cx.map.quests.get(q))
                     .and_then(|q| q.objectives.get(site.id))
-                    .map(|o| o.span)
-                    .unwrap_or_else(mock::synthetic_span);
+                    .map_or_else(mock::synthetic_span, |o| o.span);
                 self.record_unresolved("objective", site.id, span, raw, site.atoms);
                 OnUnknown::Continue
             }

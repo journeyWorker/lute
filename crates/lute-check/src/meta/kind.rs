@@ -1,4 +1,4 @@
-use super::*;
+use super::{yaml_key, Diagnostic, Layer, Meta, Severity, TypedMeta};
 /// Frontmatter keys valid in EVERY root document kind (dsl 0.2.0 §6.1): the
 /// kind-agnostic core keys. `kind:` itself is handled separately (valid only
 /// for a root kind — Scene/Quest — never Schema/Component, dsl 0.2.0 §3.1), so
@@ -364,10 +364,7 @@ pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
             )],
         ),
         Some(v) => {
-            let kind_str = v
-                .as_str()
-                .map(str::to_string)
-                .unwrap_or_else(|| format!("{v:?}"));
+            let kind_str = v.as_str().map_or_else(|| format!("{v:?}"), str::to_string);
             match kind_str.as_str() {
                 "scene" => (Some(DocKind::Scene), Vec::new()),
                 "quest" => (Some(DocKind::Quest), Vec::new()),

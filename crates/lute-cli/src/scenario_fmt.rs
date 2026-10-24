@@ -114,7 +114,7 @@ fn anchors_json(scenario: &RootScenario, node: &NodeId) -> Option<Value> {
             .map(|a| {
                 serde_json::json!({
                     "kind": a.kind.as_str(),
-                    "from": a.from.iter().map(|n| n.to_string()).collect::<Vec<_>>(),
+                    "from": a.from.iter().map(std::string::ToString::to_string).collect::<Vec<_>>(),
                 })
             })
             .collect(),

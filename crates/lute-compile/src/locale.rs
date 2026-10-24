@@ -491,9 +491,9 @@ mod tests {
 
     #[test]
     fn parse_rejects_a_malformed_bundle() {
-        assert!(LocaleBundle::parse("not json").is_err());
-        assert!(LocaleBundle::parse("[]").is_err());
-        assert!(LocaleBundle::parse(r#"{"locales":[],"entries":{}}"#).is_err());
+        LocaleBundle::parse("not json").unwrap_err();
+        LocaleBundle::parse("[]").unwrap_err();
+        LocaleBundle::parse(r#"{"locales":[],"entries":{}}"#).unwrap_err();
         assert!(
             LocaleBundle::parse(r#"{"schemaVersion":3,"locales":[],"entries":{}}"#).is_err(),
             "an unknown schemaVersion is refused, never guessed at"

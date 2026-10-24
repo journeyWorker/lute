@@ -36,7 +36,7 @@ fn refusal_json(refusal: &PatchRefusal) -> serde_json::Value {
         }
         PatchRefusal::Check(diagnostics) => {
             value["diagnostics"] =
-                serde_json::to_value(diagnostics).unwrap_or(serde_json::Value::Array(Vec::new()))
+                serde_json::to_value(diagnostics).unwrap_or(serde_json::Value::Array(Vec::new()));
         }
         PatchRefusal::Preserve(changes) => {
             value["changes"] = serde_json::Value::Array(
@@ -49,7 +49,7 @@ fn refusal_json(refusal: &PatchRefusal) -> serde_json::Value {
                         item
                     })
                     .collect(),
-            )
+            );
         }
         PatchRefusal::Format { path } => {
             value["path"] = serde_json::json!(path);

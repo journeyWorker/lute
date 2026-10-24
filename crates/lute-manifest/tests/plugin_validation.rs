@@ -114,7 +114,10 @@ fn builtin_lowering_assembles_clean() {
 #[test]
 fn bad_record_name_reaches_assembly_with_its_own_code() {
     let errs = assemble_with(record_lowering("line", "{ speaker: { fromAttr: img } }"));
-    let codes: Vec<_> = errs.iter().map(|e| e.code()).collect();
+    let codes: Vec<_> = errs
+        .iter()
+        .map(lute_manifest::assemble::AssembleError::code)
+        .collect();
     assert_eq!(codes, vec!["E-LOWER-RECORD-UNKNOWN"], "{errs:?}");
     let AssembleError::InvalidDirective {
         plugin,
@@ -137,14 +140,20 @@ fn bad_record_name_reaches_assembly_with_its_own_code() {
 #[test]
 fn bad_field_name_reaches_assembly_with_its_own_code() {
     let errs = assemble_with(record_lowering("bg", "{ backdropId: { fromAttr: img } }"));
-    let codes: Vec<_> = errs.iter().map(|e| e.code()).collect();
+    let codes: Vec<_> = errs
+        .iter()
+        .map(lute_manifest::assemble::AssembleError::code)
+        .collect();
     assert_eq!(codes, vec!["E-LOWER-RECORD-FIELD"], "{errs:?}");
 }
 
 #[test]
 fn bad_from_attr_reaches_assembly_with_its_own_code() {
     let errs = assemble_with(record_lowering("bg", "{ assetId: { fromAttr: missing } }"));
-    let codes: Vec<_> = errs.iter().map(|e| e.code()).collect();
+    let codes: Vec<_> = errs
+        .iter()
+        .map(lute_manifest::assemble::AssembleError::code)
+        .collect();
     assert_eq!(codes, vec!["E-LOWER-RECORD-FIELD"], "{errs:?}");
 }
 
@@ -171,7 +180,10 @@ fn semantics_error_keeps_the_generic_code() {
         },
     ];
     let errs = assemble_snapshot(&active, &reg).1;
-    let codes: Vec<_> = errs.iter().map(|e| e.code()).collect();
+    let codes: Vec<_> = errs
+        .iter()
+        .map(lute_manifest::assemble::AssembleError::code)
+        .collect();
     assert_eq!(codes, vec!["E-PLUGIN-INVALID-DIRECTIVE"], "{errs:?}");
 }
 

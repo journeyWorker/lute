@@ -174,7 +174,7 @@ fn main() {
         Ok(())
     } else {
         std::fs::write(&destination, output)
-            .map_err(|error| format!("cannot write {}: {error}", destination))
+            .map_err(|error| format!("cannot write {destination}: {error}"))
     };
     if let Err(error) = write_result {
         eprintln!("lute-bench: {error}");
@@ -819,9 +819,10 @@ fn visit_files(
 }
 
 fn revision_for(root: &Path) -> String {
-    build_model(root, false)
-        .map(|model| model.revisions().sha256.clone())
-        .unwrap_or_else(|_| "error".to_string())
+    build_model(root, false).map_or_else(
+        |_| "error".to_string(),
+        |model| model.revisions().sha256.clone(),
+    )
 }
 
 fn commit_for(root: &Path) -> String {
@@ -844,8 +845,7 @@ fn commit_for(root: &Path) -> String {
     };
     if let Some(reference) = head.strip_prefix("ref: ") {
         std::fs::read_to_string(git_dir.join(reference))
-            .map(|value| value.trim().to_string())
-            .unwrap_or_else(|_| "unknown".to_string())
+            .map_or_else(|_| "unknown".to_string(), |value| value.trim().to_string())
     } else {
         head
     }

@@ -148,7 +148,7 @@ pub fn play_machine<F: super::WalkDriver>(
         seed.clone(),
         carry,
         factory.new_driver(doc, choose, w),
-        p.store_schemas[seed.derive as usize].clone(),
+        p.store_schemas[usize::from(seed.derive)].clone(),
     )
     .with_visited(&w.visited)
     .with_bridge_reads(p.bridge_reads.clone());

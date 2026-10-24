@@ -58,9 +58,10 @@ pub fn parse_constraints(
     let mut ids = std::collections::BTreeSet::new();
     for (idx, item) in items.iter().enumerate() {
         let item_path = [YamlStep::Key("constraints"), YamlStep::Item(idx)];
-        let mut decl_span = yaml_span(text, &item_path)
-            .map(|span| span.byte_start..span.byte_end)
-            .unwrap_or_else(|| field_span(text, "constraints"));
+        let mut decl_span = yaml_span(text, &item_path).map_or_else(
+            || field_span(text, "constraints"),
+            |span| span.byte_start..span.byte_end,
+        );
         let Some(map) = item.as_mapping() else {
             diags.push(err("constraint declaration must be a mapping", decl_span));
             continue;
@@ -74,8 +75,7 @@ pub fn parse_constraints(
                     YamlStep::Key(k),
                 ];
                 let span = yaml_span(text, &key_path)
-                    .map(|span| span.byte_start..span.byte_end)
-                    .unwrap_or_else(|| decl_span.clone());
+                    .map_or_else(|| decl_span.clone(), |span| span.byte_start..span.byte_end);
                 let value_path = [
                     YamlStep::Key("constraints"),
                     YamlStep::Item(idx),

@@ -257,10 +257,10 @@ impl<D: Driver> Machine<D> {
             let start_raw = q.start.as_deref().map(Slot::raw);
             match started {
                 Some(Some(true)) => {
-                    self.activate_quest(&q.id, start_raw, false, &handlers, &seg_starts)
+                    self.activate_quest(&q.id, start_raw, false, &handlers, &seg_starts);
                 }
                 _ if self.is_accepted(&q.id) => {
-                    self.activate_quest(&q.id, None, true, &handlers, &seg_starts)
+                    self.activate_quest(&q.id, None, true, &handlers, &seg_starts);
                 }
                 Some(Some(false)) => self.observe_waiting(&q.id, "never", start_raw),
                 None => self.observe_waiting(&q.id, "awaiting accept", None),

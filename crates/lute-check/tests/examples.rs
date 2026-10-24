@@ -87,8 +87,7 @@ fn undeclared_set_target_reports_exactly_one_undeclared() {
     assert_eq!(
         undeclared.len(),
         1,
-        "undeclared `::set` target must surface exactly one E-UNDECLARED, got: {:#?}",
-        undeclared
+        "undeclared `::set` target must surface exactly one E-UNDECLARED, got: {undeclared:#?}"
     );
 }
 

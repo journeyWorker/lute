@@ -106,9 +106,10 @@ pub(super) fn coverage_units(root: &Path) -> std::io::Result<Vec<CoverageUnit>> 
         };
         source_docs.push((path.clone(), doc));
     }
-    let snapshot = lute_load::manifest_context(root)
-        .map(|context| context.snapshot)
-        .unwrap_or_else(|_| lute_manifest::core::load_core_snapshot());
+    let snapshot = lute_load::manifest_context(root).map_or_else(
+        |_| lute_manifest::core::load_core_snapshot(),
+        |context| context.snapshot,
+    );
     let owned = lute_check::ProjectDocs::parse(source_docs, &snapshot);
     let views = owned.views();
     for item in views {

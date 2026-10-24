@@ -18,7 +18,7 @@ pub(crate) fn run_impact(
         }
     };
     let opts = ModelOptions {
-        providers: providers.map(|p| p.to_path_buf()),
+        providers: providers.map(std::path::Path::to_path_buf),
         compile: true,
         ..ModelOptions::default()
     };

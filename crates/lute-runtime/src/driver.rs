@@ -55,10 +55,10 @@ impl<D: Driver + ?Sized> Driver for &mut D {
         (**self).unknown(site)
     }
     fn emit(&mut self, rec: Json) {
-        (**self).emit(rec)
+        (**self).emit(rec);
     }
     fn observe(&mut self, rec: Json) {
-        (**self).observe(rec)
+        (**self).observe(rec);
     }
     fn is_preview(&self) -> bool {
         (**self).is_preview()

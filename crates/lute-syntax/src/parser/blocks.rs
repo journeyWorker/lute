@@ -12,7 +12,11 @@ use super::{
     close_tag_name, open_tag_name, Parser, E_LOGIC_CONTENT, E_TAG_INLINE_BODY, E_TAG_NOT_ONE_LINE,
     E_TIMELINE_CONTENT, E_UNCLOSED_TAG,
 };
-use crate::ast::*;
+use crate::ast::{
+    Arm, Attr, AttrValue, Branch, BundleBeat, CelKind, CelSlot, Choice, Clip, ClipAt, ClipNode,
+    Entry, Hub, HubReturn, IsPattern, Match, Node, Objective, On, Quest, TemplateUse, Timeline,
+    Track, TrackKey,
+};
 use lute_core_span::Layer;
 
 /// A parsed `<tag …>` open line.
@@ -359,9 +363,10 @@ impl Parser<'_> {
         // routed through `take_cel` — it is validated under the restricted
         // `prereq::parse_prereq` grammar (checker layer), not general CEL.
         // A legacy `after=` stays residual: the checker names `follows=`.
-        let (follows, follows_span) = take_str_spanned(&mut attrs, "follows")
-            .map(|(s, sp)| (Some(s), sp))
-            .unwrap_or_else(|| (None, self.span_o(open.start_o, open.end_o)));
+        let (follows, follows_span) = take_str_spanned(&mut attrs, "follows").map_or_else(
+            || (None, self.span_o(open.start_o, open.end_o)),
+            |(s, sp)| (Some(s), sp),
+        );
         let tier = take_str_spanned(&mut attrs, "tier");
         let activate = take_str_spanned(&mut attrs, "activate");
         let complete = take_str_spanned(&mut attrs, "complete");

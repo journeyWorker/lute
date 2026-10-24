@@ -163,7 +163,7 @@ pub fn run_artifact(
         return ExitCode::from(1);
     }
 
-    if !art.get("commands").map(Json::is_array).unwrap_or(false) {
+    if !art.get("commands").is_some_and(Json::is_array) {
         return envelope::fail(CliError::input(
             artifact,
             "lute run: execution IR has no `commands` array",
@@ -1221,8 +1221,7 @@ fn owned_write_refusal(art: &Json) -> Option<String> {
             if let Some(relation) = command.get("relation").and_then(Json::as_str) {
                 if reserved.contains(relation) {
                     return Some(format!(
-                        "E-RUN-OWNED-WRITE: command {}s reserved relation `{relation}`",
-                        kind
+                        "E-RUN-OWNED-WRITE: command {kind}s reserved relation `{relation}`"
                     ));
                 }
             }
@@ -1317,10 +1316,7 @@ fn direct_occasion_member<B, C>(
                     .and_then(|target| target.strip_prefix('.'))
                     .unwrap_or(target)
             } else {
-                target
-                    .rsplit_once('.')
-                    .map(|(_, member)| member)
-                    .unwrap_or(target)
+                target.rsplit_once('.').map_or(target, |(_, member)| member)
             }
         }
         None => {

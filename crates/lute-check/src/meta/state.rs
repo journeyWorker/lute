@@ -1,4 +1,4 @@
-use super::*;
+use super::{map_prefix, yaml_key, BTreeMap, DefParam, Namespace, Type};
 /// dsl 0.28.0 §1 (T1-12): why `path` cannot be declared in `state:` — it is
 /// a name the engine owns — or `None` when the namespace is the author's.
 /// A non-tier root with no engine meaning (`foo.bar`) is `None` here too;
@@ -58,7 +58,7 @@ pub(super) fn get_str(map: &yaml_serde::Mapping, key: &str) -> Option<String> {
 }
 
 pub(super) fn get_i64(map: &yaml_serde::Mapping, key: &str) -> Option<i64> {
-    map.get(yaml_key(key)).and_then(|v| v.as_i64())
+    map.get(yaml_key(key)).and_then(yaml_serde::Value::as_i64)
 }
 
 /// `uses`/`extends` (dsl §9.2) may each be a single ref or a list of refs;
@@ -130,7 +130,7 @@ pub(super) fn get_params(map: &yaml_serde::Mapping, key: &str) -> ParsedParams {
     let mut params = Vec::new();
     let mut speakers = Vec::new();
     let mut malformed = false;
-    for (k, tv) in pm.iter() {
+    for (k, tv) in pm {
         let Some(name) = k.as_str() else {
             malformed = true; // non-string key
             continue;

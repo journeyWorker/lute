@@ -1,4 +1,11 @@
-use super::{facts::*, profile::*, state::*};
+use super::{
+    facts::check_fact_queries,
+    profile::{check_cel_profile, check_modulo_operands, check_quest_state_isset, ProfileScope},
+    state::{
+        check_state_path, compatible, diag, expected_desc, map_span, raw_uses_reserved_marker,
+        resolve_arg_type, ty_desc,
+    },
+};
 //
 // Two independent passes feed one diagnostic list, forced apart by the
 // cel-parser 0.10.1 carry-forward (T3.1): a SUCCESSFUL CEL parse drops every
@@ -415,7 +422,7 @@ pub(crate) fn group_per_member(
             match groups.iter_mut().find(|(gk, _, _)| *gk == k) {
                 Some((_, _, ms)) => {
                     if !ms.contains(member) {
-                        ms.push(member)
+                        ms.push(member);
                     }
                 }
                 None => groups.push((k, d.clone(), vec![member])),

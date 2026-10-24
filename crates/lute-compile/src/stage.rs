@@ -13,7 +13,11 @@ use lute_syntax::ast::{
 };
 
 use crate::cfg::{Emitter, Label};
-use crate::ir::*;
+use crate::ir::{
+    placeholder_from_interp, ActorCmd, BarrierCmd, BeatCmd, CelPairExt, ChoiceCmd, ChoiceOption,
+    Command, EntryCmd, ForKindExt, HubCmd, HubOption, JumpCmd, MatchArm, MatchCmd, ObjectiveEntry,
+    OnCmd, QuestCmd, RewardEntry, Source, Stamp, TargetKindExt,
+};
 use crate::lower::{
     attr_bool, attr_string, fact_text, lower_assert, lower_directive, lower_line, lower_retract,
     lower_set,
@@ -21,7 +25,7 @@ use crate::lower::{
 use crate::normalize::{component_scope, is_body_split, COMPONENT_BEGIN, COMPONENT_END};
 use crate::schedule::schedule_timeline;
 use crate::source_map::{ArmSource, ComponentBoundary, ComponentUse, SourceInfo, SourceMarker};
-use lute_ir::*;
+use lute_ir::{CelPair, ForKind, TargetKind};
 
 /// Walk context: the read-only capability surface + the component-source
 /// stack (sentinel-driven: each open expansion's name and its
@@ -524,7 +528,7 @@ fn walk_hub(
         prompt: attr_string(&h.attrs, "prompt"),
         prompt_line_id: None,
         prompt_texts: Default::default(),
-        on_return: back.map(|l| l.sym()),
+        on_return: back.map(super::cfg::Label::sym),
         stamp: Stamp::default(),
     });
     apply_source(&mut cmd, cx);

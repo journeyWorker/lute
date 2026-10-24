@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    call, conjuncts, definition, expand_cel, fact_atoms, op, read_paths, unit_facts, BTreeSet,
+    BeatOnce, BodyLiteral, CelSlot, Expr, Guard, Node, Pol, Presence, Side, Val, EXPAND_DEPTH,
+};
 
 impl Presence<'_> {
     /// `raw` with its `@def`s (and `$`, as `subject`) expanded.
@@ -234,7 +237,7 @@ impl Presence<'_> {
             match node {
                 Node::Objective(o) => self.kill_writes(&o.body),
                 Node::On(h) if h.event == "questComplete" && h.span.byte_start < at => {
-                    self.kill_writes(&h.body)
+                    self.kill_writes(&h.body);
                 }
                 _ => {}
             }

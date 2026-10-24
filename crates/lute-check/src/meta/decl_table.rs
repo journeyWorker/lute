@@ -535,7 +535,10 @@ mod tests {
         StateFamily::new(
             "k".into(),
             decl(fallback),
-            members.iter().map(|m| m.to_string()).collect(),
+            members
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             own.iter()
                 .map(|(m, v)| (m.to_string(), Literal::Int(*v)))
                 .collect(),

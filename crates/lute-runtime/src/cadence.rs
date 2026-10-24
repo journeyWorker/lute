@@ -538,7 +538,7 @@ pub fn observe(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
             observer,
         )
         .with_visited(&w.visited);
@@ -639,7 +639,7 @@ pub fn observe_latches(p: &ExecProject, w: &mut World, observer: Option<SessionE
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
             observer,
         )
         .with_visited(&w.visited);

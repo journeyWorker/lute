@@ -338,12 +338,10 @@ impl Store {
             },
             Some("int") => lit
                 .parse::<i64>()
-                .map(Value::Int)
-                .unwrap_or_else(|_| Value::Str(lit.to_string())),
+                .map_or_else(|_| Value::Str(lit.to_string()), Value::Int),
             Some("double") => lit
                 .parse::<f64>()
-                .map(Value::Double)
-                .unwrap_or_else(|_| Value::Str(lit.to_string())),
+                .map_or_else(|_| Value::Str(lit.to_string()), Value::Double),
             _ => match lit {
                 "true" => Value::Bool(true),
                 "false" => Value::Bool(false),

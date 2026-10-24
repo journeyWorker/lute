@@ -1135,10 +1135,10 @@ fn parse_writes(
             }
             Some("facts") => w.facts = string_list(v, &format!("step {n}: `{key}.facts`"))?,
             Some("retract") if retract => {
-                w.retract = string_list(v, &format!("step {n}: `{key}.retract`"))?
+                w.retract = string_list(v, &format!("step {n}: `{key}.retract`"))?;
             }
             Some("accept") if retract => {
-                w.accept = string_list(v, &format!("step {n}: `{key}.accept`"))?
+                w.accept = string_list(v, &format!("step {n}: `{key}.accept`"))?;
             }
             other => {
                 return Err(format!(

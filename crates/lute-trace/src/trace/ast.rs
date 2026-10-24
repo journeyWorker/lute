@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    line_delivery, Arm, AttrValue, BTreeMap, BTreeSet, BridgeAnswer, CoverageCount, Decision,
+    Diagnostic, Document, FoldedEnv, HashMap, Json, MockSet, Node, SourceMap, Span, Step,
+    UnresolvedEntry,
+};
 // ---------------------------------------------------------------------
 // The AST texts the source map does not carry.
 // ---------------------------------------------------------------------
@@ -70,7 +74,7 @@ impl AstIndex {
                     for arm in &m.arms {
                         match arm {
                             Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                                self.nodes(body)
+                                self.nodes(body);
                             }
                         }
                     }

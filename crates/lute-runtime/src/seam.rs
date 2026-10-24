@@ -74,7 +74,7 @@ pub fn terminal_holds(
             &mut w
                 .evaluator_with_schema(
                     &p.eval_json,
-                    p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+                    p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
                     observer,
                 )
                 .with_visited(&w.visited),
@@ -107,7 +107,7 @@ pub fn closed(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
             observer,
         )
         .with_visited(&w.visited);
@@ -126,7 +126,7 @@ pub fn gate(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
             None,
         )
         .with_visited(&w.visited);
@@ -427,10 +427,10 @@ fn show(expr: &Expr) -> String {
             };
             format!("{name}({})", join(args))
         }
-        e => e
-            .static_path()
-            .map(|p| lute_manifest::text::bracket_spelling_of(&p))
-            .unwrap_or_else(|| "…".to_string()),
+        e => e.static_path().map_or_else(
+            || "…".to_string(),
+            |p| lute_manifest::text::bracket_spelling_of(&p),
+        ),
     }
 }
 

@@ -492,7 +492,7 @@ pub(super) fn collect_on_events<'a>(nodes: &'a [Node], out: &mut BTreeSet<&'a st
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_on_events(body, out)
+                            collect_on_events(body, out);
                         }
                     }
                 }

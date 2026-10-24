@@ -31,7 +31,7 @@ fn member(id: &str, present: Option<&str>, emotions: Option<&[&str]>) -> CastMem
         id: id.into(),
         name: None,
         present: present.map(str::to_string),
-        emotions: emotions.map(|es| es.iter().map(|e| e.to_string()).collect()),
+        emotions: emotions.map(|es| es.iter().map(std::string::ToString::to_string).collect()),
         assume: None,
         shared_name: None,
     }

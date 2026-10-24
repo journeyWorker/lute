@@ -95,7 +95,7 @@ pub fn evaluate(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            p.store_schemas[usize::from(w.derive.unwrap_or(true))].clone(),
             observer,
         )
         .with_visited(&w.visited);
@@ -159,7 +159,7 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
 
     /// Re-derive `clock.*` after a write the walk did not make.
     pub fn refresh_clock(&mut self) {
-        refresh_clock(self.project, &mut self.world)
+        refresh_clock(self.project, &mut self.world);
     }
 
     /// Every candidate of `occasion` / `target` with its verdict, in
@@ -185,7 +185,7 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
             .world
             .evaluator_with_schema(
                 &self.project.eval_json,
-                self.project.store_schemas[self.world.derive.unwrap_or(true) as usize].clone(),
+                self.project.store_schemas[usize::from(self.world.derive.unwrap_or(true))].clone(),
                 self.driver.observer(),
             )
             .with_visited(&self.world.visited);

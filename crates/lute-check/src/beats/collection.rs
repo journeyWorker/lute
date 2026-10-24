@@ -1,4 +1,9 @@
-use super::*;
+use super::{
+    also_fault, beat_diag, check_occasion, describe, is_beat_target, is_name, occasion_malformed,
+    share_malformed, share_with_spent_by, share_without_once, spent_by_once_false, top_key_span,
+    top_value_span, AdvanceSpec, AttrValue, BTreeMap, BeatOnce, CelKind, CelSlot, Diagnostic,
+    Entry, Layer, Meta, OccasionDecl, Severity, Span, TARGET_SHAPE,
+};
 
 /// A beat attribute's shape (dsl 0.21.0 §5), anchored at the offending key
 /// or value.

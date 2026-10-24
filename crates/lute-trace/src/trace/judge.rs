@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    exec, is_true, lowered, BTreeMap, ExecProject, GuardRead, Machine, MockSet, Premise,
+    SessionVerdict, SessionWorld, TraceDriver, Value,
+};
 use lute_ir::{BeatKind, BeatOnce, IndexBeat};
 /// The traced document as a one-document [`ExecProject`] — what the
 /// session's eligibility rule judges a presented beat over. `None` only if

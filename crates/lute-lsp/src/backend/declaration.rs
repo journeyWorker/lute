@@ -198,7 +198,7 @@ impl Backend {
                         provenance: None,
                         covered: Vec::new(),
                         related: Vec::new(),
-                    })
+                    });
                 }
             }
             let expected = val

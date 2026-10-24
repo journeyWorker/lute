@@ -505,7 +505,7 @@ mod tests {
             };
             match err {
                 DatalogError::Malformed { msg, .. } => {
-                    assert!(msg.contains("write it quoted: \"lab-b2\""), "{text}: {msg}")
+                    assert!(msg.contains("write it quoted: \"lab-b2\""), "{text}: {msg}");
                 }
                 other => panic!("{text}: {other:?}"),
             }

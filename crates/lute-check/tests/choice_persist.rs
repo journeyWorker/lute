@@ -342,8 +342,7 @@ fn into_alone_records_clean_then_persist_reports_removed() {
     let fx = &d.fixits[0];
     assert_eq!(
         fx.kind, "migrate",
-        "the fixit must be `migrate` so `lute fix` applies it; got {:?}",
-        fx
+        "the fixit must be `migrate` so `lute fix` applies it; got {fx:?}"
     );
     assert_eq!(fx.confidence, 100);
     let e = &fx.edit[0];

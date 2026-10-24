@@ -283,7 +283,7 @@ pub fn present<B, C, F: super::WalkDriver>(
                 let raise = clock
                     .raise
                     .as_ref()
-                    .map_or_else(Default::default, |r| r.moments());
+                    .map_or_else(Default::default, lute_manifest::clock::ClockRaise::moments);
                 let clock_before = clock_at(p, w);
                 w.advance_cascade_depth += 1;
                 let (advance_body, _, raised_stop) = super::advance::run_advance(

@@ -40,7 +40,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
-use lute_ir::*;
+use lute_ir::{
+    BeatKind, IndexBeat, IndexDef, IndexDocument, IndexEntry, IndexOccasion, ProjectIndex,
+    RuleEntry, SeedFactEntry, StateDomain,
+};
 
 use crate::ir::{ArtifactMeta, Command, ExecutionIr};
 
@@ -675,7 +678,7 @@ mod tests {
     fn relation(name: &str, args: &[&str]) -> RelationEntry {
         RelationEntry {
             name: name.to_string(),
-            args: args.iter().map(|a| a.to_string()).collect(),
+            args: args.iter().map(std::string::ToString::to_string).collect(),
             tier: Some("run".to_string()),
             derive: false,
             reserved: false,

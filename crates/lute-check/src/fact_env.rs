@@ -1226,7 +1226,7 @@ impl Clauses {
         }
         let known = |fact: &GroundFact| {
             rows.get(fact.relation.as_str())
-                .is_some_and(|v| v.binary_search_by(|r| r.0.cmp(&fact.args[..])).is_ok())
+                .is_some_and(|v| v.binary_search_by(|r| r.0.cmp(&*fact.args)).is_ok())
         };
         let mut new: Vec<MustFact> = Vec::new();
         let mut new_set: HashSet<GroundFact> = HashSet::new();
@@ -1464,7 +1464,7 @@ impl MustClosure {
         if let Some(hit) = self
             .memo
             .lock()
-            .unwrap_or_else(|e| e.into_inner())
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
             .get(&key)
         {
             return Arc::clone(hit);
@@ -1473,7 +1473,7 @@ impl MustClosure {
         Arc::clone(
             self.memo
                 .lock()
-                .unwrap_or_else(|e| e.into_inner())
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
                 .entry(key)
                 .or_insert(derived),
         )

@@ -1,5 +1,5 @@
 use super::axes::split_top;
-use super::*;
+use super::{clock_axis_at, Apply, Axis, BTreeSet};
 
 /// One `--occasion`: its name and, after `@`, the axes it varies over
 /// (`path`) or is held at (`path=value`); every axis it does not name is

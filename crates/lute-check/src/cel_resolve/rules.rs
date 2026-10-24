@@ -1,5 +1,12 @@
-use super::*;
-use super::{core::*, profile::*, state::*};
+use super::{
+    core::E_CEL_PROFILE,
+    profile::{
+        check_cel_profile, check_guard_fact_access, check_modulo_operands, check_quest_state_isset,
+        ProfileScope,
+    },
+    state::{check_state_path, diag, raw_uses_reserved_marker},
+};
+use super::{BodyLiteral, CelArena, CelKind, CelSlot, Ctx, Diagnostic, RelVocab, Span};
 /// `datalog_check::check_rules`.
 pub fn check_rule_guards(vocab: &RelVocab, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
     let mut diags = Vec::new();

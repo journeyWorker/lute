@@ -330,7 +330,7 @@ fn assign_identity_scope(cmds: &mut [Command], prefix: &str, identity: &Identity
                             continue;
                         };
                         *e = nc;
-                        format!("{:04}", nc)
+                        format!("{nc:04}")
                     }
                 };
                 let scoped;

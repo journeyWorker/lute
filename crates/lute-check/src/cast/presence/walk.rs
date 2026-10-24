@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    affected, call, is_condition, literal_attr, op, pattern_args, subject_text, visit,
+    write_effects, Arm, ClipNode, Directive, Expr, FactPattern, Match, Node, Presence,
+    EXPAND_DEPTH,
+};
 
 impl Presence<'_> {
     /// Walk `body` under `conds` added to the guards pushed so far; they
@@ -78,7 +82,7 @@ impl Presence<'_> {
                     self.fork(
                         conds
                             .into_iter()
-                            .zip(b.choices.iter().map(|c| &c.body[..]))
+                            .zip(b.choices.iter().map(|c| &*c.body))
                             .collect(),
                     );
                 }
@@ -91,11 +95,11 @@ impl Presence<'_> {
                     let conds = self.choice_conds(&h.choices);
                     // dsl 0.28.0 §5: the `<return>` block is one more path,
                     // under no guard of its own.
-                    let back = h.on_return.iter().map(|r| (Vec::new(), &r.body[..]));
+                    let back = h.on_return.iter().map(|r| (Vec::new(), (&*r.body)));
                     self.fork(
                         conds
                             .into_iter()
-                            .zip(h.choices.iter().map(|c| &c.body[..]))
+                            .zip(h.choices.iter().map(|c| &*c.body))
                             .chain(back)
                             .collect(),
                     );
@@ -227,7 +231,7 @@ impl Presence<'_> {
             };
             conds.extend(own.clone());
             let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
-            arms.push((conds, &body[..]));
+            arms.push((conds, (&**body)));
             earlier.push(own);
         }
         self.fork(arms);

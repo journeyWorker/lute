@@ -271,7 +271,7 @@ pub(crate) struct ExpectError {
 impl ExpectError {
     fn at(keys: &[&str], msg: String) -> Self {
         ExpectError {
-            keys: keys.iter().map(|k| k.to_string()).collect(),
+            keys: keys.iter().map(std::string::ToString::to_string).collect(),
             item: None,
             msg,
         }
@@ -391,7 +391,7 @@ fn validate_value(key: &str, v: &Yaml) -> Vec<ExpectError> {
                 match occasion.as_str() {
                     Some(o) => out.extend(list_errors(&[key, o], ids)),
                     None => {
-                        out.extend(one("`expect.presented` keys must be occasion names".into()))
+                        out.extend(one("`expect.presented` keys must be occasion names".into()));
                     }
                 }
             }
@@ -412,7 +412,7 @@ fn validate_value(key: &str, v: &Yaml) -> Vec<ExpectError> {
                 match id.as_str() {
                     Some(id) => out.extend(list_errors(&[key, id], opts)),
                     None => {
-                        out.extend(one("`expect.options` keys must be branch or hub ids".into()))
+                        out.extend(one("`expect.options` keys must be branch or hub ids".into()));
                     }
                 }
             }
@@ -746,7 +746,7 @@ fn check_step(
             key,
             expected,
             actual,
-        })
+        });
     };
     if let Some(want) = m.get("refused").and_then(scalar_text) {
         let actual = row
@@ -1027,7 +1027,7 @@ fn check_end(outcome: &PlayOutcome, top: &Yaml, misses: &mut Vec<ExpectMiss>) {
             key,
             expected,
             actual,
-        })
+        });
     };
     if let Some(want) = m.get("end").and_then(scalar_text) {
         if want != outcome.ended {
@@ -1109,7 +1109,10 @@ mod tests {
             target: None,
             refused: None,
             winner: winner.map(str::to_string),
-            offered: offered.iter().map(|s| s.to_string()).collect(),
+            offered: offered
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             presented: winner.into_iter().map(str::to_string).collect(),
             presented_from: Vec::new(),
             presented_occasion: Vec::new(),

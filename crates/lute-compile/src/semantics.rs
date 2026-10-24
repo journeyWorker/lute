@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::ir::*;
-use lute_ir::*;
+use crate::ir::{
+    ArtifactMeta, BeatCmd, BeatIr, Command, EntryCmd, ExecutionIr, Placeholder, QuestCmd,
+    QuestTier, RewardEntry, Stamp,
+};
+use lute_ir::{BodyEntry, CelPair, ExprNode, PrereqEdge};
 /// A stable semantic capability identifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SemanticId(&'static str);
@@ -534,7 +537,7 @@ fn scan_expr(out: &mut Collected, expr: &ExprNode, addr: Option<&str>, what: &st
         }
         ExprNode::List { list } => {
             for item in list {
-                scan_expr(out, item, addr, what)
+                scan_expr(out, item, addr, what);
             }
         }
         ExprNode::Index { index, key } => {

@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    clock_at, entry_flag, quest_state_id, refresh_clock, resolve_fact, resolve_state, seed_quest,
+    unknown_id, value_to_json, BTreeSet, ExecProject, Fact, KindShape, Value, World, QUEST_STATES,
+};
 
 /// The most cells one invocation evaluates — a typo'd range (`1..70000`)
 /// is refused rather than ground through.

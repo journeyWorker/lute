@@ -2,7 +2,12 @@
 //! checks — component/argument resolution, typed and speaker arguments, def
 //! enum arguments, and the `speaker`-param line binding.
 
-use super::*;
+use super::{
+    at_context, bare_param_ref, compatible, into_literal, is_renderable, scan_refs, type_accepts,
+    use_target, Arm, Attr, AttrValue, CapabilitySnapshot, CelArena, ClipNode, ComponentSet, Ctx,
+    Diagnostic, Directive, Document, Domain, DomainInfo, ExpectedType, InterpKind, Layer, Node,
+    ProviderSet, Severity, Span, Type,
+};
 
 /// Component-invocation / body diagnostic codes (dsl §13).
 const E_COMPONENT_UNDECLARED: &str = "E-COMPONENT-UNDECLARED";
@@ -165,7 +170,7 @@ pub(super) fn check_instance_scope(nodes: &[Node], diags: &mut Vec<Diagnostic>) 
                     for arm in &m.arms {
                         match arm {
                             Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                                walk(body, seen, diags)
+                                walk(body, seen, diags);
                             }
                         }
                     }
@@ -289,7 +294,7 @@ pub(super) fn check_use(
                         attr.key
                     ),
                     attr.span,
-                ))
+                ));
             }
             // dsl 0.24.0 §4: a `speaker` arg is judged against the host's
             // cast by `check_speaker_args`, never as a plain string.
@@ -1201,7 +1206,7 @@ pub(super) fn collect_use_directives<'a>(nodes: &'a [Node], out: &mut Vec<&'a Di
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_use_directives(body, out)
+                            collect_use_directives(body, out);
                         }
                     }
                 }
@@ -1328,7 +1333,7 @@ fn def_result_values(
             vals.extend(def_result_values(&c.args[2].expr, schema)?);
             Some(vals)
         }
-        Expr::Literal(cel_parser::reference::Val::String(s)) => Some(vec![s.to_string()]),
+        Expr::Literal(cel_parser::reference::Val::String(s)) => Some(vec![s.clone()]),
         Expr::Select(_) | Expr::Ident(_) => {
             let path = crate::cel_paths::select_path(expr)?;
             match &schema.get(&path)?.ty {

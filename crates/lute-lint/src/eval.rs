@@ -533,7 +533,7 @@ mod tests {
     fn missing_field_is_error() {
         let e = scenario_env();
         let ex = parse_when("line.absent > 0");
-        assert!(eval(&ex.expr, &e).is_err());
+        eval(&ex.expr, &e).unwrap_err();
     }
 
     #[test]
@@ -551,7 +551,7 @@ mod tests {
         let ex = parse_when("line.words % 2 == 1");
         assert_eq!(eval(&ex.expr, &e), Ok(Value::Bool(true)));
         // A fractional operand is not an integer remainder (dsl 0.24.0 §1).
-        assert!(eval(&parse_when("line.words % 2.5").expr, &e).is_err());
+        eval(&parse_when("line.words % 2.5").expr, &e).unwrap_err();
     }
 
     #[test]

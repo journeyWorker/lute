@@ -115,12 +115,10 @@ fn find_slot(doc: &Document, off: usize) -> Option<&CelSlot> {
     let mut found = None;
     for_each_cel_slot(doc, &mut |slot| {
         if slot.span.byte_start <= off && off <= slot.span.byte_end {
-            let replace = found
-                .map(|old: &CelSlot| {
-                    slot.span.byte_end.saturating_sub(slot.span.byte_start)
-                        < old.span.byte_end.saturating_sub(old.span.byte_start)
-                })
-                .unwrap_or(true);
+            let replace = found.is_none_or(|old: &CelSlot| {
+                slot.span.byte_end.saturating_sub(slot.span.byte_start)
+                    < old.span.byte_end.saturating_sub(old.span.byte_start)
+            });
             if replace {
                 found = Some(slot);
             }
@@ -252,7 +250,7 @@ fn visit_nodes(doc: &Document, f: &mut impl FnMut(&Node)) {
                         if let lute_syntax::ast::ClipNode::Set(s) = &c.node {
                             f(&Node::Set(s.clone()));
                         }
-                    })
+                    });
                 }),
                 Node::Objective(o) => body(&o.body, f),
                 Node::On(o) => body(&o.body, f),
@@ -300,12 +298,9 @@ fn find_attribute_or_construct(doc: &Document, off: usize) -> Option<Cursor> {
             _ => return,
         };
         if span.byte_start <= off && off <= span.byte_end {
-            let replace = out
-                .as_ref()
-                .map(|c: &Cursor| {
-                    span.byte_end - span.byte_start < c.span.byte_end - c.span.byte_start
-                })
-                .unwrap_or(true);
+            let replace = out.as_ref().is_none_or(|c: &Cursor| {
+                span.byte_end - span.byte_start < c.span.byte_end - c.span.byte_start
+            });
             if replace {
                 out = Some(Cursor {
                     kind: kind.into(),
@@ -330,8 +325,7 @@ fn symbols_for_cursor(
     let defs_only = before.ends_with('@')
         || before
             .rsplit_once('@')
-            .map(|(_, tail)| tail.chars().all(|c| !c.is_whitespace()))
-            .unwrap_or(false);
+            .is_some_and(|(_, tail)| tail.chars().all(|c| !c.is_whitespace()));
     if !defs_only {
         for (name, decl) in &meta.state.decls {
             symbols.push(Symbol {

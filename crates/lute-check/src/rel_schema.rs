@@ -1278,18 +1278,20 @@ pub(crate) fn origin_display(file: &std::path::Path) -> String {
         .skip(1)
         .find(|dir| dir.join("lute.project.yaml").is_file())
         .and_then(|root| file.strip_prefix(root).ok())
-        .map(|rel| {
-            rel.components()
-                .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                .collect::<Vec<_>>()
-                .join("/")
-        })
-        .unwrap_or_else(|| {
-            file.file_name().map_or_else(
-                || file.display().to_string(),
-                |n| n.to_string_lossy().into_owned(),
-            )
-        })
+        .map_or_else(
+            || {
+                file.file_name().map_or_else(
+                    || file.display().to_string(),
+                    |n| n.to_string_lossy().into_owned(),
+                )
+            },
+            |rel| {
+                rel.components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            },
+        )
 }
 
 /// dsl 0.26.0 §2.3: merge each `add:` into the one declaration of its kind,
@@ -1685,7 +1687,7 @@ fn list_items(raw: &str, start: usize, end: usize) -> Vec<(usize, String)> {
     let push = |out: &mut Vec<(usize, String)>, at: usize, tok: &str| {
         let lead = tok.len() - tok.trim_start().len();
         let t = tok.trim();
-        let q = t.starts_with(['"', '\'']) as usize;
+        let q = usize::from(t.starts_with(['"', '\'']));
         let bare = t.trim_matches(['"', '\'']);
         if !bare.is_empty() {
             out.push((at + lead + q, bare.to_string()));

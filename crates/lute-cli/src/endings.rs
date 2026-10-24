@@ -966,7 +966,7 @@ impl<'g> Producers<'g> {
                     for clip in t.tracks.iter().flat_map(|t| &t.clips) {
                         match &clip.node {
                             ClipNode::Set(s) => {
-                                self.write(origin, How::Set, normalize(&s.path, params))
+                                self.write(origin, How::Set, normalize(&s.path, params));
                             }
                             ClipNode::Directive(d) => self.directive(d, origin, params, depth),
                         }

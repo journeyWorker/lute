@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    is_anonymous_var, op, BTreeMap, BodyLiteral, Expr, FactTerm, Guard, KindShape, RelVocab,
+    RuleTerm, Val,
+};
 
 /// A `start` conjunct that stays true once it held — `entry.<id>.everRead`
 /// or `visited('<id>')` — as its text; `None` for any other shape.
@@ -360,7 +363,7 @@ pub(super) fn definition(
         cels: Vec::new(),
     };
     let mut unified = false;
-    for r in vocab.rules.iter() {
+    for r in &vocab.rules {
         let rule = &r.rule;
         if rule.head.relation != rel || rule.head.terms.len() != args.len() {
             continue;

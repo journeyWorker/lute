@@ -334,8 +334,8 @@ mod tests {
                 ..VocabParams::default()
             })
         );
-        assert!(VocabParams::parse(&["-X".to_string()]).is_err());
-        assert!(VocabParams::parse(&["-N".to_string()]).is_err());
-        assert!(VocabParams::parse(&["-N".to_string(), "-1".to_string()]).is_err());
+        VocabParams::parse(&["-X".to_string()]).unwrap_err();
+        VocabParams::parse(&["-N".to_string()]).unwrap_err();
+        VocabParams::parse(&["-N".to_string(), "-1".to_string()]).unwrap_err();
     }
 }

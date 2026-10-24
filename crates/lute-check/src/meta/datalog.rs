@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    err_at, meta_key_span, scalar_span, yaml_key, Diagnostic, FactDecl, Meta, RuleDecl, Span,
+    TypedMeta,
+};
 
 /// Lift and validate the `facts:` and `rules:` datalog blocks.
 ///

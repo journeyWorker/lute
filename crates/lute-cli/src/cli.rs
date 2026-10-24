@@ -1156,7 +1156,7 @@ fn parse_choice_flag(raw: &str) -> Result<(String, Vec<String>), String> {
         format!("`--choice` must be `<branch>=<choice>[,<choice>...]`, got `{raw}`")
     })?;
     let choices: Vec<String> = rest.split(',').map(str::to_string).collect();
-    if id.is_empty() || choices.iter().any(|c| c.is_empty()) {
+    if id.is_empty() || choices.iter().any(std::string::String::is_empty) {
         return Err(format!(
             "`--choice` must be `<branch>=<choice>[,<choice>...]`, got `{raw}`"
         ));

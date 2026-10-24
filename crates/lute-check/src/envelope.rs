@@ -43,7 +43,7 @@ use lute_manifest::semantics::prereq::PrereqFormula;
 pub fn in_envelope_scope(path: &str) -> bool {
     matches!(
         crate::meta::namespace_of(path),
-        Some(Namespace::Run) | Some(Namespace::User)
+        Some(Namespace::Run | Namespace::User)
     )
 }
 

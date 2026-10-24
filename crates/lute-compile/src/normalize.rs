@@ -145,7 +145,7 @@ fn visit_lines(nodes: &mut [Node], f: &mut dyn FnMut(&mut Line)) {
                 for arm in &mut m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            visit_lines(body, f)
+                            visit_lines(body, f);
                         }
                     }
                 }
@@ -297,7 +297,7 @@ fn expand_target_uses(nodes: &mut Vec<Node>, targets: &OccasionScopes) {
                 }
                 Node::Match(m) => m.arms.iter_mut().for_each(|arm| match arm {
                     Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                        expand_target_uses(body, targets)
+                        expand_target_uses(body, targets);
                     }
                 }),
                 Node::On(on) => expand_target_uses(&mut on.body, targets),
@@ -612,7 +612,7 @@ fn normalize_nodes(
                 for arm in &mut m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            normalize_nodes(body, components, schema, uses, diags)
+                            normalize_nodes(body, components, schema, uses, diags);
                         }
                     }
                 }
@@ -1037,7 +1037,7 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                 if let Some(w) = &mut d.when {
                     bind_slot(w, args, params);
                 }
-                bind_attrs(&mut d.attrs, args, params)
+                bind_attrs(&mut d.attrs, args, params);
             }
             Node::Set(s) => {
                 bind_slot(&mut s.expr, args, params);
@@ -1430,7 +1430,7 @@ fn synth_into(choice: &mut Choice, schema: &lute_check::StateView) {
         AttrValue::Ref(_) => None, // gate: E-INTO-VALUE
     });
     let cel = into_value_cel(&decl.ty, value.as_deref());
-    let span = find("into").map(|a| a.span).unwrap_or(choice.span);
+    let span = find("into").map_or(choice.span, |a| a.span);
     choice.body.insert(
         0,
         Node::Set(Set {

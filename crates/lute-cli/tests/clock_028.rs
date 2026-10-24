@@ -468,8 +468,7 @@ fn a_beat_only_a_raise_the_clock_never_makes_would_take_is_warned() {
     let start_cell = |c: &str| {
         c.lines()
             .find(|l| l.starts_with("1 dawn"))
-            .map(str::to_string)
-            .unwrap_or_else(|| panic!("{c}"))
+            .map_or_else(|| panic!("{c}"), str::to_string)
     };
     let c = calendar(&dir);
     assert!(start_cell(&c).contains("not raised"), "{c}");

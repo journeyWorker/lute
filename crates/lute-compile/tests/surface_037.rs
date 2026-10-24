@@ -23,7 +23,10 @@ fn snapshot() -> CapabilitySnapshot {
         ("textStyle", &["emphasis", "whisper"][..]),
     ] {
         let dom = Domain {
-            members: members.iter().map(|m| m.to_string()).collect(),
+            members: members
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             ..Default::default()
         };
         snap.enums.insert(name.to_string(), dom.members.clone());

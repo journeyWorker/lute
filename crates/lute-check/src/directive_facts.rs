@@ -28,7 +28,11 @@ pub fn effect_directives(snapshot: &CapabilitySnapshot) -> BTreeMap<String, Dire
     snapshot
         .directives
         .iter()
-        .filter(|(_, d)| d.effects.as_ref().is_some_and(|e| e.has_facts()))
+        .filter(|(_, d)| {
+            d.effects
+                .as_ref()
+                .is_some_and(lute_manifest::schema::DirectiveEffects::has_facts)
+        })
         .map(|(tag, d)| (tag.clone(), d.clone()))
         .collect()
 }

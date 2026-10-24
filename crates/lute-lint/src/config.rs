@@ -136,7 +136,7 @@ pub fn parse_config(
                                 cfg.rules.insert(id, ovr);
                             }
                             Err(msg) => {
-                                diags.push(diag(format!("rule `{id}`: {msg}"), config_span))
+                                diags.push(diag(format!("rule `{id}`: {msg}"), config_span));
                             }
                         }
                     }
@@ -152,7 +152,7 @@ pub fn parse_config(
                         match yaml_serde::from_value::<LintRuleDecl>(item.clone()) {
                             Ok(decl) => cfg.custom.push(decl),
                             Err(e) => {
-                                diags.push(diag(format!("bad custom rule: {e}"), config_span))
+                                diags.push(diag(format!("bad custom rule: {e}"), config_span));
                             }
                         }
                     }
@@ -326,7 +326,7 @@ custom:
     #[test]
     fn malformed_yaml_hard_errors() {
         let src = "not: valid: yaml: ][";
-        assert!(parse_config(src, zero_span()).is_err());
+        parse_config(src, zero_span()).unwrap_err();
     }
 
     #[test]

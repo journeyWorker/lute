@@ -1,4 +1,4 @@
-use super::*;
+use super::{DefParam, Literal, PendingPer, Span, Type};
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_manifest::snapshot::Domain;

@@ -226,7 +226,7 @@ fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
         // for, read where the body reads the param.
         AttrValue::Str(s) if s == lute_manifest::semantics::beats::OCCASION_TARGET => s.clone(),
         AttrValue::Str(s) => match ty {
-            Some(Type::Int) | Some(Type::Double) | Some(Type::Bool) => s.clone(),
+            Some(Type::Int | Type::Double | Type::Bool) => s.clone(),
             _ => cel_string_literal(s),
         },
     }
@@ -322,7 +322,7 @@ pub fn fold_component_matches(nodes: &mut Vec<Node>, schema: &crate::StateView) 
                 unreachable!("`selection` is Some only when nodes[i] was Node::Match")
             };
             let body = match m.arms.into_iter().nth(idx) {
-                Some(Arm::When { body, .. }) | Some(Arm::Otherwise { body, .. }) => body,
+                Some(Arm::When { body, .. } | Arm::Otherwise { body, .. }) => body,
                 None => unreachable!("idx came from select_component_arm over these SAME arms"),
             };
             nodes.splice(i..i, body);
@@ -332,7 +332,7 @@ pub fn fold_component_matches(nodes: &mut Vec<Node>, schema: &crate::StateView) 
             for arm in &mut m.arms {
                 match arm {
                     Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                        fold_component_matches(body, schema)
+                        fold_component_matches(body, schema);
                     }
                 }
             }
@@ -472,7 +472,7 @@ fn splice_nodes(nodes: &mut Vec<Node>, components: &ComponentSet, snapshot: &Cap
                 for arm in &mut m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            splice_nodes(body, components, snapshot)
+                            splice_nodes(body, components, snapshot);
                         }
                     }
                 }
@@ -575,7 +575,7 @@ fn write_skeleton(nodes: &[Node], snapshot: &CapabilitySnapshot, out: &mut Vec<N
             Node::Directive(d)
                 if d.tag == "use" || crate::check::directive_writes_state(snapshot, &d.tag) =>
             {
-                out.push(node.clone())
+                out.push(node.clone());
             }
             Node::Match(m) => {
                 let mut arms = Vec::with_capacity(m.arms.len());
@@ -727,7 +727,7 @@ fn bind_skeleton(node: &mut Node, args: &BTreeMap<String, AttrValue>, params: &[
                         body.iter_mut().for_each(|n| bind_skeleton(n, args, params));
                     }
                     Arm::Otherwise { body, .. } => {
-                        body.iter_mut().for_each(|n| bind_skeleton(n, args, params))
+                        body.iter_mut().for_each(|n| bind_skeleton(n, args, params));
                     }
                 }
             }
@@ -918,7 +918,7 @@ fn expand_nested(
             for arm in &mut m.arms {
                 match arm {
                     Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                        expand_nested(body, components, snapshot, stack)
+                        expand_nested(body, components, snapshot, stack);
                     }
                 }
             }

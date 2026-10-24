@@ -262,24 +262,22 @@ impl<D: Driver> Machine<D> {
                 answered
                     .as_ref()
                     .and_then(|a| a.iter().find(|(f, _)| f == field))
-                    .map(|(_, v)| v.clone())
-                    .unwrap_or(Value::Unknown)
+                    .map_or(Value::Unknown, |(_, v)| v.clone())
             } else if let Some(op) = from.get("op").and_then(Json::as_str) {
                 let by = match (
                     self.store.types.get(path).map(String::as_str),
                     from.get("by").and_then(Json::as_str),
                     from.get("by").and_then(Json::as_f64),
                 ) {
-                    (Some("int"), Some(raw), _) => {
-                        raw.parse::<i64>().map(Value::Int).unwrap_or_else(|_| {
-                            Value::Error(format!("bridge increment `{raw}` is not an int"))
-                        })
-                    }
+                    (Some("int"), Some(raw), _) => raw.parse::<i64>().map_or_else(
+                        |_| Value::Error(format!("bridge increment `{raw}` is not an int")),
+                        Value::Int,
+                    ),
                     (Some("int"), None, Some(n)) if n.fract() == 0.0 => Value::Int(n as i64),
                     (Some("int"), None, Some(n)) => {
                         Value::Error(format!("bridge increment `{n}` is not an int"))
                     }
-                    (Some("double"), _, Some(n)) | (_, _, Some(n)) => Value::Double(n),
+                    (Some("double") | _, _, Some(n)) => Value::Double(n),
                     _ => Value::Unknown,
                 };
                 let cur = match self.store.read(path) {

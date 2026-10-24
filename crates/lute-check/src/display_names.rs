@@ -53,7 +53,7 @@ pub fn check_display_names(
     // name ("Eclipse Grunt") and are never counted.
     let mut shared: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     for cast in casts {
-        for (id, member) in cast.iter() {
+        for (id, member) in *cast {
             if let Some(name) = member.name.as_deref().filter(|n| !n.trim().is_empty()) {
                 cast_names.entry(id.as_str()).or_insert(name);
             }

@@ -1,6 +1,9 @@
 //! `when=` guard checks: scene-beat `when`, directive/write guards.
 
-use super::*;
+use super::{
+    check_cel_slot, check_quest_guard_defassign, first_backtick_token, use_diag,
+    CapabilitySnapshot, CelArena, CelSlot, Ctx, Diagnostic, Directive, ExpectedType,
+};
 
 /// dsl 0.21.0 §3.1, §5: a scene beat's `when` — the `Bool` CEL-slot checks
 /// and the fresh entry-guard definite-assignment check a `<quest start>` gets

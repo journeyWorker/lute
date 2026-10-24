@@ -273,7 +273,9 @@ fn defaults_block_loads_the_closed_key_set() {
         Some("haven")
     );
     assert_eq!(
-        proj.defaults.get("season").and_then(|v| v.as_i64()),
+        proj.defaults
+            .get("season")
+            .and_then(yaml_serde::Value::as_i64),
         Some(1)
     );
 }
@@ -737,7 +739,7 @@ fn malformed_unknown_and_null_project_permissions_fail_loading() {
         "profile-null",
         "defaultProfile: p\nprofiles:\n  p:\n    plugins: {}\n    permissions: null\n",
     );
-    assert!(load_project(&profile_null).is_err());
+    load_project(&profile_null).unwrap_err();
 }
 
 // ── 0.26.0 §2.4: `defaults.uses` globs and `defaults.questTier` ───────────

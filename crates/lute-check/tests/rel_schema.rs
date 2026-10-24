@@ -48,8 +48,7 @@ fn only(text: &str, code: &str) -> String {
     let all = messages(text);
     all.iter()
         .find(|(c, _)| c == code)
-        .map(|(_, m)| m.clone())
-        .unwrap_or_else(|| panic!("no {code} in {all:?}"))
+        .map_or_else(|| panic!("no {code} in {all:?}"), |(_, m)| m.clone())
 }
 
 const HDR_TAIL: &str = "---\n## Shot 1.\n@narrator: hi\n";

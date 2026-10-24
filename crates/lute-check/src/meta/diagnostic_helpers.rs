@@ -1,4 +1,6 @@
-use super::*;
+use super::{
+    meta_key_span, Diagnostic, Layer, Meta, MetaKind, Severity, Span, COMPONENT_ONLY_KEYS,
+};
 
 pub(crate) fn err_at(code: &str, message: String, span: Span) -> Diagnostic {
     Diagnostic {

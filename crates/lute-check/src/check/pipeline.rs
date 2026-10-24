@@ -1,7 +1,19 @@
 //! The `check()` / `check_parsed` orchestration: parse, fill, fold, walk,
 //! the document-level passes, and the final suppress/dedup/sort.
 
-use super::*;
+use super::{
+    check_beat_when, check_cel_slot, check_definite_assignment, check_lute_version_stale,
+    check_quest_guard_defassign, check_reachability, check_rule_guards, check_use_def_enum_args,
+    check_use_speaker_args, collapse_same_root, component_def_reads, component_own_slots,
+    component_use_sites, dedup_guarded_use_reports, dedup_rehomed, dedup_undeclared, fill_document,
+    fold_env, fold_injections, for_each_cel_slot, normalize_spans, param_domain, params_from_yaml,
+    parse, parse_slot, suppress_dead_arm_overlaps, suppress_exhaustive_subject_reads,
+    suppress_unparsed_child_list_verdicts, suppress_unproven_absence, translate_cel_parse,
+    validate_components, walk_component_body, BodyScope, CelArena, CelKind, CelParseError, CelSlot,
+    CheckInput, CheckResult, Ctx, Diagnostic, Document, DomainHome, DomainInfo, DomainUse,
+    ExpectedType, Layer, Node, Resolved, SchemaImports, Severity, Span, StageState, TextIndex,
+    Type, Walker,
+};
 
 /// Translate every CEL parse failure `fill_document` reported into a
 /// writer-voiced `E-CEL-PARSE` [`Diagnostic`] (dsl 0.4.0 §8.1, T13) —

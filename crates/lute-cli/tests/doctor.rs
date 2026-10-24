@@ -238,8 +238,7 @@ fn doctor_flags_a_running_lute_lsp_of_another_build() {
         line(text, "running lute-lsp")
             .split("; ")
             .find(|part| part.contains(&pid))
-            .map(str::to_string)
-            .unwrap_or_else(|| panic!("{pid} not listed:\n{text}"))
+            .map_or_else(|| panic!("{pid} not listed:\n{text}"), str::to_string)
     };
     let text_scratch = lute_scratch::ScratchDir::named("running-path");
     let text = doctor(&proj, &text_scratch);

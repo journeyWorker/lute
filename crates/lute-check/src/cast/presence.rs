@@ -3,10 +3,17 @@ mod guards;
 mod lines;
 mod walk;
 
-use guards::*;
+use guards::{affected, definition, fact_atoms, read_paths, stable_text, DNF_CAP, EXPAND_DEPTH};
 pub(crate) use guards::{write_effects, Atom, Effect, Pol};
 
-use super::*;
+use super::{
+    cast_diag, classify_is_literal, decide, doc_bodies, expand_cel, is_alternatives,
+    is_anonymous_var, literal_attr, op, pattern_args, present_faults, subject_text, unit_facts,
+    visit, Arm, BTreeMap, BTreeSet, BeatOnce, BodyLiteral, CallExpr, CelSlot, ClipNode, DecideCtx,
+    Decided, DefTable, Diagnostic, Directive, Document, DomainInfo, Expr, FactEnv, FactPattern,
+    FactProducers, FactScope, FactTerm, FoldedEnv, IdedExpr, IsLiteral, KindShape, Layer, Line,
+    Match, Node, Path, RelVocab, RuleTerm, Severity, Span, Val, W_CAST_ABSENT,
+};
 
 /// `W-CAST-ABSENT` for every content line of `doc` (scene shots, quest
 /// bodies, lore entries and bundle beats) whose speaker's cast entry
@@ -164,7 +171,7 @@ pub fn check_presence(
         scene_ladder,
         scene_absent,
         &scene_after,
-        doc.sections.iter().map(|s| &s.body[..]),
+        doc.sections.iter().map(|s| &*s.body),
     );
     for quest in &doc.quests {
         let mut conds = Vec::new();
@@ -185,7 +192,7 @@ pub fn check_presence(
             &[],
             Vec::new(),
             &quest_after,
-            std::iter::once(&quest.body[..]),
+            std::iter::once(&*quest.body),
         );
         w.quest = None;
         w.quest_body = &[];
@@ -217,7 +224,7 @@ pub fn check_presence(
             ladder,
             absent,
             &entry_after,
-            std::iter::once(&entry.body[..]),
+            std::iter::once(&*entry.body),
         );
     }
     for beat in &doc.beats {
@@ -240,7 +247,7 @@ pub fn check_presence(
             ladder,
             absent,
             &beat_after,
-            std::iter::once(&beat.body[..]),
+            std::iter::once(&*beat.body),
         );
     }
     w.out

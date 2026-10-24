@@ -2,7 +2,12 @@
 //! ([`fold_env`]) plus the implicit `<branch>`/`<hub>` recording decls and
 //! plugin directive result slots it folds into the schema.
 
-use super::*;
+use super::{
+    check_branch, check_hub, check_param_literal_defaults, check_quest, check_quest_rewards,
+    merge_domains, use_speaker_lines, use_target, Arm, AttrValue, CapabilitySnapshot, CelArena,
+    CheckInput, ClipNode, ComponentSet, DefTable, Diagnostic, Directive, Document, Domain, Env,
+    FoldedEnv, Layer, Node, SchemaImports, Severity, SlotDecl, Span, StateShape, TextIndex, Type,
+};
 
 /// Extract ordered `(param name, Type)` pairs from an inline/imported def's raw
 /// YAML value (dsl §8.1). Reads the def's `params:` sub-MAPPING in SOURCE order
@@ -792,7 +797,7 @@ fn fold_env_in(
         let overlay = schema.overlay_mut();
         overlay.faulty.extend(typed.state.faulty.iter().cloned());
         overlay.clock_rejected |= typed.state.clock_rejected;
-    }
+    };
     {
         let mut own = crate::meta::StateSchema {
             invalid: typed.state.invalid.clone(),
@@ -1574,7 +1579,7 @@ fn fold_branches_nodes(
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            fold_branches_nodes(body, schema, seen, diags)
+                            fold_branches_nodes(body, schema, seen, diags);
                         }
                     }
                 }
@@ -1660,7 +1665,7 @@ impl SlotFold<'_> {
                     for arm in &m.arms {
                         match arm {
                             Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                                self.nodes(body, bind)
+                                self.nodes(body, bind);
                             }
                         }
                     }

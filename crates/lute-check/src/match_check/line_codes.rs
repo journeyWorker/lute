@@ -1,6 +1,6 @@
 //! Duplicate `(speaker, code)` line addressing (`E-DUP-LINE-CODE`, dsl §12).
 
-use super::*;
+use super::{diag, Arm, AttrValue, BTreeSet, Diagnostic, Document, Line, Node, Severity};
 
 /// dsl §12 (scene) / dsl 0.2.0 §7 (quest): every content `:line`'s `lineId`
 /// (`{prefix}.{speaker}_{code}`) and `voiceKey` (`{prefix}.{speaker}-{code}`) derive
@@ -126,7 +126,7 @@ pub(crate) fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_lines(body, out)
+                            collect_lines(body, out);
                         }
                     }
                 }

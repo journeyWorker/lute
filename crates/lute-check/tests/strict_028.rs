@@ -40,10 +40,10 @@ fn scene(frontmatter: &str, body: &str) -> String {
 }
 
 fn at(got: &[(usize, usize, String)], line: usize) -> &str {
-    got.iter()
-        .find(|(l, ..)| *l == line)
-        .map(|(_, _, m)| m.as_str())
-        .unwrap_or_else(|| panic!("nothing on line {line}: {got:#?}"))
+    got.iter().find(|(l, ..)| *l == line).map_or_else(
+        || panic!("nothing on line {line}: {got:#?}"),
+        |(_, _, m)| m.as_str(),
+    )
 }
 
 /// A `state:` row key outside `type`/`default`/`owner`/`per` is refused at

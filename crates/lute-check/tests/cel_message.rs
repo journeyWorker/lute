@@ -262,8 +262,7 @@ fn masked_operators_stay_silent() {
 fn component_body_cel_parse_is_translated_and_reanchored() {
     let nanos = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_nanos())
-        .unwrap_or(0);
+        .map_or(0, |d| d.as_nanos());
     let dir_scratch = lute_scratch::ScratchDir::new();
     let dir = dir_scratch.join(format!("lute_cel_message_component_{nanos}"));
     std::fs::create_dir_all(&dir).unwrap();

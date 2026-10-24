@@ -838,20 +838,16 @@ fn fold_op(op: &str, cur: &Value, by: &Value) -> Value {
         (Value::Int(a), Value::Int(b)) => match op {
             "+=" => a
                 .checked_add(*b)
-                .map(Value::Int)
-                .unwrap_or_else(|| Value::Error("integer overflow".into())),
+                .map_or_else(|| Value::Error("integer overflow".into()), Value::Int),
             "-=" => a
                 .checked_sub(*b)
-                .map(Value::Int)
-                .unwrap_or_else(|| Value::Error("integer overflow".into())),
+                .map_or_else(|| Value::Error("integer overflow".into()), Value::Int),
             "*=" => a
                 .checked_mul(*b)
-                .map(Value::Int)
-                .unwrap_or_else(|| Value::Error("integer overflow".into())),
+                .map_or_else(|| Value::Error("integer overflow".into()), Value::Int),
             "/=" if *b != 0 => a
                 .checked_div(*b)
-                .map(Value::Int)
-                .unwrap_or_else(|| Value::Error("integer overflow".into())),
+                .map_or_else(|| Value::Error("integer overflow".into()), Value::Int),
             "/=" => Value::Error("division by zero".into()),
             _ => Value::Error("invalid compound assignment".into()),
         },

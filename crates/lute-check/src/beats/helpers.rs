@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    bare_span, interior_base, top_key_line, top_key_span, BeatOnce, DefTable, Diagnostic, Layer,
+    Meta, OccasionSelect, ProjectBeat, Severity, Span,
+};
 
 /// The span of a top-level frontmatter key's inline VALUE — its text on the
 /// key's own line, minus surrounding quotes and a trailing comment — so a CEL

@@ -147,7 +147,7 @@ fn verdict(mocks: MockSet) -> (TraceReport, TraceExit) {
 
 fn choose_accuse(facts: &[&str]) -> MockSet {
     MockSet {
-        facts: facts.iter().map(|f| f.to_string()).collect(),
+        facts: facts.iter().map(std::string::ToString::to_string).collect(),
         choose: [("verdict".to_string(), vec!["accuse".to_string()])].into(),
         ..Default::default()
     }
@@ -408,7 +408,7 @@ mod explain {
     fn fact(rel: &str, args: &[&str]) -> Fact {
         (
             rel.to_string(),
-            args.iter().map(|a| a.to_string()).collect(),
+            args.iter().map(std::string::ToString::to_string).collect(),
         )
     }
 

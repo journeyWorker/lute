@@ -63,7 +63,7 @@ pub(super) fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
     if !uri.scheme().as_str().eq_ignore_ascii_case("file") {
         return None;
     }
-    uri.to_file_path().map(|p| p.into_owned())
+    uri.to_file_path().map(std::borrow::Cow::into_owned)
 }
 
 /// [`uri_to_path`], canonicalized — how the checker names an imported file
@@ -108,7 +108,7 @@ pub(super) fn claimed_declaration_yaml(file_path: &Path) -> Option<PathBuf> {
     let root = find_project_root(file_path)?;
     let rel = file_path.strip_prefix(&root).ok()?;
     let first = rel.components().next()?;
-    let in_dir = matches!(first.as_os_str().to_str(), Some("schema") | Some("catalog"));
+    let in_dir = matches!(first.as_os_str().to_str(), Some("schema" | "catalog"));
     let named = file_path
         .file_stem()
         .and_then(|s| s.to_str())
@@ -121,6 +121,6 @@ pub(super) fn claimed_declaration_yaml(file_path: &Path) -> Option<PathBuf> {
 pub(super) fn is_yaml(file_path: &Path) -> bool {
     matches!(
         file_path.extension().and_then(|e| e.to_str()),
-        Some("yaml") | Some("yml")
+        Some("yaml" | "yml")
     )
 }

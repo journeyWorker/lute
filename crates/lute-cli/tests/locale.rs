@@ -107,7 +107,7 @@ fn locale_maps(artifact: &serde_json::Value) -> Vec<(String, serde_json::Value)>
                 c["lineId"].as_str().unwrap().to_string(),
                 c.get("texts").cloned().unwrap_or(serde_json::Value::Null),
             )),
-            Some("choice") | Some("hub") => {
+            Some("choice" | "hub") => {
                 for o in c["options"].as_array().unwrap() {
                     out.push((
                         o["lineId"].as_str().unwrap().to_string(),
@@ -325,7 +325,7 @@ fn lore_bundle_beat_lines_export_under_the_canonical_beat_prefix() {
         .into_iter()
         .map(|(id, _)| id)
         .collect();
-    let mut exported_ids: Vec<String> = ids.iter().map(|s| s.to_string()).collect();
+    let mut exported_ids: Vec<String> = ids.iter().map(std::string::ToString::to_string).collect();
     compiled_ids.sort();
     exported_ids.sort();
     assert_eq!(
@@ -755,7 +755,7 @@ fn translatable_records(artifact: &serde_json::Value, lines: bool) -> Vec<(Strin
     for c in artifact["commands"].as_array().expect("commands") {
         match c["kind"].as_str() {
             Some("line") if lines => out.push((s(&c["lineId"]), s(&c["text"]))),
-            Some("choice") | Some("hub") => {
+            Some("choice" | "hub") => {
                 if let Some(id) = c.get("promptLineId") {
                     out.push((s(id), s(&c["prompt"])));
                 }
@@ -808,7 +808,7 @@ fn assert_export_parity(
         for c in artifact["commands"].as_array().unwrap() {
             match c["kind"].as_str() {
                 Some("line") => counts[0] += 1,
-                Some("choice") | Some("hub") => {
+                Some("choice" | "hub") => {
                     counts[1] += c["options"].as_array().unwrap().len();
                     counts[2] += usize::from(c.get("promptLineId").is_some());
                 }

@@ -177,7 +177,7 @@ fn expand_nodes(
                             expand_nodes(body, defs, Some(&inner), diags);
                         }
                         Arm::Otherwise { body, .. } => {
-                            expand_nodes(body, defs, Some(&inner), diags)
+                            expand_nodes(body, defs, Some(&inner), diags);
                         }
                     }
                 }
@@ -190,7 +190,7 @@ fn expand_nodes(
                     for clip in &mut track.clips {
                         match &mut clip.node {
                             ClipNode::Directive(d) => {
-                                expand_attrs(&mut d.attrs, defs, subject, diags)
+                                expand_attrs(&mut d.attrs, defs, subject, diags);
                             }
                             ClipNode::Set(s) => expand_slot(&mut s.expr, defs, subject, diags),
                         }
@@ -390,7 +390,7 @@ fn fold_nodes(nodes: &mut [Node], schema: &lute_check::StateView, diags: &mut Ve
                 for arm in &mut m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            fold_nodes(body, schema, diags)
+                            fold_nodes(body, schema, diags);
                         }
                     }
                 }
@@ -528,14 +528,14 @@ pub fn type_occasion_target_placeholders(commands: &mut [Command], scene_kind: O
                     .target_kind
                     .as_ref()
                     .map(|k| k.kind.clone())
-                    .or_else(|| e.for_kind.as_ref().map(|k| k.kind.clone()))
+                    .or_else(|| e.for_kind.as_ref().map(|k| k.kind.clone()));
             }
             Command::Beat(b) => {
                 kind = b
                     .target_kind
                     .as_ref()
                     .map(|k| k.kind.clone())
-                    .or_else(|| b.for_kind.as_ref().map(|k| k.kind.clone()))
+                    .or_else(|| b.for_kind.as_ref().map(|k| k.kind.clone()));
             }
             Command::Line(l) => fix(&mut l.placeholders, &kind),
             Command::Choice(c) => c

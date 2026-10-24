@@ -18,7 +18,10 @@ mod test_cases {
 
     fn env_with_defs(names: &[&str]) -> Env {
         Env {
-            defs: names.iter().map(|s| s.to_string()).collect::<BTreeSet<_>>(),
+            defs: names
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect::<BTreeSet<_>>(),
             ..Env::default()
         }
     }

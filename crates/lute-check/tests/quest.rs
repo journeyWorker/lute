@@ -593,14 +593,9 @@ fn meta_unknown_key_after_on_a_quest_suggests_the_attribute_form() {
         .expect("`after:` is not a quest frontmatter key");
     assert!(
         msg.contains("`follows=`"),
-        "the attribute form must be named: {}",
-        msg
+        "the attribute form must be named: {msg}"
     );
-    assert!(
-        msg.contains("<quest"),
-        "and the element it goes on: {}",
-        msg
-    );
+    assert!(msg.contains("<quest"), "and the element it goes on: {msg}");
 }
 
 /// The generic case keeps the ordinary edit-distance suggestion, so the
@@ -643,8 +638,7 @@ fn meta_unknown_key_far_from_every_core_key_suggests_nothing() {
         .expect("`cartography` is not a core key");
     assert!(
         !msg.contains("did you mean"),
-        "nothing is within two edits of `cartography`: {}",
-        msg
+        "nothing is within two edits of `cartography`: {msg}"
     );
 }
 

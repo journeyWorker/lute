@@ -194,8 +194,7 @@ fn the_ir_carries_the_symmetric_closure() {
             .unwrap()
             .iter()
             .find(|r| r["name"] == name)
-            .map(|r| r.get("excludes").cloned())
-            .unwrap_or_else(|| panic!("{name}: {art}"))
+            .map_or_else(|| panic!("{name}: {art}"), |r| r.get("excludes").cloned())
     };
     assert_eq!(excludes("seenAfter"), Some(serde_json::json!(["fell"])));
     assert_eq!(

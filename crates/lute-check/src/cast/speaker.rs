@@ -1,4 +1,4 @@
-use super::*;
+use super::E_CAST_UNKNOWN;
 
 use std::collections::BTreeMap;
 
@@ -124,7 +124,7 @@ fn collect_staged<'a>(nodes: &'a [Node], out: &mut Vec<(&'static str, &'a str, S
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_staged(body, out)
+                            collect_staged(body, out);
                         }
                     }
                 }

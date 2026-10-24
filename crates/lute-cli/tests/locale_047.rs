@@ -139,7 +139,7 @@ fn compile_with(project: &Path, bundle: &Path, extra: &[&str]) -> Output {
         "--locale-bundle".into(),
         bundle.to_str().unwrap().into(),
     ];
-    owned.extend(extra.iter().map(|s| s.to_string()));
+    owned.extend(extra.iter().map(std::string::ToString::to_string));
     let refs: Vec<&str> = owned.iter().map(String::as_str).collect();
     run(&refs)
 }
@@ -156,7 +156,7 @@ fn compile_all_with(project: &Path, out: &Path, bundle: Option<&Path>, extra: &[
         owned.push("--locale-bundle".into());
         owned.push(b.to_str().unwrap().into());
     }
-    owned.extend(extra.iter().map(|s| s.to_string()));
+    owned.extend(extra.iter().map(std::string::ToString::to_string));
     let refs: Vec<&str> = owned.iter().map(String::as_str).collect();
     run(&refs)
 }

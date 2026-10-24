@@ -60,7 +60,7 @@ pub fn read_quoted(text: &str) -> Option<(String, usize)> {
     while let Some((i, c)) = chars.next() {
         match c {
             '\\' => out.push(chars.next()?.1),
-            c if c as u32 == quote as u32 => return Some((out, i + 2)),
+            c if c as u32 == u32::from(quote) => return Some((out, i + 2)),
             c => out.push(c),
         }
     }

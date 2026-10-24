@@ -34,16 +34,13 @@ pub(super) fn find_key_span(text: &str, key: &str) -> Option<Span> {
 
 /// Byte offset where the line containing `byte` begins.
 fn line_start(text: &str, byte: usize) -> usize {
-    text[..byte].rfind('\n').map(|p| p + 1).unwrap_or(0)
+    text[..byte].rfind('\n').map_or(0, |p| p + 1)
 }
 
 /// Byte offset one past the end of the line containing `byte` (i.e. right
 /// after its trailing `\n`, or `text.len()` on the last line).
 fn line_end(text: &str, byte: usize) -> usize {
-    text[byte..]
-        .find('\n')
-        .map(|p| byte + p + 1)
-        .unwrap_or(text.len())
+    text[byte..].find('\n').map_or(text.len(), |p| byte + p + 1)
 }
 
 /// End of the indented block that opens right after `start` and is nested

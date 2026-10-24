@@ -287,8 +287,7 @@ fn lint_target(
         }
         let fallback = path
             .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| PathBuf::from("."));
+            .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
         let root = match floor {
             Some(floor) => project_root_for(path, floor),
             None => nearest_manifest_dir(path).unwrap_or(fallback),

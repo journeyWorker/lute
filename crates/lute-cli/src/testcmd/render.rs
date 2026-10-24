@@ -81,7 +81,7 @@ pub(super) fn render_human(
                      — fix the halt first",
                     ms.len(),
                     ms.iter().map(|m| m.key.as_str()).collect::<Vec<_>>().join(", ")
-                )
+                );
                 }
             }
         }
@@ -274,7 +274,7 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
                 .unwrap_or_default()
         ),
         ("accepts", Some(actual)) => {
-            outln!(out, "      accepts: expected {}, got {actual}", e.expected)
+            outln!(out, "      accepts: expected {}, got {actual}", e.expected);
         }
         _ => {}
     }

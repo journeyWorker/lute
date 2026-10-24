@@ -61,9 +61,7 @@ impl<D: Driver> Machine<D> {
             None => Json::Bool(true),
             Some(when) => {
                 let site = Site::new(SiteKind::EntryWhen, &id, addr(cmd));
-                self.judge(&when, site)
-                    .map(Json::Bool)
-                    .unwrap_or(Json::Null)
+                self.judge(&when, site).map_or(Json::Null, Json::Bool)
             }
         };
         if self.stopped() {
@@ -101,8 +99,7 @@ impl<D: Driver> Machine<D> {
         self.code.commands[at + 1..]
             .iter()
             .position(|c| matches!(c.get("kind").and_then(Json::as_str), Some("entry" | "beat")))
-            .map(|i| at + 1 + i)
-            .unwrap_or(self.code.commands.len())
+            .map_or(self.code.commands.len(), |i| at + 1 + i)
     }
 
     /// Present ONE bundle beat (dsl 0.23.0 §4): its body segment runs like a
@@ -152,9 +149,7 @@ impl<D: Driver> Machine<D> {
             None => Json::Bool(true),
             Some(when) => {
                 let site = Site::new(SiteKind::BeatWhen, &canonical, addr(cmd));
-                self.judge(&when, site)
-                    .map(Json::Bool)
-                    .unwrap_or(Json::Null)
+                self.judge(&when, site).map_or(Json::Null, Json::Bool)
             }
         };
         if self.stopped() {

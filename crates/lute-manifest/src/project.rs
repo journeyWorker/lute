@@ -353,7 +353,7 @@ impl MetaDefaults {
     }
     /// Every supplied key, sorted.
     pub fn keys(&self) -> impl Iterator<Item = &str> {
-        self.entries.keys().map(|k| k.as_str())
+        self.entries.keys().map(std::string::String::as_str)
     }
     /// Every chain the manifest's `chapters:` declares, in order — the ones
     /// a malformed block keeps unapplied ([`Chain::applied`]) included.
@@ -959,7 +959,7 @@ fn defaults_shape_ok(key: &str, v: &yaml_serde::Value) -> Result<(), &'static st
     match key {
         "season" | "episode" => v.as_i64().map(|_| ()).ok_or("an integer"),
         "kind" => match v.as_str() {
-            Some("scene") | Some("quest") => Ok(()),
+            Some("scene" | "quest") => Ok(()),
             _ => Err("`scene` or `quest`"),
         },
         "character" | "pov" | "luteVersion" | "contentLang" => {
@@ -974,7 +974,7 @@ fn defaults_shape_ok(key: &str, v: &yaml_serde::Value) -> Result<(), &'static st
         // dsl 0.28.0 §5: any tier a `<quest tier=>` takes, `season:<name>`
         // included (the season itself is checked at each quest).
         "questTier" => match v.as_str() {
-            Some("run") | Some("user") => Ok(()),
+            Some("run" | "user") => Ok(()),
             Some(t) if crate::season::season_ref(t).is_some_and(crate::ident::is_name) => Ok(()),
             _ => Err("`run`, `user` or `season:<name>`"),
         },
@@ -984,7 +984,7 @@ fn defaults_shape_ok(key: &str, v: &yaml_serde::Value) -> Result<(), &'static st
         "uses" | "extends" | "components" => match v {
             yaml_serde::Value::Null | yaml_serde::Value::String(_) => Ok(()),
             yaml_serde::Value::Sequence(items) => {
-                if items.iter().all(|i| i.is_string()) {
+                if items.iter().all(yaml_serde::Value::is_string) {
                     Ok(())
                 } else {
                     Err("a string or a list of strings")

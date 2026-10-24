@@ -357,7 +357,7 @@ fn walk(nodes: &[Node], text: &str, diags: &mut Vec<Diagnostic>) {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            walk(body, text, diags)
+                            walk(body, text, diags);
                         }
                     }
                 }

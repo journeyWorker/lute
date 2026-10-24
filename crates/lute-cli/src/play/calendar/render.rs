@@ -105,7 +105,7 @@ pub(super) fn pinned(pins: &[Pin], axes: &[Axis]) -> (Vec<String>, Vec<(String, 
                     None if !slotted => {}
                     None => varies.push("clock.slot".to_string()),
                     Some(s) => {
-                        held.push(("clock.slot".to_string(), s.clone(), Value::Str(s.clone())))
+                        held.push(("clock.slot".to_string(), s.clone(), Value::Str(s.clone())));
                     }
                 }
             }
@@ -406,7 +406,7 @@ pub(super) fn render_json(r: &Report<'_>) -> Json {
                 let (varies, held) = pinned(pins, r.axes);
                 m.insert("varies".into(), json!(varies));
                 m.insert("heldAt".into(), Json::Object(
-                    held.iter().map(|(p, _, v)| (p.to_string(), value_to_json(v))).collect(),
+                    held.iter().map(|(p, _, v)| (p.clone(), value_to_json(v))).collect(),
                 ));
             }
             Json::Object(m)

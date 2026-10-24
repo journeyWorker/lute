@@ -166,9 +166,10 @@ pub fn parse_bridges(v: &yaml_serde::Value) -> Result<BTreeMap<String, Vec<Bridg
 /// static path comes back as written, for the validation that follows to
 /// name.
 pub fn state_key(raw: &str) -> String {
-    lute_cel::path::parse_path_text(raw)
-        .map(|segs| lute_manifest::text::render_path(&segs))
-        .unwrap_or_else(|| raw.to_string())
+    lute_cel::path::parse_path_text(raw).map_or_else(
+        || raw.to_string(),
+        |segs| lute_manifest::text::render_path(&segs),
+    )
 }
 
 /// `--state`/`--mock` literals and `--choice` targets carry no real source
@@ -1230,7 +1231,7 @@ fn collect_choice_ids_nodes(nodes: &[Node], out: &mut BTreeMap<String, Vec<Strin
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_choice_ids_nodes(body, out)
+                            collect_choice_ids_nodes(body, out);
                         }
                     }
                 }

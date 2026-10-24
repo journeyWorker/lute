@@ -451,11 +451,7 @@ impl<'a> FactStore<'a> {
     }
 
     fn is_derived(&self, rel: &str) -> bool {
-        self.rel_vocab
-            .relations
-            .get(rel)
-            .map(|d| d.derive)
-            .unwrap_or(false)
+        self.rel_vocab.relations.get(rel).is_some_and(|d| d.derive)
     }
 
     /// Matching facts, or — with `column` — the number of DISTINCT values at

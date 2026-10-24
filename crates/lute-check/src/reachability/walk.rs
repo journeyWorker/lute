@@ -479,7 +479,9 @@ fn check_match_reach(
                 let foreign_literal = is
                     .as_ref()
                     .is_some_and(|pat| arm_has_foreign_literal(pat, &dom, subject));
-                let literal_cmp_owns = analysis.as_ref().is_some_and(|a| a.owns_dead_guard());
+                let literal_cmp_owns = analysis
+                    .as_ref()
+                    .is_some_and(super::super::decide::LiteralCmpAnalysis::owns_dead_guard);
                 if !foreign_literal && !literal_cmp_owns && !test.raw.trim().is_empty() {
                     if let Some(Decided::Bool(false)) = decide_slot(&test.raw, defs, ctx) {
                         let mut message = dead_guard_message("arm", &test.raw);

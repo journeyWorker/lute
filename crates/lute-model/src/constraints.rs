@@ -640,7 +640,7 @@ fn collect_lines(
                 collect_lines(&on.body, &g, path, speaker, out);
             }
             Node::Objective(objective) => {
-                collect_lines(&objective.body, guards, path, speaker, out)
+                collect_lines(&objective.body, guards, path, speaker, out);
             }
             Node::Timeline(_)
             | Node::Directive(_)

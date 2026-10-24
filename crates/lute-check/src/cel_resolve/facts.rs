@@ -1,5 +1,12 @@
-use super::*;
-use super::{core::*, profile::*, state::*};
+use super::{
+    check_atom, CelArena, CelKind, CelSlot, Ctx, Diagnostic, Expr, FactArg, FactTerm, RelVocab,
+    Type, Val,
+};
+use super::{
+    core::{E_CEL_TYPE, E_MATCH_RELATION_SUBJECT, E_VALIDAT_DERIVED},
+    profile::{count_distinct_column, is_fact_query_name, is_profile_fact_query, query_relation},
+    state::diag,
+};
 /// pattern to check).
 pub(crate) fn check_fact_queries(
     expr: &Expr,

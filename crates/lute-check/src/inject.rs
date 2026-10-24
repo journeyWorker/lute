@@ -474,7 +474,7 @@ pub fn lower_node_with_snapshot(
             domains,
         ),
         StageKind::Bg { fields, .. } => {
-            stage_bookkeeping_bg(&mut state, node_directive(node), &fields, &mut emit)
+            stage_bookkeeping_bg(&mut state, node_directive(node), &fields, &mut emit);
         }
         StageKind::Clear => stage_clear(&mut state, node_directive(node), &mut emit),
         StageKind::Music { fields, .. } => {
@@ -1827,7 +1827,7 @@ mod tests {
         let doms = action_domain_with_exits(&["goUnder"]);
         let (st, hid) = lower_node(staged("vesna"), &bg("hold"), &[], &doms);
         assert!(matches!(
-            &hid[..],
+            &*hid,
             [InjectedCommand {
                 kind: InjectKind::Hide { .. },
                 ..
@@ -1917,7 +1917,7 @@ mod tests {
         assert!(joined.maybe_on_stage.contains("pell"));
         let (st, hid) = lower_node(joined, &bg("slipway"), &[], &doms);
         assert!(
-            matches!(&hid[..], [InjectedCommand { kind: InjectKind::Hide { character }, .. }] if character == "pell"),
+            matches!(&*hid, [InjectedCommand { kind: InjectKind::Hide { character }, .. }] if character == "pell"),
             "{hid:?}"
         );
         assert!(st.maybe_on_stage.is_empty());

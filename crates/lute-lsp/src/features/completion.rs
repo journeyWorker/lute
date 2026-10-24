@@ -766,7 +766,7 @@ fn event_name_items(snapshot: &CapabilitySnapshot) -> Vec<CompletionItem> {
     let mut names: BTreeSet<String> = if snapshot.permissions.allows_quests() {
         lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS
             .iter()
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect()
     } else {
         BTreeSet::new()

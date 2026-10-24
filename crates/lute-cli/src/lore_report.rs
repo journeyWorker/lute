@@ -202,7 +202,7 @@ fn collect_asserts(
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_asserts(body, effects, out)
+                            collect_asserts(body, effects, out);
                         }
                     }
                 }

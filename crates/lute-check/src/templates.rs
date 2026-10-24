@@ -506,8 +506,10 @@ pub fn parse_beat_template(
             let why = match key {
                 "id" => " — each `<beat use=…>` names its own `id=`".to_string(),
                 _ => lute_manifest::suggest::nearest(key, TEMPLATE_KEYS.iter().copied(), 2)
-                    .map(|n| format!(" — did you mean `{n}`?"))
-                    .unwrap_or_else(|| format!("; the keys are {}", TEMPLATE_KEYS.join(", "))),
+                    .map_or_else(
+                        || format!("; the keys are {}", TEMPLATE_KEYS.join(", ")),
+                        |n| format!(" — did you mean `{n}`?"),
+                    ),
             };
             diags.push(diag(
                 format!("`beat.{key}` is not a beat template key{why} (dsl 0.27.0 §6)"),
@@ -553,8 +555,10 @@ pub fn parse_beat_template(
                     params.iter().map(|p| p.name.as_str()),
                     2,
                 )
-                .map(|n| format!("did you mean `@{n}`? Or declare"))
-                .unwrap_or_else(|| "declare".to_string());
+                .map_or_else(
+                    || "declare".to_string(),
+                    |n| format!("did you mean `@{n}`? Or declare"),
+                );
                 diags.push(diag(
                     format!(
                         "`beat.{key}` names `@{name}`, but the component declares no param \

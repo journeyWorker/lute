@@ -64,7 +64,7 @@ impl ImpactTarget {
         {
             return Err("unknown or empty impact target".into());
         }
-        if kind == "state" && key.split('.').any(|part| part.is_empty()) {
+        if kind == "state" && key.split('.').any(str::is_empty) {
             return Err("malformed state target".into());
         }
         Ok(Self {
@@ -331,7 +331,7 @@ pub fn human(report: &ImpactReport) -> String {
                 if let Some(file) = &r.file {
                     out.push_str(&format!("    - {}: {} ({}", r.edge, r.reason, file));
                     if let Some(line) = r.line {
-                        out.push_str(&format!(":{}", line));
+                        out.push_str(&format!(":{line}"));
                     }
                     out.push_str(")\n");
                 } else {

@@ -178,7 +178,7 @@ pub(crate) fn parse_terminal(
     };
     let when = match m.get("when") {
         Some(yaml_serde::Value::String(s)) if !s.trim().is_empty() => s,
-        None | Some(yaml_serde::Value::Null) | Some(yaml_serde::Value::String(_)) => {
+        None | Some(yaml_serde::Value::Null | yaml_serde::Value::String(_)) => {
             fault(
                 "`terminal:` names no condition — write `when: \"<condition>\"`, the condition \
                  under which the game is over"
@@ -748,9 +748,7 @@ pub fn persistent_reads(
             }
             Expr::Call(c) if c.target.is_none() => {
                 let lit = || match c.args.first().map(|a| &a.expr) {
-                    Some(Expr::Literal(cel_parser::reference::Val::String(s))) => {
-                        Some(s.to_string())
-                    }
+                    Some(Expr::Literal(cel_parser::reference::Val::String(s))) => Some(s.clone()),
                     _ => None,
                 };
                 let kept = match c.func_name.as_str() {

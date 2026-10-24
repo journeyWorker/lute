@@ -23,7 +23,12 @@ fn snapshot() -> CapabilitySnapshot {
     let bosses = |members: &[&str]| OccasionTarget::Domain {
         prefix: "boss".into(),
         entity: "foe".into(),
-        members: Some(members.iter().map(|m| m.to_string()).collect()),
+        members: Some(
+            members
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
+        ),
     };
     for (name, select, target) in [
         (
@@ -295,7 +300,7 @@ fn occasion_target_ok_is_shared_with_play() {
         },
     );
     let talk = &snap.occasions["talk"];
-    assert!(lute_check::occasion_target_ok(talk, "npc.maud", &kinds).is_ok());
+    lute_check::occasion_target_ok(talk, "npc.maud", &kinds).unwrap();
     assert!(lute_check::occasion_target_ok(talk, "npc.mud", &kinds)
         .unwrap_err()
         .contains("did you mean `npc.maud`?"));
@@ -305,7 +310,7 @@ fn occasion_target_ok_is_shared_with_play() {
         .unwrap_err()
         .contains("does not declare"));
     // Shape-only occasions accept anything.
-    assert!(lute_check::occasion_target_ok(&snap.occasions["examine"], "x.y", &kinds).is_ok());
+    lute_check::occasion_target_ok(&snap.occasions["examine"], "x.y", &kinds).unwrap();
 }
 
 // --- §7 run boundaries ------------------------------------------------------

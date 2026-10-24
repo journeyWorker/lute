@@ -459,7 +459,7 @@ mod tests {
         // Compound subject gets parenthesized (plan spec-gap note 11).
         assert_eq!(expand("$ == 3", &t, Some("a + b")).unwrap(), "(a + b) == 3");
         // `$` with no enclosing match is a gate-proven-unreachable error.
-        assert!(expand("$ == 1", &t, None).is_err());
+        expand("$ == 1", &t, None).unwrap_err();
     }
 
     #[test]
@@ -471,7 +471,7 @@ mod tests {
     #[test]
     fn unknown_ref_is_an_error() {
         let t = tables(&[], &[]);
-        assert!(expand("@nope", &t, None).is_err());
+        expand("@nope", &t, None).unwrap_err();
     }
 
     // Finding 1 (Critical): `scan_refs` returns the outer call AND the refs
@@ -489,10 +489,10 @@ mod tests {
 
         // A deeper nest must not panic (exercises shorter/longer replacements).
         let deep = tables(&[("id", "x"), ("h", "y")], &[("id", &["x"]), ("h", &["y"])]);
-        assert!(expand("@id(@id(@h(1)))", &deep, None).is_ok());
+        expand("@id(@id(@h(1)))", &deep, None).unwrap();
 
         // Unbalanced nesting degrades to a diagnostic, never a panic.
-        assert!(expand("@f(@g(1)", &t, None).is_err());
+        expand("@f(@g(1)", &t, None).unwrap_err();
     }
 
     // Finding 2 (Critical): a match-scoped def body may use `$`; it must resolve
@@ -505,7 +505,7 @@ mod tests {
             "(scene.choices.number == 'blunt')"
         );
         // The same ref outside any <match> still errors (no subject to bind).
-        assert!(expand("@is_selected", &t, None).is_err());
+        expand("@is_selected", &t, None).unwrap_err();
     }
 
     // Finding 3 (Important): params bind SIMULTANEOUSLY. Non-hygienic one-at-a-

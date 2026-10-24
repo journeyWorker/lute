@@ -105,10 +105,14 @@ fn admits(doc: DocKind, ctx: GrammarContext, nk: NodeKind) -> bool {
         matches!(
             (doc, ctx),
             (DocKind::Scene, GrammarContext::SceneBody)
-                | (DocKind::Quest, GrammarContext::QuestBody)
-                | (DocKind::Quest, GrammarContext::Emittable)
-                | (DocKind::Lore, GrammarContext::EntryBody)
-                | (DocKind::Lore, GrammarContext::BeatBody)
+                | (
+                    DocKind::Quest,
+                    GrammarContext::QuestBody | GrammarContext::Emittable
+                )
+                | (
+                    DocKind::Lore,
+                    GrammarContext::EntryBody | GrammarContext::BeatBody
+                )
         ),
         "admits called with a (doc, ctx) pair that never occurs: {doc:?} {ctx:?}"
     );

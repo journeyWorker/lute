@@ -465,8 +465,7 @@ fn ordering_hint(
         Type::Enum(members) => {
             let shown = path
                 .as_deref()
-                .map(lute_manifest::text::bracket_spelling_of)
-                .unwrap_or_else(|| show(bad));
+                .map_or_else(|| show(bad), lute_manifest::text::bracket_spelling_of);
             let clock_slot = t.clock.and_then(|c| c.slot.as_deref());
             let is_slot = path
                 .as_deref()
@@ -595,11 +594,10 @@ pub(crate) fn show(e: &Expr) -> String {
         },
         Expr::Ident(n) if n == "_" => "$".to_string(),
         Expr::Ident(n) => n.replace(lute_cel::REF_MARKER, "@"),
-        Expr::Select(_) => select_path(e)
-            .map(|p| {
-                lute_manifest::text::bracket_spelling_of(&p).replace(lute_cel::REF_MARKER, "@")
-            })
-            .unwrap_or_else(|| "…".to_string()),
+        Expr::Select(_) => select_path(e).map_or_else(
+            || "…".to_string(),
+            |p| lute_manifest::text::bracket_spelling_of(&p).replace(lute_cel::REF_MARKER, "@"),
+        ),
         Expr::Call(_) if crate::cel_paths::is_path_index(e) => select_path(e)
             .map(|p| lute_manifest::text::bracket_spelling_of(&p))
             .unwrap_or_default(),

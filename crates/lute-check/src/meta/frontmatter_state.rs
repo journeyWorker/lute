@@ -1,4 +1,9 @@
-use super::*;
+use super::{
+    engine_namespace, is_reserved_quest_path, meta_key_span, meta_path_span, namespace_of,
+    per_family, per_fault, per_members, scalar_default, sorted_members, state_decl_message,
+    unknown_state_row_keys, yaml_key, Diagnostic, Layer, Literal, Meta, PendingPer, Precedence,
+    Severity, Span, StateDecl, StateDeclRaw, Type, TypedMeta, E_PATH_IDENT, E_STATE_COLLECTION,
+};
 
 pub(super) fn parse_state(
     meta: &Meta,
@@ -36,7 +41,7 @@ pub(super) fn parse_state(
         match state_val {
             yaml_serde::Value::Null => {}
             yaml_serde::Value::Mapping(state_map) => {
-                for (path_key, decl_val) in state_map.iter() {
+                for (path_key, decl_val) in state_map {
                     let Some(path) = path_key.as_str() else {
                         diags.push(err(
                             "E-STATE-DECL",

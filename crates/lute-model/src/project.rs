@@ -172,7 +172,7 @@ impl ProjectModel {
             .as_ref()
             .as_ref()
             .ok()
-            .and_then(|p| p.clone());
+            .and_then(std::clone::Clone::clone);
         let providers = opts.providers.as_deref();
         let permission_profile = opts.permission_profile.as_deref();
         let mut documents: Vec<ModelDocument> = files
@@ -632,7 +632,7 @@ fn yaml_files(dir: &Path) -> Vec<PathBuf> {
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
                 stack.push(path);
             } else if matches!(
                 path.extension().and_then(|ext| ext.to_str()),

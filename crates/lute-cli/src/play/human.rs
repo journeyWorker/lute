@@ -728,7 +728,7 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
                 }
             }
             body @ StepBody::Occasion { .. } => {
-                render_occasion_human(&mut out, p, view, &head, body)
+                render_occasion_human(&mut out, p, view, &head, body);
             }
         }
         for v in &s.exclusive {
@@ -903,7 +903,7 @@ fn render_occasion_human(
             }
             (_, Some(id), _) => out.push_str(&format!("  → {id}\n")),
             (_, None, Some(Pick::Pass)) => {
-                out.push_str("  → (pick: none — the list closes; nothing presented)\n")
+                out.push_str("  → (pick: none — the list closes; nothing presented)\n");
             }
             (_, None, _) if !presented.is_empty() => out.push_str("  → (no eligible main beat)\n"),
             (_, None, _) => out.push_str("  → (no eligible beat — the occasion passes)\n"),

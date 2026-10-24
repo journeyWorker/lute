@@ -330,6 +330,6 @@ mod tests {
         assert!(validate_archive_entries(b"/absolute\n", b"-rw-r--r-- x x 1 file\n").is_err());
         assert!(validate_archive_entries(b"../escape\n", b"-rw-r--r-- x x 1 file\n").is_err());
         assert!(validate_archive_entries(b"safe\n", b"lrwxrwxrwx x x 1 link\n").is_err());
-        assert!(validate_archive_entries(b"safe/\n", b"drwxr-xr-x x x 1 safe/\n").is_ok());
+        validate_archive_entries(b"safe/\n", b"drwxr-xr-x x x 1 safe/\n").unwrap();
     }
 }

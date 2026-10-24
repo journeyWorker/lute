@@ -32,7 +32,10 @@ impl LanguageServer for Backend {
                 hover_provider: Some(HoverProviderCapability::Simple(true)),
                 completion_provider: Some(CompletionOptions {
                     trigger_characters: Some(
-                        [":", "@", "{", "."].iter().map(|s| s.to_string()).collect(),
+                        [":", "@", "{", "."]
+                            .iter()
+                            .map(std::string::ToString::to_string)
+                            .collect(),
                     ),
                     ..Default::default()
                 }),

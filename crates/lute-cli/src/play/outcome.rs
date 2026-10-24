@@ -278,7 +278,7 @@ pub(super) fn played_choices(
             offered: options
                 .iter()
                 .filter(|o| !listed("spent", o) && !listed("ineligible", o))
-                .map(|o| o.to_string())
+                .map(std::string::ToString::to_string)
                 .collect(),
             total: options.len(),
         });

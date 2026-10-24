@@ -356,7 +356,7 @@ fn inline_tokens(nodes: &[InlineNode], src: &str, out: &mut Vec<RawTok>) {
     for node in nodes {
         match node {
             InlineNode::Text { span, .. } => {
-                push(out, span.byte_start, span.byte_end, TokType::Content)
+                push(out, span.byte_start, span.byte_end, TokType::Content);
             }
             InlineNode::Interpolation(i) => interp_tokens(i, src, out),
             InlineNode::Modifier(m) => {

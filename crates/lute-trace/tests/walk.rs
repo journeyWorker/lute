@@ -74,7 +74,10 @@ fn load_input(path: &str) -> CheckInput {
 fn choose(pairs: &[(&str, &[&str])]) -> MockSet {
     let mut choose = BTreeMap::new();
     for (id, cids) in pairs {
-        choose.insert(id.to_string(), cids.iter().map(|s| s.to_string()).collect());
+        choose.insert(
+            id.to_string(),
+            cids.iter().map(std::string::ToString::to_string).collect(),
+        );
     }
     MockSet {
         choose,

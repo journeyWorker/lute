@@ -1,7 +1,10 @@
 //! The injection fold: stage-entity lifetime over the node stream, entering
 //! `::use` bodies in document position.
 
-use super::*;
+use super::{
+    attr_str, lower_node_with_snapshot, Arm, CapabilitySnapshot, ComponentSet, Directive, Domain,
+    InjectedCommand, Node, StageState,
+};
 
 /// Fold the injection reducer over a node slice, threading `StageState` and
 /// collecting every injected command. `<branch>`/`<hub>` choices and
@@ -33,7 +36,7 @@ pub(super) fn fold_injections(
         out.extend(emit);
         let arms: Vec<&[Node]> = match node {
             Node::Branch(b) => b.choices.iter().map(|c| c.body.as_slice()).collect(),
-            Node::Hub(h) => h.bodies().map(|b| b.as_slice()).collect(),
+            Node::Hub(h) => h.bodies().map(std::vec::Vec::as_slice).collect(),
             Node::Match(m) => m
                 .arms
                 .iter()

@@ -375,9 +375,9 @@ pub(crate) fn and_chain_holds(expr: &Expr) -> (Vec<GroundFact>, Vec<GroundFact>)
     for (e, positive) in literals {
         if let Some(f) = held_ground(e) {
             if positive {
-                pos.push(f)
+                pos.push(f);
             } else {
-                neg.push(f)
+                neg.push(f);
             }
         }
     }
@@ -842,25 +842,20 @@ fn decide_call(c: &CallExpr, ctx: &DecideCtx<'_>) -> Option<Decided> {
         (n, [a]) if n == op::NEGATE => {
             decide(&a.expr, ctx).and_then(|d| apply_op(n, std::slice::from_ref(&d)))
         }
-        (op::ADD, [a, b])
-        | (op::SUBSTRACT, [a, b])
-        | (op::MULTIPLY, [a, b])
-        | (op::DIVIDE, [a, b])
-        | (op::MODULO, [a, b]) => {
+        (op::ADD | op::SUBSTRACT | op::MULTIPLY | op::DIVIDE | op::MODULO, [a, b]) => {
             let da = decide(&a.expr, ctx)?;
             let db = decide(&b.expr, ctx)?;
             apply_op(name, &[da, db])
         }
-        (op::GREATER, [a, b])
-        | (op::GREATER_EQUALS, [a, b])
-        | (op::LESS, [a, b])
-        | (op::LESS_EQUALS, [a, b]) => decide_count_cmp(name, &a.expr, &b.expr, ctx)
-            .or_else(|| decide_int_range_cmp(name, &a.expr, &b.expr, ctx))
-            .or_else(|| {
-                let da = decide(&a.expr, ctx)?;
-                let db = decide(&b.expr, ctx)?;
-                apply_op(name, &[da, db])
-            }),
+        (op::GREATER | op::GREATER_EQUALS | op::LESS | op::LESS_EQUALS, [a, b]) => {
+            decide_count_cmp(name, &a.expr, &b.expr, ctx)
+                .or_else(|| decide_int_range_cmp(name, &a.expr, &b.expr, ctx))
+                .or_else(|| {
+                    let da = decide(&a.expr, ctx)?;
+                    let db = decide(&b.expr, ctx)?;
+                    apply_op(name, &[da, db])
+                })
+        }
         _ => None, // R5: unrecognized shape (index, unknown fn, wrong arity, …)
     }
 }

@@ -307,13 +307,9 @@ pub fn translate_cel_parse(
     // Use the backend's recovered position only when it plausibly lands inside
     // THIS slot (lute-cel always populates it validly today, but the check is
     // defensive per §8.1 T3's "when one was recovered, else the whole slot").
-    let span = if backend.span.byte_start >= slot_span.byte_start
-        && backend.span.byte_start <= slot_span.byte_start + raw.len()
-    {
-        Some(backend.span)
-    } else {
-        None
-    };
+    let span = (backend.span.byte_start >= slot_span.byte_start
+        && backend.span.byte_start <= slot_span.byte_start + raw.len())
+    .then_some(backend.span);
     // 0.49.0 §5.3 (#180): `has(<family>["<m>"])` — `has()` takes a field
     // select, and a member that is not an identifier is tested with `in`.
     let hint = scan_has_index(raw, &mask)

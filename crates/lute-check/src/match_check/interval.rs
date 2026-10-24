@@ -1,7 +1,7 @@
 //! Numeric coverage over [`Domain::Number`] (dsl 0.18.0 §4): closed intervals
 //! and their merged union.
 
-use super::*;
+use super::IsLiteral;
 
 /// A closed interval over the extended reals (dsl 0.18.0 §4): a point `n` is
 /// `[n, n]`, an open range end is `±∞`. Both ends inclusive.

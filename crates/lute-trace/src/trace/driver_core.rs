@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    exec, logic_diag, mock, render_atom, ArmSource, BTreeMap, BTreeSet, Decision, Diagnostic,
+    GuardRead, Json, Menu, SourceInfo, Span, Step, TraceContext, TraceDriver, UnresolvedAtom,
+    UnresolvedEntry, Verdict,
+};
 impl<'a> TraceDriver<'a> {
     pub(super) fn new(cx: TraceContext<'a>) -> Self {
         let cmds = cx
@@ -63,8 +67,7 @@ impl<'a> TraceDriver<'a> {
 
     pub(super) fn span_at(&self, addr: &str) -> Span {
         self.info(addr)
-            .map(|i| i.span)
-            .unwrap_or_else(mock::synthetic_span)
+            .map_or_else(mock::synthetic_span, |i| i.span)
     }
 
     pub(super) fn arm(&self, addr: &str, i: usize) -> Option<&ArmSource> {
@@ -84,8 +87,7 @@ impl<'a> TraceDriver<'a> {
     pub(super) fn option_span(&self, addr: &str, option: &str) -> Span {
         self.option_index(addr, option)
             .and_then(|i| self.arm(addr, i))
-            .map(|a| a.span)
-            .unwrap_or_else(|| self.span_at(addr))
+            .map_or_else(|| self.span_at(addr), |a| a.span)
     }
 
     pub(super) fn option_guard(

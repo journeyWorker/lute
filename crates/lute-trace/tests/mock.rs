@@ -709,7 +709,7 @@ fn mock_subject_must_be_a_string() {
 fn file_key_does_not_disturb_the_other_surfaces() {
     let m = lute_trace::parse_mock_yaml("file: x.lute\nchoose:\n  path: left\n").unwrap();
     assert_eq!(
-        m.choose.get("path").map(|v| v.as_slice()),
+        m.choose.get("path").map(std::vec::Vec::as_slice),
         Some(&["left".to_string()][..])
     );
 }
@@ -758,7 +758,7 @@ fn every_legal_mock_key_still_parses() {
     assert_eq!(m.state.len(), 1);
     assert_eq!(m.facts, vec!["f(a)".to_string()]);
     assert_eq!(
-        m.choose.get("h").map(|v| v.as_slice()),
+        m.choose.get("h").map(std::vec::Vec::as_slice),
         Some(&["a".to_string()][..])
     );
     assert_eq!(m.events, vec!["e".to_string()]);

@@ -200,7 +200,7 @@ impl Cx<'_> {
                     for arm in &m.arms {
                         match arm {
                             Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                                self.nodes(body)
+                                self.nodes(body);
                             }
                         }
                     }

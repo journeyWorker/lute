@@ -825,10 +825,13 @@ mod tests {
 
     fn dom(members: &[&str], default: Option<&str>, exits: &[&str]) -> crate::snapshot::Domain {
         crate::snapshot::Domain {
-            members: members.iter().map(|s| s.to_string()).collect(),
+            members: members
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             open: false,
             default: default.map(str::to_string),
-            exits: exits.iter().map(|s| s.to_string()).collect(),
+            exits: exits.iter().map(std::string::ToString::to_string).collect(),
             stops: Vec::new(),
             labels: Default::default(),
         }
@@ -838,12 +841,18 @@ mod tests {
     fn action_requires_exits_anchor_requires_default() {
         let missing_exits = validate_domain("action", &dom(&["sway"], None, &[]));
         assert_eq!(
-            missing_exits.iter().map(|i| i.code()).collect::<Vec<_>>(),
+            missing_exits
+                .iter()
+                .map(super::DomainIssue::code)
+                .collect::<Vec<_>>(),
             ["E-ENUM-MISSING-SEMANTICS"]
         );
         let missing_default = validate_domain("anchor", &dom(&["left"], None, &[]));
         assert_eq!(
-            missing_default.iter().map(|i| i.code()).collect::<Vec<_>>(),
+            missing_default
+                .iter()
+                .map(super::DomainIssue::code)
+                .collect::<Vec<_>>(),
             ["E-ENUM-MISSING-SEMANTICS"]
         );
         assert!(validate_domain("action", &dom(&["sway", "hide"], None, &["hide"])).is_empty());
@@ -855,14 +864,14 @@ mod tests {
         assert_eq!(
             validate_domain("action", &dom(&["sway"], None, &["zzz"]))
                 .iter()
-                .map(|i| i.code())
+                .map(super::DomainIssue::code)
                 .collect::<Vec<_>>(),
             ["E-ENUM-EXITS-NOT-MEMBER"]
         );
         assert_eq!(
             validate_domain("anchor", &dom(&["left"], Some("zzz"), &[]))
                 .iter()
-                .map(|i| i.code())
+                .map(super::DomainIssue::code)
                 .collect::<Vec<_>>(),
             ["E-ENUM-DEFAULT-NOT-MEMBER"]
         );
@@ -877,7 +886,7 @@ mod tests {
         assert_eq!(
             validate_domain("musicPlayback", &music)
                 .iter()
-                .map(|issue| issue.code())
+                .map(super::DomainIssue::code)
                 .collect::<Vec<_>>(),
             ["E-ENUM-STOPS-NOT-MEMBER"]
         );
@@ -885,7 +894,7 @@ mod tests {
         assert_eq!(
             validate_domain("emotion", &music)
                 .iter()
-                .map(|issue| issue.code())
+                .map(super::DomainIssue::code)
                 .collect::<Vec<_>>(),
             ["E-ENUM-UNEXPECTED-SEMANTICS"]
         );
@@ -899,7 +908,10 @@ mod tests {
         d.labels.insert("thur".into(), "Thursday".into());
         let issues = validate_domain("weekday", &d);
         assert_eq!(
-            issues.iter().map(|i| i.code()).collect::<Vec<_>>(),
+            issues
+                .iter()
+                .map(super::DomainIssue::code)
+                .collect::<Vec<_>>(),
             ["E-ENUM-LABEL-NOT-MEMBER"]
         );
         assert!(
@@ -912,7 +924,7 @@ mod tests {
     #[test]
     fn semantics_on_an_unrelated_slot_is_rejected() {
         let issues = validate_domain("emotion", &dom(&["neutral"], Some("neutral"), &["neutral"]));
-        let codes: Vec<&str> = issues.iter().map(|i| i.code()).collect();
+        let codes: Vec<&str> = issues.iter().map(super::DomainIssue::code).collect();
         assert_eq!(
             codes,
             ["E-ENUM-UNEXPECTED-SEMANTICS", "E-ENUM-UNEXPECTED-SEMANTICS"]
@@ -938,7 +950,10 @@ mod tests {
                 ty: Type::Bool,
                 default: None,
             }],
-            semantics: semantics.iter().map(|s| s.to_string()).collect(),
+            semantics: semantics
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             state: None,
             effects: None,
             bridge: None,

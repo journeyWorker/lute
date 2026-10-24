@@ -538,8 +538,7 @@ fn is_citation(part: &str) -> bool {
     let (rest, named) = ["dsl ", "spec ", "plugin ", "subquest design "]
         .iter()
         .find_map(|prefix| p.strip_prefix(prefix))
-        .map(|rest| (rest.trim_start(), true))
-        .unwrap_or((p, false));
+        .map_or((p, false), |rest| (rest.trim_start(), true));
     if rest.starts_with('§') || rest.starts_with("prerelease N") || is_appendix(rest) {
         return true;
     }
@@ -834,16 +833,16 @@ mod tests {
             "code": "W-OBJECTIVE-STRANDED", "severity": "warning", "message": "x",
             "evidence": "bounded", "span": diagnostic.span, "layer": "logic"
         });
-        assert!(serde_json::from_value::<Diagnostic>(missing).is_err());
+        serde_json::from_value::<Diagnostic>(missing).unwrap_err();
         let empty = serde_json::json!({
             "code": "W-OBJECTIVE-STRANDED", "severity": "warning", "message": "x",
             "evidence": "bounded", "scope": "", "span": diagnostic.span, "layer": "logic"
         });
-        assert!(serde_json::from_value::<Diagnostic>(empty).is_err());
+        serde_json::from_value::<Diagnostic>(empty).unwrap_err();
         let whitespace = serde_json::json!({
             "code": "W-OBJECTIVE-STRANDED", "severity": "warning", "message": "x",
             "evidence": "bounded", "scope": "   ", "span": diagnostic.span, "layer": "logic"
         });
-        assert!(serde_json::from_value::<Diagnostic>(whitespace).is_err());
+        serde_json::from_value::<Diagnostic>(whitespace).unwrap_err();
     }
 }
