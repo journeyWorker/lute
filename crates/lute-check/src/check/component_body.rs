@@ -696,7 +696,10 @@ fn component_guard(
 /// the purity contract: a guard or match subject reading ambient state is
 /// still `E-COMPONENT-STATE`, and a presentational body `::use`-ing an
 /// effects component is `E-COMPONENT-BODY`.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a recursive walk: each argument is a separate read-only input of the body check, passed unchanged down the recursion, plus the diagnostic sink"
+)]
 pub(super) fn walk_component_body(
     nodes: &[Node],
     snapshot: &CapabilitySnapshot,
@@ -1222,7 +1225,6 @@ fn detect_use_cycles(components: &ComponentSet, at: Span, diags: &mut Vec<Diagno
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn dfs_use_cycle(
     node: &str,
     adj: &std::collections::BTreeMap<String, Vec<String>>,

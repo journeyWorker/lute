@@ -1122,7 +1122,7 @@ impl Parser<'_> {
     /// element were empty; recovery skips subsequent lines up to a matching
     /// `</reward>` so the owner body loop is not left dangling.
     fn parse_reward(&mut self) -> crate::ast::Reward {
-        use crate::ast::{Attr, AttrValue, Reward};
+        use crate::ast::Reward;
         let open = self.parse_open_tag();
         if !open.self_closing && !open.inline_closed {
             self.emit_o(

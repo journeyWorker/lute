@@ -619,9 +619,8 @@ fn name_ended_include(
 /// its repetitions) presented — dropped with the step, like an
 /// `include:`'s ([`leftover_note`]).
 fn step_choose_note(step: &Step, records: &[StepRecord]) -> Option<String> {
-    let choose = match &step.action {
-        Action::Occasion { choose, .. } | Action::Advance { choose, .. } => choose,
-        _ => return None,
+    let (Action::Occasion { choose, .. } | Action::Advance { choose, .. }) = &step.action else {
+        return None;
     };
     let mut used = Used::default();
     for r in records {

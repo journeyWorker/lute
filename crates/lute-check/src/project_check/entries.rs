@@ -36,7 +36,10 @@ fn group_entries_by_id<'a>(docs: &'a [ProjectDoc<'a>]) -> BTreeMap<&'a str, Vec<
 /// grouped by position, each occurrence carrying its entry id and its anchor
 /// span (the one `crate::lore::check_entries` uses per document). `series`
 /// holds each document's own validated `series:`, index-aligned with `docs`.
-#[allow(clippy::type_complexity)]
+#[expect(
+    clippy::type_complexity,
+    reason = "the position-to-occurrences map is built and read only here and by its one caller; a named alias would hide the borrowed tuple fields the caller destructures"
+)]
 fn group_entries_by_position<'a>(
     docs: &'a [ProjectDoc<'a>],
     series: &'a [Option<String>],

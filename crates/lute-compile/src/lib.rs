@@ -936,10 +936,10 @@ fn section_entries(doc: &lute_syntax::ast::Document) -> Vec<ir::SectionEntry> {
 /// malformed-parse-sentinel facts/rules never reach this function — compile
 /// only runs past the D6 check gate (`compile`, above) on a clean check, and
 /// every such shape is an Error diagnostic that gate would have caught.
-// clippy 1.96 tightened `type_complexity` past this five-Vec return; the
-// declaration IS the readable form here — each Vec is a distinct artifact
-// axis the caller destructures by position, and a `type` alias buys nothing.
-#[allow(clippy::type_complexity)]
+#[expect(
+    clippy::type_complexity,
+    reason = "each Vec is a distinct artifact axis the caller destructures by position; the declaration is the readable form and a `type` alias buys nothing"
+)]
 fn rel_entries(
     vocab: &lute_check::RelVocab,
 ) -> (

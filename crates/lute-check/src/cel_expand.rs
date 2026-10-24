@@ -355,10 +355,6 @@ pub fn def_chain_label(chain: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
-
-    use lute_manifest::types::Type;
-
     use super::*;
 
     type Tables = (

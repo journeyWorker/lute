@@ -445,7 +445,6 @@ fn detect_cycles(adj: &BTreeMap<PathBuf, Vec<PathBuf>>, diags: &mut Vec<Diagnost
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn dfs_cycle(
     node: &Path,
     adj: &BTreeMap<PathBuf, Vec<PathBuf>>,

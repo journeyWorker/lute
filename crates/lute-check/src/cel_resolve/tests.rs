@@ -3,7 +3,6 @@ use super::*;
 mod test_cases {
     use super::*;
     use crate::ctx::Env;
-    use lute_syntax::ast::CelKind;
     use std::collections::BTreeSet;
 
     fn test_span() -> Span {

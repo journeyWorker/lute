@@ -296,7 +296,10 @@ pub(super) fn detect_conn_cycles(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a recursive DFS: the graph (`nodes`, `edges`, `back`), the three traversal sets and the sink, all owned by `detect_conn_cycles`, go down each call"
+)]
 pub(super) fn dfs_conn_cycle(
     node: &NodeId,
     nodes: &BTreeMap<NodeId, NodeInfo>,

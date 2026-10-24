@@ -71,13 +71,10 @@ pub fn parse_config(
     if root.is_null() {
         return Ok((LintConfig::default(), Vec::new()));
     }
-    let map = match root {
-        yaml_serde::Value::Mapping(m) => m,
-        _ => {
-            return Err(ConfigError {
-                message: "lute.lint.yaml must be a mapping at the root".into(),
-            })
-        }
+    let yaml_serde::Value::Mapping(map) = root else {
+        return Err(ConfigError {
+            message: "lute.lint.yaml must be a mapping at the root".into(),
+        });
     };
     let mut cfg = LintConfig::default();
     let mut diags = Vec::new();

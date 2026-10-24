@@ -109,9 +109,8 @@ pub fn resolve_record_fields(
     let Some(table) = lute_manifest::validate::lower_record_fields(record) else {
         return BTreeMap::new();
     };
-    let map = match fields {
-        yaml_serde::Value::Mapping(map) => map,
-        _ => return BTreeMap::new(),
+    let yaml_serde::Value::Mapping(map) = fields else {
+        return BTreeMap::new();
     };
     let mut resolved = BTreeMap::new();
     for (key, source) in map {
@@ -1134,8 +1133,6 @@ fn missing_anchor_domain_diag(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lute_core_span::{Layer, Severity, Span};
-    use lute_syntax::ast::{Attr, AttrValue, Directive, Line, Node};
 
     fn span() -> Span {
         Span {

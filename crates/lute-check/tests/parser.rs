@@ -9,7 +9,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 
 use proptest::prelude::*;
-use proptest::test_runner::{Config, RngAlgorithm, RngSeed, TestCaseError, TestError, TestRunner};
+use proptest::test_runner::{Config, RngAlgorithm, RngSeed, TestError, TestRunner};
 
 const SEED: u64 = 0x0360_2026_1005;
 const MAX_INPUT: usize = 4 * 1024;
@@ -34,6 +34,10 @@ fn bounded_lossy(bytes: &[u8]) -> String {
     text
 }
 
+#[expect(
+    clippy::map_err_ignore,
+    reason = "the panic hook has already printed the payload; the property only records that the parser panicked"
+)]
 fn check_case(bytes: &[u8]) -> Result<(), String> {
     let source = bounded_lossy(bytes);
     catch_unwind(AssertUnwindSafe(|| {

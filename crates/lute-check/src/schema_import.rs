@@ -1833,7 +1833,10 @@ fn read_and_parse(
 /// > project-relative path and line ([`crate::rel_schema::origin_display`]),
 /// > so the project roll-up folds every importer's copy into one report;
 /// > `origin_of` locates `name` in a file (`None` keeps the importer anchor).
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one routine for every level-duplicate report: the code, noun, name, entries, origin lookup and import order differ per caller, plus the sink and anchor"
+)]
 fn emit_level_dups<T>(
     code: &str,
     noun: &str,
@@ -1988,7 +1991,6 @@ fn detect_cycles(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn dfs_cycle(
     node: &Path,
     adj: &BTreeMap<PathBuf, Vec<(PathBuf, Edge)>>,

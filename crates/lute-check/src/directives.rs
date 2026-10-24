@@ -1087,13 +1087,10 @@ fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnost
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ctx::Ctx;
     use crate::ctx::Env;
-    use lute_core_span::Span;
     use lute_manifest::core::load_core_snapshot;
-    use lute_manifest::provider::ProviderSet;
     use lute_manifest::schema::{DirectiveDecl, Lowering};
-    use lute_syntax::ast::{Attr, AttrValue, CelKind, CelSlot};
+    use lute_syntax::ast::{CelKind, CelSlot};
     use std::sync::LazyLock;
 
     fn span() -> Span {

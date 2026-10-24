@@ -326,8 +326,6 @@ impl Ask<'_> {
 mod tests {
     use super::*;
     use crate::directive_facts::EffectDirectives;
-    use crate::rel_schema::RelVocab;
-    use std::path::PathBuf;
 
     #[test]
     fn list_form_gate_extracts_required_fact_atom_and_producer() {

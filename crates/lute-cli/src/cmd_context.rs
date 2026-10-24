@@ -458,11 +458,19 @@ fn symbol_json(symbol: &lute_resolve::Symbol) -> serde_json::Value {
 
 fn parse_position(raw: &str) -> Result<(PathBuf, usize, usize), String> {
     let mut fields = raw.rsplitn(3, ':');
+    #[expect(
+        clippy::map_err_ignore,
+        reason = "the usage message says what is wrong; the `ParseIntError` text adds nothing"
+    )]
     let column = fields
         .next()
         .ok_or("missing column")?
         .parse()
         .map_err(|_| "column must be a positive integer")?;
+    #[expect(
+        clippy::map_err_ignore,
+        reason = "the usage message says what is wrong; the `ParseIntError` text adds nothing"
+    )]
     let line = fields
         .next()
         .ok_or("missing line")?

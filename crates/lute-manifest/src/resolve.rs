@@ -473,7 +473,6 @@ fn range_satisfies(range: &str, version: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
 
     #[test]
     fn installed_plugins_lookup() {

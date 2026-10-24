@@ -224,7 +224,7 @@ pub fn run_test(options: &TestOptions) -> ExitCode {
     // component case already has its own honest surface, and it is not this
     // one: `W-COMPONENT-UNVERIFIED` (dsl 0.10.0 §9 rule 4, D-W) says the
     // component's contract was not verified, and says who decides.
-    let coverage_root: PathBuf = dir.to_path_buf();
+    let coverage_root = dir.to_path_buf();
     let units: Vec<CoverageUnit> = if coverage {
         match coverage_units(&coverage_root) {
             Ok(units) => units,
@@ -666,18 +666,15 @@ fn run_one_test(
             ));
         }
     };
-    let map = match top.as_mapping() {
-        Some(m) => m,
-        None => {
-            let message = format!(
-                "lute: {}: a test file must be a YAML mapping with a `file:` key",
-                test_file.display()
-            );
-            eprintln!("{message}");
-            return Err(crate::envelope::fail_quietly(
-                crate::envelope::CliError::input(test_file, message),
-            ));
-        }
+    let Some(map) = top.as_mapping() else {
+        let message = format!(
+            "lute: {}: a test file must be a YAML mapping with a `file:` key",
+            test_file.display()
+        );
+        eprintln!("{message}");
+        return Err(crate::envelope::fail_quietly(
+            crate::envelope::CliError::input(test_file, message),
+        ));
     };
 
     // #2(a) / D-B: the key set is closed at BOTH levels. A violation is a

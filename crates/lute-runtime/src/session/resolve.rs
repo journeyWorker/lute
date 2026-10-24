@@ -50,10 +50,18 @@ pub fn typed_literal(entry: &Json, lit: &str) -> Result<Value, String> {
             "false" => Ok(Value::Bool(false)),
             _ => Err("a `bool` is `true` or `false`".to_string()),
         },
+        #[expect(
+            clippy::map_err_ignore,
+            reason = "the message is the pinned runtime text; S5 types this fn and keeps the parse error as `source()`"
+        )]
         Some("int") => lit
             .parse::<i64>()
             .map(Value::Int)
             .map_err(|_| "an `int` takes an integer".to_string()),
+        #[expect(
+            clippy::map_err_ignore,
+            reason = "the message is the pinned runtime text; S5 types this fn and keeps the parse error as `source()`"
+        )]
         Some("double") => lit
             .parse::<f64>()
             .map(Value::Double)

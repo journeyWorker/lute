@@ -418,9 +418,8 @@ fn scene_prefix(doc: &Document) -> Option<String> {
         return Some(id);
     }
     let value: yaml_serde::Value = yaml_serde::from_str(&doc.meta.raw_yaml).ok()?;
-    let map = match value {
-        yaml_serde::Value::Mapping(m) => m,
-        _ => return None,
+    let yaml_serde::Value::Mapping(map) = value else {
+        return None;
     };
     let key = |k: &str| yaml_serde::Value::String(k.to_string());
     let character = map.get(key("character"))?.as_str()?.to_string();

@@ -321,9 +321,10 @@ pub fn fold_component_matches(nodes: &mut Vec<Node>, schema: &crate::StateView) 
             let Node::Match(m) = nodes.remove(i) else {
                 unreachable!("`selection` is Some only when nodes[i] was Node::Match")
             };
-            let body = match m.arms.into_iter().nth(idx) {
-                Some(Arm::When { body, .. } | Arm::Otherwise { body, .. }) => body,
-                None => unreachable!("idx came from select_component_arm over these SAME arms"),
+            let Some(Arm::When { body, .. } | Arm::Otherwise { body, .. }) =
+                m.arms.into_iter().nth(idx)
+            else {
+                unreachable!("idx came from select_component_arm over these SAME arms")
             };
             nodes.splice(i..i, body);
             continue; // re-scan from `i`: the recursion this fold owns (see doc comment).

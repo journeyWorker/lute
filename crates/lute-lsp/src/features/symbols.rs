@@ -270,7 +270,10 @@ fn symbol(
     selection_range: Range,
     children: Vec<DocumentSymbol>,
 ) -> DocumentSymbol {
-    #[allow(deprecated)] // `deprecated` field is required by the struct literal.
+    #[expect(
+        deprecated,
+        reason = "the struct literal must name the deprecated `deprecated` field"
+    )]
     DocumentSymbol {
         name,
         detail: None,

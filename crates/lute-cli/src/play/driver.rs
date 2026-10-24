@@ -38,7 +38,6 @@ pub(crate) struct PlayDriverState {
     producers: Option<Arc<Producers>>,
 }
 
-#[allow(dead_code)]
 impl PlayDriverState {
     pub(crate) fn new(
         choose: BTreeMap<String, Vec<ScriptedPick>>,
@@ -78,27 +77,6 @@ impl PlayDriverState {
 
     pub(crate) fn set_observer(&mut self, observer: Option<SessionEvalObserver>) {
         self.observer = observer;
-    }
-
-    pub(crate) fn set_step(
-        &mut self,
-        step: usize,
-        choose: &BTreeMap<String, Vec<ScriptedPick>>,
-        bridges: &BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
-    ) {
-        self.step = step;
-        self.choose
-            .extend(choose.iter().map(|(k, v)| (k.clone(), v.clone())));
-        self.bridges.step = bridges.clone();
-    }
-
-    pub(crate) fn set_top_choose(&mut self, choose: BTreeMap<String, Vec<ScriptedPick>>) {
-        self.choose = choose;
-    }
-    pub(crate) fn top_bridges_mut(
-        &mut self,
-    ) -> &mut BTreeMap<String, VecDeque<PlannedBridgeAnswer>> {
-        &mut self.bridges.top
     }
 }
 

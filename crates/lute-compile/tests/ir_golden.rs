@@ -5,7 +5,6 @@
 
 use std::collections::BTreeMap;
 
-use lute_compile::ir::CelPairExt;
 use lute_compile::*;
 use lute_ir::*;
 fn j(cmd: &Command) -> String {

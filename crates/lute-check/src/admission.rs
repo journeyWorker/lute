@@ -388,6 +388,10 @@ fn reject_beats(doc: &Document, kind: &str, diags: &mut Vec<Diagnostic>) {
 /// the `E-GRAMMAR-NOT-ADMITTED` code both match what the standalone check says
 /// about the same file.
 pub fn check_component_toplevel(doc: &Document) -> Vec<Diagnostic> {
+    #[expect(
+        clippy::unneeded_field_pattern,
+        reason = "exhaustive on purpose (see above): a new `Document` field must fail to compile here until it is classified"
+    )]
     let Document {
         meta: _,
         sections: _,

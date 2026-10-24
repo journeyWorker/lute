@@ -115,15 +115,15 @@ impl BeatOnce {
 }
 
 impl Serialize for BeatOnce {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
-        s.serialize_str(&self.as_str())
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        serializer.serialize_str(&self.as_str())
     }
 }
 
 /// Reads the IR spelling ([`BeatOnce::from_ir`]).
 impl<'de> Deserialize<'de> for BeatOnce {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let s = String::deserialize(d)?;
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let s = String::deserialize(deserializer)?;
         Self::from_ir(&s)
             .ok_or_else(|| serde::de::Error::custom(format!("invalid once policy {s:?}")))
     }
@@ -194,8 +194,8 @@ impl serde::Serialize for AdvanceSpec {
 
 /// Reads `"slot"`, `"day"` or a slot count.
 impl<'de> Deserialize<'de> for AdvanceSpec {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        match serde_json::Value::deserialize(d)? {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        match serde_json::Value::deserialize(deserializer)? {
             serde_json::Value::String(s) if s == "slot" => Ok(Self::Slot),
             serde_json::Value::String(s) if s == "day" => Ok(Self::Day),
             serde_json::Value::Number(n) => n

@@ -724,7 +724,10 @@ fn conjunct(s: &str) -> String {
 /// dsl 0.28.0 §3: `W-TEMPLATE-OVERRIDE` at a use's own `when=`, which
 /// replaces the template's `when` whole — naming the dropped condition, the
 /// arguments only it read (now unused), and the two ways to keep it.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each argument is a separate part of the warning: the use, its definition and template, the dropped key, the own `when=`, the arguments, the user keys and the text"
+)]
 fn override_warning(
     name: &str,
     def: &ComponentDef,

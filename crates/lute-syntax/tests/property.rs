@@ -9,7 +9,7 @@ use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::path::Path;
 
 use proptest::prelude::*;
-use proptest::test_runner::{Config, RngAlgorithm, RngSeed, TestCaseError, TestError, TestRunner};
+use proptest::test_runner::{Config, RngAlgorithm, RngSeed, TestError, TestRunner};
 
 const SEED: u64 = 0x0360_2026_1005;
 const MAX_INPUT: usize = 4 * 1024;
@@ -66,6 +66,10 @@ fn generated_source(bytes: &[u8]) -> String {
 }
 
 fn check_source(source: &str) -> Result<(), String> {
+    #[expect(
+        clippy::map_err_ignore,
+        reason = "the panic hook has already printed the payload; the property only records that the formatter panicked"
+    )]
     let first = catch_unwind(AssertUnwindSafe(|| {
         lute_syntax::format_source(source, &lute_syntax::FormatOptions::default())
     }))
@@ -73,6 +77,10 @@ fn check_source(source: &str) -> Result<(), String> {
     let Ok(first) = first else {
         return Ok(());
     };
+    #[expect(
+        clippy::map_err_ignore,
+        reason = "the panic hook has already printed the payload; the property only records that the formatter panicked"
+    )]
     let second = catch_unwind(AssertUnwindSafe(|| {
         lute_syntax::format_source(&first.text, &lute_syntax::FormatOptions::default())
     }))

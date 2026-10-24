@@ -13,7 +13,6 @@ where
     D: serde::Deserializer<'de>,
 {
     use serde::de::Error;
-    use serde::Deserialize;
     Ok(match yaml_serde::Value::deserialize(d)? {
         yaml_serde::Value::Sequence(v) => {
             let mut params = Vec::new();

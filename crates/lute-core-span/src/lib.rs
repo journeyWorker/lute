@@ -192,7 +192,7 @@ impl Evidence {
 }
 
 impl Serialize for Evidence {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let value = match self {
             Self::Proven => "proven",
             Self::Witnessed => "witnessed",
@@ -200,13 +200,13 @@ impl Serialize for Evidence {
             Self::Heuristic => "heuristic",
             Self::Unknown => "unknown",
         };
-        s.serialize_str(value)
+        serializer.serialize_str(value)
     }
 }
 
 impl<'de> Deserialize<'de> for Evidence {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let value = String::deserialize(d)?;
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
         match value.as_str() {
             "proven" => Ok(Self::Proven),
             "witnessed" => Ok(Self::Witnessed),
@@ -288,8 +288,8 @@ struct DiagnosticWire {
 }
 
 impl<'de> Deserialize<'de> for Diagnostic {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let wire = DiagnosticWire::deserialize(d)?;
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = DiagnosticWire::deserialize(deserializer)?;
         let evidence = match wire.evidence.as_deref() {
             None => {
                 if wire.scope.is_some() {
@@ -357,10 +357,10 @@ impl Diagnostic {
 /// ([`Diagnostic::text`]) and the spec sections it cited move to `spec`
 /// (omitted when none) — field order and every other field unchanged.
 impl Serialize for Diagnostic {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
         let spec = spec_citations(&self.message);
-        let mut st = s.serialize_struct("Diagnostic", 12)?;
+        let mut st = serializer.serialize_struct("Diagnostic", 12)?;
         st.serialize_field("code", &self.code)?;
         st.serialize_field("severity", &self.severity)?;
         st.serialize_field("message", &plain_message(&self.message))?;

@@ -60,6 +60,10 @@ pub fn decided_literal(d: &Decided) -> String {
 
 /// Expand a `{{@def}}` / `{{@fn(args)}}` referent into the standalone CEL an
 /// engine evaluates to render it. `Err` carries the reason it cannot be.
+#[expect(
+    clippy::map_err_ignore,
+    reason = "the message is the pinned diagnostic text; S5 types this fn and keeps the CEL parse error as `source()`"
+)]
 pub fn inline_interp_ref(raw: &str, defs: &DefTable<'_>) -> Result<String, String> {
     let body = expand_cel(raw, defs, None, &mut Vec::new()).map_err(|error| error.to_string())?;
     let mut arena = lute_cel::CelArena::default();

@@ -152,7 +152,10 @@ impl StepBody {
 /// what it presents (`pick` on a `select: all` occasion; `choose` over the
 /// script's), every quest settle after each presentation, and the quests'
 /// answer to the raise.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a step entry point: the project, world, step, the occasion's own inputs (`occasion`, `target`, `pick`, `choose`) and the walk driver are separate inputs from the session"
+)]
 pub fn run_occasion<F: super::WalkDriver>(
     p: &ExecProject,
     w: &mut World,

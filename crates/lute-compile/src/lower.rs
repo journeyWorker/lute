@@ -953,7 +953,6 @@ fn effect_target_type<'a>(
 #[cfg(test)]
 mod tests {
     use lute_core_span::Severity;
-    use lute_manifest::snapshot::CapabilitySnapshot;
     use lute_syntax::ast::Node;
 
     use super::*;

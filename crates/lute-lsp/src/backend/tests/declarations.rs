@@ -381,7 +381,7 @@ async fn analyze_declaration_cel_parse_error_has_no_antlr_vocabulary() {
         expect_range(text, "\"run.act = 1\""),
         "E-CEL-PARSE range must equal the whole `cel:` value scalar span"
     );
-    std::fs::remove_dir_all(&root).ok();
+    let _ = std::fs::remove_dir_all(&root); // best-effort cleanup
 }
 
 /// Block-style `cel:` (`x:\n  type: ...\n  cel: "..."`, no inline flow
@@ -399,7 +399,7 @@ async fn analyze_declaration_cel_parse_error_anchors_block_style_cel_value() {
         expect_range(text, "\"run.act = 1\""),
         "block-style `cel:` must anchor on its own scalar value span"
     );
-    std::fs::remove_dir_all(&root).ok();
+    let _ = std::fs::remove_dir_all(&root); // best-effort cleanup
 }
 
 /// Two defs sharing byte-identical `cel:` text: the locator is scoped to
@@ -435,7 +435,7 @@ async fn analyze_declaration_cel_parse_error_picks_right_duplicate_occurrence() 
         range_at(text, first_occ, first_occ + needle.len()),
         "`b` (defined first in source) must anchor on its own occurrence"
     );
-    std::fs::remove_dir_all(&root).ok();
+    let _ = std::fs::remove_dir_all(&root); // best-effort cleanup
 }
 
 /// A double-quoted `cel:` scalar containing an escaped inner quote
@@ -580,7 +580,7 @@ async fn analyze_declaration_cel_parse_error_anchors_literal_block_scalar_conten
         range_at(text, line_start, line_end),
         "a `|` block scalar must anchor on its own content-lines span"
     );
-    std::fs::remove_dir_all(&root).ok();
+    let _ = std::fs::remove_dir_all(&root); // best-effort cleanup
 }
 
 /// Same as the literal (`|`) case, for the FOLDED (`>`) indicator —
@@ -605,7 +605,7 @@ async fn analyze_declaration_cel_parse_error_anchors_folded_block_scalar_content
         range_at(text, line_start, line_end),
         "a `>` folded block scalar must anchor on its own content-lines span"
     );
-    std::fs::remove_dir_all(&root).ok();
+    let _ = std::fs::remove_dir_all(&root); // best-effort cleanup
 }
 
 /// Rock-solid fallback for a GENUINELY unresolvable entry: an anchor
@@ -629,7 +629,7 @@ async fn analyze_declaration_cel_parse_error_falls_back_to_key_span_for_unresolv
         range_at(text, key_span.byte_start, key_span.byte_end),
         "an anchor-tagged entry value must fall back to the `defs:` key span"
     );
-    std::fs::remove_dir_all(&root).ok();
+    let _ = std::fs::remove_dir_all(&root); // best-effort cleanup
 }
 
 /// A declaration `.yaml` in a project whose `defaults.uses` schema imports

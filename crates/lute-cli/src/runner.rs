@@ -347,7 +347,13 @@ pub(crate) fn typed_value(value: &lute_runtime::Value) -> Json {
     }
 }
 
-#[allow(dead_code)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "only the `dump_tests` unit tests call it (and through it the two scoped forms); production emits through `activation_json_paths`"
+    )
+)]
 pub(crate) fn activation_json(
     state: &std::collections::BTreeMap<String, lute_runtime::Value>,
     types: &std::collections::BTreeMap<String, String>,

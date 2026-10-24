@@ -356,11 +356,13 @@ pub const MOCK_TOP_KEYS: &[&str] = &[
 /// preview without a new code and without a new wiring point. Enforcing it
 /// HERE rather than at each call site is the point: a mock document cannot be
 /// consumed anywhere without the gate.
-// `Diagnostic` is the crate's error currency by design (span + fixits travel
-// with every refusal); boxing it here would ripple through every `?` caller
-// for a cold path. clippy 1.96's `result_large_err` threshold is waived at
-// the four mock-parser entry points.
-#[allow(clippy::result_large_err)]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    expect(
+        clippy::result_large_err,
+        reason = "`Diagnostic` is the crate's error currency (span and fixits travel with every refusal); boxing it would ripple through every `?` caller for a cold path. On wasm32 it is under the size limit"
+    )
+)]
 pub fn parse_mock_yaml(text: &str) -> Result<MockSet, Diagnostic> {
     parse_mock_document(text, Some(MOCK_TOP_KEYS))
 }
@@ -373,14 +375,26 @@ pub fn parse_mock_yaml(text: &str) -> Result<MockSet, Diagnostic> {
 /// differently — a per-test FAILURE naming *every* offender in one run
 /// (`E-TEST-KEY`, exit 1, D-B), not a first-offender parse error (exit 2) —
 /// so it cannot delegate the gate here even for the keys the sets share.
-#[allow(clippy::result_large_err)]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    expect(
+        clippy::result_large_err,
+        reason = "`Diagnostic` is the crate's error currency (span and fixits travel with every refusal); boxing it would ripple through every `?` caller for a cold path. On wasm32 it is under the size limit"
+    )
+)]
 pub fn parse_mock_surfaces(text: &str) -> Result<MockSet, Diagnostic> {
     parse_mock_document(text, None)
 }
 
 /// The one mock parser. `legal` is `Some` for the closed mock grammar and
 /// `None` for `lute test`'s open read; see the two public wrappers.
-#[allow(clippy::result_large_err)]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    expect(
+        clippy::result_large_err,
+        reason = "`Diagnostic` is the crate's error currency (span and fixits travel with every refusal); boxing it would ripple through every `?` caller for a cold path. On wasm32 it is under the size limit"
+    )
+)]
 fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Diagnostic> {
     let span = synthetic_span();
     let value: yaml_serde::Value = yaml_serde::from_str(text).map_err(|e| {
@@ -735,7 +749,13 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
 /// and that wins, and the six `conformance/*/mock.yaml` acceptance fixtures
 /// legitimately carry none. whole-project `check`'s pass over `mocks/*.yaml` is
 /// where the key is required.
-#[allow(clippy::result_large_err)]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    expect(
+        clippy::result_large_err,
+        reason = "`Diagnostic` is the crate's error currency (span and fixits travel with every refusal); boxing it would ripple through every `?` caller for a cold path. On wasm32 it is under the size limit"
+    )
+)]
 pub fn mock_subject(text: &str) -> Result<Option<String>, Diagnostic> {
     let span = synthetic_span();
     let value: yaml_serde::Value = yaml_serde::from_str(text).map_err(|e| {

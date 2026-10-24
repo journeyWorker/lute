@@ -478,9 +478,8 @@ pub fn evaluate_rule(
     project: &ProjectRow,
     rule_decl_span: Span,
 ) -> Vec<Finding> {
-    let severity = match level_severity(rule.level) {
-        Some(s) => s,
-        None => return Vec::new(), // level: off
+    let Some(severity) = level_severity(rule.level) else {
+        return Vec::new(); // level: off
     };
     match &rule.kind {
         RuleKind::Data { when, message } => {

@@ -108,8 +108,8 @@ pub(super) fn render_json(play: &Playthrough) -> Json {
                     days,
                     raised,
                     ended,
-                    closed: _,
                     passed,
+                    ..
                 } => {
                     let days: Vec<Json> = days
                         .iter()
@@ -213,10 +213,10 @@ fn render_occasion_json(o: &mut serde_json::Map<String, Json>, body: &StepBody) 
         pick,
         candidates,
         winner,
-        decided: _,
         presented,
         judged,
         not_raised,
+        ..
     } = body
     else {
         return;

@@ -322,8 +322,8 @@ fn blank_comments_inner(line: &str, in_block_comment: &mut bool) -> (String, boo
         i += 1;
     }
 
-    // SAFETY: non-comment bytes are unchanged UTF-8; every byte inside comments
-    // is replaced with ASCII space, so the result remains valid UTF-8.
+    // Why the `expect` holds: non-comment bytes are unchanged UTF-8; every byte
+    // inside comments is replaced with ASCII space, so the result stays valid UTF-8.
     (
         String::from_utf8(out).expect("comment blanking preserves UTF-8"),
         in_string,
@@ -402,7 +402,6 @@ fn contains_close(rest: &str, name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::Node;
     use crate::parser::{E_COMMENT_UNTERMINATED, E_UNCLOSED_TAG};
 
     fn one_node(unit: &ContinuationUnit) -> &Node {

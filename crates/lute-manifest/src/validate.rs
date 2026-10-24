@@ -820,8 +820,7 @@ pub fn validate_domain(name: &str, d: &crate::snapshot::Domain) -> Vec<DomainIss
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::{AttrDecl, DirectiveDecl, Lowering};
-    use crate::types::Type;
+    use crate::schema::AttrDecl;
 
     fn dom(members: &[&str], default: Option<&str>, exits: &[&str]) -> crate::snapshot::Domain {
         crate::snapshot::Domain {

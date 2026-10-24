@@ -681,8 +681,7 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
                 days,
                 raised,
                 ended,
-                closed: _,
-                passed: _,
+                ..
             } => {
                 // dsl 0.27.0 §4: an advance that reached a finite clock's
                 // end says so on its own line.

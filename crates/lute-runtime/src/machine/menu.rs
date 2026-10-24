@@ -428,15 +428,12 @@ impl<D: Driver> Machine<D> {
             self.driver.emit(incomplete_rec(note));
             return Step::Halt;
         };
-        let opt = match options
+        let Some(opt) = options
             .iter()
             .find(|o| o.get("id").and_then(Json::as_str) == Some(&forced))
-        {
-            Some(o) => o,
-            None => {
-                self.fatal = Some(format!("choice `{branch}` has no option `{forced}`"));
-                return Step::Halt;
-            }
+        else {
+            self.fatal = Some(format!("choice `{branch}` has no option `{forced}`"));
+            return Step::Halt;
         };
         // #20 / T8.5, D-C: `lute trace` refuses a forced selection whose guard
         // decided false, and `lute test` inherits that refusal. `run` played

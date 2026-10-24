@@ -1144,7 +1144,6 @@ fn check_needles(
 /// ([`lute_runtime::session::atom_problem`]). A misspelt `notFacts` atom
 /// would hold vacuously, a `facts` one could only miss: a usage error (exit
 /// 2) with a did-you-mean, located at the atom.
-#[allow(dead_code)]
 fn check_expect_facts(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>) {
     let problems = |expect: &yaml_serde::Value| -> Vec<(&'static str, usize, String)> {
         let mut out = Vec::new();
@@ -1186,7 +1185,6 @@ fn check_expect_facts(p: &ExecProject, script: &PlayScript, errs: &mut Vec<Strin
 /// ([`lute_runtime::session::member_of`]): a typo can never
 /// hold, so it is a usage error (exit 2) with the members and the nearest
 /// one, not a miss after the play ran.
-#[allow(dead_code)]
 fn check_expect_state_values(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>) {
     let domain_of = |path: &str| -> Option<(String, Vec<String>)> {
         if let Some(d) = p.state_domains.get(path) {

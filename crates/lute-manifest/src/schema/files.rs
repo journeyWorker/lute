@@ -103,6 +103,10 @@ impl TryFrom<yaml_serde::Value> for EnumDecl {
         const SHAPES: &str = "an enum is a list of members `[calm, tense]` or \
              `{ members: [calm, tense], default: calm, exits: [tense], stops: [stop], labels: { calm: Calm } }`";
         match &v {
+            #[expect(
+                clippy::map_err_ignore,
+                reason = "the shape guide replaces serde's message on purpose; it is the pinned diagnostic text"
+            )]
             Value::Sequence(_) => yaml_serde::from_value::<Vec<String>>(v)
                 .map(EnumDecl::Members)
                 .map_err(|_| {
@@ -126,6 +130,10 @@ impl TryFrom<yaml_serde::Value> for EnumDecl {
                 if !m.contains_key("members") {
                     return Err(SchemaError::Enum(format!("needs `members:`; {SHAPES}")));
                 }
+                #[expect(
+                    clippy::map_err_ignore,
+                    reason = "the shape guide replaces serde's message on purpose; it is the pinned diagnostic text"
+                )]
                 let long = yaml_serde::from_value::<Long>(v).map_err(|_| {
                     SchemaError::Enum(format!(
                         "is misshapen: `members:` and `exits:`/`stops:` list member names and `labels:` \

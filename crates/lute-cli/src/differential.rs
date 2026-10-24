@@ -380,10 +380,9 @@ impl Driver for Oracle {
         }
         let empty = serde_json::Map::new();
         let reads = rec.get("reads").and_then(Json::as_object).unwrap_or(&empty);
-        let oracle = match expr_node_value(&rec["expr"], reads) {
-            Value::Bool(b) => b,
+        let Value::Bool(oracle) = expr_node_value(&rec["expr"], reads) else {
             // No IR-side model (`list`, an undecided read): nothing to judge.
-            _ => return,
+            return;
         };
         if rec.get("held").and_then(Json::as_bool) != Some(oracle) {
             self.disagreements.push(format!(

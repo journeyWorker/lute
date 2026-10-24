@@ -254,9 +254,8 @@ fn rule_bindings(
     // Ground producers bind unknown/open-domain variables.  A missing producer
     // is intentionally not a reason to suppress the symbolic dependency.
     for literal in &rule.body {
-        let atom = match literal {
-            BodyLiteral::Pos(a) => a,
-            _ => continue,
+        let BodyLiteral::Pos(atom) = literal else {
+            continue;
         };
         let matches: Vec<&GroundAtom> = producers
             .iter()

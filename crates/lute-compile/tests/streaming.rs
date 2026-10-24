@@ -273,10 +273,9 @@ fn finish_and_failure_both_close_the_service() {
     assert!(closed.diagnostics.iter().any(|d| d.code == E_STREAM_CLOSED));
 
     let no_shot = "---\nkind: scene\ncharacter: marina\nseason: 1\nepisode: 1\n---\n";
-    let diagnostics = match ContinuationCompiler::new(input(no_shot), IdentityTemplates::default())
-    {
-        Ok(_) => panic!("scene without a shot is not a continuation template"),
-        Err(diagnostics) => diagnostics,
+    let Err(diagnostics) = ContinuationCompiler::new(input(no_shot), IdentityTemplates::default())
+    else {
+        panic!("scene without a shot is not a continuation template")
     };
     assert!(diagnostics.iter().any(|d| d.code == E_STREAM_TEMPLATE));
 }

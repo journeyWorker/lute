@@ -492,7 +492,6 @@ impl Parser<'_> {
         }
     }
 
-    #[allow(clippy::type_complexity)]
     fn parse_document_inner(&mut self) -> (Vec<Section>, Vec<Quest>, Vec<Entry>, Vec<BundleBeat>) {
         let mut sections = Vec::new();
         let mut quests = Vec::new();

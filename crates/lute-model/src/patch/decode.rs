@@ -14,18 +14,14 @@ pub(crate) enum DecodeError {
 }
 
 impl fmt::Display for DecodeError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::AbsolutePath(path) => {
-                write!(formatter, "path `{}` must be relative", path.display())
-            }
-            Self::EscapesRoot(path) => {
-                write!(formatter, "path `{}` escapes project root", path.display())
-            }
-            Self::EmptyPath => formatter.write_str("path must not be empty"),
-            Self::MissingNodeSeparator => formatter.write_str("node key must be `kind:key`"),
-            Self::UnknownNodeKind(kind) => write!(formatter, "unknown node kind `{kind}`"),
-            Self::EmptyNodeKey => formatter.write_str("node key is empty"),
+            Self::AbsolutePath(path) => write!(f, "path `{}` must be relative", path.display()),
+            Self::EscapesRoot(path) => write!(f, "path `{}` escapes project root", path.display()),
+            Self::EmptyPath => f.write_str("path must not be empty"),
+            Self::MissingNodeSeparator => f.write_str("node key must be `kind:key`"),
+            Self::UnknownNodeKind(kind) => write!(f, "unknown node kind `{kind}`"),
+            Self::EmptyNodeKey => f.write_str("node key is empty"),
         }
     }
 }

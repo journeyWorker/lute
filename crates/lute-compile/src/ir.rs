@@ -803,45 +803,45 @@ struct TaggedRecord<'a, T: Serialize> {
 }
 
 impl Serialize for Command {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         fn tagged<S: serde::Serializer, T: Serialize>(
             cmd: &Command,
             record: &T,
-            s: S,
+            serializer: S,
         ) -> Result<S::Ok, S::Error> {
             TaggedRecord {
                 kind: cmd.kind(),
                 family: cmd.family(),
                 record,
             }
-            .serialize(s)
+            .serialize(serializer)
         }
         match self {
-            Command::Line(c) => tagged(self, c, s),
-            Command::Bg(c) => tagged(self, c, s),
-            Command::Music(c) => tagged(self, c, s),
-            Command::Sfx(c) => tagged(self, c, s),
-            Command::Vfx(c) => tagged(self, c, s),
-            Command::Actor(c) => tagged(self, c, s),
-            Command::Camera(c) => tagged(self, c, s),
-            Command::Cg(c) => tagged(self, c, s),
-            Command::Video(c) => tagged(self, c, s),
-            Command::Sequence(c) => tagged(self, c, s),
-            Command::Set(c) => tagged(self, c, s),
-            Command::Assert(c) => tagged(self, c, s),
-            Command::Retract(c) => tagged(self, c, s),
-            Command::Choice(c) => tagged(self, c, s),
-            Command::Match(c) => tagged(self, c, s),
-            Command::Hub(c) => tagged(self, c, s),
-            Command::Jump(c) => tagged(self, c, s),
-            Command::End(c) => tagged(self, c, s),
-            Command::Barrier(c) => tagged(self, c, s),
-            Command::Quest(c) => tagged(self, c, s),
-            Command::On(c) => tagged(self, c, s),
-            Command::Plugin(c) => tagged(self, c, s),
-            Command::Entry(c) => tagged(self, c, s),
-            Command::Accept(c) => tagged(self, c, s),
-            Command::Beat(c) => tagged(self, c, s),
+            Command::Line(c) => tagged(self, c, serializer),
+            Command::Bg(c) => tagged(self, c, serializer),
+            Command::Music(c) => tagged(self, c, serializer),
+            Command::Sfx(c) => tagged(self, c, serializer),
+            Command::Vfx(c) => tagged(self, c, serializer),
+            Command::Actor(c) => tagged(self, c, serializer),
+            Command::Camera(c) => tagged(self, c, serializer),
+            Command::Cg(c) => tagged(self, c, serializer),
+            Command::Video(c) => tagged(self, c, serializer),
+            Command::Sequence(c) => tagged(self, c, serializer),
+            Command::Set(c) => tagged(self, c, serializer),
+            Command::Assert(c) => tagged(self, c, serializer),
+            Command::Retract(c) => tagged(self, c, serializer),
+            Command::Choice(c) => tagged(self, c, serializer),
+            Command::Match(c) => tagged(self, c, serializer),
+            Command::Hub(c) => tagged(self, c, serializer),
+            Command::Jump(c) => tagged(self, c, serializer),
+            Command::End(c) => tagged(self, c, serializer),
+            Command::Barrier(c) => tagged(self, c, serializer),
+            Command::Quest(c) => tagged(self, c, serializer),
+            Command::On(c) => tagged(self, c, serializer),
+            Command::Plugin(c) => tagged(self, c, serializer),
+            Command::Entry(c) => tagged(self, c, serializer),
+            Command::Accept(c) => tagged(self, c, serializer),
+            Command::Beat(c) => tagged(self, c, serializer),
         }
     }
 }
@@ -1537,11 +1537,11 @@ pub enum QuestTier {
 }
 
 impl Serialize for QuestTier {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            QuestTier::Run => s.serialize_str("run"),
+            QuestTier::Run => serializer.serialize_str("run"),
             QuestTier::Season(name) => {
-                s.serialize_str(&format!("{}{name}", lute_manifest::season::SEASON_PREFIX))
+                serializer.serialize_str(&format!("{}{name}", lute_manifest::season::SEASON_PREFIX))
             }
         }
     }

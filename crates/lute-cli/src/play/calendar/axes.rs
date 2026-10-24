@@ -61,6 +61,10 @@ pub(crate) fn parse_axis_flag(raw: &str) -> Result<(String, Vec<String>), String
     let spec = spec.trim();
     let values: Vec<String> = match spec.split_once("..") {
         Some((lo, hi)) => {
+            #[expect(
+                clippy::map_err_ignore,
+                reason = "the usage message says what is wrong; the `ParseIntError` text adds nothing"
+            )]
             let bound = |s: &str| {
                 s.trim()
                     .parse::<i64>()

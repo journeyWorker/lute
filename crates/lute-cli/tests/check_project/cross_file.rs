@@ -333,7 +333,7 @@ fn check_project_broken_symlink_exits_two_not_panic() {
 #[test]
 fn check_project_nonexistent_dir_exits_two() {
     let dir = temp_dir("missing");
-    std::fs::remove_dir_all(&dir).ok();
+    let _ = std::fs::remove_dir_all(&dir); // the directory may not exist; the test needs it absent
     let out = run(&["check", "--project", dir.to_str().unwrap()]);
     assert_eq!(out.status.code(), Some(2));
 }

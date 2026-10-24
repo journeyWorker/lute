@@ -1,5 +1,5 @@
 use super::*;
-use crate::ast::{Arm, InlineNode, InterpKind, Node};
+use crate::ast::{Arm, InterpKind};
 
 #[test]
 fn classifies_set_before_generic_directive() {

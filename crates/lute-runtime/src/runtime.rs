@@ -1139,13 +1139,13 @@ fn set_request(await_: Await, request: u64) -> Await {
     match await_ {
         Await::Choice { menu, .. } => Await::Choice { request, menu },
         Await::Bridge {
-            request: _,
             tag,
             document,
             position,
             attrs,
             stamps,
             results,
+            ..
         } => Await::Bridge {
             request,
             tag,

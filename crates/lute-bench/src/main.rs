@@ -224,6 +224,10 @@ fn parse_args(args: Vec<String>) -> Result<Config, String> {
             "--root" => root = PathBuf::from(value("--root", &mut args)?),
             "--tier" => tier = value("--tier", &mut args)?,
             "--phase" => phase = value("--phase", &mut args)?,
+            #[expect(
+                clippy::map_err_ignore,
+                reason = "the usage message says what is wrong; the `ParseIntError` text adds nothing"
+            )]
             "--samples" => {
                 samples = value("--samples", &mut args)?
                     .parse()

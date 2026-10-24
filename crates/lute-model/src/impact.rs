@@ -24,6 +24,10 @@ impl ImpactTarget {
             let args = rest
                 .strip_suffix(')')
                 .ok_or_else(|| "fact target must end with `)`".to_string())?;
+            #[expect(
+                clippy::map_err_ignore,
+                reason = "the message is the pinned CLI text; S5 types this fn and keeps the fact parse error as `source()`"
+            )]
             let parsed = parse_fact(&format!("{rel}({args})"))
                 .map_err(|_| "malformed fact target".to_string())?;
             return Ok(Self {

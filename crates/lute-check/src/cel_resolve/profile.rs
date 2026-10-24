@@ -356,9 +356,8 @@ pub(crate) fn isset_hint(c: &cel_parser::ast::CallExpr) -> String {
 }
 
 pub(crate) fn legacy_fact_hint(c: &cel_parser::ast::CallExpr) -> Option<String> {
-    let pattern = match &c.args.first()?.expr {
-        Expr::Call(atom) => atom,
-        _ => return None,
+    let Expr::Call(pattern) = &c.args.first()?.expr else {
+        return None;
     };
     let args = legacy_atom_args(pattern).join(", ");
     let relation = &pattern.func_name;

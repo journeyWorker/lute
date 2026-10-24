@@ -226,7 +226,10 @@ pub fn walk_clock<F: super::WalkDriver>(
 /// there — it never skips the close of a day; `advance: day` closes the day
 /// where the clock stands), then the clock crosses to the next day's first
 /// slot and `dayStart` is raised there; each move settles the quests first.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a step entry point: the project, world, step, the advance's own inputs (`by`, `engine`, `raise`, `pick`, `choose`) and the walk driver are separate inputs from the session"
+)]
 pub fn run_advance<F: super::WalkDriver>(
     p: &ExecProject,
     w: &mut World,

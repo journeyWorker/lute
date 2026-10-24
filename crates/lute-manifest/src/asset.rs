@@ -179,9 +179,8 @@ pub fn validate_segments(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::provider::{ProviderSet, ProviderSnapshot};
-    use crate::schema::{AssetKindDecl, AssetResolve, AssetSegment};
-    use crate::types::Type;
+    use crate::provider::ProviderSnapshot;
+    use crate::schema::{AssetResolve, AssetSegment};
 
     fn emotions() -> Vec<String> {
         vec![

@@ -1151,7 +1151,6 @@ pub fn untargeted_gate_diag(on: &str, gate: &str, at: Span) -> Diagnostic {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lute_manifest::relations::KindShape;
 
     fn occasions(gate: Option<&str>) -> BTreeMap<String, OccasionDecl> {
         let mut m = BTreeMap::new();

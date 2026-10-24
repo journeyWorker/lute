@@ -732,7 +732,7 @@ fn malformed_unknown_and_null_project_permissions_fail_loading() {
             &format!("defaultProfile: p\nprofiles:\n  p:\n    plugins: {{}}\n{fragment}"),
         );
         assert!(load_project(&dir).is_err(), "must reject {tag}");
-        fs::remove_dir_all(&dir).ok();
+        let _ = fs::remove_dir_all(&dir); // best-effort cleanup
     }
 
     let profile_null = permission_project(
@@ -948,7 +948,7 @@ fn unreadable_manifest_is_one_located_e_manifest_in_plain_words() {
     let refusal = |tag: &str, body: &str| {
         let dir = write_manifest(tag, body);
         let e = load_project(&dir).expect_err("the manifest must not load");
-        fs::remove_dir_all(&dir).ok();
+        let _ = fs::remove_dir_all(&dir); // best-effort cleanup
         let tail = e
             .to_string()
             .split_once("lute.project.yaml:")

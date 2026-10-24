@@ -777,7 +777,6 @@ fn check_chain(
 /// set, or a clock window that closes ([`crate::clock_positions::chapter_window`])
 /// — and the next listed scene's effective `after:` — derived or written —
 /// cannot hold until it plays.
-#[allow(clippy::too_many_arguments)]
 fn stall(
     index: usize,
     chain: &Chain,

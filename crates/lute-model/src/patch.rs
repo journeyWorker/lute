@@ -219,8 +219,8 @@ pub enum Preserve {
     Constraints,
 }
 impl<'de> Deserialize<'de> for Preserve {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let value = Value::deserialize(d)?;
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = Value::deserialize(deserializer)?;
         let object = value
             .as_object()
             .ok_or_else(|| de::Error::custom("preserve item must be an object"))?;
@@ -262,17 +262,17 @@ impl<'de> Deserialize<'de> for Preserve {
     }
 }
 impl Serialize for Preserve {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            Self::Ids(v) => serde_json::json!({"ids":v}).serialize(s),
-            Self::LineIds => serde_json::json!({"lineIds":[]}).serialize(s),
-            Self::VoiceKeys => serde_json::json!({"voiceKeys":[]}).serialize(s),
-            Self::ChoiceEffects(v) => serde_json::json!({"choiceEffects":v}).serialize(s),
-            Self::Rewards(v) => serde_json::json!({"rewards":v}).serialize(s),
-            Self::HostContracts => serde_json::json!({"hostContracts":true}).serialize(s),
-            Self::Conditions(v) => serde_json::json!({"conditions":v}).serialize(s),
-            Self::Reachability(v) => serde_json::json!({"reachability":v}).serialize(s),
-            Self::Constraints => serde_json::json!({"constraints":true}).serialize(s),
+            Self::Ids(v) => serde_json::json!({"ids":v}).serialize(serializer),
+            Self::LineIds => serde_json::json!({"lineIds":[]}).serialize(serializer),
+            Self::VoiceKeys => serde_json::json!({"voiceKeys":[]}).serialize(serializer),
+            Self::ChoiceEffects(v) => serde_json::json!({"choiceEffects":v}).serialize(serializer),
+            Self::Rewards(v) => serde_json::json!({"rewards":v}).serialize(serializer),
+            Self::HostContracts => serde_json::json!({"hostContracts":true}).serialize(serializer),
+            Self::Conditions(v) => serde_json::json!({"conditions":v}).serialize(serializer),
+            Self::Reachability(v) => serde_json::json!({"reachability":v}).serialize(serializer),
+            Self::Constraints => serde_json::json!({"constraints":true}).serialize(serializer),
         }
     }
 }

@@ -12,11 +12,10 @@
 //! recursion structure is duplicated here rather than imported to keep the
 //! lint layer usable from LSP (where `lute-cli` isn't linked).
 
-// Field names on the public row types intentionally follow the DSL/spec
-// (`dialogueLines`, `firstStagingTag`, `sceneWords.spreadRatio`, …) so a
-// rule `when` clause reads the exact identifier authors see in the design
-// document. Silence the lint here rather than pepper each field.
-#![allow(non_snake_case)]
+#![expect(
+    non_snake_case,
+    reason = "field names on the public row types follow the DSL/spec (`dialogueLines`, `firstStagingTag`, `sceneWords.spreadRatio`, …), so a rule `when` clause reads the identifier authors see in the design document"
+)]
 
 use std::collections::{BTreeMap, BTreeSet};
 

@@ -369,7 +369,10 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
 /// [`LoadError::DuplicateId`]s beside it; and a failure also carries the
 /// manifest id when the manifest named one (so assembly says the plugin
 /// failed to load rather than that it is not installed).
-#[allow(clippy::type_complexity)]
+#[expect(
+    clippy::type_complexity,
+    reason = "the error side carries the manifest id with the errors, so assembly can tell a failed load from a missing plugin; the one caller matches it in place"
+)]
 fn load_package(
     dir: &Path,
 ) -> Result<(LoadedPlugin, Vec<LoadError>), (Option<String>, Vec<LoadError>)> {
@@ -1776,7 +1779,10 @@ fn yaml_files(path: &Path, errs: &mut Vec<LoadError>) -> Vec<std::path::PathBuf>
 /// Merge `items` — `kind` declarations from `src`, named by `key` — into
 /// `dst`, first declaration kept. `at(src, id, n)` is the byte offset of the
 /// `n`th declaration of `id` in `src`, for [`Source::admit`].
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one generic merge for every declaration kind: `kind`, `key` and `at` are the per-kind parameters, the rest is the merge state and the source"
+)]
 fn merge_named<T>(
     dst: &mut Vec<T>,
     sites: &mut Sites,

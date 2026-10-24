@@ -407,11 +407,9 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
             providers.providers.as_deref(),
             json.json,
         ),
-        Command::Init {
-            dir,
-            template,
-            json: _,
-        } => scaffold::run_init(dir.as_deref(), template.as_deref()),
+        Command::Init { dir, template, .. } => {
+            scaffold::run_init(dir.as_deref(), template.as_deref())
+        }
         Command::New(new) => {
             let (kind, name, project, occasion, target, start) = match &new {
                 NewCommand::Scene {
@@ -419,7 +417,7 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                     project,
                     occasion,
                     target,
-                    json: _,
+                    ..
                 } => (
                     "scene",
                     name,
@@ -432,18 +430,14 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                     name,
                     project,
                     start,
-                    json: _,
+                    ..
                 } => ("quest", name, project, None, None, *start),
-                NewCommand::Lore {
-                    name,
-                    project,
-                    json: _,
-                } => ("lore", name, project, None, None, false),
-                NewCommand::Schema {
-                    name,
-                    project,
-                    json: _,
-                } => ("schema", name, project, None, None, false),
+                NewCommand::Lore { name, project, .. } => {
+                    ("lore", name, project, None, None, false)
+                }
+                NewCommand::Schema { name, project, .. } => {
+                    ("schema", name, project, None, None, false)
+                }
             };
             scaffold::run_new(
                 kind,

@@ -1460,9 +1460,7 @@ mod tests {
 
     use lute_check::meta::{Namespace, StateDecl, StateSchema};
     use lute_check::resolve_components;
-    use lute_core_span::Severity;
-    use lute_manifest::types::{Literal, Type};
-    use lute_syntax::ast::{AttrValue, Node};
+    use lute_manifest::types::Literal;
 
     use super::*;
 

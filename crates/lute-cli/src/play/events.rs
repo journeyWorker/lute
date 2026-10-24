@@ -5,7 +5,7 @@
 //! Its steps become runtime inputs; its awaits are answered with the
 //! decisions and bridge answers `lute play`'s driver took for that script
 //! (the `ScriptedChoices` cursor rules, `include:` scopes and per-tag bridge
-//! queues apply in one place: [`PlayDriverState`]).
+//! queues apply in one place: [`PlayDriverState`](super::driver::PlayDriverState)).
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -20,7 +20,6 @@ use lute_runtime::session::{
 use lute_runtime::{BridgeAnswer, Runtime};
 use serde_json::Value;
 
-use super::driver::PlayDriverState;
 use super::plan::Action;
 use super::script::PlayScript;
 
@@ -94,13 +93,17 @@ pub(crate) fn script_run_with(
     // path loads the same bundle with its report data.
     let runtime =
         Runtime::load(compiled.bundle.clone()).map_err(|r| format!("{}: {}", r.code, r.message))?;
+    #[expect(
+        clippy::map_err_ignore,
+        reason = "the message is the pinned usage text; S5 types `script_run` and keeps the load error as `source()`"
+    )]
     let (project, needles) = compiled
         .load()
         .map_err(|_| format!("{} does not load", dir.display()))?;
     let (plan, world) =
         super::plan::plan_script(&project, &needles, &script, script_path, no_derive)
             .map_err(|(_, message)| message)?;
-    let mut driver: PlayDriverState = super::driver_for(&project, &script, None);
+    let mut driver = super::driver_for(&project, &script, None);
     let played = super::run::execute(
         &script,
         &plan,

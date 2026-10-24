@@ -280,7 +280,6 @@ impl StepSource {
 
     /// `msg` located at the value of the key `keys` names inside the step
     /// (else at the key, as [`Self::locate_keys`]).
-    #[allow(dead_code)]
     pub(super) fn locate_value(&self, keys: &[&str], msg: &str) -> String {
         use lute_trace::YamlStep::{Item, Key, Value};
         let mut path = Vec::with_capacity(keys.len() + 3);
@@ -361,7 +360,6 @@ impl ScriptSource {
 
     /// `file:line:col` of the value of the top-level key `keys` names, else
     /// [`Self::at`] of the key.
-    #[allow(dead_code)]
     pub(super) fn at_value(&self, keys: &[&str]) -> String {
         use lute_trace::YamlStep::{Key, Value};
         let mut path: Vec<_> = keys.iter().map(|k| Key(k)).collect();
@@ -1526,12 +1524,11 @@ mod tests {
 
     #[test]
     fn rejects_non_true_timeout_mapping() {
-        let error = match parse_script(
+        let Err(error) = parse_script(
             "choose:\n  knock: { timeout: false }\nsteps:\n  - occasion: visit\n",
             Path::new("script.play.yaml"),
-        ) {
-            Ok(_) => panic!("expected invalid timeout mapping"),
-            Err(error) => error,
+        ) else {
+            panic!("expected invalid timeout mapping")
         };
         assert!(
             error.contains("timeout mapping must set `timeout` to `true`"),

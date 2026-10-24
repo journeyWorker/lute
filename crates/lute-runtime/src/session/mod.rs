@@ -278,7 +278,6 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
     }
 
     /// dsl 0.24.0 §1: one `advance:` of the declared clock ([`run_advance`]).
-    #[allow(clippy::too_many_arguments)]
     pub fn advance(
         &mut self,
         n: usize,

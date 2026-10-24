@@ -94,7 +94,10 @@ impl LintDenyPolicy {
 /// `--config`). Returns `Ok(None)` on an absent file (defaults are fine);
 /// `Err(exit 2)` on a read failure or malformed YAML; `Ok(Some(...))` on a
 /// parsed config plus non-fatal `E-LINT-CONFIG` diagnostics.
-#[allow(clippy::type_complexity)]
+#[expect(
+    clippy::type_complexity,
+    reason = "the one caller destructures the config tuple at once; an alias for a single private use adds a name and no clarity"
+)]
 fn read_root_config(
     root: &Path,
     explicit: Option<&Path>,
@@ -139,14 +142,13 @@ fn plugin_rules_for_root(
     let (installed, _load_errs) = load_plugins_dir(&project.plugins_dir);
     // A load error surfaces through `lute check`'s project-diag channel;
     // suppress it here so `lute lint` never double-prints a `check` fault.
-    let active = match resolve_activation(
+    let Ok(active) = resolve_activation(
         &project.graph,
         project.graph.default_profile.as_str(),
         &Default::default(),
         &installed,
-    ) {
-        Ok(a) => a,
-        Err(_) => return Vec::new(),
+    ) else {
+        return Vec::new();
     };
     namespace_active_lints(&active, &installed)
 }
