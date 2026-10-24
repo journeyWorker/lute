@@ -600,6 +600,43 @@ fn a_shared_branch_id_is_warned_only_where_a_script_names_it() {
     assert_eq!(n, 1, "{text}");
 }
 
+/// dsl 0.49.0 §7.2 (#167): a `choose:` key in the steps an `include:` splices
+/// in names the id too, through nested includes (a bare step list and a
+/// `steps:` map, each relative to its includer); an include cycle ends.
+#[test]
+fn a_shared_branch_id_named_by_an_included_step_is_warned() {
+    let dir = temp_dir("branch-id-included");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write(&dir, "scenes/a.lute", &branch_scene("route"));
+    write(&dir, "scenes/b.lute", &branch_scene("route"));
+    write(
+        &dir,
+        "plays/p.play.yaml",
+        "steps:\n  - include: parts/day.yaml\n",
+    );
+    write(
+        &dir,
+        "plays/parts/day.yaml",
+        "- occasion: visit\n- include: inner/night.yaml\n",
+    );
+    write(
+        &dir,
+        "plays/parts/inner/night.yaml",
+        "steps:\n  - occasion: visit\n    choose:\n      route: c\n  - include: ../day.yaml\n",
+    );
+    let out = run(&["check", "--project", dir.to_str().unwrap()]);
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let n = text
+        .lines()
+        .filter(|l| l.contains("[W-BRANCH-ID-SHARED]"))
+        .count();
+    assert_eq!(n, 1, "{text}");
+}
+
 /// Causes print first, in the order a fix must follow: the manifest's rows,
 /// then the schemas', then each document in path order, then the rows about
 /// documents the project as a whole finds.

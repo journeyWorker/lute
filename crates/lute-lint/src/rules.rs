@@ -929,7 +929,8 @@ fn eval_asset_exists(
     let code = diagnostic_code(&rule.id);
 
     let mut out = Vec::new();
-    // `@ref` values are checked by the semantic layer, not lint.
+    // Only a quoted string names an id: `@ref` values are checked by the
+    // semantic layer, and a bare flag (`@mira{vo}`) names nothing.
     for row in ctx.attrs.iter().filter(|row| row.is_static) {
         if sentinels.contains(&row.value.to_ascii_lowercase()) {
             continue;

@@ -1020,14 +1020,29 @@ fn expand_includes(
         let Some(rel) = target.as_str().map(str::trim).filter(|s| !s.is_empty()) else {
             return Err(err("include", "`include:` must name a file".to_string()));
         };
-        let file = from.file.parent().unwrap_or(Path::new(".")).join(rel);
-        let canonical = file.canonicalize().map_err(|e| {
-            let e = lute_manifest::io_reason(&e);
-            err(
+        let read = |e: lute_model::scripts::IncludeError| match e {
+            lute_model::scripts::IncludeError::Read { file, reason } => err(
                 "include",
-                format!("cannot read `include: {rel}` ({}): {e}", file.display()),
-            )
-        })?;
+                format!(
+                    "cannot read `include: {rel}` ({}): {reason}",
+                    file.display()
+                ),
+            ),
+            lute_model::scripts::IncludeError::Yaml { file, reason } => {
+                format!("{}: malformed YAML: {reason}", file.display())
+            }
+            lute_model::scripts::IncludeError::Shape { file } => format!(
+                "{}: an included file is a list of steps or `steps: […]`",
+                file.display()
+            ),
+        };
+        let lute_model::scripts::IncludedSteps {
+            file,
+            canonical,
+            text,
+            steps: included,
+            under_steps,
+        } = lute_model::scripts::read_include(&from.file, rel).map_err(read)?;
         if stack.contains(&canonical) {
             return Err(err(
                 "include",
@@ -1037,29 +1052,6 @@ fn expand_includes(
                 ),
             ));
         }
-        let text = std::fs::read_to_string(&canonical).map_err(|e| {
-            let e = lute_manifest::io_reason(&e);
-            err(
-                "include",
-                format!("cannot read `include: {rel}` ({}): {e}", file.display()),
-            )
-        })?;
-        let value: yaml_serde::Value = yaml_serde::from_str(&text)
-            .map_err(|e| format!("{}: malformed YAML: {e}", file.display()))?;
-        let (included, under_steps) = match &value {
-            yaml_serde::Value::Sequence(items) => (Some(items.as_slice()), false),
-            yaml_serde::Value::Mapping(m) if m.len() == 1 => match m.get("steps") {
-                Some(yaml_serde::Value::Sequence(items)) => (Some(items.as_slice()), true),
-                _ => (None, false),
-            },
-            _ => (None, false),
-        };
-        let Some(included) = included else {
-            return Err(format!(
-                "{}: an included file is a list of steps or `steps: […]`",
-                file.display()
-            ));
-        };
         let include_at = here.at(&["include"]);
         let mut via = vec![include_at.clone()];
         via.extend(from.via.iter().cloned());
@@ -1083,7 +1075,7 @@ fn expand_includes(
                 segments,
                 label: label.clone(),
             };
-            expand_includes(included, &inner, stack, out)?;
+            expand_includes(&included, &inner, stack, out)?;
         }
         stack.pop();
     }

@@ -1,9 +1,9 @@
-use super::paths::referenced_paths;
+use super::paths::{referenced_paths, scene_when_slot, slot_path_reads};
 use super::quest_tree::E_QUEST_REF_UNKNOWN;
 use crate::ProjectDoc;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::semantics::cel_paths::is_reserved_quest_path;
-use lute_syntax::ast::{Document, Node};
+use lute_syntax::ast::{Arm, Document, Interp, InterpKind, Node};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -71,28 +71,130 @@ pub(crate) fn defined_quests<'a>(
     out
 }
 
+/// `quest.` then the id: where the id sits within a reserved quest path.
+fn quest_id_at(path: &str) -> Option<(usize, usize)> {
+    path.strip_prefix("quest.")
+        .and_then(|rest| rest.split('.').next())
+        .map(|id| ("quest.".len(), id.len()))
+}
+
 /// Every reserved quest path (`quest.<id>.state` /
-/// `quest.<id>.objectives.<oid>.done`) `doc` REFERENCES, paired with the
-/// [`Span`] of the enclosing [`lute_syntax::ast::CelSlot`] the reference was
-/// found in — post-parse path-level spans are unavailable, so the caller
-/// anchors on the enclosing slot (the same convention `cel_paths`'s other
-/// callers use, e.g. `defassign`). Each slot's raw text is re-parsed fresh
-/// into a scratch [`CelArena`] (mirrors `lute-trace`'s
-/// `quest_refs::collect_referenced_reserved_quest_paths` — the analogous
-/// collector for `trace`'s single-document `--state` admission, dsl 0.5.1
-/// §1.1); a slot that fails to parse contributes nothing (already reported
-/// elsewhere by the normal CEL-parse pass). Deduplicated by path — a path
-/// read twice in one document gets ONE diagnostic, anchored at its FIRST
-/// slot in [`lute_syntax::walk::for_each_cel_slot`]'s canonical pre-order.
+/// `quest.<id>.objectives.<oid>.done`) `doc` REFERENCES, paired with where
+/// it was found. A read in a [`lute_syntax::ast::CelSlot`] is anchored on the
+/// enclosing slot — post-parse path-level spans are unavailable (the same
+/// convention `cel_paths`'s other callers use, e.g. `defassign`) — at its
+/// FIRST slot in [`lute_syntax::walk::for_each_cel_slot`]'s canonical
+/// pre-order ([`referenced_paths`]; a slot that fails to parse contributes
+/// nothing, the normal CEL-parse pass reports it). A path read only outside
+/// CEL slots ([`text_and_def_quest_reads`]) is anchored at its least source
+/// offset. Deduplicated by path: a path read twice in one document gets ONE
+/// diagnostic.
 pub(crate) fn referenced_reserved_paths(
     doc: &Document,
     meta: &crate::meta::TypedMeta,
 ) -> BTreeMap<String, Span> {
-    referenced_paths(doc, meta, is_reserved_quest_path, |path| {
-        path.strip_prefix("quest.")
-            .and_then(|rest| rest.split('.').next())
-            .map(|id| ("quest.".len(), id.len()))
-    })
+    let mut out = referenced_paths(doc, meta, is_reserved_quest_path, quest_id_at);
+    let mut text: BTreeMap<String, Span> = BTreeMap::new();
+    text_and_def_quest_reads(doc, meta, &mut |path, span| {
+        if out.contains_key(&path) {
+            return;
+        }
+        let at = text.entry(path).or_insert(span);
+        if span.byte_start < at.byte_start {
+            *at = span;
+        }
+    });
+    out.extend(text);
+    out
+}
+
+/// The reserved quest paths `doc` reads outside its CEL slots (#175 review):
+/// `{{quest.<id>.…}}` interpolations in content lines and choice labels (at
+/// the interpolation), and the bodies of its inline `defs:` (at the body's
+/// value).
+fn text_and_def_quest_reads(
+    doc: &Document,
+    meta: &crate::meta::TypedMeta,
+    push: &mut impl FnMut(String, Span),
+) {
+    let mut interps = |interps: &[Interp]| {
+        for i in interps.iter().filter(|i| i.kind == InterpKind::Path) {
+            if let Some(path) =
+                crate::cel_paths::text_state_path(&i.raw).filter(|p| is_reserved_quest_path(p))
+            {
+                push(path, i.span);
+            }
+        }
+    };
+    let bodies = doc
+        .sections
+        .iter()
+        .map(|s| &s.body)
+        .chain(doc.quests.iter().map(|q| &q.body))
+        .chain(doc.entries.iter().map(|e| &e.body))
+        .chain(doc.beats.iter().map(|b| &b.body));
+    for body in bodies {
+        nodes_interps(body, &mut interps);
+    }
+    for (name, def) in &meta.defs {
+        let (body, path) = match def {
+            yaml_serde::Value::String(s) => (s, vec!["defs", name.as_str()]),
+            yaml_serde::Value::Mapping(m) => match m.get("cel") {
+                Some(yaml_serde::Value::String(s)) => (s, vec!["defs", name.as_str(), "cel"]),
+                _ => continue,
+            },
+            _ => continue,
+        };
+        let slot = lute_syntax::ast::CelSlot::raw(
+            lute_syntax::ast::CelKind::Condition,
+            body.clone(),
+            crate::beats::nested_value_span(&doc.meta, &path),
+        );
+        slot_path_reads(
+            &slot,
+            false,
+            &is_reserved_quest_path,
+            &quest_id_at,
+            &mut *push,
+        );
+    }
+}
+
+/// Every interpolation list under `nodes`, nested bodies included: each
+/// content line's, and each choice label's.
+fn nodes_interps(nodes: &[Node], f: &mut impl FnMut(&[Interp])) {
+    for node in nodes {
+        match node {
+            Node::Line(l) => f(&l.interps),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    f(&lute_syntax::scan_label_interps(&c.text, c.span));
+                    nodes_interps(&c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for c in &h.choices {
+                    f(&lute_syntax::scan_label_interps(&c.text, c.span));
+                }
+                for body in h.bodies() {
+                    nodes_interps(body, f);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                    nodes_interps(body, f);
+                }
+            }
+            Node::Objective(o) => nodes_interps(&o.body, f),
+            Node::On(o) => nodes_interps(&o.body, f),
+            Node::Directive(_)
+            | Node::Set(_)
+            | Node::Timeline(_)
+            | Node::Assert(_)
+            | Node::Retract(_) => {}
+        }
+    }
 }
 
 /// ` — did you mean `x`?` over `known`, or nothing when none is close. An
@@ -228,7 +330,9 @@ pub const W_PROJECT_CHECK_SKIPPED: &str = "W-PROJECT-CHECK-SKIPPED";
 /// [`W_PROJECT_CHECK_SKIPPED`] for `doc`, the parsed `text` of a document
 /// checked on its own (`lute check <FILE>`, the LSP): one per distinct quest
 /// id that `doc` and `imported_quest_ids` do not declare, at its first read
-/// in source order.
+/// in source order — over every occurrence of every read
+/// [`referenced_reserved_paths`] sees (CEL slots, interpolations, inline def
+/// bodies), not one per path in walk order.
 pub fn project_check_skipped(
     text: &str,
     doc: &Document,
@@ -241,25 +345,44 @@ pub fn project_check_skipped(
     let declared =
         |id: &str| imported_quest_ids.contains_key(id) || doc.quests.iter().any(|q| q.id == id);
     // The first read of each undeclared id: its least byte offset.
-    let mut first: BTreeMap<&str, (String, Span)> = BTreeMap::new();
-    let reads = referenced_reserved_paths(doc, &meta);
-    for (path, span) in &reads {
+    let mut first: BTreeMap<String, (String, Span)> = BTreeMap::new();
+    let mut read = |path: String, span: Span| {
         let Some(id) = path
             .strip_prefix("quest.")
             .and_then(|r| r.split('.').next())
+            .map(str::to_string)
         else {
-            continue;
+            return;
         };
-        if declared(id) {
-            continue;
+        if declared(&id) {
+            return;
         }
         let earlier = first
-            .get(id)
+            .get(&id)
             .is_some_and(|(_, at)| at.byte_start <= span.byte_start);
         if !earlier {
-            first.insert(id, (path.clone(), *span));
+            first.insert(id, (path, span));
         }
+    };
+    if let Some(slot) = scene_when_slot(doc, &meta) {
+        slot_path_reads(
+            &slot,
+            true,
+            &is_reserved_quest_path,
+            &quest_id_at,
+            &mut read,
+        );
     }
+    lute_syntax::walk::for_each_cel_slot(doc, &mut |slot| {
+        slot_path_reads(
+            slot,
+            false,
+            &is_reserved_quest_path,
+            &quest_id_at,
+            &mut read,
+        );
+    });
+    text_and_def_quest_reads(doc, &meta, &mut read);
     let index = lute_core_span::TextIndex::new(text);
     let mut notes: Vec<Diagnostic> = first
         .into_iter()

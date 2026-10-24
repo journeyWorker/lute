@@ -89,6 +89,89 @@ fn a_single_file_check_names_the_skipped_quest_references() {
     assert!(out.contains("[E-QUEST-REF-UNKNOWN]"), "{out}");
 }
 
+/// #175 review (F5-R1, #195): a quest read in a `{{…}}` interpolation (a
+/// content line's, a choice label's) or an inline def body is a read too.
+/// The single-file check names it; whole-project check resolves it.
+#[test]
+fn quest_reads_in_interpolations_and_inline_defs_are_judged_by_the_project() {
+    let scene = "---\nkind: scene\nid: s\ndefs:\n  late: \"quest.defQuest.state == 'complete'\"\n---\n\n## A {#a}\n\n@mira: {{quest.lineQuest.state}}\n@mira{when=\"@late\"}: Hi.\n<branch id=\"b\">\n<choice id=\"c\" text=\"Ask {{quest.labelQuest.state}}\">\n@mira: Yo.\n</choice>\n</branch>\n";
+    let dir = project(
+        "tooling-049-175-text",
+        &[
+            ("lute.project.yaml", MANIFEST),
+            ("schema/world.schema.yaml", SCHEMA),
+            ("scenes/s.lute", scene),
+        ],
+    );
+    let (code, out) = run(&dir, &["check", "scenes/s.lute", "--project", "."]);
+    assert_eq!(code, 0, "{out}");
+    let named = |code: &str, out: &str| -> Vec<String> {
+        let mut ids: Vec<String> = out
+            .lines()
+            .filter(|l| l.contains(code))
+            .filter_map(|l| {
+                l.split("quest `")
+                    .nth(1)?
+                    .split('`')
+                    .next()
+                    .map(str::to_string)
+            })
+            .collect();
+        ids.sort();
+        ids
+    };
+    assert_eq!(
+        named("[W-PROJECT-CHECK-SKIPPED]", &out),
+        ["defQuest", "labelQuest", "lineQuest"],
+        "{out}"
+    );
+    assert!(
+        out.contains("scenes/s.lute:10:8: info [W-PROJECT-CHECK-SKIPPED] `quest.lineQuest.state`"),
+        "{out}"
+    );
+
+    let (code, out) = run(&dir, &["check", "--project", "."]);
+    assert_eq!(code, 1, "{out}");
+    assert_eq!(
+        named("[E-QUEST-REF-UNKNOWN]", &out),
+        ["defQuest", "labelQuest", "lineQuest"],
+        "{out}"
+    );
+}
+
+/// #175 review (F5-R4): the note sits at the read earliest in source, even
+/// when the canonical slot walk visits a later one first (`start` before an
+/// earlier-written `fail`).
+#[test]
+fn the_skipped_note_anchors_at_the_earliest_read_in_source() {
+    let tag = "<quest id=\"later\" tier=\"run\" title=\"L\" fail=\"quest.zed.state == 'failed'\" start=\"quest.zed.state == 'complete'\">";
+    let quest = format!(
+        "---\nkind: quest\nid: acme.q\n---\n\n{tag}\n  <objective id=\"o\" title=\"O\" done=\"true\"/>\n</quest>\n"
+    );
+    let dir = project(
+        "tooling-049-175-first",
+        &[
+            ("lute.project.yaml", MANIFEST),
+            ("schema/world.schema.yaml", SCHEMA),
+            ("quests/q.lute", quest.as_str()),
+        ],
+    );
+    let (code, out) = run(&dir, &["check", "quests/q.lute", "--project", "."]);
+    assert_eq!(code, 0, "{out}");
+    let notes: Vec<&str> = out
+        .lines()
+        .filter(|l| l.contains("[W-PROJECT-CHECK-SKIPPED]"))
+        .collect();
+    assert_eq!(notes.len(), 1, "{out}");
+    let col: usize = notes[0]
+        .strip_prefix("quests/q.lute:6:")
+        .and_then(|rest| rest.split(':').next()?.parse().ok())
+        .unwrap_or_else(|| panic!("{out}"));
+    let fail = tag.find("fail=").unwrap() + 1;
+    let start = tag.find("start=").unwrap() + 1;
+    assert!(fail < col && col < start, "{col}: {out}");
+}
+
 // ---- #187 -------------------------------------------------------------
 
 fn asset_project(name: &str, lint: &str) -> lute_scratch::ScratchDir {
@@ -160,6 +243,26 @@ fn asset_exists_selectors_read_line_and_directive_attributes() {
             "scenes/intro.lute:9:42: error [L-ASSET-EXISTS] asset id `VO.missing` not in provider `asset` (`@mira` attribute `voiceAssetId`)",
             "scenes/intro.lute:11:21: error [L-ASSET-EXISTS] asset id `VO.gone` not in provider `asset` (`::sfx` attribute `voiceAssetId`)",
         ],
+        "{out}"
+    );
+}
+
+#[test]
+fn asset_exists_skips_a_bare_flag_but_checks_a_quoted_true() {
+    let dir = asset_project(
+        "tooling-049-187-flag",
+        "rules:\n  asset-exists:\n    level: error\n    options:\n      providers:\n        \"@vo\": asset\n",
+    );
+    std::fs::write(
+        dir.join("scenes/intro.lute"),
+        "---\nkind: scene\nid: intro\n---\n\n## Hall {#hall}\n\n::bg{location=\"hall\" time=\"day\"}\n@mira{vo}: Hello.\n@mira{vo=\"true\"}: Fine.\n",
+    )
+    .unwrap();
+    let (code, out) = run(&dir, &["lint", "--project", "."]);
+    assert_eq!(code, 1, "{out}");
+    assert_eq!(
+        asset_lines(&out),
+        ["scenes/intro.lute:10:11: error [L-ASSET-EXISTS] asset id `true` not in provider `asset` (`@mira` attribute `vo`)"],
         "{out}"
     );
 }

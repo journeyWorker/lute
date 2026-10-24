@@ -333,10 +333,12 @@ pub enum AttrOwner {
 pub struct AttrRow {
     pub owner: AttrOwner,
     pub key: String,
-    /// The authored value: a string's text, a `@ref`'s raw text, or `true`.
+    /// The authored value: a string's text, a `@ref`'s raw text, or `true`
+    /// for a bare flag (`@mira{vo}`).
     pub value: String,
-    /// Whether the value was authored as a literal. A `@ref` value is not
-    /// statically resolvable and is skipped.
+    /// Whether the value was authored as a quoted string, the only shape
+    /// that names an id. A `@ref` value is not statically resolvable and a
+    /// bare flag names nothing; both are skipped.
     pub is_static: bool,
     /// The value's span, for diagnostic anchoring.
     pub span: lute_core_span::Span,
@@ -497,7 +499,7 @@ impl Walker {
             let (value, is_static) = match &a.value {
                 AttrValue::Str(s) => (s.clone(), true),
                 AttrValue::Ref(slot) => (slot.raw.clone(), false),
-                AttrValue::BoolTrue => ("true".to_string(), true),
+                AttrValue::BoolTrue => ("true".to_string(), false),
             };
             self.attr_rows.push(AttrRow {
                 owner: owner.clone(),
