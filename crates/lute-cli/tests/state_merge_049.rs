@@ -143,3 +143,104 @@ fn an_extends_type_change_over_an_imported_kind_is_refused() {
         "{out}"
     );
 }
+
+// ---- #196: the schema tier ---------------------------------------------
+
+/// A base schema declaring `npc` and `run.rep` per `npc`, a second schema
+/// linking it with `link` and declaring `family` over `npc` (a kind only
+/// the base declares), and a scene using the second schema.
+fn schema_project(name: &str, link: &str, family: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(name);
+    let child = format!("{link}: a.schema.yaml\nstate:\n  run.rep: {family}\n");
+    write(
+        &dir,
+        &[
+            (
+                "a.schema.yaml",
+                "state:\n  run.rep: { type: int, default: 0, per: npc }\n\
+                 entities:\n  npc: { members: [tavi, brann] }\n",
+            ),
+            ("b.schema.yaml", &child),
+            (
+                "s.lute",
+                "---\nkind: scene\nid: s\nuses: b.schema.yaml\n---\n\n## X\n\n\
+                 @narrator: {{run.rep.tavi}}\n",
+            ),
+        ],
+    );
+    dir
+}
+
+/// The paths of the top-level `code` reports (related lines are indented).
+fn top_errors(out: &str, code: &str) -> Vec<String> {
+    let top: String = out
+        .lines()
+        .filter(|l| !l.starts_with(' '))
+        .collect::<Vec<_>>()
+        .join("\n");
+    state_errors(&top, code)
+}
+
+#[test]
+fn a_uses_peer_schema_family_over_an_imported_kind_is_a_duplicate() {
+    let dir = schema_project(
+        "state-merge-049-196-uses",
+        "uses",
+        "{ type: int, default: 3, per: npc }",
+    );
+    let (code, out) = run(&dir, &["check", "s.lute"]);
+    assert_eq!(code, 1, "{out}");
+    assert_eq!(
+        top_errors(&out, "E-USES-DUP-STATE"),
+        ["run.rep.brann", "run.rep.tavi"],
+        "{out}"
+    );
+    // Named at the family's key in the later import.
+    assert!(
+        out.contains("(`b.schema.yaml:3` and `a.schema.yaml`)"),
+        "{out}"
+    );
+}
+
+#[test]
+fn an_extends_schema_family_over_an_imported_kind_refines_the_ir() {
+    let dir = schema_project(
+        "state-merge-049-196-extends",
+        "extends",
+        "{ type: int, default: 3, per: npc }",
+    );
+    let (code, out) = run(&dir, &["compile", "s.lute", "-o", "s.json"]);
+    assert_eq!(code, 0, "{out}");
+    let ir: serde_json::Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("s.json")).unwrap()).unwrap();
+    let defaults: Vec<_> = ir["state"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|row| row["path"].as_str().unwrap().starts_with("run.rep."))
+        .map(|row| (row["path"].clone(), row["default"].clone()))
+        .collect();
+    assert_eq!(
+        defaults,
+        [
+            (serde_json::json!("run.rep.brann"), serde_json::json!(3)),
+            (serde_json::json!("run.rep.tavi"), serde_json::json!(3)),
+        ]
+    );
+}
+
+#[test]
+fn an_extends_schema_family_retyping_an_imported_kind_is_refused() {
+    let dir = schema_project(
+        "state-merge-049-196-retype",
+        "extends",
+        "{ type: string, default: x, per: npc }",
+    );
+    let (code, out) = run(&dir, &["check", "s.lute"]);
+    assert_eq!(code, 1, "{out}");
+    assert_eq!(
+        top_errors(&out, "E-EXTENDS-STATE-TYPE"),
+        ["run.rep.brann", "run.rep.tavi"],
+        "{out}"
+    );
+}

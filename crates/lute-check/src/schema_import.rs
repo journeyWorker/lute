@@ -200,6 +200,16 @@ impl Edge {
     }
 }
 
+/// One document's `per:` family over a kind another reachable schema
+/// declares (dsl 0.28.0), expanded against the merged kinds, and where its
+/// key is in that document. Merged by the rules of every family (#196).
+#[derive(Debug)]
+struct PendingFamily {
+    path: String,
+    family: crate::meta::StateFamily,
+    origin: crate::rel_schema::DeclOrigin,
+}
+
 /// The parsed subset of one imported doc kept after traversal: its declared
 /// state paths, defs, project-authored domains, entity-kind/relation decls,
 /// seed facts/rules, and `<quest id>`s (the doc's own edges are consumed
@@ -602,28 +612,6 @@ fn resolve_imports_in(
     let mut lone_families: Vec<(String, usize, crate::meta::StateFamily)> = Vec::new();
     for (canon, doc) in &parsed {
         let depth = dist.get(canon).copied().unwrap_or(0);
-        for (path, decl) in doc.state.explicit() {
-            state_by_name.entry(path.clone()).or_default().push((
-                canon.clone(),
-                depth,
-                decl.clone(),
-            ));
-        }
-        for (path, family) in doc.state.families() {
-            let lone = parsed
-                .iter()
-                .all(|(other, d)| other == canon || !d.state.declares_member_of(path, family));
-            if lone {
-                lone_families.push((path.clone(), depth, family.clone()));
-                continue;
-            }
-            for (key, decl) in doc.state.family_entries(path, family) {
-                state_by_name
-                    .entry(key)
-                    .or_default()
-                    .push((canon.clone(), depth, decl.clone()));
-            }
-        }
         for (name, v) in &doc.defs {
             def_by_name
                 .entry(name.clone())
@@ -665,6 +653,167 @@ fn resolve_imports_in(
         }
     }
 
+    // The merged entity kinds, before the state merge: a `per:` over a kind
+    // another reachable schema declares (dsl 0.28.0) is expanded against
+    // them, then merged as every other family is (#196). Their diagnostics
+    // keep their place, after the defs'.
+    let mut kind_diags = Vec::new();
+    let mut rel_kinds: BTreeMap<String, EntityKindDecl> = BTreeMap::new();
+    for (name, entries) in kind_by_name {
+        // A depth level with >= 2 distinct files declaring the same entity-kind
+        // NAME is a peer clash (spec §4/§4.1, decision D2) — never masked by a
+        // closer `extends` override, which lives at a different depth.
+        emit_level_dups(
+            "E-KIND-NAME-CLASH",
+            "entity kind",
+            &name,
+            &entries,
+            &|f| {
+                parsed
+                    .get(f)
+                    .and_then(|d| d.origins.kinds.get(&name))
+                    .cloned()
+            },
+            &order,
+            &mut kind_diags,
+            at,
+        );
+        let Some((winner, winner_depth)) = pick_winner(&entries) else {
+            continue;
+        };
+        // A deeper (`extends`-base) re-declaration must be a SUPERSET
+        // re-listing of the base's members, same shape (decision D5); a
+        // missing base member or a `members:`/`open:` shape flip is
+        // `E-EXTENDS-RELATION-SIG`. The merged entry is the child's (winner's).
+        for (_, depth, decl) in &entries {
+            if *depth > winner_depth {
+                if let Some(msg) = kind_shape_mismatch(&winner.shape, &decl.shape) {
+                    kind_diags.push(uses_diag(
+                        "E-EXTENDS-RELATION-SIG",
+                        format!(
+                            "entity kind `{name}` {msg}; an `extends` child must re-declare a superset of the base's members (dsl 0.3.0 §4.1)"
+                        ),
+                        at,
+                    ));
+                }
+            }
+        }
+        rel_kinds.insert(name, winner);
+    }
+    // dsl 0.26.0 §2.3: every imported `add:` extends the one imported
+    // declaration of its kind (file order, so the report is deterministic).
+    let kind_adds: Vec<crate::rel_schema::KindAdd> = parsed
+        .values()
+        .flat_map(|d| d.kind_adds.iter().cloned())
+        .collect();
+    kind_diags.extend(crate::rel_schema::apply_kind_adds(
+        &mut rel_kinds,
+        &kind_adds,
+        &|kind| {
+            parsed
+                .iter()
+                .filter(|(_, d)| d.rel_kinds.kinds.contains_key(kind))
+                .min_by_key(|(p, _)| (dist.get(*p).copied().unwrap_or(0), *p))
+                .and_then(|(_, d)| crate::rel_schema::kind_home(&d.origins, kind))
+        },
+    ));
+    // dsl 0.26.0 §2.3: a parent's domain holds its sub-kinds' members too
+    // (`rel.kinds` keeps the lists as declared; `build_rel_vocab` implies
+    // them once the document's own decls are overlaid), in declaration
+    // order: file by file, shallowest first, then by path.
+    let mut files: Vec<(&PathBuf, &ParsedDoc)> = parsed.iter().collect();
+    files.sort_by_key(|(p, _)| (dist.get(*p).copied().unwrap_or(0), *p));
+    let mut kind_order: Vec<String> = Vec::new();
+    for name in files.iter().flat_map(|(_, d)| &d.rel_kinds.order) {
+        if rel_kinds.contains_key(name) && !kind_order.contains(name) {
+            kind_order.push(name.clone());
+        }
+    }
+    let mut implied_kinds = rel_kinds.clone();
+    lute_manifest::relations::imply_sub_kind_members(&mut implied_kinds, &kind_order);
+
+    // dsl 0.28.0: each document's `per:` families over a kind another
+    // reachable schema declares, with where each is declared. Their faults
+    // and index entries keep their place, after the relational merge.
+    let mut shared_members = BTreeMap::new();
+    let mut pending: BTreeMap<&PathBuf, Vec<PendingFamily>> = BTreeMap::new();
+    let mut pending_index = Vec::new();
+    let mut pending_faults = Vec::new();
+    for (canon, doc) in &parsed {
+        for (p, origin) in &doc.per_pending {
+            let (families, index, faults) = crate::meta::expand_per_pending(
+                std::slice::from_ref(p),
+                &implied_kinds,
+                &mut shared_members,
+            );
+            pending
+                .entry(canon)
+                .or_default()
+                .extend(families.into_iter().map(|(path, family)| PendingFamily {
+                    path,
+                    family,
+                    origin: origin.clone(),
+                }));
+            pending_index.extend(index);
+            pending_faults.extend(
+                faults
+                    .into_iter()
+                    .map(|d| crate::rel_schema::at_origin(d, Some(origin))),
+            );
+        }
+    }
+    let no_pending = Vec::new();
+    let pending_of = |f: &PathBuf| pending.get(f).unwrap_or(&no_pending);
+    // Whether a document other than `canon` declares a member of `family`
+    // at `path`, itself or through a pending family at that path.
+    let declared_elsewhere = |canon: &PathBuf, path: &str, family: &crate::meta::StateFamily| {
+        parsed.iter().any(|(other, d)| {
+            other != canon
+                && (d.state.declares_member_of(path, family)
+                    || pending_of(other).iter().any(|p| p.path == path))
+        })
+    };
+    for (canon, doc) in &parsed {
+        let depth = dist.get(canon).copied().unwrap_or(0);
+        for (path, decl) in doc.state.explicit() {
+            state_by_name.entry(path.clone()).or_default().push((
+                canon.clone(),
+                depth,
+                decl.clone(),
+            ));
+        }
+        // The document's own families, then its pending ones: one rule
+        // for both (#196).
+        let own = doc.state.families().iter();
+        let expanded = pending_of(canon).iter().map(|p| (&p.path, &p.family));
+        for (path, family) in own.chain(expanded) {
+            if !declared_elsewhere(canon, path, family) {
+                lone_families.push((path.clone(), depth, family.clone()));
+                continue;
+            }
+            for (key, decl) in doc.state.family_entries(path, family) {
+                state_by_name
+                    .entry(key)
+                    .or_default()
+                    .push((canon.clone(), depth, decl.clone()));
+            }
+        }
+    }
+    // Where `path` is declared in `f`: its own origin, else the key of the
+    // pending family listing it.
+    let state_origin = |f: &Path, path: &str| {
+        let doc = parsed.get(f)?;
+        if let Some(o) = doc.origins.state.get(path) {
+            return Some(o.into_owned());
+        }
+        let (family, member) = path.rsplit_once('.')?;
+        pending
+            .get(&f.to_path_buf())?
+            .iter()
+            .find(|p| p.path == family && p.family.member(member).is_some())
+            .map(|p| p.origin.clone())
+    };
+
     let mut state = StateSchema::default();
     let mut state_overridable = BTreeSet::new();
     // State paths two same-level imports declare differently: which type
@@ -680,12 +829,7 @@ fn resolve_imports_in(
             "state path",
             &path,
             &entries,
-            &|f| {
-                parsed
-                    .get(f)
-                    .and_then(|d| d.origins.state.get(&path))
-                    .map(std::borrow::Cow::into_owned)
-            },
+            &|f| state_origin(f, &path),
             &order,
             &mut diags,
             at,
@@ -777,65 +921,7 @@ fn resolve_imports_in(
         }
     }
 
-    let mut rel_kinds: BTreeMap<String, EntityKindDecl> = BTreeMap::new();
-    for (name, entries) in kind_by_name {
-        // A depth level with >= 2 distinct files declaring the same entity-kind
-        // NAME is a peer clash (spec §4/§4.1, decision D2) — never masked by a
-        // closer `extends` override, which lives at a different depth.
-        emit_level_dups(
-            "E-KIND-NAME-CLASH",
-            "entity kind",
-            &name,
-            &entries,
-            &|f| {
-                parsed
-                    .get(f)
-                    .and_then(|d| d.origins.kinds.get(&name))
-                    .cloned()
-            },
-            &order,
-            &mut diags,
-            at,
-        );
-        let Some((winner, winner_depth)) = pick_winner(&entries) else {
-            continue;
-        };
-        // A deeper (`extends`-base) re-declaration must be a SUPERSET
-        // re-listing of the base's members, same shape (decision D5); a
-        // missing base member or a `members:`/`open:` shape flip is
-        // `E-EXTENDS-RELATION-SIG`. The merged entry is the child's (winner's).
-        for (_, depth, decl) in &entries {
-            if *depth > winner_depth {
-                if let Some(msg) = kind_shape_mismatch(&winner.shape, &decl.shape) {
-                    diags.push(uses_diag(
-                        "E-EXTENDS-RELATION-SIG",
-                        format!(
-                            "entity kind `{name}` {msg}; an `extends` child must re-declare a superset of the base's members (dsl 0.3.0 §4.1)"
-                        ),
-                        at,
-                    ));
-                }
-            }
-        }
-        rel_kinds.insert(name, winner);
-    }
-    // dsl 0.26.0 §2.3: every imported `add:` extends the one imported
-    // declaration of its kind (file order, so the report is deterministic).
-    let kind_adds: Vec<crate::rel_schema::KindAdd> = parsed
-        .values()
-        .flat_map(|d| d.kind_adds.iter().cloned())
-        .collect();
-    diags.extend(crate::rel_schema::apply_kind_adds(
-        &mut rel_kinds,
-        &kind_adds,
-        &|kind| {
-            parsed
-                .iter()
-                .filter(|(_, d)| d.rel_kinds.kinds.contains_key(kind))
-                .min_by_key(|(p, _)| (dist.get(*p).copied().unwrap_or(0), *p))
-                .and_then(|(_, d)| crate::rel_schema::kind_home(&d.origins, kind))
-        },
-    ));
+    diags.extend(kind_diags);
 
     let mut rel_relations: BTreeMap<String, RelationDecl> = BTreeMap::new();
     for (name, entries) in relation_by_name {
@@ -923,20 +1009,8 @@ fn resolve_imports_in(
         .iter()
         .map(|(name, dom)| (name.clone(), dom.clone()))
         .collect();
-    // dsl 0.26.0 §2.3: a parent's domain holds its sub-kinds' members too
-    // (`rel.kinds` keeps the lists as declared; `build_rel_vocab` implies
-    // them once the document's own decls are overlaid), in declaration
-    // order: file by file, shallowest first, then by path.
-    let mut files: Vec<(&PathBuf, &ParsedDoc)> = parsed.iter().collect();
-    files.sort_by_key(|(p, _)| (dist.get(*p).copied().unwrap_or(0), *p));
-    let mut kind_order: Vec<String> = Vec::new();
-    for name in files.iter().flat_map(|(_, d)| &d.rel_kinds.order) {
-        if rel_kinds.contains_key(name) && !kind_order.contains(name) {
-            kind_order.push(name.clone());
-        }
-    }
-    let mut implied_kinds = rel_kinds.clone();
-    lute_manifest::relations::imply_sub_kind_members(&mut implied_kinds, &kind_order);
+    // A parent's domain holds its sub-kinds' members too (`implied_kinds`,
+    // computed before the state merge).
     domains.extend(kinds_to_domains(&implied_kinds));
 
     fact_entries.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)).then(a.2.cmp(&b.2)));
@@ -947,38 +1021,8 @@ fn resolve_imports_in(
         .values()
         .flat_map(|doc| doc.state_index.iter().map(|(p, k)| (p.clone(), k.clone())))
         .collect();
-    // dsl 0.28.0: a `per:` over a kind another reachable schema declares.
-    let mut shared_members = BTreeMap::new();
-    for doc in parsed.values() {
-        for (pending, origin) in &doc.per_pending {
-            let (families, index, faults) = crate::meta::expand_per_pending(
-                std::slice::from_ref(pending),
-                &implied_kinds,
-                &mut shared_members,
-            );
-            for (path, family) in families {
-                // A family already at `path` stays as its members' explicit
-                // declarations, overridable as they were.
-                if family_overridable.remove(&path) {
-                    if let Some(old) = state.decls.families().get(&path) {
-                        let members: Vec<String> = state
-                            .decls
-                            .family_entries(&path, old)
-                            .map(|(key, _)| key)
-                            .collect();
-                        state_overridable.extend(members);
-                    }
-                }
-                state
-                    .decls
-                    .insert_family(path, family, crate::meta::Precedence::KeepExisting);
-            }
-            indexed_state.extend(index);
-            for d in faults {
-                diags.push(crate::rel_schema::at_origin(d, Some(origin)));
-            }
-        }
-    }
+    indexed_state.extend(pending_index);
+    diags.extend(pending_faults);
 
     // Every `<quest id>` reachable via the import graph (dsl 0.2.0 §6.3): unlike
     // `state`/`defs` above, quest-id uniqueness is NOT depth-scoped (no

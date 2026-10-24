@@ -299,6 +299,50 @@ fn an_inline_family_over_an_imported_kind_merges_identically() {
     ]);
 }
 
+/// #196: a schema's `per:` family over a kind another schema declares is
+/// merged by the family rules — an `extends` refinement, a `uses`-peer
+/// duplicate — on the shared fold as on the full merge, beside a scene that
+/// refines the refined family once more.
+#[test]
+fn a_schema_family_over_an_imported_kind_merges_identically() {
+    let scene = |schema: &str, state: &str| {
+        format!(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nextends: {schema}\n\
+             state:\n{state}---\n## Shot 1.\n@narrator{{when=\"run.bond.tavi > 1\"}}: hi\n"
+        )
+    };
+    project(&[
+        (
+            "world.schema.yaml",
+            "entities:\n  npc: { members: [tavi, brann] }\nstate:\n  \
+             run.bond: { type: int, default: 0, per: npc }\n",
+        ),
+        (
+            "refine.schema.yaml",
+            "extends: world.schema.yaml\nstate:\n  run.bond: { type: int, default: 3, per: npc }\n",
+        ),
+        (
+            "peer.schema.yaml",
+            "uses: world.schema.yaml\nstate:\n  run.bond: { type: int, default: 3, per: npc }\n",
+        ),
+        (
+            "plain.lute",
+            &scene("refine.schema.yaml", "  run.seen: { type: bool }\n"),
+        ),
+        (
+            "refine.lute",
+            &scene(
+                "refine.schema.yaml",
+                "  run.bond: { type: int, default: 5, per: npc }\n",
+            ),
+        ),
+        (
+            "peer.lute",
+            &scene("peer.schema.yaml", "  run.seen: { type: bool }\n"),
+        ),
+    ]);
+}
+
 /// 0.49.0 §4.3 (#178): a reference-typed plugin frontmatter key is checked
 /// against the document's own merged vocabulary, on the shared fold as on the
 /// full merge: `lead: b` is a member where the document `add:`s `b` to the
