@@ -43,7 +43,7 @@ fn unknown_key_line(where_: &str, key: &str, allowed: &[&str]) -> String {
 /// Every closed-key violation in one test file, both levels, in document
 /// order, each at `file:line:col` of the key (or value) it names. Empty
 /// when the file is well-keyed.
-pub(super) fn closed_key_violations(
+pub(crate) fn closed_key_violations(
     map: &yaml_serde::Mapping,
     text: &str,
     file: &Path,
@@ -188,7 +188,7 @@ fn collect_test_expect_context_references(value: &yaml_serde::Value, refs: &mut 
 }
 /// `path` with each `dir/..` pair dropped lexically, for display only
 /// (`./tests/../scenes/a.lute` → `./scenes/a.lute`). A leading `..` stays.
-pub(super) fn fold_parent_dirs(path: &Path) -> PathBuf {
+pub(crate) fn fold_parent_dirs(path: &Path) -> PathBuf {
     let mut out = PathBuf::new();
     for comp in path.components() {
         match comp {
@@ -210,7 +210,7 @@ pub(super) fn fold_parent_dirs(path: &Path) -> PathBuf {
 /// (`.test.yaml`, `.play.yaml`), byte-sorted for deterministic order —
 /// mirrors [`crate::find_lute_files`]'s walk (stack, symlinked dirs not
 /// followed).
-pub(super) fn find_files_with_suffix(dir: &Path, suffix: &str) -> std::io::Result<Vec<PathBuf>> {
+pub(crate) fn find_files_with_suffix(dir: &Path, suffix: &str) -> std::io::Result<Vec<PathBuf>> {
     let mut out = Vec::new();
     let mut stack = vec![dir.to_path_buf()];
     while let Some(d) = stack.pop() {

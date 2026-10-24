@@ -27,7 +27,7 @@ pub(crate) struct ReachEnv<'a> {
 
 impl<'a> ReachEnv<'a> {
     /// `base` over the environment of the entry or beat written at `span`.
-    pub(super) fn ctx_at<'c>(&self, base: &DecideCtx<'c>, span: Span) -> DecideCtx<'c>
+    pub(crate) fn ctx_at<'c>(&self, base: &DecideCtx<'c>, span: Span) -> DecideCtx<'c>
     where
         'a: 'c,
     {
@@ -40,7 +40,7 @@ impl<'a> ReachEnv<'a> {
     }
 
     /// The members of the kind or `for=` beat written at `span`.
-    pub(super) fn members_at(&self, span: Span) -> Option<&'a [String]> {
+    pub(crate) fn members_at(&self, span: Span) -> Option<&'a [String]> {
         self.folded?
             .env
             .occasion_scopes
@@ -51,14 +51,14 @@ impl<'a> ReachEnv<'a> {
 /// One body's walk context: [`ReachEnv::def_types`], the body's own
 /// [`Assumption`], the document's `::jump` targets (dsl 0.27.0), and the
 /// pick records the enclosing options hold (dsl 0.28.0, [`Pick`]).
-pub(super) struct Reach<'a> {
-    pub(super) def_types: &'a BTreeMap<String, Type>,
-    pub(super) assume: Option<&'a Assumption>,
-    pub(super) targets: &'a BTreeSet<String>,
-    pub(super) picks: &'a [super::picks::Pick],
+pub(crate) struct Reach<'a> {
+    pub(crate) def_types: &'a BTreeMap<String, Type>,
+    pub(crate) assume: Option<&'a Assumption>,
+    pub(crate) targets: &'a BTreeSet<String>,
+    pub(crate) picks: &'a [super::picks::Pick],
     /// The body runs at most once per scene play: a scene's shots, outside
     /// any hub or `<on>` handler ([`Pick::on_return`]).
-    pub(super) once: bool,
+    pub(crate) once: bool,
 }
 
 /// A beat's / entry's `when` as an assumption over the body it guards (dsl
@@ -72,9 +72,9 @@ pub(super) struct Reach<'a> {
 /// be there — those the guard holds for, judged once per member before the
 /// body runs, so nothing the body writes changes them.
 pub(crate) struct Assumption {
-    pub(super) raw: String,
-    pub(super) conjuncts: Vec<(String, SolutionSet)>,
-    pub(super) present: crate::defassign::Assigned,
+    pub(crate) raw: String,
+    pub(crate) conjuncts: Vec<(String, SolutionSet)>,
+    pub(crate) present: crate::defassign::Assigned,
 }
 
 impl Assumption {
@@ -207,7 +207,7 @@ pub(crate) fn dead_members(
 }
 
 /// `occasion.target` is one of `members` other than `dead`.
-pub(super) fn member_conjunct(members: &[String], dead: &[String]) -> (String, SolutionSet) {
+pub(crate) fn member_conjunct(members: &[String], dead: &[String]) -> (String, SolutionSet) {
     let live = members
         .iter()
         .filter(|m| !dead.contains(m))
@@ -222,7 +222,7 @@ pub(super) fn member_conjunct(members: &[String], dead: &[String]) -> (String, S
 /// Whether a beat's or entry's `when` (`raw`) never holds, and why: decided
 /// false as written (naming a finite clock's end when that is the cause),
 /// or, in a kind or `for=` beat answering `members`, false for each of them.
-pub(super) fn never_holds(
+pub(crate) fn never_holds(
     raw: &str,
     members: Option<&[String]>,
     defs: &DefTable<'_>,

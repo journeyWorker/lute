@@ -109,7 +109,7 @@ fn nodes(list: &[Node], out: &mut Vec<Diagnostic>) {
 /// `E-AUTHOR-CASE` for every authored key of `doc` containing `_`: the
 /// residual attributes of every line, directive and tag, and the top-level
 /// frontmatter keys.
-pub(super) fn check_author_case(doc: &Document) -> Vec<Diagnostic> {
+pub(crate) fn check_author_case(doc: &Document) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     if let Ok(yaml_serde::Value::Mapping(map)) = yaml_serde::from_str::<yaml_serde::Value>(
         crate::chapters::authored_yaml(&doc.meta.raw_yaml),

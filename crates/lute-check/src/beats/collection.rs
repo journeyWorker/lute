@@ -28,7 +28,7 @@ pub const ONCE_VALUES: &str = "`run` (once per run, the default), `user` (once e
      `day` / `slot` / `week` (once per clock day / slot / week), `season:<name>` (once per \
      window of a declared season), or `false` (repeatable)";
 
-pub(super) fn parse_advances(v: &yaml_serde::Value) -> Option<AdvanceSpec> {
+pub(crate) fn parse_advances(v: &yaml_serde::Value) -> Option<AdvanceSpec> {
     match v {
         yaml_serde::Value::String(s) if s == "slot" => Some(AdvanceSpec::Slot),
         yaml_serde::Value::String(s) if s == "day" => Some(AdvanceSpec::Day),
@@ -91,7 +91,7 @@ pub fn advances_from_attr(
     Some(v)
 }
 
-pub(super) fn parse_advances_text(raw: &str) -> Option<AdvanceSpec> {
+pub(crate) fn parse_advances_text(raw: &str) -> Option<AdvanceSpec> {
     match raw {
         "slot" => Some(AdvanceSpec::Slot),
         "day" => Some(AdvanceSpec::Day),

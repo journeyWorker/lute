@@ -8,7 +8,7 @@ use super::{
 /// Invalid entries are omitted from the typed declarations while retaining a
 /// diagnostic at the entry's textual span. A malformed rule also records its
 /// head so downstream checks can distinguish failed derivations.
-pub(super) fn lift_datalog(
+pub(crate) fn lift_datalog(
     meta: &Meta,
     map: &yaml_serde::Mapping,
     typed: &mut TypedMeta,

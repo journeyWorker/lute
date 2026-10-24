@@ -10,7 +10,7 @@ use super::{
 /// cell: the runner's fixpoint, as [`world_view`] derives them.
 ///
 /// [`world_view`]: lute_runtime::session::world_view
-pub(super) fn cell_facts(p: &ExecProject, w: &World, rels: &[FactsRel]) -> Vec<Vec<Fact>> {
+pub(crate) fn cell_facts(p: &ExecProject, w: &World, rels: &[FactsRel]) -> Vec<Vec<Fact>> {
     if rels.is_empty() {
         return Vec::new();
     }
@@ -32,7 +32,7 @@ pub(super) fn cell_facts(p: &ExecProject, w: &World, rels: &[FactsRel]) -> Vec<V
 /// its declared domain, where no beat answers and every cell would read as
 /// a hole). A targeted occasion none of whose beats names a target gets one
 /// column its untargeted beats answer.
-pub(super) fn columns(
+pub(crate) fn columns(
     p: &ExecProject,
     occasions: &[String],
     targets: &[String],
@@ -120,7 +120,7 @@ pub(super) fn columns(
 
 /// One column at one cell, recording every candidate's verdict in `seen`
 /// (keyed by its `ProjectIndex.beats` row).
-pub(super) fn evaluate(
+pub(crate) fn evaluate(
     p: &ExecProject,
     w: &World,
     col: &Column,

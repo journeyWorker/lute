@@ -285,7 +285,7 @@ pub fn occasion_target_ok(
         .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
     // A long domain is named by its first few members; the did-you-mean
     // carries the one that matters.
-    pub(super) const SHOWN: usize = 8;
+    pub(crate) const SHOWN: usize = 8;
     let mut listed = domain
         .iter()
         .take(SHOWN)
@@ -482,7 +482,7 @@ pub(crate) fn occasion_target_scope_message() -> String {
 
 /// G-7: [`occasion_target_scope_message`] for a use of `@def`, whose body
 /// (`body`, as declared) reads [`OCCASION_TARGET`].
-pub(super) fn occasion_target_def_scope_message(def: &str, body: &str) -> String {
+pub(crate) fn occasion_target_def_scope_message(def: &str, body: &str) -> String {
     format!(
         "`@{def}` reads `{OCCASION_TARGET}` (`{def}: {}`), which has a value only in a beat or \
          entry that targets a kind (`target=\"kind:<kind>\"`) or runs once for each member of \
@@ -589,7 +589,7 @@ pub(crate) fn check_occasion_target_scope(
             faults.extend(fault(&slot.raw).map(|m| (slot.span, m)));
         }
     });
-    pub(super) fn lines<'a>(nodes: &'a [Node], f: &mut impl FnMut(&'a lute_syntax::ast::Line)) {
+    pub(crate) fn lines<'a>(nodes: &'a [Node], f: &mut impl FnMut(&'a lute_syntax::ast::Line)) {
         for n in nodes {
             match n {
                 Node::Line(l) => f(l),

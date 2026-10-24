@@ -20,7 +20,7 @@ use super::{
 /// A free function (not a `Walker` method) so BOTH the scene walk and the
 /// component-body walk (dsl §13) validate interps with their OWN `Env`: a scene's
 /// `state:`/`defs:` or a component's `@param` namespace, respectively.
-pub(super) fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
+pub(crate) fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<Diagnostic>) {
     // An interpolation is content `Text`, never a `<match>` arm test, so `$` is
     // out of scope there (dsl §8.2). Resolve in a forced NON-match context so a
     // `{{$}}` (which the parser classifies as a `Path` raw `"$"`) fires
@@ -108,7 +108,7 @@ pub(super) fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<D
 /// param — or (dsl 0.27.0 §7) an entity-kind / named-enum param, as its
 /// label — renders: expansion splices the `::use` site's literal into the
 /// text (`check_use_interp_args` holds the caller to a literal).
-pub(super) fn check_interp_referent(
+pub(crate) fn check_interp_referent(
     referent: &str,
     interp: &Interp,
     interp_ctx: &Ctx<'_>,
@@ -187,7 +187,7 @@ pub(super) fn check_interp_referent(
 /// §7.6 renderable types for an interpolated `@ref`: a **number** (shortest
 /// decimal), a **bool** (`true`/`false`), or an **enum** (member text). Any other
 /// produced type cannot render inside `{{…}}` and is a static error.
-pub(super) fn is_renderable(ty: &Type) -> bool {
+pub(crate) fn is_renderable(ty: &Type) -> bool {
     matches!(
         ty,
         Type::Int | Type::Double | Type::Bool | Type::Enum(_) | Type::EnumFromOption(_)
@@ -199,7 +199,7 @@ pub(super) fn is_renderable(ty: &Type) -> bool {
 /// [`E_CEL_PROFILE`] (the closed-CEL-surface code) — a bare CEL expression here
 /// is CEL used where the profile does not admit it (§7.6: the only CEL inside
 /// `{{…}}` is a `@fn(args)` argument).
-pub(super) fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
+pub(crate) fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
     // dsl 0.28.0 (T3-4): conditional text is a line with its own `when`; a
     // `@def` only helps a computed number (a string def is not shown either,
     // `E-REF-TYPE` — ledger LG28-2).
@@ -315,7 +315,7 @@ const HINT_LIST: &str = "`:ordinal`, `:ordinalWord`, `:cardinalWord` and \
 /// `E-REF-TYPE`, the interpolation rendering-type code. An unresolved
 /// referent (already `E-UNDECLARED` / `E-UNDECLARED-REF`) and one
 /// `type_flagged` as non-renderable already are not flagged again.
-pub(super) fn check_interp_format(
+pub(crate) fn check_interp_format(
     interp: &Interp,
     env: &crate::ctx::Env,
     type_flagged: bool,
@@ -485,7 +485,7 @@ pub const W_TEXT_LOOKS_LIKE_REF: &str = "W-TEXT-LOOKS-LIKE-REF";
 /// `@<name>` and that name is declared in this scope (a scene's `defs:`, a
 /// component's `params:` — both live in `ctx.env.defs`), the author almost
 /// certainly meant the interpolation. Anchored at the line text.
-pub(super) fn text_looks_like_ref(l: &lute_syntax::ast::Line, ctx: &Ctx<'_>) -> Option<Diagnostic> {
+pub(crate) fn text_looks_like_ref(l: &lute_syntax::ast::Line, ctx: &Ctx<'_>) -> Option<Diagnostic> {
     let name = l.text.trim().strip_prefix('@')?;
     if !lute_manifest::ident::is_name(name) || !ctx.env.defs.contains(name) {
         return None;

@@ -2,7 +2,7 @@ use super::*;
 
 /// Which beats' unknown `when` leaves a cell undecided, in words
 /// (inn.oldFriend's `when` is unknown).
-pub(super) fn undecided_why(unknown: &[(String, String)]) -> String {
+pub(crate) fn undecided_why(unknown: &[(String, String)]) -> String {
     let ids: Vec<&str> = unknown.iter().map(|(id, _)| id.as_str()).collect();
     match ids.as_slice() {
         [one] => format!("{one}'s `when` is unknown"),
@@ -15,7 +15,7 @@ pub(super) fn undecided_why(unknown: &[(String, String)]) -> String {
 /// never raises the occasion, `gate false` when the occasion's `raisedWhen`
 /// is false there, `-` when nothing is presented; `+N` counts the eligible
 /// beats it shadows.
-pub(super) fn cell_text(o: &Outcome) -> String {
+pub(crate) fn cell_text(o: &Outcome) -> String {
     let mut s = if o.not_raised {
         "not raised".to_string()
     } else if o.undecided {
@@ -33,7 +33,7 @@ pub(super) fn cell_text(o: &Outcome) -> String {
     s
 }
 
-pub(super) fn cell_label(cell: &Cell) -> String {
+pub(crate) fn cell_label(cell: &Cell) -> String {
     cell.at
         .iter()
         .map(|(path, text, _)| format!("{path}={text}"))
@@ -42,7 +42,7 @@ pub(super) fn cell_label(cell: &Cell) -> String {
 }
 
 /// A cell's values alone, `/`-joined — a presence table's column head.
-pub(super) fn cell_short(cell: &Cell) -> String {
+pub(crate) fn cell_short(cell: &Cell) -> String {
     if cell.at.is_empty() {
         return "(start)".to_string();
     }
@@ -54,7 +54,7 @@ pub(super) fn cell_short(cell: &Cell) -> String {
 }
 
 /// `occasion[@target]` of a beat.
-pub(super) fn beat_on(b: &IndexBeat) -> String {
+pub(crate) fn beat_on(b: &IndexBeat) -> String {
     match &b.target {
         Some(t) => format!("{}@{t}", b.on),
         None => b.on.clone(),
@@ -62,7 +62,7 @@ pub(super) fn beat_on(b: &IndexBeat) -> String {
 }
 
 /// Left-aligned columns two spaces apart; trailing blanks trimmed.
-pub(super) fn table(rows: &[Vec<String>]) -> String {
+pub(crate) fn table(rows: &[Vec<String>]) -> String {
     let mut out = String::new();
     let widths: Vec<usize> = (0..rows.first().map_or(0, Vec::len))
         .map(|i| rows.iter().map(|r| r[i].chars().count()).max().unwrap_or(0))
@@ -84,7 +84,7 @@ pub(super) fn table(rows: &[Vec<String>]) -> String {
 
 /// `(varies, held)` of a per-occasion column: the axes (or clock parts) it
 /// varies over and `(path, value text, value)` of every one it is held at.
-pub(super) fn pinned(pins: &[Pin], axes: &[Axis]) -> (Vec<String>, Vec<(String, String, Value)>) {
+pub(crate) fn pinned(pins: &[Pin], axes: &[Axis]) -> (Vec<String>, Vec<(String, String, Value)>) {
     let mut varies = Vec::new();
     let mut held = Vec::new();
     for (pin, axis) in pins.iter().zip(axes) {
@@ -118,7 +118,7 @@ pub(super) fn pinned(pins: &[Pin], axes: &[Axis]) -> (Vec<String>, Vec<(String, 
 /// members, then any other first argument some cell holds), its text at
 /// every cell — the remaining arguments, `yes` for a unary relation, `-`
 /// when nothing holds. A nullary relation is one row under its name.
-pub(super) fn fact_rows(ri: usize, rel: &FactsRel, cells: &[Cell]) -> Vec<(String, Vec<String>)> {
+pub(crate) fn fact_rows(ri: usize, rel: &FactsRel, cells: &[Cell]) -> Vec<(String, Vec<String>)> {
     if rel.args.is_empty() {
         let row = cells
             .iter()
@@ -162,7 +162,7 @@ pub(super) fn fact_rows(ri: usize, rel: &FactsRel, cells: &[Cell]) -> Vec<(Strin
         .collect()
 }
 
-pub(super) fn render_text(dir: &Path, r: &Report<'_>) -> String {
+pub(crate) fn render_text(dir: &Path, r: &Report<'_>) -> String {
     let (axes, columns, cells) = (r.axes, r.columns, r.cells);
     let mut out = String::new();
     let pruned = match r.pruned {
@@ -366,7 +366,7 @@ pub(super) fn render_text(dir: &Path, r: &Report<'_>) -> String {
     out
 }
 
-pub(super) fn render_json(r: &Report<'_>) -> Json {
+pub(crate) fn render_json(r: &Report<'_>) -> Json {
     let col_json = |c: &Column| {
         let mut m = serde_json::Map::new();
         m.insert("occasion".into(), json!(c.occasion));
@@ -484,7 +484,7 @@ pub(super) fn render_json(r: &Report<'_>) -> Json {
 }
 
 /// RFC 4180 field: quoted when it holds a comma, quote or newline.
-pub(super) fn csv_field(s: &str) -> String {
+pub(crate) fn csv_field(s: &str) -> String {
     if s.contains([',', '"', '\n', '\r']) {
         format!("\"{}\"", s.replace('"', "\"\""))
     } else {
@@ -492,7 +492,7 @@ pub(super) fn csv_field(s: &str) -> String {
     }
 }
 
-pub(super) fn csv_line(out: &mut String, fields: &[String]) {
+pub(crate) fn csv_line(out: &mut String, fields: &[String]) {
     let _ = writeln!(
         out,
         "{}",
@@ -509,7 +509,7 @@ pub(super) fn csv_line(out: &mut String, fields: &[String]) {
 /// `;`-joined, a `facts:<relation>` field per `--relation`. The beats eligible
 /// somewhere but never presented follow as a second table after a blank
 /// line, when there are any.
-pub(super) fn render_csv(r: &Report<'_>) -> String {
+pub(crate) fn render_csv(r: &Report<'_>) -> String {
     let mut out = String::new();
     let mut head: Vec<String> = r.axes.iter().map(|a| a.path.clone()).collect();
     head.extend(

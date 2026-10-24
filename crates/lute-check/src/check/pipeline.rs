@@ -30,7 +30,7 @@ use super::{
 /// success or push an error on failure; it never reorders/inserts/removes
 /// slots), so zipping the two same-order sequences pairs each error with its
 /// own slot 1:1.
-pub(super) fn cel_parse_diagnostics(
+pub(crate) fn cel_parse_diagnostics(
     doc: &Document,
     cel_errors: Vec<CelParseError>,
 ) -> Vec<Diagnostic> {

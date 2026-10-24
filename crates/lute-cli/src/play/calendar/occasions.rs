@@ -4,13 +4,13 @@ use super::{clock_axis_at, Apply, Axis, BTreeSet};
 /// One `--occasion`: its name and, after `@`, the axes it varies over
 /// (`path`) or is held at (`path=value`); every axis it does not name is
 /// held at its first value.
-pub(super) struct OccasionSpec<'a> {
-    pub(super) raw: &'a str,
-    pub(super) name: &'a str,
-    pub(super) only: Option<Vec<(&'a str, Option<&'a str>)>>,
+pub(crate) struct OccasionSpec<'a> {
+    pub(crate) raw: &'a str,
+    pub(crate) name: &'a str,
+    pub(crate) only: Option<Vec<(&'a str, Option<&'a str>)>>,
 }
 
-pub(super) fn parse_occasion(raw: &str) -> Result<OccasionSpec<'_>, String> {
+pub(crate) fn parse_occasion(raw: &str) -> Result<OccasionSpec<'_>, String> {
     let Some((name, list)) = raw.split_once('@') else {
         return Ok(OccasionSpec {
             raw,
@@ -45,7 +45,7 @@ pub(super) fn parse_occasion(raw: &str) -> Result<OccasionSpec<'_>, String> {
 
 /// How a per-occasion column (`--occasion-axes O=…`) treats one axis.
 #[derive(Clone)]
-pub(super) enum Pin {
+pub(crate) enum Pin {
     /// The occasion varies over the axis.
     Varies,
     /// Held at one value index.
@@ -70,7 +70,7 @@ pub(super) enum Pin {
 /// `clock.slot` or by the clock's own day / slot paths (`run.day`); an
 /// unnamed part is held at its first value — an unnamed slot of the clock's
 /// `raise.dayEnd` occasion at the day's last slot, where the clock raises it.
-pub(super) fn occasion_pins(
+pub(crate) fn occasion_pins(
     spec: &OccasionSpec<'_>,
     axes: &[Axis],
     clock: Option<&lute_manifest::clock::ClockDecl>,
@@ -205,30 +205,30 @@ pub(super) fn occasion_pins(
 }
 
 /// What one column decides at one cell.
-pub(super) struct Outcome {
+pub(crate) struct Outcome {
     /// `select: first`: the beat presented; `None` when nothing is eligible
     /// or an unknown `when` decides the outcome.
-    pub(super) winner: Option<String>,
+    pub(crate) winner: Option<String>,
     /// Every beat presented, in order: the winner, or the whole offered /
     /// sequenced list.
-    pub(super) presented: Vec<String>,
+    pub(crate) presented: Vec<String>,
     /// Eligible but not presented (shadowed by the winner).
-    pub(super) shadowed: Vec<String>,
+    pub(crate) shadowed: Vec<String>,
     /// `(id, why)` of every candidate whose `when` evaluated unknown.
-    pub(super) unknown: Vec<(String, String)>,
+    pub(crate) unknown: Vec<(String, String)>,
     /// An unknown `when` decides this outcome — play would halt here.
-    pub(super) undecided: bool,
+    pub(crate) undecided: bool,
     /// The occasion's `raisedWhen` gate is false here: the engine would not
     /// raise it, so nothing is presented.
-    pub(super) gated: bool,
+    pub(crate) gated: bool,
     /// With `--axis clock`: the clock's `raise:` map never raises the
     /// occasion at this position, so nothing is judged here.
-    pub(super) not_raised: bool,
+    pub(crate) not_raised: bool,
 }
 
 impl Outcome {
     /// The outcome where the clock does not raise the occasion.
-    pub(super) fn not_raised() -> Self {
+    pub(crate) fn not_raised() -> Self {
         Outcome {
             winner: None,
             presented: Vec::new(),
@@ -247,14 +247,14 @@ impl Outcome {
 /// there and `dayStart` is never raised on its day — unless the clock
 /// declares `raiseAtStart: true`, when the slot occasion and `dayStart` are
 /// raised where the run starts.
-pub(super) struct RaiseRule {
-    pub(super) rule: lute_check::clock_positions::RaiseRule,
-    pub(super) start: lute_manifest::clock::ClockAt,
+pub(crate) struct RaiseRule {
+    pub(crate) rule: lute_check::clock_positions::RaiseRule,
+    pub(crate) start: lute_manifest::clock::ClockAt,
 }
 
 impl RaiseRule {
     /// The rule of `occasion`; `None` when the clock does not raise it.
-    pub(super) fn of(
+    pub(crate) fn of(
         clock: &lute_manifest::clock::ClockDecl,
         occasion: &str,
         start: lute_manifest::clock::ClockAt,
@@ -266,7 +266,7 @@ impl RaiseRule {
     /// Whether the clock raises the occasion at `at`. `slot_named`: the
     /// column holds the slot the user named — an `advance: day` raises
     /// `dayEnd` at whatever slot the clock stands.
-    pub(super) fn raises(
+    pub(crate) fn raises(
         &self,
         clock: &lute_manifest::clock::ClockDecl,
         at: lute_manifest::clock::ClockAt,
@@ -276,7 +276,7 @@ impl RaiseRule {
     }
 
     /// Where the clock raises `occasion`, in words.
-    pub(super) fn describe(
+    pub(crate) fn describe(
         &self,
         clock: &lute_manifest::clock::ClockDecl,
         occasion: &str,
@@ -287,7 +287,7 @@ impl RaiseRule {
 
 /// `positions` in words, in clock order: `day 1 (Mon) morning, afternoon and
 /// night; day 2 (Tue) morning`.
-pub(super) fn describe_positions(
+pub(crate) fn describe_positions(
     clock: &lute_manifest::clock::ClockDecl,
     positions: &BTreeSet<lute_manifest::clock::ClockAt>,
 ) -> String {

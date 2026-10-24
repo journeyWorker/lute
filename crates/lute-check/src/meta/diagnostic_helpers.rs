@@ -51,7 +51,7 @@ pub fn infer_meta_kind_from_shape(meta: &Meta, has_body: bool) -> Option<MetaKin
 }
 
 /// Describe a frontmatter value that has NO [`Literal`] representation.
-pub(super) fn unrepresentable_yaml(v: &yaml_serde::Value) -> &'static str {
+pub(crate) fn unrepresentable_yaml(v: &yaml_serde::Value) -> &'static str {
     match v {
         yaml_serde::Value::Null => "null",
         yaml_serde::Value::Tagged(_) => "a tagged value",

@@ -3,7 +3,7 @@ use super::{fold_parent_dirs, ArmRow, CoverageAccum, CoverageUnit, Path, PathBuf
 /// Fold one report's decisions + coverage counts into the run accumulator:
 /// its document, the bundle beats / entries it presented (T3-20), its
 /// branch/hub picks under the canonical site a play's picks share.
-pub(super) fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
+pub(crate) fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport) {
     cov.paths += 1;
     let canonical = canonical_key(std::path::Path::new(&report.file));
     // OT-F-14: one spelling per file, whichever test directory traced it.
@@ -65,7 +65,7 @@ pub(super) fn accumulate_coverage(cov: &mut CoverageAccum, report: &TraceReport)
 /// `::use` (SD-15) — the component's own `file:line:column` and which use
 /// in which document, so a component's match never merges into its host's
 /// construct at the same position, nor into another use's.
-pub(super) fn arm_row_key(
+pub(crate) fn arm_row_key(
     file: &str,
     site: &str,
     component: Option<&lute_trace::ComponentSite>,
@@ -90,7 +90,7 @@ pub(super) fn arm_row_key(
 /// components are out (untestable, see [`run_test`]); a lore document's
 /// units are its bundle beats (`<document id>.<beat id>`) and entries; any
 /// other document is one unit.
-pub(super) fn coverage_units(root: &Path) -> std::io::Result<Vec<CoverageUnit>> {
+pub(crate) fn coverage_units(root: &Path) -> std::io::Result<Vec<CoverageUnit>> {
     let mut out = Vec::new();
     let paths: Vec<PathBuf> = crate::find_lute_files(root)?
         .into_iter()
@@ -192,7 +192,7 @@ pub(super) fn coverage_units(root: &Path) -> std::io::Result<Vec<CoverageUnit>> 
 /// the difference would report every document as untested without this.
 /// Canonical paths are absolute and machine-specific and are used for the
 /// comparison ONLY; the printed list keeps the walk's own display paths.
-pub(super) fn canonical_key(p: &std::path::Path) -> String {
+pub(crate) fn canonical_key(p: &std::path::Path) -> String {
     std::fs::canonicalize(p)
         .unwrap_or_else(|_| p.to_path_buf())
         .display()
@@ -204,7 +204,7 @@ pub(super) fn canonical_key(p: &std::path::Path) -> String {
 /// whatever spelling reached it (a test's `file: ../scenes/a.lute`, a
 /// play's project root, the nearest manifest's absolute directory); a path
 /// outside that directory keeps its `..`-folded spelling.
-pub(super) fn display_path(p: &Path) -> String {
+pub(crate) fn display_path(p: &Path) -> String {
     static CWD: std::sync::LazyLock<Option<PathBuf>> =
         std::sync::LazyLock::new(|| std::env::current_dir().and_then(std::fs::canonicalize).ok());
     let rel = CWD.as_deref().and_then(|cwd| {

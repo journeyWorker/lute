@@ -30,7 +30,7 @@ fn quests_json(quests: &[QuestAdvance]) -> Json {
     )
 }
 
-pub(super) fn render_json(play: &Playthrough) -> Json {
+pub(crate) fn render_json(play: &Playthrough) -> Json {
     let steps: Vec<Json> = play
         .steps
         .iter()

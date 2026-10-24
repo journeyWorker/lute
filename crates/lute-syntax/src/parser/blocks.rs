@@ -214,7 +214,7 @@ impl Parser<'_> {
 
     /// Report the `</tag>` at `cursor` as closing no open block, naming the
     /// block that is open there (if any).
-    pub(super) fn report_stray_close(&mut self) {
+    pub(crate) fn report_stray_close(&mut self) {
         if close_tag_name(&self.trimmed(self.cursor)).as_deref() == Some("scene") {
             self.report_removed_scene_tag(self.cursor);
             return;
@@ -237,7 +237,7 @@ impl Parser<'_> {
     /// `<return>` outside the block it belongs in: reported once, then parsed
     /// whole — body and close — and dropped, so none of its lines raises
     /// anything further.
-    pub(super) fn parse_misplaced_child(&mut self, tag: &str) {
+    pub(crate) fn parse_misplaced_child(&mut self, tag: &str) {
         let parents = match tag {
             "choice" => "a `<branch>` or `<hub>`",
             "when" | "otherwise" => "a `<match>`",
@@ -265,7 +265,7 @@ impl Parser<'_> {
     }
 
     /// `Branch ::= "<branch" Attrs ">" Choice+ "</branch>"` (§7.3, §11.1).
-    pub(super) fn parse_branch(&mut self) -> Branch {
+    pub(crate) fn parse_branch(&mut self) -> Branch {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
         let (id, id_span) = take_str_spanned(&mut attrs, "id")
@@ -329,7 +329,7 @@ impl Parser<'_> {
 
     /// `On ::= "<on" Attrs ">" Node* "</on>"` (dsl 0.2.0 §4.1). The ECA trigger:
     /// `event` is a plain String (NOT CEL); `when` is an optional CEL guard.
-    pub(super) fn parse_on(&mut self) -> On {
+    pub(crate) fn parse_on(&mut self) -> On {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
         let (event, event_span) = take_str_spanned(&mut attrs, "event")
@@ -351,7 +351,7 @@ impl Parser<'_> {
     /// `QuestDecl ::= "<quest" Attrs ">" QuestBody "</quest>"` (dsl 0.2.0 §6.3).
     /// TOP-LEVEL ONLY — the caller (`parse_document_inner`) invokes this
     /// directly; `<quest>` is never dispatched through [`Parser::next_node`].
-    pub(super) fn parse_quest(&mut self) -> Quest {
+    pub(crate) fn parse_quest(&mut self) -> Quest {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
         let (id, id_span) = take_str_spanned(&mut attrs, "id")
@@ -401,7 +401,7 @@ impl Parser<'_> {
     /// never dispatched through [`Parser::next_node`]. The body is the
     /// ordinary node stream — an entry has no owner fields (no `<reward/>`
     /// interception); body admission is the checker's.
-    pub(super) fn parse_entry(&mut self) -> Entry {
+    pub(crate) fn parse_entry(&mut self) -> Entry {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
         let (id, id_span) = take_str_spanned(&mut attrs, "id")
@@ -449,7 +449,7 @@ impl Parser<'_> {
     /// ordinary node stream and its admission is the checker's. `also` is a
     /// flag read by [`AttrValue::flag`] (bare, `also="true"` / `also="false"`);
     /// any other `also=` value stays residual (`E-FLAG-VALUE`).
-    pub(super) fn parse_bundle_beat(&mut self) -> BundleBeat {
+    pub(crate) fn parse_bundle_beat(&mut self) -> BundleBeat {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
         let (id, id_span) = take_str_spanned(&mut attrs, "id")
@@ -530,7 +530,7 @@ impl Parser<'_> {
     /// Reported once per open block, naming it and its line, then parsed as
     /// that block's SIBLING (hoisted), so the enclosing block's own tail and
     /// `</…>` still close it and nothing cascades.
-    pub(super) fn parse_nested_top_block(&mut self, tag: &str) {
+    pub(crate) fn parse_nested_top_block(&mut self, tag: &str) {
         if let Some(parent) = self.top_block.as_mut().filter(|p| !p.reported) {
             parent.reported = true;
             let (ptag, pid, pline) = (parent.tag, parent.id.clone(), parent.line);
@@ -575,7 +575,7 @@ impl Parser<'_> {
     /// empty-slot idiom exactly. `quest=` is a plain string reference (a quest
     /// id, never CEL), mirroring `<quest follows=>`'s `take_str_spanned`
     /// treatment.
-    pub(super) fn parse_objective(&mut self) -> Objective {
+    pub(crate) fn parse_objective(&mut self) -> Objective {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
         let (id, id_span) = take_str_spanned(&mut attrs, "id")
@@ -630,7 +630,7 @@ impl Parser<'_> {
     /// The `once` / `exit` flags ride along as bare attrs on each [`Choice`]
     /// (Plan B extracts). [`Hub`] carries no `id` field, so `id=` stays in
     /// `attrs`.
-    pub(super) fn parse_hub(&mut self) -> Hub {
+    pub(crate) fn parse_hub(&mut self) -> Hub {
         let open = self.parse_open_tag();
         let attrs = open.attrs.clone();
         let mut choices = Vec::new();
@@ -767,7 +767,7 @@ impl Parser<'_> {
     }
 
     /// `Match ::= "<match" Attrs ">" When+ Otherwise? "</match>"` (§7.3, §11.2).
-    pub(super) fn parse_match(&mut self) -> Match {
+    pub(crate) fn parse_match(&mut self) -> Match {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
         let subject = take_cel(&mut attrs, "subject", CelKind::MatchSubject).unwrap_or_else(|| {
@@ -885,7 +885,7 @@ impl Parser<'_> {
     }
 
     /// `Timeline ::= "<timeline" Attrs? ">" Track+ "</timeline>"` (§7.4).
-    pub(super) fn parse_timeline(&mut self) -> Timeline {
+    pub(crate) fn parse_timeline(&mut self) -> Timeline {
         let open = self.parse_open_tag();
         let mut attrs = open.attrs.clone();
         let duration = take_cel(&mut attrs, "duration", CelKind::AttrValue);

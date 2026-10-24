@@ -25,13 +25,13 @@ impl Interval {
         }
     }
 
-    pub(super) fn is_point(self) -> bool {
+    pub(crate) fn is_point(self) -> bool {
         self.lo == self.hi
     }
 
     /// The closed interval both `self` and `other` contain, `None` when
     /// they are disjoint.
-    pub(super) fn intersect(self, other: Self) -> Option<Self> {
+    pub(crate) fn intersect(self, other: Self) -> Option<Self> {
         let lo = self.lo.max(other.lo);
         let hi = self.hi.min(other.hi);
         (lo <= hi).then_some(Self { lo, hi })

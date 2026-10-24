@@ -1965,13 +1965,13 @@ fn run_one_play(
 
 /// The `subject` of the `exit` expectation every test carries implicitly
 /// when it declares none: an incomplete trace fails (T1-13).
-pub(super) const IMPLICIT_EXIT: &str = "implicit";
+pub(crate) const IMPLICIT_EXIT: &str = "implicit";
 
 /// One unresolved atom's mock hint (`lute-trace` renders it as a `lute
 /// trace` flag, `--state p=<value>` / `--fact "f"`) in the spelling a
 /// `*.test.yaml` can actually use — the T9.11 rule `yaml_key_spelling`
 /// applies to refusals, applied to the hint an author acts on next.
-pub(super) fn yaml_atom_hint(atom: &str) -> String {
+pub(crate) fn yaml_atom_hint(atom: &str) -> String {
     if let Some((path, value)) = atom
         .strip_prefix("--state ")
         .and_then(|rest| rest.split_once('='))
@@ -1992,7 +1992,7 @@ pub(super) fn yaml_atom_hint(atom: &str) -> String {
 }
 
 /// The hint list for one unresolved entry, `, `-joined.
-pub(super) fn yaml_atom_hints(u: &UnresolvedEntry) -> String {
+pub(crate) fn yaml_atom_hints(u: &UnresolvedEntry) -> String {
     u.atoms
         .iter()
         .map(|a| yaml_atom_hint(a))
@@ -2003,7 +2003,7 @@ pub(super) fn yaml_atom_hints(u: &UnresolvedEntry) -> String {
 /// The `expected` text of the `eligible` expectation a test carries
 /// implicitly for a presented entry / beat / scene whose `when` is false
 /// (dsl 0.26.0 §7, T1-7).
-pub(super) const IMPLICIT_ELIGIBLE: &str = "an eligible presentation, or an `eligible:` assertion";
+pub(crate) const IMPLICIT_ELIGIBLE: &str = "an eligible presentation, or an `eligible:` assertion";
 
 /// Prerelease N3, round-5 T3-12: the premise that makes presented `id`
 /// ineligible, named for the miss line — an entry an earlier read spent

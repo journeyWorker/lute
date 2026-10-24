@@ -11,7 +11,7 @@ use lute_core_span::Span;
 /// envelope — so it gets its own copy rather than reusing either private
 /// original). `None` when `key` never appears as a mapping key; callers fall
 /// back to the whole-file span.
-pub(super) fn find_key_span(text: &str, key: &str) -> Option<Span> {
+pub(crate) fn find_key_span(text: &str, key: &str) -> Option<Span> {
     let mut line_start = 0usize;
     for line in text.split_inclusive('\n') {
         let indent = line.len() - line.trim_start().len();
@@ -374,7 +374,7 @@ fn parse_scalar_value_span(text: &str, colon_abs: usize, region_end: usize) -> O
 /// understand (e.g. an anchor tag `&name` before `{`, or an alias `*name`),
 /// or an empty/unterminated scalar: callers MUST fall back to
 /// [`find_key_span`]'s key span in that case.
-pub(super) fn find_def_cel_value_span(text: &str, name: &str) -> Option<Span> {
+pub(crate) fn find_def_cel_value_span(text: &str, name: &str) -> Option<Span> {
     let defs_key = find_key_span(text, "defs")?;
     let defs_indent = defs_key.byte_start - line_start(text, defs_key.byte_start);
     let defs_body_start = line_end(text, defs_key.byte_start);

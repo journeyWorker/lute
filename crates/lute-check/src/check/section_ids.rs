@@ -9,7 +9,7 @@ pub const E_SECTION_DUP: &str = "E-SECTION-DUP";
 
 /// `E-SECTION-DUP` at every repeat of a section `{#id}` in `doc`, naming the
 /// section that holds it first.
-pub(super) fn check_section_ids(doc: &Document) -> Vec<Diagnostic> {
+pub(crate) fn check_section_ids(doc: &Document) -> Vec<Diagnostic> {
     let mut first: std::collections::BTreeMap<&str, (usize, Span)> = Default::default();
     let mut out = Vec::new();
     for (index, section) in doc.sections.iter().enumerate() {

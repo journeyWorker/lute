@@ -27,7 +27,7 @@ pub const INHERITED_LUTE_VERSION: &str = "the project manifest's `defaults: lute
 /// document to downgrade its stamp). That case names the toolchain as the
 /// thing to update. A stamp that is not a numeric triple keeps the restamp
 /// advice — there is no order to consult.
-pub(super) fn check_lute_version_stale(
+pub(crate) fn check_lute_version_stale(
     typed: &crate::meta::TypedMeta,
     meta: &lute_syntax::ast::Meta,
 ) -> Option<Diagnostic> {

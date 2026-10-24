@@ -6,7 +6,7 @@ use super::{
 
 /// Human report: one block per test with per-expectation pass/fail lines on a
 /// miss, then a `N passed, M failed` summary and (optional) coverage.
-pub(super) fn render_human(
+pub(crate) fn render_human(
     dir: &Path,
     results: &[TestResult],
     cov: Option<(&CoverageAccum, &Path)>,
@@ -530,7 +530,7 @@ fn unresolved_json(u: &UnresolvedEntry) -> serde_json::Value {
 
 /// Machine report: per-test verdicts + expectations, the summary, and
 /// (optional) coverage — stable-keyed JSON.
-pub(super) fn render_json(
+pub(crate) fn render_json(
     results: &[TestResult],
     cov: Option<(&CoverageAccum, &Path)>,
     units: &[CoverageUnit],

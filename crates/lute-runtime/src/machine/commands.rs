@@ -21,7 +21,7 @@ impl<D: Driver> Machine<D> {
     /// `unset` is left alone, and the record says so. dsl 0.24.0 §2: an
     /// accept with `applies: "nextRun"` is queued instead
     /// ([`Machine::accepted_next_run`]) and recorded with `at: "nextRun"`.
-    pub(super) fn exec_accept(&mut self, cmd: &Json) {
+    pub(crate) fn exec_accept(&mut self, cmd: &Json) {
         let quest = cmd
             .get("quest")
             .and_then(Json::as_str)
@@ -50,11 +50,11 @@ impl<D: Driver> Machine<D> {
 
     /// An accept-driven quest's activation signal: a mock `accepts:` entry
     /// or an `accept` record this walk executed.
-    pub(super) fn is_accepted(&self, id: &str) -> bool {
+    pub(crate) fn is_accepted(&self, id: &str) -> bool {
         self.seed.accepts.iter().any(|a| a == id) || self.accepted.iter().any(|a| a == id)
     }
 
-    pub(super) fn rec_line(&mut self, cmd: &Json) {
+    pub(crate) fn rec_line(&mut self, cmd: &Json) {
         let speaker = cmd.get("speaker").and_then(Json::as_str).unwrap_or("");
         let raw = cmd.get("text").and_then(Json::as_str).unwrap_or("");
         let placeholders = cmd.get("placeholders").and_then(Json::as_array);
@@ -211,7 +211,7 @@ impl<D: Driver> Machine<D> {
     /// envelope (`kind`, `family`, `position`), `timing`, `provenance`,
     /// `source` or a plugin's cross-cutting stamp attrs. An absent optional
     /// field is omitted; `attrs` is always an object.
-    pub(super) fn rec_stage(&mut self, cmd: &Json, kind: &str) {
+    pub(crate) fn rec_stage(&mut self, cmd: &Json, kind: &str) {
         let attrs: serde_json::Map<String, Json> = staging_fields(kind)
             .iter()
             .filter_map(|field| Some((field.to_string(), cmd.get(*field)?.clone())))
@@ -231,7 +231,7 @@ impl<D: Driver> Machine<D> {
     /// unknown, never a guessed `0` (D5). An unknown result is a
     /// [`SiteKind::SetValue`] site. dsl 0.28.0 §3: a `F[occasion.target]`
     /// target writes `F.<member>`, the member bound as `occasion.target`.
-    pub(super) fn exec_set(&mut self, cmd: &Json) {
+    pub(crate) fn exec_set(&mut self, cmd: &Json) {
         let written = cmd.get("path").and_then(Json::as_str).unwrap_or("");
         let path = match lute_manifest::semantics::target_writes::indexed_family(written) {
             None => written.to_string(),
@@ -285,7 +285,7 @@ impl<D: Driver> Machine<D> {
     /// [`Machine::write`] whose record is emitted between the write and its
     /// exclusivity check, so an `exclusive` record follows the write that
     /// caused it.
-    pub(super) fn write_recorded(&mut self, path: &str, v: Value, rec: Json) {
+    pub(crate) fn write_recorded(&mut self, path: &str, v: Value, rec: Json) {
         let before = self.store.exclusive_now();
         self.store.write(path, v);
         self.driver.emit(rec);
@@ -299,7 +299,7 @@ impl<D: Driver> Machine<D> {
     /// at `site` and is not applied.
     ///
     /// [`UnknownSite`]: crate::driver::UnknownSite
-    pub(super) fn bound_target(&mut self, site: Site<'_>, raw: &str) -> Option<String> {
+    pub(crate) fn bound_target(&mut self, site: Site<'_>, raw: &str) -> Option<String> {
         match self
             .store
             .read(lute_manifest::semantics::beats::OCCASION_TARGET)
@@ -347,7 +347,7 @@ impl<D: Driver> Machine<D> {
         Some((rel, args))
     }
 
-    pub(super) fn exec_assert(&mut self, cmd: &Json) {
+    pub(crate) fn exec_assert(&mut self, cmd: &Json) {
         let Some((rel, args)) = self.fact_of(cmd) else {
             return;
         };
@@ -361,7 +361,7 @@ impl<D: Driver> Machine<D> {
         self.exclusive_check(&before);
     }
 
-    pub(super) fn exec_retract(&mut self, cmd: &Json) {
+    pub(crate) fn exec_retract(&mut self, cmd: &Json) {
         let Some((rel, args)) = self.fact_of(cmd) else {
             return;
         };
@@ -379,7 +379,7 @@ impl<D: Driver> Machine<D> {
     /// dsl 0.25.0 §1: a write that made exclusive relations hold together —
     /// even for a moment a later write undoes — is recorded at the write and
     /// refuses the walk (`lute trace` exit 1, `lute play` exit 1).
-    pub(super) fn exclusive_check(&mut self, before: &[String]) {
+    pub(crate) fn exclusive_check(&mut self, before: &[String]) {
         if !self.store.has_excludes() {
             return;
         }
@@ -404,7 +404,7 @@ impl<D: Driver> Machine<D> {
     /// dsl 0.19.0 §6: a first-read-only effect record NOT applied on a
     /// re-read — recorded with the same identifying field its applied form
     /// carries (`path` / `fact` / `pattern`), never evaluated.
-    pub(super) fn rec_skipped(&mut self, cmd: &Json, kind: &str) {
+    pub(crate) fn rec_skipped(&mut self, cmd: &Json, kind: &str) {
         let mut rec = serde_json::Map::new();
         rec.insert("position".into(), Json::String(addr(cmd).to_string()));
         rec.insert("kind".into(), Json::String("skipped".into()));
@@ -454,7 +454,7 @@ impl<D: Driver> Machine<D> {
         self.driver.emit(Json::Object(rec));
     }
 
-    pub(super) fn rec_barrier(&mut self, cmd: &Json) {
+    pub(crate) fn rec_barrier(&mut self, cmd: &Json) {
         self.driver.emit(json!({
             "position": addr(cmd),
             "kind": "barrier",
@@ -467,7 +467,7 @@ impl<D: Driver> Machine<D> {
     /// Record the `end` record and mark the walk over (dsl 0.8.0). `reason` is
     /// optional in the IR; it rides the transcript as JSON `null` when absent so
     /// the machine record's key set never varies with authoring.
-    pub(super) fn rec_end(&mut self, cmd: &Json) {
+    pub(crate) fn rec_end(&mut self, cmd: &Json) {
         self.terminated = true;
         self.driver.emit(json!({
             "position": addr(cmd),

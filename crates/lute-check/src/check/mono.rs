@@ -227,7 +227,7 @@ fn component_mono_lines(
 /// `::use` (the one position this document's diagnostic surface can hold),
 /// naming the component and its line, with the component line itself as the
 /// `related` location.
-pub(super) fn check_mono(
+pub(crate) fn check_mono(
     doc: &Document,
     meta: &TypedMeta,
     components: &ComponentSet,

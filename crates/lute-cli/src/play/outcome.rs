@@ -15,7 +15,7 @@ use crate::play_expect::{ExpectMiss, PlayOutcome, StepOutcome};
 /// What a play's expectations are judged against (dsl 0.22.0 §4): one row
 /// per executed step (with the world after it, when its `expect:` judges
 /// it), and the world the play ended in.
-pub(super) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
+pub(crate) fn play_outcome(p: &ExecProject, play: &Playthrough) -> PlayOutcome {
     // dsl 0.27.0 §4: the options an occasion step's `engine:` write offered
     // (its settle's quest transcripts) belong to the step's own row.
     let mut carried: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
@@ -245,7 +245,7 @@ pub(crate) struct PlayedChoice {
 
 /// Every branch/hub record in `records` (one document's runner transcript)
 /// as a [`PlayedChoice`], read as [`offered_options`] reads it.
-pub(super) fn played_choices(
+pub(crate) fn played_choices(
     p: &ExecProject,
     document: &str,
     records: &[Json],
@@ -286,7 +286,7 @@ pub(super) fn played_choices(
 }
 
 /// Judge the script's expectations; empty when it carries none.
-pub(super) fn judge(script: &PlayScript, outcome: &PlayOutcome) -> Vec<ExpectMiss> {
+pub(crate) fn judge(script: &PlayScript, outcome: &PlayOutcome) -> Vec<ExpectMiss> {
     if !script.has_expect() {
         return Vec::new();
     }

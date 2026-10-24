@@ -6,7 +6,7 @@ use lute_ir::{BeatKind, BeatOnce, IndexBeat};
 /// The traced document as a one-document [`ExecProject`] — what the
 /// session's eligibility rule judges a presented beat over. `None` only if
 /// the artifact does not assemble (it always does once compiled).
-pub(super) fn judging_project(
+pub(crate) fn judging_project(
     uri: &str,
     artifact: lute_compile::ExecutionIr,
     occasions: &BTreeMap<String, lute_manifest::schema::OccasionDecl>,
@@ -35,7 +35,7 @@ pub(super) fn judging_project(
 /// over a world carrying what the mocks say about the rest of the project
 /// — the mocked `visited:` (which, for a scene, is also what spends its
 /// `once: user`), the quest states the walk holds, the entry's read flags.
-pub(super) fn judge(
+pub(crate) fn judge(
     p: &ExecProject,
     m: &mut Machine<&mut TraceDriver<'_>>,
     mocks: &MockSet,
@@ -83,7 +83,7 @@ pub(super) fn judge(
 }
 
 /// A session verdict as the report's tri-state eligibility.
-pub(super) fn eligible_of(v: &SessionVerdict) -> Option<bool> {
+pub(crate) fn eligible_of(v: &SessionVerdict) -> Option<bool> {
     match v {
         SessionVerdict::Eligible => Some(true),
         SessionVerdict::Ineligible(_) => Some(false),
@@ -95,7 +95,7 @@ pub(super) fn eligible_of(v: &SessionVerdict) -> Option<bool> {
 /// fixing a `*.test.yaml` — what [`TraceReport::premises`] carries. `when`
 /// is the authored `when` where the caller has it (a scene's, before `@def`
 /// expansion), else the compiled one. `m` is the walk at the judgement.
-pub(super) fn premise_text(
+pub(crate) fn premise_text(
     m: &mut Machine<&mut TraceDriver<'_>>,
     mocks: &MockSet,
     prem: &Premise,
@@ -157,7 +157,7 @@ pub(super) fn premise_text(
 }
 
 /// A `when` slot as its author wrote it (before `@def` expansion).
-pub(super) fn authored_when(slot: &lute_syntax::ast::CelSlot) -> &str {
+pub(crate) fn authored_when(slot: &lute_syntax::ast::CelSlot) -> &str {
     slot.authored.as_deref().unwrap_or(&slot.raw)
 }
 
@@ -165,7 +165,7 @@ pub(super) fn authored_when(slot: &lute_syntax::ast::CelSlot) -> &str {
 /// its false conjunct(s) first, each with what it read — a negated fact
 /// the mocks seeded said so — then the whole `when` when it has more than
 /// the one conjunct.
-pub(super) fn when_text(
+pub(crate) fn when_text(
     m: &mut Machine<&mut TraceDriver<'_>>,
     mocks: &MockSet,
     raw: &str,
@@ -214,7 +214,7 @@ pub(super) fn when_text(
 /// Record the false premise of presented `id` ([`TraceReport::premises`]),
 /// and when it is a closed seam — the engine would not raise the beat's
 /// occasion — its structured form ([`TraceReport::not_raised`], HW27-04).
-pub(super) fn note_premise(
+pub(crate) fn note_premise(
     m: &mut Machine<&mut TraceDriver<'_>>,
     id: &str,
     prem: &Premise,

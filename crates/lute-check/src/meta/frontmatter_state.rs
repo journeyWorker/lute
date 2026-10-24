@@ -5,7 +5,7 @@ use super::{
     Severity, Span, StateDecl, StateDeclRaw, Type, TypedMeta, E_PATH_IDENT, E_STATE_COLLECTION,
 };
 
-pub(super) fn parse_state(
+pub(crate) fn parse_state(
     meta: &Meta,
     map: &yaml_serde::Mapping,
     typed: &mut TypedMeta,

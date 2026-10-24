@@ -5,7 +5,7 @@ use super::{
 
 /// A `start` conjunct that stays true once it held — `entry.<id>.everRead`
 /// or `visited('<id>')` — as its text; `None` for any other shape.
-pub(super) fn stable_text(e: &Expr) -> Option<String> {
+pub(crate) fn stable_text(e: &Expr) -> Option<String> {
     match e {
         Expr::Select(_) => {
             let path = select_text(e)?;
@@ -36,7 +36,7 @@ fn select_text(e: &Expr) -> Option<String> {
 /// Every state path `e` reads (the dotted prefix of an index read
 /// included) onto `out`; `false` for a shape it cannot see into (a
 /// comprehension, a map or struct literal).
-pub(super) fn read_paths(e: &Expr, out: &mut Vec<String>) -> bool {
+pub(crate) fn read_paths(e: &Expr, out: &mut Vec<String>) -> bool {
     match e {
         Expr::Select(sel) => match select_text(e) {
             Some(p) => {
@@ -107,7 +107,7 @@ pub(crate) struct Effect {
 
 impl Effect {
     /// `self` already stands for every atom `other` names.
-    pub(super) fn covers(&self, other: &Effect) -> bool {
+    pub(crate) fn covers(&self, other: &Effect) -> bool {
         self.rel == other.rel
             && self.up == other.up
             && self.args.len() == other.args.len()
@@ -123,12 +123,12 @@ impl Effect {
 const EFFECT_CAP: usize = 256;
 
 /// How deep a derived atom is read through its rules.
-pub(super) const EXPAND_DEPTH: u8 = 4;
+pub(crate) const EXPAND_DEPTH: u8 = 4;
 
 /// A condition's disjunctive normal form past this many terms is not split.
-pub(super) const DNF_CAP: usize = 256;
+pub(crate) const DNF_CAP: usize = 256;
 
-pub(super) fn query_term_text(s: &str) -> String {
+pub(crate) fn query_term_text(s: &str) -> String {
     if s == "true" || s == "false" {
         s.to_string()
     } else {
@@ -137,7 +137,7 @@ pub(super) fn query_term_text(s: &str) -> String {
 }
 
 /// Every `holds`/`count`/`countDistinct` atom of `e`, with its polarity.
-pub(super) fn fact_atoms(e: &Expr, pol: Pol, out: &mut Vec<Atom>) {
+pub(crate) fn fact_atoms(e: &Expr, pol: Pol, out: &mut Vec<Atom>) {
     let Expr::Call(c) = e else { return };
     if c.target.is_none() {
         match (c.func_name.as_str(), c.args.as_slice()) {
@@ -175,7 +175,7 @@ pub(super) fn fact_atoms(e: &Expr, pol: Pol, out: &mut Vec<Atom>) {
 
 /// Bind rule `terms` against `args` (`None` matches anything) on top of `b`;
 /// `None` when a constant or an already-bound variable disagrees.
-pub(super) fn bind(
+pub(crate) fn bind(
     terms: &[RuleTerm],
     args: &[Option<String>],
     mut b: BTreeMap<String, Option<String>>,
@@ -291,7 +291,7 @@ pub(crate) fn write_effects(
 /// A guard one of `effects` may falsify: an atom it queries unifies with
 /// the effect's and the effect moves it the wrong way. A relation named in
 /// the guard's text but not found as an atom (an unusual shape) counts.
-pub(super) fn affected(effects: &[Effect], g: &Guard) -> bool {
+pub(crate) fn affected(effects: &[Effect], g: &Guard) -> bool {
     effects.iter().any(|e| {
         let mut named = false;
         let hit = g.atoms.iter().any(|a| {
@@ -318,10 +318,10 @@ pub(super) fn affected(effects: &[Effect], g: &Guard) -> bool {
 /// rule, the conjunction of its body literals with the head bound), whether
 /// that disjunction is EXACTLY the atom (every literal kept), and the rule
 /// `cel()` texts it reads.
-pub(super) struct Definition {
-    pub(super) disjuncts: Vec<String>,
-    pub(super) exact: bool,
-    pub(super) cels: Vec<String>,
+pub(crate) struct Definition {
+    pub(crate) disjuncts: Vec<String>,
+    pub(crate) exact: bool,
+    pub(crate) cels: Vec<String>,
 }
 
 /// `rel(args)` through its rules — `None` unless `rel` is derived, not
@@ -331,7 +331,7 @@ pub(super) struct Definition {
 /// and an anonymous `_`, which read as `_`. An entity-kind premise and a
 /// ground comparison decide statically; a `cel()` guard is kept only in a
 /// rule without variables (it may read one).
-pub(super) fn definition(
+pub(crate) fn definition(
     vocab: &RelVocab,
     rel: &str,
     args: &[Option<String>],

@@ -13,23 +13,23 @@ use super::{
 /// mutable diagnostic/table/suppression accumulators; `Ctx` is passed per level
 /// so `in_match`/`match_subject` can be toggled for `<match>` arms without
 /// re-cloning the schema on every node.
-pub(super) struct Walker<'a> {
-    pub(super) snapshot: &'a CapabilitySnapshot,
-    pub(super) providers: &'a ProviderSet,
+pub(crate) struct Walker<'a> {
+    pub(crate) snapshot: &'a CapabilitySnapshot,
+    pub(crate) providers: &'a ProviderSet,
     /// The FULL merged domain vocabulary (data-catalog foundation A4):
     /// `snapshot.domains` UNION project-authored schema-import domains
     /// (A3's `merge_domains`), computed ONCE in `check()` and threaded here
     /// so `Type::Domain(name)` attrs resolve without recomputing the union.
-    pub(super) domains: &'a std::collections::BTreeMap<String, Domain>,
-    pub(super) arena: &'a CelArena,
-    pub(super) diags: Vec<Diagnostic>,
-    pub(super) timeline_tables: Vec<ResolvedTimeline>,
+    pub(crate) domains: &'a std::collections::BTreeMap<String, Domain>,
+    pub(crate) arena: &'a CelArena,
+    pub(crate) diags: Vec<Diagnostic>,
+    pub(crate) timeline_tables: Vec<ResolvedTimeline>,
     /// Resolved `components:` table (dsl §13): the target of `::use` invocations.
-    pub(super) components: &'a ComponentSet,
+    pub(crate) components: &'a ComponentSet,
     /// The raw document source: `persist_removed_diag` reads it to widen the
     /// `E-PERSIST-REMOVED` deletion fixit onto one adjacent whitespace
     /// separator (dsl §4.5), so no stray double space is left behind.
-    pub(super) src: &'a str,
+    pub(crate) src: &'a str,
     /// dsl 0.4.0 §6.2/§6.3: this document's OWN declared `params:` domains,
     /// non-empty ONLY for a STANDALONE `MetaKind::Component` self-check (the
     /// `Node::Match` arm below dispatches a bare-`@param` subject through
@@ -39,27 +39,27 @@ pub(super) struct Walker<'a> {
     /// domain and would false-flag `E-NONEXHAUSTIVE` on every finite-domain
     /// param match, `docs/examples/components/reaction.component.lute`
     /// (0.4.0 T8) included). Always empty for a Scene/Quest walk.
-    pub(super) param_domains: std::collections::BTreeMap<String, DomainInfo>,
+    pub(crate) param_domains: std::collections::BTreeMap<String, DomainInfo>,
     /// The document's definite-assignment scope (dsl 0.24.0): the def table a
     /// `<match subject="@def">` subject resolves through.
-    pub(super) scope: &'a crate::defassign::Scope<'a>,
+    pub(crate) scope: &'a crate::defassign::Scope<'a>,
     /// The body being walked's beat / entry `when` as an assumption (dsl
     /// 0.24.0): a `<match>` needs no arm for a value it rules out — `unset`
     /// included — exactly as reachability's `E-ARM-DEAD` reads it.
-    pub(super) assume: Option<crate::reachability::Assumption>,
+    pub(crate) assume: Option<crate::reachability::Assumption>,
     /// dsl 0.28.0 (T1-23): the pick records the enclosing options hold —
     /// a `<match>` needs no arm for a value the record cannot hold there,
     /// as reachability's `E-ARM-DEAD` reads it.
-    pub(super) picks: Vec<crate::reachability::Pick>,
+    pub(crate) picks: Vec<crate::reachability::Pick>,
     /// The document's `::jump` targets: an option arm a jump enters holds
     /// no pick.
-    pub(super) targets: std::collections::BTreeSet<String>,
+    pub(crate) targets: std::collections::BTreeSet<String>,
 }
 
 impl Walker<'_> {
     /// `when` as an assumption over `bodies` (dsl 0.24.0), judged over
     /// `schema` — the beat's own environment's.
-    pub(super) fn assumption(
+    pub(crate) fn assumption(
         &self,
         when: Option<&lute_syntax::ast::CelSlot>,
         bodies: &[&[Node]],
@@ -75,7 +75,7 @@ impl Walker<'_> {
         )
     }
 
-    pub(super) fn walk(&mut self, nodes: &[Node], ctx: &Ctx<'_>) {
+    pub(crate) fn walk(&mut self, nodes: &[Node], ctx: &Ctx<'_>) {
         // OT-F-11: an `effects: true` component's writes are spliced right
         // after its `::use`, each at the use's span, with the use's arguments
         // bound. Once an argument is refused at the argument itself, those

@@ -12,7 +12,7 @@ use super::{
 /// read of it is `E-BEAT-ATTR`. That rule is the root for such a path — the
 /// `E-UNDECLARED` / `E-MAYBE-UNSET` it would otherwise also draw here are
 /// dropped.
-pub(super) fn check_beat_when(
+pub(crate) fn check_beat_when(
     slot: &CelSlot,
     arena: &CelArena,
     ctx: &Ctx<'_>,
@@ -50,7 +50,7 @@ pub(super) fn check_beat_when(
 
 /// dsl 0.26.0 §4: a write's or directive's `when=` guard — a `Bool`
 /// condition with `$` out of scope (D9), exactly as `::set{… when=}`'s.
-pub(super) fn check_guard(
+pub(crate) fn check_guard(
     when: Option<&CelSlot>,
     arena: &CelArena,
     ctx: &Ctx<'_>,
@@ -100,7 +100,7 @@ pub(crate) fn directive_when_refused(
 /// dsl 0.26.0 §4: a directive's `when=` — refused where no guard applies
 /// ([`directive_when_refused`], `E-UNKNOWN-ATTR` at the guard), else checked
 /// as [`check_guard`].
-pub(super) fn check_directive_when(
+pub(crate) fn check_directive_when(
     d: &Directive,
     snapshot: &CapabilitySnapshot,
     arena: &CelArena,

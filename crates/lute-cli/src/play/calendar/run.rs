@@ -5,7 +5,7 @@ use super::{
 
 /// The index of the `--until` step in `steps`: a 1-based step number or a
 /// step `label:`.
-pub(super) fn until_index(steps: &[ScriptStep], until: &str) -> Result<usize, String> {
+pub(crate) fn until_index(steps: &[ScriptStep], until: &str) -> Result<usize, String> {
     if let Ok(n) = until.trim().parse::<usize>() {
         return steps
             .iter()
@@ -28,7 +28,7 @@ pub(super) fn until_index(steps: &[ScriptStep], until: &str) -> Result<usize, St
 /// replayed as `lute play` plays them — all of them, or those before the
 /// `--until` step. A replay that halts is a usage error: the calendar
 /// cannot say what a route that does not play reaches.
-pub(super) fn start_world(
+pub(crate) fn start_world(
     p: &ExecProject,
     save: &PlayScript,
     script: Option<&Path>,
@@ -82,7 +82,7 @@ pub(super) fn start_world(
 
 /// `--where`: whether `cel` holds over the cell's world. Unknown is an
 /// error — a cell is never dropped (or kept) on a guess.
-pub(super) fn holds_at(p: &ExecProject, w: &World, cel: &str) -> Result<bool, String> {
+pub(crate) fn holds_at(p: &ExecProject, w: &World, cel: &str) -> Result<bool, String> {
     let Some(cond) = lute_trace::lowered(cel) else {
         return Err(describe_atoms(&[]));
     };

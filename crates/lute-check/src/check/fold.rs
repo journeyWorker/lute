@@ -1609,7 +1609,7 @@ fn fold_branches_nodes(
 /// bound to this use's arguments — exactly the slots the expanded body would
 /// declare written here. Every consumer of the folded schema (the checker,
 /// the compiled `state` table, trace's mocks, `lute play`) sees them.
-pub(super) fn fold_directive_slots(
+pub(crate) fn fold_directive_slots(
     doc: &Document,
     snapshot: &CapabilitySnapshot,
     components: &ComponentSet,
@@ -1774,7 +1774,7 @@ fn resolve_slot_path(slot: &SlotDecl, dir: &Directive) -> Option<String> {
 
 /// The string value of a directive attribute — a plain string literal only; a
 /// Ref/CEL-valued key cannot seed a static path, so it yields `None`.
-pub(super) fn attr_str(dir: &Directive, key: &str) -> Option<String> {
+pub(crate) fn attr_str(dir: &Directive, key: &str) -> Option<String> {
     dir.attrs
         .iter()
         .find(|a| a.key == key)

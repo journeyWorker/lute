@@ -12,7 +12,7 @@ use super::{
     W_DEADLINE_BEFORE_DONE, W_DEADLINE_NEVER, W_OBJECTIVE_HIDDEN,
 };
 
-pub(super) fn check_quest_reach(
+pub(crate) fn check_quest_reach(
     quest: &Quest,
     defs: &DefTable<'_>,
     ctx: &DecideCtx<'_>,
@@ -62,7 +62,7 @@ pub(super) fn check_quest_reach(
 /// `quest=` child), and implication is conjunct containment after `@def`
 /// expansion — each top-level `&&` conjunct of `done` is literally a
 /// conjunct of `G`.
-pub(super) fn check_handler_after_completion(
+pub(crate) fn check_handler_after_completion(
     quest: &Quest,
     defs: &DefTable<'_>,
 ) -> Vec<Diagnostic> {
@@ -238,7 +238,7 @@ fn text_conjuncts(raw: &str) -> Vec<String> {
 /// whether `done` is itself decided, since visibility and completion are
 /// evaluated independently (§5.3). `ctx.dollar` MUST be `None` — no `$` is
 /// in scope at an `<objective>`'s attrs.
-pub(super) fn check_objective_reach(
+pub(crate) fn check_objective_reach(
     o: &Objective,
     defs: &DefTable<'_>,
     ctx: &DecideCtx<'_>,
@@ -335,7 +335,7 @@ struct Gate<'a> {
 /// arm or a `<branch>` choice cannot be shown to coexist with one in a sibling
 /// arm, so pairing across them would manufacture a contradiction between
 /// objectives that never meet — the one outcome §5.2 may not produce.
-pub(super) fn check_objective_contradiction(
+pub(crate) fn check_objective_contradiction(
     quest: &Quest,
     defs: &DefTable<'_>,
     ctx: &DecideCtx<'_>,
@@ -414,7 +414,7 @@ fn in_domain_gate<'a>(o: &'a Objective, ctx: &DecideCtx<'_>) -> Option<Gate<'a>>
 /// `expr` as ONE in-domain comparison `<declared scalar state path> <op>
 /// <literal>` (either operand order) with its solution set over the path's
 /// declared type; `None` for anything else.
-pub(super) fn comparison_set(
+pub(crate) fn comparison_set(
     expr: &Expr,
     schema: &crate::StateView,
 ) -> Option<(String, SolutionSet)> {
@@ -423,7 +423,7 @@ pub(super) fn comparison_set(
 
 /// [`comparison_set`] of `expr`, or (`negated`) of `!expr` — the complementary
 /// operator (`!(x < 1)` is `x >= 1`, `!(x == c)` is `x != c`).
-pub(super) fn comparison_set_polar(
+pub(crate) fn comparison_set_polar(
     expr: &Expr,
     schema: &crate::StateView,
     negated: bool,

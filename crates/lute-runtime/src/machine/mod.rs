@@ -82,7 +82,7 @@ pub use format::{value_to_json, value_to_string};
 pub use plugin::BridgeReads;
 
 /// The bounded step outcome of the dispatcher.
-enum Step {
+pub(crate) enum Step {
     /// Continue at this command index (`>= commands.len()` ⇒ end).
     Next(usize),
     /// Halt the walk (incomplete decision or a hard error already recorded).
@@ -822,7 +822,7 @@ impl<D: Driver> Machine<D> {
 
 /// Where an undecided value was met ([`UnknownSite`] minus the evaluation).
 #[derive(Clone, Copy)]
-struct Site<'a> {
+pub(crate) struct Site<'a> {
     kind: SiteKind,
     id: &'a str,
     addr: &'a str,

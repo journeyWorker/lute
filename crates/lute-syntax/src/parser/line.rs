@@ -12,7 +12,7 @@ impl Parser<'_> {
     /// `@param` (`@@who:`) is kept with its `@` (`speaker == "@who"`); the
     /// checker holds it to a component's `speaker` params and each `::use`
     /// binds it to the member its argument names.
-    pub(super) fn parse_line(&mut self) -> Option<Node> {
+    pub(crate) fn parse_line(&mut self) -> Option<Node> {
         let i = self.cursor;
         let (s, e) = self.lines[i];
         let cstart = s + leading_ws(&self.body[s..e]);
@@ -132,7 +132,7 @@ impl Parser<'_> {
         nodes
     }
 
-    pub(super) fn parse_inline_nodes(
+    pub(crate) fn parse_inline_nodes(
         &mut self,
         text: &str,
         base: usize,

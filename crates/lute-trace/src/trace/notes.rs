@@ -7,7 +7,7 @@ use super::{
 // ---------------------------------------------------------------------
 // Texts, notes and pre-walk judgments over the normalized document.
 /// One `UnresolvedAtom` -> its §4.6 "supply it as a mock" hint text.
-pub(super) fn render_atom(a: &UnresolvedAtom) -> String {
+pub(crate) fn render_atom(a: &UnresolvedAtom) -> String {
     match a {
         UnresolvedAtom::Path(p) => format!("--state {p}=<value>"),
         UnresolvedAtom::Fact(f) | UnresolvedAtom::DerivedFact(f) => {
@@ -23,7 +23,7 @@ pub(super) fn render_atom(a: &UnresolvedAtom) -> String {
     }
 }
 
-pub(super) fn fact_term_text(t: &FactTerm) -> String {
+pub(crate) fn fact_term_text(t: &FactTerm) -> String {
     match t {
         FactTerm::Ident(s) => s.clone(),
         FactTerm::Bool(b) => b.to_string(),
@@ -33,7 +33,7 @@ pub(super) fn fact_term_text(t: &FactTerm) -> String {
     }
 }
 
-pub(super) fn fmt_fact(rel: &str, args: &[String]) -> String {
+pub(crate) fn fmt_fact(rel: &str, args: &[String]) -> String {
     format!("{rel}({})", args.join(", "))
 }
 
@@ -41,7 +41,7 @@ pub(super) fn fmt_fact(rel: &str, args: &[String]) -> String {
 /// the schema's own seed `facts:` entries and the CLI's `--fact` mocks so
 /// their declared/supplied tuples compare STRUCTURALLY, never by raw
 /// source text (whitespace, quoting).
-pub(super) fn fact_pattern_key(pat: &lute_manifest::fact::FactPattern) -> String {
+pub(crate) fn fact_pattern_key(pat: &lute_manifest::fact::FactPattern) -> String {
     let args: Vec<String> = pat.args.iter().map(|a| fact_term_text(&a.term)).collect();
     fmt_fact(&pat.relation, &args)
 }
@@ -49,7 +49,7 @@ pub(super) fn fact_pattern_key(pat: &lute_manifest::fact::FactPattern) -> String
 /// A line's `{…}` attrs as authored (`mono`, `as="x"`, `emotion=@e`), in
 /// source order — `when=` is already extracted, and `__`-prefixed compiler
 /// bookkeeping is not source. `None` when nothing remains.
-pub(super) fn line_delivery(l: &Line) -> Option<String> {
+pub(crate) fn line_delivery(l: &Line) -> Option<String> {
     let attrs: Vec<String> = l
         .attrs
         .iter()
@@ -65,7 +65,7 @@ pub(super) fn line_delivery(l: &Line) -> Option<String> {
 
 /// A prerequisite formula as the CEL condition it stands for: `visited(K)`
 /// reads the visited set, `completed(Q)` / `active(Q)` the quest's state.
-pub(super) fn prereq_condition(f: &lute_manifest::semantics::prereq::PrereqFormula) -> String {
+pub(crate) fn prereq_condition(f: &lute_manifest::semantics::prereq::PrereqFormula) -> String {
     use lute_manifest::semantics::prereq::PrereqFormula as F;
     match f {
         F::Visited(k) => format!("visited('{k}')"),
@@ -76,7 +76,7 @@ pub(super) fn prereq_condition(f: &lute_manifest::semantics::prereq::PrereqFormu
     }
 }
 
-pub(super) fn seeds_summary(mocks: &MockSet) -> Seeds {
+pub(crate) fn seeds_summary(mocks: &MockSet) -> Seeds {
     Seeds {
         state_paths: mocks.state.len(),
         facts: mocks.facts.len(),
@@ -103,7 +103,7 @@ pub(super) fn seeds_summary(mocks: &MockSet) -> Seeds {
 /// order, `rel_schema::build_rel_vocab`'s own "imports first, then
 /// inline" order) — informational only, never an error and never a
 /// reachability claim; never consulted by the exit-code decision below.
-pub(super) fn seed_fact_notes(
+pub(crate) fn seed_fact_notes(
     mocks: &MockSet,
     seed_facts: &[lute_check::meta::FactDecl],
 ) -> Vec<String> {
@@ -138,7 +138,7 @@ pub(super) fn seed_fact_notes(
 /// dsl 0.22.0 §6: under `derive: false` every derived relation a query read
 /// was looked up, not derived — an unmocked atom of it read unknown. One
 /// note per relation, sorted; informational only.
-pub(super) fn derived_read_notes(relations: &BTreeSet<String>) -> Vec<String> {
+pub(crate) fn derived_read_notes(relations: &BTreeSet<String>) -> Vec<String> {
     relations
         .iter()
         .map(|rel| {
@@ -166,7 +166,7 @@ pub(super) fn derived_read_notes(relations: &BTreeSet<String>) -> Vec<String> {
 /// it). Grouped by quest id (one note per id, never per path);
 /// informational only, never an error, never a reachability claim, exit
 /// code unchanged.
-pub(super) fn reserved_quest_notes(
+pub(crate) fn reserved_quest_notes(
     mocks: &MockSet,
     reserved_reads: &BTreeMap<String, bool>,
     doc_quest_ids: &BTreeSet<&str>,
@@ -229,11 +229,11 @@ pub(crate) fn unverified_quest_note_head(id: &str) -> String {
 
 /// The `<id>` segment of a reserved `quest.<id>.state`/`quest.<id>.
 /// objectives.<oid>.done` path.
-pub(super) fn reserved_quest_id(path: &str) -> &str {
+pub(crate) fn reserved_quest_id(path: &str) -> &str {
     path.split('.').nth(1).unwrap_or(path)
 }
 
-pub(super) fn reserved_default_text(path: &str) -> &'static str {
+pub(crate) fn reserved_default_text(path: &str) -> &'static str {
     if lute_runtime::eval::is_reserved_quest_objective_done_path(path) {
         "false"
     } else {
@@ -249,7 +249,7 @@ pub(super) fn reserved_default_text(path: &str) -> &'static str {
 /// no-op. A built-in lifecycle name is rejected pre-walk (`E-TRACE-EVENT`,
 /// [`mock::validate`]), so it can never reach here. Deduplicated per name,
 /// `events` order.
-pub(super) fn unmatched_event_notes(doc: &Document, events: &[String]) -> Vec<String> {
+pub(crate) fn unmatched_event_notes(doc: &Document, events: &[String]) -> Vec<String> {
     let mut handled = BTreeSet::new();
     for quest in &doc.quests {
         collect_on_events(&quest.body, &mut handled);
@@ -275,7 +275,7 @@ pub(super) fn unmatched_event_notes(doc: &Document, events: &[String]) -> Vec<St
 /// `objective` `done` at the objective's own span), never the reserved
 /// state paths, so the §1.3 reserved-read log is untouched. A raise that
 /// bound the presented unit's `occasion.target` (`binding`) did something.
-pub(super) fn occasion_notes(
+pub(crate) fn occasion_notes(
     doc: &Document,
     occasions: &[String],
     binding: &BTreeSet<String>,
@@ -375,7 +375,7 @@ pub(super) fn occasion_notes(
 /// `lute.project.yaml`), `project_asserts` is whole-project `check`'s own
 /// reachability-gated May set ([`lute_check::connectivity::live_assert_relations`])
 /// and is unioned in; without one the note says it judged this document only.
-pub(super) fn mock_unproducible_notes(
+pub(crate) fn mock_unproducible_notes(
     mocks: &MockSet,
     folded: &FoldedEnv,
     doc: &Document,
@@ -434,7 +434,7 @@ pub(super) fn mock_unproducible_notes(
 /// contributes nothing. The `match` is exhaustive (no `_` arm) so a new
 /// [`Node`] variant that can host an assert forces a compile error here rather
 /// than silently under-collecting into a false-positive warning.
-pub(super) fn collect_assert_relations(nodes: &[Node], out: &mut BTreeSet<String>) {
+pub(crate) fn collect_assert_relations(nodes: &[Node], out: &mut BTreeSet<String>) {
     for node in nodes {
         match node {
             Node::Assert(a) => {
@@ -475,7 +475,7 @@ pub(super) fn collect_assert_relations(nodes: &[Node], out: &mut BTreeSet<String
 /// constructs (a `<branch>`/`<hub>` choice body, a `<match>` arm body, an
 /// `<objective>`/`<on>` body) — mirrors `mock.rs`'s
 /// `collect_choice_ids_nodes` recursion shape.
-pub(super) fn collect_on_events<'a>(nodes: &'a [Node], out: &mut BTreeSet<&'a str>) {
+pub(crate) fn collect_on_events<'a>(nodes: &'a [Node], out: &mut BTreeSet<&'a str>) {
     for node in nodes {
         match node {
             Node::Branch(b) => {
@@ -528,7 +528,7 @@ pub const NOTE_ACCEPT_SPENT: &str = "accept of";
 /// `lute compile` expands it (`expand_beat_when`) and evaluated against the
 /// pre-walk state. `false` and `unknown` are both named; `true` and "no
 /// `when`" say nothing. Informational only — never the exit code.
-pub(super) fn beat_when_note(
+pub(crate) fn beat_when_note(
     folded: &FoldedEnv,
     table: &DefTable<'_>,
     m: &mut Machine<&mut TraceDriver<'_>>,
@@ -564,7 +564,7 @@ pub(super) fn beat_when_note(
     }
 }
 
-pub(super) fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
+pub(crate) fn empty_report(uri: &str, mocks: &MockSet) -> TraceReport {
     TraceReport {
         evidence: lute_core_span::Evidence::Unknown,
         file: uri.to_string(),

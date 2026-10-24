@@ -8,7 +8,7 @@ use tower_lsp_server::ls_types::{Position, Range};
 /// does forward, so the LSP and headless surfaces never drift a code unit.
 /// A `character` past the line end clamps to the line end (defensive; LSP clients
 /// occasionally over-report a column at EOL).
-pub(super) fn position_to_byte(text: &str, pos: Position) -> usize {
+pub(crate) fn position_to_byte(text: &str, pos: Position) -> usize {
     let bytes = text.as_bytes();
     // Byte offset of the start of line `pos.line` (0-based).
     let mut line = 0u32;

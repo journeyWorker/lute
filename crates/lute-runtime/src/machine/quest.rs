@@ -184,7 +184,7 @@ impl<D: Driver> Machine<D> {
         }
     }
 
-    pub(super) fn run_quest(&mut self) {
+    pub(crate) fn run_quest(&mut self) {
         let (quests, handlers, seg_starts) = self.quest_program();
 
         // A fresh walk (`lute run`, `lute trace`) starts every quest `unset`

@@ -18,7 +18,7 @@ pub struct DocumentSnapshot {
 impl Backend {
     /// The open document whose file is `path` (canonical), as the client
     /// spells its URI — a `/tmp/…` buffer is `/private/tmp/…` canonically.
-    pub(super) fn open_uri_of(&self, path: &Path) -> Option<Uri> {
+    pub(crate) fn open_uri_of(&self, path: &Path) -> Option<Uri> {
         self.docs
             .iter()
             .map(|e| e.key().clone())
@@ -29,10 +29,10 @@ impl Backend {
 impl Backend {
     /// The current full text of the open document `uri`, or `None` if it is not
     /// open. Cloned so the feature call runs without holding the `DashMap` guard.
-    pub(super) fn document_text(&self, uri: &Uri) -> Option<String> {
+    pub(crate) fn document_text(&self, uri: &Uri) -> Option<String> {
         self.docs.get(uri).map(|d| d.text.clone())
     }
-    pub(super) fn assemble(
+    pub(crate) fn assemble(
         &self,
         uri: &Uri,
         text: String,
@@ -59,7 +59,7 @@ impl Backend {
 /// non-file (virtual/unsaved) document returns `None`, and snapshot resolution
 /// falls back to core-only. Schemes are case-insensitive (RFC 3986 §3.1). Ownership
 /// is taken (`Cow` → `PathBuf`) so the path outlives the borrow of `uri`.
-pub(super) fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
+pub(crate) fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
     if !uri.scheme().as_str().eq_ignore_ascii_case("file") {
         return None;
     }
@@ -68,7 +68,7 @@ pub(super) fn uri_to_path(uri: &Uri) -> Option<PathBuf> {
 
 /// [`uri_to_path`], canonicalized — how the checker names an imported file
 /// (`RelatedDiagnostic::file`); the lexical path when it does not exist.
-pub(super) fn canonical_path_of(uri: &Uri) -> Option<PathBuf> {
+pub(crate) fn canonical_path_of(uri: &Uri) -> Option<PathBuf> {
     let path = uri_to_path(uri)?;
     Some(std::fs::canonicalize(&path).unwrap_or(path))
 }
@@ -78,7 +78,7 @@ pub(super) fn canonical_path_of(uri: &Uri) -> Option<PathBuf> {
 /// Starts at the file's parent directory and climbs to the filesystem root;
 /// `None` when no project is found (a loose scene → core-only). Purely lexical
 /// on the path components, so it works for buffers not yet written to disk.
-pub(super) fn find_project_root(file_path: &Path) -> Option<PathBuf> {
+pub(crate) fn find_project_root(file_path: &Path) -> Option<PathBuf> {
     let mut dir = file_path.parent();
     while let Some(d) = dir {
         if d.join("lute.project.yaml").is_file() {
@@ -101,7 +101,7 @@ pub(super) fn find_project_root(file_path: &Path) -> Option<PathBuf> {
 /// design notes' "simplest robust rule" guidance: prefer the conventional
 /// declaration dirs and name over parsing every scene's `uses:`/`extends:`
 /// project-wide to find which files are import-reachable.
-pub(super) fn claimed_declaration_yaml(file_path: &Path) -> Option<PathBuf> {
+pub(crate) fn claimed_declaration_yaml(file_path: &Path) -> Option<PathBuf> {
     if !is_yaml(file_path) {
         return None;
     }
@@ -118,7 +118,7 @@ pub(super) fn claimed_declaration_yaml(file_path: &Path) -> Option<PathBuf> {
 
 /// Whether `file_path` has a `.yaml`/`.yml` extension — a declaration, a
 /// manifest, a play script or a test, never a `.lute` document.
-pub(super) fn is_yaml(file_path: &Path) -> bool {
+pub(crate) fn is_yaml(file_path: &Path) -> bool {
     matches!(
         file_path.extension().and_then(|e| e.to_str()),
         Some("yaml" | "yml")

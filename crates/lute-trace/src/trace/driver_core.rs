@@ -4,7 +4,7 @@ use super::{
     UnresolvedEntry, Verdict,
 };
 impl<'a> TraceDriver<'a> {
-    pub(super) fn new(cx: TraceContext<'a>) -> Self {
+    pub(crate) fn new(cx: TraceContext<'a>) -> Self {
         let cmds = cx
             .art
             .get("commands")
@@ -61,21 +61,21 @@ impl<'a> TraceDriver<'a> {
         }
     }
 
-    pub(super) fn info(&self, addr: &str) -> Option<&SourceInfo> {
+    pub(crate) fn info(&self, addr: &str) -> Option<&SourceInfo> {
         self.cx.map.by_addr.get(addr)
     }
 
-    pub(super) fn span_at(&self, addr: &str) -> Span {
+    pub(crate) fn span_at(&self, addr: &str) -> Span {
         self.info(addr)
             .map_or_else(mock::synthetic_span, |i| i.span)
     }
 
-    pub(super) fn arm(&self, addr: &str, i: usize) -> Option<&ArmSource> {
+    pub(crate) fn arm(&self, addr: &str, i: usize) -> Option<&ArmSource> {
         self.info(addr)?.arms.get(i)
     }
 
     /// The option index of `option` in the menu record at `addr`.
-    pub(super) fn option_index(&self, addr: &str, option: &str) -> Option<usize> {
+    pub(crate) fn option_index(&self, addr: &str, option: &str) -> Option<usize> {
         self.cmds
             .get(addr)?
             .get("options")?
@@ -84,13 +84,13 @@ impl<'a> TraceDriver<'a> {
             .position(|o| o.get("id").and_then(Json::as_str) == Some(option))
     }
 
-    pub(super) fn option_span(&self, addr: &str, option: &str) -> Span {
+    pub(crate) fn option_span(&self, addr: &str, option: &str) -> Span {
         self.option_index(addr, option)
             .and_then(|i| self.arm(addr, i))
             .map_or_else(|| self.span_at(addr), |a| a.span)
     }
 
-    pub(super) fn option_guard(
+    pub(crate) fn option_guard(
         &self,
         addr: &str,
         option: &str,
@@ -108,7 +108,7 @@ impl<'a> TraceDriver<'a> {
     /// result slot an unanswered plugin call left unknown (dsl 0.24.0 §5)
     /// names the `bridges:` answer that would decide it; an unbound
     /// `occasion.target` names its members (T1-9).
-    pub(super) fn render_atom(&self, a: &UnresolvedAtom) -> String {
+    pub(crate) fn render_atom(&self, a: &UnresolvedAtom) -> String {
         match a {
             UnresolvedAtom::Path(p) => match self.bridge_unanswered.get(p) {
                 Some((tag, field, shape)) => format!(
@@ -131,7 +131,7 @@ impl<'a> TraceDriver<'a> {
     /// unresolved-atom hint ([`Self::render_atom`]) — else the `--mock`
     /// file key. A single-file trace knows no earlier scene: a
     /// `visited(…)` or quest-state read is only what the mock says.
-    pub(super) fn guard_hint(&self, r: &GuardRead) -> String {
+    pub(crate) fn guard_hint(&self, r: &GuardRead) -> String {
         const EARLIER: &str =
             "in a `--mock` file; a single-file trace does not know what earlier scenes did";
         match r {
@@ -159,7 +159,7 @@ impl<'a> TraceDriver<'a> {
     /// §3.2 de-duplication: the unresolved set reports a byte-identical
     /// entry (same construct, id, span, expression) once, not once per
     /// re-evaluation pass.
-    pub(super) fn record_unresolved(
+    pub(crate) fn record_unresolved(
         &mut self,
         construct: &str,
         id: &str,
@@ -193,7 +193,7 @@ impl<'a> TraceDriver<'a> {
 
     /// A scripted `choose:` list ran out at `menu`: recorded as unresolved,
     /// with the longer list that would decide it (`--choice id=a,<b|c>`).
-    pub(super) fn record_exhausted(
+    pub(crate) fn record_exhausted(
         &mut self,
         menu: &Menu<'_>,
         construct: &str,
@@ -221,14 +221,14 @@ impl<'a> TraceDriver<'a> {
         }
     }
 
-    pub(super) fn push_decision(&mut self, d: Decision) {
+    pub(crate) fn push_decision(&mut self, d: Decision) {
         self.decisions.push(d.clone());
         self.steps.push(Step::Decision(d));
     }
 
     /// The walk's refusal: the driver's own ruling, else the exclusivity
     /// the last write broke, else the Machine's message.
-    pub(super) fn refusal(&mut self, msg: String, refused: bool) -> Diagnostic {
+    pub(crate) fn refusal(&mut self, msg: String, refused: bool) -> Diagnostic {
         if let Some(d) = self.refused.take() {
             return d;
         }

@@ -26,14 +26,14 @@ use lute_model::scripts::ScriptedPick;
 /// sends as `bridgeResult.writes` — and the same writes resolved against the
 /// project, which `lute play`'s walk applies at the call.
 #[derive(Clone, Debug, Default)]
-pub(super) struct PlannedBridgeAnswer {
-    pub(super) fields: BridgeAnswer,
-    pub(super) input: lute_runtime::WritesInput,
-    pub(super) writes: Writes,
+pub(crate) struct PlannedBridgeAnswer {
+    pub(crate) fields: BridgeAnswer,
+    pub(crate) input: lute_runtime::WritesInput,
+    pub(crate) writes: Writes,
 }
 
 /// What a planned step does.
-pub(super) enum Action {
+pub(crate) enum Action {
     Occasion {
         occasion: String,
         target: Option<String>,
@@ -63,32 +63,32 @@ pub(super) enum Action {
 }
 
 /// One step, validated against the project.
-pub(super) struct Step {
-    pub(super) n: usize,
-    pub(super) label: Option<String>,
-    pub(super) repeat: usize,
-    pub(super) action: Action,
+pub(crate) struct Step {
+    pub(crate) n: usize,
+    pub(crate) label: Option<String>,
+    pub(crate) repeat: usize,
+    pub(crate) action: Action,
     /// The step's own `bridges:` (dsl 0.24.0 §5), resolved against the
     /// project's plugin calls — every run of the step gets them afresh.
-    pub(super) bridges: BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
+    pub(crate) bridges: BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
     /// dsl 0.27.0 (T3-22): the `include:` segments around the step,
     /// outermost first — one `Arc` per segment, shared by its steps.
-    pub(super) segments: Vec<Arc<Scope>>,
+    pub(crate) segments: Vec<Arc<Scope>>,
 }
 
 /// A [`Segment`] resolved against the project: what its steps are scripted
 /// by over the script's own `choose:` / `bridges:`.
-pub(super) struct Scope {
+pub(crate) struct Scope {
     /// `include: <file>` at `file:line:col`, for messages.
-    pub(super) include: String,
-    pub(super) choose: BTreeMap<String, Vec<ScriptedPick>>,
-    pub(super) bridges: BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
+    pub(crate) include: String,
+    pub(crate) choose: BTreeMap<String, Vec<ScriptedPick>>,
+    pub(crate) bridges: BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
 }
 
 /// A `bridges:` surface (top level, a step's, an `include:`'s) resolved
 /// against the project: each answer's fields checked against the calls that
 /// read them ([`resolve_bridges`]), then [`bridge_queues`].
-pub(super) fn resolve_script_bridges(
+pub(crate) fn resolve_script_bridges(
     p: &ExecProject,
     at: &str,
     raw: &BTreeMap<String, Vec<ScriptBridgeAnswer>>,
@@ -110,7 +110,7 @@ pub(super) fn resolve_script_bridges(
 /// each answer's fields as written and its `writes` (0.41.1 §4.1) resolved
 /// as the runtime resolves a `bridgeResult`'s. `Err` names the first write
 /// that does not resolve.
-pub(super) fn bridge_queues(
+pub(crate) fn bridge_queues(
     p: &ExecProject,
     at: &str,
     raw: &BTreeMap<String, Vec<ScriptBridgeAnswer>>,
@@ -266,7 +266,7 @@ fn recorded_by_play(path: &str, raising: bool) -> Option<String> {
 /// declared world event. `Err` is every usage error of every refused step
 /// (`step N: …`, unlocated), in step order — a step's independent checks
 /// all run, so one refusal never hides another.
-pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<Step>, Vec<String>> {
+pub(crate) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<Step>, Vec<String>> {
     let mut answered: BTreeSet<&str> = p.index.beats.iter().map(|b| b.on.as_str()).collect();
     answered.extend(p.objective_occasions.iter().map(String::as_str));
     let mut plan = Vec::with_capacity(steps.len());
@@ -690,7 +690,7 @@ fn plan_occasion(
 /// Round-5 T3-13: a `step N: …` usage error located at step N's file line
 /// (its play, or the steps file an `include:` spliced it from); `None` when
 /// the error names no step.
-pub(super) fn locate_step_error(steps: &[ScriptStep], e: &str) -> Option<String> {
+pub(crate) fn locate_step_error(steps: &[ScriptStep], e: &str) -> Option<String> {
     let n: usize = e
         .strip_prefix("step ")?
         .split(|c: char| !c.is_ascii_digit())
@@ -1044,7 +1044,7 @@ fn choose_entry(
 
 /// Every seed the project cannot take ([`seed_world`]), located at the
 /// script's key (or list item) it was written at.
-pub(super) fn seed_errors(script: &PlayScript, errs: &[SeedError]) -> Vec<String> {
+pub(crate) fn seed_errors(script: &PlayScript, errs: &[SeedError]) -> Vec<String> {
     errs.iter()
         .map(|e| {
             let keys: Vec<&str> = e.keys.iter().map(String::as_str).collect();
@@ -1056,7 +1056,7 @@ pub(super) fn seed_errors(script: &PlayScript, errs: &[SeedError]) -> Vec<String
 /// Plan `script`'s steps over `project` and seed its save. `Err` is exit 2
 /// with every usage error of the script, each located, in the order they
 /// were written ([`in_file_order`]).
-pub(super) fn plan_script(
+pub(crate) fn plan_script(
     project: &ExecProject,
     needles: &lute_trace::exec::record::NeedleVocab,
     script: &PlayScript,

@@ -16,7 +16,7 @@ impl Backend {
     /// `uri`, pushed to `foreign` keyed by the file's canonical path. `texts`
     /// caches each file's text for one analysis; the check read the same
     /// files from disk.
-    pub(super) fn relate(
+    pub(crate) fn relate(
         &self,
         d: &Diagnostic,
         uri: &Uri,
@@ -69,7 +69,7 @@ impl Backend {
     /// documents report in its file — `None` once `uri` is closed: an empty
     /// set — replace `uri`'s own reports in other files by `foreign`, and
     /// republish every open file whose set of those changed.
-    pub(super) async fn publish(
+    pub(crate) async fn publish(
         &self,
         uri: Uri,
         own: Option<(Vec<LspDiagnostic>, Option<i32>)>,
@@ -116,7 +116,7 @@ impl Backend {
 
     /// Send `uri`'s last own diagnostics plus those other documents report
     /// in its file.
-    pub(super) async fn republish(&self, uri: Uri) {
+    pub(crate) async fn republish(&self, uri: Uri) {
         let Some((mut diags, version)) = self.published.get(&uri).map(|e| e.value().clone()) else {
             return;
         };
@@ -134,7 +134,7 @@ impl Backend {
 /// they anchor at the document start (line 0, char 0) as an Error sourced "lute"
 /// — matching the CLI, which already surfaces the same `ResolveDiag` messages to
 /// stderr. This is the seam that keeps the LSP from silently dropping them.
-pub(super) fn resolve_diag_to_lsp(d: &lute_manifest::project::ResolveDiag) -> LspDiagnostic {
+pub(crate) fn resolve_diag_to_lsp(d: &lute_manifest::project::ResolveDiag) -> LspDiagnostic {
     let start = Position {
         line: 0,
         character: 0,

@@ -489,7 +489,7 @@ pub fn eligible_at(
 
 /// [`eligible_at`], the seam taken from `seam` (decided when the occasion
 /// was raised) when given.
-pub(super) fn candidates(
+pub(crate) fn candidates(
     p: &ExecProject,
     w: &World,
     occasion: &str,
@@ -581,7 +581,7 @@ impl RaiseSeam {
 /// dsl 0.28.0 (T2-10): `c`'s verdict judged again in `w` as it stands —
 /// a `select: sequence` beat just before its turn, after the raise's
 /// earlier beats played — under the seam decided at the raise.
-pub(super) fn rejudge(
+pub(crate) fn rejudge(
     p: &ExecProject,
     w: &World,
     occasion: &str,

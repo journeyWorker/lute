@@ -21,7 +21,7 @@ use super::objective::check_objective_reach;
 use super::picks::Pick;
 use super::{E_ARM_DEAD, W_OTHERWISE_DEAD};
 
-pub(super) fn walk_reach(
+pub(crate) fn walk_reach(
     nodes: &[Node],
     defs: &DefTable<'_>,
     rx: &Reach<'_>,

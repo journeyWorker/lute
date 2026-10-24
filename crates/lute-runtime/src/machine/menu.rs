@@ -57,7 +57,7 @@ impl<D: Driver> Machine<D> {
     /// A walk-time `E-TRACE-CHOICE`: the script forced an option that is not
     /// offered at this presentation point. Halts like a fatal error, flagged
     /// so `lute play` can report it as the error (exit 1) it is.
-    pub(super) fn refuse(&mut self, msg: String) {
+    pub(crate) fn refuse(&mut self, msg: String) {
         self.fatal = Some(msg);
         self.refused = true;
     }
@@ -349,7 +349,7 @@ impl<D: Driver> Machine<D> {
         }
     }
 
-    pub(super) fn do_choice(&mut self, cmd: &Json) -> Step {
+    pub(crate) fn do_choice(&mut self, cmd: &Json) -> Step {
         let branch = cmd
             .get("branchId")
             .and_then(Json::as_str)
@@ -486,7 +486,7 @@ impl<D: Driver> Machine<D> {
     /// convergence. Exhaustion with eligible options still standing halts
     /// incomplete (`self.incomplete = true`, exit 3) rather than silently
     /// converging. Every iteration consumes one decision or leaves the loop.
-    pub(super) fn do_hub(&mut self, cmd: &Json) -> Step {
+    pub(crate) fn do_hub(&mut self, cmd: &Json) -> Step {
         let id = cmd
             .get("id")
             .and_then(Json::as_str)
@@ -760,7 +760,7 @@ impl<D: Driver> Machine<D> {
     /// [`UnknownSite`] ([`SiteKind::Arm`], or [`SiteKind::OccasionTarget`]
     /// when the unbound target is what is missing): a driver that halts
     /// stops the walk here; one that continues skips the arm.
-    pub(super) fn do_match(&mut self, cmd: &Json) -> Step {
+    pub(crate) fn do_match(&mut self, cmd: &Json) -> Step {
         let arms: &[Json] = cmd
             .get("arms")
             .and_then(Json::as_array)

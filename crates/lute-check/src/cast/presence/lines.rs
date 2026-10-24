@@ -9,7 +9,7 @@ impl Presence<'_> {
     /// rule-read form under the relations [`Self::changed`] holds (dsl
     /// 0.25.0 §6). A plugin `present:` that is not a condition is reported
     /// here, once, at `span`.
-    pub(super) fn present_of(&mut self, speaker: &str, span: Span) -> Option<PresentConjuncts> {
+    pub(crate) fn present_of(&mut self, speaker: &str, span: Span) -> Option<PresentConjuncts> {
         let written = match self.present.get(speaker) {
             Some(cached) => cached.clone()?,
             None => {
@@ -44,7 +44,7 @@ impl Presence<'_> {
     /// faults reported at `span`, single-file) when it is not a condition.
     /// A cast entry for `narrator` is refused (`E-RESERVED-NAME`): narration
     /// is no cast member, so its `present:` gates nothing.
-    pub(super) fn written_present(&mut self, speaker: &str, span: Span) -> Option<Vec<Expr>> {
+    pub(crate) fn written_present(&mut self, speaker: &str, span: Span) -> Option<Vec<Expr>> {
         if speaker == "narrator" {
             return None;
         }
@@ -98,7 +98,7 @@ impl Presence<'_> {
         None
     }
 
-    pub(super) fn line(&mut self, l: &Line) {
+    pub(crate) fn line(&mut self, l: &Line) {
         // A voice-over (a letter, a log page, a memory) does not put its
         // speaker in the room. An `{os}` line still does: the speaker is
         // there, only out of frame.
@@ -129,7 +129,7 @@ impl Presence<'_> {
     /// [`Self::line`] once its own `when` is parsed (and [`Self::changed`]
     /// includes what it requires). `via`: the component whose `@@p:` line
     /// this is, bound at a `::use` ([`Self::use_lines`]).
-    pub(super) fn decide_line(
+    pub(crate) fn decide_line(
         &mut self,
         l: &Line,
         span: Span,
@@ -198,7 +198,7 @@ impl Presence<'_> {
     /// `true` iff the live guards (and the line's own `when`) imply every
     /// conjunct of `present`: `guards && !p` is refuted, for `p` as written
     /// or read through the rules.
-    pub(super) fn implied(&self, present: &[(Expr, Expr)], own: Option<&Expr>, slot: Span) -> bool {
+    pub(crate) fn implied(&self, present: &[(Expr, Expr)], own: Option<&Expr>, slot: Span) -> bool {
         let ctx = DecideCtx {
             schema: &self.folded.env.state,
             dollar: None,

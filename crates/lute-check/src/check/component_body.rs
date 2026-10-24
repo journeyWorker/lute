@@ -36,7 +36,7 @@ use super::{
     clippy::too_many_arguments,
     reason = "component checking receives each independent environment explicitly"
 )]
-pub(super) fn validate_components(
+pub(crate) fn validate_components(
     components: &ComponentSet,
     snapshot: &CapabilitySnapshot,
     providers: &ProviderSet,
@@ -298,7 +298,7 @@ pub(super) fn validate_components(
 /// then quests, then entries). A component reached only through another
 /// component's body inherits the outer `::use`'s span — the importing
 /// document's only position for it.
-pub(super) fn component_use_sites(
+pub(crate) fn component_use_sites(
     doc: &Document,
     components: &ComponentSet,
 ) -> std::collections::BTreeMap<String, Span> {
@@ -350,7 +350,7 @@ fn collect_use_names(nodes: &[Node], out: &mut Vec<(String, Span)>) {
 /// nearest ancestor directory holding a `lute.project.yaml` — the project
 /// root every other path in a report is read against — with `/` separators.
 /// A component outside any project keeps its full path.
-pub(super) fn project_relative_display(src: &std::path::Path) -> String {
+pub(crate) fn project_relative_display(src: &std::path::Path) -> String {
     src.ancestors()
         .skip(1)
         .find(|dir| dir.join("lute.project.yaml").is_file())
@@ -597,18 +597,18 @@ pub(crate) fn directive_writes_state(snapshot: &CapabilitySnapshot, tag: &str) -
 /// `effects:` flag, its own `speaker` params, the host's cast they range
 /// over, and (dsl 0.26.0 §3.3) the result slots its own plugin directives
 /// declare ([`component_own_slots`]), which it may read.
-pub(super) struct BodyScope<'a> {
-    pub(super) effects: bool,
-    pub(super) speakers: &'a [String],
-    pub(super) cast: &'a std::collections::BTreeMap<String, lute_manifest::schema::CastMember>,
-    pub(super) own: std::collections::BTreeSet<String>,
+pub(crate) struct BodyScope<'a> {
+    pub(crate) effects: bool,
+    pub(crate) speakers: &'a [String],
+    pub(crate) cast: &'a std::collections::BTreeMap<String, lute_manifest::schema::CastMember>,
+    pub(crate) own: std::collections::BTreeSet<String>,
 }
 
 /// dsl 0.26.0 §3.3: the result slots the plugin directives of a component's
 /// own body declare (a literal key: `::battle{resultKey="fight"}` →
 /// `scene.battle.fight.won`, …) — state its body MAY read, since every
 /// `::use` opens them in the host ([`fold_directive_slots`]); not ambient.
-pub(super) fn component_own_slots(
+pub(crate) fn component_own_slots(
     body: &Document,
     snapshot: &CapabilitySnapshot,
     components: &ComponentSet,
@@ -700,7 +700,7 @@ fn component_guard(
     clippy::too_many_arguments,
     reason = "a recursive walk: each argument is a separate read-only input of the body check, passed unchanged down the recursion, plus the diagnostic sink"
 )]
-pub(super) fn walk_component_body(
+pub(crate) fn walk_component_body(
     nodes: &[Node],
     snapshot: &CapabilitySnapshot,
     providers: &ProviderSet,
@@ -1136,7 +1136,7 @@ enum RefsOf<'a> {
 
 /// The component NAME a `::use` directive targets (a plain-string `component=`
 /// attr), or `None` for any other directive / a non-string component attr.
-pub(super) fn use_target(dir: &Directive) -> Option<&str> {
+pub(crate) fn use_target(dir: &Directive) -> Option<&str> {
     if dir.tag != "use" {
         return None;
     }
@@ -1268,7 +1268,7 @@ fn dfs_use_cycle(
 /// the param that carries the def in. The component's own check and each
 /// host's `::use` report it alike, so whole-project `check` keeps the one in the
 /// component.
-pub(super) fn component_def_reads(
+pub(crate) fn component_def_reads(
     body: &Document,
     params: &std::collections::BTreeMap<String, DomainInfo>,
     env: &Env,

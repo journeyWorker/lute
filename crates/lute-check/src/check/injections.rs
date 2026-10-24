@@ -19,7 +19,7 @@ use super::{
 /// A `::use` is entered too ([`fold_use`], Task 7g) — `using` carries the
 /// component names on the current expansion path so a `::use` cycle
 /// terminates.
-pub(super) fn fold_injections(
+pub(crate) fn fold_injections(
     nodes: &[Node],
     state: &mut StageState,
     out: &mut Vec<InjectedCommand>,

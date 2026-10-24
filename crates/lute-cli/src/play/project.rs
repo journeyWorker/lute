@@ -63,7 +63,7 @@ pub(crate) const TEST: Gate = Gate {
 /// project that does not wholly compile — and build its index, over
 /// `memo`'s model of it. `Err` carries the exit code after the diagnostics
 /// are printed.
-pub(super) fn compile_project(
+pub(crate) fn compile_project(
     memo: &ModelMemo,
     project_dir: &Path,
     gate: Gate,
@@ -380,7 +380,7 @@ impl PlayBundle {
 
 /// Compile the project `gate`'s command runs over ([`compile_project`]);
 /// `dir` must be a directory (exit 2 with the usage error).
-pub(super) fn compile_play_project(
+pub(crate) fn compile_play_project(
     memo: &ModelMemo,
     dir: &Path,
     gate: Gate,
@@ -393,7 +393,7 @@ pub(super) fn compile_play_project(
 }
 
 /// [`compile_play_project`] stopped at the bundle.
-pub(super) fn compile_play_bundle(
+pub(crate) fn compile_play_bundle(
     memo: &ModelMemo,
     dir: &Path,
     gate: Gate,

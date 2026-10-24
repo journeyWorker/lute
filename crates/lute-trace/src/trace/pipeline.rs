@@ -118,7 +118,7 @@ pub fn trace_beat_with_check(
 
 /// What [`trace_pipeline`] walks once the document is gated and compiled.
 #[derive(Clone, Copy)]
-pub(super) enum Presentation<'a> {
+pub(crate) enum Presentation<'a> {
     /// The scene's shots, or the quest document's lifecycle.
     Document,
     /// These lore `<entry>` ids, in order, read flags written between them.
@@ -127,7 +127,7 @@ pub(super) enum Presentation<'a> {
     Beat(&'a str),
 }
 
-pub(super) fn trace_pipeline(
+pub(crate) fn trace_pipeline(
     input: &CheckInput,
     result: CheckResult,
     mocks: MockSet,

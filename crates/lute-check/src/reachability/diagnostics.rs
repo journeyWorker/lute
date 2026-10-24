@@ -14,7 +14,7 @@ pub(crate) const E_ARM_DEAD: &str = "E-ARM-DEAD";
 /// Cause-1 message (dsl 0.4.0 §5.2 rule 1): names the guard text and states
 /// it is provably false. `kind` is `"arm"` (a `<when test>`) or `"choice"`
 /// (a `<choice when>`).
-pub(super) fn dead_guard_message(kind: &str, raw: &str) -> String {
+pub(crate) fn dead_guard_message(kind: &str, raw: &str) -> String {
     format!(
         "{kind} can never fire: guard `{}` is provably false (dsl 0.4 §5.2)",
         raw.trim()
@@ -27,7 +27,7 @@ pub(super) fn dead_guard_message(kind: &str, raw: &str) -> String {
 /// first-match-wins (dsl 0.4 §5.2) ``. When no single earlier arm covers
 /// the pattern but several together do (`joint`), the earliest of them is
 /// cited as the first of several.
-pub(super) fn subsumption_message(
+pub(crate) fn subsumption_message(
     pattern: &str,
     cov_span: Span,
     cov_pattern: &str,
@@ -47,7 +47,7 @@ pub(super) fn subsumption_message(
 
 /// dsl 0.24.0: an arm every literal of which the enclosing body's `when`
 /// rules out — the body runs only once that guard held.
-pub(super) fn assumed_dead_message(pattern: &str, when: &str) -> String {
+pub(crate) fn assumed_dead_message(pattern: &str, when: &str) -> String {
     format!(
         "arm can never fire: its pattern `{pattern}` is ruled out by the body's `when` guard \
          `{when}`, which holds whenever this body runs (dsl 0.24.0)"

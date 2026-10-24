@@ -634,7 +634,7 @@ impl Parser<'_> {
     }
 
     /// `E-REMOVED-TAG` (dsl 0.37.0 §2.2) for the `<scene>` / `</scene>` line `i`.
-    pub(super) fn report_removed_scene_tag(&mut self, i: usize) {
+    pub(crate) fn report_removed_scene_tag(&mut self, i: usize) {
         self.emit_line(
             E_REMOVED_TAG,
             "the `<scene>` tag was removed (dsl 0.37.0 §2.2) — a document's sections are `## ` \

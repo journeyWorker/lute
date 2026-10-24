@@ -8,13 +8,13 @@ use tower_lsp_server::ls_types::{
 /// What identifies one build of a binary file: its length, mtime and (on
 /// unix) inode — a reinstall writes a new file or renames one over it.
 #[derive(Debug, PartialEq, Eq)]
-pub(super) struct BinaryId {
+pub(crate) struct BinaryId {
     len: u64,
     modified: Option<std::time::SystemTime>,
     inode: u64,
 }
 
-pub(super) fn binary_id(path: &Path) -> Option<BinaryId> {
+pub(crate) fn binary_id(path: &Path) -> Option<BinaryId> {
     let m = std::fs::metadata(path).ok()?;
     #[cfg(unix)]
     let inode = std::os::unix::fs::MetadataExt::ino(&m);
@@ -44,7 +44,7 @@ impl Backend {
     /// dsl 0.26.0 §8 (T3-12): `Some(message)` once the binary this server
     /// was started from has been replaced or removed — its results would be
     /// an older build's, so it publishes this one diagnostic instead.
-    pub(super) fn stale(&self) -> Option<String> {
+    pub(crate) fn stale(&self) -> Option<String> {
         let (path, id) = self.binary.as_ref()?;
         (binary_id(path).as_ref() != Some(id)).then(|| {
             format!(
@@ -58,7 +58,7 @@ impl Backend {
 
     /// Publish the [`Self::stale`] diagnostic alone for `uri`; `false` when
     /// the server is current.
-    pub(super) async fn publish_if_stale(&self, uri: &Uri, version: i32) -> bool {
+    pub(crate) async fn publish_if_stale(&self, uri: &Uri, version: i32) -> bool {
         let Some(message) = self.stale() else {
             return false;
         };
@@ -86,7 +86,7 @@ impl Backend {
     /// `lute doctor`. The checker's `W-LUTE-VERSION-STALE` marks the stamp;
     /// this also tells the user once per session, in the client's own UI, so
     /// a wall of bogus diagnostics is not trusted over the terminal.
-    pub(super) async fn warn_if_older_than_stamp(&self, text: &str, defaults: &MetaDefaults) {
+    pub(crate) async fn warn_if_older_than_stamp(&self, text: &str, defaults: &MetaDefaults) {
         use std::sync::atomic::Ordering;
         if self.warned_older.load(Ordering::Relaxed) {
             return;

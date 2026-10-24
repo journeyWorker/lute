@@ -14,7 +14,7 @@ use super::run::Playthrough;
 /// ``entry `keeperLog2`, step 4``, `engine step 7`, the script's `facts:` —
 /// for `--derivation`'s asserted leaves. `initial` is the world's fact set
 /// before the first step (seed facts are labelled by the caller).
-pub(super) fn fact_origins(play: &Playthrough, initial: &BTreeSet<Fact>) -> BTreeMap<Fact, String> {
+pub(crate) fn fact_origins(play: &Playthrough, initial: &BTreeSet<Fact>) -> BTreeMap<Fact, String> {
     let mut out: BTreeMap<Fact, String> = initial
         .iter()
         .map(|f| (f.clone(), "the script's `facts:`".to_string()))

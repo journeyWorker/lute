@@ -1,6 +1,6 @@
 use super::{bare_decision, mock, Json, Span, TraceDriver, NOTE_ACCEPT_SPENT};
 impl<'a> TraceDriver<'a> {
-    pub(super) fn observation(&mut self, rec: Json) {
+    pub(crate) fn observation(&mut self, rec: Json) {
         let str_of = |k: &str| rec.get(k).and_then(Json::as_str).unwrap_or("").to_string();
         let guard = rec.get("guard").and_then(Json::as_str).map(str::to_string);
         let outcome = str_of("outcome");

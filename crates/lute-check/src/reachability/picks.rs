@@ -303,7 +303,7 @@ fn pin_picks(e: &mut cel_parser::ast::IdedExpr, picks: &[Pick], used: &mut Vec<u
 /// Every state path a `::set` / `<choice into>` in `nodes` writes (at any
 /// depth), into `out`; `true` when the body also runs something whose writes
 /// are not spelled out here — a `::use` or a directive that writes state.
-pub(super) fn scan_writes(
+pub(crate) fn scan_writes(
     nodes: &[Node],
     snapshot: &CapabilitySnapshot,
     out: &mut BTreeSet<String>,

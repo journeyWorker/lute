@@ -11,12 +11,12 @@ use super::{
 
 /// Component-invocation / body diagnostic codes (dsl §13).
 const E_COMPONENT_UNDECLARED: &str = "E-COMPONENT-UNDECLARED";
-pub(super) const E_COMPONENT_ARG: &str = "E-COMPONENT-ARG";
-pub(super) const E_COMPONENT_CYCLE: &str = "E-COMPONENT-CYCLE";
-pub(super) const E_COMPONENT_BODY: &str = "E-COMPONENT-BODY";
-pub(super) const E_COMPONENT_INSTANCE_INVALID: &str = "E-COMPONENT-INSTANCE-INVALID";
-pub(super) const E_COMPONENT_INSTANCE_DUPLICATE: &str = "E-COMPONENT-INSTANCE-DUPLICATE";
-pub(super) const W_COMPONENT_INSTANCE_UNTAGGED: &str = "W-COMPONENT-INSTANCE-UNTAGGED";
+pub(crate) const E_COMPONENT_ARG: &str = "E-COMPONENT-ARG";
+pub(crate) const E_COMPONENT_CYCLE: &str = "E-COMPONENT-CYCLE";
+pub(crate) const E_COMPONENT_BODY: &str = "E-COMPONENT-BODY";
+pub(crate) const E_COMPONENT_INSTANCE_INVALID: &str = "E-COMPONENT-INSTANCE-INVALID";
+pub(crate) const E_COMPONENT_INSTANCE_DUPLICATE: &str = "E-COMPONENT-INSTANCE-DUPLICATE";
+pub(crate) const W_COMPONENT_INSTANCE_UNTAGGED: &str = "W-COMPONENT-INSTANCE-UNTAGGED";
 
 /// dsl 0.4.0 §6.1/§6.2: a component-body position depends on or affects
 /// ambient state — a CEL reference to a state path, a fact query
@@ -26,11 +26,11 @@ pub(super) const W_COMPONENT_INSTANCE_UNTAGGED: &str = "W-COMPONENT-INSTANCE-UNT
 /// it reads/writes): this code names the purity defect itself, so a plain
 /// `E-UNDECLARED`/`E-RELATION-UNKNOWN` the empty component env would
 /// otherwise misreport for the SAME site never surfaces (D6).
-pub(super) const E_COMPONENT_STATE: &str = "E-COMPONENT-STATE";
+pub(crate) const E_COMPONENT_STATE: &str = "E-COMPONENT-STATE";
 
 /// Build a `Layer::Staging` diagnostic for a `::use` invocation / component body
 /// (dsl §13).
-pub(super) fn use_diag(code: &str, message: String, span: Span) -> Diagnostic {
+pub(crate) fn use_diag(code: &str, message: String, span: Span) -> Diagnostic {
     Diagnostic {
         code: code.to_string(),
         severity: if code.starts_with("W-") {
@@ -105,7 +105,7 @@ fn check_instance_attr(
 /// Check explicit instance uniqueness in one immediate expansion owner. Branch
 /// bodies are traversed as one owner so mutually-exclusive alternatives cannot
 /// accidentally reuse a durable scope.
-pub(super) fn check_instance_scope(nodes: &[Node], diags: &mut Vec<Diagnostic>) {
+pub(crate) fn check_instance_scope(nodes: &[Node], diags: &mut Vec<Diagnostic>) {
     let mut seen = std::collections::BTreeSet::<(String, String)>::new();
     fn walk(
         nodes: &[Node],
@@ -201,7 +201,7 @@ pub(super) fn check_instance_scope(nodes: &[Node], diags: &mut Vec<Diagnostic>) 
 ///
 /// `enclosing` is the params of the component whose body holds the `::use`
 /// (empty outside one): a bare `@p` naming one passes that argument through.
-pub(super) fn check_use(
+pub(crate) fn check_use(
     dir: &Directive,
     components: &ComponentSet,
     ctx: &Ctx<'_>,
@@ -591,7 +591,7 @@ fn component_bound_params(
 /// dsl 0.24.0 §4: every `speaker` argument of every `::use` in `doc`
 /// ([`check_speaker_args`]); `enclosing` is the document's own `speaker`
 /// params when it is a component (a `who=@who` passes its id through).
-pub(super) fn check_use_speaker_args(
+pub(crate) fn check_use_speaker_args(
     doc: &Document,
     components: &ComponentSet,
     cast: &std::collections::BTreeMap<String, lute_manifest::schema::CastMember>,
@@ -622,7 +622,7 @@ pub(super) fn check_use_speaker_args(
 /// for a line's speaker; with none, any identifier is accepted. Inside a
 /// component body a bare `@p` naming one of the ENCLOSING component's own
 /// `speaker` params (`enclosing`) passes that id through.
-pub(super) fn check_speaker_args(
+pub(crate) fn check_speaker_args(
     dir: &Directive,
     components: &ComponentSet,
     cast: &std::collections::BTreeMap<String, lute_manifest::schema::CastMember>,
@@ -721,7 +721,7 @@ fn use_arg_ok(ty: &Type, value: &AttrValue, ctx: &Ctx<'_>) -> bool {
 /// the nearest enum member as a did-you-mean. A `@def` default resolves in
 /// each host, so it stays with each `::use` ([`check_use`]); a `speaker`
 /// default is judged against each host's cast.
-pub(super) fn check_param_literal_defaults(
+pub(crate) fn check_param_literal_defaults(
     typed: &crate::meta::TypedMeta,
     meta: &lute_syntax::ast::Meta,
 ) -> Vec<Diagnostic> {
@@ -804,7 +804,7 @@ fn ref_produced_type<'a>(raw: &str, ctx: &'a Ctx<'_>) -> Option<&'a Type> {
 /// `E-REF-TYPE` at the arg. Scene-scope `::use` only: inside a component body a
 /// `@ref` arg names an enclosing param, bound (to this site's literal) before
 /// the nested expansion — the enclosing site is the one checked.
-pub(super) fn check_use_interp_args(
+pub(crate) fn check_use_interp_args(
     dir: &Directive,
     components: &ComponentSet,
     ctx: &Ctx<'_>,
@@ -850,7 +850,7 @@ pub(super) fn check_use_interp_args(
 /// did-you-mean — exactly as the attribute judges a literal written in place.
 /// Inside the body the value is a `@param` ref, which the attribute check
 /// cannot see through. The first failing judgement per argument is reported.
-pub(super) fn check_use_typed_args(
+pub(crate) fn check_use_typed_args(
     dir: &Directive,
     components: &ComponentSet,
     snapshot: &CapabilitySnapshot,
@@ -1104,7 +1104,7 @@ fn body_interpolates(
 /// write. dsl 0.27.0 §6: likewise at a `<beat use=…>` — its derived header
 /// and its body's `::use` all anchor at the `use=` value, so one argument
 /// judged by both (a header `when` and a body `::assert`) is one report.
-pub(super) fn dedup_guarded_use_reports(doc: &Document, diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
+pub(crate) fn dedup_guarded_use_reports(doc: &Document, diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
     let mut dirs = Vec::new();
     for body in doc
         .sections
@@ -1198,7 +1198,7 @@ fn body_speaks_as_param(nodes: &[Node]) -> bool {
 
 /// Every `::use` directive in `nodes`, in document order. Recurses every node
 /// kind that can hold one.
-pub(super) fn collect_use_directives<'a>(nodes: &'a [Node], out: &mut Vec<&'a Directive>) {
+pub(crate) fn collect_use_directives<'a>(nodes: &'a [Node], out: &mut Vec<&'a Directive>) {
     for node in nodes {
         match node {
             Node::Directive(d) if d.tag == "use" => out.push(d),
@@ -1248,7 +1248,7 @@ pub(super) fn collect_use_directives<'a>(nodes: &'a [Node], out: &mut Vec<&'a Di
 /// position (through `?:`) must be a string literal that is a member, or a
 /// state path whose enum members all are. Anything the checker cannot prove
 /// is `E-COMPONENT-ARG` too — a wrong verdict is worse than a stop.
-pub(super) fn check_use_def_enum_args(
+pub(crate) fn check_use_def_enum_args(
     doc: &Document,
     components: &ComponentSet,
     def_bodies: &std::collections::BTreeMap<String, String>,

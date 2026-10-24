@@ -38,9 +38,9 @@ pub const E_CONN_UNREACHABLE: &str = "E-CONN-UNREACHABLE";
 pub const E_CONN_FORMULA_TOO_COMPLEX: &str = "E-CONN-FORMULA-TOO-COMPLEX";
 
 /// See [`E_CONN_FORMULA_TOO_COMPLEX`].
-pub(super) const MAX_FORMULA_ATOMS: usize = 256;
+pub(crate) const MAX_FORMULA_ATOMS: usize = 256;
 
-pub(super) fn unreachable_diag(message: String, span: Span) -> Diagnostic {
+pub(crate) fn unreachable_diag(message: String, span: Span) -> Diagnostic {
     Diagnostic {
         code: E_CONN_UNREACHABLE.to_string(),
         severity: Severity::Error,
@@ -55,7 +55,7 @@ pub(super) fn unreachable_diag(message: String, span: Span) -> Diagnostic {
     }
 }
 
-pub(super) fn too_complex_diag(message: String, span: Span) -> Diagnostic {
+pub(crate) fn too_complex_diag(message: String, span: Span) -> Diagnostic {
     Diagnostic {
         code: E_CONN_FORMULA_TOO_COMPLEX.to_string(),
         severity: Severity::Error,
@@ -271,7 +271,7 @@ fn node_reach(
 /// AST shape (never route enumeration — see [`check_reachability`]'s doc
 /// comment for the full per-case rules). `reach` holds every node already
 /// memoized earlier in `topo_order`.
-pub(super) fn eval_reach(
+pub(crate) fn eval_reach(
     f: &PrereqFormula,
     g: &ConnGraph,
     reach: &BTreeMap<NodeId, Reachability>,
@@ -347,7 +347,7 @@ pub(super) fn eval_reach(
     }
 }
 
-pub(super) fn and_reach(a: Reachability, b: Reachability) -> Reachability {
+pub(crate) fn and_reach(a: Reachability, b: Reachability) -> Reachability {
     if a == Reachability::Unreachable || b == Reachability::Unreachable {
         Reachability::Unreachable
     } else if a == Reachability::Reachable && b == Reachability::Reachable {
@@ -357,7 +357,7 @@ pub(super) fn and_reach(a: Reachability, b: Reachability) -> Reachability {
     }
 }
 
-pub(super) fn or_reach(a: Reachability, b: Reachability) -> Reachability {
+pub(crate) fn or_reach(a: Reachability, b: Reachability) -> Reachability {
     if a == Reachability::Reachable || b == Reachability::Reachable {
         Reachability::Reachable
     } else if a == Reachability::Unreachable && b == Reachability::Unreachable {
@@ -631,7 +631,7 @@ pub fn assert_relations_per_doc(
 /// malformed scene triad, or a node absent from a cyclic graph's `reach`
 /// map) counts as live, exactly like `Some(Reachability::Unknown)` — only a
 /// PROVEN [`Reachability::Unreachable`] excludes.
-pub(super) fn assert_site_is_live(r: Option<Reachability>) -> bool {
+pub(crate) fn assert_site_is_live(r: Option<Reachability>) -> bool {
     !matches!(r, Some(Reachability::Unreachable))
 }
 

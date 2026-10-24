@@ -109,7 +109,7 @@ impl<D: Driver> Machine<D> {
     /// through the one write path and is recorded as a `set` with `effectOf:
     /// <tag>`. `false` = the walk stops here (that halt, an answer that does
     /// not fit the call, or a write the exclusivity check refused).
-    pub(super) fn exec_plugin(&mut self, cmd: &Json) -> bool {
+    pub(crate) fn exec_plugin(&mut self, cmd: &Json) -> bool {
         // dsl 0.28.0 §3: a call passing `occasion.target` writes the member
         // the beat runs for — its effect paths, fact arguments and fields
         // name that member.
@@ -435,7 +435,7 @@ impl<D: Driver> Machine<D> {
     /// Only a directive whose one behaviour is its declared effects is
     /// admitted there, and those effects apply on a first read only (as the
     /// entry's own `::set`): each is recorded `skipped`, naming the call.
-    pub(super) fn rec_skipped_plugin(&mut self, cmd: &Json) {
+    pub(crate) fn rec_skipped_plugin(&mut self, cmd: &Json) {
         let tag = cmd.get("tag").and_then(Json::as_str).unwrap_or("");
         for e in cmd
             .get("effects")
