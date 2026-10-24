@@ -237,17 +237,26 @@ impl ManifestError {
         }
     }
 
+    /// Author-facing message: the [`std::fmt::Display`] text.
+    pub fn message(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl std::fmt::Display for ManifestError {
     /// Author-facing message: what is wrong with the declaration and the
     /// accepted set that fixes it — never a Rust `Debug` form.
-    pub fn message(&self) -> String {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ManifestError::UnknownSemanticsFlag { directive, flag } => format!(
+            ManifestError::UnknownSemanticsFlag { directive, flag } => write!(
+                f,
                 "directive `::{directive}` declares semantics flag `{flag}`, which is not one \
                  of {}{}",
                 SEMANTICS_VOCAB.join(", "),
                 crate::suggest::did_you_mean(flag, SEMANTICS_VOCAB.iter().copied())
             ),
-            ManifestError::DuplicateAttr { directive, attr } => format!(
+            ManifestError::DuplicateAttr { directive, attr } => write!(
+                f,
                 "directive `::{directive}` declares attribute `{attr}` more than once — keep \
                  one declaration"
             ),
@@ -256,12 +265,14 @@ impl ManifestError {
                 attr,
                 ty,
                 default,
-            } => format!(
+            } => write!(
+                f,
                 "directive `::{directive}` declares attribute `{attr}` as `{ty}` with \
                  `default: {default}`, which is not of type `{ty}` — give a default of the \
                  declared type"
             ),
-            ManifestError::UnknownLowerRecord { directive, record } => format!(
+            ManifestError::UnknownLowerRecord { directive, record } => write!(
+                f,
                 "directive `::{directive}` lowers to unknown record `{record}`; \
                  declarative lowering targets the staging kinds ({})",
                 lower_record_kinds().collect::<Vec<_>>().join(", ")
@@ -270,26 +281,30 @@ impl ManifestError {
                 directive,
                 record,
                 detail,
-            } => format!("directive `::{directive}` lowers to record `{record}`: {detail}"),
+            } => write!(
+                f,
+                "directive `::{directive}` lowers to record `{record}`: {detail}"
+            ),
             ManifestError::EffectWrite { directive, detail } => {
-                format!("directive `::{directive}` effects.writes: {detail}")
+                write!(f, "directive `::{directive}` effects.writes: {detail}")
             }
             ManifestError::EffectFact {
                 directive,
                 list,
                 detail,
-            } => format!("directive `::{directive}` effects.{list}: {detail}"),
+            } => write!(f, "directive `::{directive}` effects.{list}: {detail}"),
             ManifestError::StructuredAttr { owner, attr, ty } => {
-                let subject = match owner {
+                match owner {
                     AttrOwner::Directive(directive) => {
-                        format!("directive `::{directive}` declares attribute `{attr}`")
+                        write!(f, "directive `::{directive}` declares attribute `{attr}`")?;
                     }
                     AttrOwner::Stamp(plugin) => {
-                        format!("plugin `{plugin}` declares stamp attribute `{attr}`")
+                        write!(f, "plugin `{plugin}` declares stamp attribute `{attr}`")?;
                     }
-                };
-                format!(
-                    "{subject} as `{ty}`; an attribute value is written as one scalar (string, \
+                }
+                write!(
+                    f,
+                    " as `{ty}`; an attribute value is written as one scalar (string, \
                      number, bool, an enum or entity member, a provider or asset id), so no \
                      `.lute` value can satisfy a `list`, `map` or `record` — declare it `string` \
                      and parse it in the host, or split it into one attribute per field"
@@ -298,6 +313,8 @@ impl ManifestError {
         }
     }
 }
+
+impl std::error::Error for ManifestError {}
 
 pub fn validate_directive(d: &DirectiveDecl) -> Vec<ManifestError> {
     let mut errs = Vec::new();

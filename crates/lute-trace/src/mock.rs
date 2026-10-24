@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use lute_check::{check_atom, FoldedEnv};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_manifest::fact::{parse_fact, DatalogError};
+use lute_manifest::fact::parse_fact;
 use lute_manifest::types::{type_accepts, Literal, Type};
 pub use lute_manifest::yaml_text::{yaml_span, YamlStep};
 use lute_syntax::ast::{Arm, AttrValue, Document, Hub, Node};
@@ -1148,15 +1148,6 @@ fn reserved_quest_domain_text(path: &str) -> &'static str {
     }
 }
 
-fn describe_datalog_error(e: &DatalogError) -> String {
-    match e {
-        DatalogError::Malformed { msg, .. } => msg.clone(),
-        DatalogError::FunctionTerm { name, .. } => {
-            format!("compound term `{name}(…)` is not a legal fact argument")
-        }
-    }
-}
-
 /// `--fact` validation (§4.3): parse via [`lute_manifest::fact::parse_fact`],
 /// then D18's [`lute_check::check_atom`] reuse for unknown-relation/arity/
 /// foreign-arg — every hit re-coded [`E_TRACE_MOCK_FACT`]. `check_atom`
@@ -1170,10 +1161,7 @@ fn validate_facts(mocks: &MockSet, folded: &FoldedEnv) -> Vec<Diagnostic> {
         match parse_fact(raw) {
             Err(e) => out.push(diag(
                 E_TRACE_MOCK_FACT,
-                format!(
-                    "`--fact \"{raw}\"` does not parse as a ground fact pattern: {}",
-                    describe_datalog_error(&e)
-                ),
+                format!("`--fact \"{raw}\"` does not parse as a ground fact pattern: {e}"),
                 span,
             )),
             Ok(pattern) => {

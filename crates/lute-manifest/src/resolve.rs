@@ -131,6 +131,8 @@ impl std::fmt::Display for ResolveError {
     }
 }
 
+impl std::error::Error for ResolveError {}
+
 impl ProfileGraph {
     pub(crate) fn extends_chain(&self, selected: &str) -> Result<Vec<String>, ResolveError> {
         // returns parent-first chain EXCLUDING global, INCLUDING selected last
@@ -301,28 +303,37 @@ impl OptionError {
         }
     }
 
+    /// Author-facing prose: the [`std::fmt::Display`] text.
+    pub fn message(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl std::fmt::Display for OptionError {
     /// Author-facing prose: the fix (a name typo, a wrong literal shape) is
     /// only actionable with the declared set / expected type spelled out.
-    pub fn message(&self) -> String {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OptionError::UnknownOption {
                 plugin,
                 name,
                 declared,
             } => {
-                let list = if declared.is_empty() {
-                    "none".to_string()
+                write!(f, "plugin `{plugin}` has no option `{name}` (declared: ")?;
+                if declared.is_empty() {
+                    f.write_str("none")?;
                 } else {
-                    declared.join(", ")
-                };
-                format!("plugin `{plugin}` has no option `{name}` (declared: {list})")
+                    f.write_str(&declared.join(", "))?;
+                }
+                f.write_str(")")
             }
             OptionError::OptionType {
                 plugin,
                 name,
                 expected,
                 got,
-            } => format!(
+            } => write!(
+                f,
                 "option `{plugin}.{name}` expects {}, got {}",
                 type_str(expected),
                 lit_str(got)
@@ -330,6 +341,8 @@ impl OptionError {
         }
     }
 }
+
+impl std::error::Error for OptionError {}
 
 /// plugin Appendix C1: validate every MERGED option value against the owning
 /// `PluginManifest.options`. Runs on the output of [`resolve_activation`] —

@@ -24,6 +24,25 @@ pub enum DecomposeError {
     },
 }
 
+impl std::fmt::Display for DecomposeError {
+    /// The checker words `E-ASSET-DECOMPOSE` itself, adding the id and the
+    /// kind this error does not carry; this is the same refusal without them.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DecomposeError::Arity { expected, found } => {
+                write!(f, "asset id has {found} segment(s), expected {expected}")
+            }
+            DecomposeError::ConstMismatch {
+                name,
+                expected,
+                found,
+            } => write!(f, "segment `{name}` must be `{expected}`, found `{found}`"),
+        }
+    }
+}
+
+impl std::error::Error for DecomposeError {}
+
 /// Split `id` by the kind's `sep` and zip with the kind's `segments`; a `const`
 /// segment must match verbatim. Returns typed [`Segment`]s (name↔value) or an
 /// arity/const error. A segment-less kind (pure query) decomposes to a SINGLE
@@ -317,6 +336,17 @@ mod tests {
                 expected: "CH".to_string(),
                 found: "XX".to_string(),
             })
+        );
+    }
+
+    #[test]
+    fn decompose_error_display() {
+        let arity = decompose(&ch_kind(), "CH.marina").unwrap_err();
+        assert_eq!(arity.to_string(), "asset id has 2 segment(s), expected 5");
+        let mismatch = decompose(&ch_kind(), "XX.marina.waitress.delighted.1").unwrap_err();
+        assert_eq!(
+            mismatch.to_string(),
+            "segment `prefix` must be `CH`, found `XX`"
         );
     }
 

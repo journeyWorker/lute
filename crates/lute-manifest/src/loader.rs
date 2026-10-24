@@ -354,6 +354,8 @@ impl std::fmt::Display for LoadError {
     }
 }
 
+impl std::error::Error for LoadError {}
+
 /// Read one plugin package. `dir` MUST contain `plugin.yaml`. Any error —
 /// even a duplicate name [`load_plugins_dir`] loads past — is `Err`.
 pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
