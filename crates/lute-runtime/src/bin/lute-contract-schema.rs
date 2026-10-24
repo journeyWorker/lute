@@ -147,6 +147,10 @@ fn index_defs() -> BTreeMap<String, Value> {
     root.remove("title");
     let mut defs: BTreeMap<String, Value> = found.into_iter().collect();
     defs.insert("projectIndex".into(), Value::Object(root));
+    #[expect(
+        clippy::incompatible_msrv,
+        reason = "dev-only schema generator behind `json-schema`, built with the pinned CI toolchain"
+    )]
     let helpers: BTreeMap<String, Value> = defs
         .extract_if(.., |name, _| !INDEX_DEFS.contains(&name.as_str()))
         .collect();
@@ -324,9 +328,15 @@ fn check_refs(value: &Value, defs: &Map<String, Value>) {
             {
                 assert!(defs.contains_key(name), "`$ref` to undefined `{name}`");
             }
-            object.values().for_each(|child| check_refs(child, defs));
+            for child in object.values() {
+                check_refs(child, defs);
+            }
         }
-        Value::Array(items) => items.iter().for_each(|item| check_refs(item, defs)),
+        Value::Array(items) => {
+            for item in items {
+                check_refs(item, defs);
+            }
+        }
         _ => {}
     }
 }
