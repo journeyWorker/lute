@@ -560,6 +560,56 @@ fn touches_def_reads(state: &crate::StateView, reads: &std::collections::BTreeSe
     })
 }
 
+/// Merges one inline state declaration into `schema` (dsl §9.2). Precedence
+/// depends on where the imported declaration came from
+/// ([`SchemaImports::is_overridable`]): a `uses`-peer path may not be
+/// redeclared (`E-STATE-REDECLARE`, the imported one stays), an
+/// `extends`-base path is refined by the inline declaration (a type change
+/// is `E-EXTENDS-STATE-TYPE`: persisted state keeps a stable type), and a
+/// path no import declares joins the document's state.
+fn merge_inline_decl(
+    schema: &mut crate::StateView,
+    imports: &SchemaImports,
+    path: &str,
+    decl: &crate::meta::StateDecl,
+    at: Span,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let report = |code: &str, message: String| Diagnostic {
+        code: code.to_string(),
+        severity: Severity::Error,
+        message,
+        evidence: None,
+        span: at,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    };
+    match imports.state.decls.get(path) {
+        Some(imported) if imports.is_overridable(path) => {
+            if decl.ty != imported.ty {
+                diags.push(report(
+                    "E-EXTENDS-STATE-TYPE",
+                    format!(
+                        "state path `{path}` overrides base declared type {:?} with {:?}; persisted state must keep a stable type",
+                        imported.ty, decl.ty
+                    ),
+                ));
+            }
+            schema.insert(path.to_string(), decl.clone());
+        }
+        Some(_) => diags.push(report(
+            "E-STATE-REDECLARE",
+            format!(
+                "state path `{path}` is declared by an imported schema (§9.2); a scene must not redeclare or override it"
+            ),
+        )),
+        None => schema.insert(path.to_string(), decl.clone()),
+    }
+}
+
 fn fold_env_in(
     doc: &Document,
     input: &CheckInput,
@@ -680,50 +730,14 @@ fn fold_env_in(
             Box::new(typed.state.decls.iter())
         };
     for (path, decl) in inline {
-        let path = &*path;
-        match imports.state.decls.get(path) {
-            Some(imported) if imports.is_overridable(path) => {
-                // Extends-base override: the inline decl wins; guard the type.
-                if decl.ty != imported.ty {
-                    state_merge_diags.push(Diagnostic {
-                        code: "E-EXTENDS-STATE-TYPE".to_string(),
-                        severity: Severity::Error,
-                        message: format!(
-                            "state path `{path}` overrides base declared type {:?} with {:?}; persisted state must keep a stable type",
-                            imported.ty, decl.ty
-                        ),
-                        evidence: None,
-                        span: at,
-                        layer: Layer::Content,
-                        fixits: Vec::new(),
-                        provenance: None,
-                        covered: Vec::new(),
-                        related: Vec::new(),
-                    });
-                }
-                schema.insert(path.to_string(), decl.clone());
-            }
-            Some(_) => {
-                // Uses-peer path: a scene must not redeclare it (imported wins).
-                state_merge_diags.push(Diagnostic {
-                    code: "E-STATE-REDECLARE".to_string(),
-                    severity: Severity::Error,
-                    message: format!(
-                        "state path `{path}` is declared by an imported schema (§9.2); a scene must not redeclare or override it"
-                    ),
-                    evidence: None,
-                    span: at,
-                    layer: Layer::Content,
-                    fixits: Vec::new(),
-                    provenance: None,
-                    covered: Vec::new(),
-                    related: Vec::new(),
-                });
-            }
-            None => {
-                schema.insert(path.to_string(), decl.clone());
-            }
-        }
+        merge_inline_decl(
+            &mut schema,
+            imports,
+            &path,
+            decl,
+            at,
+            &mut state_merge_diags,
+        );
     }
     {
         let overlay = schema.overlay_mut();
@@ -756,13 +770,17 @@ fn fold_env_in(
             schema.insert_family(path, family);
             continue;
         }
-        // A member declared already keeps its declaration.
+        // #190: a member this document declares itself keeps that
+        // declaration (merged above); every other member is merged against
+        // the imports as an inline path is — a `uses`-peer redeclaration is
+        // refused, an `extends` refinement applies with its type guarded.
         for m in family.members() {
             let key = format!("{path}.{m}");
-            if !schema.contains(&key) {
-                let decl = family.member(m).unwrap_or(family.decl()).clone();
-                schema.insert(key, decl);
+            if typed.state.decls.contains_key(&key) {
+                continue;
             }
+            let decl = family.member(m).unwrap_or(family.decl());
+            merge_inline_decl(&mut schema, imports, &key, decl, at, &mut state_merge_diags);
         }
     }
     if !per_index.is_empty() {

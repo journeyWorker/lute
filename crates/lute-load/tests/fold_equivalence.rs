@@ -264,6 +264,41 @@ fn a_rejected_redeclaration_of_a_domain_path_is_reported_at_the_document() {
     ]);
 }
 
+/// #190: an inline `per:` family over a kind only the imports declare is
+/// merged member by member against them — a `uses`-peer redeclaration is
+/// refused, an `extends` refinement (one member declared explicitly) and a
+/// retype are applied — on the shared fold as on the full merge.
+#[test]
+fn an_inline_family_over_an_imported_kind_merges_identically() {
+    const WORLD: &str = "entities:\n  npc: { members: [tavi, brann] }\nstate:\n  \
+                         run.bond: { type: int, default: 0, per: npc }\n";
+    let scene = |link: &str, state: &str| {
+        format!(
+            "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n{link}: world.schema.yaml\n\
+             state:\n{state}---\n## Shot 1.\n@narrator{{when=\"run.bond.tavi > 1\"}}: hi\n"
+        )
+    };
+    project(&[
+        ("world.schema.yaml", WORLD),
+        ("plain.lute", PLAIN),
+        (
+            "redeclare.lute",
+            &scene("uses", "  run.bond: { type: string, per: npc }\n"),
+        ),
+        (
+            "refine.lute",
+            &scene(
+                "extends",
+                "  run.bond: { type: int, default: 3, per: npc }\n  run.bond.tavi: { type: int, default: 7 }\n",
+            ),
+        ),
+        (
+            "retype.lute",
+            &scene("extends", "  run.bond: { type: string, per: npc }\n"),
+        ),
+    ]);
+}
+
 /// 0.49.0 §4.3 (#178): a reference-typed plugin frontmatter key is checked
 /// against the document's own merged vocabulary, on the shared fold as on the
 /// full merge: `lead: b` is a member where the document `add:`s `b` to the
