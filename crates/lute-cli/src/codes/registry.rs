@@ -1082,6 +1082,16 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.2.0 §5.4", "dsl 0.19.0 §5"],
     },
     Code {
+        code: "E-QUEST-START-CYCLE",
+        summary: "Quests' `start` conditions wait on each other around a cycle that no source outside it enters, so none of them can ever start; start one of them from something outside the cycle, or grant it with `accept=\"external\"`.",
+        spec: &["dsl 0.49.0 §6.1"],
+    },
+    Code {
+        code: "E-QUEST-START-SELF",
+        summary: "A quest's `start` reads the quest's own state (`quest.<id>.*`), which has no value before the quest starts; a quest only the host grants is written `accept=\"external\"` without a `start`.",
+        spec: &["dsl 0.49.0 §6.2"],
+    },
+    Code {
         code: "E-QUEST-TIER-MIX",
         summary: "A subquest's effective `tier` differs from its parent quest's tier.",
         spec: &["dsl 0.23.0 §6"],

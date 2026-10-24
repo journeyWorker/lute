@@ -149,19 +149,32 @@ pub(crate) fn run_constraints(
         }
     };
     let mut all = Vec::<serde_json::Value>::new();
+    let mut diagnostics = Vec::<serde_json::Value>::new();
     let mut failed = false;
     for (root, model) in models {
+        let manifest = root.join("lute.project.yaml");
         if model.manifest().is_none() {
+            // dsl 0.49.0 §6.5: a manifest that exists but does not load
+            // fails the run with the diagnostic whole-project `check` prints.
+            let Some((line, diagnostic)) = manifest_load_error(&root) else {
+                continue;
+            };
+            failed = true;
+            if json {
+                diagnostics.push(diagnostic_json(&root, &manifest, &diagnostic));
+            } else {
+                println!("{line}");
+            }
             continue;
         }
         for diagnostic in declaration_errors(&model) {
             failed = true;
             if json {
-                all.push(serde_json::json!({"root": root, "code": diagnostic.code, "message": diagnostic.message, "span": diagnostic.span}));
+                diagnostics.push(diagnostic_json(&root, &manifest, diagnostic));
             } else {
                 println!(
                     "{}: {} {}",
-                    root.join("lute.project.yaml").display(),
+                    manifest.display(),
                     diagnostic.code,
                     diagnostic.message
                 );
@@ -179,7 +192,9 @@ pub(crate) fn run_constraints(
             if json {
                 all.push(serde_json::json!({
                     "root": root, "id": result.id, "kind": result.kind,
+                    "subject": result.subject,
                     "verdict": result.verdict, "evidence": result.evidence,
+                    "reason": result.reason,
                     "scope": result.scope, "declaration": result.declaration,
                     "witnesses": result.witnesses,
                     "counterexamples": result.counterexamples, "related": result.related,
@@ -207,6 +222,9 @@ pub(crate) fn run_constraints(
                     },
                     evidence
                 );
+                if result.verdict == lute_model::constraints::ConstraintVerdict::Unknown {
+                    println!("  reason: {}", result.reason);
+                }
                 for witness in result.witnesses {
                     println!("  witness: {witness}");
                 }
@@ -218,7 +236,7 @@ pub(crate) fn run_constraints(
     }
     let exit = if failed { 1 } else { 0 };
     if json {
-        let payload = serde_json::json!({"constraints": all});
+        let payload = serde_json::json!({"diagnostics": diagnostics, "constraints": all});
         let report = envelope::report(crate::envelope::version::CONSTRAINTS, exit, payload);
         match serde_json::to_string_pretty(&report) {
             Ok(text) => println!("{text}"),
@@ -236,6 +254,62 @@ pub(crate) fn run_constraints(
     }
 }
 
+/// One `diagnostics` entry of the JSON report: a manifest diagnostic of
+/// `root`, at `manifest`.
+fn diagnostic_json(root: &Path, manifest: &Path, diagnostic: &Diagnostic) -> serde_json::Value {
+    serde_json::json!({
+        "root": root, "path": manifest, "code": diagnostic.code,
+        "severity": diagnostic.severity, "message": diagnostic.message, "span": diagnostic.span,
+    })
+}
+
+/// The error of a `lute.project.yaml` under `root` that exists but does not
+/// load: the line whole-project `check` prints, and the diagnostic. `None`
+/// when it loads or does not exist.
+fn manifest_load_error(root: &Path) -> Option<(String, Diagnostic)> {
+    use lute_manifest::project::{ProjectLoadError, E_MANIFEST};
+    let error = lute_manifest::project::load_project(root).err()?;
+    let text = std::fs::read_to_string(root.join("lute.project.yaml")).unwrap_or_default();
+    let (message, line, column) = match &error {
+        ProjectLoadError::Io { .. } => (error.to_string(), 1, 1),
+        ProjectLoadError::Yaml {
+            line,
+            column,
+            message,
+            ..
+        }
+        | ProjectLoadError::Invalid {
+            line,
+            column,
+            reason: message,
+            ..
+        } => (message.clone(), *line, *column),
+    };
+    let offset = text
+        .split_inclusive('\n')
+        .take(line.saturating_sub(1))
+        .map(str::len)
+        .sum::<usize>();
+    let offset = text[offset..]
+        .char_indices()
+        .nth(column.saturating_sub(1))
+        .map_or(text.len(), |(i, _)| offset + i);
+    let index = lute_core_span::TextIndex::new(&text);
+    let diagnostic = Diagnostic {
+        code: E_MANIFEST.to_string(),
+        severity: lute_core_span::Severity::Error,
+        message,
+        span: lute_core_span::Span::from_bytes(&index, offset, offset),
+        layer: lute_core_span::Layer::Logic,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+        evidence: None,
+    };
+    Some((error.to_string(), diagnostic))
+}
+
 fn add_script_witnesses(
     memo: &ModelMemo,
     root: &Path,
@@ -246,18 +320,32 @@ fn add_script_witnesses(
     collect_scripts(root, &mut scripts);
     scripts.retain(|script| selection.selects(script));
     for result in results.iter_mut().filter(|r| r.kind == "completable") {
-        let quest = result.counterexamples.first().cloned().unwrap_or_default();
-        for script in &scripts {
-            if !script_witness(memo, root, script, &quest, &selection.build()) {
-                continue;
+        let quest = result
+            .subject
+            .strip_prefix("quest:")
+            .unwrap_or_default()
+            .to_string();
+        let witness = scripts
+            .iter()
+            .find(|script| script_witness(memo, root, script, &quest, &selection.build()));
+        match witness {
+            Some(script) => {
+                result
+                    .witnesses
+                    .push(format!("{}: {} -> complete", script.display(), quest));
+                result.verdict = lute_model::constraints::ConstraintVerdict::Holds;
+                result.evidence = lute_core_span::Evidence::Witnessed;
+                result.reason = format!("{} observed quest `{quest}` complete", script.display());
+                result.counterexamples.clear();
+                result.related.clear();
             }
-            result
-                .witnesses
-                .push(format!("{}: {} -> complete", script.display(), quest));
-            result.verdict = lute_model::constraints::ConstraintVerdict::Holds;
-            result.evidence = lute_core_span::Evidence::Witnessed;
-            result.counterexamples.clear();
-            break;
+            None if result.reason == lute_model::constraints::NO_SCRIPT_REASON => {
+                result.reason = format!(
+                    "{} script(s) ran; none completed quest `{quest}`",
+                    scripts.len()
+                );
+            }
+            None => {}
         }
     }
 }
@@ -609,6 +697,11 @@ mod one_model_tests {
         assert_eq!(expected, actual);
         assert!(
             actual.contains("plays/tour.play.yaml: firstEscape -> complete"),
+            "{actual}"
+        );
+        // dsl 0.49.0 §6.4: an unwitnessed `completable` names the scripts run.
+        assert!(
+            actual.contains("3 script(s) ran; none completed quest `never`"),
             "{actual}"
         );
         // Every script ran inside the one `constraints` evaluation (the

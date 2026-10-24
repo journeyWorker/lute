@@ -206,6 +206,8 @@ fn a_command_lists_its_arguments_options_and_outputs() {
         (&["new", "lore"][..], "0.48.0.new"),
         (&["new", "schema"][..], "0.48.0.new"),
         (&["loc", "import"][..], "0.48.0.loc-import"),
+        // dsl 0.49.0 §6.4: `subject`, `reason`, and `diagnostics`.
+        (&["constraints"][..], "0.49.0.constraints"),
     ] {
         assert_eq!(
             schema(path)["outputs"],

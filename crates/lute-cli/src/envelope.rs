@@ -25,7 +25,7 @@ use crate::output::{pretty_json, write_stdout};
 pub(crate) mod version {
     pub(crate) const CHECK: &str = "0.48.0.check";
     pub(crate) const IMPACT: &str = "0.43.0.impact";
-    pub(crate) const CONSTRAINTS: &str = "0.43.0.constraints";
+    pub(crate) const CONSTRAINTS: &str = "0.49.0.constraints";
     pub(crate) const LINT: &str = "0.43.0.lint";
     pub(crate) const COMPILE: &str = "0.43.0.compile";
     pub(crate) const EXPR: &str = "0.43.0.expr";

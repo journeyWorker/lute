@@ -132,7 +132,8 @@ pub(crate) use pattern::{
 };
 pub use records::{
     check_branch, check_hub, check_quest, BranchRecord, HubRecord, QuestRecord,
-    E_BRANCH_ALL_GUARDED, E_HUB_NO_EXIT, E_OBJECTIVE_QUEST_DONE, E_QUEST_TREE_CYCLE,
+    E_BRANCH_ALL_GUARDED, E_HUB_NO_EXIT, E_OBJECTIVE_QUEST_DONE, E_QUEST_START_SELF,
+    E_QUEST_TREE_CYCLE,
 };
 pub use rewards::{
     check_quest_rewards, E_REWARD_ATTR, E_REWARD_DUP, E_REWARD_KIND, E_REWARD_TARGET,

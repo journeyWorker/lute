@@ -28,7 +28,10 @@ pub use reconcile::{
     compute_conn_fixpoint, reconcile_collected, relocate_imported_diags,
     rollup_component_body_diags,
 };
-pub use scenario::{assemble_root_scenario, node_cycle_degraded, project_docs, RootScenario};
+pub use scenario::{
+    assemble_root_scenario, node_cycle_degraded, project_docs, reach_claim, ReachClaim,
+    ReachVerdict, RootScenario,
+};
 
 pub use diff::{diff_models, ChangeKind, DiffError, SemanticChange, SemanticDiff};
 pub use impact::{ImpactItem, ImpactReport, ImpactTarget};

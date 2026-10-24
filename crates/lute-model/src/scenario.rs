@@ -148,6 +148,138 @@ pub fn assemble_root_scenario(
     }
 }
 
+/// A reachability verdict ([`reach_claim`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReachVerdict {
+    Reachable,
+    Unreachable,
+    /// A declared quest on no graph edge: available from the start of play.
+    Unanchored,
+    Unknown,
+}
+
+impl ReachVerdict {
+    /// The JSON/DOT token.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ReachVerdict::Reachable => "reachable",
+            ReachVerdict::Unreachable => "unreachable",
+            ReachVerdict::Unanchored => "unanchored",
+            ReachVerdict::Unknown => "unknown",
+        }
+    }
+}
+
+/// One node's reachability claim: the verdict, its evidence and the reason
+/// an author reads (dsl 0.49.0 §6.3). `scenario reach` and `constraints`
+/// both report it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReachClaim {
+    pub verdict: ReachVerdict,
+    pub evidence: lute_core_span::Evidence,
+    pub reason: String,
+}
+
+/// The reach verdict of a declared quest without `follows=` (dsl 0.21.0
+/// §7a.5).
+const UNANCHORED_REASON: &str = "Unanchored — a quest with no declared `follows` edge: \
+     available from the start of play; the connectivity layer holds no prerequisites for it, so \
+     only its quest lifecycle (`start`, or an accept) decides when it activates.";
+
+/// `node`'s reachability claim under the declared routes (dsl 0.49.0 §6.3).
+/// A quest that can never start ([`lute_check::connectivity::StartBlock`])
+/// is `Unknown` naming the start cycle or self-read; a plain quest with no
+/// `after` is unanchored; omitted graph nodes are cycle-degraded.
+pub fn reach_claim(scenario: &RootScenario, node: &lute_check::connectivity::NodeId) -> ReachClaim {
+    use lute_check::connectivity::{NodeId, Reachability, StartBlock};
+    use lute_core_span::Evidence;
+    let claim = |verdict, evidence, reason: &str| ReachClaim {
+        verdict,
+        evidence,
+        reason: reason.to_string(),
+    };
+    let unknown = |reason: &str| claim(ReachVerdict::Unknown, Evidence::Unknown, reason);
+    if let Some((at, block)) = scenario.graph.start_block_root(node) {
+        let reason = match block {
+            StartBlock::Cycle(path) => format!(
+                "Unknown — this quest's `start` waits on a start cycle (E-QUEST-START-CYCLE): \
+                 {}; it can never start under your declared routes.",
+                path.iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" -> ")
+            ),
+            StartBlock::SelfRead if at == node => {
+                "Unknown — this quest's `start` reads its own state (E-QUEST-START-SELF); it can \
+                 never start under your declared routes."
+                    .to_string()
+            }
+            StartBlock::SelfRead | StartBlock::Behind(_) => format!(
+                "Unknown — this quest's `start` waits on {at}, whose `start` reads its own state \
+                 (E-QUEST-START-SELF); it can never start under your declared routes."
+            ),
+        };
+        return unknown(&reason);
+    }
+    if let Some(r) = scenario.reach.get(node) {
+        return match r {
+            Reachability::Reachable => claim(
+                ReachVerdict::Reachable,
+                Evidence::Proven,
+                "Reachable — a satisfiable route exists under your declared routes.",
+            ),
+            Reachability::Unreachable => claim(
+                ReachVerdict::Unreachable,
+                Evidence::Proven,
+                "Unreachable — no satisfiable route exists under your declared routes \
+                 (E-CONN-UNREACHABLE).",
+            ),
+            Reachability::Unknown => unknown(
+                "Unknown — this analysis cannot prove reachability either way under your \
+                 declared routes.",
+            ),
+        };
+    }
+    match node {
+        NodeId::Quest(id) if scenario.ambiguous_quests.contains(id) => unknown(
+            "Unknown — ambiguous quest id (more than one declaration) under your declared routes.",
+        ),
+        NodeId::Quest(id) if scenario.dead_required_objective_quests.contains(id) => claim(
+            ReachVerdict::Unreachable,
+            Evidence::Proven,
+            "Unreachable — this quest has a provably dead REQUIRED objective, so it can never \
+             complete (E-OBJECTIVE-UNSATISFIABLE), under your declared routes.",
+        ),
+        NodeId::Quest(id) if scenario.unreachable_quests.contains(id) => claim(
+            ReachVerdict::Unreachable,
+            Evidence::Proven,
+            "Unreachable — quest lifecycle proves this quest can never complete \
+             (E-QUEST-UNREACHABLE), under your declared routes.",
+        ),
+        // An id referenced by a formula but never declared anywhere in this
+        // root (E-CONN-UNKNOWN-NODE's own concern) reads Unknown — checked
+        // before the unanchored fallback, since an undeclared id is also
+        // absent from `graph.nodes`.
+        NodeId::Quest(id) if !scenario.quest_ids.contains(id) => unknown(
+            "Unknown — this quest id is not declared anywhere in this project root \
+             (E-CONN-UNKNOWN-NODE), under your declared routes.",
+        ),
+        NodeId::Quest(_) if !scenario.graph.nodes.contains_key(node) => claim(
+            ReachVerdict::Unanchored,
+            Evidence::Proven,
+            UNANCHORED_REASON,
+        ),
+        NodeId::Scene(key) if !scenario.key_set.contains_key(key) => unknown(
+            "Unknown — this scene key is not declared anywhere in this project root \
+             (E-CONN-UNKNOWN-NODE), under your declared routes.",
+        ),
+        _ => unknown(
+            "Unknown — this node is on or downstream of a prerequisite cycle (E-CONN-CYCLE); \
+             its reachability is unavailable under your declared routes.",
+        ),
+    }
+}
+
 pub fn node_cycle_degraded(
     scenario: &RootScenario,
     node: &lute_check::connectivity::NodeId,

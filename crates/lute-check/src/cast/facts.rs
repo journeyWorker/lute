@@ -47,14 +47,18 @@ pub fn occasions_before(
         }
     };
     let orders = |from: &NodeId, to: &NodeId| {
-        graph.edge_kinds_for(from, to).is_some_and(|ks| {
-            ks.iter().any(|k| {
-                matches!(
-                    k,
-                    EdgeKind::Visited | EdgeKind::Completed | EdgeKind::Active | EdgeKind::Start
-                )
+        graph.orders(from, to)
+            && graph.edge_kinds_for(from, to).is_some_and(|ks| {
+                ks.iter().any(|k| {
+                    matches!(
+                        k,
+                        EdgeKind::Visited
+                            | EdgeKind::Completed
+                            | EdgeKind::Active
+                            | EdgeKind::Start
+                    )
+                })
             })
-        })
     };
     for id in graph.nodes.keys() {
         let Some(occasion) = unit_of(id)

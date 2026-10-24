@@ -324,6 +324,13 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-QUEST-REF-UNKNOWN", DiagnosticClass::SourceError),
         ("E-QUEST-RESERVED-DECL", DiagnosticClass::SourceError),
         ("E-QUEST-RESERVED-WRITE", DiagnosticClass::SourceError),
+        (
+            "E-QUEST-START-CYCLE",
+            DiagnosticClass::Analysis {
+                evidence: lute_core_span::Evidence::Proven,
+            },
+        ),
+        ("E-QUEST-START-SELF", DiagnosticClass::SourceError),
         ("E-QUEST-TIER-MIX", DiagnosticClass::SourceError),
         ("E-QUEST-TREE-CYCLE", DiagnosticClass::SourceError),
         (

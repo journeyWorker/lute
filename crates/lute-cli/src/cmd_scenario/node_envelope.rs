@@ -41,7 +41,7 @@ fn ancestors_of(
         Vec<&lute_check::connectivity::NodeId>,
     > = BTreeMap::new();
     for (prereq, deps) in &g.edges {
-        for dep in deps {
+        for dep in deps.iter().filter(|dep| g.orders(prereq, dep)) {
             rev.entry(dep).or_default().push(prereq);
         }
     }

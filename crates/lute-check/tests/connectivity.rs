@@ -2991,17 +2991,25 @@ fn an_explicit_after_replaces_start_anchors_but_keeps_the_subquest_edge() {
 #[test]
 fn a_start_anchor_never_proves_the_quest_dead_nor_closes_a_cycle() {
     // The scene the quest starts on waits on the quest itself: the anchor
-    // cannot be its way in, so it is not drawn, and nothing is a cycle.
+    // cannot be its way in. dsl 0.49.0 §6.1: it is drawn as a back edge,
+    // which orders nothing, and nothing is a cycle.
     let road = quest_with_start("road", "visited('road.departure')");
     let looped = "---\nkind: scene\nid: road.departure\nafter: \"active('road')\"\n---\n## Shot 1.\n@a: hi\n";
     let docs = docs_for(&[("s.lute", looped), ("q.lute", &road)]);
-    let g = graph_of(&docs.views());
+    let (g, cycle_diags) = assemble_graph(
+        &docs.views(),
+        &scene_key_set(&docs.views()),
+        &quest_id_set(&docs.views()),
+    );
+    assert!(cycle_diags.is_empty(), "{cycle_diags:?}");
     let (q, s) = (
         NodeId::Quest("road".into()),
         NodeId::Scene("road.departure".into()),
     );
     assert_eq!(kinds(&g, &q, &s), Some(vec![EdgeKind::Active]));
-    assert_eq!(kinds(&g, &s, &q), None, "{g:?}");
+    assert_eq!(kinds(&g, &s, &q), Some(vec![EdgeKind::Start]), "{g:?}");
+    assert!(!g.orders(&s, &q) && g.orders(&q, &s), "{g:?}");
+    assert_eq!(g.topo_order.len(), 2, "{g:?}");
 
     // A start on a provably dead scene reads Unknown, never E-CONN-UNREACHABLE.
     let dead = "---\nkind: scene\nid: road.departure\nafter: \"completed('deadQ')\"\n---\n## Shot 1.\n@a: hi\n";

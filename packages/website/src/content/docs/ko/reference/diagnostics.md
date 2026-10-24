@@ -1226,6 +1226,18 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 명세: [dsl 0.2.0 §5.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.19.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md)
 
+### E-QUEST-START-CYCLE
+
+퀘스트들의 `start` 조건이 서로를 기다리는 순환을 이루고, 순환 밖의 어떤 소스도 그중 하나를 시작시키지 않아 어느 퀘스트도 시작할 수 없습니다. 순환 밖의 무언가로 하나를 시작시키거나 `accept="external"`로 부여하세요.
+
+명세: [dsl 0.49.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+
+### E-QUEST-START-SELF
+
+퀘스트의 `start`가 자기 자신의 상태(`quest.<id>.*`)를 읽습니다. 이 값은 퀘스트가 시작되기 전에는 없습니다. 호스트만 부여하는 퀘스트는 `start` 없이 `accept="external"`로 씁니다.
+
+명세: [dsl 0.49.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+
 ### E-QUEST-TIER-MIX
 
 서브퀘스트의 실효 `tier`가 부모 퀘스트의 tier와 다릅니다.
