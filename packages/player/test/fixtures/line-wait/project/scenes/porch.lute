@@ -1,0 +1,13 @@
+---
+kind: scene
+id: porch
+title: Porch
+on: begin
+once: false
+advances: slot
+---
+
+## Porch
+
+@narrator{code="0010" wait="false"}: The porch light hums.
+::bg{location="porch" time="night"}

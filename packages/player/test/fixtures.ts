@@ -97,3 +97,13 @@ export const checkProject = (project: string): Effect.Effect<void> => Effect.syn
  * before the run goes idle (lute 0.47.2 §2).
  */
 export const compileChimeBatch: Effect.Effect<string> = compileBundle(join(fixtures, "chime-batch", "project"))
+
+/**
+ * `line-wait`: `dusk` (occasion `visit`) shows a `wait="false"` line, a
+ * `::bg` (night), a waiting line, a second `::bg` (dawn), then sets the
+ * terminal `run.over`. `porch` (occasion `begin`, `advances: slot`) shows a
+ * `wait="false"` line and a `::bg`; its clock advance raises `tick`, whose
+ * `dawn` presentation follows in the same batch with one line, then sets
+ * `run.over` (lute 0.49.0 §4.2).
+ */
+export const compileLineWait: Effect.Effect<string> = compileBundle(join(fixtures, "line-wait", "project"))
