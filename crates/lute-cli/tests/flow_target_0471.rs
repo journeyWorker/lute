@@ -59,7 +59,7 @@ fn menu(targets: &[(&str, &str)]) -> String {
         })
         .collect();
     format!(
-        "bindingsVersion: \"0.48\"\ncanvas: {{ width: 1920, height: 1080 }}\nflow:\n  \
+        "bindingsVersion: \"0.49\"\ncanvas: {{ width: 1920, height: 1080 }}\nflow:\n  \
          newGame: {{ occasion: begin }}\n  idle:\n    menu:\n{items}"
     )
 }

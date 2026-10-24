@@ -899,8 +899,8 @@ mod tests {
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
             kind: DocKind::Scene,
-            lute: "0.48.1".into(),
-            ir_version: "0.48.1".into(),
+            lute: "0.49.0".into(),
+            ir_version: "0.49.0".into(),
             capability_snapshot: "cap".into(),
             identity_renames: vec![],
             required_semantics: vec![],

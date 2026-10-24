@@ -1,7 +1,7 @@
 ---
 kind: quest
 id: repeat
-luteVersion: "0.48.1"
+luteVersion: "0.49.0"
 title: Repeat
 ---
 <quest id="repeat" title="Repeat" tier="run" start="true">

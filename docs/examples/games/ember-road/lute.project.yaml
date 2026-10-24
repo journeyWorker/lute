@@ -13,6 +13,6 @@ identity:
   requireStable: true
 defaults:
   pov: corvin
-  luteVersion: "0.48.1"
+  luteVersion: "0.49.0"
   uses: [world.schema.yaml, vocabulary.schema.yaml]
   questTier: run

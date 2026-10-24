@@ -4,6 +4,6 @@ profiles:
   dusk:
     plugins: { dusk.occasions: true }
 defaults:
-  luteVersion: "0.48.1"
+  luteVersion: "0.49.0"
   contentLang: en
   uses: [world.schema.yaml]

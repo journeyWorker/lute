@@ -11,7 +11,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime).
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
-[`schemas/lute-ir-0.48.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.48.schema.json)
+[`schemas/lute-ir-0.49.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.49.schema.json)
 (JSON Schema draft 2020-12).
 
 ## Runtime event contract and `lute-runtime`
@@ -427,8 +427,8 @@ Every host negotiates in this order, before opening a playback session:
 
 1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
    execution-IR shape, so an engine pins the exact `irVersion` major.minor
-   line: a `0.48` engine accepts only `0.48.*` artifacts and refuses `0.47.*`
-   and `0.49.*`; patch handling is the engine's policy. From 1.0 onward, the
+   line: a `0.49` engine accepts only `0.49.*` artifacts and refuses `0.48.*`
+   and `0.50.*`; patch handling is the engine's policy. From 1.0 onward, the
    released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
@@ -440,7 +440,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.48.1"
+irVersion: "0.49.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -456,7 +456,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.41.*` artifact against the `0.48.1`
+the matrix's exact major.minor line (a `0.41.*` artifact against the `0.49.0`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 

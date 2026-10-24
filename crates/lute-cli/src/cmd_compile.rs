@@ -186,7 +186,7 @@ fn run_compile(
     // its RECONCILED project verdict (an envelope-Guaranteed `run.*`/`user.*`
     // read no longer blocks; a read no route guarantees blocks with
     // `E-STATE-MAYBE-UNAVAILABLE`). The project is the explicit `--project`
-    // or the discovered nearest manifest — the two mean the same (0.48.1
+    // or the discovered nearest manifest — the two mean the same (0.48.0
     // §2.1); with no project at all, the standalone single-file `check` gate.
     //
     // 0.8.0 §9: the `identity:` block templates `lineId`/`voiceKey`. It is a

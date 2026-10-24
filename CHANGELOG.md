@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.48.1`, the grammar and semantics the checker
+- **Language** — currently `0.49.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.48.1`) and gated on by consuming engines.
+  artifact (currently `0.49.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,319 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.49.0]
+
+**Correctness, diagnostics and project-model cost** (spec
+[`0.49.0.md`](docs/proposals/scenario-dsl/0.49.0.md); plan
+[`2026-10-23-lute-0.49.0-project-model.md`](docs/superpowers/plans/2026-10-23-lute-0.49.0-project-model.md);
+triage [`2026-10-23-lute-0.49-dogfood-triage.md`](docs/superpowers/notes/2026-10-23-lute-0.49-dogfood-triage.md);
+ADR D14 in [`architecture-direction.md`](docs/design/architecture-direction.md)).
+The release closes the 0.49 rows of the large-project port triage (#155–#188)
+and the defects found while fixing them (#189–#196). There is **no new
+syntax**: every item is a bug fix, a diagnostic, a documentation fix, a cost
+fix, or (#155/#156) an IR placement fix. Every axis reads `0.49.0`; the
+contract schemas move to the `0.49` line
+(`schemas/lute-{ir,events,snapshot,player-bindings}-0.49.schema.json`),
+`bindingsVersion` is `"0.49"` and the player's save/profile format is
+`"0.49"`. The seven npm packages align to `0.49.0`. This is a clean cutover
+(ADR D6).
+
+### Breaking
+
+| Class (D6) | Change | Migration |
+|---|---|---|
+| IR | Plugin `stampAttrs` values move from top-level record keys to one nested `stamps` object (spec §3.1; #155, #156). | Engines read `record.stamps.<attr>`. Every repository consumer migrates in this release. |
+| IR | In a `<choice into=…>` arm the recorded `set` comes first (§5.1); a content line may carry `timing.wait` (§4.2). | None. |
+| Event / snapshot | Plugin event records (normal and halted), the bridge await and the snapshot/request that carries it gain an optional `stamps` object beside `attrs` (§3.1). | Hosts read plugin stamps from `stamps`, never from `attrs`. |
+| Plugin | `list` / `map` / `record` directive-attribute and `stampAttrs` types are refused: `E-PLUGIN-INVALID-DIRECTIVE` (§3.2; #176). | Declare `string`, or one attribute per field. |
+| Semantic | `into=` writes before the arm body (§5.1; #158). | Review arms that read the `into` path. |
+| Semantic | Core timing keys and plugin stamps on `::jump` / `::label` / `::clear` are `E-UNKNOWN-ATTR` (§4.1; #157). | Move them to a neighbouring record or the `::actor{exit}`. |
+| Semantic | Reference-typed plugin frontmatter values are checked (§4.3; #178); a directive timing `@ref` is typed (#193). | Fix the reported values. |
+| Semantic | `E-QUEST-START-CYCLE`, `E-QUEST-START-SELF` (§6.1–§6.2; #181, #182). | Self-lock → `accept="external"`; break the deadlock. |
+| Semantic | An `@ref` or bare reward `target` is `E-REWARD-ATTR` under every contract (§3.3; #192). | Write a quoted id, `target="…"`. |
+| Semantic | An inline or schema `per:` family over an imported kind merges member by member like explicit paths: a `uses`-peer redeclaration is `E-STATE-REDECLARE` / `E-USES-DUP-STATE`, a retype `E-EXTENDS-STATE-TYPE`, and an `extends` refinement now reaches the IR (#190, #196). | Fix the reported redeclarations; expect the refined defaults in the IR. |
+| Semantic (looser) | Blocking bridge results are assigned (§5.2; #179); `'m' in family` is a presence guard (§5.3; #180); `W-BRANCH-ID-SHARED` is narrowed (§7.2; #167). | Fire-and-continue calls write `wait="false"`. |
+| CLI | `constraints` prints the `0.49.0.constraints` report and exits `1` on an invalid manifest; `lint <DIR>` uses the project; `asset-exists` takes attribute selectors (§6.3–§6.5, §7.3, §7.4). | Read `reason` / `diagnostics`. |
+| Player | A `timing.wait: false` line does not hold the following staging cues; plugin stamps are read from `stamps` (§4.2, §3.1). | Custom hosts SHOULD do the same. |
+| Rust / TS API | `CheckInput::new`, `ProjectBase`, `ProjectVocab`, `StateView`, `InputSources`; `InputCache` returns `Arc`s; `ExecutionIr.state: StateTable`; `Stamp.stamps`; `lute-model` `ModelDocument`, `DocGroup`, `ConstraintResult { subject, reason }`, `scenario::reach_claim`, `ModelMemo::builds`; the TS `Ir` / `Contract` `stamps` (§9.7). | Build `CheckInput` through `CheckInput::new`; read declarations through `StateView`. |
+| Release | All axes `0.49.0`; schemas `-0.49`; `bindingsVersion` and saves `"0.49"`. | Widen gates from `0.48` to `0.49`; re-save. |
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- **`into=` writes first.** The `set` an arm of `<choice into=… value=…>`
+  records runs before the arm body, so an arm that ends in `::jump` or `::end`
+  still records the pick, and the arm body reads the recorded value. (#158)
+- **Blocking bridge results are definitely assigned.** A call whose
+  declaration writes `fromBridgeResult` and whose effective `wait` is not
+  `false` (the authored flag, an `@def` bool body, the declaration's default,
+  else `true`) assigns its result paths for every later read, in `check` and
+  in the project recomputation (`reconcile`, `scenario envelope`). A guarded
+  call or `wait="false"` still leaves `E-MAYBE-UNSET`. (#179)
+- **One presence guard for every `per:` member.** `'<member>' in <family>`
+  guards `<family>.<member>` (`Guard`, its negation when false), so a member
+  that is not an identifier has a guard; a non-member gets the `family['m']`
+  read's `E-UNDECLARED`. `<match subject="f['m']"> <when is="unset">` now
+  lowers to `!has(...)` instead of `E-WHEN-UNSET-SUBJECT`. (#180)
+- **Stamps on directives that emit no stamped record are errors.** `::jump`,
+  `::label` and `::clear` refuse a core timing key or a plugin `stampAttrs`
+  key with `E-UNKNOWN-ATTR` at the attribute (`::clear` keeps its message);
+  `lute context`, LSP completion and hover read the same set. (#157)
+- **`wait` on a content line.** A line takes the core timing key `wait`
+  (bool, or a bool `@ref`); `delay` / `duration` stay `E-UNKNOWN-ATTR`. (#174)
+- **Directive timing `@ref`s are typed.** `::bg{wait=@n}` with `n: int` is
+  `E-REF-TYPE` instead of compiling to the default `wait: true`. (#193)
+- **Reference-typed plugin frontmatter keys are checked.** A key typed
+  `entity`, `domain`, `enumFromOption`, `providerRef` or `assetKind` (or a list
+  of one) checks its string values as an attribute of that type does, with the
+  attribute codes and did-you-mean. 0.48.1 accepted any string for an entity
+  key and refused every `providerRef` string. (#178)
+- **Start cycles and self-reads.** Every quest `start` anchor edge is drawn,
+  including the one that closes a cycle (it orders nothing); a set of quests
+  whose `start` / subquest anchors can never all open is
+  `E-QUEST-START-CYCLE`, once per strongly connected set at its least quest's
+  `start`; a `start` that reads its own quest is `E-QUEST-START-SELF`. A quest
+  proven unreachable is no way in. (#181, #182)
+- **`per:` families over imported kinds merge like explicit paths.** An
+  inline family (#190) or a schema document's family (#196) over a kind
+  another document declares goes through the explicit-path merge: a `uses`-peer
+  redeclaration is `E-STATE-REDECLARE` (inline) / `E-USES-DUP-STATE` (schema),
+  a type change `E-EXTENDS-STATE-TYPE`, and an `extends` refinement applies to
+  every member it names; an explicit member declaration beats a family. 0.48.1
+  dropped all three silently.
+- **Whole-project check reads every quest reference.** `quest.<id>.*` reads in
+  `{{…}}` interpolations (lines, choice labels, interpolation arguments) and
+  inline `defs:` bodies are resolved like CEL slots
+  (`E-QUEST-REF-UNKNOWN`). (#195)
+
+### IR
+
+- **Plugin stamps are one nested `stamps` object.** A record's plugin
+  `stampAttrs` values are `"stamps": { "<attr>": <value>, … }` after `timing`,
+  `provenance` and `source`, omitted when none is authored; they are never
+  top-level keys, so a stamp named `tag`, `speaker`, `text` or `kind` can no
+  longer replace or duplicate a record key. The core stamp members stay
+  flattened; the eight core stamp names stay reserved. A record without a
+  plugin stamp is byte-identical to 0.48.1. (#155, #156)
+- A `<choice into=…>` arm's `set` record is the arm's first record (positions
+  shift accordingly). (#158)
+- A line record may carry `timing.wait` (only when authored). (#174)
+- The CEL text of a path with a non-identifier segment is valid CEL
+  (quoted-index spelling; `has()` of a non-identifier member renders
+  `("m" in family)`); the `expr` tree is unchanged.
+- The schema file is `schemas/lute-ir-0.49.schema.json` (`$defs/stamps` on
+  the 23 stamped `cmd*` definitions; `timing.wait` covers lines).
+
+### Plugin
+
+- `list` / `map` / `record` types on a directive attribute or a `stampAttrs`
+  entry fail the plugin load with `E-PLUGIN-INVALID-DIRECTIVE`, naming the
+  attribute; no `.lute` value could satisfy them. (#176)
+- A reward kind's `target: { forbidden: true }` says the kind takes no target:
+  a `target=` is `E-REWARD-TARGET` at the attribute. It stands alone (with
+  `provider`, `entity` or `required`, the load fails); declarations without it
+  keep their `capabilitySnapshot`. `schemas/lute.plugin.json` gains the
+  `rewardKinds` definitions. (#168)
+- A reward's `target` reaches the IR only quoted: an `@ref` or bare `target`
+  is `E-REWARD-ATTR` at the value under every contract (decision: refuse, not
+  resolve — an `entity:` / `provider:` contract cannot judge a reference
+  statically); `required: true` no longer also reports it missing. (#192)
+- `target.required: null` is refused as not a bool, as on 0.48.1.
+
+### Bindings
+
+- None. `bindingsVersion` is `"0.49"`.
+
+### CLI
+
+- **`constraints` report `0.49.0.constraints`.** Each result carries
+  `subject` and `reason` (the evidence on `holds`; why on `unknown`, e.g.
+  `no play or test script was run (--all-scripts / --script)` or `2 script(s)
+  ran; none completed quest `first``); `counterexamples` and `related` appear
+  only on `violated`; `E-CONSTRAINT-DECL` moves to the report's
+  `diagnostics`. Text output prints `reason:` under `unknown`. `scenario reach`
+  and `constraints` share one reachability claim, so an unanchored quest is
+  `reachable holds [proven]` (`unanchored: available from the start of
+  play`). (#184, #185)
+- **`constraints` on an invalid manifest** prints `check`'s manifest
+  diagnostics and exits `1` (JSON `ok: false`, `constraints: []`). (#183)
+- **`lint <DIR>` uses the project.** It discovers the nearest
+  `lute.project.yaml` at or above `<DIR>`, applies its `lute.lint.yaml` and
+  prints findings relative to the project root; `lint <DIR> --project <P>`
+  lints `<DIR>` inside `<P>`, and a `<DIR>` outside `<P>` is `E-CLI-USAGE`.
+  (#188)
+- **`asset-exists` attribute selectors.** `options.providers` keys are `<tag>`
+  (`::<tag>`'s `assetId`, the 0.48.1 meaning), `<tag>.<attr>` and `@<attr>`
+  (that attribute on every content line); another key shape is
+  `E-LINT-CONFIG`. Only quoted values are checked. (#187)
+- `scenario` text marks a start-cycle node `(unlayered -- part of a start
+  cycle, E-QUEST-START-CYCLE)`; JSON nodes carry `startCycle: true`; DOT draws
+  them bold. (#181)
+- Every other report keeps its id; every other output is identical to 0.48.1
+  apart from stamps and the classes the spec's §13 lists.
+
+### Runtime
+
+- Normal and halted `plugin` records, `Await::Bridge` and the snapshot/request
+  that carries it hold `stamps` beside `attrs` (omitted when empty; staging
+  `attrs` unchanged). `lute-runtime-wasm` passes it through. The TS `Ir` and
+  `Contract` types gain `stamps`. (#155, #156)
+
+### Player
+
+- `PluginCall.stamps?` beside `attrs` for non-blocking plugin records; a
+  bridge request keeps `stamps` through to `host.bridge`.
+- The reference scheduler honours `timing.wait: false` on a line: the
+  following staging cues start while the line is presented; it joins the line
+  before the next line, before a presentation cue, and before the batch
+  settles. (#174)
+- The save and profile format version is `"0.49"`, so a 0.48 save is refused
+  `SaveIncompatible` (a 0.48 profile still decodes).
+
+### Diagnostics
+
+- New: `E-QUEST-START-CYCLE`, `E-QUEST-START-SELF` (errors) and
+  `W-PROJECT-CHECK-SKIPPED` (info: a single-file `check` names, once per quest
+  id, a `quest.<id>.*` read only whole-project `check` can resolve; never
+  raised by whole-project check, compile or wasm; the summary reads
+  `(0 warning(s), 1 info)`). (#181, #182, #175)
+- Changed messages and `--explain` text: `E-UNKNOWN-ATTR` (§4.1),
+  `E-UNKNOWN-ID` (§4.3), the presence-guard hints of `E-UNSET-LITERAL`,
+  entity-indexed `E-UNDECLARED` and `E-CEL-PARSE` (§5.3, each naming an
+  accepted spelling), `E-ENTITY-KIND-CLASH` (+ the shared-root-kind route for
+  two id spaces, #160), `E-PATH-IDENT` (+ the provider route for foreign ids,
+  #161), `E-PLUGIN-INVALID-DIRECTIVE`, `E-PLUGIN-RESERVED-STAMP-ATTR`,
+  `E-REWARD-TARGET`, `E-REWARD-ATTR`, `E-LINT-CONFIG` (§7.3, the
+  `asset-exists` selector shapes), `W-BRANCH-ID-SHARED`.
+- `W-BRANCH-ID-SHARED` fires only for an id some `*.play.yaml` /
+  `*.test.yaml` names as a `choose:` key (top level, steps, and `include:`d
+  steps). (#167)
+
+### Identity
+
+- None. Line ids and voice keys do not move; `eventVersion` /
+  `snapshotVersion` read `0.49.0`.
+
+### Performance
+
+- **The project vocabulary is built once per project** (§9, ADR D14; #173):
+  `ProjectBase` / `ProjectVocab` are shared by every document, `per:`
+  families are not materialized per member, the IR state table is shared, and
+  each command builds one project model (witnesses included). #173's grid,
+  `check --project` CPU / peak RSS (debug, macOS arm64, minimum of 3 runs,
+  both binaries in one session):
+
+  | Scenes | Slots | 0.48.1 | 0.49.0 |
+  |---|---|---|---|
+  | 100 | 150 | 0.15 s, 65 MB | 0.07 s, 25 MB |
+  | 400 | 150 | 0.58 s, 202 MB | 0.24 s, 47 MB |
+  | 100 | 4 800 | 2.66 s, 941 MB | 0.12 s, 31 MB |
+  | 400 | 4 800 | 10.68 s, 3 623 MB | 0.32 s, 51 MB |
+
+  Marginal cost per document: 1.43 ms / 0.458 MB → 0.57 ms / 0.071 MB at 150
+  slots, 26.73 ms / 8.938 MB → 0.67 ms / 0.069 MB at 4 800 slots.
+  `scripts/vocab-grid.py gate` (CI, `test.yml`) holds the growth shape.
+- Per-member state origin spans are located on demand (#189): an imported
+  `per:` kind of 100 000 members, `check s.lute` 318.7 s / 322 MB on 0.48.1 →
+  0.44 s / 152 MB.
+- The root vocabulary merges a kind's members in linear time (#191):
+  `check --project`, 100 scenes, 4 paths over one 10 000-member kind,
+  20.5 s → 0.69 s once #189's spans are fixed (CPU, debug build).
+
+### Fixed
+
+- **A stamp named `tag` no longer replaces a plugin record's dispatch tag; a
+  stamp named like a record key is no longer a duplicate JSON key.**
+  ([#155](https://github.com/journeyWorker/lute/issues/155),
+  [#156](https://github.com/journeyWorker/lute/issues/156))
+- **Stamps on `::jump` / `::label` are reported, not dropped.**
+  ([#157](https://github.com/journeyWorker/lute/issues/157))
+- **An `into=` arm ending in `::jump` records its pick.**
+  ([#158](https://github.com/journeyWorker/lute/issues/158))
+- **`E-ENTITY-KIND-CLASH` and `E-PATH-IDENT` name a route.**
+  ([#160](https://github.com/journeyWorker/lute/issues/160),
+  [#161](https://github.com/journeyWorker/lute/issues/161); closed as
+  documented)
+- **`W-BRANCH-ID-SHARED` only where a script names the id.**
+  ([#167](https://github.com/journeyWorker/lute/issues/167))
+- **A reward kind can say "no target".**
+  ([#168](https://github.com/journeyWorker/lute/issues/168))
+- **Free-text player input has a documented pattern.**
+  ([#171](https://github.com/journeyWorker/lute/issues/171); closed as
+  documented)
+- **Whole-project cost no longer grows with documents × vocabulary size.**
+  ([#173](https://github.com/journeyWorker/lute/issues/173))
+- **A content line can carry `wait`.**
+  ([#174](https://github.com/journeyWorker/lute/issues/174))
+- **A single-file check names the quest references it cannot judge.**
+  ([#175](https://github.com/journeyWorker/lute/issues/175))
+- **Unsatisfiable plugin attribute types fail the load.**
+  ([#176](https://github.com/journeyWorker/lute/issues/176))
+- **Entity / provider frontmatter values are checked.**
+  ([#178](https://github.com/journeyWorker/lute/issues/178))
+- **A blocking bridge result is assigned after the call.**
+  ([#179](https://github.com/journeyWorker/lute/issues/179))
+- **Every `per:` member has a presence guard.**
+  ([#180](https://github.com/journeyWorker/lute/issues/180))
+- **Start cycles and start self-reads are diagnosed and drawn.**
+  ([#181](https://github.com/journeyWorker/lute/issues/181),
+  [#182](https://github.com/journeyWorker/lute/issues/182))
+- **`constraints` on an invalid manifest fails loudly; verdicts carry a
+  reason, counterexamples only when violated.**
+  ([#183](https://github.com/journeyWorker/lute/issues/183),
+  [#184](https://github.com/journeyWorker/lute/issues/184),
+  [#185](https://github.com/journeyWorker/lute/issues/185))
+- **`asset-exists` checks line and named attributes.**
+  ([#187](https://github.com/journeyWorker/lute/issues/187))
+- **`lint <DIR>` applies the project's `lute.lint.yaml`.**
+  ([#188](https://github.com/journeyWorker/lute/issues/188))
+- **Quadratic origin spans and root vocabulary merge.**
+  ([#189](https://github.com/journeyWorker/lute/issues/189),
+  [#191](https://github.com/journeyWorker/lute/issues/191))
+- **A `per:` redeclaration or refinement over an imported kind is no longer
+  dropped** (inline and schema tier).
+  ([#190](https://github.com/journeyWorker/lute/issues/190),
+  [#196](https://github.com/journeyWorker/lute/issues/196))
+- **An `@ref` or bare reward target is refused, not dropped.**
+  ([#192](https://github.com/journeyWorker/lute/issues/192))
+- **Directive timing `@ref`s are typed.**
+  ([#193](https://github.com/journeyWorker/lute/issues/193))
+- **`lute-check` lints clean on wasm32.**
+  ([#194](https://github.com/journeyWorker/lute/issues/194))
+- **Whole-project check reads quest references in interpolations and inline
+  defs.** ([#195](https://github.com/journeyWorker/lute/issues/195))
+
+### Documentation
+
+- Website (EN/KO) and `llms-full.txt` document every changed behaviour:
+  nested stamps (`tooling/runtime-contract`, `player/custom-hosts`), refused
+  attribute types and `forbidden` targets (`plugins/manifests`), unstamped
+  directives and directive timing references (`language/directives`), line
+  `wait`, presence guards, start cycles (`connectivity/reachability`), the
+  constraints report and `lint <DIR>` (`tooling/cli`), quest reads in
+  interpolations (`language/quests-and-scenes`), schema-level `per:` merges
+  (`state/schemas`), the shared-root-kind pattern
+  (`state/facts-and-datalog`), and a free-text input recipe
+  (`language/choices-and-hubs`, `docs/examples/free-text-input/`).
+- ADR D14 "Project-wide data is built once per project".
+
+### Migration notes
+
+| Class | Change | Migration |
+|---|---|---|
+| IR / Event | Plugin stamps move under `stamps` (records, plugin events, bridge await). | Read `record.stamps.<attr>`; gate on `0.49`. |
+| Plugin | `list` / `map` / `record` attribute types are refused. | Declare `string`, or one attribute per field. |
+| Semantic | `into=` records before the arm body; stamps on `::jump` / `::label` / `::clear`, unchecked frontmatter references, unquoted reward targets, start cycles and self-reads, and `per:` redeclarations over imported kinds are now errors. | Fix the reported sites; self-lock → `accept="external"`. |
+| CLI | `0.49.0.constraints`; `constraints` exits `1` on an invalid manifest; `lint <DIR>` uses the project. | Read `reason` / `diagnostics`; accept `0.49.0.constraints`. |
+| Player | A `wait: false` line lets the following staging cues run; saves are `"0.49"`. | Custom hosts SHOULD do the same; re-save. |
+| Release | All axes `0.49.0`; schemas `-0.49`; `bindingsVersion: "0.49"`. | Widen gates from `0.48` to `0.49`. |
+
+From 0.48.1: run `lute fix` to raise `luteVersion` stamps to `0.49.0` and
+`bindingsVersion` to `"0.49"`.
 
 ## [0.48.1]
 

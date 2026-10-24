@@ -1,7 +1,7 @@
 ---
 kind: quest
 id: grantInstance
-luteVersion: "0.48.1"
+luteVersion: "0.49.0"
 title: Grant Instance
 uses: ./schema.yaml
 ---

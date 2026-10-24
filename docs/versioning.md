@@ -10,13 +10,13 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.48.1` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.48.1` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.48.1` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.48.schema.json`](../schemas/lute-ir-0.48.schema.json)). Before 1.0, consuming engines gate on exact major.minor; from 1.0, they gate on MAJOR only. |
-| **Event** | `eventVersion` in runtime outputs; `snapshotVersion` in snapshots | `0.48.1` | A change to the runtime input, output or snapshot JSON ([event contract](runtime/event-contract.md), [`schemas/lute-events-0.48.schema.json`](../schemas/lute-events-0.48.schema.json), [`schemas/lute-snapshot-0.48.schema.json`](../schemas/lute-snapshot-0.48.schema.json)). Before 1.0, hosts gate on exact major.minor. |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.49.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.49.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.49.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.49.schema.json`](../schemas/lute-ir-0.49.schema.json)). Before 1.0, consuming engines gate on exact major.minor; from 1.0, they gate on MAJOR only. |
+| **Event** | `eventVersion` in runtime outputs; `snapshotVersion` in snapshots | `0.49.0` | A change to the runtime input, output or snapshot JSON ([event contract](runtime/event-contract.md), [`schemas/lute-events-0.49.schema.json`](../schemas/lute-events-0.49.schema.json), [`schemas/lute-snapshot-0.49.schema.json`](../schemas/lute-snapshot-0.49.schema.json)). Before 1.0, hosts gate on exact major.minor. |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
-| **Player packages** | [`packages/player`](../packages/player) and [`packages/player-web`](../packages/player-web) | `0.48.1` | Renderer-free core and browser player released in lockstep with the toolchain; their public contracts are documented under [`packages/website/src/content/docs/player/`](../packages/website/src/content/docs/player/). |
+| **Player packages** | [`packages/player`](../packages/player) and [`packages/player-web`](../packages/player-web) | `0.49.0` | Renderer-free core and browser player released in lockstep with the toolchain; their public contracts are documented under [`packages/website/src/content/docs/player/`](../packages/website/src/content/docs/player/). |
 
 
 The axes are **independent in meaning**: a toolchain release need not advance
@@ -1245,3 +1245,20 @@ stamp-only: no field or meaning change. `luteVersion`, `irVersion`,
 keep their names and bodies, `bindingsVersion` stays `"0.48"`, and player saves
 and profiles stay `"0.48"`. Engines and hosts gated on `0.48` need no gate
 change. See the [`0.48.1` proposal](proposals/scenario-dsl/0.48.1.md).
+
+**`0.49.0` aligns every visible axis at `0.49.0`; the IR, the Event and
+snapshot shapes, the language's static semantics and the toolchain all earn
+it.** Plugin stamps move from top-level record keys to one nested `stamps`
+object in the IR, and plugin event records and the bridge await carry
+`stamps` beside `attrs` (omitted when empty). A `<choice into=…>` arm records
+its `set` first, and a content line may carry `timing.wait`. The checker
+refuses stamps on `::jump`/`::label`/`::clear`, `list`/`map`/`record` plugin
+attribute types, unchecked entity/provider frontmatter values, `start` cycles
+and self-reads, and accepts bridge results and `'m' in family` guards it used
+to reject. `constraints` reports `0.49.0.constraints`; every other report
+keeps its id. The project vocabulary is built once per project, so
+whole-project cost no longer grows with documents × vocabulary size. The
+schema files move to the `0.49` line, `bindingsVersion` becomes `"0.49"` and
+player saves and profiles read `"0.49"`. Engines and hosts gated on `0.48`
+must widen their gates to `0.49` and read plugin stamps from `stamps`. See
+the [`0.49.0` proposal](proposals/scenario-dsl/0.49.0.md).
