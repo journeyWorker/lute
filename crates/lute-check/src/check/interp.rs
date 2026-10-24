@@ -462,7 +462,7 @@ fn plural_form_problem(raw: &str, forms: Option<&[String]>) -> Option<String> {
 /// (dsl §7.6/§8.1): the OUTERMOST `@ref` starts at byte 0 and its bare/call group
 /// reaches the end — nothing before or trailing. Nested `@ref`s inside a
 /// `@fn(args)` argument are legitimate CEL (§8.1) and do not disqualify.
-pub(super) fn is_bare_ref(raw: &str) -> bool {
+pub(crate) fn is_bare_ref(raw: &str) -> bool {
     scan_refs(raw).iter().any(|r| {
         !r.is_dollar
             && r.span.byte_start == 0

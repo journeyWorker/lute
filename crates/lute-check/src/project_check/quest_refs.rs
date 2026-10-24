@@ -109,8 +109,9 @@ pub(crate) fn referenced_reserved_paths(
 }
 
 /// The reserved quest paths `doc` reads outside its CEL slots (#175 review):
-/// `{{quest.<id>.…}}` interpolations in content lines and choice labels (at
-/// the interpolation), and the bodies of its inline `defs:` (at the body's
+/// `{{quest.<id>.…}}` interpolations and the arguments of a valid
+/// `{{@fn(…)}}` one in content lines and choice labels (at the
+/// interpolation), and the bodies of its inline `defs:` (at the body's
 /// value).
 fn text_and_def_quest_reads(
     doc: &Document,
@@ -118,11 +119,32 @@ fn text_and_def_quest_reads(
     push: &mut impl FnMut(String, Span),
 ) {
     let mut interps = |interps: &[Interp]| {
-        for i in interps.iter().filter(|i| i.kind == InterpKind::Path) {
-            if let Some(path) =
-                crate::cel_paths::text_state_path(&i.raw).filter(|p| is_reserved_quest_path(p))
-            {
-                push(path, i.span);
+        for i in interps {
+            match i.kind {
+                InterpKind::Path => {
+                    if let Some(path) = crate::cel_paths::text_state_path(&i.raw)
+                        .filter(|p| is_reserved_quest_path(p))
+                    {
+                        push(path, i.span);
+                    }
+                }
+                // The arguments the interpolation check admits and reads
+                // as CEL (`check/interp.rs`), through the same path reader.
+                InterpKind::Ref if crate::check::is_bare_ref(&i.raw) => {
+                    let slot = lute_syntax::ast::CelSlot::raw(
+                        lute_syntax::ast::CelKind::AttrValue,
+                        i.raw.clone(),
+                        i.span,
+                    );
+                    slot_path_reads(
+                        &slot,
+                        false,
+                        &is_reserved_quest_path,
+                        &quest_id_at,
+                        &mut *push,
+                    );
+                }
+                InterpKind::Ref | InterpKind::Reserved => {}
             }
         }
     };

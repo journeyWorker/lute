@@ -139,6 +139,58 @@ fn quest_reads_in_interpolations_and_inline_defs_are_judged_by_the_project() {
     );
 }
 
+/// F5-R1 remainder: a quest read in the arguments of a reference
+/// interpolation (`{{@ready(quest.<id>.state == …)}}`, on a content line
+/// and in a choice label) is a read too: the single-file check names it at
+/// the interpolation, whole-project check resolves it.
+#[test]
+fn quest_reads_in_reference_interpolation_arguments_are_judged_by_the_project() {
+    let scene = "---\nkind: scene\nid: s\ndefs:\n  ready: { type: bool, params: { p: bool }, cel: \"true\" }\n---\n\n## A {#a}\n\n@mira: {{@ready(quest.gone.state == 'complete')}}\n<branch id=\"b\">\n<choice id=\"c\" text=\"Ask {{@ready(quest.labelGone.state == 'active')}}\">\n@mira: Yo.\n</choice>\n</branch>\n";
+    let dir = project(
+        "tooling-049-175-ref-args",
+        &[
+            ("lute.project.yaml", MANIFEST),
+            ("schema/world.schema.yaml", SCHEMA),
+            ("scenes/s.lute", scene),
+        ],
+    );
+    let named = |code: &str, out: &str| -> Vec<String> {
+        let mut ids: Vec<String> = out
+            .lines()
+            .filter(|l| l.contains(code))
+            .filter_map(|l| {
+                l.split("quest `")
+                    .nth(1)?
+                    .split('`')
+                    .next()
+                    .map(str::to_string)
+            })
+            .collect();
+        ids.sort();
+        ids
+    };
+    let (code, out) = run(&dir, &["check", "scenes/s.lute", "--project", "."]);
+    assert_eq!(code, 0, "{out}");
+    assert_eq!(
+        named("[W-PROJECT-CHECK-SKIPPED]", &out),
+        ["gone", "labelGone"],
+        "{out}"
+    );
+    // At the line's interpolation.
+    assert!(
+        out.contains("scenes/s.lute:10:8: info [W-PROJECT-CHECK-SKIPPED] `quest.gone.state`"),
+        "{out}"
+    );
+
+    let (code, out) = run(&dir, &["check", "--project", "."]);
+    assert_eq!(code, 1, "{out}");
+    assert_eq!(
+        named("[E-QUEST-REF-UNKNOWN]", &out),
+        ["gone", "labelGone"],
+        "{out}"
+    );
+}
+
 /// #175 review (F5-R4): the note sits at the read earliest in source, even
 /// when the canonical slot walk visits a later one first (`start` before an
 /// earlier-written `fail`).

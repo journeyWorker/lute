@@ -414,3 +414,64 @@ async fn analyze_names_the_quest_references_it_cannot_judge() {
         "{diags:?}"
     );
 }
+
+/// F5-R1 remainder: a quest read in a reference interpolation's arguments
+/// (`{{@ready(quest.gone.state == 'complete')}}`) is named too, at the
+/// interpolation.
+#[tokio::test(flavor = "current_thread")]
+async fn analyze_names_a_quest_read_in_a_reference_interpolation_argument() {
+    use futures::StreamExt;
+    use std::fs;
+    use tower::{Service, ServiceExt};
+    use tower_lsp_server::jsonrpc::Request as RpcRequest;
+    use tower_lsp_server::LspService;
+
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lsp_175_ref_args");
+    fs::create_dir_all(root.join("scenes")).unwrap();
+    fs::write(
+        root.join("lute.project.yaml"),
+        "defaultProfile: s\nprofiles:\n  s:\n    plugins: {}\n",
+    )
+    .unwrap();
+    let text = "---\nkind: scene\nid: s\ndefs:\n  ready: { type: bool, params: { p: bool }, cel: \"true\" }\n---\n\n## A {#a}\n\n@narrator: {{@ready(quest.gone.state == 'complete')}}\n";
+    let path = root.join("scenes/s.lute");
+    fs::write(&path, text).unwrap();
+
+    let (mut service, mut socket) = LspService::new(Backend::new);
+    let init = RpcRequest::build("initialize")
+        .params(serde_json::json!({ "capabilities": {} }))
+        .id(1)
+        .finish();
+    service.ready().await.unwrap().call(init).await.unwrap();
+    let open = RpcRequest::build("textDocument/didOpen")
+        .params(serde_json::json!({
+            "textDocument": {
+                "uri": format!("file://{}", path.display()), "languageId": "lute",
+                "version": 1, "text": text
+            }
+        }))
+        .finish();
+    service.ready().await.unwrap().call(open).await.unwrap();
+    let opened = socket.next().await.expect("didOpen should publish");
+    let diags = opened
+        .params()
+        .and_then(|p| p.get("diagnostics").cloned())
+        .and_then(|d| d.as_array().cloned())
+        .expect("publish carries a diagnostics array");
+    let skipped: Vec<_> = diags
+        .iter()
+        .filter(|d| d.get("code").and_then(|c| c.as_str()) == Some("W-PROJECT-CHECK-SKIPPED"))
+        .collect();
+    assert_eq!(skipped.len(), 1, "{diags:?}");
+    assert!(
+        skipped[0]
+            .get("message")
+            .and_then(|m| m.as_str())
+            .is_some_and(|m| m.starts_with("`quest.gone.state` names quest `gone`")),
+        "{diags:?}"
+    );
+    let start = &skipped[0]["range"]["start"];
+    assert_eq!(start["line"], 9, "{diags:?}");
+    assert_eq!(start["character"], 11, "at the interpolation: {diags:?}");
+}
