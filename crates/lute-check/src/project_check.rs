@@ -19,7 +19,9 @@ pub use domains::{
 };
 pub use entries::{check_project_entry_ids, check_project_entry_refs, colliding_entry_occurrences};
 pub use quest_ids::{check_project_quest_ids, colliding_occurrences};
-pub use quest_refs::{check_project_quest_refs, W_QUEST_REF_UNKNOWN};
+pub use quest_refs::{
+    check_project_quest_refs, project_check_skipped, W_PROJECT_CHECK_SKIPPED, W_QUEST_REF_UNKNOWN,
+};
 pub use quest_tiers::{
     check_doc_quest_rearm, check_doc_quest_tiers, check_quest_tier_implicit, E_QUEST_TIER_MIX,
     E_SUBQUEST_REARM, W_QUEST_REARM_CONSTANT, W_QUEST_TIER_IMPLICIT,

@@ -240,9 +240,10 @@ pub use project_check::{
     check_project_entry_refs, check_project_quest_handlers, check_project_quest_ids,
     check_project_quest_refs, check_project_quest_tree, check_project_subquest_unsatisfiable,
     colliding_entry_occurrences, colliding_occurrences, component_unverified_diag,
-    domain_reading_set, ComponentScope, E_QUEST_MULTI_PARENT, E_QUEST_REF_UNKNOWN,
-    E_QUEST_TIER_MIX, E_QUEST_TREE_CYCLE, W_BRANCH_ID_SHARED, W_COMPONENT_UNVERIFIED,
-    W_DOMAIN_UNREAD, W_QUEST_HANDLER_DEAD, W_QUEST_REF_UNKNOWN, W_QUEST_TIER_IMPLICIT,
+    domain_reading_set, project_check_skipped, ComponentScope, E_QUEST_MULTI_PARENT,
+    E_QUEST_REF_UNKNOWN, E_QUEST_TIER_MIX, E_QUEST_TREE_CYCLE, W_BRANCH_ID_SHARED,
+    W_COMPONENT_UNVERIFIED, W_DOMAIN_UNREAD, W_PROJECT_CHECK_SKIPPED, W_QUEST_HANDLER_DEAD,
+    W_QUEST_REF_UNKNOWN, W_QUEST_TIER_IMPLICIT,
 };
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use rule_index::evaluable_rules;

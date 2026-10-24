@@ -522,10 +522,11 @@ fn branch_scene(branch: &str) -> String {
     )
 }
 
-/// Two documents declaring one `<branch id>`: a play's `choose:` key answers
-/// both, so the later one is warned, naming the other relative to the root.
-/// Distinct ids say nothing; a repeat inside one document stays its own
-/// `E-DUP-BRANCH` and is not also this warning.
+/// Two documents declaring one `<branch id>` that a play's `choose:` key
+/// names (in a step): the key answers both, so the later one is warned,
+/// naming the other relative to the root. Distinct ids say nothing; a
+/// repeat inside one document stays its own `E-DUP-BRANCH` and is not also
+/// this warning.
 #[test]
 fn check_project_warns_on_a_branch_id_two_documents_share() {
     let dir = temp_dir("branch-id-shared");
@@ -545,6 +546,11 @@ fn check_project_warns_on_a_branch_id_two_documents_share() {
             branch_scene("twice")
         ),
     );
+    write(
+        &dir,
+        "plays/p.play.yaml",
+        "steps:\n  - occasion: visit\n    choose:\n      dig: c\n      twice: c\n",
+    );
     let out = run(&["check", "--project", dir.to_str().unwrap()]);
     let text = String::from_utf8_lossy(&out.stdout).to_string();
     let shared: Vec<&str> = text
@@ -563,6 +569,35 @@ fn check_project_warns_on_a_branch_id_two_documents_share() {
             .any(|l| l.contains("[E-DUP-BRANCH]") && l.contains("scenes/d.lute")),
         "{text}"
     );
+}
+
+/// dsl 0.49.0 §7.2 (#167): a shared id no script names as a `choose:` key
+/// is not warned; a test's top-level `choose:` naming it is.
+#[test]
+fn a_shared_branch_id_is_warned_only_where_a_script_names_it() {
+    let dir = temp_dir("branch-id-unnamed");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    );
+    write(&dir, "scenes/a.lute", &branch_scene("route"));
+    write(&dir, "scenes/b.lute", &branch_scene("route"));
+    write(&dir, "tests/other.test.yaml", "choose:\n  elsewhere: c\n");
+    let shared = |dir: &std::path::Path| {
+        let out = run(&["check", "--project", dir.to_str().unwrap()]);
+        let text = String::from_utf8_lossy(&out.stdout).to_string();
+        let n = text
+            .lines()
+            .filter(|l| l.contains("[W-BRANCH-ID-SHARED]"))
+            .count();
+        (n, text)
+    };
+    let (n, text) = shared(&dir);
+    assert_eq!(n, 0, "{text}");
+    write(&dir, "tests/route.test.yaml", "choose:\n  route: [c, c]\n");
+    let (n, text) = shared(&dir);
+    assert_eq!(n, 1, "{text}");
 }
 
 /// Causes print first, in the order a fix must follow: the manifest's rows,

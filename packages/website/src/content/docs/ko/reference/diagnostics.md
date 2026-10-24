@@ -1927,9 +1927,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-BRANCH-ID-SHARED
 
-한 프로젝트의 두 문서가 각각 같은 id의 `<branch>`나 `<hub>`를 선언합니다. id는 한 문서 안에서만 유일하면 되지만, 플레이나 테스트의 `choose:`는 메뉴를 id만으로 가리키므로 키 하나가 두 메뉴에 모두 답합니다(결정 목록을 쓰면 두 메뉴가 이어서 소비합니다).
+한 프로젝트의 두 문서가 각각 같은 id의 `<branch>`나 `<hub>`를 선언하고, 루트 아래의 플레이나 테스트 스크립트가 그 id를 `choose:` 키로 씁니다. id는 한 문서 안에서만 유일하면 되지만, `choose:`는 메뉴를 id만으로 가리키므로 그 키가 두 메뉴에 모두 답합니다(결정 목록을 쓰면 두 메뉴가 이어서 소비합니다). 어떤 스크립트도 쓰지 않는 id는 경고하지 않습니다.
 
-명세: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+명세: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.49.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### W-CAST-ABSENT
 
@@ -2110,6 +2110,12 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 두 `<when>` 항목이 같은 값에 대해 모두 일치함이 증명되어, 먼저 일치하는 항목이 우선하는 규칙상 나중 항목은 결코 도달할 수 없습니다.
 
 명세: [dsl §11.2](/ko/spec/), [dsl 0.18.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md)
+
+### W-PROJECT-CHECK-SKIPPED
+
+단일 파일 `check`(와 LSP)의 정보 진단입니다. 문서가 자신과 import가 선언하지 않은 퀘스트의 `quest.<id>.*`를 읽습니다. 퀘스트 참조는 전체 프로젝트 `lute check`만 해석하므로 이 검사는 그 읽기를 판단하지 않았습니다. 전체 프로젝트 check, compile, wasm에서는 나오지 않습니다.
+
+명세: [dsl 0.49.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### W-PROJECT-INERT
 

@@ -351,3 +351,66 @@ async fn analyze_publishes_project_resolver_diagnostics() {
     assert_eq!(start.get("line").and_then(|l| l.as_u64()), Some(0));
     assert_eq!(start.get("character").and_then(|c| c.as_u64()), Some(0));
 }
+
+/// dsl 0.49.0 §7.1 (#175): the LSP publishes `W-PROJECT-CHECK-SKIPPED` as
+/// information at the first read of a quest the document and its imports do
+/// not declare, once per id.
+#[tokio::test(flavor = "current_thread")]
+async fn analyze_names_the_quest_references_it_cannot_judge() {
+    use futures::StreamExt;
+    use std::fs;
+    use tower::{Service, ServiceExt};
+    use tower_lsp_server::jsonrpc::Request as RpcRequest;
+    use tower_lsp_server::LspService;
+
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lsp_175");
+    fs::create_dir_all(root.join("quests")).unwrap();
+    fs::write(
+        root.join("lute.project.yaml"),
+        "defaultProfile: s\nprofiles:\n  s:\n    plugins: {}\n",
+    )
+    .unwrap();
+    let text = "---\nkind: quest\nid: acme.quests\n---\n\n<quest id=\"q\" tier=\"run\" title=\"Q\" start=\"true\">\n  <objective id=\"c1\" title=\"Do it\" done=\"quest.gone.state == 'complete' && quest.gone.state != 'failed' && quest.q.state == 'active'\"/>\n</quest>\n";
+    let path = root.join("quests/q.lute");
+    fs::write(&path, text).unwrap();
+
+    let (mut service, mut socket) = LspService::new(Backend::new);
+    let init = RpcRequest::build("initialize")
+        .params(serde_json::json!({ "capabilities": {} }))
+        .id(1)
+        .finish();
+    service.ready().await.unwrap().call(init).await.unwrap();
+    let open = RpcRequest::build("textDocument/didOpen")
+        .params(serde_json::json!({
+            "textDocument": {
+                "uri": format!("file://{}", path.display()), "languageId": "lute",
+                "version": 1, "text": text
+            }
+        }))
+        .finish();
+    service.ready().await.unwrap().call(open).await.unwrap();
+    let opened = socket.next().await.expect("didOpen should publish");
+    let diags = opened
+        .params()
+        .and_then(|p| p.get("diagnostics").cloned())
+        .and_then(|d| d.as_array().cloned())
+        .expect("publish carries a diagnostics array");
+    let skipped: Vec<_> = diags
+        .iter()
+        .filter(|d| d.get("code").and_then(|c| c.as_str()) == Some("W-PROJECT-CHECK-SKIPPED"))
+        .collect();
+    assert_eq!(skipped.len(), 1, "{diags:?}");
+    assert_eq!(
+        skipped[0].get("severity").and_then(|s| s.as_u64()),
+        Some(3),
+        "information severity: {diags:?}"
+    );
+    assert!(
+        skipped[0]
+            .get("message")
+            .and_then(|m| m.as_str())
+            .is_some_and(|m| m.starts_with("`quest.gone.state` names quest `gone`")),
+        "{diags:?}"
+    );
+}

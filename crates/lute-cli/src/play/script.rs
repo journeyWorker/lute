@@ -3,6 +3,7 @@
 //! 0.24.0 §1, 0.27.0 T3-22), and each step parsed and validated — located
 //! at the file line it was written on (round-5 T3-13).
 
+use lute_model::scripts::{parse_choose, ScriptedPick};
 use lute_runtime::session::{Pick, SaveSeed, QUEST_STATES};
 use lute_runtime::{BridgeAnswer, WritesInput};
 use lute_trace::mock::MockSet;
@@ -136,14 +137,6 @@ pub(super) enum StepAction {
     /// `end: true` (0.23.1): the playthrough is over — later steps are
     /// skipped. A `::end` in a presentation ends only that presentation.
     End,
-}
-
-/// One scripted branch/hub answer. Timeout is kept typed all the way to the
-/// play driver; it is never encoded as an option id.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(super) enum ScriptedPick {
-    Option(String),
-    Timeout,
 }
 
 /// How far an `advance:` step moves the clock, as written.
@@ -1095,63 +1088,6 @@ fn expand_includes(
         stack.pop();
     }
     Ok(())
-}
-
-/// A step's, include's, or top-level `choose:`, parsed without the trace
-/// mock grammar so a timeout remains a typed scripted answer.
-fn parse_choose(v: &yaml_serde::Value) -> Result<BTreeMap<String, Vec<ScriptedPick>>, String> {
-    let yaml_serde::Value::Mapping(entries) = v else {
-        return Err("`choose:` must be a mapping of branch/hub id to choice id(s)".into());
-    };
-    let mut out = BTreeMap::new();
-    for (key, value) in entries {
-        let Some(id) = key.as_str() else {
-            return Err("`choose:` keys must be branch or hub ids".into());
-        };
-        let values = match value {
-            yaml_serde::Value::Sequence(items) => items
-                .iter()
-                .enumerate()
-                .map(|(i, item)| parse_pick(id, item, Some(i + 1)))
-                .collect::<Result<Vec<_>, _>>()?,
-            _ => vec![parse_pick(id, value, None)?],
-        };
-        out.insert(id.to_string(), values);
-    }
-    Ok(out)
-}
-
-fn parse_pick(
-    id: &str,
-    value: &yaml_serde::Value,
-    item: Option<usize>,
-) -> Result<ScriptedPick, String> {
-    let where_ = item.map_or_else(
-        || format!("`choose.{id}`"),
-        |i| format!("`choose.{id}` list item {i}"),
-    );
-    match value {
-        yaml_serde::Value::String(option) if !option.trim().is_empty() => {
-            Ok(ScriptedPick::Option(option.trim().to_string()))
-        }
-        yaml_serde::Value::Mapping(fields) => {
-            let timeout = fields.get(yaml_serde::Value::String("timeout".into()));
-            if fields.len() != 1 || timeout.is_none() {
-                return Err(format!(
-                    "{where_} mapping must be exactly `{{ timeout: true }}`"
-                ));
-            }
-            if timeout.and_then(yaml_serde::Value::as_bool) != Some(true) {
-                return Err(format!(
-                    "{where_} timeout mapping must set `timeout` to `true`"
-                ));
-            }
-            Ok(ScriptedPick::Timeout)
-        }
-        _ => Err(format!(
-            "{where_} must be a choice id or `{{ timeout: true }}`"
-        )),
-    }
 }
 
 /// `engine:` / long-form `newRun:` writes. `retract` says whether

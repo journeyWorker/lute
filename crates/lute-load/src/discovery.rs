@@ -34,8 +34,16 @@ pub fn find_lute_files(dir: &Path) -> std::io::Result<Vec<PathBuf>> {
     Ok(deduped)
 }
 
+/// The project root `file` belongs to under `walk_root`: the nearest
+/// directory at or above `file`'s that holds a `lute.project.yaml`, stopping
+/// at `walk_root` (returned when none does). The empty parent of a relative
+/// path is `.` (dsl 0.49.0 §7.4, #188), never a root of its own.
 pub fn project_root_for(file: &Path, walk_root: &Path) -> PathBuf {
-    let mut dir = file.parent().unwrap_or(walk_root);
+    let mut dir = match file.parent() {
+        Some(parent) if parent.as_os_str().is_empty() => Path::new("."),
+        Some(parent) => parent,
+        None => walk_root,
+    };
     loop {
         if dir.join("lute.project.yaml").is_file() {
             return dir.to_path_buf();
@@ -44,8 +52,11 @@ pub fn project_root_for(file: &Path, walk_root: &Path) -> PathBuf {
             return walk_root.to_path_buf();
         }
         dir = match dir.parent() {
-            Some(parent) => parent,
-            None => return walk_root.to_path_buf(),
+            Some(parent) if parent.as_os_str().is_empty() && dir != Path::new(".") => {
+                Path::new(".")
+            }
+            Some(parent) if !parent.as_os_str().is_empty() => parent,
+            _ => return walk_root.to_path_buf(),
         };
     }
 }

@@ -558,6 +558,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
             },
         ),
         ("W-OVERLAP-ARMS", DiagnosticClass::SourceError),
+        ("W-PROJECT-CHECK-SKIPPED", DiagnosticClass::SourceError),
         ("W-PROJECT-INERT", DiagnosticClass::SourceError),
         ("W-QUEST-HANDLER-DEAD", DiagnosticClass::SourceError),
         ("W-QUEST-NEVER-ACCEPTED", DiagnosticClass::SourceError),

@@ -316,8 +316,7 @@ fn add_script_witnesses(
     results: &mut [ConstraintResult],
     selection: &ScriptSelection<'_>,
 ) {
-    let mut scripts = Vec::new();
-    collect_scripts(root, &mut scripts);
+    let mut scripts = lute_model::scripts::collect_scripts(root);
     scripts.retain(|script| selection.selects(script));
     for result in results.iter_mut().filter(|r| r.kind == "completable") {
         let quest = result
@@ -418,26 +417,6 @@ pub(crate) fn run_script_for_context(
     run.presented
         .iter()
         .any(|(document, id)| format!("{document}:{id}") == target.key)
-}
-
-fn collect_scripts(dir: &Path, out: &mut Vec<PathBuf>) {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return;
-    };
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            collect_scripts(&path, out);
-        } else if path.extension().and_then(|e| e.to_str()) == Some("yaml")
-            && path
-                .file_name()
-                .and_then(|n| n.to_str())
-                .is_some_and(|n| n.ends_with(".play.yaml") || n.ends_with(".test.yaml"))
-        {
-            out.push(path);
-        }
-    }
-    out.sort();
 }
 
 #[cfg(test)]
@@ -618,9 +597,7 @@ mod one_model_tests {
     }
 
     fn scripts_of(root: &Path) -> Vec<PathBuf> {
-        let mut scripts = Vec::new();
-        collect_scripts(root, &mut scripts);
-        scripts
+        lute_model::scripts::collect_scripts(root)
     }
 
     #[test]

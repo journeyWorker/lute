@@ -117,15 +117,15 @@ pub fn lint(
 
     let group_bys = active_group_bys(&rules);
 
-    // Compute per-doc tables and directive rows.
+    // Compute per-doc tables and attribute rows.
     let mut per_doc: Vec<(
         PathBuf,
         crate::metrics::DocTables,
-        Vec<crate::metrics::DirectiveRow>,
+        Vec<crate::metrics::AttrRow>,
     )> = Vec::with_capacity(active.len());
     for input in &active {
-        let (tables, dirs) = compute_doc_tables(&input.doc, &group_bys);
-        per_doc.push((input.path.clone(), tables, dirs));
+        let (tables, attrs) = compute_doc_tables(&input.doc, &group_bys);
+        per_doc.push((input.path.clone(), tables, attrs));
     }
     // Project row: aggregate over per-doc SceneRow.words — LINEAR scene
     // documents only (`SceneRow.kind == "scene"`, [`crate::metrics::doc_kind`]).
@@ -158,7 +158,7 @@ pub fn lint(
             let first = &per_doc[anchor_idx];
             let ctx = DocContext {
                 tables: &first.1,
-                directives: &first.2,
+                attrs: &first.2,
                 providers,
             };
             let decl_span = decl_span(rule, config_path.unwrap_or(&cfg_anchor), config_span);
@@ -192,10 +192,10 @@ pub fn lint(
                     .push((first.0.clone(), finding_to_diagnostic(f)));
             }
         } else {
-            for (path, tables, directives) in &per_doc {
+            for (path, tables, attrs) in &per_doc {
                 let ctx = DocContext {
                     tables,
-                    directives,
+                    attrs,
                     providers,
                 };
                 let decl_span = decl_span(rule, config_path.unwrap_or(&cfg_anchor), config_span);

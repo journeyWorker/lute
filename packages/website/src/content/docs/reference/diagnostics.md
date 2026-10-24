@@ -1932,9 +1932,9 @@ Spec: [dsl 0.47.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/pr
 
 ### W-BRANCH-ID-SHARED
 
-Two documents of one project each declare a `<branch>` or `<hub>` with the same id. Ids need only be unique within a document, but a play's or test's `choose:` names a menu by its id alone, so one key answers both menus (and a list of decisions is consumed across both).
+Two documents of one project each declare a `<branch>` or `<hub>` with the same id, and a play or test script under the root names that id as a `choose:` key. Ids need only be unique within a document, but `choose:` names a menu by its id alone, so the key answers both menus (and a list of decisions is consumed across both). An id no script names is not warned.
 
-Spec: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+Spec: [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.49.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### W-CAST-ABSENT
 
@@ -2115,6 +2115,12 @@ Spec: [dsl 0.4.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/pro
 Two `<when>` arms provably match the same value, so the later arm is unreachable under first-match-wins ordering.
 
 Spec: [dsl §11.2](/spec/), [dsl 0.18.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.18.0.md)
+
+### W-PROJECT-CHECK-SKIPPED
+
+Info from a single-file `check` (and the LSP): the document reads `quest.<id>.*` for a quest it and its imports do not declare. Quest references are resolved only by whole-project `lute check`, so this check did not judge the read. Never raised by whole-project check, compile or wasm.
+
+Spec: [dsl 0.49.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
 
 ### W-PROJECT-INERT
 

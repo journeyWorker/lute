@@ -1698,8 +1698,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-BRANCH-ID-SHARED",
-        summary: "Two documents of one project each declare a `<branch>` or `<hub>` with the same id. Ids need only be unique within a document, but a play's or test's `choose:` names a menu by its id alone, so one key answers both menus (and a list of decisions is consumed across both).",
-        spec: &["dsl 0.28.0 §7"],
+        summary: "Two documents of one project each declare a `<branch>` or `<hub>` with the same id, and a play or test script under the root names that id as a `choose:` key. Ids need only be unique within a document, but `choose:` names a menu by its id alone, so the key answers both menus (and a list of decisions is consumed across both). An id no script names is not warned.",
+        spec: &["dsl 0.28.0 §7", "dsl 0.49.0 §7.2"],
     },
     Code {
         code: "W-CAST-ABSENT",
@@ -1850,6 +1850,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-OVERLAP-ARMS",
         summary: "Two `<when>` arms provably match the same value, so the later arm is unreachable under first-match-wins ordering.",
         spec: &["dsl §11.2", "dsl 0.18.0 §4"],
+    },
+    Code {
+        code: "W-PROJECT-CHECK-SKIPPED",
+        summary: "Info from a single-file `check` (and the LSP): the document reads `quest.<id>.*` for a quest it and its imports do not declare. Quest references are resolved only by whole-project `lute check`, so this check did not judge the read. Never raised by whole-project check, compile or wasm.",
+        spec: &["dsl 0.49.0 §7.1"],
     },
     Code {
         code: "W-PROJECT-INERT",

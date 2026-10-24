@@ -480,7 +480,7 @@ struct OpenScope {
     scope: Arc<Scope>,
     choose: Vec<(
         String,
-        Option<Vec<super::script::ScriptedPick>>,
+        Option<Vec<lute_model::scripts::ScriptedPick>>,
         Option<usize>,
     )>,
     bridges: Vec<(String, Option<VecDeque<PlannedBridgeAnswer>>)>,
@@ -854,7 +854,7 @@ fn unconsumed_step_bridges(
 /// The runtime session still carries option ids for its generic walk API;
 /// timeout's typed meaning is retained in the driver's active script map.
 fn runtime_choose(
-    choose: &BTreeMap<String, Vec<super::script::ScriptedPick>>,
+    choose: &BTreeMap<String, Vec<lute_model::scripts::ScriptedPick>>,
 ) -> BTreeMap<String, Vec<String>> {
     choose
         .iter()
@@ -864,8 +864,8 @@ fn runtime_choose(
                 picks
                     .iter()
                     .filter_map(|pick| match pick {
-                        super::script::ScriptedPick::Option(option) => Some(option.clone()),
-                        super::script::ScriptedPick::Timeout => None,
+                        lute_model::scripts::ScriptedPick::Option(option) => Some(option.clone()),
+                        lute_model::scripts::ScriptedPick::Timeout => None,
                     })
                     .collect(),
             )

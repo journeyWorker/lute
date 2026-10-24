@@ -216,3 +216,70 @@ pub fn check_project_quest_refs(
     }
     out
 }
+
+/// dsl 0.49.0 §7.1 (#175): a single-file check reads a `quest.<id>.*` path
+/// whose `<id>` neither the document nor its imports declare. Only
+/// whole-project `check` resolves quest references
+/// ([`check_project_quest_refs`]), so this [`Severity::Info`] says the
+/// single-file check did not judge it. Never raised by whole-project check,
+/// compile or wasm.
+pub const W_PROJECT_CHECK_SKIPPED: &str = "W-PROJECT-CHECK-SKIPPED";
+
+/// [`W_PROJECT_CHECK_SKIPPED`] for `doc`, the parsed `text` of a document
+/// checked on its own (`lute check <FILE>`, the LSP): one per distinct quest
+/// id that `doc` and `imported_quest_ids` do not declare, at its first read
+/// in source order.
+pub fn project_check_skipped(
+    text: &str,
+    doc: &Document,
+    imported_quest_ids: &BTreeMap<String, PathBuf>,
+) -> Vec<Diagnostic> {
+    let (meta, _) = crate::meta::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+    let declared =
+        |id: &str| imported_quest_ids.contains_key(id) || doc.quests.iter().any(|q| q.id == id);
+    // The first read of each undeclared id: its least byte offset.
+    let mut first: BTreeMap<&str, (String, Span)> = BTreeMap::new();
+    let reads = referenced_reserved_paths(doc, &meta);
+    for (path, span) in &reads {
+        let Some(id) = path
+            .strip_prefix("quest.")
+            .and_then(|r| r.split('.').next())
+        else {
+            continue;
+        };
+        if declared(id) {
+            continue;
+        }
+        let earlier = first
+            .get(id)
+            .is_some_and(|(_, at)| at.byte_start <= span.byte_start);
+        if !earlier {
+            first.insert(id, (path.clone(), *span));
+        }
+    }
+    let index = lute_core_span::TextIndex::new(text);
+    let mut notes: Vec<Diagnostic> = first
+        .into_iter()
+        .map(|(id, (path, span))| Diagnostic {
+            code: W_PROJECT_CHECK_SKIPPED.to_string(),
+            severity: Severity::Info,
+            message: format!(
+                "`{path}` names quest `{id}`, which this document does not declare; quest \
+                 references are resolved only by whole-project `lute check` (`lute check \
+                 --project <DIR>`), so this check did not judge it"
+            ),
+            evidence: None,
+            span: Span::from_bytes(&index, span.byte_start, span.byte_end),
+            layer: Layer::Logic,
+            fixits: Vec::new(),
+            provenance: None,
+            covered: Vec::new(),
+            related: Vec::new(),
+        })
+        .collect();
+    notes.sort_by_key(|d| d.span.byte_start);
+    notes
+}

@@ -205,13 +205,13 @@ pub struct DocTables {
 
 /// Compute every per-document table. `group_bys` names the attrs any active
 /// rule declared as `groupBy` — group rows for other attrs are elided (spec
-/// §4). `directive_tags` lists directive nodes with their tag and assetId
-/// attr for the `asset-exists` rule; kept alongside the tables so that rule
-/// need not re-walk the AST.
+/// §4). The [`AttrRow`]s of every directive and content line, for the
+/// `asset-exists` rule, are kept alongside the tables so that rule need not
+/// re-walk the AST.
 pub fn compute_doc_tables(
     doc: &Document,
     group_bys: &BTreeSet<String>,
-) -> (DocTables, Vec<DirectiveRow>) {
+) -> (DocTables, Vec<AttrRow>) {
     let mut walker = Walker {
         kind: doc_kind(&doc.meta.raw_yaml),
         ..Walker::default()
@@ -250,7 +250,7 @@ pub fn compute_doc_tables(
     let groups = walker.build_groups(group_bys);
     let sections = std::mem::take(&mut walker.sections);
     let lines = std::mem::take(&mut walker.lines);
-    let directives = std::mem::take(&mut walker.directive_rows);
+    let attrs = std::mem::take(&mut walker.attr_rows);
 
     (
         DocTables {
@@ -261,7 +261,7 @@ pub fn compute_doc_tables(
             unit_speakers,
             groups,
         },
-        directives,
+        attrs,
     )
 }
 
@@ -319,20 +319,27 @@ pub fn compute_project_row(scene_words: &[u32]) -> ProjectRow {
     }
 }
 
-/// One directive body node lifted out of the walk for `asset-exists`
-/// resolution — carrying the tag, any `assetId` attr value (an empty string
-/// means the attr was absent, matching the sentinel case naturally), and
-/// the attr's span for diagnostic anchoring.
+/// Who carries a lifted attribute: a directive (`::<tag>`) or a content line
+/// (`@<speaker>`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum AttrOwner {
+    Directive(String),
+    Line(String),
+}
+
+/// One attribute of a directive or content line lifted out of the walk for
+/// `asset-exists` (dsl 0.49.0 §7.3), in document order.
 #[derive(Clone, Debug)]
-pub struct DirectiveRow {
-    pub tag: String,
-    pub assetId: Option<String>,
-    /// Whether the `assetId` was authored as a raw string literal (`Str`).
-    /// A `@ref`-valued assetId is not statically resolvable and is skipped.
-    pub asset_is_static: bool,
+pub struct AttrRow {
+    pub owner: AttrOwner,
+    pub key: String,
+    /// The authored value: a string's text, a `@ref`'s raw text, or `true`.
+    pub value: String,
+    /// Whether the value was authored as a literal. A `@ref` value is not
+    /// statically resolvable and is skipped.
+    pub is_static: bool,
+    /// The value's span, for diagnostic anchoring.
     pub span: lute_core_span::Span,
-    /// Span of the `assetId` attr itself when present, else the directive span.
-    pub assetId_span: lute_core_span::Span,
 }
 
 // ---------------------------------------------------------------------------
@@ -357,9 +364,9 @@ struct Walker {
     section_count: u32,
     max_line_words: u32,
     words_by_line: Vec<u32>,
-    /// Every directive body node, in document order — feeds `asset-exists`
-    /// and any future directive-target rule.
-    directive_rows: Vec<DirectiveRow>,
+    /// Every directive's and content line's attributes, in document order —
+    /// feeds `asset-exists`.
+    attr_rows: Vec<AttrRow>,
     line_position: u32,
 }
 
@@ -411,15 +418,7 @@ impl Walker {
                             }
                         }
                     }
-                    // Extract assetId for asset-exists.
-                    let (asset, span_of_attr, is_static) = attr_string(&d.attrs, "assetId");
-                    self.directive_rows.push(DirectiveRow {
-                        tag: d.tag.clone(),
-                        assetId: asset,
-                        asset_is_static: is_static,
-                        span: d.span,
-                        assetId_span: span_of_attr.unwrap_or(d.span),
-                    });
+                    self.lift_attrs(AttrOwner::Directive(d.tag.clone()), &d.attrs);
                 }
                 Node::Set(_) => self.sets += 1,
                 Node::Branch(b) => {
@@ -470,6 +469,7 @@ impl Walker {
         for a in &l.attrs {
             attrs.insert(a.key.clone(), attr_display(&a.value));
         }
+        self.lift_attrs(AttrOwner::Line(l.speaker.clone()), &l.attrs);
 
         // Dialogue vs narration: an empty speaker is narration (dsl §7.1).
         let is_dialogue = !l.speaker.is_empty();
@@ -490,6 +490,23 @@ impl Walker {
             span: l.span,
             position: self.line_position,
         });
+    }
+
+    fn lift_attrs(&mut self, owner: AttrOwner, attrs: &[Attr]) {
+        for a in attrs {
+            let (value, is_static) = match &a.value {
+                AttrValue::Str(s) => (s.clone(), true),
+                AttrValue::Ref(slot) => (slot.raw.clone(), false),
+                AttrValue::BoolTrue => ("true".to_string(), true),
+            };
+            self.attr_rows.push(AttrRow {
+                owner: owner.clone(),
+                key: a.key.clone(),
+                value,
+                is_static,
+                span: a.value_span,
+            });
+        }
     }
 
     fn finish_scene(&mut self, span: lute_core_span::Span) -> SceneRow {
@@ -617,24 +634,6 @@ fn attr_display(v: &AttrValue) -> String {
         AttrValue::BoolTrue => "true".to_string(),
         AttrValue::Ref(slot) => slot.raw.clone(),
     }
-}
-
-/// Fetch a string-valued attr's value, span, and whether the value is a
-/// literal string (vs an unresolved `@ref` or bare-true bool). A `Ref`
-/// resolves to the raw text but `is_static == false`, so [`asset-exists`]
-/// can silently skip it (a `@ref` id is checked by `lute-check`'s catalog
-/// bind, not by lint).
-fn attr_string(attrs: &[Attr], key: &str) -> (Option<String>, Option<lute_core_span::Span>, bool) {
-    for a in attrs {
-        if a.key == key {
-            return match &a.value {
-                AttrValue::Str(s) => (Some(s.clone()), Some(a.value_span), true),
-                AttrValue::Ref(slot) => (Some(slot.raw.clone()), Some(a.value_span), false),
-                AttrValue::BoolTrue => (Some("true".into()), Some(a.value_span), true),
-            };
-        }
-    }
-    (None, None, false)
 }
 
 /// Build every axis map (spec §4). Domain-slot axes come from

@@ -115,6 +115,19 @@ fn scalar_or_flat_seq_to_json(value: &yaml_serde::Value) -> Option<serde_json::V
     }
 }
 
+/// [`lute_manifest::ident::name_fault`] for an enum or entity member, with
+/// the route for ids from another system that are not names (#161): a
+/// provider, whose ids an attribute is checked against without a path.
+pub(crate) fn member_name_fault(what: &str, name: &str) -> Option<String> {
+    lute_manifest::ident::name_fault(what, name).map(|message| {
+        format!(
+            "{message} — to validate ids from another system that are not names \
+             (`vendor:reply`), declare a provider (`plugins/<id>/providers/`, pinned \
+             snapshot in `catalogDir`) and type the attribute `{{ providerRef: <provider> }}`"
+        )
+    })
+}
+
 /// Whether `meta`'s frontmatter lifts to a mapping (an empty frontmatter
 /// included) — exactly when [`parse_meta_kind_with_defaults`] does NOT emit
 /// `E-META-PARSE`, including its duplicate-block-key retry. The project-wide
@@ -655,28 +668,35 @@ pub fn parse_meta_kind_with_defaults(
     // A name written twice (a member also listed under `exits:`, or in two
     // enums) is reported once, at its first occurrence.
     let mut reported = BTreeSet::new();
-    let mut name_diag = |what: &str, name: &str| {
-        if let Some(message) = lute_manifest::ident::name_fault(what, name) {
+    // `member`: an enum or entity member, whose fault names the providers
+    // route for ids that are not names (#161).
+    let mut name_diag = |what: &str, name: &str, member: bool| {
+        let fault = if member {
+            member_name_fault(what, name)
+        } else {
+            lute_manifest::ident::name_fault(what, name)
+        };
+        if let Some(message) = fault {
             if reported.insert(name.to_string()) {
                 diags.push(err_at(E_PATH_IDENT, message, meta_key_span(meta, name)));
             }
         }
     };
     for (name, decl) in &typed.rel_kinds.kinds {
-        name_diag("entity kind", name);
+        name_diag("entity kind", name, false);
         if let lute_manifest::relations::KindShape::Members(members) = &decl.shape {
             for member in members {
-                name_diag("entity member", member);
+                name_diag("entity member", member, true);
             }
         }
     }
     for name in typed.rel_relations.relations.keys() {
-        name_diag("relation", name);
+        name_diag("relation", name, false);
     }
     for (name, domain) in &project_enums {
-        name_diag("enum", name);
+        name_diag("enum", name, false);
         for member in &domain.members {
-            name_diag("enum member", member);
+            name_diag("enum member", member, true);
         }
     }
 

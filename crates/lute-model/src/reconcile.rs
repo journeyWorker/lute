@@ -307,6 +307,7 @@ pub fn reconcile_collected(
         let beat_foldeds: Vec<&lute_check::FoldedEnv> =
             group_full.iter().map(|(_, _, f)| f).collect();
         let mocked = mocked_accepts_under(root);
+        let choose_keys = crate::scripts::choose_keys(root);
         // The standalone project passes read only this root's documents —
         // never one another's output or the connectivity chain's — so they
         // run in parallel with it; every result is appended below in the
@@ -337,8 +338,8 @@ pub fn reconcile_collected(
             // fail (project-wide: a parent in another file can cascade-fail it).
             Box::new(|| lute_check::check_project_quest_handlers(&group)),
             Box::new(|| lute_check::connectivity::check_conn_episode_dup(&group)),
-            // Two documents' menus answered by one `choose:` key.
-            Box::new(|| lute_check::check_project_branch_ids(root, &group)),
+            // Two documents' menus answered by one `choose:` key a script writes.
+            Box::new(|| lute_check::check_project_branch_ids(root, &group, &choose_keys)),
             // dsl 0.28.0 §4: the manifest's `chapters:` names this root's scenes.
             Box::new(|| lute_check::chapters::check_project_chapters(root, &group, &beat_foldeds)),
             // dsl 0.26.0 §2.1: every declaration of one state path agrees.

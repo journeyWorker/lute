@@ -158,7 +158,7 @@ pub(super) fn parse_state(
                             if let Type::Enum(members) = &raw.ty {
                                 for member in members {
                                     if let Some(message) =
-                                        lute_manifest::ident::name_fault("enum member", member)
+                                        super::frontmatter::member_name_fault("enum member", member)
                                     {
                                         diags.push(err_at(
                                             E_PATH_IDENT,

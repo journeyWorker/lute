@@ -16,6 +16,7 @@ pub mod reconcile;
 pub mod rename;
 pub mod revision;
 pub mod scenario;
+pub mod scripts;
 
 pub use gate::{
     gate_for_doc, project_gate_result, project_gate_result_in, reconciled_project_results,

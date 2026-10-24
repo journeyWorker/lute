@@ -635,6 +635,15 @@ fn check_document(
         return Ok(Checked::ResolveFailed(resolve_failure(&resolve_lines)));
     }
     let mut result = check(&input);
+    // dsl 0.49.0 §7.1 (#175): name the quest references this single-file
+    // check left to whole-project `check`. Info only: `ok` is unchanged.
+    let (doc, _) = lute_syntax::parse(&input.text);
+    let notes =
+        lute_check::project_check_skipped(&input.text, &doc, &input.imports().imported_quest_ids);
+    if !notes.is_empty() {
+        result.diagnostics.extend(notes);
+        lute_check::order_diagnostics(&mut result.diagnostics);
+    }
 
     // dsl 0.10.0 §9:962: *"`lute trace` on a component and `lute check` on the
     // same file stop disagreeing"*. They disagreed because `check` stopped one

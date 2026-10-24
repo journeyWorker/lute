@@ -1094,13 +1094,18 @@ pub fn build_rel_vocab(
                 } else {
                     ((name_a, a), (name_b, b))
                 };
+                // #160: two id spaces that only spell an id the same are two
+                // sub-kinds of one shared root, which may overlap.
                 let message = format!(
                     "id `{id}` is a member of both entity kinds `{first_kind}` ({}) and \
                      `{second_kind}` ({}); an id belongs to exactly one kind (dsl 0.3.0 §3.1) — \
                      if every `{first_kind}` is also a `{second_kind}` (or the other way round), \
                      declare one a sub-kind of the other with `subsetOf:` (dsl 0.24.0 §3); if \
                      the `{first_kind}` and the `{second_kind}` called `{id}` are two different \
-                     things, rename one of them",
+                     things, rename one of them; if they are two id spaces whose ids only spell \
+                     `{id}` the same, declare a shared root kind listing both spaces' members and \
+                     make each a sub-kind of it (`{first_kind}: {{ subsetOf: <root>, members: \
+                     […] }}`) — every reference still checks against its own kind",
                     place(&first),
                     place(&second),
                 );
