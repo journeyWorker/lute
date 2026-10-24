@@ -116,7 +116,7 @@ impl PlayChoices {
     }
 
     fn pick(&mut self, menu: &Menu<'_>) -> Option<ScriptedPick> {
-        let list = self.choose.get(menu.id).map(Vec::as_slice).unwrap_or(&[]);
+        let list = self.choose.get(menu.id).map_or(&[][..], Vec::as_slice);
         match menu.construct {
             MenuKind::Hub => list.get(menu.presentation).cloned(),
             MenuKind::Branch => match list {

@@ -153,8 +153,7 @@ fn apply(model: &ProjectModel, value: Value) -> (i32, Value) {
 fn changes(value: &Value) -> &[Value] {
     value["diff"]["changes"]
         .as_array()
-        .map(Vec::as_slice)
-        .unwrap_or(&[])
+        .map_or(&[][..], Vec::as_slice)
 }
 fn item(changes: &[Value], expected: &Value) -> bool {
     let node = expected["node"].as_str().unwrap_or("");

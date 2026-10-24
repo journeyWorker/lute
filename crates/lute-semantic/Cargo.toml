@@ -9,3 +9,6 @@ lute-core-span = { path = "../lute-core-span" }
 lute-manifest = { path = "../lute-manifest" }
 lute-syntax = { path = "../lute-syntax" }
 serde = { workspace = true }
+
+[lints]
+workspace = true

@@ -913,8 +913,7 @@ impl<D: Driver> Machine<D> {
                 let child_rewards = quests
                     .iter()
                     .find(|q| q.id == child)
-                    .map(|q| q.rewards.as_slice())
-                    .unwrap_or(&[]);
+                    .map_or(&[][..], |q| q.rewards.as_slice());
                 self.observe_quest(
                     &child,
                     "failed",

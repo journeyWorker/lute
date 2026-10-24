@@ -7,3 +7,6 @@ publish = false
 
 [dependencies]
 lute-manifest = { path = "../lute-manifest" }
+
+[lints]
+workspace = true

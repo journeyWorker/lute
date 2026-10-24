@@ -9,3 +9,6 @@ lute-core-span = { path = "../lute-core-span" }
 lute-manifest = { path = "../lute-manifest" }
 lute-syntax = { path = "../lute-syntax" }
 cel-parser = "0.10.1"
+
+[lints]
+workspace = true
