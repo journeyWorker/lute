@@ -506,7 +506,9 @@ fn line_column_offset(source: &str, line: usize, column: usize) -> Option<usize>
         if units >= wanted {
             return Some(start + offset);
         }
-        let next = units.checked_add(character.len_utf16() as u32)?;
+        let next = units.checked_add(
+            u32::try_from(character.len_utf16()).expect("a char is 1 or 2 UTF-16 units"),
+        )?;
         if next > wanted {
             return Some(start + offset + character.len_utf8());
         }
@@ -1175,6 +1177,10 @@ fn namespace_str(ns: Namespace) -> &'static str {
 /// Manifest `Literal` → JSON, mirroring `lute_compile`'s `literal_json`: an
 /// integral float collapses to a JSON integer (`0`, not `0.0`) for a stable
 /// authoring surface consistent with the compiled envelope.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a whole finite double below 9e15 in magnitude (checked by the guard), so the cast is exact"
+)]
 fn literal_json(l: &Literal) -> serde_json::Value {
     match l {
         Literal::Bool(b) => serde_json::Value::Bool(*b),
@@ -1202,6 +1208,10 @@ fn from_attr_name(v: &serde_json::Value) -> &str {
 /// A directive's declared write, read aloud: `= true`, `= <attr>` (the
 /// value the call passes), `= bridge result `passed``, `+= 1`, `-= <attr>`.
 fn write_value_outline(v: &serde_json::Value) -> (&'static str, String) {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a whole double below 1e15 in magnitude (checked by the guard), so the cast is exact"
+    )]
     let number = |n: &serde_json::Value| match n.as_f64() {
         Some(f) if f.fract() == 0.0 && f.abs() < 1e15 => format!("{}", f as i64),
         _ => n.to_string(),

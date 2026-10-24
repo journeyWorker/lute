@@ -229,7 +229,10 @@ impl<'de> Deserialize<'de> for Preserve {
                 "preserve item must have exactly one field",
             ));
         }
-        let (key, value) = object.iter().next().unwrap();
+        let (key, value) = object
+            .iter()
+            .next()
+            .expect("the object has exactly one field (checked above)");
         let spec = request::preserve_key(key)
             .ok_or_else(|| de::Error::custom(format!("unknown preserve kind `{key}`")))?;
         let mut nodes = Vec::new();
@@ -469,7 +472,13 @@ pub fn apply_patch_to(
                 reason: "target has no editable source anchor".into(),
             });
         }
-        targets.push((node.clone(), item.file.clone().unwrap(), item.span.unwrap()));
+        targets.push((
+            node.clone(),
+            item.file
+                .clone()
+                .expect("a target without a file is refused above"),
+            item.span.expect("a target without a span is refused above"),
+        ));
     }
 
     let stage = make_stage(root).map_err(|e| PatchRefusal::Io {
@@ -962,7 +971,13 @@ fn constraint_values(model: &ProjectModel) -> BTreeMap<String, Value> {
         &slots,
     )
     .into_iter()
-    .map(|r| (r.id.clone(), serde_json::to_value(r).unwrap()))
+    .map(|r| {
+        let id = r.id.clone();
+        let value = serde_json::to_value(r).expect(
+            "a ConstraintResult serializes: derived Serialize over strings, spans, diagnostics",
+        );
+        (id, value)
+    })
     .collect()
 }
 fn reachability_value(model: &ProjectModel, node: &NodeKey) -> Option<Value> {

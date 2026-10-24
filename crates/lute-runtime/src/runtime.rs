@@ -1366,7 +1366,9 @@ fn resolve_advance(
                 .map(|weekday| {
                     let week = c.week.as_ref().ok_or("the clock declares no `week:`")?;
                     match week.labels.iter().position(|x| x == weekday) {
-                        Some(i) => Some(i as i64),
+                        Some(i) => {
+                            Some(i64::try_from(i).expect("a position is at most isize::MAX"))
+                        }
                         None => weekday
                             .parse::<i64>()
                             .ok()

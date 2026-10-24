@@ -258,7 +258,10 @@ pub fn parse_slot(
     let prepared = substitute_dsl_tokens(raw);
     match parse_prepared(&prepared) {
         Parsed::Expr(expr) => {
-            let h = CelAstHandle(arena.asts.len() as u32);
+            let h = CelAstHandle(
+                u32::try_from(arena.asts.len())
+                    .expect("an arena holds far fewer than 2^32 ASTs: each one takes many bytes"),
+            );
             arena.asts.push(expr);
             Ok(h)
         }
@@ -379,7 +382,10 @@ pub fn parse_slot_marked_refs(arena: &mut CelArena, raw: &str) -> Option<CelAstH
     let prepared = substitute_marking_refs(raw);
     match parse_prepared(&prepared) {
         Parsed::Expr(expr) => {
-            let h = CelAstHandle(arena.asts.len() as u32);
+            let h = CelAstHandle(
+                u32::try_from(arena.asts.len())
+                    .expect("an arena holds far fewer than 2^32 ASTs: each one takes many bytes"),
+            );
             arena.asts.push(expr);
             Some(h)
         }
@@ -428,8 +434,8 @@ fn silence_antlr_panic() {
 /// `prepared` byte-for-byte since substitution is length-preserving). Robust to
 /// multi-line CEL and multibyte characters.
 fn linecol_to_byte(raw: &str, line: isize, col: isize) -> usize {
-    let line = line.max(1) as usize; // 1-based
-    let col = col.max(1) as usize; // 1-based, code points
+    let line = usize::try_from(line.max(1)).expect("max(1) is positive"); // 1-based
+    let col = usize::try_from(col.max(1)).expect("max(1) is positive"); // 1-based, code points
     let mut cur_line = 1usize;
     let mut byte = 0usize;
     let bytes = raw.as_bytes();

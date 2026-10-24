@@ -277,6 +277,10 @@ fn intervals_cover_reals(intervals: impl Iterator<Item = Span>) -> bool {
 /// lowest uncovered number, jump past the furthest span holding it.
 fn spans_cover_ints(spans: &[Span], lo: i64, hi: i64) -> bool {
     // The last whole number a span holds (`i64::MAX` for an open top).
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "clamped to the i64 range first; `as` saturates at the bounds"
+    )]
     let top = |&(_, _, h, h_inc): &Span| -> i64 {
         if h == f64::INFINITY {
             i64::MAX

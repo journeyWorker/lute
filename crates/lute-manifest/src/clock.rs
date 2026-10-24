@@ -345,6 +345,10 @@ impl ClockDecl {
     /// The position a `day` value and a `slot` member name. `None` when the
     /// day is not an integer or — on a clock with a `slot:` path — the slot
     /// is not one of `slots`. A day-granular clock ignores `slot`.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a whole day read from state: past the i64 range `as` saturates, as before"
+    )]
     pub fn at(&self, day: f64, slot: Option<&str>) -> Option<ClockAt> {
         if day.fract() != 0.0 || !day.is_finite() {
             return None;
@@ -361,7 +365,13 @@ impl ClockDecl {
 
     /// `clock.index` of a position.
     pub fn index(&self, at: ClockAt) -> i64 {
-        (at.day - 1) * self.slot_count() as i64 + at.slot as i64
+        let len = i64::try_from(self.slot_count()).expect("a length is at most isize::MAX");
+        #[expect(
+            clippy::cast_possible_wrap,
+            reason = "a position may come from a host save: a slot past i64::MAX wraps, as before"
+        )]
+        let slot = at.slot as i64;
+        (at.day - 1) * len + slot
     }
 
     /// The position `n` slots after `at` (wrapping into later days), or
@@ -373,11 +383,22 @@ impl ClockDecl {
                 slot: 0,
             },
             Advance::Slots(n) => {
-                let len = self.slot_count() as i64;
+                let len = i64::try_from(self.slot_count()).expect("a length is at most isize::MAX");
+                #[expect(
+                    clippy::cast_possible_wrap,
+                    reason = "a position may come from a host save: a slot past i64::MAX wraps, \
+                              as before"
+                )]
                 let flat = at.slot as i64 + i64::from(n);
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "in 0..len unless the slot above wrapped; then it wraps back, as before"
+                )]
+                let slot = (flat % len) as usize;
                 ClockAt {
                     day: at.day + flat / len,
-                    slot: (flat % len) as usize,
+                    slot,
                 }
             }
             Advance::To { weekday, slot } => {
@@ -387,7 +408,9 @@ impl ClockDecl {
                 // planned) stays put.
                 let week = self.week.as_ref().map_or(1, |w| i64::from(w.length.max(1)));
                 let mut pos = at;
-                for _ in 0..week * self.slot_count() as i64 {
+                let slots =
+                    i64::try_from(self.slot_count()).expect("a length is at most isize::MAX");
+                for _ in 0..week * slots {
                     pos = self.advance(pos, Advance::Slots(1));
                     if weekday.is_none_or(|wd| self.weekday(pos.day) == Some(wd))
                         && slot.is_none_or(|s| s == pos.slot)
@@ -435,7 +458,8 @@ impl ClockDecl {
     pub fn weekday_label(&self, day: i64) -> Option<&str> {
         let week = self.week.as_ref()?;
         let wd = self.weekday(day)?;
-        week.labels.get(wd as usize).map(String::as_str)
+        let wd = usize::try_from(wd).expect("weekday() is in 0..week.length, and length is a u32");
+        week.labels.get(wd).map(String::as_str)
     }
 
     /// Every reserved `clock.*` path's value at `at` that the position

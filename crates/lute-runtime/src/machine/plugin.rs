@@ -264,6 +264,11 @@ impl<D: Driver> Machine<D> {
                     .and_then(|a| a.iter().find(|(f, _)| f == field))
                     .map_or(Value::Unknown, |(_, v)| v.clone())
             } else if let Some(op) = from.get("op").and_then(Json::as_str) {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "a whole bridge increment from the plugin: past the i64 range `as` \
+                              saturates, as before"
+                )]
                 let by = match (
                     self.store.types.get(path).map(String::as_str),
                     from.get("by").and_then(Json::as_str),
@@ -348,6 +353,11 @@ impl<D: Driver> Machine<D> {
     fn host_writes(&mut self, cmd: &Json, tag: &str, host: &crate::session::Writes) -> bool {
         use crate::session::Write;
         for (path, write) in &host.state {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "a host `add` to an int path: `as` drops the fraction and saturates past \
+                          the i64 range, as before"
+            )]
             let value = match write {
                 Write::Set(v) => v.clone(),
                 Write::Add(d) => match self.store.read(path) {

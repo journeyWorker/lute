@@ -847,6 +847,10 @@ pub fn effect_path(w: &WriteDecl, dir: &Directive) -> String {
 /// Resolve one manifest `WriteDecl` into an artifact-local [`Effect`] (IR A12)
 /// at [`effect_path`]. Numeric effect values use the declared destination field
 /// type, rather than the YAML number's incidental integral/fractional spelling.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a whole number from a plugin manifest: past the i64 range `as` saturates, as before"
+)]
 pub fn resolve_effect(
     w: &WriteDecl,
     dir: &Directive,

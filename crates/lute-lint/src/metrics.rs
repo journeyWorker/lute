@@ -267,6 +267,10 @@ pub fn compute_doc_tables(
 /// Aggregate per-document rows into the single [`ProjectRow`] (spec §4).
 /// `scene_words` is the per-document `SceneRow.words` list in the same order
 /// documents were passed to the engine — determinism carries through.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a count over the source text: metric rows are `u32`, and a count past u32::MAX wraps, as before"
+)]
 pub fn compute_project_row(scene_words: &[u32]) -> ProjectRow {
     let scenes = scene_words.len() as u32;
     let (mut min, mut max, mut sum) = (f64::INFINITY, 0f64, 0f64);
@@ -456,6 +460,10 @@ impl Walker {
         self.visit_nodes(&c.body);
     }
 
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a count over the source text: metric rows are `u32`, and a count past u32::MAX wraps, as before"
+    )]
     fn visit_line(&mut self, l: &lute_syntax::ast::Line) {
         let words = count_words(&l.text);
         let chars = l.text.chars().count() as u32;
@@ -541,6 +549,10 @@ impl Walker {
 }
 
 /// One [`SpeakerRow`] per speaker over `lines`.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a count over the source text: metric rows are `u32`, and a count past u32::MAX wraps, as before"
+)]
 fn speakers_of(lines: &[LineRow]) -> BTreeMap<String, SpeakerRow> {
     // Group DIALOGUE lines only (spec §4 "dialogue lines only"). A
     // narration bucket would be a false speaker with no name to key on.
@@ -584,6 +596,10 @@ fn speakers_of(lines: &[LineRow]) -> BTreeMap<String, SpeakerRow> {
 }
 
 impl Walker {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a count over the source text: metric rows are `u32`, and a count past u32::MAX wraps, as before"
+    )]
     fn build_groups(&self, group_bys: &BTreeSet<String>) -> BTreeMap<String, Vec<GroupRow>> {
         let mut out = BTreeMap::new();
         if group_bys.is_empty() {
@@ -625,6 +641,10 @@ impl Walker {
 /// `}}` are left in place — `check-doc-snippets`/`lute loc report` strips
 /// them for a *word* count; the lint layer's rule reads a raw token count
 /// (spec §4).
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a count over the source text: metric rows are `u32`, and a count past u32::MAX wraps, as before"
+)]
 fn count_words(text: &str) -> u32 {
     text.split_whitespace().count() as u32
 }
@@ -704,6 +724,10 @@ fn build_axes(lines: &[&LineRow]) -> BTreeMap<String, AxisStats> {
 /// - `streakAvg` = `lines / streaks`;
 /// - `distinct` = distinct bucket count;
 /// - `top` = mode + `count` + `share`.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a count over the source text: metric rows are `u32`, and a count past u32::MAX wraps, as before"
+)]
 fn axis_from_buckets(buckets: &[String]) -> AxisStats {
     if buckets.is_empty() {
         return AxisStats {

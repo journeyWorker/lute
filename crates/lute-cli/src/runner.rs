@@ -382,7 +382,10 @@ pub(crate) fn activation_json_scoped_with_defaults(
         if !node.get("map").is_some_and(Json::is_object) {
             *node = json!({"map": {}});
         }
-        let map = node.get_mut("map").and_then(Json::as_object_mut).unwrap();
+        let map = node
+            .get_mut("map")
+            .and_then(Json::as_object_mut)
+            .expect("`map` was made an object just above");
         if parts.len() == 1 {
             map.insert(parts[0].to_string(), value);
             return;
@@ -399,7 +402,10 @@ pub(crate) fn activation_json_scoped_with_defaults(
         if !node.get("map").is_some_and(Json::is_object) {
             *node = json!({"map": {}});
         }
-        let map = node.get_mut("map").and_then(Json::as_object_mut).unwrap();
+        let map = node
+            .get_mut("map")
+            .and_then(Json::as_object_mut)
+            .expect("`map` was made an object just above");
         let child = map
             .entry(parts[0].to_string())
             .or_insert_with(|| json!({"map": {}}));
@@ -526,7 +532,10 @@ pub(crate) fn activation_json_paths(
         if !node.get("map").is_some_and(Json::is_object) {
             *node = json!({"map": {}});
         }
-        let map = node.get_mut("map").and_then(Json::as_object_mut).unwrap();
+        let map = node
+            .get_mut("map")
+            .and_then(Json::as_object_mut)
+            .expect("`map` was made an object just above");
         if parts.len() == 1 {
             if let Some(value) = value {
                 map.insert(parts[0].to_string(), value);

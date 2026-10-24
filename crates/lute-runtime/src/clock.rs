@@ -12,6 +12,10 @@ use crate::Value;
 /// The clock's position in `state` (`None` when the day is not an integer
 /// or the slot is not one of the clock's slots; a day-granular clock reads
 /// its day alone).
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a whole day read from state: past the i64 range `as` saturates, as before"
+)]
 pub fn position(clock: &ClockDecl, state: &BTreeMap<String, Value>) -> Option<ClockAt> {
     let day = match state.get(&clock.day) {
         Some(Value::Int(day)) => *day,

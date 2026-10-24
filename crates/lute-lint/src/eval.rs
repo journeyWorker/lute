@@ -136,6 +136,10 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, EvalError> {
     }
 }
 
+#[expect(
+    clippy::cast_possible_wrap,
+    reason = "an authored CEL `uint` literal: one above i64::MAX wraps, as before"
+)]
 fn literal_value(v: &Val) -> Result<Value, EvalError> {
     Ok(match v {
         Val::Null => Value::Null,
@@ -226,9 +230,15 @@ fn eval_call(c: &CallExpr, env: &Env) -> Result<Value, EvalError> {
         ("size", [x]) => {
             let v = eval(&x.expr, env)?;
             match v {
-                Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
-                Value::List(l) => Ok(Value::Int(l.len() as i64)),
-                Value::Map(m) => Ok(Value::Int(m.len() as i64)),
+                Value::Str(s) => Ok(Value::Int(
+                    i64::try_from(s.chars().count()).expect("a length is at most isize::MAX"),
+                )),
+                Value::List(l) => Ok(Value::Int(
+                    i64::try_from(l.len()).expect("a length is at most isize::MAX"),
+                )),
+                Value::Map(m) => Ok(Value::Int(
+                    i64::try_from(m.len()).expect("a length is at most isize::MAX"),
+                )),
                 other => Err(EvalError::new(format!(
                     "size() on {} value",
                     other.type_name()
@@ -335,16 +345,27 @@ fn index_value(base: &Value, key: &Value) -> Result<Value, EvalError> {
             .cloned()
             .ok_or_else(|| EvalError::new(format!("missing key `{k}`"))),
         (Value::List(l), Value::Int(n)) => {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "an authored index: on a 32-bit target one past the isize range \
+                          truncates, as before"
+            )]
             let i = *n as isize;
-            if i < 0 || (i as usize) >= l.len() {
-                return Err(EvalError::new(format!(
+            match usize::try_from(i).ok().and_then(|u| l.get(u)) {
+                Some(item) => Ok(item.clone()),
+                None => Err(EvalError::new(format!(
                     "list index {i} out of bounds (size {})",
                     l.len()
-                )));
+                ))),
             }
-            Ok(l[i as usize].clone())
         }
         (Value::List(l), Value::Double(n)) if n.fract() == 0.0 && *n >= 0.0 => {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "a whole non-negative authored index: past the usize range `as` \
+                          saturates, as before"
+            )]
             let i = *n as usize;
             if i >= l.len() {
                 return Err(EvalError::new(format!(
@@ -418,6 +439,10 @@ fn next_char_boundary(bytes: &[u8], i: usize) -> usize {
     (i + width).min(bytes.len())
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a percentage of an authored number: past the i64 range `as` saturates, as before"
+)]
 fn render_path(path: &str, format: Option<&str>, env: &Env) -> String {
     let segments: Vec<&str> = path.split('.').collect();
     if segments.is_empty() {

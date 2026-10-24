@@ -1439,6 +1439,10 @@ fn value_text(v: &Value) -> String {
     }
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a whole finite double below 1e15 in magnitude (checked above), so the cast is exact"
+)]
 fn num_text(n: f64) -> String {
     if n.is_finite() && n.fract() == 0.0 && n.abs() < 1e15 {
         format!("{}", n as i64)

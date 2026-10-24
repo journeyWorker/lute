@@ -1142,8 +1142,11 @@ mod tests {
             byte_start: start,
             byte_end: start + 1,
             line: 1,
-            column: start as u32 + 1,
-            utf16_range: (start as u32, start as u32 + 1),
+            column: u32::try_from(start).unwrap() + 1,
+            utf16_range: (
+                u32::try_from(start).unwrap(),
+                u32::try_from(start).unwrap() + 1,
+            ),
         };
         let mut graph = SemanticGraph::default();
         graph.node(key.clone(), Some("scene.lute".into()), Some(span(1)));

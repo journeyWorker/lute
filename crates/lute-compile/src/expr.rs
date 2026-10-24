@@ -282,6 +282,10 @@ fn subject_cmp(subject: Option<&ExprNode>, op: &'static str, lit: LitVal) -> Opt
 }
 
 /// A numeric pattern bound keeps CEL's integer/double distinction.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a whole finite double at most 2^53 in magnitude (checked by the guard), so the cast is exact"
+)]
 fn pattern_num(n: f64, subject_is_double: bool) -> LitVal {
     if !subject_is_double && n.is_finite() && n.fract() == 0.0 && n.abs() <= (1u64 << 53) as f64 {
         LitVal::Int(n as i64)

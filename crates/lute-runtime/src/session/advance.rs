@@ -256,6 +256,12 @@ pub fn run_advance<F: super::WalkDriver>(
         Advance::Slots(1) => "slot".to_string(),
         Advance::Slots(k) => k.to_string(),
         Advance::To { weekday, slot } => {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "the caller resolved the weekday (a label position or 0..week.length); \
+                          any other value casts as before and falls back to `weekday {wd}`"
+            )]
             let wd = weekday.map(|wd| {
                 clock
                     .week

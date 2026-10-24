@@ -491,6 +491,11 @@ impl<'a> TraceDriver<'a> {
             .to_string()
     }
 
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "an objective index from a runtime record: where usize is 32 bits one past \
+                  u32::MAX truncates, as before"
+    )]
     pub(super) fn grant(&mut self, rec: &Json) {
         let reward = rec.get("reward").cloned().unwrap_or(Json::Null);
         let str_of = |v: &Json, k: &str| v.get(k).and_then(Json::as_str).map(str::to_string);

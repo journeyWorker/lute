@@ -444,7 +444,10 @@ pub fn resolve_fact(p: &ExecProject, f: &str, next: Option<&str>) -> Result<Fact
 /// opened, the fix is quoting; otherwise the atom itself is unbalanced (a
 /// quoted `"empty(ada"`).
 pub fn split_atom_hint(atom: &str, next: Option<&str>) -> &'static str {
-    let open = |s: &str| s.matches('(').count() as isize - s.matches(')').count() as isize;
+    let count = |s: &str, c: char| {
+        isize::try_from(s.matches(c).count()).expect("a count is at most isize::MAX")
+    };
+    let open = |s: &str| count(s, '(') - count(s, ')');
     match open(atom) {
         0 => "",
         o if o > 0 && next.is_some_and(|n| open(n) < 0) => {

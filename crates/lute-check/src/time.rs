@@ -208,6 +208,10 @@ mod tests {
     /// truncation drops a whole millisecond. 741 of the first 100_000
     /// millisecond values behave this way.
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "the test shows the truncation `as` performs"
+    )]
     fn never_multiplies_a_parsed_double() {
         assert_eq!(parse_time_ms("1.005"), TimeParse::Ms(1005));
         assert_eq!(("1.005".parse::<f64>().unwrap() * 1000.0) as i64, 1004);
@@ -275,6 +279,10 @@ mod tests {
     /// decimal from the one the artifact carries is a diagnostic an author
     /// cannot act on.
     #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "rounded milliseconds below 10_000, so the cast is exact"
+    )]
     fn seconds_emission_round_trips_every_admissible_value() {
         for ms in 0..10_000_i64 {
             let s = ms_to_seconds(ms);

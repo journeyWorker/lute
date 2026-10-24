@@ -125,7 +125,7 @@ fn every_fixture_replays_byte_identically() {
         let transcript: serde_json::Value = serde_json::from_str(&expected)
             .unwrap_or_else(|e| panic!("fixture {name}: expected.json is not JSON: {e}"));
         let want_code = match transcript["exit"].as_i64() {
-            Some(code) => code as i32,
+            Some(code) => i32::try_from(code).unwrap(),
             None => expected_code(
                 transcript["exit"]
                     .as_str()

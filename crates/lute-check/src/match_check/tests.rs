@@ -812,7 +812,7 @@ fn code_line(speaker: &str, code: Option<&str>, byte: usize) -> Node {
         byte_end: byte,
         line: 1,
         column: 1,
-        utf16_range: (byte as u32, byte as u32),
+        utf16_range: (u32::try_from(byte).unwrap(), u32::try_from(byte).unwrap()),
     };
     let attrs = match code {
         Some(c) => vec![Attr {

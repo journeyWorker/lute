@@ -250,15 +250,18 @@ pub fn query_graph(graph: &SemanticGraph, root: String, target: &ImpactTarget) -
                 }
             })
             .collect();
-        groups.get_mut(group).unwrap().push(ImpactItem {
-            key: node.canonical(),
-            evidence: ev,
-            file,
-            line,
-            line_id,
-            speaker,
-            reasons,
-        });
+        groups
+            .get_mut(group)
+            .expect("`groups` is seeded with every group name above")
+            .push(ImpactItem {
+                key: node.canonical(),
+                evidence: ev,
+                file,
+                line,
+                line_id,
+                speaker,
+                reasons,
+            });
     }
     for values in groups.values_mut() {
         values.sort_by(|a, b| a.key.cmp(&b.key));

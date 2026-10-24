@@ -1350,7 +1350,7 @@ fn check(target: &str, expected: &[E]) {
                     (
                         r["edge"].as_str().unwrap().to_string(),
                         r["file"].as_str().unwrap().to_string(),
-                        r["line"].as_u64().unwrap() as u32,
+                        u32::try_from(r["line"].as_u64().unwrap()).unwrap(),
                     )
                 })
                 .collect();

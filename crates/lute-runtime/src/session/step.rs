@@ -501,6 +501,11 @@ pub fn new_run(p: &ExecProject, w: &mut World, seed: &Writes) -> Result<NewRunRe
 pub fn apply_writes(w: &mut World, writes: &Writes) -> Result<Vec<Json>, String> {
     let mut records = Vec::new();
     for (path, write) in &writes.state {
+        #[expect(
+            clippy::cast_possible_truncation,
+            reason = "a host `add` to an int path: `as` drops the fraction and saturates past the \
+                      i64 range, as before"
+        )]
         let v = match write {
             Write::Set(v) => v.clone(),
             Write::Add(d) => match w.state.get(path) {

@@ -518,7 +518,10 @@ fn evaluate_data(
             )];
         }
     };
-    let ided = arena.get(handle).unwrap().clone();
+    let ided = arena
+        .get(handle)
+        .expect("parse_slot returned this handle for this arena")
+        .clone();
 
     // Iterate the rows that match the target.
     let mut out = Vec::new();
@@ -657,6 +660,12 @@ fn opt_str<'a>(m: &'a yaml_serde::Mapping, key: &str) -> Option<&'a str> {
     m.get(yaml_serde::Value::from(key)).and_then(|v| v.as_str())
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a numeric rule option: a fraction truncates and a negative or oversize value \
+              saturates (`as`), as before"
+)]
 fn eval_emotion_distribution(
     rule: &ResolvedRule,
     severity: Severity,
@@ -715,6 +724,10 @@ fn eval_emotion_distribution(
     out
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a percentage for the message: past the i64 range `as` saturates, as before"
+)]
 fn report_axis(
     reasons: &mut Vec<String>,
     axis_name: &str,
@@ -743,6 +756,12 @@ fn report_axis(
     let _ = ax.top.value; // reserved for a future dominance-detail message
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a numeric rule option or a percentage for the message: a fraction truncates and a \
+              negative or oversize value saturates (`as`), as before"
+)]
 fn eval_variant_composition(
     rule: &ResolvedRule,
     severity: Severity,

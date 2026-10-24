@@ -1400,9 +1400,17 @@ fn interpolate_params(
 /// The span of `text[start..end]` for a line text beginning at `text_span`
 /// (single-line: `line` is the text's, the character column and UTF-16
 /// offset advance by the prefix's own counts).
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a position within one source text: `Span` positions are `u32`, and a text over 4 GiB wraps, as before"
+)]
 fn text_sub_span(text_span: Span, text: &str, start: usize, end: usize) -> Span {
     let (start, end) = (start.min(text.len()), end.min(text.len()));
-    let u16_len = |s: &str| s.chars().map(|c| c.len_utf16() as u32).sum::<u32>();
+    let u16_len = |s: &str| {
+        s.chars()
+            .map(|c| u32::try_from(c.len_utf16()).expect("a char is 1 or 2 UTF-16 units"))
+            .sum::<u32>()
+    };
     let prefix = text.get(..start).unwrap_or("");
     let u16_start = text_span.utf16_range.0 + u16_len(prefix);
     Span {

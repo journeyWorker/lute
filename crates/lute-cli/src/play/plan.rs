@@ -538,7 +538,7 @@ fn resolve_advance(
                 ));
             };
             let index = match week.labels.iter().position(|l| l == wd) {
-                Some(i) => Some(i as i64),
+                Some(i) => Some(i64::try_from(i).expect("a position is at most isize::MAX")),
                 None => wd
                     .parse::<i64>()
                     .ok()

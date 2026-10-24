@@ -1443,7 +1443,7 @@ mod tests {
             z ^ (z >> 31)
         }
         fn next_range(&mut self, n: usize) -> usize {
-            (self.next_u64() % (n as u64)) as usize
+            usize::try_from(self.next_u64() % (n as u64)).unwrap()
         }
         fn next_bool(&mut self) -> bool {
             self.next_u64() & 1 == 0

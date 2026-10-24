@@ -374,7 +374,10 @@ mod tests {
         assert_eq!(s.selection_range.start.line, 0, "heading is line 0");
         assert_eq!(s.selection_range.start.character, 0);
         // `## Shot 1.` is 10 UTF-16 units.
-        assert_eq!(s.selection_range.end.character, "## Shot 1.".len() as u32);
+        assert_eq!(
+            s.selection_range.end.character,
+            u32::try_from("## Shot 1.".len()).unwrap()
+        );
         assert!(
             s.range.end.line >= s.selection_range.end.line,
             "range encloses selection"
@@ -469,7 +472,7 @@ mod tests {
         assert_eq!(syms[0].selection_range.start.character, 0);
         assert_eq!(
             syms[0].selection_range.end.character,
-            "## The Detail {#detail}".len() as u32,
+            u32::try_from("## The Detail {#detail}".len()).unwrap(),
             "selection spans the heading through the closing brace"
         );
         assert_eq!(syms[1].name, "Plain");

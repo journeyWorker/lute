@@ -23,7 +23,7 @@ impl<'a> TextIndex<'a> {
         let mut line_utf16 = vec![0u32];
         let mut units = 0u32;
         for (i, c) in text.char_indices() {
-            units += c.len_utf16() as u32;
+            units += u32::try_from(c.len_utf16()).expect("a char is 1 or 2 UTF-16 units");
             if c == '\n' {
                 line_starts.push(i + 1);
                 line_utf16.push(units);
@@ -49,13 +49,18 @@ impl<'a> TextIndex<'a> {
         }
     }
 
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a line of one source text: `Span` positions are `u32`, and a text over 4 GiB wraps, as before"
+    )]
     pub fn position(&self, byte: usize) -> Position {
         let line_ix = self.line_of(byte);
         let line_start = self.line_starts[line_ix];
         let slice = &self.text[line_start..byte];
-        let (chars, utf16_col) = slice
-            .chars()
-            .fold((0u32, 0u32), |(n, u), c| (n + 1, u + c.len_utf16() as u32));
+        let (chars, utf16_col) = slice.chars().fold((0u32, 0u32), |(n, u), c| {
+            let units = u32::try_from(c.len_utf16()).expect("a char is 1 or 2 UTF-16 units");
+            (n + 1, u + units)
+        });
         Position {
             line: line_ix as u32 + 1,
             column: chars + 1,
@@ -71,7 +76,7 @@ impl<'a> TextIndex<'a> {
         self.line_utf16[line_ix]
             + self.text[line_start..byte]
                 .chars()
-                .map(|c| c.len_utf16() as u32)
+                .map(|c| u32::try_from(c.len_utf16()).expect("a char is 1 or 2 UTF-16 units"))
                 .sum::<u32>()
     }
 
@@ -120,6 +125,10 @@ impl SpanCursor<'_, '_> {
 
     /// Move to `byte`: its 1-based line and character column, and the
     /// UTF-16 units before it.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a line of one source text: `Span` positions are `u32`, and a text over 4 GiB wraps, as before"
+    )]
     fn seek(&mut self, byte: usize) -> (u32, u32, u32) {
         let line_ix = self.idx.line_of(byte);
         if line_ix != self.line_ix || byte < self.byte {
@@ -130,7 +139,7 @@ impl SpanCursor<'_, '_> {
         }
         for c in self.idx.text[self.byte..byte].chars() {
             self.chars += 1;
-            self.utf16 += c.len_utf16() as u32;
+            self.utf16 += u32::try_from(c.len_utf16()).expect("a char is 1 or 2 UTF-16 units");
         }
         self.byte = byte;
         (line_ix as u32 + 1, self.chars + 1, self.utf16)

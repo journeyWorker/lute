@@ -590,6 +590,10 @@ pub(crate) fn value_text(v: &Value) -> Option<String> {
 
 /// Integral floats render without a trailing `.0` (matches
 /// `lute_compile::literal_json`'s envelope convention: `0`, not `0.0`).
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a whole finite double below 1e15 in magnitude (checked above), so the cast is exact"
+)]
 pub(crate) fn format_num(n: f64) -> String {
     if n.is_finite() && n.fract() == 0.0 && n.abs() < 1e15 {
         format!("{}", n as i64)

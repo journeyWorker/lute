@@ -192,6 +192,10 @@ fn quoted_literal_at(text: &str, literal: &str, from: usize) -> Option<(usize, u
 
 /// `text[start..end]` as a span, `text` being written at `span`: line,
 /// character column and UTF-16 offsets advance by the prefix's own counts.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a position within one source text: `Span` positions are `u32`, and a text over 4 GiB wraps, as before"
+)]
 fn sub_span(span: Span, text: &str, start: usize, end: usize) -> Span {
     let prefix = &text[..start];
     let u16 = |s: &str| s.encode_utf16().count() as u32;

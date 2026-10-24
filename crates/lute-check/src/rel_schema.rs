@@ -608,7 +608,7 @@ pub fn validate_rel_decls(
             ));
         }
         if !decl.key.is_empty() {
-            let n = decl.args.len() as i64;
+            let n = i64::try_from(decl.args.len()).expect("a length is at most isize::MAX");
             let mut seen = BTreeSet::new();
             let mut bad = false;
             for &k in &decl.key {
@@ -1526,6 +1526,10 @@ pub fn state_key_span_count() -> usize {
 
 /// `span` (a [`meta_key_span`]-style, line-less document offset inside
 /// `meta`'s frontmatter) with its 1-based line and character column filled in.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a position within one source text: `Span` positions are `u32`, and a text over 4 GiB wraps, as before"
+)]
 pub(crate) fn meta_position(meta: &Meta, span: Span) -> Span {
     let (base, first_line) = frontmatter_base(meta);
     let mut off = span

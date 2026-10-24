@@ -457,11 +457,11 @@ pub(super) fn clock_axis_at(
     let Value::Int(index) = value else {
         unreachable!("a clock axis value is its index")
     };
-    let len = clock.slot_count() as i64;
+    let len = i64::try_from(clock.slot_count()).expect("a length is at most isize::MAX");
     let index = *index;
     lute_manifest::clock::ClockAt {
         day: index.div_euclid(len) + 1,
-        slot: index.rem_euclid(len) as usize,
+        slot: usize::try_from(index.rem_euclid(len)).expect("rem_euclid by len is in 0..len"),
     }
 }
 

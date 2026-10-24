@@ -564,7 +564,7 @@ fn compile_inner(
                 // dsl 0.6.0 §3.2: a shot's number is its 1-based document
                 // position. Authored numbers and the monotone guard are removed
                 // (the quest path was already positional).
-                let shot_no = i as i64 + 1;
+                let shot_no = i64::try_from(i).expect("a position is at most isize::MAX") + 1;
                 shots.push(address::ShotRecords::new(
                     shot_no,
                     prefix.clone(),
@@ -634,7 +634,7 @@ fn compile_inner(
                 let mut em = cfg::Emitter::new(map.is_some());
                 stage::walk_quest(&mut em, quest, &mut cx, &mut diags);
                 shots.push(address::ShotRecords::new(
-                    (i as i64) + 1,
+                    i64::try_from(i).expect("a position is at most isize::MAX") + 1,
                     quest.id.clone(),
                     em.finish(),
                 ));
@@ -688,7 +688,7 @@ fn compile_inner(
                     }
                 };
                 shots.push(address::ShotRecords::new(
-                    (i as i64) + 1,
+                    i64::try_from(i).expect("a position is at most isize::MAX") + 1,
                     prefix,
                     em.finish(),
                 ));
@@ -920,7 +920,7 @@ fn section_entries(doc: &lute_syntax::ast::Document) -> Vec<ir::SectionEntry> {
             let heading = s.heading.trim();
             let id = s.id.as_ref().map(|(id, _)| id.clone());
             (!heading.is_empty() || id.is_some()).then(|| ir::SectionEntry {
-                section: i as i64 + 1,
+                section: i64::try_from(i).expect("a position is at most isize::MAX") + 1,
                 heading: heading.to_string(),
                 id,
             })
@@ -986,6 +986,12 @@ fn rel_entries(
             labels: vocab.enum_labels.get(name).cloned().unwrap_or_default(),
         })
         .collect();
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "an authored `key:` index (`lute check` refuses one outside the args with \
+                  E-RELATION-DOMAIN); a negative one wraps, as before"
+    )]
     let relations = vocab
         .relations
         .iter()

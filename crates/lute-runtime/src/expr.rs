@@ -535,9 +535,18 @@ impl Eval<'_, '_> {
             return Value::Unknown;
         };
         match self.eval(key, atoms) {
-            Value::Int(n) if n >= 0 => items
-                .get(n as usize)
-                .map_or(Value::Unknown, |item| self.eval(item, atoms)),
+            Value::Int(n) if n >= 0 => {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "a non-negative index (guarded); where usize is 32 bits one past \
+                              u32::MAX truncates, as before"
+                )]
+                let index = n as usize;
+                items
+                    .get(index)
+                    .map_or(Value::Unknown, |item| self.eval(item, atoms))
+            }
             _ => Value::Unknown,
         }
     }
@@ -554,7 +563,14 @@ impl Eval<'_, '_> {
                 if *i < 0 {
                     return Value::Error("countDistinct column must be non-negative".into());
                 }
-                self.fact_query(f, rel, list, Some(*i as usize), atoms)
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    clippy::cast_sign_loss,
+                    reason = "a non-negative column (checked above); where usize is 32 bits one \
+                              past u32::MAX truncates, as before"
+                )]
+                let column = *i as usize;
+                self.fact_query(f, rel, list, Some(column), atoms)
             }
             (Func::Holds | Func::Count, [_]) | (Func::CountDistinct, [_, _]) => {
                 Value::Error("legacy evaluator form is not supported".into())
@@ -564,7 +580,13 @@ impl Eval<'_, '_> {
                 Value::Double(d)
                     if d.is_finite() && d >= i64::MIN as f64 && d < (i64::MAX as f64) + 1.0 =>
                 {
-                    Value::Int(d as i64)
+                    #[expect(
+                        clippy::cast_possible_truncation,
+                        reason = "in the i64 range (checked by the guard); `as` drops the \
+                                  fraction, which is CEL `int()`"
+                    )]
+                    let n = d as i64;
+                    Value::Int(n)
                 }
                 Value::Error(e) => Value::Error(e),
                 _ => Value::Error("int() expects a number".into()),
@@ -634,7 +656,7 @@ impl Eval<'_, '_> {
             .lookup_distinct(relation, &pats, column, self.env.state)
         {
             Ok(n) if f == Func::Holds => Value::Bool(n > 0),
-            Ok(n) => Value::Int(n as i64),
+            Ok(n) => Value::Int(i64::try_from(n).expect("a count is at most isize::MAX")),
             Err(found) => {
                 atoms.extend(found);
                 Value::Unknown

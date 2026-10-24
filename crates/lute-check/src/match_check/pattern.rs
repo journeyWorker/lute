@@ -193,6 +193,10 @@ pub(crate) fn quest_state_is_literal(lit: IsLiteral, subject: Option<&str>) -> I
 /// (subsumption per-literal identity), Task 7 (param `is=` checks), and
 /// Task 8 (`lute-compile`'s §6.4 `fold_component_matches` — is-arm literal
 /// membership against a decided subject constant).
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a position within one source text: `Span` positions are `u32`, and a text over 4 GiB wraps, as before"
+)]
 pub fn is_pattern_literals(raw: &str, span: Span) -> Vec<(String, Span)> {
     let mut out = Vec::new();
     let mut offset = 0usize;

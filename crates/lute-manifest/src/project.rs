@@ -425,7 +425,8 @@ impl Chain {
                 yaml_serde::Value::String(format!("visited(\"{prev}\")")),
             ));
         }
-        let priority = 10 * (self.scenes.len() - i) as i64;
+        let priority =
+            10 * i64::try_from(self.scenes.len() - i).expect("a length is at most isize::MAX");
         out.push(("priority", yaml_serde::Value::Number(priority.into())));
         Some(out)
     }

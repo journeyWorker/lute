@@ -199,8 +199,8 @@ fn sections_newer_than_the_declared_line_are_errors() {
             ),
             "{d}"
         );
-        let start = d["span"]["byte_start"].as_u64().unwrap() as usize;
-        let end = d["span"]["byte_end"].as_u64().unwrap() as usize;
+        let start = usize::try_from(d["span"]["byte_start"].as_u64().unwrap()).unwrap();
+        let end = usize::try_from(d["span"]["byte_end"].as_u64().unwrap()).unwrap();
         assert_eq!(&bindings[start..end], key, "{tag}: {d}");
         assert!(
             with_code(&diagnostics, "E-BINDING-SHAPE").is_empty(),
@@ -274,8 +274,8 @@ fn an_undecodable_newer_file_still_says_upgrade_the_toolchain() {
             "{tag}: {}",
             stale[0]
         );
-        let start = stale[0]["span"]["byte_start"].as_u64().unwrap() as usize;
-        let end = stale[0]["span"]["byte_end"].as_u64().unwrap() as usize;
+        let start = usize::try_from(stale[0]["span"]["byte_start"].as_u64().unwrap()).unwrap();
+        let end = usize::try_from(stale[0]["span"]["byte_end"].as_u64().unwrap()).unwrap();
         assert_eq!(&bindings[start..end], format!("'{newer}'"), "{tag}");
     }
 }
@@ -361,8 +361,8 @@ fn an_empty_title_or_empty_text_is_a_shape_error() {
         let d = &diagnostics[0];
         assert_eq!(d["code"], "E-BINDING-SHAPE", "{d}");
         assert!(message(d).contains(wording), "{d}");
-        let start = d["span"]["byte_start"].as_u64().unwrap() as usize;
-        let end = d["span"]["byte_end"].as_u64().unwrap() as usize;
+        let start = usize::try_from(d["span"]["byte_start"].as_u64().unwrap()).unwrap();
+        let end = usize::try_from(d["span"]["byte_end"].as_u64().unwrap()).unwrap();
         assert_eq!(&bindings[start..end], at, "{tag}: {d}");
     }
 }

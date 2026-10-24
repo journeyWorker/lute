@@ -37,7 +37,7 @@ pub(super) fn position_to_byte(text: &str, pos: Position) -> usize {
         if utf16 >= pos.character {
             return line_start + off;
         }
-        utf16 += ch.len_utf16() as u32;
+        utf16 += u32::try_from(ch.len_utf16()).expect("a char is 1 or 2 UTF-16 units");
     }
     line_end
 }

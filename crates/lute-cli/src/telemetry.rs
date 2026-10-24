@@ -253,7 +253,7 @@ mod tests {
         let file = dir.join("lute").join(FILE);
         append(&file, "{\"a\":1}\n").unwrap();
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "{\"a\":1}\n");
-        std::fs::write(&file, vec![b'x'; LIMIT as usize]).unwrap();
+        std::fs::write(&file, vec![b'x'; usize::try_from(LIMIT).unwrap()]).unwrap();
         append(&file, "{\"b\":2}\n").unwrap();
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "{\"b\":2}\n");
         assert_eq!(

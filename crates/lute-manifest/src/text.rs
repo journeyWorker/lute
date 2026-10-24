@@ -277,6 +277,11 @@ pub fn english_plural(forms: &[String], n: f64, shown: &str) -> Option<String> {
 /// being an exact integer) is `None`, and the renderer then shows the number
 /// unchanged. The one rule the reference runner, `lute trace` and a
 /// component's compile-time literal splice all render with.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a whole number in 0..1e15 (checked above), so the cast is exact"
+)]
 pub fn english_ordinal(n: f64) -> Option<String> {
     if !(n.is_finite() && n >= 0.0 && n.fract() == 0.0 && n < 1e15) {
         return None;
@@ -295,6 +300,12 @@ pub fn english_ordinal(n: f64) -> Option<String> {
 /// dsl 0.25.0 §8: `n` as an English ordinal word — `first` … `twentieth`
 /// for 1–20, and [`english_ordinal`]'s digits (`0th`, `21st`, `101st`)
 /// otherwise. `None` exactly where [`english_ordinal`] is.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "`english_ordinal` accepted it: a whole number in 0..1e15; where usize is 32 bits \
+              `as` saturates, which still falls outside 1..=20"
+)]
 pub fn english_ordinal_word(n: f64) -> Option<String> {
     const WORDS: [&str; 20] = [
         "first",
@@ -329,6 +340,11 @@ pub fn english_ordinal_word(n: f64) -> Option<String> {
 /// digits (`0`, `21`, `101`) otherwise; `None` exactly where
 /// [`english_ordinal`] is (a fraction, a negative number), and the renderer
 /// then shows the number unchanged.
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "`english_ordinal` accepted it: a whole number in 0..1e15, so the cast is exact"
+)]
 pub fn english_cardinal_word(n: f64) -> Option<String> {
     const WORDS: [&str; 20] = [
         "one",
@@ -354,7 +370,7 @@ pub fn english_cardinal_word(n: f64) -> Option<String> {
     ];
     english_ordinal(n)?;
     Some(match n as u64 {
-        i @ 1..=20 => WORDS[i as usize - 1].to_string(),
+        i @ 1..=20 => WORDS[usize::try_from(i).expect("i is in 1..=20") - 1].to_string(),
         i => i.to_string(),
     })
 }
