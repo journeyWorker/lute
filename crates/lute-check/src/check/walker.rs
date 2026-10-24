@@ -83,7 +83,7 @@ impl Walker<'_> {
             }
             match node {
                 Node::Line(l) => {
-                    self.check_attr_refs(&l.attrs, ctx, None);
+                    self.check_line_attr_refs(&l.attrs, ctx);
                     crate::content_line::check_content_line_attrs(
                         l,
                         self.snapshot,
@@ -642,6 +642,20 @@ impl Walker<'_> {
                     .and_then(|tag| self.snapshot.directive(tag))
                     .and_then(|decl| decl.attrs.iter().find(|a| a.name == attr.key))
                     .map(|a| ExpectedType::Ty(a.ty.clone()));
+                self.diags
+                    .extend(check_cel_slot(slot, self.arena, ctx, expected.as_ref()));
+            }
+        }
+    }
+
+    /// A content line's `@ref`-valued attributes: a typed line attribute
+    /// (`wait`, 0.49.0 §4.2) is checked against its type (`E-REF-TYPE`), the
+    /// rest as untyped CEL slots.
+    fn check_line_attr_refs(&mut self, attrs: &[Attr], ctx: &Ctx<'_>) {
+        for attr in attrs {
+            if let AttrValue::Ref(slot) = &attr.value {
+                let expected =
+                    crate::content_line::typed_line_attr(&attr.key).map(|a| ExpectedType::Ty(a.ty));
                 self.diags
                     .extend(check_cel_slot(slot, self.arena, ctx, expected.as_ref()));
             }

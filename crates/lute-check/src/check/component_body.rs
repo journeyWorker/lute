@@ -701,7 +701,7 @@ pub(super) fn walk_component_body(
     for node in nodes {
         match node {
             Node::Line(l) => {
-                body_attr_refs(&l.attrs, snapshot, arena, ctx, None, &scope.own, diags);
+                body_attr_refs(&l.attrs, snapshot, arena, ctx, RefsOf::Line, &scope.own, diags);
                 // finding 2 (Task 7b, the SAME class as finding 1 below):
                 // `check_content_line_attrs` was skipped here entirely, so
                 // NO content-line attribute rule applied inside a component
@@ -811,7 +811,7 @@ pub(super) fn walk_component_body(
                 );
                 check_use_typed_args(d, components, snapshot, providers, domains, diags);
                 check_speaker_args(d, components, scope.cast, scope.speakers, diags);
-                body_attr_refs(&d.attrs, snapshot, arena, ctx, None, &scope.own, diags);
+                body_attr_refs(&d.attrs, snapshot, arena, ctx, RefsOf::Untyped, &scope.own, diags);
                 let writes = scope.effects
                     && use_target(d).is_some_and(|n| components.table.get(n).is_some_and(|c| c.effects));
                 component_guard(d, snapshot, arena, ctx, writes, scope, diags);
@@ -834,7 +834,7 @@ pub(super) fn walk_component_body(
                 // judged at each `::use` against the host (spliced there);
                 // here its attrs resolve against the params only.
                 let mut ds = check_directive(d, snapshot, providers, domains, ctx);
-                body_attr_refs(&d.attrs, snapshot, arena, ctx, Some(&d.tag), &scope.own, &mut ds);
+                body_attr_refs(&d.attrs, snapshot, arena, ctx, RefsOf::Directive(&d.tag), &scope.own, &mut ds);
                 diags.extend(ds.into_iter().filter(|d| !is_host_schema_code(&d.code)));
                 component_guard(d, snapshot, arena, ctx, true, scope, diags);
             }
@@ -858,7 +858,7 @@ pub(super) fn walk_component_body(
                     ));
                 } else {
                     diags.extend(check_directive(d, snapshot, providers, domains, ctx));
-                    body_attr_refs(&d.attrs, snapshot, arena, ctx, Some(&d.tag), &scope.own, diags);
+                    body_attr_refs(&d.attrs, snapshot, arena, ctx, RefsOf::Directive(&d.tag), &scope.own, diags);
                     component_guard(d, snapshot, arena, ctx, false, scope, diags);
                 }
             }
@@ -1089,20 +1089,35 @@ fn body_attr_refs(
     snapshot: &CapabilitySnapshot,
     arena: &CelArena,
     ctx: &Ctx<'_>,
-    directive_tag: Option<&str>,
+    of: RefsOf<'_>,
     own: &std::collections::BTreeSet<String>,
     diags: &mut Vec<Diagnostic>,
 ) {
     for attr in attrs {
         if let AttrValue::Ref(slot) = &attr.value {
-            let expected = directive_tag
-                .and_then(|tag| snapshot.directive(tag))
-                .and_then(|decl| decl.attrs.iter().find(|a| a.name == attr.key))
-                .map(|a| ExpectedType::Ty(a.ty.clone()));
+            let expected = match of {
+                RefsOf::Directive(tag) => snapshot
+                    .directive(tag)
+                    .and_then(|decl| decl.attrs.iter().find(|a| a.name == attr.key))
+                    .map(|a| ExpectedType::Ty(a.ty.clone())),
+                RefsOf::Line => {
+                    crate::content_line::typed_line_attr(&attr.key).map(|a| ExpectedType::Ty(a.ty))
+                }
+                RefsOf::Untyped => None,
+            };
             diags.extend(check_cel_slot(slot, arena, ctx, expected.as_ref()));
             component_slot_state_scan(slot, arena, own, diags);
         }
     }
+}
+
+/// Whose attributes [`body_attr_refs`] checks: a directive's (typed by its
+/// declaration), a content line's (`wait`, 0.49.0 §4.2), or untyped.
+#[derive(Clone, Copy)]
+enum RefsOf<'a> {
+    Directive(&'a str),
+    Line,
+    Untyped,
 }
 
 /// The component NAME a `::use` directive targets (a plain-string `component=`

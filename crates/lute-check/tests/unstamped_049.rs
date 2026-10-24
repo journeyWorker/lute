@@ -7,7 +7,7 @@ use lute_core_span::Diagnostic;
 use lute_manifest::provider::{ProviderSet, ProviderSnapshot};
 use lute_manifest::schema::AttrDecl;
 use lute_manifest::snapshot::CapabilitySnapshot;
-use lute_manifest::types::Type;
+use lute_manifest::types::{Literal, Type};
 
 /// Core + the shared test vocabulary, a plugin stamp `cue: string`, and the
 /// plugin frontmatter keys `lead` (entity `person`), `party` (list of
@@ -33,9 +33,51 @@ fn snapshot() -> CapabilitySnapshot {
             Type::List(Box::new(Type::ProviderRef("items".into()))),
         ),
         ("tone", Type::Domain("mood".into())),
+        ("weather", Type::EnumFromOption("weathers".into())),
+        (
+            "skies",
+            Type::List(Box::new(Type::EnumFromOption("weathers".into()))),
+        ),
+        ("backdrop", Type::AssetKind("BG".into())),
+        (
+            "backdrops",
+            Type::List(Box::new(Type::AssetKind("BG".into()))),
+        ),
     ] {
         snap.frontmatter.insert(key.into(), ty);
     }
+    // `enumFromOption: weathers` resolves through an active plugin option.
+    snap.plugins.insert(
+        "t.weather".into(),
+        lute_manifest::snapshot::ResolvedPlugin {
+            version: "0.1.0".into(),
+            options: [(
+                "weathers".to_string(),
+                Literal::List(vec![
+                    Literal::Str("sunny".into()),
+                    Literal::Str("rain".into()),
+                ]),
+            )]
+            .into_iter()
+            .collect(),
+            option_defaults: Default::default(),
+        },
+    );
+    // A segment-less query asset kind: provider existence only.
+    snap.asset_kinds.insert(
+        "BG".into(),
+        lute_manifest::schema::AssetKindDecl {
+            kind: "BG".into(),
+            sep: ".".into(),
+            resolve: lute_manifest::schema::AssetResolve::Query,
+            segments: vec![],
+            provider: Some("backgrounds".into()),
+            match_: vec![],
+            aliases: Default::default(),
+            fallback: vec![],
+            persistence: None,
+        },
+    );
     snap
 }
 
@@ -43,9 +85,12 @@ fn providers() -> ProviderSet {
     ProviderSet::from_one(ProviderSnapshot {
         manifest_version: "cap".into(),
         provider_version: "1".into(),
-        entries: [("items".to_string(), vec!["sword".to_string()])]
-            .into_iter()
-            .collect(),
+        entries: [
+            ("items".to_string(), vec!["sword".to_string()]),
+            ("backgrounds".to_string(), vec!["bg_home".to_string()]),
+        ]
+        .into_iter()
+        .collect(),
         stale: false,
     })
 }
@@ -293,4 +338,117 @@ fn a_domain_frontmatter_value_is_a_member_of_its_domain() {
         vec!["E-BAD-ENUM"],
         "{ds:#?}"
     );
+}
+
+/// #178: `enumFromOption` values resolve against the active option's
+/// members, `assetKind` values against the kind's provider; lists check each
+/// element; null and non-string values stay `E-FRONTMATTER-SCHEMA`.
+#[test]
+fn option_and_asset_frontmatter_values_are_checked() {
+    let ok = diagnostics(&scene(
+        "weather: rain\nskies: [sunny, rain]\nbackdrop: bg_home\nbackdrops: [bg_home]\n",
+        "@narrator: hi\n",
+    ));
+    assert!(errors(&ok).is_empty(), "{ok:#?}");
+
+    let bad = diagnostics(&scene(
+        "weather: rainy\nskies: [sunny, snow]\nbackdrop: bg_nowhere\nbackdrops: [bg_home, bg_gone]\n",
+        "@narrator: hi\n",
+    ));
+    let codes: Vec<&str> = errors(&bad).iter().map(|(c, _)| *c).collect();
+    assert_eq!(
+        codes.iter().filter(|c| **c == "E-BAD-ENUM").count(),
+        2,
+        "{bad:#?}"
+    );
+    assert!(
+        coded(&bad, "E-BAD-ENUM")[0].contains("`rainy`")
+            && coded(&bad, "E-BAD-ENUM")[0].contains("did you mean `rain`"),
+        "{bad:#?}"
+    );
+    assert_eq!(codes.len(), 4, "two asset ids also fail: {bad:#?}");
+    assert!(
+        codes
+            .iter()
+            .all(|c| *c == "E-BAD-ENUM" || c.starts_with("E-ASSET")),
+        "{bad:#?}"
+    );
+
+    for front in [
+        "weather: ~\n",
+        "weather: 3\n",
+        "skies: [sunny, ~]\n",
+        "skies: sunny\n",
+        "backdrop: ~\n",
+        "backdrops: [bg_home, 7]\n",
+        "lead: ~\n",
+        "party: [mira, ~]\n",
+    ] {
+        let ds = diagnostics(&scene(front, "@narrator: hi\n"));
+        assert_eq!(
+            errors(&ds).iter().map(|(c, _)| *c).collect::<Vec<_>>(),
+            vec!["E-FRONTMATTER-SCHEMA"],
+            "{front}: {ds:#?}"
+        );
+    }
+}
+
+const DEFS: &str = "defs:\n  n: { type: int, cel: \"1\" }\n  s: { type: string, cel: \"'x'\" }\n  off: { type: bool, cel: \"false\" }\n";
+
+/// F2-R1: a `@ref` line `wait` is held to `bool`: an int or string constant
+/// is reported (before, it compiled to `"1"`/`"x"` and silently vanished
+/// from the record); a bool constant checks clean.
+#[test]
+fn a_line_wait_reference_must_be_a_bool() {
+    for def in ["n", "s"] {
+        let ds = diagnostics(&scene(DEFS, &format!("@narrator{{wait=@{def}}}: hello\n")));
+        assert!(
+            !errors(&ds).is_empty()
+                && errors(&ds)
+                    .iter()
+                    .all(|(c, m)| m.contains("wait") || c == &"E-REF-TYPE"),
+            "@{def}: {ds:#?}"
+        );
+    }
+    let ok = diagnostics(&scene(DEFS, "@narrator{wait=@off}: hello\n"));
+    assert!(errors(&ok).is_empty(), "{ok:#?}");
+}
+
+/// F2-R1: inside a component, a line `wait` bound to an int param is
+/// reported, standalone and through a `::use`.
+#[test]
+fn a_component_line_wait_param_must_be_a_bool() {
+    let dir = lute_scratch::ScratchDir::new();
+    std::fs::write(
+        dir.join("c.lute"),
+        "---\ncomponent: c\nparams:\n  hold: int\n  go: bool\n---\n## Scene 1.\n\
+         @narrator{wait=@hold}: a\n@narrator{wait=@go}: b\n",
+    )
+    .unwrap();
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncomponents: [c.lute]\n---\n\
+                ## Shot 1.\n::use{component=\"c\" hold=\"1\" go=\"false\"}\n"
+        .to_string();
+    let (doc, _) = lute_syntax::parse(&text);
+    let (meta0, _) = lute_check::parse_meta(&doc.meta, &CapabilitySnapshot::default());
+    let components = lute_check::resolve_components(&dir, &meta0.components, doc.meta.span);
+    let input = CheckInput::new(
+        text,
+        "scene".into(),
+        Mode::Ci,
+        lute_check::InputSources::from_parts(
+            snapshot(),
+            providers(),
+            SchemaImports::default(),
+            components,
+            Default::default(),
+        ),
+    );
+    let ds = check(&input).diagnostics;
+    let refs: Vec<&str> = errors(&ds)
+        .into_iter()
+        .filter(|(c, _)| *c == "E-REF-TYPE")
+        .map(|(_, m)| m)
+        .collect();
+    assert_eq!(refs.len(), 1, "only `@hold` is no bool: {ds:#?}");
+    assert!(refs[0].contains("hold"), "{refs:?}");
 }

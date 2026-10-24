@@ -263,3 +263,67 @@ fn a_rejected_redeclaration_of_a_domain_path_is_reported_at_the_document() {
         ),
     ]);
 }
+
+/// 0.49.0 §4.3 (#178): a reference-typed plugin frontmatter key is checked
+/// against the document's own merged vocabulary, on the shared fold as on the
+/// full merge: `lead: b` is a member where the document `add:`s `b` to the
+/// imported `person: [a]`, and `E-BAD-ENUM` in a sibling that does not.
+#[test]
+fn a_frontmatter_entity_reads_the_document_s_own_members() {
+    let dir = lute_scratch::ScratchDir::named("fold-eq-fm");
+    let files = [
+        (
+            "lute.project.yaml",
+            "pluginsDir: plugins/\ndefaultProfile: p\nprofiles:\n  p:\n    plugins: { t.lead: true }\n",
+        ),
+        (
+            "plugins/t.lead/plugin.yaml",
+            "id: t.lead\nversion: 0.1.0\nkind: capability\n\
+             depends: [ { id: lute.core, range: \"^0.0.1\" } ]\nexports:\n  frontmatter: fm/\n",
+        ),
+        (
+            "plugins/t.lead/fm/lead.yaml",
+            "frontmatter:\n  - key: lead\n    schema: { entity: person }\n",
+        ),
+        (
+            "world.schema.yaml",
+            "entities:\n  person: { members: [a] }\n",
+        ),
+        (
+            "add.lute",
+            "---\nkind: scene\nid: add\nuses: world.schema.yaml\nlead: b\n\
+             entities:\n  person:\n    add: [b]\n---\n## Shot 1.\n@narrator: hi\n",
+        ),
+        (
+            "plain.lute",
+            "---\nkind: scene\nid: plain\nuses: world.schema.yaml\nlead: b\n---\n## Shot 1.\n@narrator: hi\n",
+        ),
+    ];
+    for (name, text) in files {
+        let path = dir.join(name);
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("mkdir");
+        std::fs::write(&path, text).expect("write a fixture");
+    }
+    let cache = InputCache::default();
+    let codes = |name: &str| {
+        let file = dir.join(name);
+        assert_equivalent(&cache, &file, Some(&dir));
+        let text = std::fs::read_to_string(&file).expect("read the document");
+        let (built, (doc, _)) = assemble_input(&cache, &file, text, None, Some(&dir), None);
+        let (_, a, b) = fold_env(&doc, &built.input);
+        a.into_iter()
+            .chain(b)
+            .filter(|d| d.severity == lute_core_span::Severity::Error)
+            .map(|d| format!("{}: {}", d.code, d.message))
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(codes("add.lute"), Vec::<String>::new());
+    assert_eq!(
+        codes("plain.lute"),
+        vec![
+            "E-BAD-ENUM: `b` is not a member of entity kind `person` (attribute `lead` of \
+             `frontmatter`)"
+                .to_string()
+        ]
+    );
+}

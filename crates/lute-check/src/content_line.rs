@@ -36,6 +36,17 @@ pub const KNOWN_ATTRS: &[&str] = &[
     "wait",
 ];
 
+/// The declared type of a content-line attribute whose value is typed by
+/// [`check_attr_value`] — `wait` (bool, 0.49.0 §4.2). A `@ref` value is
+/// checked against it in the walker (`E-REF-TYPE`) and, once folded, as the
+/// literal the record ships (`crate::def_inline`).
+pub(crate) fn typed_line_attr(key: &str) -> Option<lute_manifest::schema::AttrDecl> {
+    match key {
+        "wait" => universal_timing_decl(key),
+        _ => None,
+    }
+}
+
 /// `E-RENAMED-ATTR` (dsl 0.37.0 §4): an old attribute key whose message names
 /// the new spelling. Shared by directives and content lines.
 pub const E_RENAMED_ATTR: &str = "E-RENAMED-ATTR";
@@ -253,7 +264,7 @@ pub fn check_content_line_attrs(
             // the line, up to the next line, wait for it. Typed through the
             // same synthetic decl an undeclared directive `wait` gets.
             "wait" => {
-                if let Some(decl) = universal_timing_decl("wait") {
+                if let Some(decl) = typed_line_attr(&attr.key) {
                     let mut scratch = Vec::new();
                     check_attr_value(
                         &owner,

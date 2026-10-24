@@ -161,3 +161,21 @@ fn a_line_wait_lowers_to_timing_wait() {
         "`wait` is no line field: {lines:#?}"
     );
 }
+
+/// F2-R1: a bool constant reference on a line's `wait` folds into
+/// `timing.wait` (it is not dropped).
+#[test]
+fn a_line_wait_bool_reference_lowers_to_timing_wait() {
+    let text = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n\
+                defs:\n  off: { type: bool, cel: \"false\" }\n---\n\n## Shot 1.\n\n\
+                @elena{wait=@off}: a\n";
+    let line = commands(text)
+        .into_iter()
+        .find(|c| c["kind"] == "line")
+        .expect("a line record");
+    assert_eq!(
+        line["timing"],
+        serde_json::json!({ "wait": false }),
+        "{line:#?}"
+    );
+}
