@@ -67,7 +67,7 @@ def code_only(text: str) -> str:
                     j += 1
             blank(i, j)
             i = j
-        elif ch in 'bcr"' and (i == 0 or not IDENT_CHAR.match(text[i - 1])) and (opener := STRING_OPEN.match(text, i)):
+        elif ch in 'bcr"' and (ch == '"' or i == 0 or not IDENT_CHAR.match(text[i - 1])) and (opener := STRING_OPEN.match(text, i)):
             j = opener.end()
             if opener.group(1) is not None:
                 close = '"' + opener.group(2)
@@ -140,6 +140,7 @@ SELF_TEST_CASES: list[tuple[str, str, list[tuple[int, str]]]] = [
     ("line after multi-line string", 'const S: &str = "a\nb\nc";\npub(in crate) fn f() {}\n', [(4, "pub(in crate)")]),
     ("allowed levels", "pub(crate) fn a() {}\npub fn b() {}\nfn c() {}\npub(self) fn d() {}\n", []),
     ("not a visibility", "fn my_pub(super_x: u8) {}\nlet pub_ = 1;\nfn x() { pub(superb); }\n", []),
+    ("string right after a number", 'ignore!(0"x!"); mod m { pub(super) fn hidden() {} }\n', [(1, "pub(super)")]),
 ]
 
 
