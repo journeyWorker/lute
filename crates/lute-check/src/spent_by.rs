@@ -121,9 +121,12 @@ fn spent_beats<'d>(doc: &'d Document, folded: &'d FoldedEnv) -> Vec<SpentBeat<'d
 /// The verdicts a beat's own document decides before the start of play is
 /// judged: `Err(diagnostic)` for an unreachable beat, `Err(None)` when a
 /// reported literal or a `when` already false alone is the verdict.
-#[expect(
-    clippy::result_large_err,
-    reason = "diagnostic ownership is part of this checker result contract"
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    expect(
+        clippy::result_large_err,
+        reason = "diagnostic ownership is part of this checker result contract"
+    )
 )]
 fn own_verdict(
     b: &SpentBeat<'_>,

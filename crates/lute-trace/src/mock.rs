@@ -1476,9 +1476,12 @@ pub(crate) fn validate_entry(folded: &FoldedEnv, doc: &Document, id: &str) -> Ve
 /// canonical id `<document id>.<beat id>` is `id`. Returns the beat's index
 /// in `doc.beats` and its canonical id; [`E_TRACE_BEAT`] otherwise, naming
 /// the declared canonical ids so the fix is one copy away.
-#[expect(
-    clippy::result_large_err,
-    reason = "trace diagnostics are returned directly for source reporting"
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    expect(
+        clippy::result_large_err,
+        reason = "trace diagnostics are returned directly for source reporting"
+    )
 )]
 pub(crate) fn resolve_beat(
     folded: &FoldedEnv,
