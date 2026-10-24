@@ -1,4 +1,4 @@
-use super::*;
+use super::{fold_parent_dirs, ArmRow, CoverageAccum, CoverageUnit, Path, PathBuf, TraceReport};
 
 /// Fold one report's decisions + coverage counts into the run accumulator:
 /// its document, the bundle beats / entries it presented (T3-20), its

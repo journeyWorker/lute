@@ -93,6 +93,7 @@ pub fn version_triple(v: &str) -> Option<(u64, u64, u64)> {
 #[cfg(test)]
 mod lute_version_tests {
     use super::*;
+    use lute_core_span::Span;
 
     fn meta(raw: &str) -> lute_syntax::ast::Meta {
         lute_syntax::ast::Meta {

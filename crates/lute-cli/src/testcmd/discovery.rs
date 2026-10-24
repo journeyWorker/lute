@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    BTreeSet, Path, PathBuf, RENAMED_TEST_KEYS, TEST_EXPECT_KEYS, TEST_SPELLING_OF_STEP_KEYS,
+    TEST_TOP_KEYS,
+};
 
 fn unknown_key_line(where_: &str, key: &str, allowed: &[&str]) -> String {
     if let Some((_, _, msg)) = RENAMED_TEST_KEYS

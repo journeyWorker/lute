@@ -775,6 +775,8 @@ fn scan_beat_ir(out: &mut Collected, beat: &BeatIr) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ir::{CelEnv, SceneMeta, StateTable};
+    use lute_ir::{DocKind, EnumEntry, PrereqEdgeEntry};
 
     #[test]
     fn registry_has_all_fifteen_ids() {

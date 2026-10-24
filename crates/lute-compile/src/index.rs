@@ -630,7 +630,9 @@ pub fn document_key(artifact: &ExecutionIr) -> String {
 mod tests {
     use super::*;
     use crate::ir::{BeatIr, CelPairExt, SceneMeta};
-    use lute_ir::{AtomEntry, PrereqEdge};
+    use lute_ir::{
+        AtomEntry, BeatOnce, CelPair, DocKind, PrereqEdge, PrereqEdgeEntry, RelationEntry,
+    };
 
     fn scene(character: &str, capability: &str) -> ExecutionIr {
         ExecutionIr {

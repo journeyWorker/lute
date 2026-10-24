@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    lowered, Arm, AttrValue, BTreeMap, BTreeSet, Coverage, Decision, DefTable, Document, FactTerm,
+    FoldedEnv, Line, Machine, MockSet, Node, Seeds, TraceDriver, TraceReport, UnresolvedAtom,
+    W_TRACE_MOCK_UNPRODUCIBLE,
+};
 
 // ---------------------------------------------------------------------
 // Texts, notes and pre-walk judgments over the normalized document.

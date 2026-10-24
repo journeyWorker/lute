@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    json_text, key, plugin_call, report, ComponentBoundary, ComponentSite, CoverageCount, Decision,
+    GrantCredit, GrantReward, Head, Json, SourceInfo, SourceMarker, Step, TraceDriver,
+};
 impl<'a> TraceDriver<'a> {
     // -- shots ------------------------------------------------------------
 

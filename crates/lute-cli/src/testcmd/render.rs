@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    display_path, yaml_atom_hint, yaml_atom_hints, CoverageAccum, CoverageUnit, ExpectMiss,
+    ExpectResult, Path, TestResult, UnresolvedEntry, IMPLICIT_ELIGIBLE, IMPLICIT_EXIT,
+    NEVER_WRITTEN, QUEST_STATES, TEST_EXPECT_KEYS,
+};
 
 /// Human report: one block per test with per-expectation pass/fail lines on a
 /// miss, then a `N passed, M failed` summary and (optional) coverage.

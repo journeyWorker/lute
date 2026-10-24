@@ -438,6 +438,7 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::schema::{Lowering, OccasionSelect, OccasionTarget};
 
     #[test]
     fn version_is_deterministic_and_order_independent() {

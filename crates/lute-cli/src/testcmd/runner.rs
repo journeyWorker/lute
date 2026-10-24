@@ -1,4 +1,13 @@
-use super::*;
+use super::{
+    accumulate_coverage, arm_row_key, canonical_key, captured, closed_key_violations,
+    coverage_units, display_path, find_files_with_suffix, fold_parent_dirs, nearest_manifest_dir,
+    parse_mock_surfaces, render_human, render_json, replay, stderr_line, trace_beat_with_check,
+    trace_entries_with_check, trace_with_check, ArmRow, BTreeMap, BTreeSet, CoverageAccum,
+    CoverageUnit, ExitCode, ExpectMiss, ExpectResult, IntoParallelRefIterator, ModelDocument,
+    ModelError, ModelOptions, NodeKey, NodeKind, ParallelIterator, Path, PathBuf, ProjectModel,
+    StderrLine, TestResult, TraceExit, TraceReport, UnresolvedEntry, QUEST_STATES,
+    TEST_EXPECT_KEYS,
+};
 use lute_load::build_input;
 /// `lute test`'s flags (0.48.0 §3.14), resolved by the dispatcher.
 pub struct TestOptions<'a> {
