@@ -121,17 +121,24 @@ pub(crate) fn bridge_queues(
         for (index, answer) in answers.iter().enumerate() {
             let writes = lute_runtime::resolve_bridge_writes(p, &answer.writes).map_err(|e| {
                 // The runtime leaves an undeclared path's message for its
-                // caller to prefix with the path.
+                // caller to prefix with the path: the first write whose
+                // refusal of an empty literal reads the same. Matched by
+                // text, as in 0.49.0; matching the `ResolveError` value
+                // instead would pick a different path when two declarations
+                // render alike, a behaviour change outside this patch.
+                let message = e.to_string();
                 let path = answer
                     .writes
                     .state
                     .iter()
                     .map(|w| w.path.as_str())
                     .find(|path| {
-                        matches!(&e, lute_runtime::HostWriteError::Resolve(why)
-                            if resolve_state(p, path, "").err().as_ref() == Some(why))
+                        resolve_state(p, path, "").is_err_and(|why| why.to_string() == message)
                     });
-                let e = path.map_or_else(|| e.to_string(), |path| format!("state `{path}` {e}"));
+                let e = match path {
+                    Some(path) => format!("state `{path}` {message}"),
+                    None => message,
+                };
                 format!("{at}: `bridges.{tag}` answer {} `writes`: {e}", index + 1)
             })?;
             planned.push_back(PlannedBridgeAnswer {
