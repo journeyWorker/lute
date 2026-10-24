@@ -3,7 +3,7 @@
 
 Usage:
     scripts/cli-snapshot.py LUTE-BINARY OUTPUT-DIR
-    scripts/cli-snapshot.py LUTE-BINARY OUTPUT-DIR --compare BASELINE-DIR
+    scripts/cli-snapshot.py LUTE-BINARY OUTPUT-DIR --compare BASELINE-DIR [--strict]
     scripts/cli-snapshot.py --self-test
 
 The corpus is discovered from ``docs/examples``, ``conformance``, and the
@@ -16,6 +16,8 @@ baseline; when a record's arguments differ, ``translate_baseline_args``
 applies the 0.47.2 -> 0.48 mapping (spec 0.48.0 section 5) to the baseline
 arguments and a command whose translation equals the current arguments is
 counted as renamed, not as a difference.
+``--strict`` turns both allowances off: an added command and a renamed command
+are differences, so the proof also covers the set of commands.
 Comparison is byte-for-byte except for the release-stamp fields documented in
 ``normalize_for_compare``.  The command's working directory is always the
 repository root, and locale/time environment variables are pinned.
@@ -24,7 +26,9 @@ repository root, and locale/time environment variables are pinned.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import difflib
+import io
 import json
 import os
 import re
@@ -588,8 +592,68 @@ SELF_TEST_NOT_RENAMED = (
 )
 
 
-def self_test() -> int:
+# (case, baseline commands, current commands, exit without --strict, exit with
+# --strict). A command is (record, arguments, stdout); compare() runs on
+# synthetic `lute-cli-snapshot/1` snapshots built from these.
+SELF_TEST_COMPARE = (
+    ("identical", (("a", ["version"], "x\n"),), (("a", ["version"], "x\n"),), 0, 0),
+    (
+        "added command",
+        (("a", ["version"], "x\n"),),
+        (("a", ["version"], "x\n"), ("b", ["--explain", "E-X"], "y\n")),
+        0,
+        1,
+    ),
+    (
+        "removed command",
+        (("a", ["version"], "x\n"), ("b", ["--explain", "E-X"], "y\n")),
+        (("a", ["version"], "x\n"),),
+        1,
+        1,
+    ),
+    (
+        "renamed command",
+        (("a", ["check-project", "docs/a"], "x\n"),),
+        (("a", ["check", "--project", "docs/a"], "x\n"),),
+        0,
+        1,
+    ),
+    ("changed byte", (("a", ["version"], "x\n"),), (("a", ["version"], "y\n"),), 1, 1),
+)
+
+
+def write_synthetic_snapshot(path: Path, commands: Iterable[tuple[str, list[str], str]]) -> None:
+    path.mkdir(parents=True)
+    entries = []
+    for record, args, stdout in commands:
+        (path / record).mkdir()
+        (path / record / "stdout").write_text(stdout, encoding="utf-8")
+        (path / record / "stderr").write_text("", encoding="utf-8")
+        (path / record / "exit-code").write_text("0\n", encoding="ascii")
+        entries.append({"label": record, "args": args, "exitCode": 0, "record": record})
+    manifest = {"format": "lute-cli-snapshot/1", "commands": entries, "outputCount": 3 * len(entries)}
+    (path / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+
+
+def self_test_compare() -> list[str]:
     failures = []
+    with tempfile.TemporaryDirectory() as scratch:
+        for case, baseline_commands, current_commands, loose_exit, strict_exit in SELF_TEST_COMPARE:
+            root = Path(scratch) / slug(case)
+            write_synthetic_snapshot(root / "baseline", baseline_commands)
+            write_synthetic_snapshot(root / "current", current_commands)
+            for strict, expected in ((False, loose_exit), (True, strict_exit)):
+                log = io.StringIO()
+                with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
+                    got = compare(root / "current", root / "baseline", strict)
+                if got != expected:
+                    mode = "strict" if strict else "not strict"
+                    failures.append(f"compare {case} ({mode}): expected exit {expected}, got {got}: {log.getvalue()!r}")
+    return failures
+
+
+def self_test() -> int:
+    failures = self_test_compare()
     for old, new in SELF_TEST_TRANSLATIONS:
         got = translate_baseline_args(old)
         if canonical_args(got) != canonical_args(new):
@@ -616,7 +680,7 @@ def self_test() -> int:
     print(
         f"cli-snapshot self-test: OK ({len(SELF_TEST_STAMPS)} stamp forms, "
         f"{len(SELF_TEST_UNTOUCHED)} untouched, {len(SELF_TEST_TRANSLATIONS)} translations, "
-        f"{len(SELF_TEST_NOT_RENAMED)} non-renames)"
+        f"{len(SELF_TEST_NOT_RENAMED)} non-renames, {len(SELF_TEST_COMPARE)} compare cases)"
     )
     return 0
 
@@ -647,7 +711,7 @@ def record_label(path: Path, relative_path: str) -> str:
     return ""
 
 
-def compare(current: Path, baseline: Path) -> int:
+def compare(current: Path, baseline: Path, strict: bool = False) -> int:
     try:
         current_manifest = manifest(current)
         baseline_manifest = manifest(baseline)
@@ -657,7 +721,8 @@ def compare(current: Path, baseline: Path) -> int:
     # Outputs are keyed by command label, so a command added to the corpus (a new
     # diagnostic code, a new example) shows up as an addition and leaves every
     # other output comparable. A command whose arguments changed, or one that
-    # disappeared, is a difference.
+    # disappeared, is a difference. Under strict, an added command is a
+    # difference too.
     def by_record(m: dict[str, object]) -> dict[str, object]:
         return {str(c["record"]): c.get("args") for c in m.get("commands", []) if isinstance(c, dict)}
 
@@ -670,12 +735,12 @@ def compare(current: Path, baseline: Path) -> int:
     )
     # A baseline command whose arguments translate to the current ones by the
     # 0.47.2 -> 0.48 mapping is the same command, renamed; anything else that
-    # differs is a difference.
-    renamed_args = [r for r in differing if renamed(baseline_commands[r], current_commands[r])]
+    # differs is a difference. Strict applies no translation.
+    renamed_args = [] if strict else [r for r in differing if renamed(baseline_commands[r], current_commands[r])]
     changed_args = [r for r in differing if r not in set(renamed_args)]
     for record in added:
         print(f"added command: {record}", file=sys.stderr)
-    differences = bool(removed or changed_args)
+    differences = bool(removed or changed_args or (strict and added))
     for record in removed:
         print(f"removed command: {record}", file=sys.stderr)
     for record in changed_args:
@@ -683,6 +748,8 @@ def compare(current: Path, baseline: Path) -> int:
     if renamed_args:
         print(f"renamed commands: {len(renamed_args)} (0.47.2 arguments translate to the current ones)", file=sys.stderr)
 
+    # An added command's outputs have no baseline; the command itself is the
+    # difference (reported above, and fatal under strict).
     added_records = set(added)
     baseline_files = set(files(baseline))
     current_files = {f for f in files(current) if f.split("/", 1)[0] not in added_records}
@@ -718,6 +785,9 @@ def compare(current: Path, baseline: Path) -> int:
         )
     if differences:
         return 1
+    if strict:
+        print(f"byte-identical (strict): {len(current_files)} outputs, {len(current_commands)} commands")
+        return 0
     notes = []
     if renamed_args:
         notes.append(f"{len(renamed_args)} renamed command(s) compared under their 0.47.2 labels")
@@ -733,10 +803,17 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("binary", type=Path, nargs="?", help="lute executable")
     parser.add_argument("output", type=Path, nargs="?", help="directory to write")
     parser.add_argument("--compare", type=Path, help="baseline snapshot directory")
-    parser.add_argument("--self-test", action="store_true", help="check normalize_for_compare and exit")
+    parser.add_argument(
+        "--strict",
+        action="store_true",
+        help="with --compare: an added or renamed command is a difference too",
+    )
+    parser.add_argument("--self-test", action="store_true", help="check normalize_for_compare and compare, then exit")
     args = parser.parse_args(argv)
     if not args.self_test and (args.binary is None or args.output is None):
         parser.error("LUTE-BINARY and OUTPUT-DIR are required unless --self-test")
+    if args.strict and args.compare is None:
+        parser.error("--strict requires --compare")
     return args
 
 
@@ -762,7 +839,7 @@ def main(argv: list[str]) -> int:
     if args.compare is None:
         return 0
     baseline = args.compare if args.compare.is_absolute() else (ROOT / args.compare)
-    return compare(output, baseline.resolve())
+    return compare(output, baseline.resolve(), args.strict)
 
 
 if __name__ == "__main__":
