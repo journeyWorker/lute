@@ -343,6 +343,8 @@ A contract names `entity:` or `provider:`, not both: one with both fails the plu
 ./quests/dex.lute:12:31: error [E-REWARD-TARGET] `goodRd` is not a member of entity kind `bagItem`, which `<reward kind="ITEM">` targets — did you mean `goodRod`?
 ```
 
+Only a quoted `target="…"` reaches the artifact: a reward's target is static data the engine grants against. An `@ref` (`target=@n`) or a bare `target` is therefore `E-REWARD-ATTR` at the value (since 0.49), under every contract and for a kind with none: ``<reward target=…> takes a quoted id, e.g. `target="potion"`: `target=@n` is a reference, and a reward's target is static data the engine grants against``. A bare `target` says `a bare `target` has no value` instead. `required: true` does not also report the written target as missing, and an `entity:` or `provider:` contract adds nothing: the refusal is the one diagnostic. Under `forbidden: true`, `E-REWARD-TARGET` stays the only report.
+
 Which form to use for ids the engine owns: an **entity kind** when the ids can be listed in the repository and reviewed there (one lead-owned schema such as `schema/items.schema.yaml` above), a **provider** when the engine's catalog is the source of truth and the project checks against a pinned snapshot of it (see [Providers & catalog](/tooling/providers-and-catalog/)). Either way, type the directive attribute and the reward kind by the **same** kind or provider, so `::give{item}` and `<reward kind="ITEM" target>` share one id space, and `lute refs --project <DIR> --attr give.item --reward ITEM` lists both (a reward without a target as `(no target)`).
 
 ### Cast

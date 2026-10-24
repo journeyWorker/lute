@@ -287,6 +287,8 @@ platform.lute:25:1: warning [W-STAGE-ABSENT] `marina` was taken off stage by an 
 
 아티팩트에서는 해석된 값이 레코드의 `timing` 객체에 놓입니다 — `"timing": {"wait": true, "duration": 0.5}` — 설정된 값이 없으면 `timing`을 생략합니다.
 
+타이밍 키는 `::bg{location="cafe" wait=@n}`처럼 참조로도 쓸 수 있으며, 0.49.0부터 검사기가 타입을 확인합니다. `wait`는 `bool`, `duration`과 `delay`는 숫자를 기대합니다. 다른 타입의 `def`는 참조 위치에서 `E-REF-TYPE`입니다(``@n produces an int but this position expects a bool``). 0.49.0 전에는 이런 참조가 오류 없이 통과하고 기본 타이밍으로 컴파일되었습니다. 컴포넌트 본문과 줄의 `wait=@ref`도 같고, 자리에 맞는 `bool`이나 `double` def는 통과합니다.
+
 `at` 키는 연출 타이밍 속성이 아닙니다. [`<timeline>`](/ko/language/timeline-and-property-tracks/) 안 클립에서만 유효한 타임라인 위치 키입니다.
 
 콘텐츠 줄은 `wait`(bool)만 받고 다른 타이밍 키는 받지 않습니다. 줄의 `delay`와 `duration`은 계속 `E-UNKNOWN-ATTR`입니다. `wait`는 줄 레코드의 `timing.wait`로 컴파일되며, `wait`가 없으면 줄에 `timing`이 붙지 않습니다. 줄은 항상 자기 진행(advance)을 기다립니다. `wait`는 그 줄 뒤에서 다음 줄 전까지 나오는 연출 큐가 그 줄을 기다리는지를 정합니다. `true`(또는 생략)이면 기다리고, `false`이면 줄이 표시되는 동안 시작됩니다. 다음 줄은 여전히 앞의 줄을 기다리며, 대화창을 비우는 `presentation` 큐도 마찬가지입니다.

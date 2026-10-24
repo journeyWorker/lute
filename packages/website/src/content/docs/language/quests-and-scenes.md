@@ -879,6 +879,8 @@ path in `state:` is `E-QUEST-RESERVED-DECL`, and writing one with `::set` is
 `lute trace`, and `lute test` agree on the values, and `lute run --json` carries `failedBy` on the
 failing `quest` record.
 
+Since 0.49.0 whole-project `lute check` resolves every such read, not only the ones in a condition: a `{{ quest.<id>.state }}` interpolation in a line or a choice label, an interpolation argument, and a def's `cel:` body in `defs:` each report `E-QUEST-REF-UNKNOWN` (``quest.nope.state references quest nope, which no project quest defines``) when no project quest has that id.
+
 ### `quest.<id>.activatedAt`
 
 Beside `quest.<id>.state`, every quest carries a second reserved path: **`quest.<id>.activatedAt`**,

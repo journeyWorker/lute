@@ -305,6 +305,8 @@ rewardKinds:
 ./quests/dex.lute:12:31: error [E-REWARD-TARGET] `goodRd` is not a member of entity kind `bagItem`, which `<reward kind="ITEM">` targets — did you mean `goodRod`?
 ```
 
+작성한 값이 따옴표로 묶인 `target="…"`일 때만 아티팩트에 실립니다. 보상의 대상은 엔진이 지급 시점에 쓰는 정적 데이터이기 때문입니다. 따라서 `@ref`(`target=@n`)나 값 없는 `target`은 0.49부터 계약이 무엇이든, 계약이 없는 종류에서도 값 위치에서 `E-REWARD-ATTR`입니다: ``<reward target=…> takes a quoted id, e.g. `target="potion"`: `target=@n` is a reference, and a reward's target is static data the engine grants against``. 값 없는 `target`은 대신 `a bare `target` has no value`라고 알려 줍니다. `required: true`는 작성한 대상을 누락으로 한 번 더 보고하지 않고, `entity:`나 `provider:` 계약도 더하는 것이 없습니다. 이 거부가 유일한 진단입니다. `forbidden: true`에서는 `E-REWARD-TARGET`만 보고됩니다.
+
 엔진이 소유한 id에는 어떤 형식을 사용해야 할까요? id를 저장소에 나열하고 그곳에서 검토할 수 있다면 **엔티티 종류**를 사용합니다(위의 `schema/items.schema.yaml` 같은 리드 소유 스키마 하나). 엔진의 카탈로그가 기준 정보이고 프로젝트가 고정된 스냅숏으로 이를 검사한다면 **프로바이더**를 사용합니다([프로바이더와 카탈로그](/ko/tooling/providers-and-catalog/) 참조). 어느 쪽이든 디렉티브 속성과 보상 종류를 **동일한** 종류 또는 프로바이더로 형식 지정해야 합니다. 그러면 `::give{item}`과 `<reward kind="ITEM" target>`이 하나의 id 공간을 공유하고, `lute refs --project <DIR> --attr give.item --reward ITEM`이 두 항목을 모두 나열합니다(대상이 없는 보상은 `(no target)`으로 표시).
 
 ### 캐스트

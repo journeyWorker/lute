@@ -264,10 +264,29 @@ constraints:
 0.49.0 보고서(`schemaVersion` `0.49.0.constraints`)는 모든 행에 `subject`와 `reason`을 담습니다:
 
 ```json
-{"command": "constraints", "schemaVersion": "0.49.0.constraints", "ok": true, "diagnostics": [],
- "constraints": [{"root": ".", "id": "first-reachable", "kind": "reachable", "subject": "quest:first",
-   "verdict": "holds", "evidence": "proven", "reason": "unanchored: available from the start of play",
-   "scope": null, "declaration": {…}, "witnesses": [], "counterexamples": [], "related": [], "declarationErrors": []}]}
+{
+  "command": "constraints",
+  "constraints": [
+    {
+      "counterexamples": [],
+      "declaration": {…},
+      "declarationErrors": [],
+      "evidence": "proven",
+      "id": "first-reachable",
+      "kind": "reachable",
+      "reason": "unanchored: available from the start of play",
+      "related": [],
+      "root": ".",
+      "scope": null,
+      "subject": "quest:first",
+      "verdict": "holds",
+      "witnesses": []
+    }
+  ],
+  "diagnostics": [],
+  "ok": true,
+  "schemaVersion": "0.49.0.constraints"
+}
 ```
 
 - `reason`은 모든 판정에 설정됩니다. `holds`는 근거(예: `connectivity proves reachable`), `unknown`은 판정하지 못한 이유(예: `no play or test script was run (--all-scripts / --script)`, ``2 script(s) ran; none completed quest `first` ``, 또는 도달 가능성 이유)입니다. 텍스트 출력은 `unknown` 아래에 `  reason: …` 줄로 출력합니다.

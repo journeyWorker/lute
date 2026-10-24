@@ -238,6 +238,8 @@ state:
 
 Precedence runs low → high: a document's `extends` bases (recursively) < its `uses` peers < its own inline `state:`/`defs:`. Because persisted state must keep a stable type, an override that changes a path's declared `type` is `E-EXTENDS-STATE-TYPE`; a `default`-only refinement of the same type is allowed silently. `extends` edges reuse the same cycle / missing-file / parse diagnostics (`E-USES-{CYCLE,NOT-FOUND,PARSE}`) as `uses:`.
 
+A `per:` family follows the same rules as the explicit paths it expands to, in a schema document as well as inline (since 0.49.0). Within one document an explicit member beats its family: `run.rep.corvin: { default: 4 }` stays 4 beside `run.rep: { default: 0, per: comp }`. Across `extends` depth the closer declaration wins, so a child's `run.rep: { default: 3, per: comp }` refines every member of the base's family, explicit ones included, and a change of `type` is `E-EXTENDS-STATE-TYPE`. Across `uses` peers a redeclaration is an error: a peer family over members another peer declares is `E-USES-DUP-STATE`, one per member (``state path `run.rep.corvin` is declared by two imports``). Before 0.49.0 a schema-level `per:` over another schema's kind dropped the refinement, the duplicate and the retype without a diagnostic.
+
 ### Kinds assembled across files: `add:`
 
 When several authors share one project, each area wants to add its own people and places to a kind

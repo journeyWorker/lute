@@ -285,10 +285,29 @@ there is no `W-CONSTRAINT-UNKNOWN`.
 The 0.49.0 report (`schemaVersion` `0.49.0.constraints`) gives every row a `subject` and a `reason`:
 
 ```json
-{"command": "constraints", "schemaVersion": "0.49.0.constraints", "ok": true, "diagnostics": [],
- "constraints": [{"root": ".", "id": "first-reachable", "kind": "reachable", "subject": "quest:first",
-   "verdict": "holds", "evidence": "proven", "reason": "unanchored: available from the start of play",
-   "scope": null, "declaration": {…}, "witnesses": [], "counterexamples": [], "related": [], "declarationErrors": []}]}
+{
+  "command": "constraints",
+  "constraints": [
+    {
+      "counterexamples": [],
+      "declaration": {…},
+      "declarationErrors": [],
+      "evidence": "proven",
+      "id": "first-reachable",
+      "kind": "reachable",
+      "reason": "unanchored: available from the start of play",
+      "related": [],
+      "root": ".",
+      "scope": null,
+      "subject": "quest:first",
+      "verdict": "holds",
+      "witnesses": []
+    }
+  ],
+  "diagnostics": [],
+  "ok": true,
+  "schemaVersion": "0.49.0.constraints"
+}
 ```
 
 - `reason` is set on every verdict: for `holds`, the evidence (e.g. `connectivity proves reachable`); for `unknown`, why nothing was decided (e.g. `no play or test script was run (--all-scripts / --script)`, ``2 script(s) ran; none completed quest `first` ``, or the reachability reason). The text output prints it as a `  reason: …` line under `unknown`.

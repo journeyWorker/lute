@@ -341,6 +341,8 @@ non-blocking. Concurrency is therefore just consecutive non-`wait` directives; t
 In the artifact the resolved values sit in the record's `timing` object —
 `"timing": {"wait": true, "duration": 0.5}` — and `timing` is omitted when none is set.
 
+A timing key may also be written as a reference, `::bg{location="cafe" wait=@n}`, and since 0.49.0 the checker types it: `wait` expects a `bool`, `duration` and `delay` a number. A `def` of another type is `E-REF-TYPE` at the reference (``@n produces an int but this position expects a bool``); before 0.49.0 such a reference checked clean and compiled to the default timing. The same holds in a component body and for a line's `wait=@ref`, and a `bool` or `double` def checks clean where it fits.
+
 The `at` key is *not* a staging timing attribute; it is a timeline-position key valid only on
 clips inside a [`<timeline>`](/language/timeline-and-property-tracks/).
 
