@@ -2224,6 +2224,7 @@ not the source — is what an engine plays through the
 - Pick a role-first reading order from the [learning paths](/getting-started/learning-paths/).
 
 # Build a town game
+
 This tutorial builds **Quayside**, a tiny Stardew-style town. The complete project is
 [`docs/examples/quayside/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/quayside).
 The snippets below are the files in that project, so the documentation check compiles
@@ -3230,6 +3231,8 @@ Every root kind also accepts `title`, `luteVersion`, `contentLang`, `profile`, `
 spelling. `title:` is the only document title: a `# Title` line in the body is `E-INERT-TITLE`. A
 quest's graph edge is the `follows=` attribute on `<quest>`. It is not a frontmatter key.
 
+A plugin frontmatter key typed `entity`, `domain`, `enumFromOption`, `providerRef` or `assetKind` is checked (0.49.0) with the same type-specific validation as an attribute of that type: `providerRef` gives `E-UNKNOWN-ID` (and possibly `W-CATALOG-STALE`), asset kinds give `E-ASSET-*`, and an entity or enum typo is `E-BAD-ENUM` with a did-you-mean, for example (`` `mirra` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`? ``), a `list` of such a type checks each element, and a non-string value stays `E-FRONTMATTER-SCHEMA`.
+
 → [Frontmatter & profiles](/language/frontmatter-and-profiles/)
 
 ## Lines, cast & staging
@@ -3294,6 +3297,8 @@ state:
 | sections | All content sits under a `## Heading` (`E-CONTENT-OUTSIDE-SECTION` before the first). `## Heading {#id}` gives the section a stable id, unique in the document (`E-SECTION-DUP`); it is identity metadata, never a jump target. |
 | directives | `::bg{location time assetId}`, `::music{playback mood volume assetId}`, `::sfx{sound assetId}`, `::vfx{type label transition}`, `::actor{character anchor action emotion costume}` (entrance, pose, exit: an `action` in `exits:` takes the actor off stage), `::camera{focus framing move transition}` (at least one, else `E-CAMERA-EMPTY`), `::cg{assetId display layout}` and `::video{assetId display}` (`display` is `show` or `hide`, default `show`), `::sequence{name}` (names a cinematic the engine owns; `wait` defaults to `true`), `::end`, and `::clear` (0.24.0: everyone on stage exits; background and music stay). Timing keys: `duration`, `delay` (seconds), `wait="true"` (blocks). With a cast declared, `::actor{character}` and `::camera{focus}` must be in it (`E-CAST-UNKNOWN`). |
 | comments | `// …` to the end of the line, on a line of its own or after a directive (`::set{run.n += 1} // why`), and `/* … */`. After a `<tag>` it is `E-TAG-INLINE-BODY`, and inside a content line's text `//` is literal. |
+| `wait` on a line | 0.49.0. `@mira{wait="false"}: …` is admitted (a bool) and compiles to the line's `timing.wait`; `delay` and `duration` on a line stay `E-UNKNOWN-ATTR`. A line always waits for its own advance; `wait` says whether the staging cues after it, up to the next line, wait for the line: `true` or absent they wait, `false` they start while the line is presented. The next line still waits, and so does a `presentation` cue (it clears the dialogue window). |
+| `::jump`, `::label`, `::clear` | 0.49.0. They carry no stamp: a plugin stamp attribute or a core timing key on them is `E-UNKNOWN-ATTR` (`` `::jump` does not carry `cue`: it compiles to a `jump` record that has no stamp ``). Put the attribute on the line or directive before a jump, after a label, or on the `::actor{exit}` you write — `::clear` does not hand stamps to the exits it injects. |
 
 → [Dialogue & cast](/language/dialogue-and-cast/) · [Core directives](/language/directives/)
 
@@ -3604,6 +3609,8 @@ write `quest.q.state == 'unset'`, because `has(quest.q.state)` is always true
 (`W-QUEST-STATE-HAS`). Since 0.26.0 a string a guard compares with an enum path, `occasion.target`
 or a quest's `state` / `failedBy` (`==`, `!=`, or an `in [...]` element) must be one of its members:
 `run.rank == 'silvr'` is `E-WHEN-LITERAL-DOMAIN`, with a did-you-mean, as `is="silvr"` is.
+
+0.49.0 presence of a `per:` member: `'look-around' in user.stepRank` is a presence guard of `user.stepRank.look-around`, the same as `has()` of an identifier path (and `!('look-around' in user.stepRank)` for the negation); use it for a member that is not an identifier. `has(user.stepRank["look-around"])` stays `E-CEL-PARSE`, with the hint to write `'<m>' in <family>`. Every message that names a presence test spells it `has(p)` / `!has(p)` for identifier paths and `'<m>' in <family>` / `!('<m>' in <family>)` for such a member; a path with any other non-identifier segment names only the `after:` / `default:` remedies.
 
 0.30.0: every name you write is a **name** — letters, digits, `_` or `-`, not starting with `-` —
 and a dotted id joins names with `.`: scene, beat, entry, quest, objective, branch, hub, choice and
@@ -4583,6 +4590,8 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. An entry that can be read again in a run (a lookup entry, no `once`, a `once` shorter than the run, `spentBy`, `for`) `::set`s, `::retract`s or calls an effect-only directive that writes: its writes apply on the first read in a run only. Use `<beat … once="false">` for a repeating write, `once="run"`, or a `when="!entry.<id>.read"` guard. `::assert` is exempt. |
 | `E-COMPONENT-ARG` | A `::use` argument does not fit its param, or names none. Since 0.26.0 also `@@x:` for a param that is not a `speaker` param, or outside a component. |
 | `E-UNKNOWN-ATTR` | An attribute the directive does not declare. Since 0.26.0 also `when=` on a directive that lowers to a built-in record (the core staging directives such as `::bg` and `::sfx`, `::end`, `::label`, a plugin `lower:` record), and a plugin attribute named `when`. |
+| `E-ENTITY-KIND-CLASH` | Two kinds list the same member. If they are two id spaces whose ids only spell the same, declare a shared root kind listing both spaces' members and make each a sub-kind of it (`{first}: { subsetOf: <root>, members: […] }`); every reference still checks against its own kind. |
+| `E-PATH-IDENT` | A name segment that is not an identifier written after a `.`. For an entity or enum member that is an id from another system (`vendor:reply`), declare a provider and type the attribute `{ providerRef: <provider> }`. |
 | `E-CONN-UNKNOWN-NODE` | `visited('…')` or `after` names no scene (or, since 0.24.0, bundle beat) in the project. |
 | `E-CLOCK-DECL` | 0.24.0. The schema's `clock:` is malformed: `day` / `slot` undeclared, mistyped, or not `owner: engine` (`` `day: run.day` must be declared `owner: engine` ``), `slots` not the slot enum's members or given without `slot`, an unknown `raise` occasion (once a plugin declares occasions) or one with a `payload:` (0.28.0), or a second clock. |
 | `E-SEASON-DECL` | 0.27.0. A `seasons:` entry is malformed (not a map, no or empty `live`, unknown key, bad name), two schemas declare one season differently, or a `season.<name>.*` path, `once: season:<name>` or `tier="season:<name>"` names an undeclared season. A write to `prev.season.*` is `E-QUEST-RESERVED-WRITE`, as for `prev.run.*`. |
@@ -4911,6 +4920,7 @@ Telemetry is local and opt-out: set `LUTE_TELEMETRY=0` (or `DO_NOT_TRACK=1`) for
 examples and CI. It never changes command output.
 
 # Reserved names
+
 Some words already mean something in Lute: a state root such as `run`, the
 no-value word `unset`, a CEL literal or keyword, a play-script step. A name
 you declare cannot be one of them where it would be read as that word — an
@@ -5161,8 +5171,15 @@ Entry ids carry no document prefix, so they are the easiest to collide on; two d
 declare one entry id are `E-ENTRY-ID-DUP`. Plays and tests may name an entry
 `<document id>.<entry id>` since dsl 0.26.0 (`north.guards.northGullAfterStorm`), which makes a
 play easier to read, but the entry id itself must still be unique. Two documents with one
-`<branch>` or `<hub>` id draw `W-BRANCH-ID-SHARED` from whole-project `lute check`, since one `choose:` key
-would answer both menus.
+`<branch>` or `<hub>` id draw `W-BRANCH-ID-SHARED` from whole-project `lute check` — but since 0.49.0
+only when a `*.play.yaml` or `*.test.yaml` under the root names that id as a `choose:` key (at top
+level or in a step), because only then does one key answer both menus. Two documents that share an
+id no script ever chooses by stay quiet.
+
+Two id spaces whose ids merely spell `{id}` the same way (two areas that each have a `first`) are
+not one kind. When `E-ENTITY-KIND-CLASH` reports them, declare a shared root kind that lists both
+spaces' members and make each space a sub-kind of it (`{first}: { subsetOf: <root>, members: […] }`);
+every reference still checks against its own kind.
 
 ## Display names: one cast file per area
 
@@ -5352,6 +5369,11 @@ Rules for an included steps file:
 - An accept-driven quest the engine takes up outside any document (`accept="external"`, a quest
   board) is accepted mid-play with an `engine: { accept: [northLostBuoy] }` step instead of a save
   seed.
+- A quest only the host grants — a quest board, a shop, a cutscene outside Lute — is written
+  `accept="external"` without a `start`. Do not write a `start` that reads the quest's own state
+  (`E-QUEST-START-SELF`), and do not let two areas' quests wait on each other with nothing outside
+  the cycle to start either (`E-QUEST-START-CYCLE`): start one of them from a scene or beat outside
+  the cycle, or grant it with `accept="external"`. See [Reachability](/connectivity/reachability/#start-cycles-and-unavoidable-deadlocks).
 
 ### Clock hand-offs
 
@@ -6023,7 +6045,7 @@ the members are yours.
 | `sequence` | `::sequence{name}` |
 | `mood` | `::music{mood}` |
 | `volume` | `::music{volume}` |
-| `musicPlayback` | `::music{playback}` |
+| `musicPlayback` | `::music{playback}`; a long form may add optional `stops:` members that end current music |
 | `vfxType` | `::vfx{type}` |
 | `textStyle` | an [inline style span](/language/dialogue-and-cast/#inline-text-modifiers) `:name[…]` in line text |
 
@@ -6226,6 +6248,13 @@ This is a *scoping* limit, not a checking divergence. Every content-line rule no
 routes: `0.9.0` closed five stages of `check()` that used to be root-only, so a component body no
 longer checks clean through a `::use` while the same lines report at scene level. See
 [Components & extends](/language/components-and-extends/).
+
+## JSON tooling note
+
+Vocabulary declarations are reflected in compiled artifacts and capability reports, not in a
+human-readable transcript. For machine consumers, use the report envelope (`command`,
+`schemaVersion`, `ok`) and treat `lute context --json` as the capability surface. The CLI
+command tree and output schema are available from `LUTE_TELEMETRY=0 target/debug/lute schema context`.
 
 # Dialogue & cast
 
@@ -7063,7 +7092,9 @@ and gets its anchor again.
 
 ## `::clear` — emptying the stage
 
-`::clear` (dsl 0.24.0 §4) takes every character off the stage at once. It has no attributes. The
+`::clear` (dsl 0.24.0 §4) takes every character off the stage at once. It has no attributes — no
+timing key and, since 0.49.0, no plugin stamp either (`E-UNKNOWN-ATTR`; see
+[Directives that carry no stamp](#directives-that-carry-no-stamp)). The
 background and the music stay, which is what separates it from a `::bg` scene change:
 
 ```lute check
@@ -7117,7 +7148,7 @@ exit.
 ## Timing & the `wait` model
 
 `duration`, `delay`, and `wait` are reserved **staging** timing keys that may appear on any
-directive but `::clear`:
+directive but `::clear`, `::jump` and `::label`:
 
 - **`duration`** — the transform length in seconds (e.g. `duration="0.6"`).
 - **`delay`** — an offset in seconds from the directive's own slot start.
@@ -7137,8 +7168,38 @@ non-blocking. Concurrency is therefore just consecutive non-`wait` directives; t
 In the artifact the resolved values sit in the record's `timing` object —
 `"timing": {"wait": true, "duration": 0.5}` — and `timing` is omitted when none is set.
 
+A timing key may also be written as a reference, `::bg{location="cafe" wait=@n}`, and since 0.49.0 the checker types it: `wait` expects a `bool`, `duration` and `delay` a number. A `def` of another type is `E-REF-TYPE` at the reference (``@n produces an int but this position expects a bool``); before 0.49.0 such a reference checked clean and compiled to the default timing. The same holds in a component body and for a line's `wait=@ref`, and a `bool` or `double` def checks clean where it fits.
+
 The `at` key is *not* a staging timing attribute; it is a timeline-position key valid only on
 clips inside a [`<timeline>`](/language/timeline-and-property-tracks/).
+
+A content line admits `wait` (a bool) and no other timing key; `delay` and `duration` on a line stay
+`E-UNKNOWN-ATTR`. It compiles to the line record's `timing.wait`, and an absent `wait` leaves
+`timing` off the line. A line always waits for its own advance. `wait` says whether the staging cues
+that follow it, up to the next line, wait for the line: `true` (or absent) means they wait, `false`
+means they start while the line is presented. The next line still waits for the previous one, and so does a `presentation` cue, because it clears the dialogue window.
+
+```lute
+@marina{wait="false"}: The fireworks start as I speak.
+::cg{assetId="CUT.rooftop.fireworks" display="show"}   /* starts while the line is shown */
+@oskar: Look at that.                                  /* still waits for marina's line */
+```
+
+### Directives that carry no stamp
+
+`::jump`, `::label` and `::clear` emit no stamped record: `::jump` lowers to a `jump` record with no
+stamp, `::label` lowers to no record, and `::clear` lowers to no record of its own (it only injects
+one actor exit per character on stage, and none on an empty stage). A plugin stamp attribute or a
+core timing key on one of them is `E-UNKNOWN-ATTR`, at the attribute, instead of being accepted and
+silently dropped:
+
+- `::jump`: `` `::jump` does not carry `cue`: it compiles to a `jump` record that has no stamp — put the attribute on the line or directive before it ``
+- `::label`: `` `::label` does not carry `cue`: it compiles to no record — put the attribute on the line or directive after it ``
+- `::clear`: "it takes no attributes; every character on stage exits with its own exit" now covers stamp attributes too.
+
+`::clear` does not hand its stamps to the exits it injects, because whether an exit exists depends
+on the stage, and an empty stage would drop the value. A stamp belongs on the `::actor{exit}` you
+write yourself.
 
 ## `::end` — terminating the walk
 
@@ -7232,6 +7293,10 @@ state:
 A `to` that names no `::label` in the document is `E-JUMP-UNDEFINED`; a label at or above the jump
 is `E-JUMP-BACKWARD`. Content after an unguarded `::jump` in the same body never runs and is
 `W-CODE-AFTER-JUMP`. To jump to a line, put a `::label` immediately before it.
+
+Neither `::jump` nor `::label` carries a stamp (a plugin stamp or a timing key such as `wait` is
+`E-UNKNOWN-ATTR`; see [Directives that carry no stamp](#directives-that-carry-no-stamp)): put the
+attribute on the line or directive before the jump, or after the label.
 
 ## Reserved directives
 
@@ -7752,7 +7817,15 @@ the `into=` sugar:
 
 *(From [`docs/examples/choice-persist.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/choice-persist.lute).)*
 
-`into="run.<path>"` alone appends `::set{run.<path> = <value>}` to that arm. The target path is
+### `into=` writes first
+
+`into="run.<path>"` (with its optional `value`) means `::set{run.<path> = <value>}` placed **first** in
+the arm, before any line or directive in it. Since 0.49.0 the checker sees it that way: a read of the
+path inside the arm is already assigned, so no `has()` guard or `unset` arm is needed there. An arm
+that ends in `::jump` records the write before it leaves. The `E-INTO-*` diagnostics, and the error
+for an arm that already `::set`s the same path, are unchanged.
+
+`into="run.<path>"` alone is that `::set{run.<path> = <value>}`. The target path is
 named by **`into`** and must be declared in your schema. **`value`** defaults to `true` for a
 bool path; an `enum` or numeric (`int` or `double`) path requires an explicit `value`. (0.6.0 removed the old
 `persist="run"` attribute; a stray `persist=` is now `E-PERSIST-REMOVED`, and `lute fix` deletes it
@@ -7769,6 +7842,38 @@ has already cleared:
   </otherwise>
 </match>
 ```
+
+## Free-text input
+
+Lute has no text-entry construct and does not need one: asking the player to type an answer is a
+[bridge](/plugins/bridge/) call. A plugin declares a blocking bridge directive whose `effects.writes`
+entry reads `fromBridgeResult`; the host shows its text box, and the typed answer lands in a state
+slot the directive declares. A `<match>` or `<branch>` then reads that slot like any other state.
+
+```lute
+@guard: Halt. What is the password?
+
+::ask{slot="password"}
+
+<match subject="scene.ask.password.answer">
+  <when is="swordfish">
+    @guard: Pass, friend.
+  </when>
+  <otherwise>
+    @guard: Wrong. Move along.
+  </otherwise>
+</match>
+```
+
+The call blocks, so `scene.ask.password.answer` is assigned after `::ask` (see
+[Sync semantics](/plugins/bridge/#sync-semantics)) and the `<match>` reads it
+without a guard. Write `wait="false"` only for a fire-and-continue call: a non-blocking call adds no
+definite-assignment guarantee, so a read of an undefaulted result that nothing else
+protects can report `E-MAYBE-UNSET`.
+The host half — what it receives and how it answers — is in the
+[runtime contract](/tooling/runtime-contract/). The checked example is
+[`docs/examples/free-text-input/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/free-text-input), with a
+`lute test` for the right and the wrong answer.
 
 ## The compiled record
 
@@ -9013,7 +9118,7 @@ sets back to 0 when the week turns. Had the objective read a run-long total,
 quest would start it and complete it again at once, rewards and all. Give a rearmed quest's
 objectives state that starts over with it: a counter the engine resets no later than the moment
 the condition turns true (in a play script, an `engine:` step before the `advance:` that reaches
-that moment; an advance's own `engine:` writes land where it stops), or a `season.<name>.*` path
+that moment; an advance's own `engine:` writes land before the clock moves), or a `season.<name>.*` path
 under `tier="season:<name>"`. The checker does not warn about this.
 
 Because only the false→true turn rearms, a constant condition never does: `rearm="true"`,
@@ -9673,6 +9778,8 @@ path in `state:` is `E-QUEST-RESERVED-DECL`, and writing one with `::set` is
 `lute trace`, and `lute test` agree on the values, and `lute run --json` carries `failedBy` on the
 failing `quest` record.
 
+Since 0.49.0 whole-project `lute check` resolves every such read, not only the ones in a condition: a `{{ quest.<id>.state }}` interpolation in a line or a choice label, an interpolation argument, and a def's `cel:` body in `defs:` each report `E-QUEST-REF-UNKNOWN` (``quest.nope.state references quest nope, which no project quest defines``) when no project quest has that id.
+
 ### `quest.<id>.activatedAt`
 
 Beside `quest.<id>.state`, every quest carries a second reserved path: **`quest.<id>.activatedAt`**,
@@ -9698,6 +9805,14 @@ undischargeable: no literal inhabits `narrativeTime`, so the slot can carry no `
 guard forms — `has(p)` and `has(p)` — are themselves `E-TEMPORAL-ARG` on a narrative-time operand.
 (`quest.<id>.state` is exempt for a different reason: it is always assigned.) The engine guarantees
 the stamp exists for any activated instance, and a read is only meaningful inside one.
+
+## JSON reports for quests
+
+`lute scenario --json` returns one report object with `command`,
+`schemaVersion: "0.43.0.scenario"`, and `ok`; `scenario reach --json` uses
+`0.43.0.scenario-reach`. These are reports, while compiled artifacts and `run --json`
+remain their own contracts. In automation, inspect the envelope before reading anchors,
+edges, or quest state. Use `LUTE_TELEMETRY=0` for reproducible command examples.
 
 # Lore entries
 
@@ -11098,7 +11213,21 @@ clock-window findings are `bounded` with scope
 `W-OBJECTIVE-STRANDED` and `W-SLOT-CONTENTION` messages describe only that
 scope, not a universal impossibility.
 
+Since 0.41.0 `W-OBJECTIVE-STRANDED` names that evidence level in its own
+message and is always a warning. It skips a quest that re-arms
+(`tier="run"`, `tier="season:<name>"`, or a `rearm=`), which retries the
+objective, and an objective a beat of another document can complete.
+
+## JSON for beat tooling
+
+`lute beats --json` is a report, not an artifact stream. Consume its top-level
+`command`, `schemaVersion: "0.43.0.beats"`, and `ok` fields, then the beat verdicts and
+their `evidence` (`proven`, `heuristic`, or `bounded`). Do not infer eligibility from
+human formatting. The command identity and all report versions are discoverable with
+`LUTE_TELEMETRY=0 target/debug/lute schema beats`.
+
 # The clock
+
 Plenty of games keep time as a day and a part of the day: morning, afternoon, night, then the next
 morning. A visual novel lets you visit one place per slot, a life sim opens the market on
 Saturdays, a shopkeeper greets you once a day and mutters something shorter the rest of it.
@@ -12077,6 +12206,7 @@ See [Multi-author projects](/guides/multi-author/) for how the areas divide the 
 
 Lute scalar state is a set of typed paths (`int`, `double`, `bool`, `string`, `enum`) grouped into **namespaces named by their reset boundary** — the moment the engine clears them. There are four tiers on one axis (*when does it reset?*):
 
+
 As of 0.32, numeric state types are CEL `int` and `double`; `number` is
 removed. The compiled **execution IR** carries `owner: "engine"` for
 engine-owned declarations, and runtimes refuse content writes to those paths.
@@ -12386,6 +12516,21 @@ A sub-kind's members are members of its parent (dsl 0.26.0 §2.3): a member it s
 A sub-kind lists its own `members:`. A parent the document does not declare, a parent declared `open:`, a sub-kind declared `open:`, and a `subsetOf:` chain that loops back on itself are `E-ENTITY-KIND-SHAPE`, reported once at the schema line. Before 0.26.0 a sub-kind member missing from the parent's list was an error too. A kind's members may also be assembled across schema files with [`add:`](/state/schemas/#kinds-assembled-across-files-add).
 
 Whole-project `lute check`'s `W-DOMAIN-UNREAD` flags a kind that nothing reads. It counts a sub-kind's `subsetOf:` parent, a kind used as a `per:` index, and a kind atom in a rule body or a `holds(…)` condition as reads, alongside relation arguments. The warning lands on the line of the schema that declares the kind, or on the document's own `entities:` key, rather than on the first importer.
+
+### Two id spaces that spell an id the same
+
+If two kinds list the same member only because two id spaces spell `{id}` the same, do not merge them: declare a **shared root kind** listing both spaces' members and make each a sub-kind of it, `{first}: { subsetOf: <root>, members: […] }`. Every reference still checks against its own kind. Since 0.49.0 `E-ENTITY-KIND-CLASH` names this remedy:
+
+```yaml
+entities:
+  speaker: { members: [mira, vendor-reply] }
+  person:  { subsetOf: speaker, members: [mira] }
+  vendor:  { subsetOf: speaker, members: [vendor-reply] }
+```
+
+### Ids that are not names: `providerRef`
+
+An entity or enum member is a **name** — letters, digits, `_` or `-` — so an id from another system such as `vendor:reply` is `E-PATH-IDENT`. To validate ids that are not names, declare a provider (`plugins/<id>/providers/`, with a pinned snapshot in `catalogDir`) and type the attribute `{ providerRef: <provider> }`. Since 0.49.0 `E-PATH-IDENT` for an entity or enum member says so. See [Providers & catalog](/tooling/providers-and-catalog/).
 
 ### Exclusive relations: `excludes:`
 
@@ -12878,9 +13023,24 @@ defs:
 
 A condition reads declared state paths, and the reserved paths the engine writes without any declaration: the quest slots `quest.<id>.state`, `quest.<id>.activatedAt`, and `quest.<id>.objectives.<o>.done`, and since 0.24.0 `quest.<id>.failedBy` and `quest.<id>.objectives.<o>.failed`; the lore entry flags `entry.<id>.read` (run tier) and `entry.<id>.everRead` (user tier, since 0.22.0); since 0.23.0, `prev.run.<path>`, the value each declared `run.<path>` had when the previous run ended (always maybe-unset; see [The previous run](/state/state-model/#the-previous-run)); and, when a schema declares a [clock](/language/clock/), `clock.index`, `clock.weekday` and `clock.weekdayLabel` (0.24.0). None of them is ever a `::set` target — see [Paths the engine writes](/state/state-model/#paths-the-engine-writes).
 
-When the relational layer is in play, conditions may also read the fact database through a bounded predicate surface: `holds('rel', ['args|_'])` (valid-now membership, any slot may be `_`), `count('rel', ['args|_']) OP n` (distinct valid tuples), `countDistinct('rel', ['args|_'], int) OP n` (since 0.24.0: the distinct values at the 0-based position whose list element is `'_'`, so `countDistinct('sawAt', ['_', '_', '_'], 0)` counts distinct witnesses where `count('sawAt', ['_', '_', '_'])` counts sightings), and `validAt('rel', ['args|_'], T)` (historical form over base relations). `T` is a `narrativeTime` expression — in practice `quest.<id>.activatedAt`, the only one an author can name (see [Quests & scenes](/language/quests-and-scenes/)). Joins under aggregation are expressed…
+When the relational layer is in play, conditions may also read the fact database through a bounded predicate surface: `holds('rel', ['args|_'])` (valid-now membership, any slot may be `_`), `count('rel', ['args|_']) OP n` (distinct valid tuples), `countDistinct('rel', ['args|_'], int) OP n` (since 0.24.0: the distinct values at the 0-based position whose list element is `'_'`, so `countDistinct('sawAt', ['_', '_', '_'], 0)` counts distinct witnesses where `count('sawAt', ['_', '_', '_'])` counts sightings), and `validAt('rel', ['args|_'], T)` (historical form over base relations). `T` is a `narrativeTime` expression — in practice `quest.<id>.activatedAt`, the only one an author can name (see [Quests & scenes](/language/quests-and-scenes/)). Joins under aggregation are expressed as [derived relations](/state/facts-and-datalog/), never multi-relation `count`. A `<match on>` subject must stay a scalar/enum path; fact queries live in guards only, and none of them may appear in a rule's `cel()` guard.
 
 Since 0.21.0, every condition slot may also call `visited('<scene id>')` — true once that scene has been presented in this save, the same visited set a scene's `after:` reads. The argument is one string literal naming a scene of the project, or, since 0.23.0, a [bundle beat](/language/beats/#beat-bundles) by its canonical `<document id>.<beat id>` (`E-CONN-UNKNOWN-NODE` in whole-project `lute check` otherwise). See [Quests & scenes](/language/quests-and-scenes/#quests-meet-scenes-and-occasions).
+
+## Presence of a `per:` member
+
+A `per:` family is indexed by a member of its kind, and a member whose name is not a CEL identifier (`look-around`) is written quoted, `user.stepRank["look-around"]`. To ask whether such a member is set, write the membership form (0.49.0):
+
+```lute
+@guide{when="'look-around' in user.stepRank"}: You have already looked around.
+@guide{when="!('look-around' in user.stepRank)"}: Take a look around first.
+```
+
+`'<member>' in <family>`, with a string literal and a `per:` family, is a presence guard of `<family>.<member>`, exactly equivalent to `has()` of the dotted member: when it is true the member is assigned for the rest of the guarded body, and its negation proves the opposite. A literal that is not a member of the family gets the diagnostic a read of `<family>["<literal>"]` gets. `lute trace` and the runtime evaluate it as `has()`.
+
+`has(user.stepRank["look-around"])` stays `E-CEL-PARSE`, now with the hint ``— `has()` takes a field; for a member that is not an identifier write `'<m>' in <family>` ``.
+
+Every message that names a presence test spells it the same way: `has(<path>)` / `!has(<path>)` when every segment after the root is an identifier, and `'<m>' in <family>` / `!('<m>' in <family>)` when the last segment is a `per:` member that is not. For any other path with a non-identifier segment there is no guard spelling, so the message names only the `after:` and `default:` remedies.
 
 ## Interpolation is not CEL
 
@@ -12901,6 +13061,7 @@ numeric operations, and uses list-form host calls:
 three-valued result is a preview only.
 
 # State schemas
+
 The `run` / `user` / `app` tiers are game/season-global: one persisted value cannot carry per-scene types. So they live in a single **schema document**, the source of truth every scene imports with `uses:`. Scenes then declare only their own `scene.*` locals. Since 0.2.2 a declaration file is plain `.yaml` (no `---`/Lute envelope) — a pure declaration, not a scene.
 
 ## Schema shape
@@ -13135,6 +13296,8 @@ state:
 ```
 
 Precedence runs low → high: a document's `extends` bases (recursively) < its `uses` peers < its own inline `state:`/`defs:`. Because persisted state must keep a stable type, an override that changes a path's declared `type` is `E-EXTENDS-STATE-TYPE`; a `default`-only refinement of the same type is allowed silently. `extends` edges reuse the same cycle / missing-file / parse diagnostics (`E-USES-{CYCLE,NOT-FOUND,PARSE}`) as `uses:`.
+
+A `per:` family follows the same rules as the explicit paths it expands to, in a schema document as well as inline (since 0.49.0). Within one document an explicit member beats its family: `run.rep.corvin: { default: 4 }` stays 4 beside `run.rep: { default: 0, per: comp }`. Across `extends` depth the closer declaration wins, so a child's `run.rep: { default: 3, per: comp }` refines every member of the base's family, explicit ones included, and a change of `type` is `E-EXTENDS-STATE-TYPE`. Across `uses` peers a redeclaration is an error: a peer family over members another peer declares is `E-USES-DUP-STATE`, one per member (``state path `run.rep.corvin` is declared by two imports``). Before 0.49.0 a schema-level `per:` over another schema's kind dropped the refinement, the duplicate and the retype without a diagnostic.
 
 ### Kinds assembled across files: `add:`
 
@@ -13386,6 +13549,41 @@ One accepted conservative gap: because the edge model over-approximates `||` pos
 
 Under the locked A-hybrid enforcement posture the graph is advisory data the engine *may* honor, so every reachability message is worded "under your declared `after` routes," never as an unconditional runtime claim.
 
+## Start cycles and unavoidable deadlocks
+
+A quest's `start` condition is part of the graph too. Every `start` anchor edge is drawn by `lute scenario`, including an edge that closes a cycle (0.48.1 silently dropped the closing edge).
+
+A `start` keeps its AND/OR structure. Each top-level `&&` conjunct is one **anchor**, and every anchor must hold. An anchor's sources are alternatives: one source is enough.
+
+A quest is **deadlocked** when it can never start and sits on a cycle of anchor edges. This is the least fixed point of *can-start*:
+
+1. A node that is not a quest with anchors is decided by the reachability analysis above: scenes, beats and entries are routable unless they are unreachable or on an `after` cycle. A quest without anchors can start.
+2. A quest can start when **every** anchor has **some** source that can start (a quest) or is routable (another node).
+3. Iterate from "nothing can start" until nothing changes.
+
+Each deadlocked quest is `E-QUEST-START-CYCLE` (error, project-wide) at its `start`, one per strongly connected set, reported at its least quest. The path is the shortest anchor cycle, rendered like `E-CONN-CYCLE`:
+
+```text
+quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` waits for the next and no source outside the cycle starts any of them; start one of them from something outside the cycle, or grant it with `accept="external"`
+```
+
+**An externally entered cycle is fine.** If quest A starts when B is active, and B starts when A is active **or** `visited("entry")`, and scene `entry` is routable, then B can start, so A can start: no diagnostic. Both edges are still drawn, and the two quests are layered after `entry` where the topological order allows; otherwise they are listed unlayered.
+
+Output for a deadlock:
+
+- The graph text prints the deadlocked quests on a line `(unlayered -- part of a start cycle, E-QUEST-START-CYCLE): …`. JSON and DOT carry `startCycle`. The text for an `after` cycle is unchanged.
+- `reach` for a deadlocked quest, or one downstream only through deadlocked sources, is `Unknown` with the reason ``this quest's `start` waits on a start cycle (E-QUEST-START-CYCLE): <path>; it can never start under your declared routes.`` Reachability never reports `Reachable` for a quest that cannot start.
+
+### A `start` that reads its own quest
+
+Any read of `quest.<own id>.*` in a quest's own `start` is `E-QUEST-START-SELF` (error, per document, at `start`): the state has no value before the quest starts, so the condition can never start it. A quest only the host grants is written `accept="external"` without a `start`.
+
+An anchoring self-read counts as a source that never helps, so a quest whose anchor has only that source is deadlocked: it and its dependents are not `Reachable`. A self-only deadlock is reported as `E-QUEST-START-SELF`, not `E-QUEST-START-CYCLE`.
+
+### Unanchored quests
+
+An unanchored quest is `reachable holds [proven]` with the reason `unanchored: available from the start of play`. `lute scenario reach` and `lute constraints` read the same single reachability claim, so they cannot disagree.
+
 ## Evidence in 0.34.0
 
 Scenario reach results include `evidence` in JSON. A structural reachability
@@ -13514,7 +13712,7 @@ Every command has an **id**: its subcommand path as typed — `check`, `scenario
 |---|---|---|
 | `check` | `--json` | `0.48.0.check` |
 | `impact` | `--json` | `0.43.0.impact` |
-| `constraints` | `--json` | `0.43.0.constraints` |
+| `constraints` | `--json` | `0.49.0.constraints` |
 | `lint` | `--json` | `0.43.0.lint` |
 | `compile` | `--json` | `0.43.0.compile` |
 | `expr` | `--json` | `0.43.0.expr` |
@@ -13670,6 +13868,8 @@ Constraints declared in `lute.project.yaml` are also checked by whole-project `c
 
 Summaries count by severity (0.41.0). `lute check <FILE>` ends each file with `ok: <path> (W warning(s))` or `failed: <path> (E error(s), W warning(s))`, and whole-project `check` with `ok: <dir> (F file(s), W project-wide warning(s))` or `failed: <dir> (F file(s), E project-wide error(s), W project-wide warning(s))`. An `info` diagnostic is never a warning: when a run has any, the count is appended (`, I info` / `, I project-wide info`); a run without one prints exactly the line above. `hint` diagnostics are not counted, and a `--deny`-promoted diagnostic counts as an error only.
 
+A single-file check (and the language server) can add `W-PROJECT-CHECK-SKIPPED`, severity **info**, once per distinct quest id per document: the first read of `quest.<id>.*` whose id the document and its imports do not declare is named as not judged, because quest references are resolved only by whole-project `lute check` (`lute check --project <DIR>`). Whole-project check, `compile` and the wasm build never raise it. `ok` is unchanged; the info count shows in the summary, e.g. `ok: quests/q.lute (0 warning(s), 1 info)`.
+
 A declaration that does not parse no longer cascades (0.41.0). A `type: number` — the type 0.31 removed — is `E-TYPE-NUMBER` at its `number`, naming the choice between `int` and `double` (and suggesting `int` when every value it takes is whole). The declaration stays in the environment by name: a plugin whose export holds it still loads its other entries, and what depends on it is not checked until it is fixed — one `W-DEPENDS-ON-INVALID` note (an info) per invalid declaration, at its first dependant, counts the rest, instead of an `E-CLOCK-DECL` or one `E-UNKNOWN-DIRECTIVE` per use.
 
 ## impact
@@ -13753,6 +13953,40 @@ every `*.play.yaml` and `*.test.yaml` of the project and records witnessed quest
 transitions for `completable`; `--script <FILE>` (repeatable) executes only the named scripts — a directory selects every script under it — and the two are exclusive (`E-CLI-USAGE`). Whole-project `check` reports only violations
 (`E-CONSTRAINT-VIOLATED`) and malformed declarations (`E-CONSTRAINT-DECL`);
 there is no `W-CONSTRAINT-UNKNOWN`.
+
+The 0.49.0 report (`schemaVersion` `0.49.0.constraints`) gives every row a `subject` and a `reason`:
+
+```json
+{
+  "command": "constraints",
+  "constraints": [
+    {
+      "counterexamples": [],
+      "declaration": {…},
+      "declarationErrors": [],
+      "evidence": "proven",
+      "id": "first-reachable",
+      "kind": "reachable",
+      "reason": "unanchored: available from the start of play",
+      "related": [],
+      "root": ".",
+      "scope": null,
+      "subject": "quest:first",
+      "verdict": "holds",
+      "witnesses": []
+    }
+  ],
+  "diagnostics": [],
+  "ok": true,
+  "schemaVersion": "0.49.0.constraints"
+}
+```
+
+- `reason` is set on every verdict: for `holds`, the evidence (e.g. `connectivity proves reachable`); for `unknown`, why nothing was decided (e.g. `no play or test script was run (--all-scripts / --script)`, ``2 script(s) ran; none completed quest `first` ``, or the reachability reason). The text output prints it as a `  reason: …` line under `unknown`.
+- `counterexamples` and `related` (`E-CONSTRAINT-VIOLATED`) are non-empty only on `violated`.
+- `reachable` and `scenario reach` use one reachability claim; an unanchored quest is `reachable holds [proven]` (see [Reachability](/connectivity/reachability/)).
+- `E-CONSTRAINT-DECL` entries are in `diagnostics`, not in `constraints`.
+- A root whose `lute.project.yaml` exists but does not load prints the manifest diagnostics whole-project `check` prints and exits `1`; JSON has `ok: false`, `constraints: []` and the diagnostics (with `path` = the manifest). A declared constraint is never omitted without a diagnostic.
 
 ## Evidence levels
 
@@ -14519,6 +14753,8 @@ $ lute lint [<PATH>] [--project <DIR>] [--providers <DIR>] [--config <FILE>]
 
 Run the advisory content lints — line length, dialogue ratio, emotion streaks, missing assets, and project-local rules — over a file or a directory tree (default: the current directory; with `--project <DIR>` and no `<PATH>`, the project directory). The linear-VN norms (`L-SECTION-STARTS-WITH-BACKGROUND`, `L-DIALOGUE-RATIO`, `L-SCENE-LENGTH-SPREAD`) judge only linear scenes, never beats, components, quests, or lore. Documents are grouped by their nearest `lute.project.yaml` (with `--project <DIR>`, `<DIR>` is the walk floor: each document resolves against its nearest project at or below it), and each project's `lute.lint.yaml` (or `--config <FILE>`) sets rule levels, thresholds, ignore globs, and `custom:` rules. Findings are `L-*` codes, separate from `lute check`: lints never enter the capability snapshot or change an artifact. `--deny`/`--deny-warnings` promote findings as in `check`. Exit **0** clean or only sub-error findings, **1** any error-severity finding (including `E-LINT-CONFIG`/`E-LINT-EXPR`), **2** on I/O, malformed YAML, or usage. Rules, metrics, and the config format: [Linting](/tooling/linting/).
 
+`lute lint <DIR>` uses the project (0.49.0): it discovers the nearest `lute.project.yaml` at or above `<DIR>`, applies that project's `lute.lint.yaml`, and prints findings relative to the project root. `lute lint <DIR> --project <P>` lints `<DIR>` inside `<P>`; a `<DIR>` outside `<P>` is `E-CLI-USAGE` (`lute lint: <DIR> is not inside the project <P>`).
+
 Since dsl 0.26.0 lint also reports `W-DISPLAY-NAME-DUP`, the advisory whole-project `check` reports too: two speakers the dialogue box would show under one name — two cast entries with the same `name:`, a cast name equal to a `::use{… name="…"}` display string, or two such strings for different speakers (`who=`). A cast entry marked `sharedName: true` is an intended role name several speakers share and is not counted. The code is not a `lute.lint.yaml` rule; `--deny W-DISPLAY-NAME-DUP` makes it an error. See [Linting](/tooling/linting/#display-names).
 
 ## loc export
@@ -14721,6 +14957,10 @@ The undocumented `--on` refusals of `trace`, `beats`, `calendar` and `new`, and 
 
 # Playing a story
 
+## Machine-readable output (0.43)
+
+With `--json`, `lute play` returns one envelope object, not a bare transcript array: `command`, `schemaVersion`, `ok`, and the command payload. A failed invocation returns `ok: false` and an `error` object with a stable code; inspect the exit status before decoding stdout. `--events` remains NDJSON and is a separate stream contract.
+
 A narrative game picks its next piece of story at moments of its own: a visit to town, entering a room, talking to an NPC, a new day, the start of a run. Lute calls those moments **occasions** and the pieces of story that answer them **beats** (dsl 0.21.0). The engine raises occasions; Lute defines which beats are eligible and which one wins. `lute play` is the reference player for that contract: give it a script of raised occasions and it walks the whole project, printing every candidate beat, its verdict, and the winner, and playing the winner through the same reference runner as `lute run`.
 
 Since 0.22.0 a play script also stands in for the rest of the engine. An `engine:` step writes the state and facts the engine owns — a day advancing, a run counter, a kill — a script can start from a save, decisions can differ per step, a step can fire a world event, and `expect:` turns a playthrough into an assertion that [`lute test`](/tooling/cli/#test) runs beside the scenario tests. A project no longer needs scenes, occasions, or plugins that exist only to fake the engine.
@@ -14904,6 +15144,23 @@ For `select: sequence`, the candidates are listed when the occasion is raised, a
 $ lute play --project <DIR> --script <FILE> [--json] [--ir] [--quiet] [--no-derive] [--events] [--derivation <ATOM>]… [--conditions-output <FILE>]
 ```
 
+### Runtime event stream (`--events`)
+
+`--events` writes a resumable runtime stream as compact JSON Lines. The first
+line contains the seed and its output; every following line pairs the input
+the player took with its output, including `choose` and `bridgeResult`
+answers. Each output is stamped with `eventVersion: "0.41.1"`. The stream is
+exclusive with `--json`, `--ir`, `--derivation`, and `--conditions-output`.
+
+A short real stream from the hub conformance project looks like this (the
+first choice opens a second await):
+
+```json
+{"seed":{"derive":true},"output":{"await":{"type":"idle"},"eventVersion":"0.41.1","events":[]}}
+{"input":{"occasion":"visit","type":"raiseOccasion"},"output":{"await":{"menu":{"construct":"hub","document":"hub.lute","id":"desk","options":[{"exit":false,"id":"take","once":true,"verdict":"open"},{"exit":true,"id":"leave","once":false,"verdict":"open"}],"position":"001-0200","presentation":0},"request":1,"type":"awaitChoice"},"eventVersion":"0.41.1","events":[{"beat":"hub","document":"hub.lute","kind":"scene","occasion":"visit","type":"presentation"},{"document":"hub.lute","record":{"kind":"line","lineId":"hub.narrator_0010","position":"001-0100","role":"narration","speaker":"narrator","text":"Before the hub.","voiceKey":"hub.narrator-0010"},"type":"record"}]}}
+{"input":{"option":"take","request":1,"type":"choose"},"output":{"await":{"menu":{"construct":"branch","document":"hub.lute","id":"answer","options":[{"exit":false,"id":"yes","once":false,"verdict":"open"},{"exit":false,"id":"no","once":false,"verdict":"open"}],"position":"001-0400","presentation":0},"request":2,"type":"awaitChoice"},"eventVersion":"0.41.1","events":[{"document":"hub.lute","record":{"chose":"take","hub":"desk","kind":"hub","position":"001-0200"},"type":"record"},{"document":"hub.lute","record":{"kind":"set","path":"run.count","position":"001-0300","value":1},"type":"record"}]}}
+```
+
 - `--project <DIR>` — the project root (`lute.project.yaml` and its plugins). The project is compiled whole, in memory, with the same gate and declaration union `compile --project` uses (scene, quest, and lore documents). A project whose documents declare one state path with two types fails that gate (`E-STATE-DECL-CONFLICT`, dsl 0.26.0 §2.1), and the play refuses to start (exit 1). The project is loaded once per play; since dsl 0.26.0 its fact analysis is prepared once per project root instead of once per beat, so loading Monster League (818 beats, 211 static facts) fell from about 12 s to about 1.5 s, and a long play is bound by its steps, not its load.
 - `--script <FILE>` — required: the play script, a `*.play.yaml` file.
 - `--json` — the same transcript as one JSON object on stdout.
@@ -15001,6 +15258,20 @@ A play script is a YAML mapping. `steps` is required; every other top-level key 
 | `expect` | Assertions about the end of the play — see [Expectations](#expectations). |
 | `derive` | `false` stops applying the project's Datalog rules — see [Derivation and `--derivation`](#derivation-and---derivation). |
 | `bridges` | Answers for the plugin calls that read a bridge result, consumed in call order across the play (dsl 0.24.0 §5) — see [Answering bridge calls](#answering-bridge-calls). |
+ 
+For a timed branch, a step may answer expiry with `timeout: true` instead of
+`choose`. This sends the runtime `timeout` input and selects the branch's
+declared `default` option:
+
+```yaml
+steps:
+  - occasion: crossing
+    timeout: true
+```
+
+`timeout: true` is valid only when the current await is a timed choice. The
+branch must declare both a positive `timeout` and a `default`; hubs cannot be
+timed. A malformed or premature timeout is a script error.
 
 Every step does exactly one thing — raises an `occasion`, applies `engine` writes, starts a `newRun`, fires an `event`, moves the declared clock (`advance`), or ends the playthrough (`end: true`) — and any step may carry a `label`, a `repeat` count, an [`expect:`](#expectations), and its own [`bridges:`](#answering-bridge-calls) answers; an `end` step takes only a `label`. The one pairing: an `advance` may carry the `engine:` writes of the same moment. A step may also be `include: <file>`, which splices that file's steps in its place (see [Advancing the clock](#advancing-the-clock)); since dsl 0.27.0 it MAY carry `repeat: n` (the file is spliced n times) and its own `choose:` / `bridges:`, which script every step it splices in over the script's own — key by key, tag by tag, consumed from their start in each repetition and dropped when the segment ends — so each term of a multi-term play states its own choices. A key the include overrides leaves the script's own list for that key where it was: with a top-level `choose: { firstLook: [soren, mika] }` and a first term that includes with `choose: { firstLook: ren }`, the second term still takes `soren`, the list's first entry, not `mika`. Convert a positional list to per-include `choose:` for every term at once, not one term at a time; a `label` or `expect:` beside it is a usage error. A usage error in a step names the file, line and column of the key it is about — in the included file when the step came from one, followed by `(included from <play>:<line>:<col>)` — with a did-you-mean for occasion names and keys. A tour of every shape, against the tower:
 
@@ -15520,7 +15791,7 @@ clock:
 
 `road.morning` answers `morning` (`once: day`, `Day {{run.day}}, leg {{run.leg}}.`), `road.camp` answers `dusk` (`Camp on day {{run.day}}.`), and the quest `trek` (`start="true"`) has one objective, `done="run.leg >= 3" by="clock.index >= 2"` — the third leg walked before day 3.
 
-**The engine's writes of the same moment.** An `advance:` step may carry `engine:` — what the engine writes as the clock moves, here the leg the party finished overnight. The writes land where the clock arrives: after every `dayEnd` / `dayStart` the advance raises on the way — so that evening's `dayEnd` still reads the day it closes — and before the final settle and raise. One settle follows the last move and the writes together, and since `done` is judged before `by`, an objective the write completes is done in the settle where the move's deadline passes:
+**The engine's writes of the same moment.** An `advance:` step may carry `engine:` — what the engine writes as the clock moves, here the leg the party finished overnight. Since 0.41 the writes land first, before the clock moves: they are applied and the quests settle, then (unless `terminal` now holds, when the clock stays where it is) the advance moves the clock, so every `dayEnd` / `dayStart` and the final raise read them. Writes that must land after the move's raises go in a following `engine:` step. Since `done` is judged before `by`, an objective the write completes is done before the move's deadline passes:
 
 ```yaml
 steps:
@@ -15546,15 +15817,15 @@ expect:
   → road.morning
 @narrator: Day 2, leg 0.
 ── step 2 · advance day: day 2 → day 3 ──────────────
+  set run.leg = 3
+  trek.leg3 done
+  quest trek -> complete
 ── step 2 · day 2 · dusk ──────────────
   ✓ road.camp [scene, priority 0]
   → road.camp
 @narrator: Camp on day 2.
 ── step 2 · day 3 ──────────────
   set run.day = 3
-  set run.leg = 3
-  trek.leg3 done
-  quest trek -> complete
 ── step 2 · morning ──────────────
   ✓ road.morning [scene, priority 0]
   → road.morning
@@ -15563,7 +15834,7 @@ expect:
 ── expect: every expectation held ──────────────
 ```
 
-The clock declares no `dayStart`, so the move across midnight prints under its own position header — `── step 2 · day 3`, with the move's write, the engine's, and the settle — before the `morning` raise, and the morning line already reads leg 3. Written as a separate `engine:` step after the advance, the same write comes a settle too late: the move to day 3 fails the quest first (`trek.leg3 failed (by)`). In `--json` the writes follow the last move's in the advance's own `writes`, and that settle is its `quests`. The writes follow an `engine:` step's rules, except that a write to the clock's own `day` or `slot` path beside `advance:` is a usage error (exit 2): `` step 1: `engine:` writes `run.day`, which the `advance:` beside it moves — write the clock in a step of its own, or let `advance:` move it ``.
+The engine's write and its settle print first, under the step's header, before the `dusk` raise; the clock declares no `dayStart`, so the move across midnight prints under its own position header — `── step 2 · day 3` — before the `morning` raise, and every raise of the step already reads leg 3. Written as a separate `engine:` step after the advance, the same write comes a settle too late: the move to day 3 fails the quest first (`trek.leg3 failed (by)`). In `--json` the writes come first in the advance's own `writes`, before the move's, and their settle is in its `quests`. The writes follow an `engine:` step's rules, except that a write to the clock's own `day` or `slot` path beside `advance:` is a usage error (exit 2): `` step 1: `engine:` writes `run.day`, which the `advance:` beside it moves — write the clock in a step of its own, or let `advance:` move it ``.
 
 The clock only moves forward. An `engine:` step that moves `clock.index` backward stops the walk at that step — a usage error found when the step runs, exit 2 — naming both positions:
 
@@ -15629,7 +15900,7 @@ steps:
 
 Step 2 skips the afternoon: the afternoon's `slotStart` is never raised. Step 3 is already at night, so it goes to the next night. Step 4 crosses three midnights to Friday morning; this clock names no `dayEnd` / `dayStart`, so only the final `slotStart` is raised. The quests still settle at every position the advance passes, so `fest`'s deadline fails on Wednesday morning, where the clock first reaches day 3: the transcript prints the move there, that settle, then the rest of the move. A season that opens and closes on the way, or a `rearm=` that turns true there, acts at its own position the same way (see [Seasons and rearmed quests](#seasons-and-rearmed-quests)). In `--json` the advance's `by` is `"to night"` or `"to Fri morning"`. A slot or weekday the clock does not declare is a usage error before anything plays (`` step 2: `advance:` to slot `dusk` — the clock's slots are: morning, afternoon, night ``; `` step 2: `advance:` to weekday `Fry` — a weekday is a number 0..6 or one of: Mon, Tue, Wed, Thu, Fri, Sat, Sun ``).
 
-**When the clock ends** (dsl 0.27.0 §4). A clock that declares `last: { day: 1, slot: h05 }` (or `days: N`) stops there. An `advance:` that lands exactly on the last position is ordinary. One that would go past it moves only to the last position, raises the last day's `dayEnd` once and no `slot` occasion, and its header says `· the clock ends (its last position)` (`--json`: `advance.ended: true`); its `engine:` writes land after that `dayEnd`. Any later `advance:` — or one starting past the end because an `engine:` step moved the day on — halts the play with `E-CLOCK-END` (exit 1, in `lute test` too) until a `newRun` starts the clock over:
+**When the clock ends** (dsl 0.27.0 §4). A clock that declares `last: { day: 1, slot: h05 }` (or `days: N`) stops there. An `advance:` that lands exactly on the last position is ordinary. One that would go past it moves only to the last position, raises the last day's `dayEnd` once and no `slot` occasion, and its header says `· the clock ends (its last position)` (`--json`: `advance.ended: true`); its `engine:` writes land before the move, as on every advance. Any later `advance:` — or one starting past the end because an `engine:` step moved the day on — halts the play with `E-CLOCK-END` (exit 1, in `lute test` too) until a `newRun` starts the clock over:
 
 ```
 ── step 2 · advance slot: day 1 h05 → day 1 h05 · the clock ends (its last position) ──────────────
@@ -17159,6 +17430,10 @@ The play presented the welcome, the morning, the night scene, Mara's first meeti
 
 # Story overviews
 
+## Machine-readable output (0.43)
+
+`--json` responses from `beats`, `calendar`, and `scenario` are envelope objects with `command`, `schemaVersion`, `ok`, and the command payload. Errors are represented by `ok: false` and a structured `error` (`code`, `message`, and optional location fields), never by a successful empty result. Check the exit code first.
+
 Once a story is selected by [occasions](/tooling/play/) rather than read top to bottom, no single file answers "what plays at the inn on the evening of day two?". The answer is spread over every beat's `on`, `target`, `priority`, `once`, `after:` and `when`, over the project's rules, and over whatever the save already holds. Since dsl 0.23.0 three commands put it on one screen:
 
 - [`lute beats`](#lute-beats) — the **ladder**: every beat of each occasion and target in selection order, with what `check --project` concludes about it. Static; the project need not check clean.
@@ -17447,6 +17722,7 @@ never eligible in any cell: 4
 
 eligible but never presented in any cell: 1
   dockEmpty [entry, lore/places.lute] placeVisit@place.dock — lost to dock.storm; dockBo; dockGulls
+```
 
 Reading a cell:
 
@@ -18139,6 +18415,75 @@ const hud = Effect.gen(function* () {
 Keep the numeric position for ordering, and use `ClockView.slot` and
 `ClockView.weekdayLabel` for display text.
  
+## 0.49 runtime additions
+
+**Plugin stamps are one nested `stamps` object.** A cross-cutting plugin
+[`stampAttrs`](/plugins/manifests/#cross-cutting-attributes-stampattrs) value an
+author wrote on a directive or content line is no longer flattened onto the
+record. Every stamped command (all but `jump` and `barrier`) carries
+`"stamps": { "<attr>": <value>, … }`, after `timing`, `provenance` and `source`;
+the object is omitted when no stamp was authored, so a record without one is
+byte-identical to 0.48.1. A stamp named like a record key (`tag`, `speaker`,
+`text`, `label`, …) can therefore no longer collide with it. The core stamp
+members `timing`, `provenance` and `source` stay flattened, and the eight
+reserved names are unchanged.
+
+The same object reaches the host on every plugin path, separate from `attrs` and
+never merged into it: a normal and a halted `plugin` event record, `awaitBridge`,
+the bridge request, and the suspended snapshot that carries it each have an
+optional `stamps`, omitted when empty. Staging records keep their core-field
+`attrs`; stamps are not mixed in.
+
+**`timing.wait` on a content line.** A line admits `wait` (a boolean). It
+compiles to the line record's `timing.wait` and is omitted when not authored. A
+line always waits for its own advance; `wait` says whether the staging cues after
+it, up to the next line, wait for the line. `true` or absent means they wait
+(unchanged). `false` means they start while the line is presented. The next line
+still waits for the previous one. The reference player honours this: a line cue
+with `timing.wait === false` is forked, and the scheduler joins it before the
+next `line` cue, before a `presentation` cue (it clears the dialogue window, so it must not overlap the line) and before the batch settles. `delay` and `duration` on a line
+remain `E-UNKNOWN-ATTR`.
+
+### Free-text input through a typed bridge
+
+Lute has no free-text construct. The host half of "ask the player to type
+something" is a bridge whose result is a `string`, written into a state slot:
+
+```yaml
+# bridge/prompt.yaml
+bridgeCapabilities:
+  - service: prompt
+    operation: ask
+    replay: recorded
+    result:
+      - { name: answer, type: string }
+```
+
+```yaml
+# directives/ask.yaml
+directives:
+  - name: ask
+    layer: bridge
+    attrs:
+      - { name: slot, required: true, type: { slotId: { namespace: scene.ask } } }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [ask, { fromAttr: { name: slot, slotType: localId } }], shape: textAnswer }
+    effects:
+      writes:
+        - { scope: scene, path: [ask, { fromAttr: { name: slot } }, answer], value: { fromBridgeResult: answer } }
+    bridge: { service: prompt, operation: ask }
+```
+
+The runtime suspends with `awaitBridge`. The host opens its own text prompt from
+the call's `attrs` (here `slot`), and answers `bridgeResult { request, fields:
+{ "answer": "<what the player typed>" } }`. The runtime validates the `string` and
+applies the declared write, so the lines after the call read the answer through
+ordinary state. Lute never sees the input channel, and the answer is data like
+any other bridge result. The complete project, with its `.test.yaml`, is
+[`docs/examples/free-text-input/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/free-text-input).
+
 ## 0.44 runtime additions
 
 **Writes that belong to the ending.** Once the runtime answers `ended`, it accepts only `newRun` or an `outsideRun` raise. A host write that belongs to the ending run — ending metadata, a final score — rides as `writes` on the input that causes the terminal transition, when that input carries writes: `raiseOccasion`, `advanceClock`, `bridgeResult` or `hostWrite`, whose writes land before the transition (`{"type": "raiseOccasion", "occasion": "dawn", "writes": {"state": [{"path": "run.endedBy", "value": "dawnSeven"}]}}`). `choose`, `timeout` and `worldEvent` carry no writes: an ending they cause records its state in the story (a `::set` in the branch that ends) or in a `hostWrite` sent before them. `newRun`'s writes seed the run it starts, where the ended run's `run.*` values read as `prev.run.*`. A `hostWrite` after the ending is still refused `E-RUNTIME-BUSY` with the state unchanged; its message now says where the write belongs.
@@ -18160,7 +18505,7 @@ and the [full event contract](https://github.com/journeyWorker/lute/blob/main/do
 
 ## 0.42 runtime additions
 
-Every staging record — `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video` and `sequence` — carries `attrs`: the command's resolved fields, as a `plugin` record's `attrs` already do. Authored values and the defaults lowering filled in are present (a `cg`'s `display: "show"`, an actor's declared default `anchor`); an absent optional field is omitted; `attrs` is always an object. The record envelope (`kind`, `position`), `timing`, provenance and plugin `stampAttrs` stay where they were, so a host reads a staging record without looking its command up in the artifact. `volume` stays a member of the project's `volume` domain; the player turns it into a gain through [`volumes`](/player/bindings/).
+Every staging record — `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video` and `sequence` — carries `attrs`: the command's resolved fields, as a `plugin` record's `attrs` already do. Authored values and the defaults lowering filled in are present (a `cg`'s `display: "show"`, an actor's declared default `anchor`); an absent optional field is omitted; `attrs` is always an object. The record envelope (`kind`, `position`), `timing`, provenance and the nested plugin `stamps` stay where they were (stamps are not mixed into `attrs`), so a host reads a staging record without looking its command up in the artifact. `volume` stays a member of the project's `volume` domain; the player turns it into a gain through [`volumes`](/player/bindings/).
 
 | kind | `attrs` |
 | --- | --- |
@@ -18302,16 +18647,17 @@ this page intentionally does not duplicate that registry.
 
 ### Command records
 
-Every command record has three required fields and three optional siblings:
+Every command record has three required fields and four optional siblings:
 
 | field | meaning |
 | ----- | ------- |
 | `kind` | the record kind; an unknown `kind` is a hard error. |
 | `family` | the normative grouping of `kind` (below), read by dispatch before `kind`. |
 | `position` | the record's build-local execution position (see [Positions](#positions)). |
-| `timing` | optional `{ wait?, duration?, delay?, at?, timeline? }`; omitted when every member is absent. |
+| `timing` | optional `{ wait?, duration?, delay?, at?, timeline? }`; omitted when every member is absent. A `line` may carry `wait` (see [0.49](#049-runtime-additions)). |
 | `provenance` | optional `{ by, explanation }` on a record the compiler synthesized. |
 | `source` | optional source location. |
+| `stamps` | optional object of plugin `stampAttrs` values (`{ "<attr>": <value> }`), on every stamped command; omitted when empty. A `jump` and a `barrier` carry none. |
 
 | `family` | kinds |
 | -------- | ----- |
@@ -19090,6 +19436,9 @@ This is an **Unreleased toolchain feature**, not a published-version claim. The
 [normative plugin-system delta](https://github.com/journeyWorker/lute/blob/main/docs/proposals/plugin-system/0.0.6.md)
 and [runtime/security guide](https://github.com/journeyWorker/lute/blob/main/docs/runtime/capability-permissions.md)
 are the source contracts.
+## Machine-readable permission context (0.43)
+
+`lute context --json` and other JSON-capable commands return the 0.43 envelope (`command`, `schemaVersion`, `ok`, and payload). Permission/profile resolution failures are structured `ok: false` errors with a stable code; they are not an empty successful permissions list. Hosts must branch on exit status before consuming the payload. Set `LUTE_TELEMETRY=0` for deterministic examples.
 
 ## Configure authored and restricted profiles
 
@@ -19294,6 +19643,10 @@ intended implementations, owns persistence/idempotency, and loads only trusted
 artifacts.
 
 # Streaming continuation compiler
+
+## Machine-readable stream contract (0.43)
+
+`compile --stream` is the exception to ordinary command envelopes: it emits newline-delimited JSON records. Each record has a `kind` (`start`, `update`, `finish`, or `error`) and `schemaVersion`; an error record contains structured `error` data and no artifact. Do not parse the stream as one JSON document, and treat a nonzero exit status as failure.
 
 The checked continuation compiler appends ordinary Lute **section-body source** to
 a host-owned scene template and returns a checked, ordinary IR artifact after
@@ -19557,6 +19910,10 @@ when a runtime will consume the result.
 - [`lute-syntax` continuation parser](https://github.com/journeyWorker/lute/blob/main/crates/lute-syntax/src/incremental.rs)
 
 # Tracing guide
+
+## Machine-readable output (0.43)
+
+`lute trace --json` returns a single `{ "command", "schemaVersion", "ok", ... }` envelope. A refused trace has `ok: false` and a structured `error`; a nonzero exit status must be handled before parsing stdout. This differs from `--events`, which is NDJSON.
 
 `lute trace` walks a document once, deterministically, against **author-supplied mocks**, reporting every decision and why. It is an authoring preview, not a guarantee: it never feeds `check`/`compile`, and is never a static reachability proof. It explores only the mock scenarios you supply — a coverage aid, never a proof. Since 0.22.0 it applies the project's seed facts and Datalog rules over those mocks by default, exactly as `lute run` and `lute play` do — see [Derivation](#derivation). Since dsl 0.26.0 it also follows a taken `::jump` to its `::label` and applies a quest `<on>` handler's `::accept`, as play does, and `lute test` fails a test that presents a beat its mocks make ineligible — see [Following a taken `::jump`](#following-a-taken-jump) and [`lute test`](/tooling/cli/#test).
 
@@ -20066,6 +20423,10 @@ not proof of every possible path.
 
 # Linting
 
+## Machine-readable output (0.43)
+
+`lute lint --json` uses the CLI envelope: `command`, `schemaVersion`, `ok`, and the diagnostic payload. Errors have `ok: false` and an `error` object; findings remain in the successful payload. The exit status is authoritative, including when warnings are promoted with `--deny` or `--deny-warnings`.
+
 `lute lint [PATH]` reviews project content for configurable editorial and
 composition concerns. It collects documents by their nearest `lute.project.yaml`,
 computes the same metric tables for every enabled rule, and reports findings in
@@ -20211,6 +20572,23 @@ Set any rule to `level: error` to make it release-blocking for that project.
 | `emotion-distribution` | speaker | warn | Checks the selected axis once a speaker has at least `minLines: 10`: `domain: emotion`, optional `pairWith`, `runMax: 3`, `streakAvgMin: 1.5`, `maxShare: 0.4`. It applies the upstream lineage's hard cap of three identical emotion streaks, thrash floor of 1.5 average streak length, and 40% dominance cap; when `pairWith` is set it also checks the paired axis. One finding per failing speaker joins all reasons. Streaks are counted within what a player hears in one sitting: a document's sections and quest bodies together, and each lore bundle `<beat>` on its own; lore `<entry>` lines are not measured, since entries are never heard back to back. |
 | `variant-composition` | speaker and group | warn | `attr: variant`, optional `groupBy`, `minPerGroup: 2`, `minShare: 0.0`, `minLines: 10`. With `groupBy`, groups below `minPerGroup` fire. With `minShare > 0`, speakers meeting its own `minLines` whose `attrShare[attr]` is below the threshold fire. |
 | `asset-exists` | line/directive | error | `providers: {}` (inert), `sentinels: [clear, empty, false, none, null, stop]`. For each mapped directive tag, checks `assetId` against the pinned provider snapshot. Absent assets fire; stale catalog data downgrades the finding to warn. Sentinel values are case-insensitively exempt. |
+
+`asset-exists` `options.providers` keys are selectors (0.49.0):
+
+| key | checks |
+| --- | --- |
+| `<tag>` | `::<tag>`'s `assetId` (the pre-0.49 meaning) |
+| `<tag>.<attr>` | that attribute of that directive |
+| `@<attr>` | that attribute on every content line |
+
+```yaml
+asset-exists:
+  level: error
+  options:
+    providers: { bg: bg-catalog, sfx.voiceAssetId: voice-catalog, "@assetId": portrait-catalog }
+```
+
+Any other key shape is `E-LINT-CONFIG`. Only literal strings are checked, and `sentinels` apply. A `<tag>` finding reads as before; the others name their source, `` (`@mira` attribute `assetId`) `` for a line attribute and `` (`::sfx` attribute `voiceAssetId`) `` for a directive attribute.
 
 Since 0.22.0 the three linear-VN rules — `dialogue-ratio`,
 `scene-length-spread`, and `section-starts-with-background` — judge only linear
@@ -20499,8 +20877,8 @@ Since 0.8.0 they set the exit code. Previously they printed and the build passed
 
 <!-- lute-diagnostics -->
 ```console
-$ lute check scene.lute --project .
-lute: E-PLUGIN-MISSING-ACTIVE: plugin `nosuch` is activated by the project manifest but is not installed; add it under the plugins directory or drop it from the profile
+$ lute check episode01.lute --project .
+lute: E-PLUGIN-OPTION-TYPE: option `showcase.pack.resultScope` expects enum(scene|run), got "galaxy"
 $ echo $?
 1
 ```
@@ -20803,7 +21181,7 @@ An option's value is the active profile's, otherwise its declared `default:`. An
 
 ## Export files
 
-Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, and shape refs; since dsl 0.26.0 a directive attribute may also be typed `{ entity: <kind> }`, [below](#engine-ids-typed-by-an-entity-kind)). State paths use **structured segments**, never `$name` interpolation.
+Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, and shape refs; since dsl 0.26.0 a directive attribute may also be typed `{ entity: <kind> }`, [below](#engine-ids-typed-by-an-entity-kind)). State paths use **structured segments**, never `$name` interpolation. A *directive attribute* or `stampAttrs` entry cannot be typed `list`, `map` or `record` at its top level (since 0.49): an attribute value is written as one scalar, so no `.lute` value could satisfy it, and the plugin load fails with `E-PLUGIN-INVALID-DIRECTIVE`, naming the attribute (``stamp attribute `tags` `` for a stamp) and suggesting a `string` parsed in the host or one attribute per field. Plugin `options:`, frontmatter keys, state shapes and bridge results keep these types, because YAML can write them.
 
 - `directives/*.yaml` — `::name` directive declarations (see [Bridge](/plugins/bridge/)).
 - `state/*.yaml` — reusable typed record shapes (`stateShapes:`) and structured path templates (`stateTemplates:`); one file may hold both (since 0.24.0; before, the second was dropped).
@@ -21096,14 +21474,17 @@ rewardKinds:
 | `entity: <kind>` | the target is a member of that project entity kind; a non-member is `E-REWARD-TARGET` with a did-you-mean |
 | `provider: <name>` | the target is an id of that provider's catalog; the provider must be active (the plugin load fails otherwise), an unknown id is `E-REWARD-TARGET`, and a stale snapshot only warns (`W-CATALOG-STALE`) |
 | `required: true` | a reward of the kind without `target=` is `E-REWARD-TARGET`; without it a target may be omitted |
+| `forbidden: true` | the kind takes no target: a `<reward>` of it with `target=` is `E-REWARD-TARGET` at the `target=` attribute (since 0.49) |
 
-A contract names `entity:` or `provider:`, not both: one with both fails the plugin load (`E-PLUGIN-PARSE`). A kind without `target:` takes any `target=` or none, as before. The ITEM contract above catches both mistakes a hand-maintained list lets through:
+A contract names `entity:` or `provider:`, not both: one with both fails the plugin load (`E-PLUGIN-PARSE`). A kind without `target:` takes any `target=` or none, as before. A kind that takes no target says so with `target: { forbidden: true }`, which stands **alone**: combined with `provider`, `entity` or `required` it fails the plugin load, because a kind that takes no target cannot also name an id space or require one. For `COINS: { target: { forbidden: true } }`, ``<reward kind="COINS" target="x"/>`` is `E-REWARD-TARGET`: `` <reward kind="COINS"> takes no `target=`: its reward kind declares `target: { forbidden: true }` — remove the attribute``. Declarations without `forbidden: true` keep their `capabilitySnapshot`; setting it changes the snapshot. The ITEM contract above catches both mistakes a hand-maintained list lets through:
 
 <!-- lute-diagnostics -->
 ```
 ./quests/dex.lute:11:3: error [E-REWARD-TARGET] `<reward kind="ITEM">` needs a `target=`: the reward kind declares `target: { required: true }`
 ./quests/dex.lute:12:31: error [E-REWARD-TARGET] `goodRd` is not a member of entity kind `bagItem`, which `<reward kind="ITEM">` targets — did you mean `goodRod`?
 ```
+
+Only a quoted `target="…"` reaches the artifact: a reward's target is static data the engine grants against. An `@ref` (`target=@n`) or a bare `target` is therefore `E-REWARD-ATTR` at the value (since 0.49), under every contract and for a kind with none: ``<reward target=…> takes a quoted id, e.g. `target="potion"`: `target=@n` is a reference, and a reward's target is static data the engine grants against``. A bare `target` says `a bare `target` has no value` instead. `required: true` does not also report the written target as missing, and an `entity:` or `provider:` contract adds nothing: the refusal is the one diagnostic. Under `forbidden: true`, `E-REWARD-TARGET` stays the only report.
 
 Which form to use for ids the engine owns: an **entity kind** when the ids can be listed in the repository and reviewed there (one lead-owned schema such as `schema/items.schema.yaml` above), a **provider** when the engine's catalog is the source of truth and the project checks against a pinned snapshot of it (see [Providers & catalog](/tooling/providers-and-catalog/)). Either way, type the directive attribute and the reward kind by the **same** kind or provider, so `::give{item}` and `<reward kind="ITEM" target>` share one id space, and `lute refs --project <DIR> --attr give.item --reward ITEM` lists both (a reward without a target as `(no target)`).
 
@@ -21133,20 +21514,22 @@ stampAttrs:
 
 Entries are ordinary `AttrDecl`s — the same `{ name, required?, type, default? }` shape a directive attr uses — but they are admissible on **every** directive *and* on content lines (`@speaker{…}: text`), on top of that surface's own attributes. Resolution is strict: the surface's own declarations win, then `stampAttrs`, then `E-UNKNOWN-ATTR`. Value typing rides the existing attribute path, so a mistyped one is a plain `E-ATTR-TYPE` / `E-BAD-ENUM` — no new rules.
 
-`::sfx{sound="chime" bonusId="b-02"}` followed by `@marina{code="0010" bonusId="b-01" bonusScore="7"}: Welcome back.` compiles to two records that each carry the attribute **flattened onto the record's top level**, beside the core keys (`kind`, `family`, `position`, `timing`) — never in the record's own `fields`:
+`::sfx{sound="chime" bonusId="b-02"}` followed by `@marina{code="0010" bonusId="b-01" bonusScore="7"}: Welcome back.` compiles to two records that each carry the attribute in **one nested `stamps` object** (since 0.49), after the core keys (`kind`, `family`, `position`, `timing`) — never flattened beside the record's own keys and never in its `fields`:
 
 ```json
-{ "kind": "sfx", "family": "staging", "position": "001-0100", "sound": "chime", "bonusId": "b-02" }
+{ "kind": "sfx", "family": "staging", "position": "001-0100", "sound": "chime", "stamps": { "bonusId": "b-02" } }
 { "kind": "line", "family": "content", "position": "001-0200", "role": "dialogue",
   "speaker": "marina", "text": "Welcome back.", "lineId": "marina.s01ep01.marina_0010",
-  "voiceKey": "marina.s01ep01.marina-0010", "bonusId": "b-01", "bonusScore": 7 }
+  "voiceKey": "marina.s01ep01.marina-0010", "stamps": { "bonusId": "b-01", "bonusScore": 7 } }
 ```
+
+Each entry's JSON value is typed by the declaring plugin's attribute declaration, as before. The object is omitted when no stamp was authored, so a record without one is unchanged. Because the stamps live under their own key, a plugin stamp named like a key of its carrier (`tag`, `speaker`, `text`, `label`, `name`, `id`, …) can no longer collide with it; before 0.49 such a stamp wrote that key twice. The same `stamps` object reaches the host beside, and never merged into, the `attrs` of a plugin event record and of a [bridge](/plugins/bridge/) call.
 
 An **unauthored** stamp attribute is not injected — not even when its declaration carries a `default`. Absent means absent, so declaring a cross-cutting vocabulary and authoring none of it leaves the artifact byte-identical. The declaration is not free, though: `stampAttrs` participates in `capabilitySnapshot`, because a changed cross-cutting vocabulary is a changed capability surface and an engine must be able to refuse the mismatch.
 
 ### Reserved stamp keys
 
-The core stamp owns eight names — `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`, `source`. A plugin declaring an attribute under any of them is rejected at assembly with **`E-PLUGIN-RESERVED-STAMP-ATTR`**:
+The core stamp owns eight names — `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`, `source`. `at`, `duration`, `delay`, `wait` and `timeline` are authoring keys that compile into `timing`; `timing`, `provenance` and `source` stay flattened record keys. The nested `stamps` object removes the *JSON* collision for every other name, but these eight stay reserved, since a plugin stamp named like one would still be ambiguous to the author. A plugin declaring an attribute under any of them is rejected at assembly with **`E-PLUGIN-RESERVED-STAMP-ATTR`**:
 
 <!-- lute-diagnostics -->
 ```
@@ -21295,6 +21678,7 @@ core or unresolved ownership. Presentation directives that declare `lower: { rec
 lower to their stable core staging record kinds; the owner field is specific to passthrough plugin
 records.
 
+
 ## Declaring the bridge capability
 
 A `bridge/*.yaml` file names the service and its typed result fields. Those result fields are the *only* values a directive may write back into scene state.
@@ -21335,7 +21719,7 @@ directives:
     bridge: { service: minigame, operation: play }
 ```
 
-Every written path MUST be declared by the slot's shape. A blocking bridge uses a plugin-owned `sync` attribute — **not** the reserved dsl timing key `wait`. `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance` and `source` are the eight names the core stamp owns; a plugin declaring an attribute under any of them is rejected at assembly with [`E-PLUGIN-RESERVED-STAMP-ATTR`](/plugins/manifests/).
+Every written path MUST be declared by the slot's shape. A host may keep its own option such as `sync` — a plugin never redeclares the reserved dsl timing key `wait`, which is what makes a call blocking or not (see [Sync semantics](#sync-semantics)). `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance` and `source` are the eight names the core stamp owns; a plugin declaring an attribute under any of them is rejected at assembly with [`E-PLUGIN-RESERVED-STAMP-ATTR`](/plugins/manifests/).
 
 A call blocks — waits for the host's answer — because an `effects.writes` entry reads a bridge result. A directive that declares `layer: bridge` and `bridgeCall` but has no `fromBridgeResult` write would compile to a record nothing waits for, so since 0.41.1 it is [`E-BRIDGE-NO-RESULT-WRITE`](/reference/diagnostics/#e-bridge-no-result-write) at its declaration, and the project does not compile until you add the write or remove `layer: bridge`.
 
@@ -21363,13 +21747,23 @@ The scene writes nothing by hand. It runs the bridge, then reads the declared sl
 
 `rank` is a finite enum `[fail, bronze, silver, gold]`, so the `<match>` is first-match-wins with `<otherwise>` covering `fail`.
 
-## Sync semantics & the stale-default trap
+## Sync semantics
 
-With `sync="true"` (the default for a blocking bridge) the writes **dominate** the immediately following read — the `<match>` sees the produced outcome. With `sync="false"` they do *not*: because result slots are typically shape-defaulted (e.g. `rank: fail`), a following read is **not** `E-MAYBE-UNSET` — it silently reads the **default**, not the outcome.
+A bridge call that writes a result blocks, and its result writes are a **definite assignment after the call** (since 0.49). A *blocking bridge call* is a plugin directive call whose declaration has at least one `effects.writes` entry valued `fromBridgeResult` and whose effective core `wait` is not `false`. The checker treats each resolved result path of an unguarded blocking call as assigned from the call on, so the `<match>` above reads `scene.minigame.service01.rank` with no `E-MAYBE-UNSET`, and removing its `<otherwise>` arm (which leaves `fail` uncovered) reports `E-NONEXHAUSTIVE`. Under a `when=` guard the writes belong only to the guarded fork.
 
-**Nothing diagnoses that today.** The *result-read-before-produced* check is specified but not implemented: it needs a dataflow question the checker does not currently ask — "is this read dominated by the bridge call that produces it?" — which is checker-core analysis rather than manifest validation, and it was deferred rather than half-shipped. A non-blocking bridge whose result is read too early therefore checks clean, compiles clean, and plays wrong.
+`wait` is the language's blocking key. With **`wait="false"`** the call is fire-and-continue, the writes are *not* assumed, and a following read of the result keeps `E-MAYBE-UNSET`.
 
-Until it lands the rule is yours to keep: **use a blocking bridge whenever story logic branches on the result**, and reserve `sync="false"` for a bridge whose outcome nothing in the same scene reads.
+A host option such as the `sync` attribute above is the plugin's own: **Lute does not read `sync`.** A directive whose host option means "fire and continue" (`sync="false"`) MUST also be written `wait="false"`, or the checker will treat its result as assigned while the host does not wait for it:
+
+```lute
+::minigame{kind="rhythm" id="marina_service_01" resultKey="service01" sync="false" wait="false"}
+```
+
+Use a blocking bridge whenever story logic branches on the result, and reserve `wait="false"` for a bridge whose outcome nothing in the same scene reads.
+
+## What the host receives
+
+A plugin record, a bridge request and an `awaitBridge` carry the call's `attrs` (its `fields`) and, when the directive was stamped with a cross-cutting [`stampAttrs`](/plugins/manifests/#cross-cutting-attributes-stampattrs) value, a separate `stamps` object. It is omitted when empty and never merged into `attrs`.
 
 # Profiles & activation
 
@@ -21686,7 +22080,7 @@ this index does not rewrite those citations.
 | Reusable content components (`::use` expansion) | 0.1.0 | 0.46.0 (a `::use` site reserves `component`, `when`, `at` and `instance`: a component param with one of those names is `E-TEMPLATE` once, at its `params:` entry, naming the list; `0.28.0`: a template header accepts `F[@param]` (the dot form draws `W-TEMPLATE-DOT-PARAM`), may declare `also: true`, and a use's own `when=` replacing the header's says so (`W-TEMPLATE-OVERRIDE`); a component param named `component` / `when`, or a template param named like a `<beat>` header key, is `E-TEMPLATE`; a param typed by a closed `{ domain: K }` (including `{ domain: clock.slot }` / `{ domain: clock.weekdayLabel }`) is judged over K's members; `occasion.target` may be a component argument in a kind or `for=` beat; `0.27.0`: a component may declare a `beat:` header and be used as a **beat template** — `<beat use="…" id="…" …>` (or self-closing) takes every header key it does not write, runs the template's body then its own (`::body` places it), and desugars into an ordinary beat before any check; misuse is `E-TEMPLATE`; `0.26.0`: parity with direct text — a component's plugin result slots are declared in the host, an untyped bridge answer is refused, `{{…}}` in a string argument and a `speaker` param in an attribute value render as in text; `@@who:` speaks as a `speaker` param (`@@x` for a non-speaker param is `E-COMPONENT-ARG`); a param may declare `default:`; a component reads its own plugin directives' result slots; `0.24.0`: `effects: true` — a component may `::set` / `::assert` / `::retract`, each write checked at every `::use` against the host's schema and compiled where the `::use` sits; `speaker` params take a cast id; `0.23.0`: a component `string` param may be interpolated as `{{@p}}` — a literal `::use` argument is substituted per call site under that call's own `lineId`, and binding the param to a `@def` is `E-REF-TYPE`; `0.22.0`: a component line gets its own identity scope — `{prefix}.{component}#{n}.{speaker}_{code}`, `n` the host's 1-based `::use` ordinal of that component — so two uses never share a `lineId`; `0.9.0` made five root-only check stages now run over an imported component body — content-line attrs, `E-DUP-LINE-CODE`, reachability, unwalked-content admission, injection folding) | [0.46.0.md §2.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.46.0.md#21-reserved-use-names-as-component-params-100); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.23.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md); [0.22.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md); [0.9.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.9.0.md) |
 | `into=` records (choice run-record sugar) | 0.1.0 (as `persist=`/`into=`, renamed from `0.0.1` `as`) | 0.6.0 (**breaking** — `persist=` removed, `into=` alone records) | [0.6.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.6.0.md) |
 | State tiers (scalar `scene`/`run`/`user`/`app`) | 0.1.0 | 0.41.0 (a `type: number` — on a `state:` row and on every other declared type: def results and `params:`, component `params:`, directive `attrs:`, bridge `result:` and occasion `payload:` fields, plugin state-shape `fields:` — is `E-TYPE-NUMBER`, suggesting `int` when every value seen for it is whole, with no `lute fix` rule; a declaration that fails to parse but keeps its name stays declared as invalid and reports only its own errors — its dependants are not reported as unknown or mistyped (no `E-CLOCK-DECL` for a `clock:` naming it, no `E-UNKNOWN-DIRECTIVE` for a directive declared by it), and one info `W-DEPENDS-ON-INVALID` at its first dependant names it; a plugin whose export entries are partly invalid still loads its valid ones; `0.32.0`: int/double replace number; state remains scalar; `number` is removed; engine-owned writes report `E-RUN-OWNED-WRITE`; 0.30.0 (a state path's segment is a name — letters, digits, `_` or `-`, not starting with `-` — and a condition, a `::set` target, a `{{…}}` or a `state:` key reaches one that is not an identifier with a quoted index (`run.visits["lab-b2"]`, single or double quotes), the same path as the bare spelling; a non-identifier name after a `.` is one `E-PATH-IDENT` naming the bracket spelling; `0.28.0`: a `state:` row with an unknown key, or a path declared both as a value and as a prefix of other rows, is `E-STATE-DECL`; engine-owned namespaces (`scene.choices.*`, `scene.visited.*`, `occasion.*`, a bare `quest.<x>` / `season.<x>`) cannot be declared; a reserved word as a path segment is `E-RESERVED-NAME`; `F[occasion.target]` may be written in a kind or `for=` beat, checked per member; `per:` may name a kind another schema declares; `0.27.0`: a schema may declare `seasons:` — `season.<name>.*` paths and the read-only `prev.season.<name>.*`, reset each time the season's `live` goes false→true, seasons overlapping freely (`E-SEASON-DECL`); `per: K` declares the members K's `subsetOf:` sub-kinds add; `0.26.0`: `check-project` collects every frontmatter `state:` declaration of a path — inline or imported — and declarations that disagree on `type`, `default`, `per` or `owner` are `E-STATE-DECL-CONFLICT`, naming both files and lines; `0.24.0`: entity-indexed state — `{ type: int, default: 0, per: <kind> }` declares one path per member, with per-member defaults `{ _: 0, <member>: 1 }`; with a declared clock the reserved read-only `clock.index` / `clock.weekday` / `clock.weekdayLabel`; integer `%` joins the CEL profile; `0.23.0`: the reserved read-only `prev.run.<path>` mirrors every declared `run.<path>` with the value it had when the previous run ended — maybe-unset, so a read needs `isSet` or an `unset` arm, a write is `E-QUEST-RESERVED-WRITE`, and declaring `prev.*` is `E-STATE-NAMESPACE`; `0.22.0`: a `state:` declaration may carry `owner: engine` — content that `::set`s it is `E-ENGINE-OWNED-WRITE`, reads stay unrestricted; the reserved user-tier `entry.<id>.everRead` joins the run-tier `entry.<id>.read`; `0.8.0` enforced scalar-only author `state:` — `E-STATE-COLLECTION`) | [0.41.0.md §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md#32-type-number-and-declaration-cascades-44); [0.30.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.23.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md); [0.22.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md); [0.8.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md) |
-| Defs (`defs:` in frontmatter, schemas and plugins; `@name` / `@name(args)`) | 0.1.0 | 0.41.1 (`W-DEF-UNUSED` on a project schema's def names the `host: true` escape (for example, `Program.def`); on a frontmatter def, which refuses `host:`, it does not; `0.41.0`: a def declared in a project schema file or a plugin's `defs:` export MAY carry `host: true` — exempt from `W-DEF-UNUSED` and marked `"host": true` in the index — while `host:` on a frontmatter def stays an unknown key, with a hint that frontmatter defs are local to their document; `lute compile --all` exports the defs documents see through plugins and `uses:` as index `defs` with their `params` (scalar parameter types only; a name two documents see with different bodies is left out), a parameter lowering to the `param` node; `lute expr <CEL> [--project <DIR>] [--json]` checks a host condition as a project-root `when:` against the index defs and prints its `exprNode`, for the runtime's `evaluate`; `0.21.1`: a def body passes the CEL profile gate, a def in a directive attribute folds to its literal or is `E-ATTR-DEF-DYNAMIC`, and a `{{@def}}` that cannot be inlined is `E-INTERP-DEF`) | [0.41.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.1.md); [0.41.0.md §3.5–§3.6, §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md#35-host-defs-host-true-49); [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md); [CHANGELOG `0.21.1`](https://github.com/journeyWorker/lute/blob/main/CHANGELOG.md) |
+| Defs (`defs:` in frontmatter, schemas and plugins; `@name` / `@name(args)`) | 0.1.0 | 0.41.1 (`W-DEF-UNUSED` on a project schema's def names the `host: true` escape (for example, `Program.def`); on a frontmatter def, which refuses `host:`, it does not; `0.41.0`: a def declared in a project schema file or a plugin's `defs:` export MAY carry `host: true` — exempt from `W-DEF-UNUSED` and marked `"host": true` in the index — while `host:` on a frontmatter def stays an unknown key, with a hint that frontmatter defs are local to their document; `lute compile --all` exports the defs documents see through plugins and `uses:` as index `defs` with their `params` (scalar parameter types only; a name two documents see with different bodies is left out), a parameter lowering to the `param` node; `lute expr <CEL> [--project <dir>] [--json]` checks a host condition as a project-root `when:` against the index defs and prints its `exprNode`, for the runtime's `evaluate`; `0.21.1`: a def body passes the CEL profile gate, a def in a directive attribute folds to its literal or is `E-ATTR-DEF-DYNAMIC`, and a `{{@def}}` that cannot be inlined is `E-INTERP-DEF`) | [0.41.1.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.1.md); [0.41.0.md §3.5–§3.6, §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md#35-host-defs-host-true-49); [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md); [CHANGELOG `0.21.1`](https://github.com/journeyWorker/lute/blob/main/CHANGELOG.md) |
 | Facts & Datalog (relational layer) | 0.3.0 | 0.32.0 (condition fact queries use standard CEL list form — `holds(string, list(dyn))`, `count(string, list(dyn))`, `countDistinct(string, list(dyn), int)`, `validAt(string, list(dyn), int)`; rule syntax is unchanged; `E-FACT-QUERY` covers malformed query calls; 0.30.0 (a relation and a fact argument are names; a fact-query or rule argument that is not an identifier is quoted — `holds('at', ["lab-b2"])`, `at(X, "lab-b2")`, `"lab-b2" = X` — and names the same member as the bare spelling; `0.28.0`: a relation's `tier:` accepts `season:<name>` (its facts go back to the seeds each time the season opens) and a relation without `tier:` warns `W-RELATION-TIER-IMPLICIT`; `::assert` / `::retract` may take `occasion.target` in a kind or `for=` beat; an enum and an entity kind with one name are `E-DOMAIN-NAME-CLASH`; reserved names — including `completed` / `active` / `cel` / `not` for a relation — are `E-RESERVED-NAME`, which absorbs `E-RELATION-RESERVED-NAME`; a rule `cel()` guard gets the typed and literal-domain checks; `0.27.0`: `occasion.target` is a ground term in a kind beat's fact queries and `per:` indexes, checked per member; a rule `cel()` guard may compare a bound variable with a `{ domain: K }` path, grounded per member; a plugin directive's `effects: { asserts, retracts }` are checked at each call and count as `::assert` / `::retract` of the call; an entity kind may declare display `labels:`, and any other unknown key is `E-ENTITY-KIND-SHAPE`; `0.26.0`: `count('R', ['…']) <op> n` and `countDistinct` may appear in a rule body over a relation the head does not depend on, else `E-RULE-AGGREGATE-CYCLE`; a schema may `add:` members to an entity kind exactly one other import declares, a `subsetOf:` child's members are its parent's, and a member listed twice — in one kind or added by two files — is `E-ENTITY-KIND-SHAPE`; `0.25.0`: a relation may declare `excludes:` — symmetric, partners with the same argument kinds or `E-RELATION-DECL`; `check-project` reads a guard needing both as dead and a negated partner as following, an `::assert` where the excluded fact holds on every route is `E-FACT-EXCLUSIVE`, a rule deriving one side from the other on the head's own arguments is `E-RULE-EXCLUSIVE`, and `lute play` / `lute trace` / `lute test` halt at a write that makes both hold; a reserved relation may declare `changedOn:` — on a non-reserved relation or naming an undeclared occasion it is `E-RELATION-DECL`; `0.24.0`: `_` in a rule body is a fresh anonymous variable, existential under `not`; `countDistinct(<pattern>, <Var>)`; entity sub-kinds (`subsetOf:`) and an entity kind atom in a rule body as a membership test; a rule `cel()` guard may read `F[P]` of a `per:` family, compiled grounded, one IR rule per member; `E-RESERVED-NAME`) | [0.30.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.30.0.md); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.26.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.26.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.3.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md) |
 | Quests (`<quest>`, `<on>` ECA triggers) | 0.2.0 | 0.41.0 (`W-OBJECTIVE-STRANDED` is not reported when the objective's quest re-arms (`tier="run"`, `tier="season:…"`, a non-empty `rearm=`) or when a completion beat lives in another document; it is always a warning, never `info`, and its message states its evidence (bounded — the declared clock windows of the document's beats, no path search); `0.32.0`: quest instances carry an `instance` number and grants carry `instance` / `index`; saves expose `questInstances`; 0.28.0 (renamed attributes, each old spelling an error naming the new: `<quest follows=>` (was `after=`; quest-graph metadata that never gates the quest), `<objective visibleWhen=>` (was `when=`; it only hides the objective), `<reward outcome=>` (was `on=`); a quest failed by a required subquest reads `failedBy == 'subquest'`; a subquest's `rearm=` is `E-SUBQUEST-REARM` and a constant one `W-QUEST-REARM-CONSTANT`; a season-tier quest not gated on the season's `live` warns `W-SEASON-UNGATED`; `occasion.payload.<field>` is readable in the raising occasion's objectives and handlers; a quest or objective id with a `.` is `E-PATH-IDENT`, and over a whole project an unknown `quest.<id>` read is `E-QUEST-REF-UNKNOWN`; `0.27.0`: `rearm="<condition>"` returns a quest to `unset` each time the condition goes false→true; `tier="season:<name>"` resets with a season; a quest reading only run state with no `tier=` (and no `defaults.questTier`) is `W-QUEST-TIER-IMPLICIT`; a `by=` deadline a finite clock never reaches is `W-DEADLINE-NEVER`; `0.25.0`: `<quest accept="external">` — accepted outside the script — is the only acceptance outside content that silences `W-QUEST-NEVER-ACCEPTED`, a test or trace `accepts:` mock no longer does, and beside `start` it is `E-ATTR-TYPE`; `lute scenario` draws `[subquest]` edges and anchors a quest by the top-level `start` conjuncts that read `visited()`, `entry.X.everRead` or `quest.Y.state` (`[start]` edges); `0.24.0`: `<quest activate="accept">` subquests wait for an `::accept` while the parent is active; `<quest complete="any">` alternatives fail the rest as `superseded`; `by=` is judged at every settle and the place-bound rule is the new `until=`, with `W-DEADLINE-BEFORE-DONE` for a `done` that implies its `by`; the read-only `quest.<id>.failedBy` / `objectives.<o>.failed`; `<on event target>`; `::accept{at="nextRun"}`; `W-QUEST-NEVER-ACCEPTED`; `0.23.1`: `E-QUEST-TIER-MIX` — a subquest whose `tier` differs from its parent's, since a mixed tree locks for good; an `on=` objective's `by` is judged only when its occasion is raised, right after its `done`; a raised occasion first fires a same-named declared world event, so every active quest's `<on event>` handlers run before its `on=` objectives are judged; `0.23.0`: `<objective by="…">` deadlines — the first time `by` holds while the objective is not done, it fails, and a failed required objective fails the quest; `<objective on target>` is judged only when the occasion is raised for that target, IR `ObjectiveEntry.by` / `target`; `0.22.0`: `<quest tier="run">` — status and objectives reset to `unset` when a run starts, default `tier="user"` persists across runs, IR `QuestCmd.tier`; `check-project` warns `W-QUEST-HANDLER-DEAD` on a `questFailed` handler of a quest that can never fail; `0.14.0` added subquests — `<objective quest="childId"/>` makes a child quest's completion a parent objective; synthesized `done`/upward `fail`, engine-rule downward cascade and referenced-child activation; tree-not-DAG project shape with four new diagnostics) | [0.41.0.md §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md#34-w-objective-stranded-48); [0.28.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md); [0.27.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md); [0.25.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md); [0.24.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md); [0.23.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md); [0.22.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md); [0.14.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.14.0.md); [CHANGELOG `0.23.1`](https://github.com/journeyWorker/lute/blob/main/CHANGELOG.md) |
 | Timeline & property tracks | 0.1.0 | 0.37.0 (a record's timing is one `timing` object — `wait`, and `duration` / `delay` / `at` in finite non-negative seconds, plus the `timeline` ordinal on a record emitted from a timeline; a `barrier` keeps its own direct `timeline` and `at`) | [0.37.0.md §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md#52-timing-and-trace); [0.1.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) |
