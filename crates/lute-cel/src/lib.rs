@@ -258,10 +258,11 @@ pub fn parse_slot(
     let prepared = substitute_dsl_tokens(raw);
     match parse_prepared(&prepared) {
         Parsed::Expr(expr) => {
-            let h = CelAstHandle(
-                u32::try_from(arena.asts.len())
-                    .expect("an arena holds far fewer than 2^32 ASTs: each one takes many bytes"),
-            );
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "existing wrapping handle behaviour kept in 0.49.1; arena exhaustion is a separate behaviour change"
+            )]
+            let h = CelAstHandle(arena.asts.len() as u32);
             arena.asts.push(expr);
             Ok(h)
         }
@@ -382,10 +383,11 @@ pub fn parse_slot_marked_refs(arena: &mut CelArena, raw: &str) -> Option<CelAstH
     let prepared = substitute_marking_refs(raw);
     match parse_prepared(&prepared) {
         Parsed::Expr(expr) => {
-            let h = CelAstHandle(
-                u32::try_from(arena.asts.len())
-                    .expect("an arena holds far fewer than 2^32 ASTs: each one takes many bytes"),
-            );
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "existing wrapping handle behaviour kept in 0.49.1; arena exhaustion is a separate behaviour change"
+            )]
+            let h = CelAstHandle(arena.asts.len() as u32);
             arena.asts.push(expr);
             Some(h)
         }
