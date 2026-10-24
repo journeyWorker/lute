@@ -194,6 +194,11 @@ jobs:
       - name: cargo clippy --workspace --all-targets
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
+      # Feature-gated code (`json-schema`, `test-panic`) is linted too; the
+      # default feature set does not build it.
+      - name: cargo clippy --workspace --all-targets --all-features
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
       # Production code (libs and bins, no tests) never calls `unwrap()`:
       # it uses `expect("<why it cannot fail>")` (rules note §5).
       - name: cargo clippy --workspace --lib --bins (no unwrap)
