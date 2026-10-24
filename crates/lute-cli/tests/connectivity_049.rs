@@ -649,6 +649,40 @@ fn a_lifecycle_unreachable_scene_is_no_way_in() {
 }
 
 #[test]
+fn a_lifecycle_unreachable_quest_is_no_way_in() {
+    // `dead` gates on a reachable scene but can never start, so it cannot
+    // open `b`'s OR alternative; `a`/`b` stay deadlocked (F4-3).
+    let dir = project(
+        "connectivity-049-dead-quest",
+        &[
+            ("dead", "visited('entry') && false"),
+            ("a", "quest.b.state == 'active'"),
+            (
+                "b",
+                "quest.a.state == 'active' || quest.dead.state == 'active'",
+            ),
+        ],
+        "",
+        &[ENTRY],
+    );
+    let (code, out) = run(&dir, &["check", "--project", "."]);
+    assert_eq!(code, 1, "{out}");
+    let lines = start_cycle_lines(&out);
+    assert_eq!(lines.len(), 1, "{out}");
+    assert!(
+        lines[0].contains("quest(a) -> quest(b) -> quest(a)"),
+        "{out}"
+    );
+    let (_, graph) = run(&dir, &["scenario", "--project", "."]);
+    assert!(
+        graph.contains(
+            "(unlayered -- part of a start cycle, E-QUEST-START-CYCLE): quest(a), quest(b)"
+        ),
+        "{graph}"
+    );
+}
+
+#[test]
 fn a_fact_edge_along_a_back_edge_is_not_layered() {
     let schema = "state:\n  run.flag: { type: bool, default: false }\ncast:\n  mira: { name: Mira }\nentities:\n  item: { members: [lens] }\nrelations:\n  hasItem: { args: [item], tier: run }\n";
     let dir = project(

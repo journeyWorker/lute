@@ -70,8 +70,9 @@ pub fn resolve_start_blocks(
 /// set of deadlocked quests that do not read themselves, at its least quest's
 /// `start`.
 ///
-/// A node without gating anchors can start (is a way in) when it is in
-/// `topo_order` (not on or past an `after` cycle) and `routable`.
+/// A node can start (is a way in) only when `routable`. Without gating
+/// anchors it also has to be in `topo_order` (not on or past an `after`
+/// cycle); with them, every gating anchor needs a source that can start.
 fn start_blocks(
     nodes: &BTreeMap<NodeId, NodeInfo>,
     topo_order: &[NodeId],
@@ -93,7 +94,9 @@ fn start_blocks(
     loop {
         let mut grew = false;
         for &(id, info) in &gated {
-            if can.contains(id) {
+            // A lifecycle-dead quest is no way in, whatever its anchors
+            // read (F4-3).
+            if can.contains(id) || !routable(id) {
                 continue;
             }
             let starts = gating(info)
