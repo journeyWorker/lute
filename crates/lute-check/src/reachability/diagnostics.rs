@@ -140,9 +140,18 @@ pub(crate) fn push_literal_cmp_diags(
     let mut cursor = 0usize;
     for hit in hits {
         let (code, message, literal) = match &hit.kind {
-            LiteralCmpKind::UnsetSentinel { not_equals } => (
+            LiteralCmpKind::UnsetSentinel {
+                not_equals,
+                unset_test,
+                spelling,
+            } => (
                 E_UNSET_LITERAL,
-                unset_literal_message(&hit.subject, *not_equals),
+                unset_literal_message(
+                    &hit.subject,
+                    *not_equals,
+                    unset_test.as_deref(),
+                    spelling.as_deref(),
+                ),
                 "unset",
             ),
             LiteralCmpKind::ForeignMember { literal, members } => (
@@ -309,13 +318,32 @@ pub(crate) fn check_code_after_next(
         ));
     }
 }
-fn unset_literal_message(subject: &str, not_equals: bool) -> String {
+/// `unset_test` is the subject's negated presence test and `spelling` its
+/// condition spelling (0.49.0 §5.3), both for a state-path subject.
+fn unset_literal_message(
+    subject: &str,
+    not_equals: bool,
+    unset_test: Option<&str>,
+    spelling: Option<&str>,
+) -> String {
     let cmp = if not_equals { "!=" } else { "==" };
+    let in_match = match spelling {
+        Some(s) => format!("in a `<match subject=\"{s}\">` use `<when is=\"unset\">`"),
+        None => "in a `<match>` over it use `<when is=\"unset\">`".to_string(),
+    };
+    let remedy = match unset_test {
+        Some(test) => format!("Test for unset with `{test}`, or {in_match}"),
+        None => {
+            let mut chars = in_match.chars();
+            chars
+                .next()
+                .map(|c| c.to_uppercase().chain(chars).collect())
+                .unwrap_or_default()
+        }
+    };
     format!(
         "comparing `{subject}` {cmp} the string `'unset'`, which is never equal to the DSL's \
-         unset sentinel (the CEL `null` literal, dsl 0.1 §11.2). Test for unset with \
-         `!isSet({subject})`, or in a `<match subject=\"{subject}\">` use `<when is=\"unset\">` \
-         (dsl 0.2 §5.2)"
+         unset sentinel (the CEL `null` literal, dsl 0.1 §11.2). {remedy} (dsl 0.2 §5.2)"
     )
 }
 

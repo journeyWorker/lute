@@ -1407,13 +1407,14 @@ fn text_sub_span(text_span: Span, text: &str, start: usize, end: usize) -> Span 
     }
 }
 
-/// `<choice … into="run.<path>" [value="<lit>"]>` → append
-/// `Node::Set(run.<path> = <value>)` (dsl 0.6.0 §2.1). The record sugar is
-/// now triggered by the presence of a well-formed `into=` alone — `persist=`
-/// was removed from the language (a `persist=`-carrying doc is gated out by
-/// E-PERSIST-REMOVED before compile ever runs). Well-formedness is
-/// gate-proven (0.6.0 §2.2: `E-INTO-*`); anything unresolvable here is
-/// skipped, total.
+/// `<choice … into="run.<path>" [value="<lit>"]>` → `Node::Set(run.<path> =
+/// <value>)` placed **first** in the arm (dsl 0.6.0 §2.1; 0.49.0 §5.1): the
+/// record is written before the arm body, so an arm ending in `::jump` or
+/// `::end` still records the pick. The record sugar is triggered by the
+/// presence of a well-formed `into=` alone — `persist=` was removed from the
+/// language (a `persist=`-carrying doc is gated out by E-PERSIST-REMOVED
+/// before compile ever runs). Well-formedness is gate-proven (0.6.0 §2.2:
+/// `E-INTO-*`); anything unresolvable here is skipped, total.
 fn synth_into(choice: &mut Choice, schema: &lute_check::StateView) {
     let find = |k: &str| choice.attrs.iter().find(|a| a.key == k);
     let Some(AttrValue::Str(into_path)) = find("into").map(|a| &a.value) else {
@@ -1430,18 +1431,17 @@ fn synth_into(choice: &mut Choice, schema: &lute_check::StateView) {
     });
     let cel = into_value_cel(&decl.ty, value.as_deref());
     let span = find("into").map(|a| a.span).unwrap_or(choice.span);
-    push_set(choice, into_path, cel, span);
-}
-
-fn push_set(choice: &mut Choice, path: String, cel: String, span: Span) {
-    choice.body.push(Node::Set(Set {
-        path,
-        path_span: span,
-        op: "=".to_string(),
-        expr: CelSlot::raw(CelKind::SetExpr, cel, span),
-        span,
-        when: None,
-    }));
+    choice.body.insert(
+        0,
+        Node::Set(Set {
+            path: into_path,
+            path_span: span,
+            op: "=".to_string(),
+            expr: CelSlot::raw(CelKind::SetExpr, cel, span),
+            span,
+            when: None,
+        }),
+    );
 }
 
 /// dsl §11.1.1 rule 4: bool target's value is optional (defaults `true`);
@@ -1623,7 +1623,7 @@ components: [greet.component.lute]
     }
 
     #[test]
-    fn into_synthesizes_trailing_set_nodes() {
+    fn into_synthesizes_leading_set_nodes() {
         let src = r#"---
 kind: scene
 character: elena
@@ -1687,20 +1687,22 @@ episode: 1
         let Node::Branch(b) = &doc.sections[0].body[0] else {
             panic!("branch")
         };
-        let last_set = |i: usize| -> (&str, &str, &str) {
-            let Some(Node::Set(s)) = b.choices[i].body.last() else {
-                panic!("choice {i} ends in a synthesized Set");
+        // 0.49.0 §5.1: the record is the arm's FIRST node, ahead of the body.
+        let first_set = |i: usize| -> (&str, &str, &str) {
+            let Some(Node::Set(s)) = b.choices[i].body.first() else {
+                panic!("choice {i} starts with a synthesized Set");
             };
             (s.path.as_str(), s.op.as_str(), s.expr.raw.as_str())
         };
         // bool target, no value => `= true` (dsl §11.1.1 rule 4).
-        assert_eq!(last_set(0), ("run.metHelpfully", "=", "true"));
+        assert_eq!(first_set(0), ("run.metHelpfully", "=", "true"));
         // enum target => quoted CEL string literal.
-        assert_eq!(last_set(1), ("run.outcome", "=", "'warm'"));
+        assert_eq!(first_set(1), ("run.outcome", "=", "'warm'"));
         // number target => bare numeric literal.
-        assert_eq!(last_set(2), ("run.tip", "=", "5"));
-        // The authored line plus exactly one synthesized Set per persisting choice.
+        assert_eq!(first_set(2), ("run.tip", "=", "5"));
+        // Exactly one synthesized Set per recording choice, then the authored line.
         assert_eq!(b.choices[0].body.len(), 2);
+        assert!(matches!(b.choices[0].body[1], Node::Line(_)));
     }
 
     fn tag_of(n: &Node) -> String {

@@ -44,7 +44,9 @@ pub fn check_rule_guards(vocab: &RelVocab, ctx: &Ctx<'_>) -> Vec<Diagnostic> {
             };
             check_guard_fact_access(&root.expr, rule.span, &mut diags);
             let slot = CelSlot::raw(CelKind::Condition, cel.clone(), rule.span);
-            for use_ in collect_path_uses(&root.expr) {
+            for use_ in
+                crate::cel_paths::collect_path_uses_in(&root.expr, &|p| ctx.env.state.is_family(p))
+            {
                 check_state_path(&use_.path, &slot, ctx, &mut diags);
             }
             check_cel_profile(&root.expr, &slot, &ProfileScope::of(ctx), &mut diags);

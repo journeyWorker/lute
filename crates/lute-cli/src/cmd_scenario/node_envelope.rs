@@ -292,6 +292,7 @@ fn print_scene_envelope(
         &scenario.tainted,
         &single,
         &BTreeSet::new(),
+        &scenario.families,
     );
     outln!(
         out,

@@ -150,12 +150,15 @@ pub(crate) fn check_state_path(
         // dsl 0.5.0 §2.2 "did you mean": suggest the nearest declared path
         // within a small edit distance, advisory text only (no new code).
         if let Some(kind) = ctx.env.rel_vocab.indexed_state.get(path) {
-            // dsl 0.24.0 §3: the family itself is not a value.
+            // dsl 0.24.0 §3: the family itself is not a value. 0.49.0 §5.3:
+            // `'<member>' in <family>` tests one member's presence.
+            let spelled = crate::cel_paths::cel_spelling(path);
             msg = format!(
                 "state path `{path}` is entity-indexed (`per: {kind}`), so read one member: \
                  `{path}.<member>` by name, `{path}[occasion.target]` for the beat's target, \
                  `{path}[@param]` in a component or a beat template header, or `{path}[X]` \
-                 with a rule variable inside a rule `cel()` guard"
+                 with a rule variable inside a rule `cel()` guard, or `'<member>' in {spelled}` \
+                 to test whether a member is set"
             );
         } else if let Some(field) = path
             .strip_prefix(lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD)

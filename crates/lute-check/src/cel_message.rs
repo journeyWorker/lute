@@ -314,12 +314,67 @@ pub fn translate_cel_parse(
     } else {
         None
     };
+    // 0.49.0 §5.3 (#180): `has(<family>["<m>"])` — `has()` takes a field
+    // select, and a member that is not an identifier is tested with `in`.
+    let hint = scan_has_index(raw, &mask)
+        .map(|(family, member)| {
+            format!(
+                " — `has()` takes a field; for a member that is not an identifier write \
+                 `'{member}' in {family}`"
+            )
+        })
+        .unwrap_or_default();
     Translation {
         code: E_CEL_PARSE,
-        message: format!("not a valid condition expression: `{raw}` (dsl 0.4 §8.1)"),
+        message: format!("not a valid condition expression: `{raw}`{hint} (dsl 0.4 §8.1)"),
         fixits: Vec::new(),
         span,
     }
+}
+
+/// The first `has(<path>[<quoted member>])` outside a string literal, as
+/// `(<path>, <member>)`: `has()` over an index, which CEL cannot parse.
+fn scan_has_index<'r>(raw: &'r str, mask: &[bool]) -> Option<(&'r str, &'r str)> {
+    let b = raw.as_bytes();
+    let mut from = 0;
+    while let Some(at) = raw[from..].find("has(").map(|i| from + i) {
+        from = at + 4;
+        if mask[at] || (at > 0 && (is_ident_continue(b[at - 1]) || b[at - 1] == b'.')) {
+            continue;
+        }
+        // The `has(`'s own closing paren.
+        let mut depth = 0usize;
+        let close = (at + 3..b.len()).find(|&j| {
+            if mask[j] {
+                return false;
+            }
+            match b[j] {
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    return depth == 0;
+                }
+                _ => {}
+            }
+            false
+        })?;
+        let arg = raw[at + 4..close].trim();
+        let Some(index) = arg.strip_suffix(']') else {
+            continue;
+        };
+        let Some(open) = index.rfind('[') else {
+            continue;
+        };
+        let (family, quoted) = (index[..open].trim(), index[open + 1..].trim());
+        let member = ['\'', '"']
+            .iter()
+            .find_map(|&q| quoted.strip_prefix(q)?.strip_suffix(q))
+            .filter(|m| !m.is_empty() && !m.contains(['\'', '"']));
+        if let Some(member) = member.filter(|_| !family.is_empty()) {
+            return Some((family, member));
+        }
+    }
+    None
 }
 
 /// The first `holds(`/`count(`/`countDistinct(`/`validAt(` whose pattern

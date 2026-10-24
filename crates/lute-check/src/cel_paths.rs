@@ -232,20 +232,98 @@ pub(crate) fn quest_id_fault(what: &str, id: &str) -> Option<String> {
 
 /// Collect every maximal state-path use in `expr` (recursing into all
 /// sub-expressions: call args, list/map/struct elements, comprehensions).
+/// No path is known to be a `per:` family, so `'m' in p` reads `p`
+/// ([`collect_path_uses_in`]).
 pub fn collect_path_uses(expr: &Expr) -> Vec<PathUse> {
-    let mut walk = Walk::default();
+    collect_path_uses_in(expr, &|_| false)
+}
+
+/// [`collect_path_uses`], where `is_family` says which static paths are
+/// `per:` families: `'<m>' in <family>` (a string literal member) is the
+/// presence guard of `<family>.<m>`, exactly as `has()` of the dotted member
+/// (0.49.0 §5.3), not a read of the family.
+pub fn collect_path_uses_in(expr: &Expr, is_family: &dyn Fn(&str) -> bool) -> Vec<PathUse> {
+    let mut walk = Walk {
+        out: Vec::new(),
+        local: Vec::new(),
+        is_family,
+    };
     walk.expr(expr, true);
     walk.out
 }
 
+/// How a hint writes the canonical dotted `path` in a condition: the root
+/// bare, then each segment after a `.` when it is a CEL identifier, else as
+/// a single-quoted index (`user.stepRank['look-around']`), so the spelling
+/// also fits inside a double-quoted attribute.
+pub(crate) fn cel_spelling(path: &str) -> String {
+    let mut out = String::new();
+    for (i, seg) in path.split('.').enumerate() {
+        if i == 0 {
+            out.push_str(seg);
+        } else if lute_manifest::ident::is_ident(seg) {
+            out.push('.');
+            out.push_str(seg);
+        } else {
+            out.push_str("['");
+            out.push_str(seg);
+            out.push_str("']");
+        }
+    }
+    out
+}
+
+/// The one presence-test spelling every message that names a guard uses
+/// (0.49.0 §5.3), or `None` when no guard can be written for `path`:
+/// - `has(<path>)` / `!has(<path>)` when every segment after the root is a
+///   CEL identifier;
+/// - `'<m>' in <family>` / `!('<m>' in <family>)` when the last segment is
+///   a member of the `per:` family `is_family` names and is not an
+///   identifier;
+/// - `None` for any other path with a non-identifier segment: a message
+///   then names only its `after:` / `default:` remedies.
+pub(crate) fn presence_test(
+    path: &str,
+    negated: bool,
+    is_family: &dyn Fn(&str) -> bool,
+) -> Option<String> {
+    let not = if negated { "!" } else { "" };
+    if path.split('.').skip(1).all(lute_manifest::ident::is_ident) {
+        return Some(format!("{not}has({path})"));
+    }
+    let (family, member) = path.rsplit_once('.')?;
+    if !is_family(family) {
+        return None;
+    }
+    let test = format!("'{member}' in {}", cel_spelling(family));
+    Some(if negated { format!("!({test})") } else { test })
+}
+
+/// `'<m>' in <family>` with `<family>` a static state path `is_family`
+/// accepts and `<m>` a string literal: the member path `<family>.<m>`.
+pub(crate) fn member_test(call: &CallExpr, is_family: &dyn Fn(&str) -> bool) -> Option<String> {
+    if call.target.is_some() || call.func_name != op::IN {
+        return None;
+    }
+    let [key, family] = call.args.as_slice() else {
+        return None;
+    };
+    let Expr::Literal(cel_parser::reference::Val::String(member)) = &key.expr else {
+        return None;
+    };
+    let family = select_path(&family.expr).filter(|p| is_state_path(p) && is_family(p))?;
+    Some(format!("{family}.{member}"))
+}
+
 /// The path-use walk: `local` is the stack of paths the enclosing
-/// short-circuits prove at the current position ([`PathUse::local`]).
-#[derive(Default)]
-struct Walk {
+/// short-circuits prove at the current position ([`PathUse::local`]);
+/// `is_family` names the `per:` families ([`collect_path_uses_in`]).
+struct Walk<'f> {
     out: Vec<PathUse>,
     local: Vec<String>,
+    is_family: &'f dyn Fn(&str) -> bool,
 }
-impl Walk {
+impl Walk<'_> {
     fn push(&mut self, path: String, role: PathRole) {
         if is_state_path(&path) {
             let local = if role == PathRole::Read {
@@ -290,7 +368,7 @@ impl Walk {
                 }
             }
             Expr::Call(call) => {
-                if let Some(path) = is_set_arg(call) {
+                if let Some(path) = is_set_arg(call).or_else(|| member_test(call, self.is_family)) {
                     let role = if dominating {
                         PathRole::Guard
                     } else {
@@ -303,18 +381,24 @@ impl Walk {
                     match (call.func_name.as_str(), call.args.as_slice()) {
                         (op::LOGICAL_AND, [a, b]) => {
                             self.expr(&a.expr, dominating);
-                            self.under(&b.expr, dominating, proved_if(&a.expr, true));
+                            let proved = proved_if(&a.expr, true, self.is_family);
+                            self.under(&b.expr, dominating, proved);
                             return;
                         }
                         (op::LOGICAL_OR, [a, b]) => {
                             self.expr(&a.expr, false);
-                            self.under(&b.expr, false, proved_if(&a.expr, false));
+                            let proved = proved_if(&a.expr, false, self.is_family);
+                            self.under(&b.expr, false, proved);
                             return;
                         }
                         (op::CONDITIONAL, [c, then, other]) => {
                             self.expr(&c.expr, false);
-                            self.under(&then.expr, false, proved_if(&c.expr, true));
-                            self.under(&other.expr, false, proved_if(&c.expr, false));
+                            let (yes, no) = (
+                                proved_if(&c.expr, true, self.is_family),
+                                proved_if(&c.expr, false, self.is_family),
+                            );
+                            self.under(&then.expr, false, yes);
+                            self.under(&other.expr, false, no);
                             return;
                         }
                         _ => {}
@@ -375,27 +459,32 @@ fn is_set_arg(call: &CallExpr) -> Option<String> {
     select_path(&call.args[0].expr).filter(|p| is_state_path(p))
 }
 /// The state paths provably set whenever `expr` evaluates to `outcome`:
-/// `has(p)` proves `p` when true, `!e` flips the outcome, a true `a && b`
-/// (a false `a || b`) proves what either side does, and a false `a && b`
-/// (a true `a || b`) only what both sides do. Anything else proves nothing.
-pub(crate) fn proved_if(expr: &Expr, outcome: bool) -> Vec<String> {
+/// `has(p)` and `'m' in <family>` ([`member_test`], 0.49.0 §5.3) prove `p`
+/// / `<family>.m` when true, `!e` flips the outcome, a true `a && b` (a
+/// false `a || b`) proves what either side does, and a false `a && b` (a
+/// true `a || b`) only what both sides do. Anything else proves nothing.
+pub(crate) fn proved_if(
+    expr: &Expr,
+    outcome: bool,
+    is_family: &dyn Fn(&str) -> bool,
+) -> Vec<String> {
     match expr {
         Expr::Select(sel) if sel.test => match select_path(expr) {
             Some(p) if outcome && is_state_path(&p) => vec![p],
             _ => Vec::new(),
         },
         Expr::Call(call) => {
-            if let Some(p) = is_set_arg(call) {
+            if let Some(p) = is_set_arg(call).or_else(|| member_test(call, is_family)) {
                 return if outcome { vec![p] } else { Vec::new() };
             }
             if call.target.is_some() {
                 return Vec::new();
             }
             let both = |a: &Expr, b: &Expr, o: bool| -> (Vec<String>, Vec<String>) {
-                (proved_if(a, o), proved_if(b, o))
+                (proved_if(a, o, is_family), proved_if(b, o, is_family))
             };
             match (call.func_name.as_str(), call.args.as_slice()) {
-                (op::LOGICAL_NOT, [a]) => proved_if(&a.expr, !outcome),
+                (op::LOGICAL_NOT, [a]) => proved_if(&a.expr, !outcome, is_family),
                 (op::LOGICAL_AND, [a, b]) | (op::LOGICAL_OR, [a, b]) => {
                     let (mut l, r) = both(&a.expr, &b.expr, outcome);
                     // `&&` true / `||` false: every operand took `outcome`.

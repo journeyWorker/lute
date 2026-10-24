@@ -1420,6 +1420,7 @@ fn fold_env_in(
             cast: declared_cast,
             use_lines,
             member_envs,
+            snapshot: Arc::clone(&input.base.snapshot),
         },
         fold_diags,
         state_merge_diags,

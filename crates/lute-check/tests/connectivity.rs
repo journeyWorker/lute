@@ -1429,6 +1429,7 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         &tainted,
         &reads_per_scene,
         &Default::default(),
+        &Default::default(),
     ) {
         out.push((path, diag));
     }

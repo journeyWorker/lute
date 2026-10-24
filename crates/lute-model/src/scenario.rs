@@ -31,6 +31,9 @@ pub struct RootScenario {
     pub unreachable_quests: BTreeSet<String>,
     pub dead_required_objective_quests: BTreeSet<String>,
     pub envelope_d: BTreeSet<String>,
+    /// The root's `per:` family paths: an envelope message's guard spelling
+    /// ([`envelope::check_envelope`]).
+    pub families: BTreeSet<String>,
     pub per_doc: envelope::PerDocEffects,
     /// The relational vocabulary of the root's last document declaring a
     /// relation, shared with that document.
@@ -85,6 +88,7 @@ pub fn assemble_root_scenario(
         }
     }
     let envelope_d = state_union.defaults();
+    let families = state_union.families();
     let mut group_ix = std::collections::HashMap::with_capacity(group_full.len());
     for (i, (p, _, _)) in group_full.iter().enumerate() {
         group_ix.entry(p.as_path()).or_insert(i);
@@ -141,6 +145,7 @@ pub fn assemble_root_scenario(
         unreachable_quests: fp.unreachable_quests,
         dead_required_objective_quests: fp.dead_required_objective_quests,
         envelope_d,
+        families,
         per_doc,
         rel_vocab,
         scene_must: fp.scene_must,

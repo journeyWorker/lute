@@ -1207,7 +1207,15 @@ pub(crate) enum LiteralCmpKind {
     /// DSL's unset sentinel misspelt. `not_equals` distinguishes
     /// `S != 'unset'` (decides true, R2) from `S == 'unset'` (decides false —
     /// a candidate `E-ARM-DEAD` root, §2.3).
-    UnsetSentinel { not_equals: bool },
+    /// `unset_test` is the subject's negated presence test
+    /// ([`crate::cel_paths::presence_test`], 0.49.0 §5.3) and `spelling` the
+    /// subject as a condition writes it — both for a state-path subject;
+    /// `None` (`unset_test`) when no guard can be written.
+    UnsetSentinel {
+        not_equals: bool,
+        unset_test: Option<String>,
+        spelling: Option<String>,
+    },
     /// dsl 0.26.0: a string literal compared (`==`, `!=`, either operand
     /// order, or an `in [...]` element) against a subject whose finite
     /// domain is a set of strings — an enum path, `occasion.target`, a
@@ -1302,9 +1310,14 @@ fn subject_display(expr: &Expr) -> Option<String> {
 /// [`resolve_domain`] R2 uses — to a `resolved`, maybe-unset, FINITE domain;
 /// and `'unset'` is foreign to it (checked with the SAME [`domain_contains`]
 /// R2 uses, so the lint and R2 can never disagree about domain membership).
-/// Returns just the subject's display name — `not_equals`/`id` are attached
-/// by the caller, which already knows the enclosing `Call` node.
-fn unset_sentinel_operand(subject: &Expr, other: &Expr, ctx: &DecideCtx<'_>) -> Option<String> {
+/// Returns the subject's display name and, for a state-path subject, its
+/// canonical path — `not_equals`/`id` are attached by the caller, which
+/// already knows the enclosing `Call` node.
+fn unset_sentinel_operand(
+    subject: &Expr,
+    other: &Expr,
+    ctx: &DecideCtx<'_>,
+) -> Option<(String, Option<String>)> {
     let Expr::Literal(Val::String(s)) = other else {
         return None;
     };
@@ -1318,7 +1331,12 @@ fn unset_sentinel_operand(subject: &Expr, other: &Expr, ctx: &DecideCtx<'_>) -> 
     if domain_contains(&dom, &Constant::Value(Decided::Str(s.clone()))) {
         return None; // in-domain: a legit enum member literally named `unset`
     }
-    Some(subject_display(subject).unwrap_or_else(|| "this subject".to_string()))
+    let path =
+        crate::cel_paths::select_path(subject).filter(|p| crate::cel_paths::is_state_path(p));
+    Some((
+        subject_display(subject).unwrap_or_else(|| "this subject".to_string()),
+        path,
+    ))
 }
 
 /// One operand order of the dsl 0.26.0 foreign-member trigger:
@@ -1371,12 +1389,19 @@ fn collect_literal_cmp(ided: &IdedExpr, ctx: &DecideCtx<'_>, out: &mut Vec<Liter
             if (c.func_name == op::EQUALS || c.func_name == op::NOT_EQUALS) && c.args.len() == 2 {
                 let not_equals = c.func_name == op::NOT_EQUALS;
                 let (a, b) = (&c.args[0].expr, &c.args[1].expr);
-                if let Some(subject) =
+                if let Some((subject, path)) =
                     unset_sentinel_operand(a, b, ctx).or_else(|| unset_sentinel_operand(b, a, ctx))
                 {
+                    let is_family = |p: &str| ctx.schema.is_family(p);
                     out.push(LiteralCmpHit {
                         subject,
-                        kind: LiteralCmpKind::UnsetSentinel { not_equals },
+                        kind: LiteralCmpKind::UnsetSentinel {
+                            not_equals,
+                            unset_test: path
+                                .as_deref()
+                                .and_then(|p| crate::cel_paths::presence_test(p, true, &is_family)),
+                            spelling: path.as_deref().map(crate::cel_paths::cel_spelling),
+                        },
                         id: ided.id,
                         via: None,
                     });

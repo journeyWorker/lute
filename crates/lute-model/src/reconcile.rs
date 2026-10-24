@@ -661,6 +661,7 @@ pub fn reconcile_collected(
         }
         let envelope_d = state_union.defaults();
         let engine_owned = state_union.engine_owned();
+        let families = state_union.families();
         for (key, occurrences) in &key_set {
             let Some((scene_path, _)) = occurrences.first() else {
                 continue;
@@ -746,6 +747,7 @@ pub fn reconcile_collected(
             &tainted,
             &reads_per_scene,
             &engine_owned,
+            &families,
         ) {
             if d.severity == Severity::Error {
                 project_diags.push((path, d));

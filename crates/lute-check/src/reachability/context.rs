@@ -135,6 +135,7 @@ impl Assumption {
             def_types,
             preceded: false,
             components: None,
+            snapshot: None,
             parse_cache: std::rc::Rc::new(
                 std::cell::RefCell::new(std::collections::HashMap::new()),
             ),

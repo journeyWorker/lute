@@ -55,11 +55,14 @@
 //! IDENTICAL fork/join control-flow rules: `available` (writes ∪
 //! `apply_condition` guard-proofs) drives `E-MAYBE-UNSET` exactly as before —
 //! a read guard-proven present by `has(p)` stays accepted even though nothing
-//! wrote `p`. `writes` tracks ONLY `::set`/persist-sugar WRITE targets;
-//! [`check_definite_assignment`] returns `writes`' end-of-document join as the
-//! envelope's guaranteed-write must-set `G` (`crate::envelope::guaranteed`,
-//! dsl §4.3), so a guard proof can never leak into `G` without a matching
-//! write — `G ⊆ possible_writes(P)` holds by construction.
+//! wrote `p`. `writes` tracks ONLY WRITE targets: `::set`, `into=` sugar
+//! and, when the scope carries the snapshot, a blocking bridge call's result
+//! writes (0.49.0 §5.2); [`check_definite_assignment`] returns `writes`'
+//! end-of-document join as the envelope's guaranteed-write must-set `G`
+//! (`crate::envelope::guaranteed`, dsl §4.3), so a guard proof can never leak
+//! into `G` without a matching write. `possible_writes` (`P`) counts no
+//! directive effect, so a scene's `G` also joins its `Possible` side
+//! (`envelope::eval_formula`): `Guaranteed ⊆ Possible` holds per node.
 //!
 //! ## Spans (cel-parser 0.10.1 carry-forward, T3.1/T4.3)
 //! Per-node CEL byte offsets are unavailable, so a read diagnostic falls back to
@@ -94,7 +97,7 @@ use lute_syntax::ast::{
 
 use crate::cel_expand::{expand_cel, DefTable};
 use crate::cel_paths::{
-    collect_path_uses, is_reserved_quest_activated_at, is_reserved_quest_state, is_state_path,
+    collect_path_uses_in, is_reserved_quest_activated_at, is_reserved_quest_state, is_state_path,
     PathRole,
 };
 use lute_manifest::semantics::cel_paths::{
@@ -120,6 +123,12 @@ pub struct Scope<'a> {
     /// is read at the call like the argument it stands for (dsl 0.27.0 §2,
     /// T1-10). `None` outside a full document check.
     pub components: Option<&'a crate::component_import::ComponentSet>,
+    /// The directive declarations a blocking bridge call's result writes are
+    /// read from (0.49.0 §5.2): the folded document's ([`Self::of`]), so
+    /// `check()` and the project recomputation walk alike. `None` in a bare
+    /// scope (`writesOnComplete`'s re-derivation), which sees `::set`/`into=`
+    /// writes only.
+    pub snapshot: Option<&'a lute_manifest::snapshot::CapabilitySnapshot>,
     /// Parsed path uses are immutable for a scope. Share this cache with
     /// `with_schema` scopes so one CEL fragment is parsed once even when the
     /// document is checked through several nested environments.
@@ -146,6 +155,7 @@ impl<'a> Scope<'a> {
             def_types: &folded.env.def_types,
             preceded: folded.typed.after.is_some() || folded.typed.beat.is_some(),
             components: None,
+            snapshot: Some(&*folded.snapshot),
             parse_cache: new_parse_cache(),
         }
     }
@@ -161,6 +171,7 @@ impl<'a> Scope<'a> {
             def_types: &NO_TYPES,
             preceded: false,
             components: None,
+            snapshot: None,
             parse_cache: new_parse_cache(),
         }
     }
@@ -176,6 +187,7 @@ impl<'a> Scope<'a> {
             def_types: self.def_types,
             preceded: self.preceded,
             components: self.components,
+            snapshot: self.snapshot,
             parse_cache: Rc::clone(&self.parse_cache),
         }
     }
@@ -195,8 +207,8 @@ struct Flow {
     /// writes ∪ `apply_condition` guard-proofs — unchanged read-satisfaction
     /// lattice; drives `E-MAYBE-UNSET` exactly as before this change.
     available: Assigned,
-    /// `::set` / `<choice into>` record WRITES only — the envelope guaranteed-
-    /// write must-set (`crate::envelope::guaranteed`).
+    /// `::set` / `<choice into>` record / blocking bridge result WRITES only —
+    /// the envelope guaranteed-write must-set (`crate::envelope::guaranteed`).
     writes: Assigned,
 }
 
@@ -447,6 +459,16 @@ fn walk_nodes(
                     let available = guarded.as_ref().unwrap_or(&flow.available);
                     check_use_arg_reads(d, cx, available, diags, reads);
                 }
+                // 0.49.0 §5.2: an unguarded blocking bridge call's result
+                // writes are applied before the next command, so they are
+                // definite assignments after the call. Under `when=` they
+                // would enter only the discarded fork: nothing to record.
+                if guarded.is_none() {
+                    for path in blocking_result_writes(d, cx) {
+                        flow.available.insert(path.clone());
+                        flow.writes.insert(path);
+                    }
+                }
             }
             Node::On(on) => walk_on(on, cx, flow, diags, reads),
             Node::Objective(o) => walk_objective(o, cx, flow, diags, reads),
@@ -455,6 +477,69 @@ fn walk_nodes(
             // policy is Task 10).
             Node::Assert(_) | Node::Retract(_) => {}
         }
+    }
+}
+
+/// The result paths a **blocking bridge call** `d` writes (0.49.0 §5.2): its
+/// declaration has ≥1 `effects.writes` entry valued `fromBridgeResult`, and
+/// its effective core `wait` is not `false` — the runtime applies the answer
+/// before the next command. Each such write's path is resolved with the
+/// call's attrs (`permissions::resolve_path`); a path whose `fromAttr` the
+/// call leaves out is skipped. Empty for a non-blocking call, for a `wait`
+/// that cannot be decided statically, and without a snapshot. A plugin's own
+/// `sync` attribute is not read: a fire-and-continue call is `wait="false"`.
+fn blocking_result_writes(d: &lute_syntax::ast::Directive, cx: &Scope<'_>) -> Vec<String> {
+    use lute_manifest::schema::WriteValue;
+    let Some(decl) = cx.snapshot.and_then(|snap| snap.directive(&d.tag)) else {
+        return Vec::new();
+    };
+    let Some(effects) = &decl.effects else {
+        return Vec::new();
+    };
+    let results = || {
+        effects
+            .writes
+            .iter()
+            .filter(|w| matches!(w.value, WriteValue::FromBridgeResult { .. }))
+    };
+    if results().next().is_none() || effective_wait(d, decl, cx) != Some(true) {
+        return Vec::new();
+    }
+    results()
+        .filter_map(|w| crate::permissions::resolve_path(&w.scope, &w.path, &d.attrs))
+        .collect()
+}
+
+/// A plugin call's effective core `wait`: the authored value (a flag, or an
+/// `@def` whose body is a bool literal) → the declaration's `wait` default →
+/// `true` (a plugin record has no builtin `wait`, and the runtime blocks on a
+/// result write). `None` when the authored value cannot be decided here.
+fn effective_wait(
+    d: &lute_syntax::ast::Directive,
+    decl: &lute_manifest::schema::DirectiveDecl,
+    cx: &Scope<'_>,
+) -> Option<bool> {
+    if let Some(attr) = d.attrs.iter().find(|a| a.key == "wait") {
+        return match &attr.value {
+            AttrValue::Ref(slot) => {
+                let name = slot.raw.trim().strip_prefix('@')?;
+                match cx.defs.bodies.get(name)?.trim() {
+                    "true" => Some(true),
+                    "false" => Some(false),
+                    _ => None,
+                }
+            }
+            value => value.flag(),
+        };
+    }
+    match decl
+        .attrs
+        .iter()
+        .find(|a| a.name == "wait")
+        .and_then(|a| a.default.as_ref())
+    {
+        Some(lute_manifest::types::Literal::Bool(b)) => Some(*b),
+        _ => Some(true),
     }
 }
 
@@ -612,10 +697,10 @@ fn walk_set(
 /// Well-formedness (declared `run.*` `into`, value policy, …) is
 /// `check_choice_record`'s job (check.rs) — this only recovers the target path
 /// when `into=` is a plain string. `into=` ALONE drives the record now (the
-/// `persist=` attr was removed in 0.6.0). Applied AFTER the arm body walk (by
-/// every caller) so it cannot retroactively satisfy a read of the same path
-/// INSIDE the body; it enters both `available` and `writes` exactly like a
-/// `::set`.
+/// `persist=` attr was removed in 0.6.0). 0.49.0 §5.1: the record is the
+/// arm's FIRST node (`normalize::synth_into`), so every caller applies it
+/// BEFORE walking the arm body: a read of the same path inside the arm is
+/// assigned. It enters both `available` and `writes` exactly like a `::set`.
 fn choice_record_target(choice: &Choice) -> Option<&str> {
     choice
         .attrs
@@ -627,8 +712,8 @@ fn choice_record_target(choice: &Choice) -> Option<&str> {
         })
 }
 
-/// Apply a choice's record-sugar write (if any) to `flow`, AFTER its body has
-/// already been walked by the caller — see [`choice_record_target`].
+/// Apply a choice's record-sugar write (if any) to `flow`, BEFORE the caller
+/// walks its body — see [`choice_record_target`].
 fn apply_choice_record(choice: &Choice, flow: &mut Flow) {
     if let Some(target) = choice_record_target(choice) {
         flow.available.insert(target.to_string());
@@ -667,8 +752,8 @@ fn walk_branch(
         if !branch.id.is_empty() {
             arm.available.insert(record.clone());
         }
-        walk_nodes(&choice.body, cx, &mut arm, diags, reads);
         apply_choice_record(choice, &mut arm);
+        walk_nodes(&choice.body, cx, &mut arm, diags, reads);
         arm_finals.push(arm);
     }
     if has_unconditional && !arm_finals.is_empty() {
@@ -711,8 +796,8 @@ fn walk_hub(
             arm.available
                 .insert(format!("scene.visited.{id}.{}", choice.id));
         }
-        walk_nodes(&choice.body, cx, &mut arm, diags, reads);
         apply_choice_record(choice, &mut arm);
+        walk_nodes(&choice.body, cx, &mut arm, diags, reads);
         // arm (and any record write) discarded — a hub never folds back.
     }
     // dsl 0.28.0 §5: the `<return>` block runs after some non-`exit` arm, so
@@ -1248,14 +1333,14 @@ fn parse_uses_cached(text: &str, cx: &Scope<'_>) -> Vec<crate::cel_paths::PathUs
     if let Some(cached) = cx.parse_cache.borrow().get(text) {
         return cached.clone();
     }
-    let parsed = parse_uses_uncached(text);
+    let parsed = parse_uses_uncached(text, cx.schema);
     cx.parse_cache
         .borrow_mut()
         .insert(text.to_owned(), parsed.clone());
     parsed
 }
 
-fn parse_uses_uncached(text: &str) -> Vec<crate::cel_paths::PathUse> {
+fn parse_uses_uncached(text: &str, schema: &crate::StateView) -> Vec<crate::cel_paths::PathUse> {
     if text.trim().is_empty() {
         return Vec::new();
     }
@@ -1263,7 +1348,7 @@ fn parse_uses_uncached(text: &str) -> Vec<crate::cel_paths::PathUse> {
     match lute_cel::parse_slot(&mut arena, text, 0) {
         Ok(handle) => arena
             .get(handle)
-            .map(|root| collect_path_uses(&root.expr))
+            .map(|root| collect_path_uses_in(&root.expr, &|p| schema.is_family(p)))
             .unwrap_or_default(),
         Err(_) => Vec::new(),
     }
@@ -1298,13 +1383,15 @@ fn proven(path: &str, assigned: &Assigned, local: &[String], schema: &crate::Sta
 /// declared, undefaulted read its own short-circuits do not prove (a
 /// `<match subject="@def">` domain's `unset` case, dsl 0.24.0).
 pub(crate) fn may_read_unset(expr: &cel_parser::ast::Expr, schema: &crate::StateView) -> bool {
-    collect_path_uses(expr).iter().any(|u| {
-        u.role == PathRole::Read
-            && !is_choicelog(&u.path)
-            && is_declared(&u.path, schema)
-            && !has_default(&u.path, schema)
-            && !proven(&u.path, &Assigned::new(), &u.local, schema)
-    })
+    collect_path_uses_in(expr, &|p| schema.is_family(p))
+        .iter()
+        .any(|u| {
+            u.role == PathRole::Read
+                && !is_choicelog(&u.path)
+                && is_declared(&u.path, schema)
+                && !has_default(&u.path, schema)
+                && !proven(&u.path, &Assigned::new(), &u.local, schema)
+        })
 }
 
 /// A path is declared when it exactly matches a `state:` key or is a
@@ -1785,17 +1872,17 @@ mod tests {
     }
 
     #[test]
-    fn record_sugar_does_not_satisfy_a_read_inside_its_own_body() {
-        // The record write is applied AFTER the choice body (mirrors the
-        // engine appending the write on selection) — it must NOT retroactively
-        // satisfy a read of the same path INSIDE that same body.
+    fn record_sugar_satisfies_a_read_inside_its_own_body() {
+        // 0.49.0 §5.1 (#158): the record write is the arm's first node, ahead
+        // of the body (the engine writes it on selection, before the arm
+        // runs), so a read of the same path INSIDE that body is assigned.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\nstate:\n  run.x: { type: int }\n  run.out: { type: int }\n---\n## Shot 1.\n<branch id=\"b\">\n<choice id=\"c1\" text=\"L1\" into=\"run.x\" value=\"1\">\n::set{run.out = run.x}\n</choice>\n</branch>\n";
         let (nodes, schema) = fixture(src);
         let (errs, _assigned, _reads) =
             check_definite_assignment(&nodes, &Scope::bare(&schema), None);
         assert!(
-            errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
-            "a read inside the recording choice's own body must still flag, got {errs:?}"
+            !errs.iter().any(|e| e.code == "E-MAYBE-UNSET"),
+            "a read inside the recording choice's own body is assigned, got {errs:?}"
         );
     }
 

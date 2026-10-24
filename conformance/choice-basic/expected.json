@@ -13,16 +13,16 @@
       "position": "001-0200"
     },
     {
-      "kind": "line",
-      "position": "001-0300",
-      "speaker": "hero",
-      "text": "Left it is."
-    },
-    {
       "kind": "set",
       "path": "run.dir",
-      "position": "001-0400",
+      "position": "001-0300",
       "value": "left"
+    },
+    {
+      "kind": "line",
+      "position": "001-0400",
+      "speaker": "hero",
+      "text": "Left it is."
     },
     {
       "kind": "line",

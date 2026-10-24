@@ -321,7 +321,7 @@ pub struct Resolved {
 /// `scene.choices.*` ∪ plugin-declared slots), and the merged def CEL bodies
 /// (`plugin < imported < inline`, mirroring `def_types`). One source of
 /// truth: `check()` itself consumes this fold.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct FoldedEnv {
     pub typed: crate::meta::TypedMeta,
     pub env: Env,
@@ -360,6 +360,31 @@ pub struct FoldedEnv {
     /// one environment per member list, `occasion.target` typed by that list
     /// alone ([`Self::env_at`]). Empty otherwise — [`Self::env`] is exact.
     pub member_envs: Vec<(Vec<String>, Env)>,
+    /// The capability snapshot the document was checked against: the
+    /// directive declarations a definite-assignment walk reads a blocking
+    /// bridge call's result writes from (0.49.0 §5.2), in `check()` and in
+    /// the project recomputation alike. Shared with the [`CheckInput`]'s
+    /// base, never copied.
+    pub snapshot: std::sync::Arc<lute_manifest::snapshot::CapabilitySnapshot>,
+}
+
+/// Every field but [`FoldedEnv::snapshot`], which is the input's (and would
+/// print the whole capability vocabulary per document).
+impl std::fmt::Debug for FoldedEnv {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FoldedEnv")
+            .field("typed", &self.typed)
+            .field("env", &self.env)
+            .field("def_bodies", &self.def_bodies)
+            .field("host_defs", &self.host_defs)
+            .field("doc_kind", &self.doc_kind)
+            .field("domains", &self.domains)
+            .field("occasions", &self.occasions)
+            .field("cast", &self.cast)
+            .field("use_lines", &self.use_lines)
+            .field("member_envs", &self.member_envs)
+            .finish_non_exhaustive()
+    }
 }
 
 impl FoldedEnv {

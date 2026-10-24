@@ -551,6 +551,15 @@ impl StateView {
             .insert_family(path, family, crate::meta::Precedence::Replace);
     }
 
+    /// Whether `path` is a `per:` family's own path (`user.stepRank` for
+    /// `per: step`): the overlay's family, or the base's unless the overlay
+    /// declares `path` itself.
+    pub fn is_family(&self, path: &str) -> bool {
+        self.overlay.decls.families().contains_key(path)
+            || (!self.overlay.decls.contains_key(path)
+                && self.base.decls.families().contains_key(path))
+    }
+
     /// The declarations directly under `family` (`family.<m>`, no further
     /// dot), in byte order — a `per:` family's members.
     pub fn members_of<'a>(
@@ -739,6 +748,10 @@ pub struct StateUnion<'a> {
     own_defaults: BTreeSet<String>,
     own_engine_owned: BTreeSet<String>,
     bases: Vec<BaseUse<'a>>,
+    /// The overlays' `per:` family paths.
+    own_families: BTreeSet<String>,
+    /// Every distinct shared base added, for its families.
+    family_bases: Vec<&'a StateSchema>,
 }
 
 impl fmt::Debug for StateUnion<'_> {
@@ -778,6 +791,16 @@ impl SummarySet {
 
 impl<'a> StateUnion<'a> {
     pub fn add(&mut self, view: &'a StateView) {
+        self.own_families
+            .extend(view.overlay.decls.families().keys().cloned());
+        let view_base: &'a StateSchema = &view.base;
+        if !self
+            .family_bases
+            .iter()
+            .any(|b| std::ptr::eq(*b, view_base))
+        {
+            self.family_bases.push(view_base);
+        }
         let summary: &'a StateSummary = &view.summary;
         let mut base = if summary.defaults.is_empty()
             && summary.default_families.is_empty()
@@ -843,6 +866,16 @@ impl<'a> StateUnion<'a> {
     /// ∪ of every added view's `owner: engine` paths.
     pub fn engine_owned(&self) -> BTreeSet<String> {
         self.union(&self.own_engine_owned, SummarySet::EngineOwned)
+    }
+
+    /// ∪ of every added view's `per:` family paths ([`StateView::is_family`]),
+    /// each shared base's read once.
+    pub fn families(&self) -> BTreeSet<String> {
+        let mut out = self.own_families.clone();
+        for base in &self.family_bases {
+            out.extend(base.decls.families().keys().cloned());
+        }
+        out
     }
 
     fn union(&self, own: &BTreeSet<String>, set: SummarySet) -> BTreeSet<String> {

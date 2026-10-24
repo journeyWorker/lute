@@ -23,7 +23,7 @@ use lute_cel::CelArena;
 use lute_core_span::{Diagnostic, Span};
 use lute_syntax::ast::{CelKind, CelSlot};
 
-use crate::cel_paths::collect_path_uses;
+use crate::cel_paths::collect_path_uses_in;
 use crate::ctx::ExpectedType;
 use crate::Ctx;
 use lute_manifest::types::Type;
@@ -301,7 +301,7 @@ pub(crate) fn check_parsed_slot(
         }
         return;
     }
-    for use_ in collect_path_uses(expr) {
+    for use_ in collect_path_uses_in(expr, &|p| ctx.env.state.is_family(p)) {
         check_state_path(&use_.path, slot, ctx, diags);
     }
     // Pass 3: the Lute-CEL profile gate (dsl §8.4). A parameterized
@@ -488,7 +488,7 @@ pub(crate) fn abstract_member(message: &str, member: &str) -> String {
 /// Validate every rule guard's CEL (dsl 0.3.0 §7.2/§7.3, 0.3.0 T8): the
 /// firewall (`holds`/`count`/`validAt`/`now` → [`E_DATALOG_GUARD_FACT`], D7)
 /// plus the ordinary closed CEL profile ([`check_cel_profile`]) and
-/// path-declaredness ([`collect_path_uses`] → `E-UNDECLARED`) checks against
+/// path-declaredness ([`collect_path_uses_in`] → `E-UNDECLARED`) checks against
 /// the folded schema — all three passes run unconditionally over the SAME
 /// parse, so more than one may fire for a single guard (matching
 /// `check_cel_slot`'s own independent-pass discipline). Implemented here (not

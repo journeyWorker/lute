@@ -198,19 +198,24 @@ fn synth_is_expr(is_raw: &str, subject: Option<&ExprNode>, subject_is_double: bo
         let node = match class {
             IsLiteral::Bool(b) => subject_eq(subject, LitVal::Bool(b)),
             IsLiteral::Unset => match subject {
-                // 0.21.1 T1-1: `quest.<id>.state` is always assigned — the
-                // engine stores the MEMBER `"unset"` before activation — so
-                // `unset` there is `<subject> == "unset"`; `!has` would
-                // never hold.
-                Some(ExprNode::Path { path }) if is_quest_state_path(path) => {
-                    subject_eq(subject, LitVal::Str("unset".to_string()))
-                }
-                // `unset` → `!has(<subject-path>)`; requires a bare path.
-                Some(ExprNode::Path { path }) => Some(ExprNode::Unary {
-                    op: "!",
-                    l: Box::new(ExprNode::Has { has: path.clone() }),
-                }),
-                _ => return IsSynth::Unlowerable,
+                // `unset` → `!has(<subject-path>)`; requires a static path —
+                // a bare one, or a quoted member index (`user.stepRank
+                // ['look-around']`, 0.49.0 §5.3), the canonical dotted path.
+                Some(node) => match static_path(node) {
+                    // 0.21.1 T1-1: `quest.<id>.state` is always assigned —
+                    // the engine stores the MEMBER `"unset"` before
+                    // activation — so `unset` there is `<subject> ==
+                    // "unset"`; `!has` would never hold.
+                    Some(path) if is_quest_state_path(&path) => {
+                        subject_eq(subject, LitVal::Str("unset".to_string()))
+                    }
+                    Some(path) => Some(ExprNode::Unary {
+                        op: "!",
+                        l: Box::new(ExprNode::Has { has: path }),
+                    }),
+                    None => return IsSynth::Unlowerable,
+                },
+                None => return IsSynth::Unlowerable,
             },
             IsLiteral::Num(n) => subject_eq(subject, pattern_num(n, subject_is_double)),
             IsLiteral::Range(range) => subject_in_range(subject, range, subject_is_double),
@@ -234,6 +239,21 @@ fn synth_is_expr(is_raw: &str, subject: Option<&ExprNode>, subject_is_double: bo
         r: Box::new(n),
     });
     IsSynth::Expr(Some(folded))
+}
+
+/// The canonical dotted path a lowered subject names: a path, or a string
+/// literal index of one (`run.visits["lab-b2"]` is `run.visits.lab-b2`).
+fn static_path(node: &ExprNode) -> Option<String> {
+    match node {
+        ExprNode::Path { path } => Some(path.clone()),
+        ExprNode::Index { index, key } => match key.as_ref() {
+            ExprNode::Lit {
+                lit: LitVal::Str(member),
+            } => Some(format!("{}.{member}", static_path(index)?)),
+            _ => None,
+        },
+        _ => None,
+    }
 }
 
 /// `quest.<id>.state` exactly (a non-empty id; `quest.<id>.objectives.…` and

@@ -420,6 +420,10 @@ fn eval_formula(f: &PrereqFormula, per_doc: &PerDocEffects, envs: &BTreeMap<Node
             let mut env = envs.get(&target).cloned().unwrap_or_default();
             if let Some((doc_g, doc_p)) = per_doc.scene.get(key) {
                 env.guaranteed.extend(doc_g.iter().cloned());
+                // A guaranteed write is a possible one: `G` may hold a
+                // blocking bridge result `P` (`possible_writes`) never counts
+                // (0.49.0 §5.2).
+                env.possible.extend(doc_g.iter().cloned());
                 env.possible.extend(doc_p.iter().cloned());
             }
             env
@@ -579,23 +583,39 @@ pub fn quest_envelope(
 /// BY DEFAULT). See [`check_envelope`].
 pub const E_STATE_MAYBE_UNAVAILABLE: &str = "E-STATE-MAYBE-UNAVAILABLE";
 
-fn maybe_unavailable_error(path: &str, span: Span, engine_owned: bool) -> Diagnostic {
+/// `guard` is the read's presence test ([`crate::cel_paths::presence_test`]),
+/// `None` when no guard can be written for the path.
+fn maybe_unavailable_error(
+    path: &str,
+    span: Span,
+    engine_owned: bool,
+    guard: Option<&str>,
+) -> Diagnostic {
     // An `owner: engine` path is written by the engine, never by a scene:
     // no `after:` route can set it (ledger LG28-8).
-    let message = if engine_owned {
-        format!(
+    let message = match (engine_owned, guard) {
+        (true, Some(guard)) => format!(
             "state path `{path}` may be unavailable under your declared routes — it is \
              `owner: engine`, so no scene sets it and the engine may not have written it \
-             before this read; guard the read with `isSet({path})`, or give it a `default:` \
+             before this read; guard the read with `{guard}`, or give it a `default:` \
              in the schema (dsl §4.3)"
-        )
-    } else {
-        format!(
+        ),
+        (true, None) => format!(
+            "state path `{path}` may be unavailable under your declared routes — it is \
+             `owner: engine`, so no scene sets it and the engine may not have written it \
+             before this read; give it a `default:` in the schema (dsl §4.3)"
+        ),
+        (false, Some(guard)) => format!(
             "state path `{path}` may be unavailable under your declared routes — no \
              declared `after` route sets it before this read; add an `after:` naming a \
              scene that sets it (e.g. `after: visited('<scene>')`), or guard the read \
-             with `isSet({path})` (dsl §4.3)"
-        )
+             with `{guard}` (dsl §4.3)"
+        ),
+        (false, None) => format!(
+            "state path `{path}` may be unavailable under your declared routes — no \
+             declared `after` route sets it before this read; add an `after:` naming a \
+             scene that sets it (e.g. `after: visited('<scene>')`) (dsl §4.3)"
+        ),
     };
     Diagnostic {
         code: E_STATE_MAYBE_UNAVAILABLE.to_string(),
@@ -611,15 +631,18 @@ fn maybe_unavailable_error(path: &str, span: Span, engine_owned: bool) -> Diagno
     }
 }
 
-fn maybe_unavailable_warning(path: &str, span: Span) -> Diagnostic {
+/// `guard` as for [`maybe_unavailable_error`].
+fn maybe_unavailable_warning(path: &str, span: Span, guard: Option<&str>) -> Diagnostic {
+    let guard = guard
+        .map(|guard| format!(", or guard the read with `{guard}`"))
+        .unwrap_or_default();
     Diagnostic {
         code: E_STATE_MAYBE_UNAVAILABLE.to_string(),
         severity: Severity::Warning,
         message: format!(
             "state path `{path}` is set under your declared routes on SOME routes \
              reaching this node, but not every one — not yet guaranteed; order this scene \
-             `after:` a scene every route passes that sets it, or guard the read with \
-             `isSet({path})` (dsl §4.3)"
+             `after:` a scene every route passes that sets it{guard} (dsl §4.3)"
         ),
         evidence: None,
         span,
@@ -688,7 +711,9 @@ fn maybe_unavailable_warning(path: &str, span: Span) -> Diagnostic {
 /// `engine_owned` names the `owner: engine` paths: no scene route can set
 /// one, so its error advises a guard or a schema `default:` instead of an
 /// `after:`. `envs` are [`propagate`]'s route parts and `d` the entry floor
-/// every node's envelope also holds.
+/// every node's envelope also holds. `families` are the project's `per:`
+/// family paths: the guard a message names is
+/// [`crate::cel_paths::presence_test`]'s (0.49.0 §5.3).
 pub fn check_envelope(
     g: &ConnGraph,
     envs: &BTreeMap<NodeId, Env>,
@@ -696,7 +721,9 @@ pub fn check_envelope(
     tainted: &BTreeSet<NodeId>,
     reads_per_scene: &BTreeMap<String, Vec<(String, Span)>>,
     engine_owned: &BTreeSet<String>,
+    families: &BTreeSet<String>,
 ) -> Vec<(PathBuf, Diagnostic)> {
+    let is_family = |p: &str| families.contains(p);
     let mut out = Vec::new();
     for (key, reads) in reads_per_scene {
         let id = NodeId::Scene(key.clone());
@@ -710,10 +737,11 @@ pub fn check_envelope(
             if !in_envelope_scope(path) || env.guaranteed.contains(path) || d.contains(path) {
                 continue;
             }
+            let guard = crate::cel_paths::presence_test(path, false, &is_family);
             let diag = if env.possible.contains(path) {
-                maybe_unavailable_warning(path, *span)
+                maybe_unavailable_warning(path, *span, guard.as_deref())
             } else {
-                maybe_unavailable_error(path, *span, engine_owned.contains(path))
+                maybe_unavailable_error(path, *span, engine_owned.contains(path), guard.as_deref())
             };
             out.push((info.path.clone(), diag));
         }
