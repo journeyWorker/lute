@@ -2,7 +2,7 @@
   "kind": "scene",
   "lute": "0.50.0",
   "irVersion": "0.50.0",
-  "capabilitySnapshot": "65c68bcdbade1e659c7c657ead3d8158234a5d0686587fe2fac6237468eb15da",
+  "capabilitySnapshot": "9a068c1d89a55fc091fca3acdf81a032a5670e89bae912bfff8f7764473973cd",
   "requiredSemantics": [
     "lute.core/1",
     "lute.occasions.selection/1",

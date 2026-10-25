@@ -351,6 +351,10 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let mut scope = crate::defassign::Scope::of(&folded);
     // dsl 0.27.0 §2 (T1-10): a `::use` reads its omitted params' `@def` defaults.
     scope.components = Some(&input.components);
+    // dsl 0.12.0 / 0.51.0 §3.2: the whole-document label pass, once: its
+    // diagnostics are reported with the other whole-document passes below,
+    // and its `LoopTable` is handed to the flow walks of this document.
+    let labels = crate::next_labels::check_next_labels(&doc);
     let mut walker = Walker {
         snapshot: input.snapshot(),
         providers: input.providers(),
@@ -944,10 +948,11 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // (E-ATTR-DEF-DYNAMIC) and a `{{@def}}` must inline into one standalone
     // expression (E-INTERP-DEF) — the artifact has no defs table.
     diags.extend(crate::def_inline::check_def_inlining(&doc, &folded, input));
-    // dsl 0.12.0: forward-jump labels — E-LABEL-DUP / E-JUMP-UNDEFINED /
-    // E-JUMP-BACKWARD, a whole-document pass (the label namespace spans
-    // every shot/quest, unlike reachability's per-body scope above).
-    diags.extend(crate::next_labels::check_next_labels(&doc));
+    // dsl 0.12.0 / 0.51.0: jump labels and loops — E-LABEL-DUP /
+    // E-JUMP-UNDEFINED / E-JUMP-BACKWARD and the bounded-jump rules, a
+    // whole-document pass (the label namespace spans every shot/quest, unlike
+    // reachability's per-body scope above).
+    diags.extend(labels.diagnostics);
     // dsl 0.18.0 §3: W-WHEN-TEST-LITERAL — a `<when test>` that only compares
     // `$` to literals, with its `is=` rewrite as a `migrate` fixit (the same
     // edit `lute fix` applies). Whole-document, every doc kind (components

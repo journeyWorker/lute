@@ -653,7 +653,8 @@ pub const LANGUAGE_DIRECTIVES: &[LanguageDirective] = &[
     LanguageDirective {
         name: lute_manifest::core::JUMP_DIRECTIVE,
         syntax: None,
-        meaning: "jump forward to the `::label` named by `to` (only while `when` holds)",
+        meaning: "jump to the `::label` named by `to` — forward, or back to an earlier label at \
+                  most `max` times (only while `when` holds)",
     },
     LanguageDirective {
         name: lute_manifest::core::LABEL_DIRECTIVE,

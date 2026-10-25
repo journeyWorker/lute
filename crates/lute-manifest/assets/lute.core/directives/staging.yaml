@@ -84,4 +84,5 @@ directives:
     attrs:
       - { name: to, required: true, type: string }
       - { name: when, required: false, type: string }
+      - { name: max, required: false, type: int }
     lower: { kind: builtin, name: jump }

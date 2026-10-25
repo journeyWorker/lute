@@ -806,9 +806,33 @@ Spec: [dsl 0.37.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-JUMP-BACKWARD
 
-A `::jump{to}` names a label that is not forward of the `::jump` in document order — jumps must go forward only.
+A `::jump{to}` without `max` names a label that is not forward of the `::jump` in document order. A jump goes forward unless it carries `max`: `::jump{to="again" max="3"}` jumps back at most 3 times; to offer choices again, use a `<hub>`.
 
-Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
+Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md), [dsl 0.51.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+
+### E-JUMP-INTO-LOOP
+
+A forward `::jump` from outside a loop (a `::label` and a later `::jump{to max}` back to it) lands on a label inside the loop after its head; a loop is entered only at its head label.
+
+Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+
+### E-JUMP-LOOP-CROSS
+
+Two loops overlap without nesting: the later loop's head label lies inside the earlier loop, after its head, but the later loop ends after the earlier one. Loops nest or stay apart; close the inner loop before the outer one jumps back.
+
+Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+
+### E-JUMP-LOOP-SCOPE
+
+A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section. A loop also may not span an `<on>` or `<objective>` at a quest's top level, because each runs on its own.
+
+Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+
+### E-JUMP-MAX
+
+The `max` of a `::jump` is not a literal integer from 1 to 99 (a loop bound is static, so an `@ref` is refused too), or it sits on a forward jump, where it means nothing. A value that is not an integer at all is `E-ATTR-TYPE`.
+
+Spec: [dsl 0.51.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-JUMP-UNDEFINED
 
@@ -1988,9 +2012,9 @@ Spec: [dsl 0.8.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals
 
 ### W-CODE-AFTER-JUMP
 
-Content follows an unguarded `::jump` directive in the same straight-line body, but the jump leaves that body so nothing after it can run.
+Content follows an unguarded `::jump` directive without `max` in the same straight-line body, but the jump leaves that body so nothing after it can run. A bounded `::jump{to max}` does not end the body: once its takes are used up, control falls through to what follows.
 
-Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
+Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md), [dsl 0.51.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### W-COMPONENT-INSTANCE-UNTAGGED
 

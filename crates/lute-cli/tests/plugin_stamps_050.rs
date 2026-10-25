@@ -150,8 +150,10 @@ fn a_required_stamp_without_on_fails_to_load() {
 }
 
 /// 0.50.0 §3.3, §14: a manifest without `on:` keeps its 0.49
-/// `capabilitySnapshot`. The value is the one `lute` 0.49.1 compiles the
-/// `plugin-stamps-049` fixture to.
+/// `capabilitySnapshot`: `lute` 0.49.1 and 0.50.0 both compile the
+/// `plugin-stamps-049` fixture to `aa317768…`. dsl 0.51.0 §3.1 moved the
+/// core once (the core `::jump` declares `max`, §13 class 4), which moves
+/// every project's hash, this one included, to the value below.
 #[test]
 fn a_manifest_without_on_keeps_its_0_49_capability_snapshot() {
     let project = fixture("plugin-stamps-049");
@@ -166,7 +168,7 @@ fn a_manifest_without_on_keeps_its_0_49_capability_snapshot() {
     let ir: Json = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(
         ir["capabilitySnapshot"],
-        "aa317768ce8848b06201e13b5584300cb0f4db58be411b5b3af26af1141c9b97"
+        "032912f4abf26f42b719e8ad1a58e73ca30695e60f92407eb9e2994b6e69a382"
     );
 }
 

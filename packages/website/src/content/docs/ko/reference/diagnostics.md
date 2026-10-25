@@ -806,9 +806,33 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-JUMP-BACKWARD
 
-`::jump{to}`가 문서 순서상 자신보다 앞서거나 같은 위치의 레이블을 가리킵니다 — 점프는 항상 앞으로만 가능합니다.
+`max`가 없는 `::jump{to}`가 문서 순서상 자신보다 앞서거나 같은 위치의 레이블을 가리킵니다. 점프는 `max`를 지니지 않는 한 앞으로만 갑니다: `::jump{to="again" max="3"}`은 최대 3번까지 되돌아갑니다. 선택지를 다시 보여 주려면 `<hub>`를 쓰세요.
 
-명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
+명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md), [dsl 0.51.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+
+### E-JUMP-INTO-LOOP
+
+루프(`::label`과 그 뒤에서 그 레이블로 되돌아가는 `::jump{to max}`) 밖의 앞으로 가는 `::jump`가 루프 안, 머리 레이블보다 뒤의 레이블에 도착합니다. 루프에는 머리 레이블로만 들어갈 수 있습니다.
+
+명세: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+
+### E-JUMP-LOOP-CROSS
+
+두 루프가 중첩되지 않고 겹칩니다. 뒤 루프의 머리 레이블이 앞 루프 안(머리보다 뒤)에 있는데, 뒤 루프는 앞 루프보다 늦게 끝납니다. 루프는 중첩되거나 서로 떨어져 있어야 합니다. 바깥 루프가 되돌아가기 전에 안쪽 루프를 닫으세요.
+
+명세: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+
+### E-JUMP-LOOP-SCOPE
+
+`max`가 있는 `::jump{to max}`가 자신이 실행되는 본문 밖의 레이블로 되돌아갑니다. 루프는 `<branch>`의 `<choice>` 본문과 `<match>` 갈래만 지날 수 있고, `<hub>` 선택지나 `<return>` 본문, `<on>`·`<objective>` 본문, 퀘스트, 엔트리, 비트, 섹션을 벗어날 수 없습니다. 또 퀘스트 최상위의 `<on>`이나 `<objective>`를 가로지를 수도 없습니다. 각각 따로 실행되기 때문입니다.
+
+명세: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+
+### E-JUMP-MAX
+
+`::jump`의 `max`가 1부터 99까지의 정수 리터럴이 아니거나(루프 한도는 정적이므로 `@ref`도 거부됩니다), 의미가 없는 앞으로 가는 점프에 붙어 있습니다. 정수가 아닌 값은 `E-ATTR-TYPE`입니다.
+
+명세: [dsl 0.51.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-JUMP-UNDEFINED
 
@@ -1986,9 +2010,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-CODE-AFTER-JUMP
 
-같은 직선 흐름의 본문 안에서 조건 없는 `::jump` 지시어 뒤에 콘텐츠가 이어지지만, 그 점프가 본문을 벗어나므로 이후 내용은 실행될 수 없습니다.
+같은 직선 흐름의 본문 안에서 `max`가 없는 조건 없는 `::jump` 지시어 뒤에 콘텐츠가 이어지지만, 그 점프가 본문을 벗어나므로 이후 내용은 실행될 수 없습니다. `max`가 있는 `::jump{to max}`는 본문을 끝내지 않습니다. 횟수를 다 쓰면 다음 내용으로 이어집니다.
 
-명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md)
+명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md), [dsl 0.51.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### W-COMPONENT-INSTANCE-UNTAGGED
 
