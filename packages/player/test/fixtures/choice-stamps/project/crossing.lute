@@ -1,0 +1,27 @@
+---
+kind: scene
+id: crossing
+title: Crossing
+on: visit
+once: false
+---
+
+## Crossing
+
+<branch id="route" prompt="Which way?" menuType="timed" cue="b1">
+  <choice id="left" text="Left" cue="c1" weight=2>
+    @narrator{code="0010"}: Left it is.
+  </choice>
+  <choice id="right" text="Right">
+    @narrator{code="0020"}: Right it is.
+  </choice>
+</branch>
+<hub id="stalls" prompt="Which stall?">
+  <choice id="fish" text="The fish stall">
+    @narrator{code="0030"}: Fresh mackerel.
+  </choice>
+  <choice id="leave" text="Leave" exit>
+    @narrator{code="0040"}: You walk on.
+  </choice>
+</hub>
+::set{run.over = true}
