@@ -361,7 +361,7 @@
           },
           "target": {
             "type": "string",
-            "pattern": "^(@[A-Za-z_][A-Za-z0-9_]*|[A-Za-z0-9_][A-Za-z0-9_-]*(\\.[A-Za-z0-9_][A-Za-z0-9_-]*)*)$"
+            "description": "`@<attr>` or a dotted target, trimmed and validated by the loader (`RaiseTargetDecl`)."
           }
         }
       }

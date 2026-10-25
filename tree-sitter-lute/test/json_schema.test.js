@@ -365,6 +365,21 @@ enums:
     expect(ok, JSON.stringify(errors)).toBe(true);
   });
 
+  // 0.51.0 §4.1: the loader trims a raise target (`RaiseTargetDecl`), so
+  // the schema accepts every spelling the loader does.
+  test("plugin raises: directive, reward-kind and occasion files validate", () => {
+    const { ajv, pluginSchema } = loadAjv();
+    for (const yaml of [
+      "directives:\n  - name: playScene\n    attrs:\n      - { name: scene, type: string }\n" +
+        "    effects: { raises: [{ occasion: cutscene, target: \" @scene \" }, { occasion: idle }] }\n",
+      "rewardKinds:\n  SHOW: { effects: { raises: [{ occasion: cutscene, target: \" scene.chapter2 \" }] } }\n",
+      "occasions:\n  cutscene: { target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }\n",
+    ]) {
+      const { ok, errors } = validateAgainst(ajv, pluginSchema.$id, Bun.YAML.parse(yaml));
+      expect(ok, `${yaml}: ${JSON.stringify(errors)}`).toBe(true);
+    }
+  });
+
   test("long form with ONLY `members:` validates (default/exits are #[serde(default)])", () => {
     const { ajv, declSchema, pluginSchema } = loadAjv();
     const doc = Bun.YAML.parse("enums:\n  mood: { members: [calm, tense] }\n");

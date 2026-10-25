@@ -14,8 +14,7 @@
 use std::collections::BTreeMap;
 
 use lute_check::component_effects::{
-    bind_attrs, bind_slot_raw, cel_string_literal, display_args, fold_component_matches,
-    use_args_for,
+    bind_component_body, cel_string_literal, display_args, fold_component_matches, use_args_for,
 };
 use lute_check::occasion_bind::OccasionScopes;
 use lute_check::ComponentSet;
@@ -960,7 +959,7 @@ fn expand_use(
     if !names.is_empty() {
         visit_lines(&mut body, &mut |l| bind_text(l, &names));
     }
-    bind_params(&mut body, &args, &def.params);
+    bind_component_body(&mut body, &args, &def.params, &mut |l| bind_text(l, &args));
     // Nested `::use` in the body expands recursively (acyclic per checker);
     // this expansion is the nested uses' host, so they count from 1 afresh.
     normalize_nodes(
@@ -1019,125 +1018,6 @@ fn expand_use(
     out.append(&mut body);
     out.push(end);
     out
-}
-
-/// Bind `@param` uses to `::use` args. A whole-slot `@param` attr value is
-/// replaced VALUE-LEVEL (a string arg becomes a plain `Str` attr — what a
-/// string-typed attr position needs); a `@param` inside a larger CEL is
-/// substituted textually, typed by the param's declared [`Type`].
-fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &[(String, Type)]) {
-    for node in nodes {
-        match node {
-            Node::Line(l) => {
-                // T11 fix: a component-body gated line's `when=` slot is a
-                // CEL fragment just like any attr — it must see the SAME
-                // `@param` -> arg substitution `l.attrs` gets, or the T11
-                // desugar (and T8's `fold_component_matches`, which runs
-                // right after this on the same bound clone) would fold/
-                // decide against an unbound `@tier`-shaped marker instead
-                // of the caller's actual argument text.
-                if let Some(w) = &mut l.when {
-                    bind_slot_raw(w, args, params);
-                }
-                bind_attrs(&mut l.attrs, args, params);
-                bind_text(l, args);
-            }
-            Node::Directive(d) => {
-                // dsl 0.26.0 §4: a directive's guard is a CEL slot like any.
-                if let Some(w) = &mut d.when {
-                    bind_slot(w, args, params);
-                }
-                bind_attrs(&mut d.attrs, args, params);
-            }
-            Node::Set(s) => {
-                bind_slot(&mut s.expr, args, params);
-                if let Some(w) = &mut s.when {
-                    bind_slot(w, args, params);
-                }
-                lute_check::component_effects::bind_set_path(&mut s.path, args);
-            }
-            Node::Branch(b) => {
-                for c in &mut b.choices {
-                    if let Some(w) = &mut c.when {
-                        bind_slot(w, args, params);
-                    }
-                    bind_attrs(&mut c.attrs, args, params);
-                    bind_params(&mut c.body, args, params);
-                }
-            }
-            Node::Match(m) => {
-                bind_slot(&mut m.subject, args, params);
-                for arm in &mut m.arms {
-                    match arm {
-                        Arm::When { test, body, .. } => {
-                            bind_slot(test, args, params);
-                            bind_params(body, args, params);
-                        }
-                        Arm::Otherwise { body, .. } => bind_params(body, args, params),
-                    }
-                }
-            }
-            Node::Timeline(t) => {
-                for track in &mut t.tracks {
-                    for clip in &mut track.clips {
-                        match &mut clip.node {
-                            ClipNode::Directive(d) => bind_attrs(&mut d.attrs, args, params),
-                            ClipNode::Set(s) => bind_slot(&mut s.expr, args, params),
-                        }
-                    }
-                }
-            }
-            Node::Hub(h) => {
-                for c in &mut h.choices {
-                    if let Some(w) = &mut c.when {
-                        bind_slot(w, args, params);
-                    }
-                    bind_attrs(&mut c.attrs, args, params);
-                    bind_params(&mut c.body, args, params);
-                }
-                if let Some(r) = &mut h.on_return {
-                    bind_params(&mut r.body, args, params);
-                }
-            }
-            Node::On(on) => {
-                if let Some(w) = &mut on.when {
-                    bind_slot(w, args, params);
-                }
-                bind_attrs(&mut on.attrs, args, params);
-                bind_params(&mut on.body, args, params);
-            }
-            Node::Objective(o) => {
-                bind_slot(&mut o.done, args, params);
-                if let Some(w) = &mut o.visible_when {
-                    bind_slot(w, args, params);
-                }
-                for deadline in o.by.iter_mut().chain(o.until.iter_mut()) {
-                    bind_slot(deadline, args, params);
-                }
-                bind_attrs(&mut o.attrs, args, params);
-                bind_params(&mut o.body, args, params);
-            }
-            // dsl 0.24.0 §4: an `effects: true` body's `@param` fact
-            // arguments take their `::use` constants (the checker rejects a
-            // non-constant argument, so a bound build leaves none).
-            Node::Assert(a) => {
-                lute_check::component_effects::bind_fact(&mut a.pattern, args);
-                if let Some(w) = &mut a.when {
-                    bind_slot(w, args, params);
-                }
-            }
-            Node::Retract(r) => {
-                lute_check::component_effects::bind_fact(&mut r.pattern, args);
-                if let Some(w) = &mut r.when {
-                    bind_slot(w, args, params);
-                }
-            }
-        }
-    }
-}
-
-fn bind_slot(slot: &mut CelSlot, args: &BTreeMap<String, AttrValue>, params: &[(String, Type)]) {
-    bind_slot_raw(slot, args, params);
 }
 
 /// dsl §13 / 0.21.1 T1-3: bind a component body line's `{{@param}}`
@@ -1341,7 +1221,7 @@ fn escape_inline_literal(lit: &str) -> String {
 /// the text does; and a `{{@p}}` inside a line attribute string renders as
 /// it would in the text — a speaker param's name, a literal argument
 /// verbatim. Every other attribute position keeps binding the id
-/// ([`bind_params`]).
+/// ([`bind_component_body`]).
 fn bind_line_head(
     l: &mut Line,
     args: &BTreeMap<String, AttrValue>,

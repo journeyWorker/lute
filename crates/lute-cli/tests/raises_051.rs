@@ -22,7 +22,8 @@ const PLUGIN: &str = "id: acme.stage\nversion: 0.1.0\nkind: capability\ndepends:
 const OCCASIONS: &str = "occasions:\n  \
      cutscene: { target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }\n  \
      finale: { target: { prefix: scene, entity: cutsceneId, members: [ending] } }\n  \
-     visit: { target: { prefix: scene, entity: cutsceneId } }\n";
+     visit: { target: { prefix: scene, entity: cutsceneId } }\n  \
+     bell: { target: true }\n";
 
 const DIRECTIVES: &str = concat!(
     "directives:\n",
@@ -50,6 +51,10 @@ const DIRECTIVES: &str = concat!(
     "    effects: { raises: [{ occasion: cutscene, target: scene.lost }] }\n",
     "  - name: showTwo\n",
     "    effects: { raises: [{ occasion: cutscene, target: scene.chapter2 }] }\n",
+    "  - name: ring\n",
+    "    attrs:\n",
+    "      - { name: times, type: int, default: 7 }\n",
+    "    effects: { raises: [{ occasion: bell, target: \"@times\" }] }\n",
 );
 
 const KINDS: &str = "rewardKinds:\n  CUTSCENE: { target: { entity: cutsceneId, required: true }, \
@@ -266,8 +271,8 @@ fn a_component_call_is_judged_at_each_use() {
     assert_eq!(
         check(&dir),
         vec![
-            "scenes/intro.lute:10:1 [E-RAISES-TARGET] `::playScene{scene=@which}` (in component \
-             `stage`, at this `::use`) raises `cutscene` for `scene.chapter3`, but no scene or \
+            "scenes/intro.lute:10:1 [E-RAISES-TARGET] `::playScene{scene=\"chapter3\"}` (in \
+             component `stage`, at this `::use`) raises `cutscene` for `scene.chapter3`, but no scene or \
              beat answers it — did you mean `scene.chapter2`?"
                 .to_string()
         ]
@@ -308,6 +313,65 @@ fn rewards_and_lore_entries_are_judged() {
              raises `cutscene` for `scene.chapter3`, but no scene or beat answers it — did you \
              mean `scene.chapter2`?"
                 .to_string(),
+        ]
+    );
+}
+
+/// Review fix: two documents with a raise at the same offsets are two
+/// sites (the splice dedupe is per document).
+#[test]
+fn equal_layout_documents_each_get_their_diagnostic() {
+    let dir = project(
+        "raises-two-docs",
+        "",
+        "::playScene{scene=\"chapter3\"}\n",
+        &[(
+            "scenes/outro.lute",
+            "---\nkind: scene\nid: outro\n---\n\n## Shot 1.\n\n::playScene{scene=\"chapter3\"}\n",
+        )],
+    );
+    let message = "[E-RAISES-TARGET] `::playScene{scene=\"chapter3\"}` raises `cutscene` for \
+                   `scene.chapter3`, but no scene or beat answers it — did you mean \
+                   `scene.chapter2`?";
+    assert_eq!(
+        check(&dir),
+        vec![
+            format!("scenes/intro.lute:8:20 {message}"),
+            format!("scenes/outro.lute:8:20 {message}"),
+        ]
+    );
+}
+
+/// Review fix: a component's raises come from the body its expansion
+/// builds — a param-scoped `<match>` the arguments decide keeps only the
+/// selected arm.
+#[test]
+fn a_component_raise_in_an_unselected_arm_is_not_counted() {
+    let dir = project(
+        "raises-component-match",
+        "components: [../components/pick.component.lute]\n",
+        "::use{component=\"pick\" which=\"chapter2\"}\n",
+        &[(
+            "components/pick.component.lute",
+            "---\ncomponent: pick\nparams:\n  which: { entity: cutsceneId }\n---\n\n## Shot\n\n\
+             <match subject=\"@which\">\n<when is=\"chapter2\">\n::playScene{scene=\"chapter2\"}\n\
+             </when>\n<otherwise>\n::playScene{scene=\"chapter3\"}\n</otherwise>\n</match>\n",
+        )],
+    );
+    assert_eq!(check(&dir), Vec::<String>::new());
+}
+
+/// Review fix: a non-string `default:` is the target too, spelled as an
+/// authored value (`7`), not an unbound one.
+#[test]
+fn a_typed_default_is_a_static_target() {
+    let dir = project("raises-typed-default", "", "::ring\n", &[]);
+    assert_eq!(
+        check(&dir),
+        vec![
+            "scenes/intro.lute:8:1 [E-RAISES-TARGET] `::ring` raises `bell` for `7` (the \
+             attribute's declared `default:`), but no scene or beat answers it"
+                .to_string()
         ]
     );
 }

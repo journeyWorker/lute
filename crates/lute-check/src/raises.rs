@@ -10,9 +10,10 @@
 //! [`crate::ProjectDoc::reward_kinds`]. The sources are `accept_sources`'
 //! kinds — a scene's shots, a lore bundle beat, a quest's body and each of
 //! its rewards once — plus a lore entry's body (a raise that anchors
-//! nothing); a call inside a component body counts at each `::use`, with the
-//! use's arguments bound, stopping at a `::use` cycle. No synthetic node is
-//! created.
+//! nothing); a call inside a component body counts at each `::use`, in the
+//! body the expansion builds (arguments bound, param-scoped `<match>`es
+//! folded), stopping at a `::use` cycle; a component file itself is no host.
+//! No synthetic node is created.
 //!
 //! A target resolves by one rule (§4.3): the call's authored attribute value
 //! (an `@def` folds to its constant), else the attribute's declared
@@ -23,7 +24,7 @@
 //! answered by no scene or beat; [`RaiseTable::reaches`] is the one answerer
 //! rule every consumer shares.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
@@ -38,7 +39,7 @@ use lute_syntax::ast::{Arm, Attr, AttrValue, ClipNode, Directive, Node, Quest, R
 use crate::beats::{project_beats, ProjectBeat};
 use crate::cel_expand::DefTable;
 use crate::check::FoldedEnv;
-use crate::component_effects::{bind_attrs, use_args_for};
+use crate::component_effects::{bind_component_body, fold_component_matches, use_args_for};
 use crate::connectivity::{bundle_id, scene_key, NodeId};
 use crate::meta::{resolve_doc_kind, DocKind};
 use crate::ProjectDoc;
@@ -133,7 +134,11 @@ impl<'d> RaiseTable<'d> {
                 .reward_kinds
                 .values()
                 .any(|k| k.effects.as_ref().is_some_and(|e| !e.raises.is_empty()));
-            if !directive_raises && !reward_raises {
+            // A component file is no host: its calls count at each `::use`
+            // (as its writes do, `component_effects`).
+            let component = crate::meta::infer_meta_kind_from_shape(&item.doc.meta, true)
+                == Some(crate::meta::MetaKind::Component);
+            if component || (!directive_raises && !reward_raises) {
                 continue;
             }
             let mut walk = Walk {
@@ -174,21 +179,20 @@ struct Walk<'w, 'd> {
     doc: usize,
     folded: &'d FoldedEnv,
     sites: &'w mut Vec<RaiseSite<'d>>,
-    /// `(span, occasion, target, via)` already listed: an effects component's
+    /// `(document, span, occasion, target, via)` already listed: an effects
+    /// component's
     /// state-writing call is spliced into its host at the `::use`
     /// (`component_effects`), and the `::use` walk finds it again.
-    seen: &'w mut BTreeSet<(usize, usize, String, RaiseTarget, RaiseVia)>,
+    seen: &'w mut BTreeSet<(usize, usize, usize, String, RaiseTarget, RaiseVia)>,
 }
 
-/// A call inside a component body: the host `::use` it counts at, the
-/// use's bound arguments and the component's params.
+/// A call inside a (bound, folded) component body: the host `::use` it
+/// counts at and the component whose body holds it.
 struct InComponent<'a> {
     /// The outermost host `::use`: where the call is reported.
     at: Span,
     /// The component whose body holds the call.
     name: &'a str,
-    args: &'a BTreeMap<String, AttrValue>,
-    params: &'a [(String, lute_manifest::types::Type)],
 }
 
 impl<'d> Walk<'_, 'd> {
@@ -262,9 +266,12 @@ impl<'d> Walk<'_, 'd> {
         }
     }
 
-    /// A `::use`: its component's body, with the arguments bound (a nested
-    /// `::use`'s arguments are bound by the outer use's first); a `::use`
-    /// cycle stops the walk (`E-COMPONENT-CYCLE`'s).
+    /// A `::use`: its component's body as the expansion builds it — bound
+    /// to the use's arguments ([`bind_component_body`]) and with every
+    /// param-scoped `<match>` the arguments decide folded
+    /// ([`fold_component_matches`]), so a raise only an unselected arm makes
+    /// is not counted; a nested `::use` is walked from that bound body. A
+    /// `::use` cycle stops the walk (`E-COMPONENT-CYCLE`'s).
     fn use_site(
         &mut self,
         d: &Directive,
@@ -272,17 +279,9 @@ impl<'d> Walk<'_, 'd> {
         within: Option<&InComponent<'_>>,
         stack: &mut Vec<String>,
     ) {
-        let bound = match within {
-            Some(outer) => {
-                let mut bound = d.clone();
-                bind_attrs(&mut bound.attrs, outer.args, outer.params);
-                std::borrow::Cow::Owned(bound)
-            }
-            None => std::borrow::Cow::Borrowed(d),
-        };
         let folded: &'d FoldedEnv = self.folded;
         let components = &folded.components;
-        let Some((name, def)) = bound.attrs.iter().find_map(|a| match (&*a.key, &a.value) {
+        let Some((name, def)) = d.attrs.iter().find_map(|a| match (&*a.key, &a.value) {
             ("component", AttrValue::Str(s)) => components.table.get_key_value(s),
             _ => None,
         }) else {
@@ -291,17 +290,21 @@ impl<'d> Walk<'_, 'd> {
         if stack.contains(name) {
             return;
         }
-        let args = use_args_for(&bound, def);
+        let args = use_args_for(d, def);
+        let mut body: Vec<Node> = def
+            .body
+            .sections
+            .iter()
+            .flat_map(|s| s.body.iter().cloned())
+            .collect();
+        bind_component_body(&mut body, &args, &def.params, &mut |_| {});
+        fold_component_matches(&mut body, &folded.env.state);
         let inner = InComponent {
             at: within.map_or(d.span, |w| w.at),
             name,
-            args: &args,
-            params: &def.params,
         };
         stack.push(name.clone());
-        for shot in &def.body.sections {
-            self.nodes(&shot.body, source, Some(&inner), stack);
-        }
+        self.nodes(&body, source, Some(&inner), stack);
         stack.pop();
     }
 
@@ -319,7 +322,7 @@ impl<'d> Walk<'_, 'd> {
                 continue;
             };
             let (target, origin, value_span, written) =
-                self.directive_target(raise, occasion, decl, &d.attrs, within);
+                self.directive_target(raise, occasion, decl, &d.attrs);
             let shown = match (&written, within) {
                 (Some(attr), None) => format!("`::{}{{{attr}}}`", d.tag),
                 (Some(attr), Some(w)) => format!(
@@ -350,14 +353,14 @@ impl<'d> Walk<'_, 'd> {
     }
 
     /// A directive raise's target (§4.3), with where its value sits and the
-    /// attribute as the call writes it (`scene="chapter2"`).
+    /// attribute as the call writes it (`scene="chapter2"`). A call in a
+    /// component body arrives already bound to its `::use`'s arguments.
     fn directive_target(
         &self,
         raise: &RaiseDecl,
         occasion: &OccasionDecl,
         decl: &DirectiveDecl,
         attrs: &[Attr],
-        within: Option<&InComponent<'_>>,
     ) -> (RaiseTarget, TargetOrigin, Option<Span>, Option<String>) {
         let attr = match &raise.target {
             None => return (RaiseTarget::Untargeted, TargetOrigin::Literal, None, None),
@@ -372,6 +375,9 @@ impl<'d> Walk<'_, 'd> {
             Some(RaiseTargetDecl::Attr(attr)) => attr,
         };
         let Some(written) = attrs.iter().find(|a| &a.key == attr) else {
+            // Review051b F6: any declared `default:` is the value, spelled as
+            // an authored one would be (`7`, `true`, `chapter2`); only no
+            // default leaves the target unbound.
             let default = decl
                 .attrs
                 .iter()
@@ -384,7 +390,13 @@ impl<'d> Walk<'_, 'd> {
                     None,
                     None,
                 ),
-                _ => (RaiseTarget::Unbound, TargetOrigin::Default, None, None),
+                Some(other) => (
+                    static_target(occasion, &lute_manifest::types::lit_str(other)),
+                    TargetOrigin::Default,
+                    None,
+                    None,
+                ),
+                None => (RaiseTarget::Unbound, TargetOrigin::Default, None, None),
             };
         };
         let shown = Some(match &written.value {
@@ -392,17 +404,7 @@ impl<'d> Walk<'_, 'd> {
             AttrValue::Ref(slot) => format!("{attr}={}", slot.raw.trim()),
             AttrValue::BoolTrue => attr.clone(),
         });
-        let mut value = written.value.clone();
-        if let Some(w) = within {
-            let mut one = [Attr {
-                value,
-                ..written.clone()
-            }];
-            bind_attrs(&mut one, w.args, w.params);
-            let [bound] = one;
-            value = bound.value;
-        }
-        let target = match &value {
+        let target = match &written.value {
             AttrValue::Str(v) if v == OCCASION_TARGET => RaiseTarget::Dynamic,
             AttrValue::Str(v) => static_target(occasion, v),
             AttrValue::Ref(slot) => {
@@ -414,7 +416,7 @@ impl<'d> Walk<'_, 'd> {
                 crate::def_inline::constant_attr(&slot.raw, &defs, &folded.env.state)
                     .map_or(RaiseTarget::Unbound, |v| static_target(occasion, &v))
             }
-            AttrValue::BoolTrue => RaiseTarget::Unbound,
+            AttrValue::BoolTrue => static_target(occasion, "true"),
         };
         (
             target,
@@ -495,6 +497,7 @@ impl<'d> Walk<'_, 'd> {
 
     fn push(&mut self, site: RaiseSite<'d>) {
         let key = (
+            site.doc,
             site.span.byte_start,
             site.span.byte_end,
             site.occasion.clone(),
