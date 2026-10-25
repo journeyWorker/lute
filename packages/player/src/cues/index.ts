@@ -152,6 +152,17 @@ export const speakerName = (cast: Cast, role: string, speaker: string): string =
   role === "narration" || speaker === "narrator" ? "" : (cast[speaker] ?? speaker)
 
 /**
+ * An artifact's IR commands: its top-level `commands` array, the only place
+ * the IR schema puts a command (nested bodies are positions, not commands).
+ * Never a recursive search: a `stamps` or plugin `fields` map may carry keys
+ * such as `kind` and `position` (#200).
+ */
+const commandsOf = (artifact: unknown): ReadonlyArray<JsonRecord> => {
+  const commands = field(artifact, "commands")
+  return Array.isArray(commands) ? commands.filter(isRecord) : []
+}
+
+/**
  * Document → position → IR command. A runtime record's `document` is the
  * source document path (`game.lute`), not the artifact file
  * (`game.lute.json`): the index `documents` rows map both the path and the
@@ -163,14 +174,10 @@ const commandIndexFrom = (bundle: Bundle): Map<string, Map<string, JsonRecord>> 
     const artifact = bundle.artifacts[document.artifact]
     if (artifact === undefined) continue
     const commands = new Map<string, JsonRecord>()
-    const visit = (value: unknown): void => {
-      if (isRecord(value)) {
-        const position = positionOf(value)
-        if (position && kindOf(value)) commands.set(position, value)
-        for (const child of Object.values(value)) visit(child)
-      } else if (Array.isArray(value)) for (const child of value) visit(child)
+    for (const command of commandsOf(artifact)) {
+      const position = positionOf(command)
+      if (position && kindOf(command)) commands.set(position, command)
     }
-    visit(artifact)
     result.set(document.path, commands)
     result.set(document.key, commands)
   }
@@ -189,19 +196,21 @@ export interface BundleLocales {
  * A bundle's source locale — the index's `contentLang`, else the
  * `contentLang` of the first artifact (in `index.documents` order) whose meta
  * declares one, else `"en"` — and its compiled locales: the keys of every
- * `texts`/`promptTexts` map in its artifacts.
+ * command's `texts`/`promptTexts` and every choice/hub option's `texts`
+ * (the IR's only translation maps; a `stamps` or `fields` map is never read).
  */
 export const bundleLocales = (bundle: Bundle): BundleLocales => {
   const indexLang = bundle.index.contentLang
   let source = indexLang !== undefined && indexLang.length > 0 ? indexLang : undefined
   const compiled = new Set<string>()
-  const visit = (value: unknown): void => {
-    if (Array.isArray(value)) for (const child of value) visit(child)
-    else if (isRecord(value)) {
-      for (const [key, child] of Object.entries(value)) {
-        if ((key === "texts" || key === "promptTexts") && isRecord(child)) for (const locale of Object.keys(child)) compiled.add(locale)
-        else visit(child)
-      }
+  const addLocales = (translations: unknown): void => {
+    if (isRecord(translations)) for (const locale of Object.keys(translations)) compiled.add(locale)
+  }
+  const visit = (artifact: unknown): void => {
+    for (const command of commandsOf(artifact)) {
+      addLocales(command.texts)
+      addLocales(command.promptTexts)
+      if (Array.isArray(command.options)) for (const option of command.options) addLocales(field(option, "texts"))
     }
   }
   for (const document of bundle.index.documents) {
