@@ -1,7 +1,7 @@
 ---
 kind: quest
 id: bounty
-luteVersion: "0.49.0"
+luteVersion: "0.49.1"
 title: Bounty
 ---
 <quest id="bounty" title="Bounty" tier="run">

@@ -24,10 +24,13 @@ use crate::fact_env::{FactEnv, FactScope};
 use crate::lore::{is_beat_target, is_entry_target, kind_target};
 use lute_ir::{AdvanceSpec, BeatOnce};
 
-use collection::*;
-use diagnostics::*;
-use helpers::*;
-use ordering::*;
+use collection::parse_advances_text;
+use diagnostics::{
+    after_premise, bare_span, describe, interior_base, once_guard, provably_exclusive,
+    reads_only_user, shadowed_on_every_target, tie_warnings, top_key_line,
+};
+use helpers::{beat_diag, TARGET_SHAPE};
+use ordering::{share_groups, well_formed_share, Beat};
 
 pub use collection::{
     advances_from_attr, parse_beat_priority, BeatMeta, BEAT_KEYS, ENTRY_ONCE_VALUES, E_BEAT_ATTR,
@@ -49,5 +52,8 @@ pub(crate) use validation::{
     also_fault, check_beat_target_domains, check_objective_occasions, check_occasion,
     check_occasion_target_scope, occasion_target_scope_message, scene_when_scene_reads,
 };
-pub(crate) use validation::{beat_unreachable_message, scene_beat_name};
-pub use validation::{kind_target_members, occasion_target_members, occasion_target_ok};
+pub(crate) use validation::{beat_unreachable_message, did_you_mean, scene_beat_name};
+pub use validation::{
+    kind_target_members, occasion_target_members, occasion_target_ok, BeatTargetError, KindOutside,
+    OutsideDomain,
+};

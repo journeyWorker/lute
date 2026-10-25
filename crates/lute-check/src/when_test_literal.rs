@@ -114,9 +114,8 @@ fn recognize(expr: &Expr) -> Option<Recognized> {
         }
         "_&&_" => {
             let (x, y) = (bound(a)?, bound(b)?);
-            let (lo, hi) = match (x, y) {
-                (Bound::Lo(lo), Bound::Hi(hi)) | (Bound::Hi(hi), Bound::Lo(lo)) => (lo, hi),
-                _ => return None,
+            let ((Bound::Lo(lo), Bound::Hi(hi)) | (Bound::Hi(hi), Bound::Lo(lo))) = (x, y) else {
+                return None;
             };
             (lo <= hi).then_some(Recognized::Range(NumRange {
                 lo: Some(lo),

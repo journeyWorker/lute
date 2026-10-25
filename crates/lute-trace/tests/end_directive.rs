@@ -44,7 +44,10 @@ fn input_for(text: &str) -> CheckInput {
 
 fn choose(id: &str, cids: &[&str]) -> MockSet {
     let mut choose = BTreeMap::new();
-    choose.insert(id.to_string(), cids.iter().map(|s| s.to_string()).collect());
+    choose.insert(
+        id.to_string(),
+        cids.iter().map(std::string::ToString::to_string).collect(),
+    );
     MockSet {
         choose,
         ..Default::default()

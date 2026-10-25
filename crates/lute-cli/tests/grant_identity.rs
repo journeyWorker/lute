@@ -37,14 +37,20 @@ fn grants<'a>(v: &'a Json, quest: &str) -> Vec<&'a Json> {
     let mut found = Vec::new();
     fn visit<'a>(value: &'a Json, quest: &str, found: &mut Vec<&'a Json>) {
         match value {
-            Json::Array(items) => items.iter().for_each(|item| visit(item, quest, found)),
+            Json::Array(items) => {
+                for item in items {
+                    visit(item, quest, found);
+                }
+            }
             Json::Object(object) => {
                 if object.get("kind") == Some(&Json::String("grant".into()))
                     && object.get("quest") == Some(&Json::String(quest.into()))
                 {
                     found.push(value);
                 }
-                object.values().for_each(|item| visit(item, quest, found));
+                for item in object.values() {
+                    visit(item, quest, found);
+                }
             }
             _ => {}
         }

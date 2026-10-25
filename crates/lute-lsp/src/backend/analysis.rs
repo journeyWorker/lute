@@ -15,7 +15,7 @@ impl Backend {
     /// load/cycle/unresolved-depends/assembly errors) are surfaced too, each as an
     /// Error at the document start — otherwise a scene that is itself clean would
     /// silently validate against a broken project (plugin §11).
-    pub(super) async fn analyze(&self, uri: Uri, snapshot: &DocumentSnapshot) {
+    pub(crate) async fn analyze(&self, uri: Uri, snapshot: &DocumentSnapshot) {
         if self.publish_if_stale(&uri, snapshot.version).await {
             return;
         }

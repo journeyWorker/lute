@@ -28,7 +28,11 @@ pub fn effect_directives(snapshot: &CapabilitySnapshot) -> BTreeMap<String, Dire
     snapshot
         .directives
         .iter()
-        .filter(|(_, d)| d.effects.as_ref().is_some_and(|e| e.has_facts()))
+        .filter(|(_, d)| {
+            d.effects
+                .as_ref()
+                .is_some_and(lute_manifest::schema::DirectiveEffects::has_facts)
+        })
         .map(|(tag, d)| (tag.clone(), d.clone()))
         .collect()
 }
@@ -301,7 +305,7 @@ fn effect_literal_fault(
     ctx: &Ctx<'_>,
 ) -> Option<String> {
     use lute_manifest::schema::{OpBy, WriteValue};
-    use lute_manifest::types::{Literal, Type};
+    use lute_manifest::types::Type;
     let ty = &ctx.env.state.get(path)?.ty;
     let lit = match &write.value {
         WriteValue::Op {
@@ -399,8 +403,16 @@ pub fn for_each_call<'d>(nodes: &'d [Node], f: &mut impl FnMut(&'d Directive)) {
                     for_each_call(body, f);
                 }
             }
-            Node::Branch(b) => b.choices.iter().for_each(|c| for_each_call(&c.body, f)),
-            Node::Hub(h) => h.bodies().for_each(|b| for_each_call(b, f)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    for_each_call(&c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    for_each_call(b, f);
+                }
+            }
             Node::On(o) => for_each_call(&o.body, f),
             Node::Objective(o) => for_each_call(&o.body, f),
             Node::Timeline(t) => {

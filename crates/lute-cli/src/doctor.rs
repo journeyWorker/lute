@@ -819,9 +819,8 @@ fn slot_entry(slot: &str, domain: &Domain) -> String {
 fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     // Directory readability is the sole gating condition. `find_lute_files`
     // surfaces the same walk I/O errors whole-project `check` does.
-    let lute_files = match find_lute_files(dir) {
-        Ok(files) => files,
-        Err(_) => return None,
+    let Ok(lute_files) = find_lute_files(dir) else {
+        return None;
     };
 
     let mut checks = Vec::new();

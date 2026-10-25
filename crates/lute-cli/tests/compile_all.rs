@@ -142,7 +142,7 @@ fn all_writes_every_artifact_and_a_unioned_index() {
     );
 
     let index = read_json(&out.join("project.index.json"));
-    assert_eq!(index["irVersion"], "0.49.0");
+    assert_eq!(index["irVersion"], "0.49.1");
     assert!(
         index["capabilitySnapshot"]
             .as_str()
@@ -255,7 +255,10 @@ fn all_with_a_failing_document_exits_one_and_writes_nothing() {
     assert!(
         written.is_empty(),
         "a failing gate must leave NO partial output: {:?}",
-        written.iter().map(|e| e.path()).collect::<Vec<_>>()
+        written
+            .iter()
+            .map(std::fs::DirEntry::path)
+            .collect::<Vec<_>>()
     );
 }
 

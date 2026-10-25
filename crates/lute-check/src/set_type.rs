@@ -502,7 +502,7 @@ fn op_spelling(func_name: &str) -> Option<&'static str> {
 /// and the same `min_by_key` tie-break `cel_paths::nearest_declared_path` uses
 /// for `E-UNDECLARED`'s did-you-mean, so the two suggestions behave alike.
 fn nearest_member<'m>(got: &str, members: &'m [String]) -> Option<&'m str> {
-    lute_manifest::suggest::nearest(got, members.iter().map(|m| m.as_str()), 2)
+    lute_manifest::suggest::nearest(got, members.iter().map(std::string::String::as_str), 2)
 }
 
 /// The author-facing type name §3.2's table and §3.4's message use. Distinct

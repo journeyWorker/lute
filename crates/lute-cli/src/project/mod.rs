@@ -154,7 +154,10 @@ pub(crate) fn collect_project_docs_in(
 /// fails on them.
 ///
 /// [`project_compile_pass`]: crate::cmd_check_project::project_compile_pass
-#[allow(clippy::type_complexity)]
+#[expect(
+    clippy::type_complexity,
+    reason = "the callers destructure the four-part result by position; it is the tuple `collect_project_inputs_in` returns"
+)]
 pub(crate) fn collect_project_inputs(
     dir: &Path,
     providers: Option<&Path>,
@@ -181,7 +184,10 @@ pub(crate) fn collect_project_inputs(
 }
 
 /// [`collect_project_inputs`] over `memo`'s models.
-#[allow(clippy::type_complexity)]
+#[expect(
+    clippy::type_complexity,
+    reason = "the callers destructure the four-part result by position; an alias would name a tuple that exists only as this return"
+)]
 pub(crate) fn collect_project_inputs_in(
     memo: &lute_model::ModelMemo,
     dir: &Path,
@@ -264,7 +270,6 @@ pub(crate) fn collect_project_inputs_in(
 /// §6 — template beats, the keys `chapters:` derives, the `questTier` default), for
 /// the report surfaces that read documents without checking them (`lute
 /// refs`, `lute lore`). In `files` order, each with its parse diagnostics.
-#[allow(clippy::type_complexity)]
 pub(crate) fn parse_project_docs(
     dir: &Path,
     files: &[PathBuf],

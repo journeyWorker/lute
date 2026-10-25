@@ -606,7 +606,7 @@ fn check_document(
     // declaration map (data-catalog foundation B2) and is checked as one.
     if matches!(
         file.extension().and_then(|e| e.to_str()),
-        Some("yaml") | Some("yml")
+        Some("yaml" | "yml")
     ) {
         return run_check_schema_yaml(file).map(Checked::Done);
     }

@@ -71,7 +71,7 @@ impl Value {
 /// A binding table for the target-row env (`line`, `shot`, `scene`,
 /// `speaker`, `group`, `project`, `options`). Undeclared bindings resolve
 /// to a missing-field error the moment they're read.
-#[derive(Default, Clone)]
+#[derive(Debug, Default, Clone)]
 pub struct Env {
     pub bindings: BTreeMap<String, Value>,
 }
@@ -108,6 +108,15 @@ impl EvalError {
     }
 }
 
+/// The reason alone; the engine adds the row path for `E-LINT-EXPR`.
+impl std::fmt::Display for EvalError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for EvalError {}
+
 /// Evaluate a top-level CEL expression under `env`.
 pub fn eval(expr: &Expr, env: &Env) -> Result<Value, EvalError> {
     match expr {
@@ -136,6 +145,10 @@ pub fn eval(expr: &Expr, env: &Env) -> Result<Value, EvalError> {
     }
 }
 
+#[expect(
+    clippy::cast_possible_wrap,
+    reason = "an authored CEL `uint` literal: one above i64::MAX wraps, as before"
+)]
 fn literal_value(v: &Val) -> Result<Value, EvalError> {
     Ok(match v {
         Val::Null => Value::Null,
@@ -226,9 +239,15 @@ fn eval_call(c: &CallExpr, env: &Env) -> Result<Value, EvalError> {
         ("size", [x]) => {
             let v = eval(&x.expr, env)?;
             match v {
-                Value::Str(s) => Ok(Value::Int(s.chars().count() as i64)),
-                Value::List(l) => Ok(Value::Int(l.len() as i64)),
-                Value::Map(m) => Ok(Value::Int(m.len() as i64)),
+                Value::Str(s) => Ok(Value::Int(
+                    i64::try_from(s.chars().count()).expect("a length is at most isize::MAX"),
+                )),
+                Value::List(l) => Ok(Value::Int(
+                    i64::try_from(l.len()).expect("a length is at most isize::MAX"),
+                )),
+                Value::Map(m) => Ok(Value::Int(
+                    i64::try_from(m.len()).expect("a length is at most isize::MAX"),
+                )),
                 other => Err(EvalError::new(format!(
                     "size() on {} value",
                     other.type_name()
@@ -335,16 +354,27 @@ fn index_value(base: &Value, key: &Value) -> Result<Value, EvalError> {
             .cloned()
             .ok_or_else(|| EvalError::new(format!("missing key `{k}`"))),
         (Value::List(l), Value::Int(n)) => {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "an authored index: on a 32-bit target one past the isize range \
+                          truncates, as before"
+            )]
             let i = *n as isize;
-            if i < 0 || (i as usize) >= l.len() {
-                return Err(EvalError::new(format!(
+            match usize::try_from(i).ok().and_then(|u| l.get(u)) {
+                Some(item) => Ok(item.clone()),
+                None => Err(EvalError::new(format!(
                     "list index {i} out of bounds (size {})",
                     l.len()
-                )));
+                ))),
             }
-            Ok(l[i as usize].clone())
         }
         (Value::List(l), Value::Double(n)) if n.fract() == 0.0 && *n >= 0.0 => {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "a whole non-negative authored index: past the usize range `as` \
+                          saturates, as before"
+            )]
             let i = *n as usize;
             if i >= l.len() {
                 return Err(EvalError::new(format!(
@@ -418,6 +448,10 @@ fn next_char_boundary(bytes: &[u8], i: usize) -> usize {
     (i + width).min(bytes.len())
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a percentage of an authored number: past the i64 range `as` saturates, as before"
+)]
 fn render_path(path: &str, format: Option<&str>, env: &Env) -> String {
     let segments: Vec<&str> = path.split('.').collect();
     if segments.is_empty() {
@@ -533,7 +567,7 @@ mod tests {
     fn missing_field_is_error() {
         let e = scenario_env();
         let ex = parse_when("line.absent > 0");
-        assert!(eval(&ex.expr, &e).is_err());
+        eval(&ex.expr, &e).unwrap_err();
     }
 
     #[test]
@@ -551,7 +585,7 @@ mod tests {
         let ex = parse_when("line.words % 2 == 1");
         assert_eq!(eval(&ex.expr, &e), Ok(Value::Bool(true)));
         // A fractional operand is not an integer remainder (dsl 0.24.0 §1).
-        assert!(eval(&parse_when("line.words % 2.5").expr, &e).is_err());
+        eval(&parse_when("line.words % 2.5").expr, &e).unwrap_err();
     }
 
     #[test]

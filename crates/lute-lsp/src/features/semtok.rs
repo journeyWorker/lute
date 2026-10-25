@@ -356,7 +356,7 @@ fn inline_tokens(nodes: &[InlineNode], src: &str, out: &mut Vec<RawTok>) {
     for node in nodes {
         match node {
             InlineNode::Text { span, .. } => {
-                push(out, span.byte_start, span.byte_end, TokType::Content)
+                push(out, span.byte_start, span.byte_end, TokType::Content);
             }
             InlineNode::Interpolation(i) => interp_tokens(i, src, out),
             InlineNode::Modifier(m) => {
@@ -533,11 +533,14 @@ mod tests {
 
     /// The legend index of a named token type, for readable assertions.
     fn ty(name: &str) -> u32 {
-        legend()
-            .token_types
-            .iter()
-            .position(|t| t.as_str() == name)
-            .unwrap() as u32
+        u32::try_from(
+            legend()
+                .token_types
+                .iter()
+                .position(|t| t.as_str() == name)
+                .unwrap(),
+        )
+        .unwrap()
     }
 
     /// ACCEPTANCE: a `::camera` directive tag carries the STAGING layer.
@@ -559,7 +562,11 @@ mod tests {
             ty("staging"),
             "::camera tag must be the staging layer"
         );
-        assert_eq!(tok.2, "::camera".len() as u32, "token covers `::camera`");
+        assert_eq!(
+            tok.2,
+            u32::try_from("::camera".len()).unwrap(),
+            "token covers `::camera`"
+        );
     }
 
     /// ACCEPTANCE (added): an `@ref` gets the distinct `ref` type and a state path
@@ -577,7 +584,7 @@ mod tests {
             .find(|&&(l, c, _, _)| l == at.line - 1 && c == at.utf16_col)
             .expect("token on @fond");
         assert_eq!(ref_tok.3, ty("ref"), "@fond is a ref");
-        assert_eq!(ref_tok.2, "@fond".len() as u32);
+        assert_eq!(ref_tok.2, u32::try_from("@fond".len()).unwrap());
 
         // `scene.choices.number` (match subject path) → statePath.
         let sp = idx.position(text.find("scene.choices.number").unwrap());
@@ -590,7 +597,10 @@ mod tests {
             ty("statePath"),
             "scene.choices.number is a state path"
         );
-        assert_eq!(path_tok.2, "scene.choices.number".len() as u32);
+        assert_eq!(
+            path_tok.2,
+            u32::try_from("scene.choices.number".len()).unwrap()
+        );
     }
 
     /// S2: the logic layer must tokenize the `<choice>`/`<when>`/`<otherwise>`
@@ -754,7 +764,7 @@ mod tests {
             ty("statePath"),
             "interp path interior is statePath"
         );
-        assert_eq!(path_tok.2, "run.coins".len() as u32);
+        assert_eq!(path_tok.2, u32::try_from("run.coins".len()).unwrap());
 
         // `@fond` inside `{{@fond}}` → ref.
         let r = idx.position(text.find("{{@fond}}").unwrap() + 2);
@@ -763,7 +773,7 @@ mod tests {
             .find(|&&(l, c, _, _)| l == r.line - 1 && c == r.utf16_col)
             .expect("ref sub-token on the {{@fond}} interior");
         assert_eq!(ref_tok.3, ty("ref"), "interp ref interior is ref");
-        assert_eq!(ref_tok.2, "@fond".len() as u32);
+        assert_eq!(ref_tok.2, u32::try_from("@fond".len()).unwrap());
     }
 
     // ---- dsl 0.2.0 §6.3/§4: quest / on / objective keyword tokens ----
@@ -796,7 +806,11 @@ mod tests {
                 .iter()
                 .find(|&&(l, c, _, ty)| l == p.line - 1 && c == p.utf16_col && ty == logic)
                 .unwrap_or_else(|| panic!("no LOGIC token for {needle:?}: {decoded:?}"));
-            assert_eq!(tok.2, kw_len as u32, "{needle:?} keyword length");
+            assert_eq!(
+                tok.2,
+                u32::try_from(kw_len).unwrap(),
+                "{needle:?} keyword length"
+            );
         }
 
         // The `@narrator:` lines inside both bodies still carry CONTENT tokens.
@@ -822,7 +836,7 @@ mod tests {
             .iter()
             .find(|&&(l, c, _, t)| l == p.line - 1 && c == p.utf16_col && t == ty("logic"))
             .unwrap_or_else(|| panic!("no LOGIC token for <beat: {decoded:?}"));
-        assert_eq!(tok.2, "<beat".len() as u32);
+        assert_eq!(tok.2, u32::try_from("<beat".len()).unwrap());
         assert_eq!(
             decoded
                 .iter()
@@ -852,7 +866,7 @@ mod tests {
             let at = text.find(&format!("{tag}{{")).unwrap();
             assert_eq!(
                 token_at(text, at),
-                Some((tag.len() as u32, ty("staging"))),
+                Some((u32::try_from(tag.len()).unwrap(), ty("staging"))),
                 "{tag} is staging"
             );
         }
@@ -860,7 +874,7 @@ mod tests {
             let at = text.find(tag).unwrap();
             assert_eq!(
                 token_at(text, at),
-                Some((tag.len() as u32, ty("logic"))),
+                Some((u32::try_from(tag.len()).unwrap(), ty("logic"))),
                 "{tag} is logic"
             );
         }
@@ -877,23 +891,32 @@ mod tests {
         let open = text.find(":emphasis[").unwrap();
         assert_eq!(
             token_at(text, open),
-            Some((":emphasis[".len() as u32, staging))
+            Some((u32::try_from(":emphasis[".len()).unwrap(), staging))
         );
         let inner = text.find("there").unwrap();
-        assert_eq!(token_at(text, inner), Some(("there".len() as u32, content)));
+        assert_eq!(
+            token_at(text, inner),
+            Some((u32::try_from("there".len()).unwrap(), content))
+        );
         let close = text.find("]{}").unwrap();
-        assert_eq!(token_at(text, close), Some(("]{}".len() as u32, staging)));
+        assert_eq!(
+            token_at(text, close),
+            Some((u32::try_from("]{}".len()).unwrap(), staging))
+        );
         let pause = text.find(":pause").unwrap();
         assert_eq!(
             token_at(text, pause),
-            Some((":pause".len() as u32, staging))
+            Some((u32::try_from(":pause".len()).unwrap(), staging))
         );
         let attrs = text.find("{s=0.5}").unwrap();
         assert_eq!(
             token_at(text, attrs),
-            Some(("{s=0.5}".len() as u32, staging))
+            Some((u32::try_from("{s=0.5}".len()).unwrap(), staging))
         );
         let hi = text.find("Hi ").unwrap();
-        assert_eq!(token_at(text, hi), Some(("Hi ".len() as u32, content)));
+        assert_eq!(
+            token_at(text, hi),
+            Some((u32::try_from("Hi ".len()).unwrap(), content))
+        );
     }
 }

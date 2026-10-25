@@ -200,6 +200,8 @@ impl std::fmt::Display for AssembleError {
     }
 }
 
+impl std::error::Error for AssembleError {}
+
 /// The sentence refusing a plugin declaration `name` that the core owns, for
 /// the reserved-names table's `slot` (core statements, block tags,
 /// lifecycle events, …) and — for a directive — every `lute.core`

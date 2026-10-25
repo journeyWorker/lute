@@ -43,6 +43,7 @@ pub struct ContinuationCompilation {
 }
 
 /// Checked append-only compiler for the last shot of a scene template.
+#[derive(Debug)]
 pub struct ContinuationCompiler {
     input: CheckInput,
     identity: IdentityTemplates,

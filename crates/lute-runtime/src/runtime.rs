@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
 
 mod arc_world {
-    use super::*;
+    use super::{Arc, Deserialize, Serialize};
     pub fn serialize<S: serde::Serializer>(
         v: &Arc<crate::session::World>,
         s: S,
@@ -29,15 +29,15 @@ use crate::driver::{
 };
 use crate::index::Bundle;
 use crate::session::{
-    clock_at, resolve_fact, resolve_state, ExecProject, Pick as SessionPick, PlayHalt, SaveSeed,
-    Session, StepBody, WalkDriver, Walked, World, WorldSeed, Write, Writes,
+    clock_at, resolve_fact, resolve_state, ExecProject, Pick as SessionPick, PlayHalt,
+    ResolveError, SaveSeed, Session, StepBody, WalkDriver, Walked, World, WorldSeed, Write, Writes,
 };
 use crate::Machine;
 
 /// The event contract version outputs and snapshots are stamped with.
-pub const EVENT_VERSION: &str = "0.49.0";
+pub const EVENT_VERSION: &str = "0.49.1";
 /// The execution IR version this runtime executes (major.minor gate).
-pub const IR_VERSION: &str = "0.49.0";
+pub const IR_VERSION: &str = "0.49.1";
 
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -533,6 +533,7 @@ pub(crate) enum Answer {
 }
 
 /// The loaded executable project and its host-facing operations.
+#[derive(Debug)]
 pub struct Runtime {
     project: Arc<ExecProject>,
     /// The bundle's identity (spec 0.38.0 §7.2), what snapshots carry.
@@ -600,7 +601,7 @@ impl Runtime {
             project: self.fingerprint.clone(),
             await_: state.current_await(),
             request: state.request,
-            world: state.world.clone(),
+            world: Arc::clone(&state.world),
             continuation: state.continuation.clone(),
         }
     }
@@ -843,7 +844,7 @@ impl Runtime {
         occasion: &str,
         target: Option<&str>,
     ) -> Vec<crate::session::Candidate> {
-        let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
+        let mut f = ReplayFactory::new(Arc::clone(&self.project), Vec::new());
         let s = Session::resume(&self.project, (*state.world).clone(), &mut f);
         s.candidates(occasion, target)
     }
@@ -853,7 +854,7 @@ impl Runtime {
         beat: &str,
         member: Option<&str>,
     ) -> Option<crate::session::Candidate> {
-        let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
+        let mut f = ReplayFactory::new(Arc::clone(&self.project), Vec::new());
         let s = Session::resume(&self.project, (*state.world).clone(), &mut f);
         s.eligibility(beat, member)
     }
@@ -869,11 +870,11 @@ impl Runtime {
         }
     }
     pub fn terminal(&self, state: &State) -> bool {
-        let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
+        let mut f = ReplayFactory::new(Arc::clone(&self.project), Vec::new());
         Session::resume(&self.project, (*state.world).clone(), &mut f).terminal()
     }
     pub fn view(&self, state: &State, with_facts: bool) -> crate::session::WorldView {
-        let mut f = ReplayFactory::new(self.project.clone(), Vec::new());
+        let mut f = ReplayFactory::new(Arc::clone(&self.project), Vec::new());
         Session::resume(&self.project, (*state.world).clone(), &mut f).view(with_facts)
     }
 
@@ -1042,7 +1043,7 @@ impl Runtime {
         delivered: usize,
         request: u64,
     ) -> Result<(State, Output), Rejected> {
-        let mut factory = ReplayFactory::replaying(self.project.clone(), answers.clone())
+        let mut factory = ReplayFactory::replaying(Arc::clone(&self.project), answers.clone())
             .map_err(|m| reject("E-RUNTIME-INPUT", m))?;
         let (stop, final_world, ended) = {
             let mut session = Session::resume(&self.project, world.clone(), &mut factory);
@@ -1129,23 +1130,23 @@ fn seed_input() -> Input {
         writes: WritesInput::default(),
     }
 }
-fn reject(code: impl Into<String>, message: impl Into<String>) -> Rejected {
+fn reject(code: impl Into<String>, message: impl std::fmt::Display) -> Rejected {
     Rejected {
         code: code.into(),
-        message: message.into(),
+        message: message.to_string(),
     }
 }
 fn set_request(await_: Await, request: u64) -> Await {
     match await_ {
         Await::Choice { menu, .. } => Await::Choice { request, menu },
         Await::Bridge {
-            request: _,
             tag,
             document,
             position,
             attrs,
             stamps,
             results,
+            ..
         } => Await::Bridge {
             request,
             tag,
@@ -1232,21 +1233,82 @@ fn def_args<'d>(
     Ok(bound)
 }
 
+/// Why a host's `writes` (`hostWrite`, `advanceClock`, `newRun`,
+/// `raiseOccasion`, `bridgeResult`) do not resolve against the project.
+/// `Display` is the runtime's `E-RUNTIME-INPUT` message.
+#[derive(Clone, Debug, PartialEq)]
+pub enum HostWriteError {
+    /// A `bridgeResult` writes the clock's `day` / `slot` path.
+    ClockPath { path: String },
+    /// A state `value` that is not a JSON scalar.
+    NotScalar { path: String },
+    /// An `int` path written (`value` or `add`) outside `±2^53`, or a
+    /// fractional `add`; `value` is the number as written.
+    OutOfBound { path: String, value: String },
+    /// A state write without exactly one of `value` / `add`.
+    ValueOrAdd { path: String },
+    /// A state value or fact the project refuses — [`resolve_state`]'s /
+    /// [`resolve_fact`]'s reason, unprefixed.
+    Resolve(ResolveError),
+    /// An `accept` naming no declared quest.
+    UnknownQuest { quest: String },
+}
+
+impl std::fmt::Display for HostWriteError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ClockPath { path } => write!(
+                f,
+                "bridgeResult writes `{path}`, the clock's path — the clock cannot move inside a \
+                 walk; move it with `advanceClock` after the answer"
+            ),
+            Self::NotScalar { path } => write!(f, "state `{path}` must be a scalar"),
+            Self::OutOfBound { path, value } => write!(
+                f,
+                "state `{path}` is an `int`: it takes an integer within ±2^53, not `{value}`"
+            ),
+            Self::ValueOrAdd { path } => write!(
+                f,
+                "state write `{path}` must have exactly one of value or add"
+            ),
+            Self::Resolve(source) => source.fmt(f),
+            Self::UnknownQuest { quest } => write!(f, "unknown quest `{quest}`"),
+        }
+    }
+}
+
+impl std::error::Error for HostWriteError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Resolve(source) => Some(source),
+            Self::ClockPath { .. }
+            | Self::NotScalar { .. }
+            | Self::OutOfBound { .. }
+            | Self::ValueOrAdd { .. }
+            | Self::UnknownQuest { .. } => None,
+        }
+    }
+}
+
+impl From<ResolveError> for HostWriteError {
+    fn from(source: ResolveError) -> Self {
+        Self::Resolve(source)
+    }
+}
+
 /// dsl 0.41.0 §5.3 rule 2: a `bridgeResult`'s `writes`, resolved as
 /// `hostWrite`'s are; a write to the clock's `day` / `slot` path is refused
 /// (the clock cannot move inside a walk).
-pub fn resolve_bridge_writes(p: &ExecProject, raw: &WritesInput) -> Result<Writes, String> {
+pub fn resolve_bridge_writes(p: &ExecProject, raw: &WritesInput) -> Result<Writes, HostWriteError> {
     if let Some(clock) = &p.index.clock {
         if let Some(w) = raw
             .state
             .iter()
             .find(|w| w.path == clock.day || clock.slot.as_deref() == Some(w.path.as_str()))
         {
-            return Err(format!(
-                "bridgeResult writes `{}`, the clock's path — the clock cannot move inside a \
-                 walk; move it with `advanceClock` after the answer",
-                w.path
-            ));
+            return Err(HostWriteError::ClockPath {
+                path: w.path.clone(),
+            });
         }
     }
     resolve_writes(p, raw)
@@ -1266,23 +1328,22 @@ fn scalar_text(v: Option<&Json>) -> Option<String> {
 /// within `±2^53` — the bound every host-passed `int` has ([`def_args`],
 /// [`validate_bridge`]) — so no write is accepted that the walk then cannot
 /// apply.
-fn resolve_writes(p: &ExecProject, raw: &WritesInput) -> Result<Writes, String> {
+fn resolve_writes(p: &ExecProject, raw: &WritesInput) -> Result<Writes, HostWriteError> {
     use crate::expr::INT_BOUND;
     let mut out = Writes::default();
     for w in &raw.state {
-        let out_of_bound = |n: &dyn std::fmt::Display| {
-            format!(
-                "state `{}` is an `int`: it takes an integer within ±2^53, not `{n}`",
-                w.path
-            )
+        let out_of_bound = |n: &dyn std::fmt::Display| HostWriteError::OutOfBound {
+            path: w.path.clone(),
+            value: n.to_string(),
         };
         let write = match (&w.value, w.add) {
             (Some(v), None) => {
                 let value = resolve_state(
                     p,
                     &w.path,
-                    &scalar_text(Some(v))
-                        .ok_or_else(|| format!("state `{}` must be a scalar", w.path))?,
+                    &scalar_text(Some(v)).ok_or_else(|| HostWriteError::NotScalar {
+                        path: w.path.clone(),
+                    })?,
                 )?;
                 if let crate::Value::Int(n) = value {
                     if !(-INT_BOUND..=INT_BOUND).contains(&n) {
@@ -1306,10 +1367,9 @@ fn resolve_writes(p: &ExecProject, raw: &WritesInput) -> Result<Writes, String> 
                 Write::Add(n)
             }
             _ => {
-                return Err(format!(
-                    "state write `{}` must have exactly one of value or add",
-                    w.path
-                ))
+                return Err(HostWriteError::ValueOrAdd {
+                    path: w.path.clone(),
+                })
             }
         };
         out.state.push((w.path.clone(), write));
@@ -1322,7 +1382,7 @@ fn resolve_writes(p: &ExecProject, raw: &WritesInput) -> Result<Writes, String> 
     }
     for q in &raw.accept {
         if !p.quest_objectives.contains_key(q) {
-            return Err(format!("unknown quest `{q}`"));
+            return Err(HostWriteError::UnknownQuest { quest: q.clone() });
         }
         out.accept.push(q.clone());
     }
@@ -1365,7 +1425,9 @@ fn resolve_advance(
                 .map(|weekday| {
                     let week = c.week.as_ref().ok_or("the clock declares no `week:`")?;
                     match week.labels.iter().position(|x| x == weekday) {
-                        Some(i) => Some(i as i64),
+                        Some(i) => {
+                            Some(i64::try_from(i).expect("a position is at most isize::MAX"))
+                        }
                         None => weekday
                             .parse::<i64>()
                             .ok()
@@ -1412,7 +1474,8 @@ fn execute_input<F: WalkDriver>(
             // the settle — so the raise, its `raisedWhen` gate included,
             // sees them.
             if !writes.is_empty() {
-                let landed = s.engine(0, &resolve_writes(s.project(), writes)?);
+                let writes = resolve_writes(s.project(), writes).map_err(|e| e.to_string())?;
+                let landed = s.engine(0, &writes);
                 if landed.2.is_some() {
                     return Ok(landed);
                 }
@@ -1426,14 +1489,15 @@ fn execute_input<F: WalkDriver>(
                 })
                 .collect::<Result<Vec<_>, _>>()?;
             if !payload.is_empty() {
-                let vals = crate::session::typed_payload(s.project(), occasion, &payload)?;
+                let vals = crate::session::typed_payload(s.project(), occasion, &payload)
+                    .map_err(|e| e.to_string())?;
                 s.bind_payload(&vals);
             }
             let p = pick.as_ref().map(PickInput::session).transpose()?;
             Ok(s.occasion(0, occasion, target, &p, &BTreeMap::new()))
         }
         Input::AdvanceClock { by, writes, pick } => {
-            let w = resolve_writes(s.project(), writes)?;
+            let w = resolve_writes(s.project(), writes).map_err(|e| e.to_string())?;
             let by = resolve_advance(s.project(), by)?;
             let raise = s
                 .project()
@@ -1441,17 +1505,17 @@ fn execute_input<F: WalkDriver>(
                 .clock
                 .as_ref()
                 .and_then(|c| c.raise.as_ref())
-                .map_or_else(Default::default, |r| r.moments());
+                .map_or_else(Default::default, lute_manifest::clock::ClockRaise::moments);
             let p = pick.as_ref().map(PickInput::session).transpose()?;
             Ok(s.advance(0, by, &w, &raise, &p, &BTreeMap::new()))
         }
         Input::HostWrite { writes } => {
-            let w = resolve_writes(s.project(), writes)?;
+            let w = resolve_writes(s.project(), writes).map_err(|e| e.to_string())?;
             Ok(s.engine(0, &w))
         }
         Input::WorldEvent { name } => Ok(s.event(name)),
         Input::NewRun { writes } => {
-            let w = resolve_writes(s.project(), writes)?;
+            let w = resolve_writes(s.project(), writes).map_err(|e| e.to_string())?;
             Ok(s.new_run(0, &w))
         }
         Input::Choose { .. } | Input::Timeout { .. } | Input::BridgeResult { .. } => {
@@ -1493,7 +1557,7 @@ impl ReplayFactory {
     /// A factory replaying `answers`, each bridge answer's `writes`
     /// resolved ([`resolve_answer_writes`]); `Err` names a write that does
     /// not resolve.
-    fn replaying(project: Arc<ExecProject>, answers: Vec<Answer>) -> Result<Self, String> {
+    fn replaying(project: Arc<ExecProject>, answers: Vec<Answer>) -> Result<Self, HostWriteError> {
         let writes = answers
             .iter()
             .map(|answer| match answer {
@@ -1655,13 +1719,13 @@ impl WalkDriver for ReplayFactory {
         self.document = document.into();
         ReplayDriver {
             choices: self.answers.clone(),
-            writes: self.writes.clone(),
+            writes: Arc::clone(&self.writes),
             cursor: self.answer_cursor,
             document: document.into(),
             events: Vec::new(),
             pending: None,
             pending_cut: None,
-            project: self.project.clone(),
+            project: Arc::clone(&self.project),
         }
     }
     fn finish(&mut self, machine: Machine<Self::Driver>) -> Walked {
@@ -1697,7 +1761,7 @@ impl WalkDriver for ReplayFactory {
     }
     fn halt(
         &self,
-        result: Result<(), String>,
+        result: Result<(), crate::WalkError>,
         outcome: &Walked,
         what: &str,
         _doc_json: &Json,
@@ -1708,7 +1772,7 @@ impl WalkDriver for ReplayFactory {
         if outcome.carry.incomplete {
             return Some(PlayHalt::Incomplete(format!("{what}: walk is incomplete")));
         }
-        result.err().map(PlayHalt::Fatal)
+        result.err().map(|e| PlayHalt::Fatal(e.message))
     }
 }
 

@@ -1261,8 +1261,7 @@ fn beats_show_the_authored_when_and_expand_on_request() {
         let s = String::from_utf8_lossy(&out.stdout).to_string();
         s.lines()
             .find(|l| l.contains("town.late"))
-            .map(str::to_string)
-            .unwrap_or_else(|| panic!("{s}"))
+            .map_or_else(|| panic!("{s}"), str::to_string)
     };
     let authored = row(&["beats", "--project", d, "--occasion", "dayStart"]);
     assert!(

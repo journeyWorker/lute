@@ -1,13 +1,16 @@
 //! Per-cell evaluation: the columns a run evaluates, each column's outcome
 //! at a cell, and the `--relation` relations that hold there.
 
-use super::*;
+use super::{
+    deciding_unknown, eligible_at, is_candidate, presented, undecided_why, BTreeMap, BTreeSet,
+    Candidate, Column, ExecProject, Fact, FactsRel, OccasionSelect, Outcome, Seen, Verdict, World,
+};
 
 /// Per `--relation` relation, the facts of it that hold over the settled
 /// cell: the runner's fixpoint, as [`world_view`] derives them.
 ///
 /// [`world_view`]: lute_runtime::session::world_view
-pub(super) fn cell_facts(p: &ExecProject, w: &World, rels: &[FactsRel]) -> Vec<Vec<Fact>> {
+pub(crate) fn cell_facts(p: &ExecProject, w: &World, rels: &[FactsRel]) -> Vec<Vec<Fact>> {
     if rels.is_empty() {
         return Vec::new();
     }
@@ -29,7 +32,7 @@ pub(super) fn cell_facts(p: &ExecProject, w: &World, rels: &[FactsRel]) -> Vec<V
 /// its declared domain, where no beat answers and every cell would read as
 /// a hole). A targeted occasion none of whose beats names a target gets one
 /// column its untargeted beats answer.
-pub(super) fn columns(
+pub(crate) fn columns(
     p: &ExecProject,
     occasions: &[String],
     targets: &[String],
@@ -117,7 +120,7 @@ pub(super) fn columns(
 
 /// One column at one cell, recording every candidate's verdict in `seen`
 /// (keyed by its `ProjectIndex.beats` row).
-pub(super) fn evaluate(
+pub(crate) fn evaluate(
     p: &ExecProject,
     w: &World,
     col: &Column,

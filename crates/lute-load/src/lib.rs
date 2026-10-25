@@ -16,6 +16,6 @@ pub use discovery::{
 };
 pub use input::{
     assemble_input, assemble_input_with_mode, build_input, build_input_with, build_input_with_mode,
-    project_diag_line, read_document, BuiltInput,
+    project_diag_line, read_document, BuiltInput, ReadError,
 };
 pub use manifest::{manifest_context, resolve_snapshot, ManifestContext};

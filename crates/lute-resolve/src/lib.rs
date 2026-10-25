@@ -50,6 +50,19 @@ pub enum ResolveError {
     Invalid(String),
 }
 
+impl std::fmt::Display for ResolveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ResolveError::OutOfBounds => {
+                f.write_str("the byte offset is outside the source or not on a character boundary")
+            }
+            ResolveError::Unresolved(reason) | ResolveError::Invalid(reason) => f.write_str(reason),
+        }
+    }
+}
+
+impl std::error::Error for ResolveError {}
+
 /// Resolve a byte cursor using the same typed frontmatter/import precedence as
 /// the checker. The result is intentionally free of LSP types.
 pub fn resolve_position(
@@ -115,12 +128,10 @@ fn find_slot(doc: &Document, off: usize) -> Option<&CelSlot> {
     let mut found = None;
     for_each_cel_slot(doc, &mut |slot| {
         if slot.span.byte_start <= off && off <= slot.span.byte_end {
-            let replace = found
-                .map(|old: &CelSlot| {
-                    slot.span.byte_end.saturating_sub(slot.span.byte_start)
-                        < old.span.byte_end.saturating_sub(old.span.byte_start)
-                })
-                .unwrap_or(true);
+            let replace = found.is_none_or(|old: &CelSlot| {
+                slot.span.byte_end.saturating_sub(slot.span.byte_start)
+                    < old.span.byte_end.saturating_sub(old.span.byte_start)
+            });
             if replace {
                 found = Some(slot);
             }
@@ -233,27 +244,41 @@ fn visit_nodes(doc: &Document, f: &mut impl FnMut(&Node)) {
         for n in nodes {
             f(n);
             match n {
-                Node::Branch(b) => b.choices.iter().for_each(|c| body(&c.body, f)),
+                Node::Branch(b) => {
+                    for c in &b.choices {
+                        body(&c.body, f);
+                    }
+                }
                 Node::Hub(h) => {
-                    h.choices.iter().for_each(|c| body(&c.body, f));
+                    for c in &h.choices {
+                        body(&c.body, f);
+                    }
                     if let Some(r) = &h.on_return {
                         body(&r.body, f);
                     }
                 }
-                Node::Match(m) => m.arms.iter().for_each(|arm| match arm {
-                    lute_syntax::ast::Arm::When { body: arm_body, .. } => body(arm_body, f),
-                    lute_syntax::ast::Arm::Otherwise { body: arm_body, .. } => body(arm_body, f),
-                }),
-                Node::Timeline(t) => t.tracks.iter().for_each(|tr| {
-                    tr.clips.iter().for_each(|c| {
-                        if let lute_syntax::ast::ClipNode::Directive(d) = &c.node {
-                            f(&Node::Directive(d.clone()));
+                Node::Match(m) => {
+                    for arm in &m.arms {
+                        match arm {
+                            lute_syntax::ast::Arm::When { body: arm_body, .. } => body(arm_body, f),
+                            lute_syntax::ast::Arm::Otherwise { body: arm_body, .. } => {
+                                body(arm_body, f);
+                            }
                         }
-                        if let lute_syntax::ast::ClipNode::Set(s) = &c.node {
-                            f(&Node::Set(s.clone()));
+                    }
+                }
+                Node::Timeline(t) => {
+                    for tr in &t.tracks {
+                        for c in &tr.clips {
+                            if let lute_syntax::ast::ClipNode::Directive(d) = &c.node {
+                                f(&Node::Directive(d.clone()));
+                            }
+                            if let lute_syntax::ast::ClipNode::Set(s) = &c.node {
+                                f(&Node::Set(s.clone()));
+                            }
                         }
-                    })
-                }),
+                    }
+                }
                 Node::Objective(o) => body(&o.body, f),
                 Node::On(o) => body(&o.body, f),
                 _ => {}
@@ -300,12 +325,9 @@ fn find_attribute_or_construct(doc: &Document, off: usize) -> Option<Cursor> {
             _ => return,
         };
         if span.byte_start <= off && off <= span.byte_end {
-            let replace = out
-                .as_ref()
-                .map(|c: &Cursor| {
-                    span.byte_end - span.byte_start < c.span.byte_end - c.span.byte_start
-                })
-                .unwrap_or(true);
+            let replace = out.as_ref().is_none_or(|c: &Cursor| {
+                span.byte_end - span.byte_start < c.span.byte_end - c.span.byte_start
+            });
             if replace {
                 out = Some(Cursor {
                     kind: kind.into(),
@@ -330,8 +352,7 @@ fn symbols_for_cursor(
     let defs_only = before.ends_with('@')
         || before
             .rsplit_once('@')
-            .map(|(_, tail)| tail.chars().all(|c| !c.is_whitespace()))
-            .unwrap_or(false);
+            .is_some_and(|(_, tail)| tail.chars().all(|c| !c.is_whitespace()));
     if !defs_only {
         for (name, decl) in &meta.state.decls {
             symbols.push(Symbol {

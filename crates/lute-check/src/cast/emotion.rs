@@ -149,8 +149,16 @@ pub(crate) fn visit<'n>(nodes: &'n [Node], f: &mut impl FnMut(&'n Node)) {
     for node in nodes {
         f(node);
         match node {
-            Node::Branch(b) => b.choices.iter().for_each(|c| visit(&c.body, f)),
-            Node::Hub(h) => h.bodies().for_each(|b| visit(b, f)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    visit(&c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    visit(b, f);
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;

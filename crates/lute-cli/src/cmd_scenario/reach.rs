@@ -149,7 +149,11 @@ fn print_prereq_structure(
                  holds before it activates, through any one of its sources:"
             );
             for a in anchors {
-                let from: Vec<String> = a.from.iter().map(|n| n.to_string()).collect();
+                let from: Vec<String> = a
+                    .from
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect();
                 outln!(out, "    [{}] {}", a.kind.as_str(), from.join(" || "));
             }
             print_referenced(out, scenario, prereq, "the anchors above");

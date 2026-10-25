@@ -2,7 +2,11 @@
 //! evaluates over a run state through the runtime's `evaluate` query, checked
 //! here so the host lowers it at build time (the runtime stays parser-free).
 
-use super::*;
+use super::{
+    check_beat_when, collapse_same_root, dedup_rehomed, dedup_undeclared, fold_env,
+    normalize_spans, order_diagnostics, parse, parse_slot, translate_cel_parse, CelArena, CelKind,
+    CelSlot, CheckInput, Ctx, DefTable, Diagnostic, Layer, Severity, Span, TextIndex,
+};
 
 /// A checked host condition.
 #[derive(Clone, Debug)]

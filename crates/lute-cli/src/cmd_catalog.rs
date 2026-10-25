@@ -93,11 +93,7 @@ pub(crate) fn run_refresh(
     let mut paths: Vec<PathBuf> = entries
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| {
-            p.is_file()
-                && matches!(
-                    p.extension().and_then(|x| x.to_str()),
-                    Some("yaml") | Some("yml")
-                )
+            p.is_file() && matches!(p.extension().and_then(|x| x.to_str()), Some("yaml" | "yml"))
         })
         .collect();
     paths.sort();

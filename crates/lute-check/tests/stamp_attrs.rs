@@ -93,15 +93,15 @@ fn attr_type_message(text: &str) -> String {
         ),
     );
     let all = check(&input).diagnostics;
-    all.iter()
-        .find(|d| d.code == "E-ATTR-TYPE")
-        .map(|d| d.message.clone())
-        .unwrap_or_else(|| {
+    all.iter().find(|d| d.code == "E-ATTR-TYPE").map_or_else(
+        || {
             panic!(
                 "no E-ATTR-TYPE in {:?}",
                 all.iter().map(|d| &d.code).collect::<Vec<_>>()
             )
-        })
+        },
+        |d| d.message.clone(),
+    )
 }
 
 #[test]

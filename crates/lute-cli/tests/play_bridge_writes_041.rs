@@ -154,3 +154,73 @@ fn malformed_long_form_answers_are_usage_errors() {
         assert_eq!(stderr, format!("lute play: {message}\n"), "{answer}");
     }
 }
+
+/// A refused write is prefixed with the first written path whose refusal of
+/// an empty literal reads the same, matched by text as in 0.49.0. Here the
+/// two enums render one member list alike (`alpha, beta`), so the prefix is
+/// `run.first` although `run.second` is the refused write; changing that is
+/// a behaviour change of its own, not part of 0.49.1.
+#[test]
+fn refused_write_prefix_matches_the_rendered_message() {
+    let dir = lute_scratch::ScratchDir::named("play-bridge-write-prefix");
+    let files = [
+        (
+            "lute.project.yaml",
+            "pluginsDir: plugins/\ndefaultProfile: arena\nprofiles:\n  arena:\n    plugins: { arena: true }\n",
+        ),
+        (
+            "plugins/arena/plugin.yaml",
+            "id: arena\nversion: 0.1.0\nkind: capability\ndepends: [{ id: lute.core, range: \"^0.0.1\" }]\n\
+             exports:\n  directives: directives/\n  state: state/\n  bridge: bridge/\n",
+        ),
+        (
+            "plugins/arena/state/s.yaml",
+            "stateShapes:\n  - name: pair\n    fields:\n      \
+             - { name: first, type: { enum: [\"alpha, beta\"] } }\n      \
+             - { name: second, type: { enum: [alpha, beta] } }\n",
+        ),
+        (
+            "plugins/arena/directives/d.yaml",
+            "directives:\n  - name: odds\n    layer: bridge\n    \
+             semantics: [ \"writes.sceneState\", \"bridgeCall\" ]\n    state:\n      declares:\n        \
+             - { scope: run, path: [], shape: pair }\n    effects:\n      writes:\n        \
+             - { scope: run, path: [second], value: { fromBridgeResult: second } }\n    \
+             bridge: { service: arena, operation: odds }\n",
+        ),
+        (
+            "plugins/arena/bridge/b.yaml",
+            "bridgeCapabilities:\n  - service: arena\n    operation: odds\n    replay: recorded\n    \
+             result:\n      - { name: second, type: string }\n",
+        ),
+        (
+            "odds.lute",
+            "---\nkind: scene\nid: odds\ntitle: Odds\nplugins:\n  arena: {}\n---\n## Odds\n::odds\n@narrator: Done.\n",
+        ),
+        (
+            "s.play.yaml",
+            "bridges:\n  odds:\n    - { fields: { second: alpha }, writes: { state: [ \
+             { path: run.first, value: \"alpha, beta\" }, { path: run.second, value: \"\" } ] } }\n\
+             steps:\n  - end: true\n",
+        ),
+    ];
+    for (name, text) in files {
+        let path = dir.join(name);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+    let out = Command::new(BIN)
+        .arg("play")
+        .arg("--project")
+        .arg(&*dir)
+        .arg("--script")
+        .arg(dir.join("s.play.yaml"))
+        .output()
+        .unwrap();
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{stderr}");
+    assert_eq!(
+        stderr,
+        "lute play: top level: `bridges.odds` answer 1 `writes`: state `run.first` does not take \
+         ``: the enum's members are alpha, beta\n"
+    );
+}

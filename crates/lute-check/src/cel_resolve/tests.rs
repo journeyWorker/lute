@@ -3,7 +3,6 @@ use super::*;
 mod test_cases {
     use super::*;
     use crate::ctx::Env;
-    use lute_syntax::ast::CelKind;
     use std::collections::BTreeSet;
 
     fn test_span() -> Span {
@@ -18,7 +17,10 @@ mod test_cases {
 
     fn env_with_defs(names: &[&str]) -> Env {
         Env {
-            defs: names.iter().map(|s| s.to_string()).collect::<BTreeSet<_>>(),
+            defs: names
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect::<BTreeSet<_>>(),
             ..Env::default()
         }
     }

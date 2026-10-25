@@ -1,5 +1,11 @@
-use super::graph_nodes::*;
-use super::{graph_sources::*, identity::*};
+use super::graph_nodes::{
+    atom_edge_kind, scene_after, Anchor, ConnGraph, EdgeKind, NodeId, NodeInfo, PrereqState,
+    SceneAfter,
+};
+use super::{
+    graph_sources::{accept_sources, detect_conn_cycles, start_sources, top_conjuncts, topo_sort},
+    identity::{bundle_beat_after, bundle_beat_key_set},
+};
 use crate::ProjectDoc;
 
 use crate::meta::meta_key_span;
@@ -283,7 +289,7 @@ pub fn assemble_graph(
 }
 
 /// Record the `from -> to` edge with `kind` in both [`ConnGraph`] maps.
-pub(super) fn add_edge(
+pub(crate) fn add_edge(
     edges: &mut BTreeMap<NodeId, BTreeSet<NodeId>>,
     edge_kinds: &mut BTreeMap<NodeId, BTreeMap<NodeId, BTreeSet<EdgeKind>>>,
     from: NodeId,
@@ -301,7 +307,7 @@ pub(super) fn add_edge(
 
 /// Whether `to` is `from` or reachable from it along the ordering `edges`
 /// (every edge but a `back` one).
-pub(super) fn reaches(
+pub(crate) fn reaches(
     edges: &BTreeMap<NodeId, BTreeSet<NodeId>>,
     back: &BTreeMap<NodeId, BTreeSet<NodeId>>,
     from: &NodeId,
@@ -329,7 +335,7 @@ pub(super) fn reaches(
 
 /// The quests and entries of one resolved root as [`assemble_graph`]
 /// anchors them (dsl 0.24.0 §2, 0.25.0 §4).
-pub(super) struct QuestDecls<'a> {
+pub(crate) struct QuestDecls<'a> {
     /// Each quest id's first declaration, with its document.
     pub(crate) first: BTreeMap<&'a str, (&'a Path, &'a Quest)>,
     /// Every quest id some declaration gives an `after` — its declared
@@ -344,7 +350,7 @@ pub(super) struct QuestDecls<'a> {
 }
 
 impl<'a> QuestDecls<'a> {
-    pub(super) fn new(docs: &'a [ProjectDoc<'a>]) -> Self {
+    pub(crate) fn new(docs: &'a [ProjectDoc<'a>]) -> Self {
         let mut first: BTreeMap<&str, (&Path, &Quest)> = BTreeMap::new();
         let mut with_after = BTreeSet::new();
         let mut entries = BTreeMap::new();
@@ -393,7 +399,7 @@ impl<'a> QuestDecls<'a> {
 /// `start` conjuncts ([`start_anchors`]), `::accept`s ([`accept_sources`]).
 /// A quest none of them anchors is absent. `nodes` holds the scene and
 /// bundle beat nodes the sources resolve against.
-pub(super) fn quest_anchors(
+pub(crate) fn quest_anchors(
     docs: &[ProjectDoc<'_>],
     decls: &QuestDecls<'_>,
     nodes: &BTreeMap<NodeId, NodeInfo>,
@@ -433,7 +439,7 @@ pub(super) fn quest_anchors(
 /// `unset`) — or is an `||` of such reads (one
 /// anchor, several sources). Every other conjunct gates without anchoring;
 /// an unparseable `start` is the per-file check's and anchors nothing.
-pub(super) fn start_anchors(
+pub(crate) fn start_anchors(
     quest: &Quest,
     decls: &QuestDecls<'_>,
     nodes: &BTreeMap<NodeId, NodeInfo>,

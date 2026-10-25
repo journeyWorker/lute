@@ -50,7 +50,7 @@ pub(crate) enum ReservedReadKind {
 /// the walk's live state.
 type ReadLog = Rc<RefCell<Vec<(String, Read)>>>;
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct EffectiveState<'a> {
     schema: &'a StateSchema,
     seed: std::borrow::Cow<'a, BTreeMap<String, Value>>,
@@ -283,7 +283,7 @@ fn render_pattern(relation: &str, pattern: &[Pat]) -> String {
 /// as definite as a base one. Without one (`derive: false`, the 0.21 model)
 /// a query is pattern LOOKUP: an unmatched derived relation is unknown, and
 /// the relation is logged in [`FactStore::derived_reads`].
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 enum FactSet<'a> {
     Borrowed(&'a BTreeSet<(String, Vec<String>)>),
     Owned(BTreeSet<(String, Vec<String>)>),
@@ -308,7 +308,7 @@ impl<'a> FactSet<'a> {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 pub struct FactStore<'a> {
     facts: FactSet<'a>,
     rel_vocab: &'a RelVocab,
@@ -451,11 +451,7 @@ impl<'a> FactStore<'a> {
     }
 
     fn is_derived(&self, rel: &str) -> bool {
-        self.rel_vocab
-            .relations
-            .get(rel)
-            .map(|d| d.derive)
-            .unwrap_or(false)
+        self.rel_vocab.relations.get(rel).is_some_and(|d| d.derive)
     }
 
     /// Matching facts, or — with `column` — the number of DISTINCT values at
@@ -531,6 +527,7 @@ impl<'a> FactStore<'a> {
 
 /// Everything an expression reads from: the effective state and the fact
 /// store.
+#[derive(Debug)]
 pub struct EvalEnv<'a> {
     pub state: &'a EffectiveState<'a>,
     pub facts: &'a FactStore<'a>,

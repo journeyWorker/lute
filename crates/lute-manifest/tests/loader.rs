@@ -567,7 +567,7 @@ fn loads_lints_export_round_trip() {
     assert_eq!(
         r0.options
             .get(yaml_serde::Value::String("max".into()))
-            .and_then(|v| v.as_i64()),
+            .and_then(yaml_serde::Value::as_i64),
         Some(6)
     );
     // level absent -> None (plugin declines to declare a default)
@@ -1011,7 +1011,7 @@ fn old_export_spelling_names_the_new_one() {
         assert_eq!(errs[0].code(), "E-PLUGIN-UNKNOWN-EXPORT");
         let msg = errs[0].to_string();
         assert!(msg.contains(says), "{key}: {msg}");
-        fs::remove_dir_all(&tmp).ok();
+        let _ = fs::remove_dir_all(&tmp); // best-effort cleanup
     }
 }
 
@@ -1226,7 +1226,7 @@ fn unknown_key_in_other_export_bodies_is_rejected() {
             msg.contains(&format!("— did you mean `{suggestion}`?")),
             "{export}: {msg}"
         );
-        fs::remove_dir_all(&tmp).ok();
+        let _ = fs::remove_dir_all(&tmp); // best-effort cleanup
     }
 }
 
@@ -1411,7 +1411,7 @@ fn cast_export_carries_present_and_emotions_and_rejects_unknown_keys() {
         (maud.present.as_deref(), maud.emotions.as_deref()),
         (None, None)
     );
-    fs::remove_dir_all(&tmp).ok();
+    let _ = fs::remove_dir_all(&tmp); // best-effort cleanup
 
     let tmp = one_export_pkg(
         "cast_typo",
@@ -1473,7 +1473,7 @@ fn plugin_manifest_rejects_unknown_keys_and_a_non_capability_kind() {
         let msg = errs[0].to_string();
         assert!(msg.contains(says), "{tag}: {msg}");
         assert!(reg.failed.contains_key("t.plug"), "{tag}: the id is known");
-        fs::remove_dir_all(&root).ok();
+        let _ = fs::remove_dir_all(&root); // best-effort cleanup
     }
     let tmp = manifest_pkg("noid", "version: 0.1.0\nkind: capability\nexports: {}\n");
     let errs = load_plugin_dir(&tmp).unwrap_err();
@@ -1534,7 +1534,7 @@ fn occasion_target_typos_name_the_key_meant() {
             "{shown}"
         );
         assert!(shown.contains("a.yaml:3:"), "{tag}: located: {shown}");
-        fs::remove_dir_all(&tmp).ok();
+        let _ = fs::remove_dir_all(&tmp); // best-effort cleanup
     }
 }
 
@@ -1601,7 +1601,7 @@ fn export_shape_and_syntax_errors_are_plain() {
         ] {
             assert!(!msg.contains(leak), "{tag}: `{leak}` leaked: {msg}");
         }
-        fs::remove_dir_all(&tmp).ok();
+        let _ = fs::remove_dir_all(&tmp); // best-effort cleanup
     }
 }
 
@@ -1668,7 +1668,7 @@ fn occasion_payload_types_are_named_in_plain_words() {
         }
         // At the field's own line, not the occasion's.
         assert!(shown.contains("a.yaml:7:"), "{tag}: located: {shown}");
-        fs::remove_dir_all(&tmp).ok();
+        let _ = fs::remove_dir_all(&tmp); // best-effort cleanup
     }
 
     let tmp = one_export_pkg(

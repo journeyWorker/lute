@@ -29,8 +29,11 @@ name: Test
 # conformance over every `conformance/session` case — then one replay in
 # headless Chromium. Its inputs are the runtime crates (under `crates/**`),
 # `packages/runtime/**`, the generated `schemas/**` and the session cases.
-# `clippy` runs `cargo clippy -D warnings` over the workspace (and the wasm
-# binding for wasm32) on a PINNED toolchain; see the job for how to bump it.
+# `clippy` runs `cargo clippy -D warnings` over the workspace (again over the
+# libs and bins alone with `unwrap()` denied, and the wasm binding for wasm32)
+# on a PINNED toolchain; see the job for how to bump it. It also runs
+# `scripts/check-visibility.py` (no `pub(super)`/`pub(in …)`), which is why
+# that script is in the trigger set.
 #
 # `gates` also owns the CRATES-SIDE half of the documentation contract. The
 # docs quote real CLI output — capability hashes, `lute context` transcripts,
@@ -72,6 +75,7 @@ on:
       - "crates/**"
       - "Cargo.toml"
       - "Cargo.lock"
+      - "clippy.toml"
       - "packages/cli/**"
       - "packages/runtime/**"
       - "schemas/**"
@@ -84,6 +88,7 @@ on:
       - "tree-sitter-lute/bun.lock"
       - ".github/workflows/test.yml"
       - "scripts/check-public-api.py"
+      - "scripts/check-visibility.py"
       - "scripts/vocab-grid.py"
   workflow_dispatch:
 
@@ -189,8 +194,23 @@ jobs:
       - name: cargo clippy --workspace --all-targets
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
+      # Feature-gated code (`json-schema`, `test-panic`) is linted too; the
+      # default feature set does not build it.
+      - name: cargo clippy --workspace --all-targets --all-features
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      # Production code (libs and bins, no tests) never calls `unwrap()`:
+      # it uses `expect("<why it cannot fail>")` (rules note §5).
+      - name: cargo clippy --workspace --lib --bins (no unwrap)
+        run: cargo clippy --workspace --lib --bins --locked -- -D warnings -D clippy::unwrap_used
+
       - name: cargo clippy lute-runtime-wasm (wasm32)
         run: cargo clippy -p lute-runtime-wasm --target wasm32-unknown-unknown --locked -- -D warnings
+
+      # Visibility is private, `pub(crate)` or `pub`; no clippy lint forbids
+      # `pub(super)`/`pub(in …)`, so this script does (rules note §3).
+      - name: no pub(super) / pub(in …)
+        run: python3 scripts/check-visibility.py && python3 scripts/check-visibility.py --self-test
 
   gates:
     name: JS harnesses + doc gates (offline)

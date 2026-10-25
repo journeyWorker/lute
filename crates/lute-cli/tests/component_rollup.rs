@@ -554,7 +554,10 @@ fn write_defaults_components(tag: &str) -> lute_scratch::ScratchDir {
 
 /// `(path suffix, ok, [(code, line, message)])` per file of a `whole-project check
 /// --json` run, plus the project-wide `(path suffix, code, line, message)`.
-#[allow(clippy::type_complexity)]
+#[expect(
+    clippy::type_complexity,
+    reason = "a test helper whose two report shapes the assertions destructure in place"
+)]
 fn project_report(
     dir: &Path,
 ) -> (

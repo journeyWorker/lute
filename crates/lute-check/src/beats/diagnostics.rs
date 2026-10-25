@@ -1,10 +1,15 @@
-use super::*;
+use super::{
+    beat_diag, decide_slot, in_selection_order, project_beats, share_groups, BTreeMap, Beat,
+    BeatCells, BeatOnce, DecideCtx, Decided, DefTable, Diagnostic, FactEnv, FactScope, FoldedEnv,
+    KindShape, Layer, Meta, OccasionSelect, OccasionTarget, PathBuf, ProjectBeat, ProjectBeatKind,
+    Severity, Span, W_BEAT_PRIORITY_TIE,
+};
 
 #[expect(
     clippy::type_complexity,
     reason = "tie grouping keeps member and pair indexes together"
 )]
-pub(super) fn tie_warnings(
+pub(crate) fn tie_warnings(
     beats: &[Beat<'_>],
     ties: &[(usize, usize)],
 ) -> Vec<(PathBuf, Diagnostic)> {
@@ -147,7 +152,7 @@ pub(super) fn tie_warnings(
 }
 
 /// `a`, `b` and `c`.
-pub(super) fn and_list(items: &[&str]) -> String {
+pub(crate) fn and_list(items: &[&str]) -> String {
     match items {
         [] => String::new(),
         [one] => one.to_string(),
@@ -160,7 +165,7 @@ pub(super) fn and_list(items: &[&str]) -> String {
 /// over its kind's members — the shadowing beat per target: `Some` only when
 /// EVERY target has an earlier (in `earlier`, selection order) non-`also`
 /// beat on the occasion answering it that is always eligible and never spent.
-pub(super) fn shadowed_on_every_target<'b, 'a>(
+pub(crate) fn shadowed_on_every_target<'b, 'a>(
     b: &Beat<'a>,
     earlier: &'b [Beat<'a>],
 ) -> Option<Vec<(String, &'b Beat<'a>)>> {
@@ -201,7 +206,7 @@ pub(super) fn shadowed_on_every_target<'b, 'a>(
 /// `once="run"` `entry.<id>.read`; a scene's or bundle beat's `once: user`
 /// `visited('<id>')` (the save-scoped visited set). A scene's `once: run`
 /// (or a clock period) has no readable flag, and a repeatable beat none.
-pub(super) fn spend_flag(pb: &ProjectBeat<'_>) -> Option<String> {
+pub(crate) fn spend_flag(pb: &ProjectBeat<'_>) -> Option<String> {
     match (pb.kind, &pb.once) {
         (ProjectBeatKind::Entry, BeatOnce::User) => Some(format!("entry.{}.everRead", pb.id)),
         (ProjectBeatKind::Entry, BeatOnce::Run) => Some(format!("entry.{}.read", pb.id)),
@@ -217,7 +222,7 @@ pub(super) fn spend_flag(pb: &ProjectBeat<'_>) -> Option<String> {
 
 /// The beats whose presentation spends `pb` (dsl 0.25.0 §2): every beat of
 /// its `share` key, else `pb` alone.
-pub(super) fn spenders<'b, 'a>(
+pub(crate) fn spenders<'b, 'a>(
     pb: &'b ProjectBeat<'a>,
     beats: &'b [ProjectBeat<'a>],
     groups: &BTreeMap<String, Vec<usize>>,
@@ -232,7 +237,7 @@ pub(super) fn spenders<'b, 'a>(
 /// [`spend_flag`] of a beat that spends it is set. dsl 0.25.0 §2: a shared
 /// beat is spent by every beat of its key, so each member's flag counts
 /// (`!visited('a') && !entry.b.everRead`). `None` when no spender has one.
-pub(super) fn once_guard(
+pub(crate) fn once_guard(
     pb: &ProjectBeat<'_>,
     beats: &[ProjectBeat<'_>],
     groups: &BTreeMap<String, Vec<usize>>,
@@ -249,7 +254,7 @@ pub(super) fn once_guard(
 /// spends it was presented — its own [`spend_flag`], or (dsl 0.25.0 §2)
 /// the disjunction over its `share` key. `None` unless EVERY spender has a
 /// readable flag: one without makes the spend unreadable.
-pub(super) fn spent_condition(
+pub(crate) fn spent_condition(
     pb: &ProjectBeat<'_>,
     beats: &[ProjectBeat<'_>],
     groups: &BTreeMap<String, Vec<usize>>,
@@ -395,7 +400,7 @@ pub fn shadowers_at(
 /// read no flag the eligibility has, so they drop out (weakening, never
 /// strengthening: an `||` with a dropped side drops whole). `None` when
 /// nothing remains or the value is out of profile.
-pub(super) fn after_premise(raw: &str, afters: &BTreeMap<String, &str>) -> Option<String> {
+pub(crate) fn after_premise(raw: &str, afters: &BTreeMap<String, &str>) -> Option<String> {
     use lute_manifest::semantics::prereq::PrereqFormula as F;
     fn cel(f: &F, afters: &BTreeMap<String, &str>, seen: &mut Vec<String>) -> Option<String> {
         match f {
@@ -447,7 +452,7 @@ pub(super) fn after_premise(raw: &str, afters: &BTreeMap<String, &str>) -> Optio
 /// has one (both are judged in the same state, so a fact guaranteed at
 /// either slot holds). An unconstrained eligibility never excludes
 /// anything.
-pub(super) fn provably_exclusive(a: &Beat<'_>, b: &Beat<'_>, env: Option<&FactEnv>) -> bool {
+pub(crate) fn provably_exclusive(a: &Beat<'_>, b: &Beat<'_>, env: Option<&FactEnv>) -> bool {
     let (Some(wa), Some(wb)) = (&a.eligible, &b.eligible) else {
         return false;
     };
@@ -478,7 +483,7 @@ pub(super) fn provably_exclusive(a: &Beat<'_>, b: &Beat<'_>, env: Option<&FactEn
 }
 
 /// Why two beats are not [`provably_exclusive`] ([`why_not_exclusive`]).
-pub(super) enum Why {
+pub(crate) enum Why {
     /// One of the two constrains nothing (its eligibility is unconditional).
     NoWhen,
     /// Any other reason, as a clause.
@@ -489,7 +494,7 @@ pub(super) enum Why {
 /// a beat that constrains nothing, a flag that outlives a `once: run`
 /// spend, a fact one asserts that may hold before it plays, or the paths
 /// the two alternatives that overlap constrain.
-pub(super) fn why_not_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> Why {
+pub(crate) fn why_not_exclusive(a: &Beat<'_>, b: &Beat<'_>) -> Why {
     let Some((da, db)) = crate::reachability::non_exclusive_witness(a.stated_dnf(), b.stated_dnf())
     else {
         return Why::Other("their conjunction does not decide `false`".to_string());
@@ -649,24 +654,33 @@ pub(crate) fn read_tiers(
                 read_tiers(e, tiers, out);
             }
         }
-        Expr::List(l) => l
-            .elements
-            .iter()
-            .for_each(|e| read_tiers(&e.expr, tiers, out)),
-        Expr::Map(m) => m.entries.iter().for_each(|e| match &e.expr {
-            EntryExpr::MapEntry(m) => {
-                read_tiers(&m.key.expr, tiers, out);
-                read_tiers(&m.value.expr, tiers, out);
+        Expr::List(l) => {
+            for e in &l.elements {
+                read_tiers(&e.expr, tiers, out);
             }
-            EntryExpr::StructField(f) => read_tiers(&f.value.expr, tiers, out),
-        }),
-        Expr::Struct(s) => s.entries.iter().for_each(|e| match &e.expr {
-            EntryExpr::MapEntry(m) => {
-                read_tiers(&m.key.expr, tiers, out);
-                read_tiers(&m.value.expr, tiers, out);
+        }
+        Expr::Map(m) => {
+            for e in &m.entries {
+                match &e.expr {
+                    EntryExpr::MapEntry(m) => {
+                        read_tiers(&m.key.expr, tiers, out);
+                        read_tiers(&m.value.expr, tiers, out);
+                    }
+                    EntryExpr::StructField(f) => read_tiers(&f.value.expr, tiers, out),
+                }
             }
-            EntryExpr::StructField(f) => read_tiers(&f.value.expr, tiers, out),
-        }),
+        }
+        Expr::Struct(s) => {
+            for e in &s.entries {
+                match &e.expr {
+                    EntryExpr::MapEntry(m) => {
+                        read_tiers(&m.key.expr, tiers, out);
+                        read_tiers(&m.value.expr, tiers, out);
+                    }
+                    EntryExpr::StructField(f) => read_tiers(&f.value.expr, tiers, out),
+                }
+            }
+        }
         Expr::Comprehension(c) => {
             for e in [
                 &c.iter_range,
@@ -688,7 +702,7 @@ pub(crate) fn read_tiers(
 /// relation or quest, `visited()`, or `now()` may change within a run.
 /// `prev.run.*` is the previous run's snapshot, which every run replaces:
 /// run history, not user-tier (dsl 0.23.1).
-pub(super) fn reads_only_user(when: &str, tiers: &UserTier<'_>) -> bool {
+pub(crate) fn reads_only_user(when: &str, tiers: &UserTier<'_>) -> bool {
     use cel_parser::ast::Expr;
     fn walk(expr: &Expr, tiers: &UserTier<'_>, reads: &mut usize) -> bool {
         if let Some(tier) = read_tier(expr, tiers) {
@@ -719,7 +733,7 @@ pub(super) fn reads_only_user(when: &str, tiers: &UserTier<'_>) -> bool {
 /// The YAML value an author wrote, for the "got …" half of a message. A
 /// quoted `"false"` / `"10"` is a string where a bool or number is meant:
 /// the message says so instead of printing `false` against `false`.
-pub(super) fn describe(v: &yaml_serde::Value) -> String {
+pub(crate) fn describe(v: &yaml_serde::Value) -> String {
     match v {
         yaml_serde::Value::String(s)
             if s == "true" || s == "false" || s.trim().parse::<f64>().is_ok() =>
@@ -738,13 +752,13 @@ pub(super) fn describe(v: &yaml_serde::Value) -> String {
 
 /// Where the frontmatter interior starts in the document (see
 /// [`crate::meta::meta_key_span`] for the envelope rule).
-pub(super) fn interior_base(meta: &Meta) -> usize {
+pub(crate) fn interior_base(meta: &Meta) -> usize {
     const OPENER_LEN: usize = 4; // "---\n"
     let enveloped = meta.span.byte_end.saturating_sub(meta.span.byte_start) != meta.raw_yaml.len();
     meta.span.byte_start + if enveloped { OPENER_LEN } else { 0 }
 }
 
-pub(super) fn bare_span(byte_start: usize, byte_end: usize) -> Span {
+pub(crate) fn bare_span(byte_start: usize, byte_end: usize) -> Span {
     Span {
         byte_start,
         byte_end,
@@ -758,7 +772,7 @@ pub(super) fn bare_span(byte_start: usize, byte_end: usize) -> Span {
 /// `(line start offset in raw_yaml, the text after the colon)`. A nested key
 /// of the same name (`extra: { on: … }`) never matches, and neither does a
 /// key a `chapters:` chain derived — it has no text in the file (T3-18).
-pub(super) fn top_key_line<'m>(meta: &'m Meta, key: &str) -> Option<(usize, &'m str)> {
+pub(crate) fn top_key_line<'m>(meta: &'m Meta, key: &str) -> Option<(usize, &'m str)> {
     let mut line_start = 0usize;
     for line in crate::chapters::authored_yaml(&meta.raw_yaml).split_inclusive('\n') {
         if let Some(rest) = line.strip_prefix(key) {

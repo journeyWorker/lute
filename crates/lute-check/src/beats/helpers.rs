@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    bare_span, interior_base, top_key_line, top_key_span, BeatOnce, DefTable, Diagnostic, Layer,
+    Meta, OccasionSelect, ProjectBeat, Severity, Span,
+};
 
 /// The span of a top-level frontmatter key's inline VALUE — its text on the
 /// key's own line, minus surrounding quotes and a trailing comment — so a CEL
@@ -85,7 +88,7 @@ pub(crate) fn top_value_text<'m>(meta: &'m Meta, key: &str) -> Option<(&'m str, 
     Some((text, span))
 }
 
-pub(super) fn beat_diag(
+pub(crate) fn beat_diag(
     code: &str,
     severity: Severity,
     message: String,
@@ -145,7 +148,7 @@ pub(crate) fn occasion_malformed(what: &str, on: &str) -> String {
     name_message(&format!("{what} `on` occasion"), on)
 }
 
-pub(super) fn name_message(what: &str, name: &str) -> String {
+pub(crate) fn name_message(what: &str, name: &str) -> String {
     lute_manifest::ident::name_fault(what, name)
         .unwrap_or_else(|| format!("{what} `{name}` is not a name"))
 }

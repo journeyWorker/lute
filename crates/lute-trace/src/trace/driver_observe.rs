@@ -1,6 +1,6 @@
-use super::*;
+use super::{bare_decision, mock, Json, Span, TraceDriver, NOTE_ACCEPT_SPENT};
 impl<'a> TraceDriver<'a> {
-    pub(super) fn observation(&mut self, rec: Json) {
+    pub(crate) fn observation(&mut self, rec: Json) {
         let str_of = |k: &str| rec.get(k).and_then(Json::as_str).unwrap_or("").to_string();
         let guard = rec.get("guard").and_then(Json::as_str).map(str::to_string);
         let outcome = str_of("outcome");
@@ -8,9 +8,7 @@ impl<'a> TraceDriver<'a> {
         let quest_src = self.cx.map.quests.get(&quest);
         match rec.get("kind").and_then(Json::as_str) {
             Some("quest") => {
-                let span = quest_src
-                    .map(|q| q.span)
-                    .unwrap_or_else(mock::synthetic_span);
+                let span = quest_src.map_or_else(mock::synthetic_span, |q| q.span);
                 if matches!(outcome.as_str(), "complete" | "failed") {
                     // §3.2: a terminal quest's objectives "can no longer
                     // affect any outcome" — their unresolved entries go.
@@ -27,8 +25,7 @@ impl<'a> TraceDriver<'a> {
                 let objective = str_of("objective");
                 let span = quest_src
                     .and_then(|q| q.objectives.get(&objective))
-                    .map(|o| o.span)
-                    .unwrap_or_else(mock::synthetic_span);
+                    .map_or_else(mock::synthetic_span, |o| o.span);
                 self.push_decision(bare_decision(
                     "objective",
                     &objective,

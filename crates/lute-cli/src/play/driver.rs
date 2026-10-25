@@ -38,7 +38,6 @@ pub(crate) struct PlayDriverState {
     producers: Option<Arc<Producers>>,
 }
 
-#[allow(dead_code)]
 impl PlayDriverState {
     pub(crate) fn new(
         choose: BTreeMap<String, Vec<ScriptedPick>>,
@@ -79,27 +78,6 @@ impl PlayDriverState {
     pub(crate) fn set_observer(&mut self, observer: Option<SessionEvalObserver>) {
         self.observer = observer;
     }
-
-    pub(crate) fn set_step(
-        &mut self,
-        step: usize,
-        choose: &BTreeMap<String, Vec<ScriptedPick>>,
-        bridges: &BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
-    ) {
-        self.step = step;
-        self.choose
-            .extend(choose.iter().map(|(k, v)| (k.clone(), v.clone())));
-        self.bridges.step = bridges.clone();
-    }
-
-    pub(crate) fn set_top_choose(&mut self, choose: BTreeMap<String, Vec<ScriptedPick>>) {
-        self.choose = choose;
-    }
-    pub(crate) fn top_bridges_mut(
-        &mut self,
-    ) -> &mut BTreeMap<String, VecDeque<PlannedBridgeAnswer>> {
-        &mut self.bridges.top
-    }
 }
 
 pub(crate) struct PlayChoices {
@@ -116,7 +94,7 @@ impl PlayChoices {
     }
 
     fn pick(&mut self, menu: &Menu<'_>) -> Option<ScriptedPick> {
-        let list = self.choose.get(menu.id).map(Vec::as_slice).unwrap_or(&[]);
+        let list = self.choose.get(menu.id).map_or(&[][..], Vec::as_slice);
         match menu.construct {
             MenuKind::Hub => list.get(menu.presentation).cloned(),
             MenuKind::Branch => match list {
@@ -289,7 +267,7 @@ impl WalkDriver for PlayDriverState {
     }
     fn halt(
         &self,
-        result: Result<(), String>,
+        result: Result<(), lute_runtime::WalkError>,
         outcome: &Walked,
         what: &str,
         doc_json: &Json,
@@ -382,7 +360,7 @@ pub(crate) fn outcome_halt(outcome: &Walked, what: &str, doc_json: &Json) -> Opt
 }
 
 pub(crate) fn walk_stop(
-    result: Result<(), String>,
+    result: Result<(), lute_runtime::WalkError>,
     outcome: &Walked,
     what: &str,
     doc_json: &Json,

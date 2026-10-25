@@ -229,7 +229,7 @@ fn project_documents(
     files
         .into_iter()
         .map(|path| {
-            let text = read_document(&path)?;
+            let text = read_document(&path).map_err(|e| e.to_string())?;
             let (built, _) =
                 assemble_input(cache, &path, text, None, Some(project), permission_profile);
             Ok((path, built))

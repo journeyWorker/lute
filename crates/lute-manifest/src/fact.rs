@@ -115,6 +115,23 @@ pub enum DatalogError {
     FunctionTerm { at: usize, name: String },
 }
 
+impl std::fmt::Display for DatalogError {
+    /// The refusal without its position: a `Malformed` error is its own
+    /// message, a `FunctionTerm` names the term. Callers that know the
+    /// source text (the checker, the parser) word their own diagnostic from
+    /// the variant; `lute trace --fact` reports this text.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DatalogError::Malformed { msg, .. } => f.write_str(msg),
+            DatalogError::FunctionTerm { name, .. } => {
+                write!(f, "compound term `{name}(…)` is not a legal fact argument")
+            }
+        }
+    }
+}
+
+impl std::error::Error for DatalogError {}
+
 /// Parses a fact pattern: `rel(a, b)` / `rel(a, _)`. Total — never panics.
 pub fn parse_fact(input: &str) -> Result<FactPattern, DatalogError> {
     let mut c = Cur {
@@ -153,6 +170,7 @@ pub fn parse_fact(input: &str) -> Result<FactPattern, DatalogError> {
 }
 
 /// A byte cursor over the parsed input, shared by the fact and rule grammars.
+#[derive(Debug)]
 pub struct Cur<'a> {
     pub b: &'a [u8],
     pub i: usize,
@@ -377,6 +395,20 @@ mod tests {
             parse_fact("rel(f(x))"),
             Err(DatalogError::FunctionTerm { name, .. }) if name == "f"
         ));
+    }
+
+    #[test]
+    fn datalog_error_display() {
+        let err = parse_fact("rel(f(x))").unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "compound term `f(…)` is not a legal fact argument"
+        );
+        let err = parse_fact("rel(a) x").unwrap_err();
+        assert_eq!(
+            err.to_string(),
+            "unexpected trailing input after fact pattern"
+        );
     }
 
     #[test]

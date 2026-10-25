@@ -226,7 +226,7 @@ fn arg_cel_text(arg: &AttrValue, ty: Option<&Type>) -> String {
         // for, read where the body reads the param.
         AttrValue::Str(s) if s == lute_manifest::semantics::beats::OCCASION_TARGET => s.clone(),
         AttrValue::Str(s) => match ty {
-            Some(Type::Int) | Some(Type::Double) | Some(Type::Bool) => s.clone(),
+            Some(Type::Int | Type::Double | Type::Bool) => s.clone(),
             _ => cel_string_literal(s),
         },
     }
@@ -321,9 +321,10 @@ pub fn fold_component_matches(nodes: &mut Vec<Node>, schema: &crate::StateView) 
             let Node::Match(m) = nodes.remove(i) else {
                 unreachable!("`selection` is Some only when nodes[i] was Node::Match")
             };
-            let body = match m.arms.into_iter().nth(idx) {
-                Some(Arm::When { body, .. }) | Some(Arm::Otherwise { body, .. }) => body,
-                None => unreachable!("idx came from select_component_arm over these SAME arms"),
+            let Some(Arm::When { body, .. } | Arm::Otherwise { body, .. }) =
+                m.arms.into_iter().nth(idx)
+            else {
+                unreachable!("idx came from select_component_arm over these SAME arms")
             };
             nodes.splice(i..i, body);
             continue; // re-scan from `i`: the recursion this fold owns (see doc comment).
@@ -332,7 +333,7 @@ pub fn fold_component_matches(nodes: &mut Vec<Node>, schema: &crate::StateView) 
             for arm in &mut m.arms {
                 match arm {
                     Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                        fold_component_matches(body, schema)
+                        fold_component_matches(body, schema);
                     }
                 }
             }
@@ -458,21 +459,22 @@ fn splice_nodes(nodes: &mut Vec<Node>, components: &ComponentSet, snapshot: &Cap
                 use_writes(d, components, snapshot, &mut Vec::new())
             }
             Node::Branch(b) => {
-                b.choices
-                    .iter_mut()
-                    .for_each(|c| splice_nodes(&mut c.body, components, snapshot));
+                for c in &mut b.choices {
+                    splice_nodes(&mut c.body, components, snapshot);
+                }
                 Vec::new()
             }
             Node::Hub(h) => {
-                h.bodies_mut()
-                    .for_each(|b| splice_nodes(b, components, snapshot));
+                for b in h.bodies_mut() {
+                    splice_nodes(b, components, snapshot);
+                }
                 Vec::new()
             }
             Node::Match(m) => {
                 for arm in &mut m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            splice_nodes(body, components, snapshot)
+                            splice_nodes(body, components, snapshot);
                         }
                     }
                 }
@@ -575,7 +577,7 @@ fn write_skeleton(nodes: &[Node], snapshot: &CapabilitySnapshot, out: &mut Vec<N
             Node::Directive(d)
                 if d.tag == "use" || crate::check::directive_writes_state(snapshot, &d.tag) =>
             {
-                out.push(node.clone())
+                out.push(node.clone());
             }
             Node::Match(m) => {
                 let mut arms = Vec::with_capacity(m.arms.len());
@@ -724,10 +726,14 @@ fn bind_skeleton(node: &mut Node, args: &BTreeMap<String, AttrValue>, params: &[
                 match arm {
                     Arm::When { test, body, .. } => {
                         bind_slot_raw(test, args, params);
-                        body.iter_mut().for_each(|n| bind_skeleton(n, args, params));
+                        for n in body {
+                            bind_skeleton(n, args, params);
+                        }
                     }
                     Arm::Otherwise { body, .. } => {
-                        body.iter_mut().for_each(|n| bind_skeleton(n, args, params))
+                        for n in body {
+                            bind_skeleton(n, args, params);
+                        }
                     }
                 }
             }
@@ -782,7 +788,9 @@ fn guard_lines(node: &mut Node, guard: &CelSlot) {
         Node::Match(m) => {
             for arm in &mut m.arms {
                 let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
-                body.iter_mut().for_each(|n| guard_lines(n, guard));
+                for n in body {
+                    guard_lines(n, guard);
+                }
             }
         }
         _ => {}
@@ -918,7 +926,7 @@ fn expand_nested(
             for arm in &mut m.arms {
                 match arm {
                     Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                        expand_nested(body, components, snapshot, stack)
+                        expand_nested(body, components, snapshot, stack);
                     }
                 }
             }

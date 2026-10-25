@@ -74,8 +74,7 @@ pub fn parse_prereq(raw: &str, span: Span) -> (Option<PrereqFormula>, Vec<Diagno
             let msg = errs
                 .errors
                 .first()
-                .map(|e| e.msg.clone())
-                .unwrap_or_else(|| "CEL parse error".to_string());
+                .map_or_else(|| "CEL parse error".to_string(), |e| e.msg.clone());
             diags.push(diag(
                 format!("`after` value failed to parse as CEL: {msg}"),
                 span,
@@ -175,7 +174,7 @@ fn out_of_profile_message(expr: &Expr) -> String {
             .unwrap_or_default();
             let id = match c.args.as_slice() {
                 [a] => match &a.expr {
-                    Expr::Literal(Val::String(s)) => Some(s.to_string()),
+                    Expr::Literal(Val::String(s)) => Some(s.clone()),
                     e => crate::cel_paths::select_path(e),
                 },
                 _ => None,

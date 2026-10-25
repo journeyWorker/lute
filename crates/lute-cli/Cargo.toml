@@ -32,3 +32,6 @@ rayon = "1.12"
 
 [dev-dependencies]
 lute-scratch = { path = "../lute-scratch" }
+
+[lints]
+workspace = true

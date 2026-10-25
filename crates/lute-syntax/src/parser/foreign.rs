@@ -18,7 +18,7 @@ const LUTE_CHOICES: &str = "Lute choices are `<choice id=\"…\" text=\"…\">` 
 /// an Ink or Yarn construct; `None` otherwise. Speakerless prose is
 /// [`speakerless`] — the caller asks it only after ruling out a line wrapped
 /// from the one above ([`continues`]).
-pub(super) fn foreign_line(line: &str) -> Option<String> {
+pub(crate) fn foreign_line(line: &str) -> Option<String> {
     if line == "->->" {
         return Some(
             "`->->` returns from an Ink tunnel; a Lute component returns on its own when its \
@@ -168,7 +168,7 @@ pub(super) fn foreign_line(line: &str) -> Option<String> {
 /// The pointer for a line of text with no `@speaker:` head — prose, or a
 /// script-style `Name: text` line — or `None` when `line` does not read as
 /// text (a stray token, punctuation).
-pub(super) fn speakerless(line: &str) -> Option<String> {
+pub(crate) fn speakerless(line: &str) -> Option<String> {
     if let Some((name, text)) = line.split_once(':') {
         let is_name = name.chars().next().is_some_and(char::is_alphabetic)
             && name.chars().all(|c| c.is_alphanumeric() || c == '_');
@@ -197,7 +197,7 @@ pub(super) fn speakerless(line: &str) -> Option<String> {
 /// sentence up mid-way (a lowercase start, or `prev` ending on `,`/`;`/a
 /// dash). A capitalized sentence after a finished line is not a wrap — it is
 /// a line with no speaker ([`speakerless`]).
-pub(super) fn continues(prev: &str, cur: &str) -> bool {
+pub(crate) fn continues(prev: &str, cur: &str) -> bool {
     if prev.starts_with('<') && !prev.starts_with("</") {
         return !prev.ends_with('>');
     }

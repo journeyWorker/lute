@@ -94,7 +94,7 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
     // end-of-shot converge one slot past the last record, i.e.
     // `max idx in shot + 100`. A dangling addr resolves to neither and must
     // fail.
-    let mut valid: BTreeSet<String> = addrs.iter().map(|a| a.to_string()).collect();
+    let mut valid: BTreeSet<String> = addrs.iter().map(std::string::ToString::to_string).collect();
     // Width is read off the addrs rather than hardcoded, so the converge slot
     // is reconstructed correctly for a wide artifact too.
     let mut shot_max: BTreeMap<&str, (u32, usize)> = BTreeMap::new();
@@ -142,7 +142,7 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
                 assert!(c.get("code").is_none(), "no standalone code field (§4.2)");
             }
             Some("match") => {
-                assert_cel_clean("match.subject", c["subject"]["cel"].as_str().unwrap())
+                assert_cel_clean("match.subject", c["subject"]["cel"].as_str().unwrap());
             }
             Some("set") => assert_cel_clean("set.value", c["value"]["cel"].as_str().unwrap()),
             // Quest/on records carry CEL slot objects with `cel` and `expr`.
@@ -185,7 +185,7 @@ fn assert_artifact_invariants(json: &serde_json::Value) {
                 }
                 assert_target(c["body"].as_str().expect("beat.body"), &valid);
             }
-            Some("assert") | Some("retract") => {
+            Some("assert" | "retract") => {
                 let rel = c["relation"].as_str().expect("assert/retract has relation");
                 assert!(
                     relation_names.contains(rel),

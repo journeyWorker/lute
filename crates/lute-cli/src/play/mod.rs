@@ -118,7 +118,6 @@ pub(crate) fn static_context_references(path: &Path) -> Result<Vec<String>, Stri
     let script = parse_script(&text, path)?;
     let script::PlayScript {
         surfaces,
-        choose: _,
         save,
         steps,
         step_expects,
@@ -358,7 +357,6 @@ fn install_condition_dump(
     if let Ok(mut f) = file.try_borrow_mut() {
         serde_json::to_writer(&mut *f, &json!({"kind": "env", "env": env}))
             .map_err(|e| format!("cannot write conditions-output header: {e}"))?;
-        use std::io::Write;
         writeln!(f).map_err(|e| format!("cannot write conditions-output header: {e}"))?;
     }
     let defaults: std::collections::BTreeMap<String, lute_runtime::Value> = project
@@ -679,6 +677,7 @@ pub(crate) struct PlayTestRun {
 /// A project compiled once for every play of one `lute test` run (T2-1):
 /// `Err` is why no play can run over it — the usage error, or that it does
 /// not compile (the compile gate's diagnostics are already printed).
+#[derive(Debug)]
 pub(crate) struct PlayProject(
     Result<
         (
@@ -697,6 +696,10 @@ impl PlayProject {
     }
 
     /// [`PlayProject::compile`] over `memo`'s model of the project.
+    #[expect(
+        clippy::map_err_ignore,
+        reason = "a bundle that compiled but does not load is reported with the same pinned `NOT_COMPILED` text"
+    )]
     pub(crate) fn compile_in(memo: &lute_model::ModelMemo, dir: &Path, build: &Build) -> Self {
         const NOT_COMPILED: &str = "the project does not compile (diagnostics above)";
         PlayProject(

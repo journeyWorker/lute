@@ -490,9 +490,15 @@ fn collect_quest_tiers(v: &serde_json::Value, out: &mut Vec<(String, String)>) {
                     out.push((id.to_string(), tier.to_string()));
                 }
             }
-            m.values().for_each(|x| collect_quest_tiers(x, out));
+            for x in m.values() {
+                collect_quest_tiers(x, out);
+            }
         }
-        serde_json::Value::Array(a) => a.iter().for_each(|x| collect_quest_tiers(x, out)),
+        serde_json::Value::Array(a) => {
+            for x in a {
+                collect_quest_tiers(x, out);
+            }
+        }
         _ => {}
     }
 }

@@ -154,7 +154,7 @@ fn walk_nodes(nodes: &[Node], out: &mut DependencyFeed) {
                 if d.tag == "use" {
                     if let Some((name, span)) =
                         d.attrs.iter().find_map(|a| match (&*a.key, &a.value) {
-                            ("component", AttrValue::Str(s)) | ("name", AttrValue::Str(s)) => {
+                            ("component" | "name", AttrValue::Str(s)) => {
                                 Some((s.clone(), a.value_span))
                             }
                             _ => None,

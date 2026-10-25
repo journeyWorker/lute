@@ -1,8 +1,11 @@
-use super::*;
+use super::{
+    clock_at, entry_flag, quest_state_id, refresh_clock, resolve_fact, resolve_state, seed_quest,
+    unknown_id, value_to_json, BTreeSet, ExecProject, Fact, KindShape, Value, World, QUEST_STATES,
+};
 
 /// The most cells one invocation evaluates — a typo'd range (`1..70000`)
 /// is refused rather than ground through.
-pub(super) const MAX_CELLS: usize = 10_000;
+pub(crate) const MAX_CELLS: usize = 10_000;
 
 /// Every axis kind the calendar applies — the usage error for an axis it
 /// cannot apply lists them.
@@ -16,11 +19,11 @@ pub(crate) const AXIS_KINDS: &str = "a declared state path (`run.day=1..7`), \
 /// dsl 0.24.0 §1: the axis over the declared clock — `clock=d1..d2` (or a
 /// day list), every slot of each day in clock order; bare `clock` is one
 /// week from day 1 (day 1 alone without a `week:`).
-pub(super) const CLOCK_AXIS: &str = "clock";
+pub(crate) const CLOCK_AXIS: &str = "clock";
 
 /// Split `s` at every `sep` outside parentheses and quotes, so a
 /// `holds(at(a, b))` or `visited('x')` axis path stays whole.
-pub(super) fn split_top(s: &str, sep: char) -> Vec<&str> {
+pub(crate) fn split_top(s: &str, sep: char) -> Vec<&str> {
     let (mut depth, mut quote, mut start) = (0i32, None::<char>, 0);
     let mut out = Vec::new();
     for (i, c) in s.char_indices() {
@@ -58,6 +61,10 @@ pub(crate) fn parse_axis_flag(raw: &str) -> Result<(String, Vec<String>), String
     let spec = spec.trim();
     let values: Vec<String> = match spec.split_once("..") {
         Some((lo, hi)) => {
+            #[expect(
+                clippy::map_err_ignore,
+                reason = "the usage message says what is wrong; the `ParseIntError` text adds nothing"
+            )]
             let bound = |s: &str| {
                 s.trim()
                     .parse::<i64>()
@@ -82,7 +89,7 @@ pub(crate) fn parse_axis_flag(raw: &str) -> Result<(String, Vec<String>), String
 }
 
 /// How an axis value reaches a cell.
-pub(super) enum Apply {
+pub(crate) enum Apply {
     /// A declared state path, written as an `engine:` step writes it.
     State,
     /// `quest.<id>.state`: the quest's status, seeded as a save's `quests:`
@@ -115,7 +122,7 @@ pub(super) enum Apply {
 
 impl Apply {
     /// A family axis's family path and member names.
-    pub(super) fn family(&self) -> Option<(&str, &[String])> {
+    pub(crate) fn family(&self) -> Option<(&str, &[String])> {
         match self {
             Apply::Family { family, members }
             | Apply::Tied {
@@ -127,7 +134,7 @@ impl Apply {
 }
 
 /// The id of a `visited('<id>')` axis path (`'…'`, `"…"` or bare).
-pub(super) fn visited_id(path: &str) -> Option<&str> {
+pub(crate) fn visited_id(path: &str) -> Option<&str> {
     let inner = path.strip_prefix("visited(")?.strip_suffix(')')?.trim();
     let unquoted = ['\'', '"']
         .iter()
@@ -137,15 +144,15 @@ pub(super) fn visited_id(path: &str) -> Option<&str> {
 }
 
 /// One axis, its values resolved.
-pub(super) struct Axis {
-    pub(super) path: String,
-    pub(super) apply: Apply,
-    pub(super) values: Vec<(String, Value)>,
+pub(crate) struct Axis {
+    pub(crate) path: String,
+    pub(crate) apply: Apply,
+    pub(crate) values: Vec<(String, Value)>,
 }
 
 /// `quest.<id>.objectives.<oid>.done` — a quest path the resumed lifecycle
 /// honours as written (a save's objective progress).
-pub(super) fn is_objective_done(path: &str) -> bool {
+pub(crate) fn is_objective_done(path: &str) -> bool {
     let parts: Vec<&str> = path.split('.').collect();
     matches!(parts.as_slice(), ["quest", id, "objectives", oid, "done"] if !id.is_empty() && !oid.is_empty())
 }
@@ -153,7 +160,7 @@ pub(super) fn is_objective_done(path: &str) -> bool {
 /// The declared path a written one is typed by: a save made after a run
 /// ended carries `prev.run.*`, typed by the `run.*` path it mirrors (dsl
 /// 0.23.0 §6).
-pub(super) fn declared_path(path: &str) -> &str {
+pub(crate) fn declared_path(path: &str) -> &str {
     match path.strip_prefix("prev.") {
         Some(run) if run.starts_with("run.") => run,
         _ => path,
@@ -165,7 +172,7 @@ pub(super) fn declared_path(path: &str) -> &str {
 /// member (`run.aff.ren`, …), so the family is the closed entity kind every
 /// member of which has a declared `<path>.<member>` — the largest such kind,
 /// since a kind's sub-kinds are covered with it.
-pub(super) fn state_family<'a>(p: &'a ExecProject, path: &str) -> Option<(&'a str, &'a [String])> {
+pub(crate) fn state_family<'a>(p: &'a ExecProject, path: &str) -> Option<(&'a str, &'a [String])> {
     p.kinds
         .iter()
         .rev()
@@ -182,7 +189,7 @@ pub(super) fn state_family<'a>(p: &'a ExecProject, path: &str) -> Option<(&'a st
 
 /// An axis over a `per:` family: `<family>.*` (`None`) or
 /// `<family>[<axis>]` (the indexing axis's path).
-pub(super) fn family_form(path: &str) -> Option<(&str, Option<&str>)> {
+pub(crate) fn family_form(path: &str) -> Option<(&str, Option<&str>)> {
     if let Some(family) = path.strip_suffix(".*") {
         return Some((family.trim(), None));
     }
@@ -192,7 +199,7 @@ pub(super) fn family_form(path: &str) -> Option<(&str, Option<&str>)> {
 
 /// Resolve `--axis <family>.*` / `<family>[<by>]`; `axes` are every
 /// `--axis` as given, the one a tied axis names among them.
-pub(super) fn resolve_family_axis(
+pub(crate) fn resolve_family_axis(
     p: &ExecProject,
     family: &str,
     by: Option<&str>,
@@ -263,7 +270,7 @@ pub(super) fn resolve_family_axis(
 
 /// Resolve one `--axis` against the project; `axes` are every `--axis` as
 /// given (what a tied family axis names). `Err` is the usage error.
-pub(super) fn resolve_axis(
+pub(crate) fn resolve_axis(
     p: &ExecProject,
     path: &str,
     values: &[String],
@@ -385,7 +392,7 @@ pub(super) fn resolve_axis(
 /// dsl 0.24.0 §1: `--axis clock[=<days>]` — every slot of each day, in
 /// clock order; each value is the position's `clock.index`, its text `day
 /// slot` (`1 Mon morning` with week labels).
-pub(super) fn resolve_clock_axis(p: &ExecProject, days: &[String]) -> Result<Axis, String> {
+pub(crate) fn resolve_clock_axis(p: &ExecProject, days: &[String]) -> Result<Axis, String> {
     let Some(clock) = &p.index.clock else {
         return Err(format!(
             "no schema of this project declares a `clock:`; an axis is one of: \
@@ -443,18 +450,18 @@ pub(super) fn resolve_clock_axis(p: &ExecProject, days: &[String]) -> Result<Axi
 }
 
 /// The position of a clock axis value (its `clock.index`).
-pub(super) fn clock_axis_at(
+pub(crate) fn clock_axis_at(
     clock: &lute_manifest::clock::ClockDecl,
     value: &Value,
 ) -> lute_manifest::clock::ClockAt {
     let Value::Int(index) = value else {
         unreachable!("a clock axis value is its index")
     };
-    let len = clock.slot_count() as i64;
+    let len = i64::try_from(clock.slot_count()).expect("a length is at most isize::MAX");
     let index = *index;
     lute_manifest::clock::ClockAt {
         day: index.div_euclid(len) + 1,
-        slot: index.rem_euclid(len) as usize,
+        slot: usize::try_from(index.rem_euclid(len)).expect("rem_euclid by len is in 0..len"),
     }
 }
 
@@ -462,7 +469,7 @@ pub(super) fn clock_axis_at(
 /// indices are `picks`: its path, every member of a `<family>.*`, or the
 /// member a `<family>[<axis>]`'s indexing axis names there (none when that
 /// value names no member, [`tied_outside`]). Empty for the other kinds.
-pub(super) fn written_paths(axis: &Axis, axes: &[Axis], picks: &[usize]) -> Vec<String> {
+pub(crate) fn written_paths(axis: &Axis, axes: &[Axis], picks: &[usize]) -> Vec<String> {
     match &axis.apply {
         Apply::State => vec![axis.path.clone()],
         Apply::Family { family, members } => {
@@ -482,7 +489,7 @@ pub(super) fn written_paths(axis: &Axis, axes: &[Axis], picks: &[usize]) -> Vec<
 /// OT-F-12: the value of a `<family>[<axis>]`'s indexing axis at `picks`
 /// when it names no member of the family (a route outside it) — the tied
 /// axis sets nothing at that cell.
-pub(super) fn tied_outside<'a>(axis: &Axis, axes: &'a [Axis], picks: &[usize]) -> Option<&'a str> {
+pub(crate) fn tied_outside<'a>(axis: &Axis, axes: &'a [Axis], picks: &[usize]) -> Option<&'a str> {
     let Apply::Tied { members, by, .. } = &axis.apply else {
         return None;
     };
@@ -492,7 +499,7 @@ pub(super) fn tied_outside<'a>(axis: &Axis, axes: &'a [Axis], picks: &[usize]) -
 
 /// Write one axis value into a cell's world; `paths` are the state paths
 /// it writes there ([`written_paths`]).
-pub(super) fn apply_axis(
+pub(crate) fn apply_axis(
     p: &ExecProject,
     w: &mut World,
     axis: &Axis,
@@ -555,7 +562,7 @@ pub(super) fn apply_axis(
 
 /// What the settle did to an axis value the cell was given — a quest
 /// handler's write, a seeded quest status the lifecycle moved on.
-pub(super) fn settled_away(
+pub(crate) fn settled_away(
     p: &ExecProject,
     w: &World,
     axis: &Axis,

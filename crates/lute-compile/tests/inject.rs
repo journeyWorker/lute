@@ -51,8 +51,7 @@ fn sprite_desc(cmd: &Command) -> Option<String> {
         .stamp
         .provenance
         .as_ref()
-        .map(|p| p.by.as_str())
-        .unwrap_or("authored");
+        .map_or("authored", |p| p.by.as_str());
     let what = if s.pos_reset == Some(true) {
         "posReset"
     } else if s.preload == Some(true) {
@@ -273,13 +272,9 @@ fn dirty_survives_join_when_only_one_arm_dirties_the_speaker() {
     let pos_resets: Vec<&str> = recs
         .iter()
         .filter_map(|r| match &r.cmd {
-            Command::Actor(s) if s.pos_reset == Some(true) => Some(
-                s.stamp
-                    .provenance
-                    .as_ref()
-                    .map(|p| p.by.as_str())
-                    .unwrap_or(""),
-            ),
+            Command::Actor(s) if s.pos_reset == Some(true) => {
+                Some(s.stamp.provenance.as_ref().map_or("", |p| p.by.as_str()))
+            }
             _ => None,
         })
         .collect();

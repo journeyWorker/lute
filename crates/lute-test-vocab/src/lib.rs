@@ -16,7 +16,10 @@ use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 
 pub fn closed(members: &[&str]) -> Domain {
     Domain {
-        members: members.iter().map(|s| s.to_string()).collect(),
+        members: members
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect(),
         ..Default::default()
     }
 }
@@ -88,13 +91,13 @@ pub fn test_domains() -> BTreeMap<String, Domain> {
                 "hide",
             ]
             .iter()
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
             open: false,
             default: None,
             exits: ["fadeOut", "fadeOutDown", "fadeOutSlow", "hide"]
                 .iter()
-                .map(|s| s.to_string())
+                .map(std::string::ToString::to_string)
                 .collect(),
             stops: Vec::new(),
             labels: BTreeMap::new(),

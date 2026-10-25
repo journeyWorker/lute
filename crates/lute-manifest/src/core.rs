@@ -230,7 +230,7 @@ mod tests {
         let end = snap.directive(END_DIRECTIVE).expect("missing ::end");
         assert_eq!(end.semantics, ["terminatesWalk"]);
         assert!(crate::validate::validate_directive(end).is_empty());
-        let [reason] = &end.attrs[..] else {
+        let [reason] = &*end.attrs else {
             panic!("::end declares exactly one attr")
         };
         assert_eq!(reason.name, "reason");
@@ -342,8 +342,7 @@ mod tests {
         let ty = |dir: &str, attr: &str| {
             snap.directive(dir)
                 .and_then(|d| d.attrs.iter().find(|a| a.name == attr))
-                .map(|a| a.ty.clone())
-                .unwrap_or_else(|| panic!("missing {dir}.{attr}"))
+                .map_or_else(|| panic!("missing {dir}.{attr}"), |a| a.ty.clone())
         };
         assert_eq!(ty(ACTOR_DIRECTIVE, "action"), Type::Domain("action".into()));
         assert_eq!(ty(ACTOR_DIRECTIVE, "anchor"), Type::Domain("anchor".into()));

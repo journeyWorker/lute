@@ -23,3 +23,6 @@ required-features = ["json-schema"]
 
 [dev-dependencies]
 lute-compile = { path = "../lute-compile" }
+
+[lints]
+workspace = true

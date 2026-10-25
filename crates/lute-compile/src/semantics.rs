@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::ir::*;
-use lute_ir::*;
+use crate::ir::{
+    ArtifactMeta, BeatCmd, BeatIr, Command, EntryCmd, ExecutionIr, Placeholder, QuestCmd,
+    QuestTier, RewardEntry, Stamp,
+};
+use lute_ir::{BodyEntry, CelPair, ExprNode, PrereqEdge};
 /// A stable semantic capability identifier.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SemanticId(&'static str);
@@ -534,7 +537,7 @@ fn scan_expr(out: &mut Collected, expr: &ExprNode, addr: Option<&str>, what: &st
         }
         ExprNode::List { list } => {
             for item in list {
-                scan_expr(out, item, addr, what)
+                scan_expr(out, item, addr, what);
             }
         }
         ExprNode::Index { index, key } => {
@@ -775,6 +778,8 @@ fn scan_beat_ir(out: &mut Collected, beat: &BeatIr) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ir::{CelEnv, SceneMeta, StateTable};
+    use lute_ir::{DocKind, EnumEntry, PrereqEdgeEntry};
 
     #[test]
     fn registry_has_all_fifteen_ids() {
@@ -899,8 +904,8 @@ mod tests {
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
             kind: DocKind::Scene,
-            lute: "0.49.0".into(),
-            ir_version: "0.49.0".into(),
+            lute: "0.49.1".into(),
+            ir_version: "0.49.1".into(),
             capability_snapshot: "cap".into(),
             identity_renames: vec![],
             required_semantics: vec![],

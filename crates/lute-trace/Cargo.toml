@@ -17,3 +17,6 @@ cel-parser = "0.10.1"
 serde = { workspace = true }
 serde_json = { workspace = true }
 yaml_serde = { workspace = true }
+
+[lints]
+workspace = true

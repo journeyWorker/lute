@@ -273,7 +273,9 @@ fn defaults_block_loads_the_closed_key_set() {
         Some("haven")
     );
     assert_eq!(
-        proj.defaults.get("season").and_then(|v| v.as_i64()),
+        proj.defaults
+            .get("season")
+            .and_then(yaml_serde::Value::as_i64),
         Some(1)
     );
 }
@@ -730,14 +732,14 @@ fn malformed_unknown_and_null_project_permissions_fail_loading() {
             &format!("defaultProfile: p\nprofiles:\n  p:\n    plugins: {{}}\n{fragment}"),
         );
         assert!(load_project(&dir).is_err(), "must reject {tag}");
-        fs::remove_dir_all(&dir).ok();
+        let _ = fs::remove_dir_all(&dir); // best-effort cleanup
     }
 
     let profile_null = permission_project(
         "profile-null",
         "defaultProfile: p\nprofiles:\n  p:\n    plugins: {}\n    permissions: null\n",
     );
-    assert!(load_project(&profile_null).is_err());
+    load_project(&profile_null).unwrap_err();
 }
 
 // ── 0.26.0 §2.4: `defaults.uses` globs and `defaults.questTier` ───────────
@@ -946,7 +948,7 @@ fn unreadable_manifest_is_one_located_e_manifest_in_plain_words() {
     let refusal = |tag: &str, body: &str| {
         let dir = write_manifest(tag, body);
         let e = load_project(&dir).expect_err("the manifest must not load");
-        fs::remove_dir_all(&dir).ok();
+        let _ = fs::remove_dir_all(&dir); // best-effort cleanup
         let tail = e
             .to_string()
             .split_once("lute.project.yaml:")

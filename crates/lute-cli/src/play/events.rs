@@ -5,10 +5,11 @@
 //! Its steps become runtime inputs; its awaits are answered with the
 //! decisions and bridge answers `lute play`'s driver took for that script
 //! (the `ScriptedChoices` cursor rules, `include:` scopes and per-tag bridge
-//! queues apply in one place: [`PlayDriverState`]).
+//! queues apply in one place: [`PlayDriverState`](super::driver::PlayDriverState)).
 
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::process::ExitCode;
 
 use lute_runtime::runtime::{
     AdvanceBy, Await, ClockPosition, Input, Output, PickInput, Rejected, SaveInput, Seed, State,
@@ -20,7 +21,6 @@ use lute_runtime::session::{
 use lute_runtime::{BridgeAnswer, Runtime};
 use serde_json::Value;
 
-use super::driver::PlayDriverState;
 use super::plan::Action;
 use super::script::PlayScript;
 
@@ -42,11 +42,13 @@ pub enum ScriptAnswer {
 
 /// What `lute play`'s report path produced for the script: its machine
 /// records, in order, and the final world.
+#[derive(Debug)]
 pub struct Reference {
     pub records: Vec<(String, Value)>,
     pub world: World,
 }
 
+#[derive(Debug)]
 pub struct ScriptRun {
     pub runtime: Runtime,
     pub seed: Seed,
@@ -61,11 +63,56 @@ pub struct ScriptRun {
 
 /// Compile the project at `dir`, parse and plan the play script at
 /// `script_path` exactly as `lute play` does, and play it once through
-/// `lute play`'s driver to learn its answers. `Err` is `lute play`'s usage
-/// or compile message.
-pub fn script_run(dir: &Path, script_path: &Path, no_derive: bool) -> Result<ScriptRun, String> {
+/// `lute play`'s driver to learn its answers.
+///
+/// # Errors
+///
+/// [`ScriptRunError`], whose text is `lute play`'s usage or compile message.
+pub fn script_run(
+    dir: &Path,
+    script_path: &Path,
+    no_derive: bool,
+) -> Result<ScriptRun, ScriptRunError> {
     script_run_with(dir, script_path, no_derive, &super::Build::default())
 }
+
+/// Why [`script_run`] has no run. Each text is the one `lute play
+/// --events` prints after `lute play: `.
+#[derive(Debug)]
+pub enum ScriptRunError {
+    /// The script does not load: `lute play`'s usage message.
+    Script(String),
+    /// The project at `dir` does not compile; `message` is the compiler's
+    /// (empty when it already reported to stderr).
+    Compile { dir: PathBuf, message: String },
+    /// The runtime refused the compiled bundle.
+    Runtime(Rejected),
+    /// The compiled bundle does not load for `lute play`'s report path; the
+    /// loader printed its reasons and chose `exit`.
+    Load { dir: PathBuf, exit: ExitCode },
+    /// The script does not plan: `lute play`'s usage message.
+    Plan(String),
+}
+
+impl std::fmt::Display for ScriptRunError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ScriptRunError::Script(message) | ScriptRunError::Plan(message) => f.write_str(message),
+            ScriptRunError::Compile { dir, message } if message.is_empty() => {
+                write!(f, "{} does not compile", dir.display())
+            }
+            ScriptRunError::Compile { message, .. } => f.write_str(message),
+            ScriptRunError::Runtime(rejected) => {
+                write!(f, "{}: {}", rejected.code, rejected.message)
+            }
+            ScriptRunError::Load { dir, .. } => {
+                write!(f, "{} does not load", dir.display())
+            }
+        }
+    }
+}
+
+impl std::error::Error for ScriptRunError {}
 
 /// [`script_run`] over a project built with `build` (providers, permission
 /// profile, `--deny` policy).
@@ -74,8 +121,9 @@ pub(crate) fn script_run_with(
     script_path: &Path,
     no_derive: bool,
     build: &super::Build,
-) -> Result<ScriptRun, String> {
-    let script = super::load_script(script_path).map_err(|(_, message)| message)?;
+) -> Result<ScriptRun, ScriptRunError> {
+    let script =
+        super::load_script(script_path).map_err(|(_, message)| ScriptRunError::Script(message))?;
     let compiled = super::project::compile_play_bundle(
         &lute_model::ModelMemo::default(),
         dir,
@@ -83,24 +131,21 @@ pub(crate) fn script_run_with(
         &crate::EngineMatrix::reference(),
         build,
     )
-    .map_err(|(_, message)| {
-        if message.is_empty() {
-            format!("{} does not compile", dir.display())
-        } else {
-            message
-        }
+    .map_err(|(_, message)| ScriptRunError::Compile {
+        dir: dir.to_path_buf(),
+        message,
     })?;
     // The runtime loads the bundle as a host would; `lute play`'s report
     // path loads the same bundle with its report data.
-    let runtime =
-        Runtime::load(compiled.bundle.clone()).map_err(|r| format!("{}: {}", r.code, r.message))?;
-    let (project, needles) = compiled
-        .load()
-        .map_err(|_| format!("{} does not load", dir.display()))?;
+    let runtime = Runtime::load(compiled.bundle.clone()).map_err(ScriptRunError::Runtime)?;
+    let (project, needles) = compiled.load().map_err(|exit| ScriptRunError::Load {
+        dir: dir.to_path_buf(),
+        exit,
+    })?;
     let (plan, world) =
         super::plan::plan_script(&project, &needles, &script, script_path, no_derive)
-            .map_err(|(_, message)| message)?;
-    let mut driver: PlayDriverState = super::driver_for(&project, &script, None);
+            .map_err(|(_, message)| ScriptRunError::Plan(message))?;
+    let mut driver = super::driver_for(&project, &script, None);
     let played = super::run::execute(
         &script,
         &plan,
@@ -142,6 +187,7 @@ pub(crate) fn script_run_with(
     clippy::large_enum_variant,
     reason = "rejected input retains the full state needed for diagnostics"
 )]
+#[derive(Debug)]
 pub enum DriveEnd {
     /// Every input ran.
     Done,
@@ -156,6 +202,7 @@ pub enum DriveEnd {
 }
 
 /// The state and last output a driven script left, and why it stopped.
+#[derive(Debug)]
 pub struct Driven {
     pub state: State,
     pub output: Output,

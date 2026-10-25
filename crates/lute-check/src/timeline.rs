@@ -585,9 +585,9 @@ mod tests {
     use lute_manifest::schema::{
         AttrDecl, DirectiveDecl, DirectiveEffects, Lowering, WriteDecl, WriteValue,
     };
-    use lute_manifest::types::{FromAttr, Literal, PathSegment, Type};
+    use lute_manifest::types::{FromAttr, Literal, Type};
     use lute_syntax::ast::Set;
-    use lute_syntax::ast::{Attr, Clip, ClipAt, Directive, Track};
+    use lute_syntax::ast::{Attr, ClipAt, Directive, Track};
     use std::sync::LazyLock;
 
     fn span() -> Span {

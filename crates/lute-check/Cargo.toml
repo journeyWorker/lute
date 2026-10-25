@@ -20,3 +20,6 @@ lute-scratch = { path = "../lute-scratch" }
 insta = { workspace = true }
 lute-test-vocab = { path = "../lute-test-vocab" }
 proptest = "1"
+
+[lints]
+workspace = true

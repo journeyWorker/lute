@@ -90,7 +90,7 @@ impl serde::Serialize for LitVal {
 
 /// Reads exactly one of `int`, `double`, `bool`, `string`.
 impl<'de> Deserialize<'de> for LitVal {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         #[derive(Deserialize)]
         struct Raw {
             int: Option<i64>,
@@ -98,7 +98,7 @@ impl<'de> Deserialize<'de> for LitVal {
             bool: Option<bool>,
             string: Option<String>,
         }
-        match Raw::deserialize(d)? {
+        match Raw::deserialize(deserializer)? {
             Raw {
                 int: Some(v),
                 double: None,
@@ -135,7 +135,7 @@ const OPS: &[&str] = &[
 
 /// Reads the shapes the module docs list; an `op` outside them is an error.
 impl<'de> Deserialize<'de> for ExprNode {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
         // Untagged: the first shape whose fields are all present wins, and
         // extra fields are ignored — so `Binary` (`op`, `l`, `r`) is tried
         // before `Unary` (`op`, `l`), which would otherwise drop `r`.
@@ -225,7 +225,7 @@ impl<'de> Deserialize<'de> for ExprNode {
                 Raw::Param { param } => ExprNode::Param { param },
             })
         }
-        node(Raw::deserialize(d)?)
+        node(Raw::deserialize(deserializer)?)
     }
 }
 
@@ -279,7 +279,7 @@ mod tests {
     #[test]
     fn an_unknown_operator_is_refused() {
         let json = serde_json::json!({ "op": "<>", "l": { "path": "a" }, "r": { "path": "b" } });
-        assert!(serde_json::from_value::<ExprNode>(json).is_err());
+        serde_json::from_value::<ExprNode>(json).unwrap_err();
     }
 
     #[test]

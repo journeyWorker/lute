@@ -49,6 +49,7 @@ use crate::session::{
 use crate::Value;
 
 /// One declared season, resolved against the project.
+#[derive(Debug)]
 pub struct SeasonPlan {
     pub name: String,
     /// The `live` condition, `@def`-expanded.
@@ -64,6 +65,7 @@ pub struct SeasonPlan {
 }
 
 /// One `<quest rearm>`.
+#[derive(Debug)]
 pub struct RearmPlan {
     pub quest: String,
     pub document: String,
@@ -72,7 +74,7 @@ pub struct RearmPlan {
 }
 
 /// What the project declares about cadence, read once at assembly.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct CadencePlan {
     pub seasons: Vec<SeasonPlan>,
     pub rearms: Vec<RearmPlan>,
@@ -203,6 +205,7 @@ impl CadencePlan {
 /// One `spentBy` beat: observed at every settle for each member it is
 /// judged for (a kind beat's members, else once), so the beat is spent
 /// from the first moment its condition held.
+#[derive(Debug)]
 pub struct LatchPlan {
     pub beat: String,
     /// The `spentBy` condition, `@def`-expanded.
@@ -538,7 +541,7 @@ pub fn observe(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
             observer,
         )
         .with_visited(&w.visited);
@@ -639,7 +642,7 @@ pub fn observe_latches(p: &ExecProject, w: &mut World, observer: Option<SessionE
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
             observer,
         )
         .with_visited(&w.visited);

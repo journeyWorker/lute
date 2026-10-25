@@ -43,7 +43,7 @@ use lute_manifest::semantics::prereq::PrereqFormula;
 pub fn in_envelope_scope(path: &str) -> bool {
     matches!(
         crate::meta::namespace_of(path),
-        Some(Namespace::Run) | Some(Namespace::User)
+        Some(Namespace::Run | Namespace::User)
     )
 }
 
@@ -1443,7 +1443,7 @@ mod tests {
             z ^ (z >> 31)
         }
         fn next_range(&mut self, n: usize) -> usize {
-            (self.next_u64() % (n as u64)) as usize
+            usize::try_from(self.next_u64() % (n as u64)).unwrap()
         }
         fn next_bool(&mut self) -> bool {
             self.next_u64() & 1 == 0

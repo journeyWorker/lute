@@ -13,10 +13,14 @@ pub(crate) fn span_valid(span: Span, length: usize) -> bool {
 /// zero-width insertion exactly at a region start belongs to the region; one
 /// exactly at a region end belongs to it too.
 pub(crate) fn map_offset(edits: &[TextEdit], offset: usize, end: bool) -> usize {
+    let signed = |n: usize| isize::try_from(n).expect("a text offset is at most isize::MAX");
+    // Sorted, non-overlapping edits wholly before an offset remove at most
+    // the bytes before it, so a shifted offset is never negative.
+    let unsigned = |n: isize| usize::try_from(n).expect("a shifted offset is non-negative");
     let mut shift = 0isize;
     for edit in edits {
         if edit.start < offset && offset < edit.end {
-            let start = (edit.start as isize + shift) as usize;
+            let start = unsigned(signed(edit.start) + shift);
             return if end { start + edit.text.len() } else { start };
         }
         let before = if end {
@@ -25,10 +29,10 @@ pub(crate) fn map_offset(edits: &[TextEdit], offset: usize, end: bool) -> usize 
             edit.end < offset || (edit.end == offset && edit.start < edit.end)
         };
         if before {
-            shift += edit.text.len() as isize - (edit.end - edit.start) as isize;
+            shift += signed(edit.text.len()) - signed(edit.end - edit.start);
         }
     }
-    (offset as isize + shift) as usize
+    unsigned(signed(offset) + shift)
 }
 
 /// The written-text byte ranges of `edits`: each edit's original region (the

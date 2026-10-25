@@ -1,6 +1,6 @@
 //! Shared source input assembly for CLI, LSP, and project models.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use lute_check::{CheckInput, InputSources, Mode};
@@ -10,6 +10,7 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 
 use crate::cache::InputCache;
 
+#[derive(Debug)]
 pub struct BuiltInput {
     pub input: CheckInput,
     pub resolve_error: bool,
@@ -116,14 +117,41 @@ pub fn build_input_with_mode(
     }
 }
 
-pub fn read_document(file: &Path) -> Result<String, String> {
-    std::fs::read_to_string(file).map_err(|e| {
-        format!(
-            "lute: cannot read {}: {}",
-            file.display(),
-            lute_manifest::io_reason(&e)
-        )
+/// Read one source document.
+///
+/// # Errors
+///
+/// [`ReadError`]: the file cannot be read.
+pub fn read_document(file: &Path) -> Result<String, ReadError> {
+    std::fs::read_to_string(file).map_err(|source| ReadError {
+        path: file.to_path_buf(),
+        source,
     })
+}
+
+/// A source document that cannot be read. `Display` is the line the CLI
+/// prints: `lute: cannot read <path>: <reason>`.
+#[derive(Debug)]
+pub struct ReadError {
+    pub path: PathBuf,
+    pub source: std::io::Error,
+}
+
+impl std::fmt::Display for ReadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "lute: cannot read {}: {}",
+            self.path.display(),
+            lute_manifest::io_reason(&self.source)
+        )
+    }
+}
+
+impl std::error::Error for ReadError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        Some(&self.source)
+    }
 }
 
 pub fn assemble_input(
@@ -233,4 +261,32 @@ pub fn assemble_input_with_mode(
             .unwrap_or_default(),
     };
     (built, parsed)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 0.49.1: an unreadable document renders the 0.49.0 line and keeps the
+    /// I/O error as its `source()`.
+    #[test]
+    fn read_error_text_and_source() {
+        let path = Path::new("no-such-dir-0491/missing.lute");
+        let error = read_document(path).unwrap_err();
+        assert_eq!(
+            error.to_string(),
+            format!(
+                "lute: cannot read {}: {}",
+                path.display(),
+                lute_manifest::io_reason(&error.source)
+            )
+        );
+        let source = std::error::Error::source(&error).expect("the I/O error");
+        assert_eq!(
+            source
+                .downcast_ref::<std::io::Error>()
+                .map(std::io::Error::kind),
+            Some(std::io::ErrorKind::NotFound)
+        );
+    }
 }

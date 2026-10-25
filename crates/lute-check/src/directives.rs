@@ -380,7 +380,11 @@ pub fn check_directive(
     diags.extend(crate::renames::camera_empty(dir));
     // dsl 0.27.0 §4: the facts the call's declared `effects.asserts` /
     // `retracts` write, judged like an `::assert` / `::retract` of them.
-    if decl.effects.as_ref().is_some_and(|e| e.has_facts()) {
+    if decl
+        .effects
+        .as_ref()
+        .is_some_and(lute_manifest::schema::DirectiveEffects::has_facts)
+    {
         diags.extend(crate::directive_facts::check_call(dir, decl, domains, ctx));
     }
     // dsl 0.28.0 (T1-18): the state its declared `effects.writes` write,
@@ -1083,13 +1087,10 @@ fn diag(code: &str, severity: Severity, message: String, span: Span) -> Diagnost
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ctx::Ctx;
     use crate::ctx::Env;
-    use lute_core_span::Span;
     use lute_manifest::core::load_core_snapshot;
-    use lute_manifest::provider::ProviderSet;
     use lute_manifest::schema::{DirectiveDecl, Lowering};
-    use lute_syntax::ast::{Attr, AttrValue, CelKind, CelSlot};
+    use lute_syntax::ast::{CelKind, CelSlot};
     use std::sync::LazyLock;
 
     fn span() -> Span {
@@ -1301,7 +1302,10 @@ mod tests {
     /// Camera domains for the 0.37 slots, declared the way a project does.
     fn camera_domains() -> BTreeMap<String, Domain> {
         let closed = |members: &[&str]| Domain {
-            members: members.iter().map(|m| m.to_string()).collect(),
+            members: members
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             open: false,
             default: None,
             exits: Vec::new(),

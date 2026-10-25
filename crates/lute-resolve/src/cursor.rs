@@ -592,6 +592,7 @@ fn is_name_byte(b: u8) -> bool {
 /// Resolved info for an `@ref` def: its CEL text, a rendered type label, and any
 /// parameters. Author-declared inline `defs:` (from [`lute_check::parse_meta`])
 /// win over plugin-exported [`DefDecl`]s; either may be absent.
+#[derive(Debug)]
 pub struct DefInfo {
     pub cel: String,
     pub ty: Option<String>,

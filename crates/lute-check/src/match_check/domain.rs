@@ -1,7 +1,10 @@
 //! Subject value domains (dsl §11.2): the [`Domain`] model and inference from
 //! the `state:` schema, a component param's type, or a whole-subject `@def`.
 
-use super::*;
+use super::{
+    is_reserved_entry_read, is_reserved_quest_activated_at, is_reserved_quest_objective_done,
+    parse_expr, BTreeMap, Match, Namespace, Type, QUEST_STATES,
+};
 
 /// A concrete, statically-known value an arm can match against.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]

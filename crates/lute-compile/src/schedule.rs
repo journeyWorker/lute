@@ -9,6 +9,7 @@ use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{ClipNode, Timeline};
 
 /// One clip with its resolved absolute placement.
+#[derive(Debug)]
 pub struct ScheduledClip<'a> {
     pub at: f64,
     pub duration: f64,

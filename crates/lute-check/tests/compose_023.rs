@@ -122,12 +122,12 @@ fn by_is_a_bool_condition_slot_like_done() {
         );
         let want: Vec<String> = errors(&diags(&as_done))
             .iter()
-            .map(|d| d.code.to_string())
+            .map(|d| d.code.clone())
             .collect();
         assert!(!want.is_empty(), "`{bad}` must be an error as `done`");
         let src = quest(&format!("by=\"{bad}\""));
         let ds = diags(&src);
-        let got: Vec<String> = errors(&ds).iter().map(|d| d.code.to_string()).collect();
+        let got: Vec<String> = errors(&ds).iter().map(|d| d.code.clone()).collect();
         assert_eq!(got, want, "`by=\"{bad}\"`: {ds:?}");
     }
 }

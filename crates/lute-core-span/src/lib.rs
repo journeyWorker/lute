@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Precomputed line-start table for byte <-> (line, col, utf16) mapping.
+#[derive(Debug)]
 pub struct TextIndex<'a> {
     text: &'a str,
     line_starts: Vec<usize>, // byte offset of each line start
@@ -22,7 +23,7 @@ impl<'a> TextIndex<'a> {
         let mut line_utf16 = vec![0u32];
         let mut units = 0u32;
         for (i, c) in text.char_indices() {
-            units += c.len_utf16() as u32;
+            units += u32::try_from(c.len_utf16()).expect("a char is 1 or 2 UTF-16 units");
             if c == '\n' {
                 line_starts.push(i + 1);
                 line_utf16.push(units);
@@ -48,13 +49,18 @@ impl<'a> TextIndex<'a> {
         }
     }
 
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a line of one source text: `Span` positions are `u32`, and a text over 4 GiB wraps, as before"
+    )]
     pub fn position(&self, byte: usize) -> Position {
         let line_ix = self.line_of(byte);
         let line_start = self.line_starts[line_ix];
         let slice = &self.text[line_start..byte];
-        let (chars, utf16_col) = slice
-            .chars()
-            .fold((0u32, 0u32), |(n, u), c| (n + 1, u + c.len_utf16() as u32));
+        let (chars, utf16_col) = slice.chars().fold((0u32, 0u32), |(n, u), c| {
+            let units = u32::try_from(c.len_utf16()).expect("a char is 1 or 2 UTF-16 units");
+            (n + 1, u + units)
+        });
         Position {
             line: line_ix as u32 + 1,
             column: chars + 1,
@@ -70,7 +76,7 @@ impl<'a> TextIndex<'a> {
         self.line_utf16[line_ix]
             + self.text[line_start..byte]
                 .chars()
-                .map(|c| c.len_utf16() as u32)
+                .map(|c| u32::try_from(c.len_utf16()).expect("a char is 1 or 2 UTF-16 units"))
                 .sum::<u32>()
     }
 
@@ -91,6 +97,7 @@ impl<'a> TextIndex<'a> {
 /// left it, so `n` spans on one long line cost the line, not `n` times it.
 /// An offset behind the cursor restarts its line, so any order gives the
 /// same spans as [`Span::from_bytes`].
+#[derive(Debug)]
 pub struct SpanCursor<'i, 'a> {
     idx: &'i TextIndex<'a>,
     line_ix: usize,
@@ -118,6 +125,10 @@ impl SpanCursor<'_, '_> {
 
     /// Move to `byte`: its 1-based line and character column, and the
     /// UTF-16 units before it.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a line of one source text: `Span` positions are `u32`, and a text over 4 GiB wraps, as before"
+    )]
     fn seek(&mut self, byte: usize) -> (u32, u32, u32) {
         let line_ix = self.idx.line_of(byte);
         if line_ix != self.line_ix || byte < self.byte {
@@ -128,7 +139,7 @@ impl SpanCursor<'_, '_> {
         }
         for c in self.idx.text[self.byte..byte].chars() {
             self.chars += 1;
-            self.utf16 += c.len_utf16() as u32;
+            self.utf16 += u32::try_from(c.len_utf16()).expect("a char is 1 or 2 UTF-16 units");
         }
         self.byte = byte;
         (line_ix as u32 + 1, self.chars + 1, self.utf16)
@@ -192,7 +203,7 @@ impl Evidence {
 }
 
 impl Serialize for Evidence {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         let value = match self {
             Self::Proven => "proven",
             Self::Witnessed => "witnessed",
@@ -200,13 +211,13 @@ impl Serialize for Evidence {
             Self::Heuristic => "heuristic",
             Self::Unknown => "unknown",
         };
-        s.serialize_str(value)
+        serializer.serialize_str(value)
     }
 }
 
 impl<'de> Deserialize<'de> for Evidence {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let value = String::deserialize(d)?;
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = String::deserialize(deserializer)?;
         match value.as_str() {
             "proven" => Ok(Self::Proven),
             "witnessed" => Ok(Self::Witnessed),
@@ -288,8 +299,8 @@ struct DiagnosticWire {
 }
 
 impl<'de> Deserialize<'de> for Diagnostic {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let wire = DiagnosticWire::deserialize(d)?;
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let wire = DiagnosticWire::deserialize(deserializer)?;
         let evidence = match wire.evidence.as_deref() {
             None => {
                 if wire.scope.is_some() {
@@ -357,10 +368,10 @@ impl Diagnostic {
 /// ([`Diagnostic::text`]) and the spec sections it cited move to `spec`
 /// (omitted when none) — field order and every other field unchanged.
 impl Serialize for Diagnostic {
-    fn serialize<S: serde::Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         use serde::ser::SerializeStruct;
         let spec = spec_citations(&self.message);
-        let mut st = s.serialize_struct("Diagnostic", 12)?;
+        let mut st = serializer.serialize_struct("Diagnostic", 12)?;
         st.serialize_field("code", &self.code)?;
         st.serialize_field("severity", &self.severity)?;
         st.serialize_field("message", &plain_message(&self.message))?;
@@ -538,8 +549,7 @@ fn is_citation(part: &str) -> bool {
     let (rest, named) = ["dsl ", "spec ", "plugin ", "subquest design "]
         .iter()
         .find_map(|prefix| p.strip_prefix(prefix))
-        .map(|rest| (rest.trim_start(), true))
-        .unwrap_or((p, false));
+        .map_or((p, false), |rest| (rest.trim_start(), true));
     if rest.starts_with('§') || rest.starts_with("prerelease N") || is_appendix(rest) {
         return true;
     }
@@ -834,16 +844,16 @@ mod tests {
             "code": "W-OBJECTIVE-STRANDED", "severity": "warning", "message": "x",
             "evidence": "bounded", "span": diagnostic.span, "layer": "logic"
         });
-        assert!(serde_json::from_value::<Diagnostic>(missing).is_err());
+        serde_json::from_value::<Diagnostic>(missing).unwrap_err();
         let empty = serde_json::json!({
             "code": "W-OBJECTIVE-STRANDED", "severity": "warning", "message": "x",
             "evidence": "bounded", "scope": "", "span": diagnostic.span, "layer": "logic"
         });
-        assert!(serde_json::from_value::<Diagnostic>(empty).is_err());
+        serde_json::from_value::<Diagnostic>(empty).unwrap_err();
         let whitespace = serde_json::json!({
             "code": "W-OBJECTIVE-STRANDED", "severity": "warning", "message": "x",
             "evidence": "bounded", "scope": "   ", "span": diagnostic.span, "layer": "logic"
         });
-        assert!(serde_json::from_value::<Diagnostic>(whitespace).is_err());
+        serde_json::from_value::<Diagnostic>(whitespace).unwrap_err();
     }
 }

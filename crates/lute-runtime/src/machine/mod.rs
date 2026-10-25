@@ -82,12 +82,29 @@ pub use format::{value_to_json, value_to_string};
 pub use plugin::BridgeReads;
 
 /// The bounded step outcome of the dispatcher.
-enum Step {
+pub(crate) enum Step {
     /// Continue at this command index (`>= commands.len()` ⇒ end).
     Next(usize),
     /// Halt the walk (incomplete decision or a hard error already recorded).
     Halt,
 }
+
+/// Why a runner walk stopped short ([`Machine::run`],
+/// [`Machine::advance_quests`], [`Machine::run_deferred_handlers`]): an
+/// unknown command kind or malformed record, or a walk-time refusal
+/// ([`Machine::refused`] tells which). `Display` is the message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WalkError {
+    pub message: String,
+}
+
+impl std::fmt::Display for WalkError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for WalkError {}
 
 /// The `line` record fields that carry a line's identity, delivery and
 /// rendered translations — what a play transcript shows and `lute run
@@ -312,14 +329,21 @@ fn collect_slots(v: &Json, out: &mut HashMap<usize, Arc<Slot>>) {
                 }
                 return;
             }
-            map.values().for_each(|c| collect_slots(c, out));
+            for c in map.values() {
+                collect_slots(c, out);
+            }
         }
-        Json::Array(items) => items.iter().for_each(|c| collect_slots(c, out)),
+        Json::Array(items) => {
+            for c in items {
+                collect_slots(c, out);
+            }
+        }
         _ => {}
     }
 }
 
 /// A read-only snapshot supplied to an [`EvalObserver`].
+#[derive(Debug)]
 pub struct EvalSnapshot<'a> {
     pub state: &'a BTreeMap<String, Value>,
     pub state_types: &'a BTreeMap<String, String>,
@@ -439,6 +463,19 @@ pub struct Machine<D: Driver> {
     /// occasion's beats ([`Machine::run_deferred_handlers`]). `None`: bodies
     /// run where they fire.
     deferred_handlers: Option<Vec<String>>,
+}
+
+impl<D: Driver> std::fmt::Debug for Machine<D> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // `driver` and `eval_observer` are not `Debug`.
+        f.debug_struct("Machine")
+            .field("occasion_target", &self.occasion_target)
+            .field("incomplete", &self.incomplete)
+            .field("terminated", &self.terminated)
+            .field("fatal", &self.fatal)
+            .field("refused", &self.refused)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<D: Driver> Machine<D> {
@@ -564,7 +601,7 @@ impl<D: Driver> Machine<D> {
 
     /// Drive the whole walk: `lute run` once per artifact; `lute play` (dsl
     /// 0.21.0 §6) once per presented beat, then [`Machine::into_carry`].
-    pub fn run(&mut self) -> Result<(), String> {
+    pub fn run(&mut self) -> Result<(), WalkError> {
         if self.code.kind == "quest" {
             self.run_quest();
         } else if self.code.kind == "lore" {
@@ -577,8 +614,14 @@ impl<D: Driver> Machine<D> {
             self.run_range(0, self.code.commands.len());
         }
         self.store.derive();
+        self.take_fatal()
+    }
+
+    /// The walk's outcome: `Err` with the fatal message it recorded, which
+    /// it takes.
+    pub(crate) fn take_fatal(&mut self) -> Result<(), WalkError> {
         match self.fatal.take() {
-            Some(msg) => Err(msg),
+            Some(message) => Err(WalkError { message }),
             None => Ok(()),
         }
     }
@@ -802,7 +845,7 @@ impl<D: Driver> Machine<D> {
 
 /// Where an undecided value was met ([`UnknownSite`] minus the evaluation).
 #[derive(Clone, Copy)]
-struct Site<'a> {
+pub(crate) struct Site<'a> {
     kind: SiteKind,
     id: &'a str,
     addr: &'a str,
@@ -838,20 +881,16 @@ fn fold_op(op: &str, cur: &Value, by: &Value) -> Value {
         (Value::Int(a), Value::Int(b)) => match op {
             "+=" => a
                 .checked_add(*b)
-                .map(Value::Int)
-                .unwrap_or_else(|| Value::Error("integer overflow".into())),
+                .map_or_else(|| Value::Error("integer overflow".into()), Value::Int),
             "-=" => a
                 .checked_sub(*b)
-                .map(Value::Int)
-                .unwrap_or_else(|| Value::Error("integer overflow".into())),
+                .map_or_else(|| Value::Error("integer overflow".into()), Value::Int),
             "*=" => a
                 .checked_mul(*b)
-                .map(Value::Int)
-                .unwrap_or_else(|| Value::Error("integer overflow".into())),
+                .map_or_else(|| Value::Error("integer overflow".into()), Value::Int),
             "/=" if *b != 0 => a
                 .checked_div(*b)
-                .map(Value::Int)
-                .unwrap_or_else(|| Value::Error("integer overflow".into())),
+                .map_or_else(|| Value::Error("integer overflow".into()), Value::Int),
             "/=" => Value::Error("division by zero".into()),
             _ => Value::Error("invalid compound assignment".into()),
         },

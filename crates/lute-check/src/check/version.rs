@@ -1,6 +1,6 @@
 //! The `luteVersion` freshness signal (`W-LUTE-VERSION-STALE`, dsl 0.6.1 §3).
 
-use super::*;
+use super::{Diagnostic, Layer, Severity};
 
 /// dsl 0.6.1 §3: a document's frontmatter `luteVersion` stamp is present but
 /// differs from the toolchain's [`crate::LUTE_LANG_VERSION`].
@@ -27,7 +27,7 @@ pub const INHERITED_LUTE_VERSION: &str = "the project manifest's `defaults: lute
 /// document to downgrade its stamp). That case names the toolchain as the
 /// thing to update. A stamp that is not a numeric triple keeps the restamp
 /// advice — there is no order to consult.
-pub(super) fn check_lute_version_stale(
+pub(crate) fn check_lute_version_stale(
     typed: &crate::meta::TypedMeta,
     meta: &lute_syntax::ast::Meta,
 ) -> Option<Diagnostic> {
@@ -93,6 +93,7 @@ pub fn version_triple(v: &str) -> Option<(u64, u64, u64)> {
 #[cfg(test)]
 mod lute_version_tests {
     use super::*;
+    use lute_core_span::Span;
 
     fn meta(raw: &str) -> lute_syntax::ast::Meta {
         lute_syntax::ast::Meta {
@@ -188,7 +189,7 @@ mod lute_version_tests {
     /// and the two clock-window diagnostics move all axes to the same number.
     #[test]
     fn language_ir_and_toolchain_are_aligned_at_0_41_1() {
-        assert_eq!(crate::LUTE_LANG_VERSION, "0.49.0");
-        assert_eq!(env!("CARGO_PKG_VERSION"), "0.49.0");
+        assert_eq!(crate::LUTE_LANG_VERSION, "0.49.1");
+        assert_eq!(env!("CARGO_PKG_VERSION"), "0.49.1");
     }
 }

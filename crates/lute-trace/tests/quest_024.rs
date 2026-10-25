@@ -58,7 +58,7 @@ fn trace(text: &str, mocks: MockSet) -> TraceReport {
 
 fn accepts(ids: &[&str]) -> MockSet {
     MockSet {
-        accepts: ids.iter().map(|s| s.to_string()).collect(),
+        accepts: ids.iter().map(std::string::ToString::to_string).collect(),
         ..Default::default()
     }
 }

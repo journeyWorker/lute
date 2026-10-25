@@ -174,7 +174,7 @@ fn main() {
         Ok(())
     } else {
         std::fs::write(&destination, output)
-            .map_err(|error| format!("cannot write {}: {error}", destination))
+            .map_err(|error| format!("cannot write {destination}: {error}"))
     };
     if let Err(error) = write_result {
         eprintln!("lute-bench: {error}");
@@ -224,6 +224,10 @@ fn parse_args(args: Vec<String>) -> Result<Config, String> {
             "--root" => root = PathBuf::from(value("--root", &mut args)?),
             "--tier" => tier = value("--tier", &mut args)?,
             "--phase" => phase = value("--phase", &mut args)?,
+            #[expect(
+                clippy::map_err_ignore,
+                reason = "the usage message says what is wrong; the `ParseIntError` text adds nothing"
+            )]
             "--samples" => {
                 samples = value("--samples", &mut args)?
                     .parse()
@@ -500,7 +504,7 @@ fn run_sample(tier: &str, project: &str, root: &Path, phase: Phase, sample: usiz
         Phase::PlayAssembly => loop_until(
             root,
             || {
-                black_box(lute_cli::bench::compile(root)?);
+                black_box(lute_cli::bench::compile(root).map_err(|e| e.to_string())?);
                 Ok(())
             },
             &mut iterations,
@@ -511,6 +515,7 @@ fn run_sample(tier: &str, project: &str, root: &Path, phase: Phase, sample: usiz
             let compiled = match lute_cli::bench::compile(root) {
                 Ok(compiled) => compiled,
                 Err(error) => {
+                    let error = error.to_string();
                     return failed_sample(tier, project, phase, sample, test_count, error);
                 }
             };
@@ -528,7 +533,8 @@ fn run_sample(tier: &str, project: &str, root: &Path, phase: Phase, sample: usiz
                 root,
                 || {
                     for play in &plays {
-                        let misses = lute_cli::bench::play(&compiled, play)?;
+                        let misses =
+                            lute_cli::bench::play(&compiled, play).map_err(|e| e.to_string())?;
                         if misses > 0 {
                             return Err(format!(
                                 "{}: {misses} missed expectation(s)",
@@ -819,9 +825,10 @@ fn visit_files(
 }
 
 fn revision_for(root: &Path) -> String {
-    build_model(root, false)
-        .map(|model| model.revisions().sha256.clone())
-        .unwrap_or_else(|_| "error".to_string())
+    build_model(root, false).map_or_else(
+        |_| "error".to_string(),
+        |model| model.revisions().sha256.clone(),
+    )
 }
 
 fn commit_for(root: &Path) -> String {
@@ -844,8 +851,7 @@ fn commit_for(root: &Path) -> String {
     };
     if let Some(reference) = head.strip_prefix("ref: ") {
         std::fs::read_to_string(git_dir.join(reference))
-            .map(|value| value.trim().to_string())
-            .unwrap_or_else(|_| "unknown".to_string())
+            .map_or_else(|_| "unknown".to_string(), |value| value.trim().to_string())
     } else {
         head
     }

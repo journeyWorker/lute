@@ -1,7 +1,12 @@
-use super::*;
+use super::{
+    after_premise, beat_diag, decide_slot, is_name, once_guard, project_beats, provably_exclusive,
+    reads_only_user, shadowed_on_every_target, tie_warnings, BTreeMap, BeatCells, BeatOnce,
+    DecideCtx, Decided, DefTable, Diagnostic, FactEnv, FoldedEnv, Layer, OccasionSelect, Path,
+    PathBuf, ProjectBeat, ProjectBeatKind, Severity, Span, UserTier, E_BEAT_ATTR, W_BEAT_SHADOWED,
+};
 use lute_manifest::semantics::beats::{reorder, selection_order};
 
-pub(super) fn well_formed_share(share: Option<&(String, Span)>) -> Option<(&str, Span)> {
+pub(crate) fn well_formed_share(share: Option<&(String, Span)>) -> Option<(&str, Span)> {
     share
         .filter(|(k, _)| is_name(k))
         .map(|(k, s)| (k.as_str(), *s))
@@ -9,7 +14,7 @@ pub(super) fn well_formed_share(share: Option<&(String, Span)>) -> Option<(&str,
 
 /// dsl 0.25.0 §2: what each beat's shared spend holds — `share key → the
 /// beats of the key`, as indices into `beats`, in project order.
-pub(super) fn share_groups(beats: &[ProjectBeat<'_>]) -> BTreeMap<String, Vec<usize>> {
+pub(crate) fn share_groups(beats: &[ProjectBeat<'_>]) -> BTreeMap<String, Vec<usize>> {
     let mut groups: BTreeMap<String, Vec<usize>> = BTreeMap::new();
     for (i, b) in beats.iter().enumerate() {
         if let Some((key, _)) = b.share {
@@ -23,7 +28,7 @@ pub(super) fn share_groups(beats: &[ProjectBeat<'_>]) -> BTreeMap<String, Vec<us
 /// `share` key declares the same `once` — the first beat of the key, in
 /// project order, sets it; each beat that differs is reported at its
 /// `share`.
-pub(super) fn check_share_once(beats: &[ProjectBeat<'_>]) -> Vec<(PathBuf, Diagnostic)> {
+pub(crate) fn check_share_once(beats: &[ProjectBeat<'_>]) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
     for (key, members) in share_groups(beats) {
         let first = &beats[members[0]];
@@ -58,72 +63,72 @@ pub(super) fn check_share_once(beats: &[ProjectBeat<'_>]) -> Vec<(PathBuf, Diagn
 
 /// One beat of the project, in selection-tiebreak order, with what the
 /// selection passes judge about it.
-pub(super) struct Beat<'a> {
-    pub(super) path: &'a Path,
+pub(crate) struct Beat<'a> {
+    pub(crate) path: &'a Path,
     /// `scene `k`` / `entry `id`` — the beat as messages name it.
-    pub(super) name: String,
-    pub(super) on: &'a str,
-    pub(super) target: Option<&'a str>,
+    pub(crate) name: String,
+    pub(crate) on: &'a str,
+    pub(crate) target: Option<&'a str>,
     /// dsl 0.26.0 §5: [`ProjectBeat::kind_targets`].
-    pub(super) kind_targets: Option<Vec<String>>,
-    pub(super) priority: i64,
+    pub(crate) kind_targets: Option<Vec<String>>,
+    pub(crate) priority: i64,
     /// [`ProjectBeat::priority_derived`].
-    pub(super) priority_derived: bool,
-    pub(super) once: BeatOnce,
+    pub(crate) priority_derived: bool,
+    pub(crate) once: BeatOnce,
     /// dsl 0.23.0 §3: presented beside the winner, never instead of it.
-    pub(super) also: bool,
+    pub(crate) also: bool,
     /// Always eligible: no `after:`, and a `when` absent or deciding true.
-    pub(super) always: bool,
+    pub(crate) always: bool,
     /// Never spent: a scene's `once: false`, or an entry without `once`.
-    pub(super) unspent: bool,
+    pub(crate) unspent: bool,
     /// The `when` after `@def` expansion in its own document (`None` when
     /// absent) — what messages quote.
-    pub(super) when: Option<String>,
+    pub(crate) when: Option<String>,
     /// The `when` slot's span — where the fact envelope's must set is read.
-    pub(super) when_span: Option<Span>,
+    pub(crate) when_span: Option<Span>,
     /// dsl 0.24.0 (T3-3): the eligibility the tie check conjoins across
     /// documents — the expanded `when` AND what the beat's `once` requires
     /// ([`once_guard`]) AND (dsl 0.26.0 §8) `!holds(F)` for every fact `F`
     /// only its own unplayed presentation can assert
     /// ([`crate::cast::unit_facts`]); `None` when none constrains.
-    pub(super) eligible: Option<String>,
+    pub(crate) eligible: Option<String>,
     /// [`Self::eligible`] in disjunctive normal form, typed in its own
     /// document (a pure-schedule `holds(A)` contributing its rules' `cel()`
     /// guards).
-    pub(super) dnf: crate::reachability::Dnf,
+    pub(crate) dnf: crate::reachability::Dnf,
     /// The eligibility the author wrote — `when`, `once`, `spentBy` and
     /// `after:`, without the facts the beat's own presentation asserts — and
     /// its DNF when that differs from [`Self::dnf`]: what a tie message
     /// explains, since only these are the author's to change.
-    pub(super) stated: Option<String>,
-    pub(super) stated_dnf: Option<crate::reachability::Dnf>,
+    pub(crate) stated: Option<String>,
+    pub(crate) stated_dnf: Option<crate::reachability::Dnf>,
     /// Facts the beat asserts that may hold before it plays: diagnostic
     /// ground fact, canonical query pattern pseudo-path, and persistence reason.
-    pub(super) persists: Vec<(String, String, String)>,
+    pub(crate) persists: Vec<(String, String, String)>,
     /// The flag that stays set across runs once the beat played:
     /// `visited('<id>')` for a scene or bundle beat, `entry.<id>.everRead`
     /// for an entry.
-    pub(super) ever_flag: String,
+    pub(crate) ever_flag: String,
     /// A defaulted `once: run` (a scene's or bundle beat's; never an
     /// entry's, whose `once` is always written) with a `when` that reads
     /// only user-tier state (dsl 0.23.1).
-    pub(super) run_once_user_when: bool,
+    pub(crate) run_once_user_when: bool,
     /// Where a warning anchors: the `on` key / attribute.
-    pub(super) anchor: Span,
+    pub(crate) anchor: Span,
     /// dsl 0.27.0 §4: provably never presented — its `when` alone, or under
     /// its occasion's gate and `!terminal`, is false (a finite clock's range
     /// included). Such a beat ties with nothing.
-    pub(super) never: bool,
-    pub(super) folded: &'a FoldedEnv,
+    pub(crate) never: bool,
+    pub(crate) folded: &'a FoldedEnv,
 }
 
 impl Beat<'_> {
-    pub(super) fn cells(&self) -> BeatCells<'_> {
+    pub(crate) fn cells(&self) -> BeatCells<'_> {
         BeatCells::of(self.target, self.kind_targets.as_deref())
     }
 
     /// [`Beat::stated`] in DNF.
-    pub(super) fn stated_dnf(&self) -> &crate::reachability::Dnf {
+    pub(crate) fn stated_dnf(&self) -> &crate::reachability::Dnf {
         self.stated_dnf.as_ref().unwrap_or(&self.dnf)
     }
 }
@@ -142,7 +147,7 @@ pub type ReportedErrors = BTreeMap<PathBuf, Vec<std::ops::Range<usize>>>;
 
 /// Whether an error sits inside `pb`'s declaration ([`ProjectBeat::extent`])
 /// or its document's frontmatter.
-pub(super) fn reported_in(
+pub(crate) fn reported_in(
     pb: &ProjectBeat<'_>,
     docs: &[crate::ProjectDoc<'_>],
     errors: &ReportedErrors,

@@ -1,7 +1,10 @@
 //! `<reward/>` checks (dsl 0.16.0, 0.23.0 §8, 0.26.0 §2.5): shape, kind
 //! vocabulary, target contract, and double credit.
 
-use super::*;
+use super::{
+    diag, Arm, AttrValue, BTreeMap, CapabilitySnapshot, Diagnostic, EntityKindDecl, IdStatus,
+    KindShape, Node, ProviderSet, Quest, Reward, RewardTarget, Severity, Span,
+};
 
 /// `E-REWARD-ATTR` (dsl 0.16.0 §2/§6): a `<reward>` element's shape is
 /// malformed — missing/empty `kind`, an `amount=` value that is not a
@@ -305,13 +308,21 @@ fn collect_sets<'a>(nodes: &'a [Node], out: &mut Vec<&'a lute_syntax::ast::Set>)
     for node in nodes {
         match node {
             Node::Set(s) => out.push(s),
-            Node::Branch(b) => b.choices.iter().for_each(|c| collect_sets(&c.body, out)),
-            Node::Hub(h) => h.bodies().for_each(|b| collect_sets(b, out)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    collect_sets(&c.body, out);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    collect_sets(b, out);
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_sets(body, out)
+                            collect_sets(body, out);
                         }
                     }
                 }

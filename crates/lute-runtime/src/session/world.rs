@@ -26,7 +26,7 @@ use crate::{
 pub type SessionEvalObserver =
     Rc<dyn for<'a> Fn(&str, &Value, &[UnresolvedAtom], EvalSnapshot<'a>)>;
 /// A driver used only by evaluator machines; it cannot make a play decision.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct NoDecisionDriver;
 
 impl Driver for NoDecisionDriver {
@@ -244,29 +244,64 @@ pub fn seed_quest(
     at: &str,
     id: &str,
     status: &str,
-) -> Result<(), String> {
+) -> Result<(), QuestSeedError> {
     if !p.quest_objectives.contains_key(id) {
-        let declared: Vec<&str> = p.quest_objectives.keys().map(String::as_str).collect();
-        return Err(format!(
-            "{at}: no quest `{id}` is declared in this project (quests: {})",
-            if declared.is_empty() {
-                "none".to_string()
-            } else {
-                declared.join(", ")
-            }
-        ));
+        return Err(QuestSeedError::UnknownQuest {
+            at: at.to_string(),
+            id: id.to_string(),
+            declared: p.quest_objectives.keys().cloned().collect(),
+        });
     }
     if !QUEST_STATES.contains(&status) {
-        return Err(format!(
-            "{at}: `{status}` — a quest state is one of {}",
-            QUEST_STATES.join(", ")
-        ));
+        return Err(QuestSeedError::UnknownStatus {
+            at: at.to_string(),
+            status: status.to_string(),
+        });
     }
     w.quests.insert(id.to_string(), status.to_string());
     w.state
         .insert(format!("quest.{id}.state"), Value::Str(status.to_string()));
     Ok(())
 }
+
+/// Why a save cannot seed a quest status ([`seed_quest`]); `at` names where
+/// the seed was written.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum QuestSeedError {
+    /// The project declares no quest `id`; `declared` is every quest it does.
+    UnknownQuest {
+        at: String,
+        id: String,
+        declared: Vec<String>,
+    },
+    /// `status` is not one of [`QUEST_STATES`].
+    UnknownStatus { at: String, status: String },
+}
+
+impl std::fmt::Display for QuestSeedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnknownQuest { at, id, declared } => {
+                write!(
+                    f,
+                    "{at}: no quest `{id}` is declared in this project (quests: "
+                )?;
+                if declared.is_empty() {
+                    f.write_str("none)")
+                } else {
+                    write!(f, "{})", declared.join(", "))
+                }
+            }
+            Self::UnknownStatus { at, status } => write!(
+                f,
+                "{at}: `{status}` — a quest state is one of {}",
+                QUEST_STATES.join(", ")
+            ),
+        }
+    }
+}
+
+impl std::error::Error for QuestSeedError {}
 
 /// `Err` naming an id a save seed names that the project does not declare,
 /// with a did-you-mean.
@@ -283,7 +318,7 @@ pub fn unknown_id<'a>(
 }
 
 /// The save a playthrough starts from (dsl 0.22.0 §3), as written.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct SaveSeed {
     pub visited: Vec<String>,
     pub presented_user: Vec<String>,
@@ -297,6 +332,7 @@ pub struct SaveSeed {
 
 /// Everything a world is seeded from: the trace-mock surfaces (`state:`,
 /// `facts:`, `choose:`, `bridges:`), the save, and the `derive:` setting.
+#[derive(Debug)]
 pub struct WorldSeed<'a, B = (), C = ()> {
     pub surfaces: &'a MockSet<B, C>,
     pub save: &'a SaveSeed,
@@ -316,7 +352,7 @@ pub struct SeedError {
 impl SeedError {
     fn at(keys: &[&str], msg: String) -> Self {
         SeedError {
-            keys: keys.iter().map(|k| k.to_string()).collect(),
+            keys: keys.iter().map(std::string::ToString::to_string).collect(),
             item: None,
             msg,
         }
@@ -335,6 +371,8 @@ impl std::fmt::Display for SeedError {
         f.write_str(&self.msg)
     }
 }
+
+impl std::error::Error for SeedError {}
 
 /// The playthrough's starting world: every declared default (scene tier
 /// excluded; `entry.<id>.everRead` false for every entry), the script's
@@ -387,7 +425,7 @@ pub fn seed_world<B, C>(
         let at = format!("`state.{path}`");
         if let Some(id) = quest_state_id(path) {
             if let Err(e) = seed_quest(p, &mut w, &at, id, lit) {
-                errs.push(SeedError::at(&["state", path], e));
+                errs.push(SeedError::at(&["state", path], e.to_string()));
             }
             continue;
         }
@@ -401,7 +439,7 @@ pub fn seed_world<B, C>(
     let save = seed.save;
     for (id, status) in &save.quests {
         if let Err(e) = seed_quest(p, &mut w, &format!("`quests.{id}`"), id, status) {
-            errs.push(SeedError::at(&["quests", id], e));
+            errs.push(SeedError::at(&["quests", id], e.to_string()));
         }
     }
     for (id, count) in &save.quest_instances {
@@ -573,7 +611,7 @@ pub fn exclusive_violations(p: &ExecProject, w: &World) -> Vec<String> {
     }
     let evaluator = w.evaluator_with_schema(
         &p.eval_json,
-        p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+        std::sync::Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
         None,
     );
     let facts = evaluator.all_facts();
@@ -639,7 +677,7 @@ pub fn world_view(p: &ExecProject, w: &World, with_facts: bool) -> WorldView {
     let facts = if with_facts {
         w.evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            std::sync::Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
             None,
         )
         .all_facts()

@@ -54,14 +54,14 @@ fn covered(text: &str, range: &serde_json::Value) -> String {
     assert_eq!(s["line"], e["line"], "{range}");
     let line = text
         .lines()
-        .nth(s["line"].as_u64().unwrap() as usize)
+        .nth(usize::try_from(s["line"].as_u64().unwrap()).unwrap())
         .unwrap();
     let units: Vec<u16> = line.encode_utf16().collect();
     let (a, b) = (
-        s["character"].as_u64().unwrap(),
-        e["character"].as_u64().unwrap(),
+        usize::try_from(s["character"].as_u64().unwrap()).unwrap(),
+        usize::try_from(e["character"].as_u64().unwrap()).unwrap(),
     );
-    String::from_utf16(&units[a as usize..b as usize]).unwrap()
+    String::from_utf16(&units[a..b]).unwrap()
 }
 
 #[test]

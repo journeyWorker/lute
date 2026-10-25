@@ -390,7 +390,7 @@ fn walk_nodes<'a>(
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            walk_nodes(cx, body, region, prefix, out)
+                            walk_nodes(cx, body, region, prefix, out);
                         }
                     }
                 }
@@ -418,9 +418,8 @@ fn scene_prefix(doc: &Document) -> Option<String> {
         return Some(id);
     }
     let value: yaml_serde::Value = yaml_serde::from_str(&doc.meta.raw_yaml).ok()?;
-    let map = match value {
-        yaml_serde::Value::Mapping(m) => m,
-        _ => return None,
+    let yaml_serde::Value::Mapping(map) = value else {
+        return None;
     };
     let key = |k: &str| yaml_serde::Value::String(k.to_string());
     let character = map.get(key("character"))?.as_str()?.to_string();
@@ -967,7 +966,7 @@ fn render_report_human(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> St
     // Per-document table.
     let file_w = docs
         .keys()
-        .map(|f| f.len())
+        .map(std::string::String::len)
         .chain(std::iter::once("document".len()))
         .max()
         .unwrap_or(8);
@@ -997,7 +996,7 @@ fn render_report_human(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> St
         let sp_w = totals
             .speakers
             .keys()
-            .map(|n| n.len())
+            .map(std::string::String::len)
             .chain(std::iter::once("speaker".len()))
             .max()
             .unwrap_or(7);
@@ -1159,8 +1158,7 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>, json: bool) -> ExitCode
             // silent repair for one the input got wrong.
             let locale = row
                 .locale
-                .map(|l| l.trim().to_string())
-                .unwrap_or_else(|| stem.trim().to_string());
+                .map_or_else(|| stem.trim().to_string(), |l| l.trim().to_string());
             if locale.is_empty() {
                 bundle_error(
                     &mut diagnostics,

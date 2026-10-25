@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.49.0`, the grammar and semantics the checker
+- **Language** — currently `0.49.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.49.0`) and gated on by consuming engines.
+  artifact (currently `0.49.1`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,196 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.49.1]
+
+**Patch on the 0.49 line: the Rust coding-rules sweep, behaviour-preserving**
+(spec [`0.49.1.md`](docs/proposals/scenario-dsl/0.49.1.md); plan
+[`2026-10-25-lute-0.49.1-coding-rules.md`](docs/superpowers/plans/2026-10-25-lute-0.49.1-coding-rules.md);
+rules [`rust-coding-rules.md`](docs/design/rust-coding-rules.md) §9 and its
+2026-10-25 amendments). The sweep applies the coding rules to all existing
+code under `crates/`: lint configuration, module layout, visibility and typed
+Rust errors. Nothing a user, an author, an engine or a host sees changes: every
+output `scripts/cli-snapshot.py` captures (6,280 outputs, 1,928 commands) is
+byte-identical to 0.49.0 after version-stamp normalization, under the new
+`--strict` compare. The toolchain earns the release; the language, IR, Event
+and snapshot are stamp-only. `luteVersion`, `irVersion`, `eventVersion` and
+`snapshotVersion` read `0.49.1`; the schema files stay `-0.49` (bodies
+unchanged), `bindingsVersion` stays `"0.49"` and the player's save/profile
+format stays `"0.49"`. The seven npm packages align to `0.49.1`.
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- None.
+
+### IR
+
+- None (stamp only).
+
+### Plugin
+
+- None.
+
+### Bindings
+
+- None.
+
+### CLI
+
+- Every command output, exit code and `--explain` text is identical to 0.49.0
+  apart from stamps.
+
+### Runtime
+
+- None.
+
+### Player
+
+- None; the save and profile format stays `"0.49"`.
+
+### Diagnostics
+
+- None: no diagnostic is added, removed or reworded.
+
+### Identity
+
+- Stamp only: `eventVersion` / `snapshotVersion` read `0.49.1`; the schemas
+  stay `lute-{ir,events,snapshot,player-bindings}-0.49` (bodies unchanged),
+  `bindingsVersion` stays `"0.49"`, saves and profiles stay `"0.49"`. Line ids
+  and voice keys do not move. A bundle recompiled with the 0.49.1 stamps gets
+  a new project fingerprint (the snapshot hashes `irVersion`), as any
+  recompile does.
+
+### Rust API
+
+The Rust crates are not published; they ship only inside the npm binaries, so
+the Rust API is not a versioned axis (spec §1). These changes are
+source-breaking for a Rust caller; no public item is removed.
+
+- **`pub fn`s that returned `Result<_, String>` return typed errors.** Each
+  new type implements `Debug`, `Display` and `std::error::Error`; `Display`
+  writes the old string byte for byte, and `source()` returns the wrapped
+  cause where there is one. Arguments and success types are unchanged.
+
+  | Crate | API | Error type |
+  |---|---|---|
+  | `lute-runtime` | `Machine::run`, `Machine::advance_quests`, `Machine::run_deferred_handlers` | `WalkError` |
+  | `lute-runtime` | `resolve_bridge_writes` | `HostWriteError` |
+  | `lute-runtime` | `seam::terminal_holds` | `seam::UndecidedError` |
+  | `lute-runtime` | `session::typed_literal`, `session::member_of`, `session::state_literal`, `session::payload_value` | `session::LiteralError` |
+  | `lute-runtime` | `session::typed_payload`, `session::resolve_state`, `session::resolve_bridges`, `session::resolve_fact` | `session::ResolveError` |
+  | `lute-runtime` | `session::new_run`, `session::apply_writes` | `session::AddError` |
+  | `lute-runtime` | `session::seed_quest` | `session::QuestSeedError` |
+  | `lute-check` | `occasion_target_ok`, `beats::kind_target_members` | `BeatTargetError` |
+  | `lute-check` | `occasion_bind::for_kind_members` | `ForKindError` |
+  | `lute-check` | `inline_interp_ref` | `InterpRefError` |
+  | `lute-check` | `cel_resolve::expand_rule_guard` | `RuleGuardError` |
+  | `lute-compile` | `locale::LocaleBundle::parse` | `LocaleBundleError` |
+  | `lute-load` | `read_document` | `ReadError` |
+  | `lute-load` | `manifest_context` | `ProjectLoadError` (existing type) |
+  | `lute-model` | `ImpactTarget::parse` | `ImpactTargetError` |
+  | `lute-model` | `scripts::parse_choose` | `ChooseError` |
+  | `lute-trace` | `parse_bridges` | `BridgesError` |
+  | `lute-cli` | `bench::compile`, `bench::play` | `BenchError` |
+  | `lute-cli` | `play::events::script_run` | `ScriptRunError` |
+
+- `lute-runtime` `session::WalkDriver::halt` and `session::walk_stop` take
+  `Result<(), WalkError>` instead of `Result<(), String>`.
+- `lute-cli` `lint::parse_lint_deny_code` becomes `pub(crate)` (its `String`
+  is clap's usage message); it was in a private module.
+- New public types: `lute-runtime` `WalkError`, `HostWriteError`,
+  `seam::UndecidedError`, `session::{LiteralError, ResolveError, BridgeMisfit,
+  AddError, QuestSeedError}`; `lute-check` `BeatTargetError`, `OutsideDomain`,
+  `KindOutside`, `ForKindError`, `InterpRefError`, `RuleGuardError`;
+  `lute-compile` `LocaleBundleError`; `lute-load` `ReadError`; `lute-model`
+  `ImpactTargetError`, `ChooseError`, `PickAt`; `lute-trace` `BridgesError`;
+  `lute-cli` `BenchError`, `ScriptRunError`.
+- **Existing error types gain the missing impls**, so every `*Error` type in
+  `crates/*/src` implements `Display` and `std::error::Error`:
+  - `Display` and `Error`: `lute-cel` `CelParseError`, `lute-lint`
+    `EvalError`, `lute-manifest` `DatalogError`, `DecomposeError`,
+    `ManifestError`, `OptionError`, `lute-model` `IncludeError`,
+    `lute-resolve` `ResolveError`, `lute-semantic` `RenameError`,
+    `lute-syntax` `CommentError`, `FormatError`, `IsLiteralError`, `lute-cli`
+    `CliError`, `ExpectError`;
+  - `Error` only (they had `Display`): `lute-compile` `IndexError`,
+    `lute-manifest` `AssembleError`, `LoadError`, `ResolveError`,
+    `lute-runtime` `session::SeedError`.
+
+  `ManifestError::message()` and `OptionError::message()` stay and return
+  `self.to_string()`.
+- **`Debug`**: 82 public types that had no `Debug` impl derive it (one manual
+  impl, `Machine<D: Driver>`, prints its status fields with
+  `finish_non_exhaustive()`). No output formats them.
+- `pub(super)` and `pub(in …)` become `pub(crate)` (696 sites); only
+  `lute-runtime` `machine::Step` and `machine::Site` widen with them (to
+  `pub(crate)`). No item becomes `pub`.
+- The eight self-named module files move to `foo/mod.rs` (`lute-syntax`
+  `parser`, `lute-check` `cast/presence`, `connectivity`, `project_check`,
+  `lute-lsp` `backend`, `backend/tests`, `lute-trace` `trace`, `lute-model`
+  `patch`); no module path changes.
+
+### Tooling/Repo
+
+- **Lint configuration.** The root `Cargo.toml` holds the rules note §1
+  `[workspace.lints.rust]` / `[workspace.lints.clippy]` tables, every one of
+  the 21 crates sets `[lints] workspace = true`, and a root `clippy.toml`
+  disallows `Iterator::for_each` / `try_for_each`. A local exception is
+  `#[expect(lint, reason = "…")]`, never `#[allow]`.
+- **CI `clippy` job** (`test.yml`): `cargo clippy --workspace --all-targets
+  --all-features --locked -- -D warnings` (feature-gated code), the
+  production command `cargo clippy --workspace --lib --bins --locked -- -D
+  warnings -D clippy::unwrap_used`, and `scripts/check-visibility.py` (with
+  `--self-test`), which rejects `pub(super)` / `pub(in …)` in `crates/*/src`.
+  `clippy.toml` and the script join the workflow's `pull_request.paths`.
+- **`scripts/cli-snapshot.py --compare … --strict`**: an added or renamed
+  command is a difference too, so the byte-identity proof covers the set of
+  commands; `--self-test` covers the strict cases.
+- **Counts, before → after** (re-measured as in the plan header, at
+  `f34f141f` = v0.49.0):
+  - S1 (`cargo clippy --fix`, machine only, plus 4 `map_unwrap_or` by hand):
+    the 15 autofix lints → 0 (1,217 lint sites in all before the sweep);
+  - S2a: 228 sites of 10 hand lints (imports, `allow` → `expect`, …) → 0;
+  - S2b: 96 `for_each`, 82 missing `Debug`, 42 `Arc::clone`, 3
+    `needless_for_each` → 0;
+  - S2c: 160 narrowing-cast diagnostics (`cast_possible_truncation` 111,
+    `cast_possible_wrap` 28, `cast_sign_loss` 21) and 9 production
+    `unwrap()` → 0;
+  - S3: 8 self-named module files → 0;
+  - S4: 696 `pub(super)` → 0;
+  - S5: 31 `pub fn … -> Result<_, String>` → 0, and 19 error types without
+    `std::error::Error` → 0.
+- `.git-blame-ignore-revs` lists the machine-only `cargo clippy --fix` +
+  `cargo fmt` commit.
+
+### Known follow-ups
+
+- **MSRV gap in a dev-only bin.** `lute-runtime`'s `lute-contract-schema`
+  (behind `json-schema`) calls `BTreeMap::extract_if`, stable since 1.91,
+  while the workspace declares `rust-version = "1.85"`. It carries an
+  `#[expect(clippy::incompatible_msrv, reason)]`; CI builds it with the
+  pinned 1.96.1 toolchain.
+- **`Debug` output in user-facing text, unchanged on purpose.** `lute context`
+  ("context target refused", "position query refused") prints `{e:?}` of
+  `lute-resolve` `ResolveError`, and `lute fmt` ("formatting failed") and the
+  patch refusals print `{e:?}` of `FormatError`. Moving them to the new
+  `Display` would change output, so it waits for a later release.
+- [#198](https://github.com/journeyWorker/lute/issues/198): an index past
+  `u32::MAX` on wasm32 picks a real element where native returns Unknown
+  (found while classifying casts; not changed here).
+
+### Migration notes
+
+| Class | Change | Migration |
+|---|---|---|
+| Rust API | `pub fn`s that returned `Result<_, String>` return typed `<Domain>Error`s. Error types gain `Display` and `std::error::Error` impls. | Match the new error type, or call `.to_string()` for the old text. |
+| Release | All axes `0.49.1`; schemas, `bindingsVersion` and the save format stay on `0.49`. | None. `lute fix` raises `luteVersion` stamps. |
+
+From 0.49.0: run `lute fix` to raise `luteVersion` stamps to `0.49.1`.
 
 ## [0.49.0]
 

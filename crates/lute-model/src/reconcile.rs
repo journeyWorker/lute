@@ -23,6 +23,7 @@ use lute_load::normalize_span_from_text;
 /// `completed()` that scene becomes unreachable -> its own `::assert`
 /// producer drops -> a relation elsewhere goes non-producible -> ANOTHER
 /// quest's required objective dies -> repeat).
+#[derive(Debug)]
 pub struct ConnFixpoint {
     pub reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
     pub reach_diags: Vec<(PathBuf, Diagnostic)>,
@@ -224,7 +225,10 @@ pub fn compute_conn_fixpoint(
 /// [`collect_project_docs`]: crate::project::collect_project_docs
 /// [`reconciled_project_results`]: crate::project::gate::reconciled_project_results
 /// [`run_check_project`]: crate::cmd_check_project::run_check_project
-#[allow(clippy::type_complexity)]
+#[expect(
+    clippy::type_complexity,
+    reason = "the four results are separate outputs the callers destructure by position"
+)]
 pub fn reconcile_collected(
     mut file_results: Vec<(PathBuf, lute_check::CheckResult)>,
     by_root: &ByRoot,
@@ -873,8 +877,6 @@ pub fn relocate_imported_diags(
     project_diags: &mut Vec<(PathBuf, Diagnostic)>,
     dir: &Path,
 ) {
-    use std::collections::{BTreeMap, BTreeSet};
-
     let canon_of = |p: &Path| {
         std::fs::canonicalize(p)
             .unwrap_or_else(|_| p.to_path_buf())
@@ -1000,8 +1002,6 @@ pub fn relocate_imported_diags(
 /// boundary precisely, and it needs no marker field: a caller-specific fault
 /// stays with its own caller, where the caller is visible.
 pub fn rollup_component_body_diags(file_results: &mut [(PathBuf, lute_check::CheckResult)]) {
-    use std::collections::BTreeMap;
-
     // Pass 1: count, in byte-sorted path order, which is `collect_project_docs`'
     // own order — so "the first" is deterministic without re-sorting.
     let mut counts: BTreeMap<(String, String), usize> = BTreeMap::new();

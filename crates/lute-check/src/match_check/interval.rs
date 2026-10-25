@@ -1,7 +1,7 @@
 //! Numeric coverage over [`Domain::Number`] (dsl 0.18.0 §4): closed intervals
 //! and their merged union.
 
-use super::*;
+use super::IsLiteral;
 
 /// A closed interval over the extended reals (dsl 0.18.0 §4): a point `n` is
 /// `[n, n]`, an open range end is `±∞`. Both ends inclusive.
@@ -25,13 +25,13 @@ impl Interval {
         }
     }
 
-    pub(super) fn is_point(self) -> bool {
+    pub(crate) fn is_point(self) -> bool {
         self.lo == self.hi
     }
 
     /// The closed interval both `self` and `other` contain, `None` when
     /// they are disjoint.
-    pub(super) fn intersect(self, other: Self) -> Option<Self> {
+    pub(crate) fn intersect(self, other: Self) -> Option<Self> {
         let lo = self.lo.max(other.lo);
         let hi = self.hi.min(other.hi);
         (lo <= hi).then_some(Self { lo, hi })

@@ -15,9 +15,9 @@ use std::sync::Arc;
 /// remains the carrier for result fields; writes retain their public input
 /// shape until planning resolves them against the executable project.
 #[derive(Clone, Debug)]
-pub(super) struct ScriptBridgeAnswer {
-    pub(super) fields: BridgeAnswer,
-    pub(super) writes: WritesInput,
+pub(crate) struct ScriptBridgeAnswer {
+    pub(crate) fields: BridgeAnswer,
+    pub(crate) writes: WritesInput,
 }
 
 /// The complete legal top-level key set of a play script.
@@ -80,7 +80,7 @@ fn document_key_hint(key: &str) -> Option<&'static str> {
 const STEP_ACTIONS: &[&str] = lute_manifest::reserved::PLAY_STEP_ACTIONS;
 
 /// One `state:` write of an `engine:` step / `newRun:` seed, as written.
-pub(super) enum RawWrite {
+pub(crate) enum RawWrite {
     /// A scalar literal, rendered back to text (the trace-mock idiom).
     Lit(String),
     /// `{ add: <number> }` — a numeric delta.
@@ -89,17 +89,17 @@ pub(super) enum RawWrite {
 
 /// An `engine:` step's (or a long-form `newRun:`'s) writes, as written.
 #[derive(Default)]
-pub(super) struct RawWrites {
-    pub(super) state: Vec<(String, RawWrite)>,
-    pub(super) facts: Vec<String>,
-    pub(super) retract: Vec<String>,
+pub(crate) struct RawWrites {
+    pub(crate) state: Vec<(String, RawWrite)>,
+    pub(crate) facts: Vec<String>,
+    pub(crate) retract: Vec<String>,
     /// dsl 0.26.0 §7 (T2-9): `engine: { accept: [quest ids] }` — the engine
     /// accepts these quests (a quest board, a menu) at this step.
-    pub(super) accept: Vec<String>,
+    pub(crate) accept: Vec<String>,
 }
 
 /// What one `steps:` entry does.
-pub(super) enum StepAction {
+pub(crate) enum StepAction {
     /// Raise `occasion` (for `target`); `pick` is the player's take on a
     /// `select: all` occasion; `choose` replaces the script's `choose:` key
     /// by key for this step's presentation (dsl 0.22.0 §2).
@@ -141,7 +141,7 @@ pub(super) enum StepAction {
 
 /// How far an `advance:` step moves the clock, as written.
 #[derive(Clone)]
-pub(super) enum AdvanceBy {
+pub(crate) enum AdvanceBy {
     /// `slot`, `day` or a number of slots.
     By(lute_manifest::clock::Advance),
     /// dsl 0.26.0 §7 (T2-5): `{ to: <slot> }` / `{ to: { weekday, slot } }`
@@ -154,22 +154,22 @@ pub(super) enum AdvanceBy {
 }
 
 /// One `steps:` entry.
-pub(super) struct ScriptStep {
+pub(crate) struct ScriptStep {
     /// 1-based position in `steps:` — the `N` of every "step N" message.
-    pub(super) n: usize,
+    pub(crate) n: usize,
     /// `label:` (dsl 0.22.0 §13), printed in the transcript.
-    pub(super) label: Option<String>,
+    pub(crate) label: Option<String>,
     /// `repeat:` (dsl 0.22.0 §13): how many times the step runs (≥ 1).
-    pub(super) repeat: usize,
-    pub(super) action: StepAction,
+    pub(crate) repeat: usize,
+    pub(crate) action: StepAction,
     /// `bridges:` (dsl 0.24.0 §5): answers for the plugin calls this step
     /// makes, consumed before the top-level ones.
-    pub(super) bridges: BTreeMap<String, Vec<ScriptBridgeAnswer>>,
+    pub(crate) bridges: BTreeMap<String, Vec<ScriptBridgeAnswer>>,
     /// Where the step was written (round-5 T3-13).
-    pub(super) at: StepSource,
+    pub(crate) at: StepSource,
     /// dsl 0.27.0 (T3-22): the `include:` segments the step was spliced in
     /// by that carry `choose:` / `bridges:`, outermost first.
-    pub(super) segments: Vec<Arc<Segment>>,
+    pub(crate) segments: Vec<Arc<Segment>>,
 }
 
 /// Where a step was written (round-5 T3-13): the file its text came from —
@@ -177,7 +177,7 @@ pub(super) struct ScriptStep {
 /// in the file's step list, and the `include:` lines that spliced it in.
 /// A usage error about the step is located here, not at the play.
 #[derive(Clone)]
-pub(super) struct StepSource {
+pub(crate) struct StepSource {
     file: PathBuf,
     text: Arc<str>,
     /// The list is under a `steps:` key (a play, or an included file
@@ -220,7 +220,7 @@ impl StepSource {
     /// ``, `` unknown key `foo` ``) or the word right before it (`` occasion
     /// `chaptr` ``) — when the step has that key, else at the step, and
     /// naming the `include:` lines that spliced it in.
-    pub(super) fn locate(&self, msg: &str) -> String {
+    pub(crate) fn locate(&self, msg: &str) -> String {
         let rest = msg.split_once(": ").map_or(msg, |(_, r)| r);
         let mut parts = rest.split('`');
         let before = parts.next().unwrap_or("");
@@ -249,7 +249,7 @@ impl StepSource {
 
     /// `msg` located at the node `keys` names inside the step (the nearest
     /// one the text has), naming the `include:` lines that spliced it in.
-    pub(super) fn locate_keys(&self, keys: &[&str], msg: &str) -> String {
+    pub(crate) fn locate_keys(&self, keys: &[&str], msg: &str) -> String {
         let mut out = format!("{}: {msg}", self.at(keys));
         for via in &self.via {
             out.push_str(&format!(" (included from {via})"));
@@ -259,7 +259,7 @@ impl StepSource {
 
     /// `msg` located at item `item` of the list `keys` names inside the
     /// step (else the nearest node [`Self::locate_keys`] finds).
-    pub(super) fn locate_item(&self, keys: &[&str], item: usize, msg: &str) -> String {
+    pub(crate) fn locate_item(&self, keys: &[&str], item: usize, msg: &str) -> String {
         use lute_trace::YamlStep::{Item, Key};
         let mut path = Vec::with_capacity(keys.len() + 3);
         if self.under_steps {
@@ -280,8 +280,7 @@ impl StepSource {
 
     /// `msg` located at the value of the key `keys` names inside the step
     /// (else at the key, as [`Self::locate_keys`]).
-    #[allow(dead_code)]
-    pub(super) fn locate_value(&self, keys: &[&str], msg: &str) -> String {
+    pub(crate) fn locate_value(&self, keys: &[&str], msg: &str) -> String {
         use lute_trace::YamlStep::{Item, Key, Value};
         let mut path = Vec::with_capacity(keys.len() + 3);
         if self.under_steps {
@@ -305,20 +304,20 @@ impl StepSource {
 /// `bridges:` — every step spliced in reads them over the script's, and a
 /// `repeat:`ed include makes one segment per repetition (its decision lists
 /// consumed afresh).
-pub(super) struct Segment {
+pub(crate) struct Segment {
     /// `include: <file>` at `file:line:col`, for messages.
-    pub(super) include: String,
+    pub(crate) include: String,
     /// Where the `include:` item was written — its `choose:` / `bridges:`
     /// usage errors are located there.
-    pub(super) at: StepSource,
-    pub(super) choose: BTreeMap<String, Vec<ScriptedPick>>,
-    pub(super) bridges: BTreeMap<String, Vec<ScriptBridgeAnswer>>,
+    pub(crate) at: StepSource,
+    pub(crate) choose: BTreeMap<String, Vec<ScriptedPick>>,
+    pub(crate) bridges: BTreeMap<String, Vec<ScriptBridgeAnswer>>,
 }
 
 /// Where a play script was written: its top-level keys (`choose:`, …) are
 /// located in its text.
 #[derive(Clone)]
-pub(super) struct ScriptSource {
+pub(crate) struct ScriptSource {
     file: PathBuf,
     text: Arc<str>,
 }
@@ -335,7 +334,7 @@ impl Default for ScriptSource {
 impl ScriptSource {
     /// `file:line:col` of the top-level node `keys` names — the deepest
     /// one the text has —, else the file.
-    pub(super) fn at(&self, keys: &[&str]) -> String {
+    pub(crate) fn at(&self, keys: &[&str]) -> String {
         use lute_trace::YamlStep::Key;
         let span = (1..=keys.len()).rev().find_map(|end| {
             let path: Vec<_> = keys[..end].iter().map(|k| Key(k)).collect();
@@ -349,7 +348,7 @@ impl ScriptSource {
 
     /// `file:line:col` of item `item` of the top-level list `keys` names,
     /// else [`Self::at`] of the list.
-    pub(super) fn at_item(&self, keys: &[&str], item: usize) -> String {
+    pub(crate) fn at_item(&self, keys: &[&str], item: usize) -> String {
         use lute_trace::YamlStep::{Item, Key};
         let mut path: Vec<_> = keys.iter().map(|k| Key(k)).collect();
         path.push(Item(item));
@@ -361,8 +360,7 @@ impl ScriptSource {
 
     /// `file:line:col` of the value of the top-level key `keys` names, else
     /// [`Self::at`] of the key.
-    #[allow(dead_code)]
-    pub(super) fn at_value(&self, keys: &[&str]) -> String {
+    pub(crate) fn at_value(&self, keys: &[&str]) -> String {
         use lute_trace::YamlStep::{Key, Value};
         let mut path: Vec<_> = keys.iter().map(|k| Key(k)).collect();
         path.push(Value);
@@ -375,7 +373,7 @@ impl ScriptSource {
     /// `msg` about a top-level key located at it: the node its first
     /// backticked name spells (`` `state.run.route` `` is `state:` ›
     /// `run.route`, `` `facts:` `` is `facts:`), else the script.
-    pub(super) fn locate(&self, msg: &str) -> String {
+    pub(crate) fn locate(&self, msg: &str) -> String {
         let name = msg.split('`').nth(1).unwrap_or("").trim_end_matches(':');
         let keys: Vec<&str> = match name.split_once('.') {
             Some((head, rest)) => vec![head, rest],
@@ -386,33 +384,33 @@ impl ScriptSource {
 }
 
 /// A parsed play script.
-pub(super) struct PlayScript {
+pub(crate) struct PlayScript {
     /// `state:` / `facts:` surfaces parsed by the trace-mock grammar.
-    pub(super) surfaces: MockSet,
+    pub(crate) surfaces: MockSet,
     /// Top-level scripted bridge answers, kept with their optional writes.
-    pub(super) bridges: BTreeMap<String, Vec<ScriptBridgeAnswer>>,
+    pub(crate) bridges: BTreeMap<String, Vec<ScriptBridgeAnswer>>,
     /// Top-level scripted branch/hub answers, kept typed (not mock strings).
-    pub(super) choose: BTreeMap<String, Vec<ScriptedPick>>,
-    pub(super) save: SaveSeed,
-    pub(super) steps: Vec<ScriptStep>,
+    pub(crate) choose: BTreeMap<String, Vec<ScriptedPick>>,
+    pub(crate) save: SaveSeed,
+    pub(crate) steps: Vec<ScriptStep>,
     /// Where the script was written.
-    pub(super) source: ScriptSource,
+    pub(crate) source: ScriptSource,
     /// Every step `expect:` (dsl 0.22.0 §4): `(step n, label, expect)`.
-    pub(super) step_expects: Vec<(usize, Option<String>, yaml_serde::Value)>,
+    pub(crate) step_expects: Vec<(usize, Option<String>, yaml_serde::Value)>,
     /// The top-level (end-of-play) `expect:`.
-    pub(super) expect: Option<yaml_serde::Value>,
+    pub(crate) expect: Option<yaml_serde::Value>,
     /// The top-level `derive:` key (dsl 0.22.0 §6); `None` = the default.
-    pub(super) derive: Option<bool>,
+    pub(crate) derive: Option<bool>,
 }
 
 impl PlayScript {
-    pub(super) fn has_expect(&self) -> bool {
+    pub(crate) fn has_expect(&self) -> bool {
         self.expect.is_some() || !self.step_expects.is_empty()
     }
 }
 
 /// A YAML scalar rendered back to the text a mock literal carries.
-pub(super) fn scalar_text(v: &yaml_serde::Value) -> Option<String> {
+pub(crate) fn scalar_text(v: &yaml_serde::Value) -> Option<String> {
     match v {
         yaml_serde::Value::Bool(b) => Some(b.to_string()),
         yaml_serde::Value::Number(n) => Some(n.to_string()),
@@ -467,7 +465,7 @@ fn tiered_lists(v: &yaml_serde::Value, key: &str) -> Result<(Vec<String>, Vec<St
 /// order they were written ([`in_file_order`]) — each located at its file
 /// line (a step's in the play or the steps file an `include:` spliced it
 /// from), else `invalid play script <path>: …`.
-pub(super) fn parse_script(text: &str, path: &Path) -> Result<PlayScript, String> {
+pub(crate) fn parse_script(text: &str, path: &Path) -> Result<PlayScript, String> {
     parse_script_with(text, path, true)
 }
 
@@ -485,7 +483,7 @@ struct ScriptTop<'v> {
 /// [`parse_script`]; `steps_required: false` also admits a script that is
 /// only a save (seeds and no `steps:`) — what `lute calendar --script`
 /// starts every cell from.
-pub(super) fn parse_script_with(
+pub(crate) fn parse_script_with(
     text: &str,
     path: &Path,
     steps_required: bool,
@@ -592,7 +590,7 @@ fn long_form_answer(answer: &yaml_serde::Value) -> bool {
 }
 
 /// Whether any answer of a `bridges:` mapping is the long form.
-pub(super) fn has_long_form(value: &yaml_serde::Value) -> bool {
+pub(crate) fn has_long_form(value: &yaml_serde::Value) -> bool {
     value.as_mapping().is_some_and(|tags| {
         tags.values()
             .filter_map(yaml_serde::Value::as_sequence)
@@ -615,11 +613,13 @@ fn parse_play_bridges(
         writes: WritesInput::default(),
     };
     if !has_long_form(value) {
-        return lute_trace::parse_bridges(value).map(|tags| {
-            tags.into_iter()
-                .map(|(tag, answers)| (tag, answers.into_iter().map(legacy).collect()))
-                .collect()
-        });
+        return lute_trace::parse_bridges(value)
+            .map(|tags| {
+                tags.into_iter()
+                    .map(|(tag, answers)| (tag, answers.into_iter().map(legacy).collect()))
+                    .collect()
+            })
+            .map_err(|e| e.to_string());
     }
     let flat = |tag: &str, n: usize, what: &str, m: &yaml_serde::Mapping| {
         m.iter()
@@ -641,7 +641,8 @@ fn parse_play_bridges(
             return lute_trace::parse_bridges(&yaml_serde::Value::Mapping(
                 [(tag.clone(), answers.clone())].into_iter().collect(),
             ))
-            .map(|_| BTreeMap::new());
+            .map(|_| BTreeMap::new())
+            .map_err(|e| e.to_string());
         };
         let mut parsed = Vec::with_capacity(answers.len());
         for (index, answer) in answers.iter().enumerate() {
@@ -735,7 +736,7 @@ fn parse_top<'v>(
             },
             "choose" => match parse_choose(v) {
                 Ok(value) => choose = value,
-                Err(e) => refuse(&[key], e),
+                Err(e) => refuse(&[key], e.to_string()),
             },
             _ if MOCK_SURFACES.contains(&key) => {
                 surfaces.insert(k.clone(), v.clone());
@@ -900,7 +901,7 @@ fn position(located: &str) -> Option<(&str, usize, usize)> {
 /// written: by where each is located — a step an `include:` spliced in at
 /// the play's `include:` line (its last `(included from …)`), then at its
 /// own line; an error located at no line first. Stable.
-pub(super) fn in_file_order(mut errs: Vec<String>) -> String {
+pub(crate) fn in_file_order(mut errs: Vec<String>) -> String {
     errs.sort_by_cached_key(|e| {
         let own = position(e).map(|(f, l, c)| (f.to_string(), l, c));
         let outer = e
@@ -932,7 +933,7 @@ impl Included {
     fn source(&self, index: usize) -> StepSource {
         StepSource {
             file: self.file.clone(),
-            text: self.text.clone(),
+            text: Arc::clone(&self.text),
             under_steps: self.under_steps,
             index,
             via: self.via.clone(),
@@ -991,7 +992,7 @@ fn expand_includes(
                         })?;
                 }
                 "choose" => {
-                    choose = parse_choose(v).map_err(|e| err(key, e))?;
+                    choose = parse_choose(v).map_err(|e| err(key, e.to_string()))?;
                 }
                 "bridges" => {
                     bridges = parse_play_bridges(v).map_err(|e| err(key, e))?;
@@ -1028,13 +1029,7 @@ fn expand_includes(
                     file.display()
                 ),
             ),
-            lute_model::scripts::IncludeError::Yaml { file, reason } => {
-                format!("{}: malformed YAML: {reason}", file.display())
-            }
-            lute_model::scripts::IncludeError::Shape { file } => format!(
-                "{}: an included file is a list of steps or `steps: […]`",
-                file.display()
-            ),
+            other => other.to_string(),
         };
         let lute_model::scripts::IncludedSteps {
             file,
@@ -1069,7 +1064,7 @@ fn expand_includes(
             }
             let inner = Included {
                 file: file.clone(),
-                text: text.clone(),
+                text: Arc::clone(&text),
                 under_steps,
                 via: via.clone(),
                 segments,
@@ -1135,10 +1130,10 @@ fn parse_writes(
             }
             Some("facts") => w.facts = string_list(v, &format!("step {n}: `{key}.facts`"))?,
             Some("retract") if retract => {
-                w.retract = string_list(v, &format!("step {n}: `{key}.retract`"))?
+                w.retract = string_list(v, &format!("step {n}: `{key}.retract`"))?;
             }
             Some("accept") if retract => {
-                w.accept = string_list(v, &format!("step {n}: `{key}.accept`"))?
+                w.accept = string_list(v, &format!("step {n}: `{key}.accept`"))?;
             }
             other => {
                 return Err(format!(
@@ -1526,12 +1521,11 @@ mod tests {
 
     #[test]
     fn rejects_non_true_timeout_mapping() {
-        let error = match parse_script(
+        let Err(error) = parse_script(
             "choose:\n  knock: { timeout: false }\nsteps:\n  - occasion: visit\n",
             Path::new("script.play.yaml"),
-        ) {
-            Ok(_) => panic!("expected invalid timeout mapping"),
-            Err(error) => error,
+        ) else {
+            panic!("expected invalid timeout mapping")
         };
         assert!(
             error.contains("timeout mapping must set `timeout` to `true`"),

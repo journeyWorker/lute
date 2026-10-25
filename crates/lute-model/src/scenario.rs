@@ -15,6 +15,7 @@ pub fn project_docs(group: &DocGroup) -> Vec<ProjectDoc<'_>> {
         .collect()
 }
 
+#[derive(Debug)]
 pub struct RootScenario {
     pub graph: lute_check::connectivity::ConnGraph,
     pub reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,

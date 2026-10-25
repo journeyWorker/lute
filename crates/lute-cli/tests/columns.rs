@@ -40,9 +40,15 @@ fn spans(v: &serde_json::Value, out: &mut Vec<(String, u64, u64)>) {
                     out.push((code.to_string(), l, c));
                 }
             }
-            m.values().for_each(|x| spans(x, out));
+            for x in m.values() {
+                spans(x, out);
+            }
         }
-        serde_json::Value::Array(a) => a.iter().for_each(|x| spans(x, out)),
+        serde_json::Value::Array(a) => {
+            for x in a {
+                spans(x, out);
+            }
+        }
         _ => {}
     }
 }

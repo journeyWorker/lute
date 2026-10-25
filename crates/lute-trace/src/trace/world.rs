@@ -1,23 +1,28 @@
-use super::*;
-pub(super) fn is_true(m: &Machine<&mut TraceDriver<'_>>, path: &str) -> bool {
+use super::{
+    derived_read_notes, exec, mock, mock_unproducible_notes, occasion_notes, report,
+    reserved_quest_notes, seed_fact_notes, seeds_summary, unmatched_event_notes, BTreeMap,
+    BTreeSet, CheckInput, Coverage, Diagnostic, Document, FoldedEnv, Layer, Machine, MockSet,
+    Severity, Span, Step, TraceDriver, TraceExit, TraceReport, Value, Walked,
+};
+pub(crate) fn is_true(m: &Machine<&mut TraceDriver<'_>>, path: &str) -> bool {
     m.read(path) == lute_runtime::eval::Read::Value(Value::Bool(true))
 }
 
 /// The world a walk left, for the report's final state and facts.
 #[derive(Default)]
-pub(super) struct World {
-    pub(super) state: BTreeMap<String, Value>,
-    pub(super) facts: BTreeSet<String>,
-    pub(super) undecided: BTreeSet<String>,
-    pub(super) reserved_reads: BTreeMap<String, bool>,
-    pub(super) derived_reads: BTreeSet<String>,
+pub(crate) struct World {
+    pub(crate) state: BTreeMap<String, Value>,
+    pub(crate) facts: BTreeSet<String>,
+    pub(crate) undecided: BTreeSet<String>,
+    pub(crate) reserved_reads: BTreeMap<String, bool>,
+    pub(crate) derived_reads: BTreeSet<String>,
     /// Whether the project's `terminal:` holds in it ([`terminal_at`]).
-    pub(super) terminal: Option<bool>,
+    pub(crate) terminal: Option<bool>,
 }
 
 /// Whether the project's `terminal:` condition holds in the walk's world —
 /// `None` without one, or when the mocks leave it undecided.
-pub(super) fn terminal_at(
+pub(crate) fn terminal_at(
     m: &mut Machine<&mut TraceDriver<'_>>,
     terminal: Option<&exec::Slot>,
 ) -> Option<bool> {
@@ -25,7 +30,7 @@ pub(super) fn terminal_at(
 }
 
 impl World {
-    pub(super) fn of(m: &mut Machine<&mut TraceDriver<'_>>) -> Self {
+    pub(crate) fn of(m: &mut Machine<&mut TraceDriver<'_>>) -> Self {
         World {
             state: m.state().clone(),
             facts: m
@@ -42,7 +47,7 @@ impl World {
 
     /// A later presentation's world over this one: its state and facts
     /// win; what every presentation read accumulates (first read kept).
-    pub(super) fn then(mut self, later: World) -> Self {
+    pub(crate) fn then(mut self, later: World) -> Self {
         for (p, defaulted) in later.reserved_reads {
             self.reserved_reads.entry(p).or_insert(defaulted);
         }
@@ -58,24 +63,24 @@ impl World {
     }
 }
 
-pub(super) struct Finish<'a, 'd> {
-    pub(super) input: &'a CheckInput,
-    pub(super) mocks: &'a MockSet,
-    pub(super) folded: &'a FoldedEnv,
-    pub(super) doc: &'a Document,
-    pub(super) project_asserts: Option<&'a BTreeSet<String>>,
-    pub(super) driver: TraceDriver<'d>,
-    pub(super) walk: Walked,
-    pub(super) beat_note: Option<String>,
-    pub(super) scene_eligible: Option<(String, Option<bool>)>,
-    pub(super) world: World,
+pub(crate) struct Finish<'a, 'd> {
+    pub(crate) input: &'a CheckInput,
+    pub(crate) mocks: &'a MockSet,
+    pub(crate) folded: &'a FoldedEnv,
+    pub(crate) doc: &'a Document,
+    pub(crate) project_asserts: Option<&'a BTreeSet<String>>,
+    pub(crate) driver: TraceDriver<'d>,
+    pub(crate) walk: Walked,
+    pub(crate) beat_note: Option<String>,
+    pub(crate) scene_eligible: Option<(String, Option<bool>)>,
+    pub(crate) world: World,
     /// The occasions whose mocked raise bound the presented unit's
     /// `occasion.target`: those raises did what they were for.
-    pub(super) binding_ons: BTreeSet<String>,
+    pub(crate) binding_ons: BTreeSet<String>,
 }
 
 /// The notes, the exit code and the report.
-pub(super) fn finish(f: Finish<'_, '_>) -> (TraceReport, TraceExit) {
+pub(crate) fn finish(f: Finish<'_, '_>) -> (TraceReport, TraceExit) {
     let Finish {
         input,
         mocks,
@@ -187,7 +192,7 @@ pub(super) fn finish(f: Finish<'_, '_>) -> (TraceReport, TraceExit) {
     (report, exit)
 }
 
-pub(super) fn logic_diag(code: &str, message: String, span: Span) -> Diagnostic {
+pub(crate) fn logic_diag(code: &str, message: String, span: Span) -> Diagnostic {
     Diagnostic {
         code: code.to_string(),
         severity: Severity::Error,
@@ -202,7 +207,7 @@ pub(super) fn logic_diag(code: &str, message: String, span: Span) -> Diagnostic 
     }
 }
 
-pub(super) fn choice_diag(span: Span, id: &str, choice_id: &str, reason: &str) -> Diagnostic {
+pub(crate) fn choice_diag(span: Span, id: &str, choice_id: &str, reason: &str) -> Diagnostic {
     let mut diagnostic = logic_diag(
         mock::E_TRACE_CHOICE,
         format!(

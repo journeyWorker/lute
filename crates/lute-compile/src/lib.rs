@@ -39,7 +39,10 @@ use lute_cel::CelArena;
 use lute_check::meta::{canonical_episode_id, canonical_scene_key};
 use lute_check::{check, fold_env, CheckInput, CheckResult, DefTable, FoldedEnv, StageState};
 use lute_core_span::{Diagnostic, Severity};
-use lute_ir::*;
+use lute_ir::{
+    AtomEntry, BodyEntry, CelPair, EntityKindEntry, EnumEntry, ForKind, GateEntry, PrereqEdge,
+    PrereqEdgeEntry, RelationEntry, RuleEntry, SeasonEntry, SeedFactEntry, TargetKind, TermEntry,
+};
 use lute_manifest::project::IdentityTemplates;
 use lute_manifest::relations::KindShape;
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -399,7 +402,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// strings. `schemas/lute-ir-0.29.schema.json` is renamed to
 /// `schemas/lute-ir-0.30.schema.json` per the release-line rule, its name
 /// patterns widened to the name rule.
-pub const LUTE_IR_VERSION: &str = "0.49.0";
+pub const LUTE_IR_VERSION: &str = "0.49.1";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -561,7 +564,7 @@ fn compile_inner(
                 // dsl 0.6.0 §3.2: a shot's number is its 1-based document
                 // position. Authored numbers and the monotone guard are removed
                 // (the quest path was already positional).
-                let shot_no = i as i64 + 1;
+                let shot_no = i64::try_from(i).expect("a position is at most isize::MAX") + 1;
                 shots.push(address::ShotRecords::new(
                     shot_no,
                     prefix.clone(),
@@ -631,7 +634,7 @@ fn compile_inner(
                 let mut em = cfg::Emitter::new(map.is_some());
                 stage::walk_quest(&mut em, quest, &mut cx, &mut diags);
                 shots.push(address::ShotRecords::new(
-                    (i as i64) + 1,
+                    i64::try_from(i).expect("a position is at most isize::MAX") + 1,
                     quest.id.clone(),
                     em.finish(),
                 ));
@@ -685,7 +688,7 @@ fn compile_inner(
                     }
                 };
                 shots.push(address::ShotRecords::new(
-                    (i as i64) + 1,
+                    i64::try_from(i).expect("a position is at most isize::MAX") + 1,
                     prefix,
                     em.finish(),
                 ));
@@ -917,7 +920,7 @@ fn section_entries(doc: &lute_syntax::ast::Document) -> Vec<ir::SectionEntry> {
             let heading = s.heading.trim();
             let id = s.id.as_ref().map(|(id, _)| id.clone());
             (!heading.is_empty() || id.is_some()).then(|| ir::SectionEntry {
-                section: i as i64 + 1,
+                section: i64::try_from(i).expect("a position is at most isize::MAX") + 1,
                 heading: heading.to_string(),
                 id,
             })
@@ -933,10 +936,10 @@ fn section_entries(doc: &lute_syntax::ast::Document) -> Vec<ir::SectionEntry> {
 /// malformed-parse-sentinel facts/rules never reach this function — compile
 /// only runs past the D6 check gate (`compile`, above) on a clean check, and
 /// every such shape is an Error diagnostic that gate would have caught.
-// clippy 1.96 tightened `type_complexity` past this five-Vec return; the
-// declaration IS the readable form here — each Vec is a distinct artifact
-// axis the caller destructures by position, and a `type` alias buys nothing.
-#[allow(clippy::type_complexity)]
+#[expect(
+    clippy::type_complexity,
+    reason = "each Vec is a distinct artifact axis the caller destructures by position; the declaration is the readable form and a `type` alias buys nothing"
+)]
 fn rel_entries(
     vocab: &lute_check::RelVocab,
 ) -> (
@@ -983,6 +986,12 @@ fn rel_entries(
             labels: vocab.enum_labels.get(name).cloned().unwrap_or_default(),
         })
         .collect();
+    #[expect(
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        reason = "an authored `key:` index (`lute check` refuses one outside the args with \
+                  E-RELATION-DOMAIN); a negative one wraps, as before"
+    )]
     let relations = vocab
         .relations
         .iter()
@@ -1286,7 +1295,7 @@ fn plugin_frontmatter(
     snapshot: &CapabilitySnapshot,
 ) -> BTreeMap<String, serde_json::Value> {
     let mut out = BTreeMap::new();
-    for (k, v) in map.iter() {
+    for (k, v) in map {
         let Some(key) = k.as_str() else { continue };
         let Some(ty) = snapshot.frontmatter.get(key) else {
             continue;
@@ -1671,7 +1680,7 @@ fn collect_branch_paths_nodes(nodes: &[Node], paths: &mut BTreeSet<String>) {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_branch_paths_nodes(body, paths)
+                            collect_branch_paths_nodes(body, paths);
                         }
                     }
                 }
@@ -1853,7 +1862,7 @@ mod tests {
     fn lang_and_ir_version_stamps() {
         // 0.41.0 axis alignment (docs/versioning.md): a breaking minor that
         // moves language and IR together with the toolchain.
-        assert_eq!(super::LUTE_IR_VERSION, "0.49.0");
+        assert_eq!(super::LUTE_IR_VERSION, "0.49.1");
     }
 
     #[test]
@@ -1862,8 +1871,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.49.0");
-        assert_eq!(v["irVersion"], "0.49.0");
+        assert_eq!(v["lute"], "0.49.1");
+        assert_eq!(v["irVersion"], "0.49.1");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

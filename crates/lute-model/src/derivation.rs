@@ -95,9 +95,10 @@ pub fn add_derivations(graph: &mut SemanticGraph, model: &ProjectModel) {
                         .find(|(raw, _)| raw.trim() == decl.raw.trim())
                         .map(|(_, origin)| origin)
                 });
-            let (file, span) = origin
-                .map(|o| (o.file.clone(), o.span))
-                .unwrap_or_else(|| (doc.path.clone(), decl.span));
+            let (file, span) = origin.map_or_else(
+                || (doc.path.clone(), decl.span),
+                |o| (o.file.clone(), o.span),
+            );
             let key = (file.clone(), span.byte_start, decl.raw.trim().to_string());
             rules.entry(key).or_insert_with(|| RuleSource {
                 rule: decl.rule.clone(),
@@ -253,9 +254,8 @@ fn rule_bindings(
     // Ground producers bind unknown/open-domain variables.  A missing producer
     // is intentionally not a reason to suppress the symbolic dependency.
     for literal in &rule.body {
-        let atom = match literal {
-            BodyLiteral::Pos(a) => a,
-            _ => continue,
+        let BodyLiteral::Pos(atom) = literal else {
+            continue;
         };
         let matches: Vec<&GroundAtom> = producers
             .iter()
@@ -433,8 +433,7 @@ fn symbolic_atom(atom: &RuleAtom, env: &Bindings) -> Option<FactPattern> {
             RuleTerm::Bool(v) => FactTerm::Bool(*v),
             RuleTerm::Var(v) => env
                 .get(v)
-                .map(value_term)
-                .unwrap_or_else(|| FactTerm::Param(v.clone())),
+                .map_or_else(|| FactTerm::Param(v.clone()), value_term),
         })
         .collect();
     Some(FactPattern {
@@ -484,7 +483,7 @@ fn expand_pattern(
             FactTerm::Wildcard | FactTerm::Param(_) | FactTerm::Target => relation_domains
                 .get(&pattern.relation)
                 .and_then(|a| a.get(i))
-                .and_then(|v| v.clone())
+                .and_then(std::clone::Clone::clone)
                 .unwrap_or_default(),
         };
         if values.is_empty() {

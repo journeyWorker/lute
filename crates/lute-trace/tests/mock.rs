@@ -709,7 +709,7 @@ fn mock_subject_must_be_a_string() {
 fn file_key_does_not_disturb_the_other_surfaces() {
     let m = lute_trace::parse_mock_yaml("file: x.lute\nchoose:\n  path: left\n").unwrap();
     assert_eq!(
-        m.choose.get("path").map(|v| v.as_slice()),
+        m.choose.get("path").map(std::vec::Vec::as_slice),
         Some(&["left".to_string()][..])
     );
 }
@@ -758,7 +758,7 @@ fn every_legal_mock_key_still_parses() {
     assert_eq!(m.state.len(), 1);
     assert_eq!(m.facts, vec!["f(a)".to_string()]);
     assert_eq!(
-        m.choose.get("h").map(|v| v.as_slice()),
+        m.choose.get("h").map(std::vec::Vec::as_slice),
         Some(&["a".to_string()][..])
     );
     assert_eq!(m.events, vec!["e".to_string()]);
@@ -839,4 +839,27 @@ fn parse_mock_surfaces_keeps_the_grammar_open() {
         lute_trace::parse_mock_surfaces("selections:\n  h: a\nchoose:\n  g: b\n").expect("open");
     assert!(m.choose.contains_key("g"));
     assert!(!m.choose.contains_key("h"));
+}
+
+/// 0.49.1: `parse_bridges`' typed refusal renders the 0.49.0 reason text.
+#[test]
+fn parse_bridges_error_text_is_the_0_49_0_message() {
+    let text = |yaml: &str| {
+        lute_trace::parse_bridges(&yaml_serde::from_str(yaml).unwrap())
+            .unwrap_err()
+            .to_string()
+    };
+    let shape = "`bridges:` must be a mapping of plugin directive tag -> a list of answers, each \
+                 a mapping of bridge result field -> literal";
+    assert_eq!(text("[a]"), shape);
+    assert_eq!(text("{check: 1}"), shape);
+    assert_eq!(
+        text("{check: [{passed: true}, 2]}"),
+        "`bridges.check` answer 2 must be a mapping of bridge result field -> literal, e.g. \
+         `{ passed: true }`"
+    );
+    assert_eq!(
+        text("{check: [{passed: [1]}]}"),
+        "`bridges.check` answer 1 must map field names to scalar literals (bool/number/string)"
+    );
 }

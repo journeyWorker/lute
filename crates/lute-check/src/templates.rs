@@ -506,8 +506,10 @@ pub fn parse_beat_template(
             let why = match key {
                 "id" => " — each `<beat use=…>` names its own `id=`".to_string(),
                 _ => lute_manifest::suggest::nearest(key, TEMPLATE_KEYS.iter().copied(), 2)
-                    .map(|n| format!(" — did you mean `{n}`?"))
-                    .unwrap_or_else(|| format!("; the keys are {}", TEMPLATE_KEYS.join(", "))),
+                    .map_or_else(
+                        || format!("; the keys are {}", TEMPLATE_KEYS.join(", ")),
+                        |n| format!(" — did you mean `{n}`?"),
+                    ),
             };
             diags.push(diag(
                 format!("`beat.{key}` is not a beat template key{why} (dsl 0.27.0 §6)"),
@@ -553,8 +555,10 @@ pub fn parse_beat_template(
                     params.iter().map(|p| p.name.as_str()),
                     2,
                 )
-                .map(|n| format!("did you mean `@{n}`? Or declare"))
-                .unwrap_or_else(|| "declare".to_string());
+                .map_or_else(
+                    || "declare".to_string(),
+                    |n| format!("did you mean `@{n}`? Or declare"),
+                );
                 diags.push(diag(
                     format!(
                         "`beat.{key}` names `@{name}`, but the component declares no param \
@@ -720,7 +724,10 @@ fn conjunct(s: &str) -> String {
 /// dsl 0.28.0 §3: `W-TEMPLATE-OVERRIDE` at a use's own `when=`, which
 /// replaces the template's `when` whole — naming the dropped condition, the
 /// arguments only it read (now unused), and the two ways to keep it.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each argument is a separate part of the warning: the use, its definition and template, the dropped key, the own `when=`, the arguments, the user keys and the text"
+)]
 fn override_warning(
     name: &str,
     def: &ComponentDef,
@@ -1140,8 +1147,16 @@ pub fn check_body_markers(doc: &Document, template_component: bool) -> Vec<Diagn
 fn collect_nested<'a>(nodes: &'a [Node], out: &mut Vec<&'a Directive>) {
     for node in nodes {
         match node {
-            Node::Branch(b) => b.choices.iter().for_each(|c| collect_all(&c.body, out)),
-            Node::Hub(h) => h.bodies().for_each(|b| collect_all(b, out)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    collect_all(&c.body, out);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    collect_all(b, out);
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {

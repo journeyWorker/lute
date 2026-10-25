@@ -163,7 +163,7 @@ pub fn run_artifact(
         return ExitCode::from(1);
     }
 
-    if !art.get("commands").map(Json::is_array).unwrap_or(false) {
+    if !art.get("commands").is_some_and(Json::is_array) {
         return envelope::fail(CliError::input(
             artifact,
             "lute run: execution IR has no `commands` array",
@@ -317,9 +317,9 @@ pub fn run_artifact(
         m.bind_occasion_target(None);
     }
     match result {
-        Err(msg) => envelope::fail(CliError::input(
+        Err(e) => envelope::fail(CliError::input(
             artifact,
-            format!("lute run: {}", lute_core_span::plain_message(&msg)),
+            format!("lute run: {}", lute_core_span::plain_message(&e.message)),
         )),
         Ok(()) => {
             if json_out {
@@ -347,7 +347,13 @@ pub(crate) fn typed_value(value: &lute_runtime::Value) -> Json {
     }
 }
 
-#[allow(dead_code)]
+#[cfg_attr(
+    not(test),
+    expect(
+        dead_code,
+        reason = "only the `dump_tests` unit tests call it (and through it the two scoped forms); production emits through `activation_json_paths`"
+    )
+)]
 pub(crate) fn activation_json(
     state: &std::collections::BTreeMap<String, lute_runtime::Value>,
     types: &std::collections::BTreeMap<String, String>,
@@ -376,7 +382,10 @@ pub(crate) fn activation_json_scoped_with_defaults(
         if !node.get("map").is_some_and(Json::is_object) {
             *node = json!({"map": {}});
         }
-        let map = node.get_mut("map").and_then(Json::as_object_mut).unwrap();
+        let map = node
+            .get_mut("map")
+            .and_then(Json::as_object_mut)
+            .expect("`map` was made an object just above");
         if parts.len() == 1 {
             map.insert(parts[0].to_string(), value);
             return;
@@ -393,7 +402,10 @@ pub(crate) fn activation_json_scoped_with_defaults(
         if !node.get("map").is_some_and(Json::is_object) {
             *node = json!({"map": {}});
         }
-        let map = node.get_mut("map").and_then(Json::as_object_mut).unwrap();
+        let map = node
+            .get_mut("map")
+            .and_then(Json::as_object_mut)
+            .expect("`map` was made an object just above");
         let child = map
             .entry(parts[0].to_string())
             .or_insert_with(|| json!({"map": {}}));
@@ -520,7 +532,10 @@ pub(crate) fn activation_json_paths(
         if !node.get("map").is_some_and(Json::is_object) {
             *node = json!({"map": {}});
         }
-        let map = node.get_mut("map").and_then(Json::as_object_mut).unwrap();
+        let map = node
+            .get_mut("map")
+            .and_then(Json::as_object_mut)
+            .expect("`map` was made an object just above");
         if parts.len() == 1 {
             if let Some(value) = value {
                 map.insert(parts[0].to_string(), value);
@@ -712,7 +727,7 @@ mod removed_field_tests {
     use super::*;
 
     fn one(command: Json) -> Json {
-        json!({"irVersion": "0.49.0", "commands": [command]})
+        json!({"irVersion": "0.49.1", "commands": [command]})
     }
 
     /// Every removed 0.36 spelling (dsl 0.37.0 §2.2, §3.3, §5.2, §5.3) is
@@ -970,9 +985,15 @@ impl ExprIndex {
                     if let Some(cel) = map.get("cel").and_then(Json::as_str) {
                         first.entry(cel).or_insert(map.get("expr"));
                     }
-                    map.values().for_each(|v| collect(v, first));
+                    for v in map.values() {
+                        collect(v, first);
+                    }
                 }
-                Json::Array(items) => items.iter().for_each(|v| collect(v, first)),
+                Json::Array(items) => {
+                    for v in items {
+                        collect(v, first);
+                    }
+                }
                 _ => {}
             }
         }
@@ -1221,8 +1242,7 @@ fn owned_write_refusal(art: &Json) -> Option<String> {
             if let Some(relation) = command.get("relation").and_then(Json::as_str) {
                 if reserved.contains(relation) {
                     return Some(format!(
-                        "E-RUN-OWNED-WRITE: command {}s reserved relation `{relation}`",
-                        kind
+                        "E-RUN-OWNED-WRITE: command {kind}s reserved relation `{relation}`"
                     ));
                 }
             }
@@ -1317,10 +1337,7 @@ fn direct_occasion_member<B, C>(
                     .and_then(|target| target.strip_prefix('.'))
                     .unwrap_or(target)
             } else {
-                target
-                    .rsplit_once('.')
-                    .map(|(_, member)| member)
-                    .unwrap_or(target)
+                target.rsplit_once('.').map_or(target, |(_, member)| member)
             }
         }
         None => {

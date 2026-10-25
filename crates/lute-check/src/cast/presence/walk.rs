@@ -1,4 +1,8 @@
-use super::*;
+use super::{
+    affected, call, is_condition, literal_attr, op, pattern_args, subject_text, visit,
+    write_effects, Arm, ClipNode, Directive, Expr, FactPattern, Match, Node, Presence,
+    EXPAND_DEPTH,
+};
 
 impl Presence<'_> {
     /// Walk `body` under `conds` added to the guards pushed so far; they
@@ -41,7 +45,7 @@ impl Presence<'_> {
         }
     }
 
-    pub(super) fn choice_conds(
+    pub(crate) fn choice_conds(
         &self,
         choices: &[lute_syntax::ast::Choice],
     ) -> Vec<Vec<(Expr, String)>> {
@@ -57,7 +61,7 @@ impl Presence<'_> {
             .collect()
     }
 
-    pub(super) fn walk(&mut self, nodes: &[Node]) {
+    pub(crate) fn walk(&mut self, nodes: &[Node]) {
         for node in nodes {
             match node {
                 Node::Line(l) => self.line(l),
@@ -78,7 +82,7 @@ impl Presence<'_> {
                     self.fork(
                         conds
                             .into_iter()
-                            .zip(b.choices.iter().map(|c| &c.body[..]))
+                            .zip(b.choices.iter().map(|c| &*c.body))
                             .collect(),
                     );
                 }
@@ -91,11 +95,11 @@ impl Presence<'_> {
                     let conds = self.choice_conds(&h.choices);
                     // dsl 0.28.0 §5: the `<return>` block is one more path,
                     // under no guard of its own.
-                    let back = h.on_return.iter().map(|r| (Vec::new(), &r.body[..]));
+                    let back = h.on_return.iter().map(|r| (Vec::new(), (&*r.body)));
                     self.fork(
                         conds
                             .into_iter()
-                            .zip(h.choices.iter().map(|c| &c.body[..]))
+                            .zip(h.choices.iter().map(|c| &*c.body))
                             .chain(back)
                             .collect(),
                     );
@@ -157,7 +161,7 @@ impl Presence<'_> {
     /// dsl 0.26.0 §3.2: the `@@p:` lines a `::use` speaks, each by the
     /// member it binds, under the `::use`'s guard and the line's own —
     /// reported at the `::use`, once per member and guard.
-    pub(super) fn use_lines(&mut self, d: &Directive) {
+    pub(crate) fn use_lines(&mut self, d: &Directive) {
         let folded = self.folded;
         let Some(lines) = folded.use_lines.get(&d.span.byte_start) else {
             return;
@@ -227,7 +231,7 @@ impl Presence<'_> {
             };
             conds.extend(own.clone());
             let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
-            arms.push((conds, &body[..]));
+            arms.push((conds, (&**body)));
             earlier.push(own);
         }
         self.fork(arms);
@@ -273,7 +277,7 @@ impl Presence<'_> {
     }
 
     /// Every write anywhere in `nodes`.
-    pub(super) fn kill_writes(&mut self, nodes: &[Node]) {
+    pub(crate) fn kill_writes(&mut self, nodes: &[Node]) {
         let mut paths = Vec::new();
         let mut facts = Vec::new();
         let mut quests = Vec::new();

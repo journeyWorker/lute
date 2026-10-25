@@ -411,9 +411,7 @@ mod tests {
     use crate::ctx::Env;
     use crate::meta::{StateDecl, StateSchema};
     use crate::StateView;
-    use lute_core_span::Span;
-    use lute_manifest::types::Type;
-    use lute_syntax::ast::{CelKind, CelSlot, Set};
+    use lute_syntax::ast::{CelKind, CelSlot};
     use std::sync::LazyLock;
 
     fn test_span() -> Span {

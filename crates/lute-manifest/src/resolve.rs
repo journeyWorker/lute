@@ -131,6 +131,8 @@ impl std::fmt::Display for ResolveError {
     }
 }
 
+impl std::error::Error for ResolveError {}
+
 impl ProfileGraph {
     pub(crate) fn extends_chain(&self, selected: &str) -> Result<Vec<String>, ResolveError> {
         // returns parent-first chain EXCLUDING global, INCLUDING selected last
@@ -301,28 +303,44 @@ impl OptionError {
         }
     }
 
+    /// Author-facing prose: the [`std::fmt::Display`] text.
+    pub fn message(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl std::fmt::Display for OptionError {
     /// Author-facing prose: the fix (a name typo, a wrong literal shape) is
     /// only actionable with the declared set / expected type spelled out.
-    pub fn message(&self) -> String {
+    /// Each message is one literal, which `scripts/check-doc-snippets.py`
+    /// pins the docs' quotes against.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             OptionError::UnknownOption {
                 plugin,
                 name,
                 declared,
             } => {
-                let list = if declared.is_empty() {
-                    "none".to_string()
+                if declared.is_empty() {
+                    write!(
+                        f,
+                        "plugin `{plugin}` has no option `{name}` (declared: none)"
+                    )
                 } else {
-                    declared.join(", ")
-                };
-                format!("plugin `{plugin}` has no option `{name}` (declared: {list})")
+                    let list = declared.join(", ");
+                    write!(
+                        f,
+                        "plugin `{plugin}` has no option `{name}` (declared: {list})"
+                    )
+                }
             }
             OptionError::OptionType {
                 plugin,
                 name,
                 expected,
                 got,
-            } => format!(
+            } => write!(
+                f,
                 "option `{plugin}.{name}` expects {}, got {}",
                 type_str(expected),
                 lit_str(got)
@@ -330,6 +348,8 @@ impl OptionError {
         }
     }
 }
+
+impl std::error::Error for OptionError {}
 
 /// plugin Appendix C1: validate every MERGED option value against the owning
 /// `PluginManifest.options`. Runs on the output of [`resolve_activation`] —
@@ -473,7 +493,6 @@ fn range_satisfies(range: &str, version: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::collections::BTreeMap;
 
     #[test]
     fn installed_plugins_lookup() {
@@ -936,6 +955,19 @@ mod tests {
         assert_eq!(
             errs[0].message(),
             "plugin `arcia.minigame` has no option `resultScop` (declared: resultScope, rounds)"
+        );
+    }
+
+    #[test]
+    fn unknown_option_message_names_no_declared_option() {
+        let err = OptionError::UnknownOption {
+            plugin: "arcia.minigame".into(),
+            name: "rounds".into(),
+            declared: Vec::new(),
+        };
+        assert_eq!(
+            err.to_string(),
+            "plugin `arcia.minigame` has no option `rounds` (declared: none)"
         );
     }
 

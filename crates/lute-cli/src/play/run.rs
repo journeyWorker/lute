@@ -15,52 +15,52 @@ use super::plan::{Action, PlannedBridgeAnswer, Scope, Step};
 use super::script::PlayScript;
 use crate::play_expect::WorldView;
 
-pub(super) struct StepRecord {
-    pub(super) n: usize,
-    pub(super) label: Option<String>,
+pub(crate) struct StepRecord {
+    pub(crate) n: usize,
+    pub(crate) label: Option<String>,
     /// `(k, of)` for the k-th run of a `repeat: of` step (of > 1).
-    pub(super) iteration: Option<(usize, usize)>,
-    pub(super) body: StepBody,
-    pub(super) quests: Vec<QuestAdvance>,
+    pub(crate) iteration: Option<(usize, usize)>,
+    pub(crate) body: StepBody,
+    pub(crate) quests: Vec<QuestAdvance>,
     /// The world right after the step settled — captured only when the
     /// step's `expect:` judges it (0.23.1).
-    pub(super) world: Option<WorldView>,
+    pub(crate) world: Option<WorldView>,
     /// Usage notes on the step as written — e.g. an `occasion:` step raising
     /// the `dayEnd` / `dayStart` its clock's `advance:` already raises
     /// ([`clock_raised_note`]).
-    pub(super) notes: Vec<String>,
+    pub(crate) notes: Vec<String>,
     /// dsl 0.25.0 §1: exclusive relations that both hold after the step
     /// (`seenAfter(elias) and fell(elias) both hold`) — each fails the play.
-    pub(super) exclusive: Vec<String>,
+    pub(crate) exclusive: Vec<String>,
     /// dsl 0.27.0 §4: this record is the `engine:` write an `occasion:` step
     /// lands before its raise; the step itself is the next record. It is
     /// part of the step, not a step (or repetition) of its own: the step's
     /// `expect:` judges the raise, and the end count skips it.
-    pub(super) before_raise: bool,
+    pub(crate) before_raise: bool,
     /// `terminal:` first holds after this step: the game ended in it, so an
     /// `::end` it ran is not followed by more play.
-    pub(super) ended_game: bool,
+    pub(crate) ended_game: bool,
 }
 
 /// The whole playthrough: the initial quest settle, then every step, and
 /// the world it ended in.
-pub(super) struct Playthrough {
-    pub(super) start: Vec<QuestAdvance>,
-    pub(super) steps: Vec<StepRecord>,
+pub(crate) struct Playthrough {
+    pub(crate) start: Vec<QuestAdvance>,
+    pub(crate) steps: Vec<StepRecord>,
     /// The steps an `end: true` step left unplayed: `(n, label)`.
-    pub(super) skipped: Vec<(usize, Option<String>)>,
-    pub(super) outcome: Result<String, PlayHalt>,
+    pub(crate) skipped: Vec<(usize, Option<String>)>,
+    pub(crate) outcome: Result<String, PlayHalt>,
     /// The playthrough ran to its end (every step, or an `end: true` step)
     /// with the project's `terminal:` holding (`end: terminal`).
-    pub(super) terminal: bool,
-    pub(super) world: World,
+    pub(crate) terminal: bool,
+    pub(crate) world: World,
 }
 
 impl Playthrough {
     /// How the playthrough ended — the value `expect.end` judges
     /// ([`crate::play_expect::ENDS`]): `complete`, `terminal`, or the halt's
     /// `incomplete` / `error`.
-    pub(super) fn ended(&self) -> &'static str {
+    pub(crate) fn ended(&self) -> &'static str {
         match &self.outcome {
             Ok(_) if self.terminal => "terminal",
             Ok(_) => "complete",
@@ -69,7 +69,7 @@ impl Playthrough {
     }
 }
 
-pub(super) fn execute(
+pub(crate) fn execute(
     script: &PlayScript,
     plan: &[Step],
     mut s: Session<'_, '_, PlayDriverState>,
@@ -239,16 +239,13 @@ pub(super) fn execute(
             if matches!(step.action, Action::NewRun(_)) {
                 run_start = s.clock_at();
             }
-            let duplicate_advance_note =
-                if previous_beat_advanced && matches!(step.action, Action::Advance { .. }) {
-                    Some(
-                        "this `advance:` follows a beat that already declared `advances`; \
+            let duplicate_advance_note = (previous_beat_advanced
+                && matches!(step.action, Action::Advance { .. }))
+            .then(|| {
+                "this `advance:` follows a beat that already declared `advances`; \
                       both moves apply, so remove this step if it duplicates that movement"
-                            .to_string(),
-                    )
-                } else {
-                    None
-                };
+                    .to_string()
+            });
             let mut notes: Vec<String> = duplicate_advance_note
                 .into_iter()
                 .chain(clock_raised_note(
@@ -570,7 +567,7 @@ fn enter_scopes(
             })
             .collect();
         open.push(OpenScope {
-            scope: scope.clone(),
+            scope: Arc::clone(scope),
             choose,
             bridges,
             used,
@@ -622,9 +619,8 @@ fn name_ended_include(
 /// its repetitions) presented — dropped with the step, like an
 /// `include:`'s ([`leftover_note`]).
 fn step_choose_note(step: &Step, records: &[StepRecord]) -> Option<String> {
-    let choose = match &step.action {
-        Action::Occasion { choose, .. } | Action::Advance { choose, .. } => choose,
-        _ => return None,
+    let (Action::Occasion { choose, .. } | Action::Advance { choose, .. }) = &step.action else {
+        return None;
     };
     let mut used = Used::default();
     for r in records {

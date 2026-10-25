@@ -9,3 +9,12 @@ pub struct RenameError {
     pub message: String,
     pub span: Option<Span>,
 }
+
+/// `<code>: <message>`, the form the project model turns into a diagnostic.
+impl std::fmt::Display for RenameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code, self.message)
+    }
+}
+
+impl std::error::Error for RenameError {}

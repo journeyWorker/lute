@@ -162,8 +162,16 @@ fn walk_nodes<'a>(nodes: &'a [Node], f: &mut impl FnMut(&'a Node)) {
     for node in nodes {
         f(node);
         match node {
-            Node::Branch(b) => b.choices.iter().for_each(|c| walk_nodes(&c.body, f)),
-            Node::Hub(h) => h.bodies().for_each(|body| walk_nodes(body, f)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    walk_nodes(&c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for body in h.bodies() {
+                    walk_nodes(body, f);
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;

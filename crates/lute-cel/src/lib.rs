@@ -29,7 +29,7 @@ pub mod walk;
 pub use walk::{walk, Flow, Node};
 
 /// Owns every parsed CEL AST and hands out opaque [`CelAstHandle`]s indexing into it.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct CelArena {
     asts: Vec<cel_parser::ast::IdedExpr>,
 }
@@ -47,6 +47,15 @@ pub struct CelParseError {
     pub message: String,
     pub span: Span,
 }
+
+/// The backend's message; the span is located by the caller.
+impl std::fmt::Display for CelParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for CelParseError {}
 
 /// A DSL-level `@ref` or `$` (subject) token found in raw CEL source.
 #[derive(Clone, Debug)]
@@ -258,6 +267,10 @@ pub fn parse_slot(
     let prepared = substitute_dsl_tokens(raw);
     match parse_prepared(&prepared) {
         Parsed::Expr(expr) => {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "existing wrapping handle behaviour kept in 0.49.1; arena exhaustion is a separate behaviour change"
+            )]
             let h = CelAstHandle(arena.asts.len() as u32);
             arena.asts.push(expr);
             Ok(h)
@@ -379,6 +392,10 @@ pub fn parse_slot_marked_refs(arena: &mut CelArena, raw: &str) -> Option<CelAstH
     let prepared = substitute_marking_refs(raw);
     match parse_prepared(&prepared) {
         Parsed::Expr(expr) => {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "existing wrapping handle behaviour kept in 0.49.1; arena exhaustion is a separate behaviour change"
+            )]
             let h = CelAstHandle(arena.asts.len() as u32);
             arena.asts.push(expr);
             Some(h)
@@ -428,8 +445,8 @@ fn silence_antlr_panic() {
 /// `prepared` byte-for-byte since substitution is length-preserving). Robust to
 /// multi-line CEL and multibyte characters.
 fn linecol_to_byte(raw: &str, line: isize, col: isize) -> usize {
-    let line = line.max(1) as usize; // 1-based
-    let col = col.max(1) as usize; // 1-based, code points
+    let line = usize::try_from(line.max(1)).expect("max(1) is positive"); // 1-based
+    let col = usize::try_from(col.max(1)).expect("max(1) is positive"); // 1-based, code points
     let mut cur_line = 1usize;
     let mut byte = 0usize;
     let bytes = raw.as_bytes();

@@ -70,10 +70,16 @@ fn fill(value: &mut Value, project: &str, files: &BTreeMap<String, String>) {
                     .clone();
             }
         }
-        Value::Array(items) => items.iter_mut().for_each(|item| fill(item, project, files)),
-        Value::Object(items) => items
-            .values_mut()
-            .for_each(|item| fill(item, project, files)),
+        Value::Array(items) => {
+            for item in items {
+                fill(item, project, files);
+            }
+        }
+        Value::Object(items) => {
+            for item in items.values_mut() {
+                fill(item, project, files);
+            }
+        }
         _ => {}
     }
 }
@@ -138,7 +144,7 @@ fn apply(model: &ProjectModel, value: Value) -> (i32, Value) {
             output["ok"] = Value::Bool(true);
             let status = if output["diff"]["changes"]
                 .as_array()
-                .is_some_and(|changes| changes.is_empty())
+                .is_some_and(std::vec::Vec::is_empty)
             {
                 0
             } else {
@@ -153,8 +159,7 @@ fn apply(model: &ProjectModel, value: Value) -> (i32, Value) {
 fn changes(value: &Value) -> &[Value] {
     value["diff"]["changes"]
         .as_array()
-        .map(Vec::as_slice)
-        .unwrap_or(&[])
+        .map_or(&[][..], Vec::as_slice)
 }
 fn item(changes: &[Value], expected: &Value) -> bool {
     let node = expected["node"].as_str().unwrap_or("");
@@ -392,7 +397,7 @@ fn copy_tree(from: &Path, to: &Path) {
     for entry in fs::read_dir(from).unwrap().flatten() {
         let (source, target) = (entry.path(), to.join(entry.file_name()));
         if source.is_dir() {
-            copy_tree(&source, &target)
+            copy_tree(&source, &target);
         } else {
             fs::copy(&source, &target).unwrap();
         }

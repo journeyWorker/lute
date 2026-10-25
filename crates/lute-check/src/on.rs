@@ -96,7 +96,7 @@ pub(crate) fn check_on_targets(
     let mut diags = Vec::new();
     for q in quests {
         for_each_on(&q.body, &mut |on| {
-            check_on_target(on, occasions, kinds, &mut diags)
+            check_on_target(on, occasions, kinds, &mut diags);
         });
     }
     diags
@@ -137,7 +137,7 @@ fn check_on_target(
             Some(decl) if decl.target.takes_target() => {
                 match occasion_target_ok(decl, target, kinds) {
                     Ok(()) => return,
-                    Err(why) => why,
+                    Err(why) => why.to_string(),
                 }
             }
             Some(_) => format!(
@@ -171,13 +171,21 @@ fn for_each_on<'a>(nodes: &'a [Node], f: &mut impl FnMut(&'a On)) {
                 f(o);
                 for_each_on(&o.body, f);
             }
-            Node::Branch(b) => b.choices.iter().for_each(|c| for_each_on(&c.body, f)),
-            Node::Hub(h) => h.bodies().for_each(|b| for_each_on(b, f)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    for_each_on(&c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    for_each_on(b, f);
+                }
+            }
             Node::Match(m) => {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            for_each_on(body, f)
+                            for_each_on(body, f);
                         }
                     }
                 }

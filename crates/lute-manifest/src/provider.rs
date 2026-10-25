@@ -81,10 +81,7 @@ impl ProviderSet {
                 .filter_map(|e| e.ok().map(|e| e.path()))
                 .filter(|p| {
                     p.is_file()
-                        && matches!(
-                            p.extension().and_then(|x| x.to_str()),
-                            Some("yaml") | Some("yml")
-                        )
+                        && matches!(p.extension().and_then(|x| x.to_str()), Some("yaml" | "yml"))
                 })
                 .collect(),
             Err(_) => return Self::default(),

@@ -326,7 +326,7 @@ fn run_one(mut m: Machine<Oracle>) -> RunResult {
         facts,
         quests: out.quest_status,
         flags: RunFlags {
-            error: result.err(),
+            error: result.err().map(|e| e.message),
             refused: out.refused,
             incomplete: out.incomplete,
         },
@@ -372,7 +372,7 @@ impl Driver for Oracle {
         self.run.unknown(site)
     }
     fn emit(&mut self, rec: Json) {
-        self.run.emit(rec)
+        self.run.emit(rec);
     }
     fn observe(&mut self, rec: Json) {
         if rec.get("kind").and_then(Json::as_str) != Some("armExpr") {
@@ -380,10 +380,9 @@ impl Driver for Oracle {
         }
         let empty = serde_json::Map::new();
         let reads = rec.get("reads").and_then(Json::as_object).unwrap_or(&empty);
-        let oracle = match expr_node_value(&rec["expr"], reads) {
-            Value::Bool(b) => b,
+        let Value::Bool(oracle) = expr_node_value(&rec["expr"], reads) else {
             // No IR-side model (`list`, an undecided read): nothing to judge.
-            _ => return,
+            return;
         };
         if rec.get("held").and_then(Json::as_bool) != Some(oracle) {
             self.disagreements.push(format!(
@@ -469,7 +468,7 @@ fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value 
             _ => Value::Unknown,
         },
         ("-", None) => match l {
-            Value::Int(n) => n.checked_neg().map(Value::Int).unwrap_or(Value::Unknown),
+            Value::Int(n) => n.checked_neg().map_or(Value::Unknown, Value::Int),
             Value::Double(n) => Value::Double(-n),
             _ => Value::Unknown,
         },
@@ -490,19 +489,17 @@ fn expr_node_value(node: &Json, reads: &serde_json::Map<String, Json>) -> Value 
         (">", Some(r)) => decided(cmp(&l, &r).map(|o| o == Greater)),
         (">=", Some(r)) => decided(cmp(&l, &r).map(|o| o != Less)),
         ("+", Some(r)) => match (l, r) {
-            (Value::Int(a), Value::Int(b)) => {
-                a.checked_add(b).map(Value::Int).unwrap_or(Value::Unknown)
-            }
+            (Value::Int(a), Value::Int(b)) => a.checked_add(b).map_or(Value::Unknown, Value::Int),
             (Value::Double(a), Value::Double(b)) => Value::Double(a + b),
             (Value::Str(a), Value::Str(b)) => Value::Str(format!("{a}{b}")),
             _ => Value::Unknown,
         },
         ("-" | "*" | "/" | "%", Some(r)) => match (l, r) {
             (Value::Int(a), Value::Int(b)) => match op {
-                "-" => a.checked_sub(b).map(Value::Int).unwrap_or(Value::Unknown),
-                "*" => a.checked_mul(b).map(Value::Int).unwrap_or(Value::Unknown),
-                "/" if b != 0 => a.checked_div(b).map(Value::Int).unwrap_or(Value::Unknown),
-                "%" if b != 0 => a.checked_rem(b).map(Value::Int).unwrap_or(Value::Unknown),
+                "-" => a.checked_sub(b).map_or(Value::Unknown, Value::Int),
+                "*" => a.checked_mul(b).map_or(Value::Unknown, Value::Int),
+                "/" if b != 0 => a.checked_div(b).map_or(Value::Unknown, Value::Int),
+                "%" if b != 0 => a.checked_rem(b).map_or(Value::Unknown, Value::Int),
                 _ => Value::Unknown,
             },
             (Value::Double(a), Value::Double(b)) => match op {
@@ -592,7 +589,7 @@ fn compare(
             case: case.to_string(),
             field,
             detail,
-        })
+        });
     };
     if trace.said != run.said {
         push("said", said_diff(&trace.said, &run.said));
@@ -1151,7 +1148,7 @@ fn enumerate(roots: &[Root], only: Option<&str>) -> Corpus {
                     }
                     corpus.cases.push(Case::Doc(DocCase {
                         id,
-                        subject: subject.clone(),
+                        subject: Arc::clone(&subject),
                         present,
                         mock: input.mock.clone(),
                     }));
@@ -1209,13 +1206,13 @@ fn presentation_cases(
         let doc = project.join(&pr.document);
         let canon = std::fs::canonicalize(&doc).unwrap_or(doc.clone());
         let subject = match subjects.get(&canon) {
-            Some(s) => s.clone(),
+            Some(s) => Arc::clone(s),
             None => {
                 let rel = display_name(root, &doc).ok_or("document outside the corpus")?;
                 let s = Arc::new(
                     prepare(&doc, rel, Some(&project), gates).ok_or("cannot read the document")?,
                 );
-                subjects.insert(canon, s.clone());
+                subjects.insert(canon, Arc::clone(&s));
                 s
             }
         };
@@ -1442,6 +1439,10 @@ fn value_text(v: &Value) -> String {
     }
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a whole finite double below 1e15 in magnitude (checked above), so the cast is exact"
+)]
 fn num_text(n: f64) -> String {
     if n.is_finite() && n.fract() == 0.0 && n.abs() < 1e15 {
         format!("{}", n as i64)
@@ -1544,7 +1545,7 @@ fn run_cases(cases: &[Case], verbose: bool) -> Tally {
                     Ok(mock) => {
                         let concrete = Case::Doc(DocCase {
                             id: c.id.clone(),
-                            subject: c.subject.clone(),
+                            subject: Arc::clone(&c.subject),
                             present: c.present.clone(),
                             mock,
                         });

@@ -381,7 +381,7 @@ fn mapped_preserve_id_accepts_renamed_quest_identity() {
             "oldQuest",
         )])],
     );
-    assert!(apply_patch(&root, request, true, &ModelOptions::default()).is_ok());
+    apply_patch(&root, request, true, &ModelOptions::default()).unwrap();
 }
 #[test]
 fn acceptance_refusal_matrix_has_named_cases() {

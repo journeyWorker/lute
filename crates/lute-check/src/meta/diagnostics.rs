@@ -1,7 +1,10 @@
 use super::diagnostic_helpers::yaml_key;
 pub(crate) use super::diagnostic_helpers::yaml_shape;
 pub use super::diagnostic_helpers::{ident_from_name, infer_meta_kind_from_shape};
-use super::*;
+use super::{
+    lit_str, type_accepts, type_str, BTreeMap, Diagnostic, Layer, Literal, Meta, Severity, Span,
+    StateDecl, StateFamily, Type,
+};
 /// `E-STATE-DECL`'s whole message (#21, T10.2): what is wrong with this
 /// declaration and what the legal shape is, written from the YAML the author
 /// typed rather than from `yaml_serde`'s report of how it failed to
@@ -22,7 +25,7 @@ use super::*;
 /// scraped literals in `crates/*/src` and measures that they still reproduce
 /// real output. A message assembled from shared `const` fragments resolves to
 /// no literal and drops that floor.
-pub(super) fn state_decl_message(path: &str, decl: &yaml_serde::Value) -> String {
+pub(crate) fn state_decl_message(path: &str, decl: &yaml_serde::Value) -> String {
     let Some(map) = decl.as_mapping() else {
         return format!(
             "invalid state declaration for `{path}`: a declaration is a mapping with a \
@@ -250,7 +253,7 @@ pub(crate) fn take_number_types(
 /// The anchor now carries the position, so the problem mark is dropped from
 /// the message and any other mark (a context's) is renumbered to file lines.
 /// The fix and its anchor come from [`lute_manifest::yaml_text::yaml_fault`].
-pub(super) fn yaml_parse_error(meta: &Meta, e: &yaml_serde::Error) -> (String, Span) {
+pub(crate) fn yaml_parse_error(meta: &Meta, e: &yaml_serde::Error) -> (String, Span) {
     // [`meta_key_span`]'s envelope rule: a `.lute` frontmatter's interior
     // starts after the 4-byte `"---\n"` opener; a bare `.yaml` has none.
     let enveloped = meta.span.byte_end.saturating_sub(meta.span.byte_start) != meta.raw_yaml.len();
@@ -333,7 +336,7 @@ pub(super) fn yaml_parse_error(meta: &Meta, e: &yaml_serde::Error) -> (String, S
 /// entry, is ignored — only entries at the entry-list's own indent count).
 /// A name repeated at that level is recorded once, at its second
 /// occurrence.
-pub(super) fn scan_block_dup_names(raw_yaml: &str, block_key: &str) -> Vec<String> {
+pub(crate) fn scan_block_dup_names(raw_yaml: &str, block_key: &str) -> Vec<String> {
     let prefix = format!("{block_key}:");
     let mut seen: BTreeMap<String, u32> = BTreeMap::new();
     let mut dups = Vec::new();
@@ -386,7 +389,7 @@ pub(super) fn scan_block_dup_names(raw_yaml: &str, block_key: &str) -> Vec<Strin
 /// inserted) — just enough for the retry parse to succeed and lift every
 /// OTHER field; mirrors `scan_block_dup_names`'s exact block/indent-tracking
 /// so both agree on which key is "the" duplicate.
-pub(super) fn sanitize_dup_block_keys(raw_yaml: &str) -> String {
+pub(crate) fn sanitize_dup_block_keys(raw_yaml: &str) -> String {
     const BLOCKS: [&str; 2] = ["entities", "relations"];
     let mut seen: BTreeMap<(&str, String), u32> = BTreeMap::new();
     let mut in_block: Option<&str> = None;
@@ -454,7 +457,7 @@ const STATE_ROW_KEYS: [&str; 4] = ["type", "default", "owner", "per"];
 /// state row's own spelling: `reserved:` (a relation's engine-ownership) and
 /// `tier:` (a quest's or relation's lifetime — a state path's tier is its
 /// first segment).
-pub(super) fn unknown_state_row_keys(path: &str, row: &yaml_serde::Value) -> Vec<(String, String)> {
+pub(crate) fn unknown_state_row_keys(path: &str, row: &yaml_serde::Value) -> Vec<(String, String)> {
     let Some(row) = row.as_mapping() else {
         return Vec::new();
     };
@@ -486,16 +489,16 @@ pub(super) fn unknown_state_row_keys(path: &str, row: &yaml_serde::Value) -> Vec
 /// Raw `state:` entry (dsl §9.3): `{ type, default?, owner?, per? }`. `Type`
 /// reuses the manifest's manual serde (inline `{ enum: [...] }` etc. work).
 #[derive(serde::Deserialize)]
-pub(super) struct StateDeclRaw {
+pub(crate) struct StateDeclRaw {
     #[serde(rename = "type")]
-    pub(super) ty: Type,
+    pub(crate) ty: Type,
     #[serde(default)]
-    pub(super) default: Option<Literal>,
+    pub(crate) default: Option<Literal>,
     #[serde(default)]
-    pub(super) owner: Option<lute_manifest::types::Owner>,
+    pub(crate) owner: Option<lute_manifest::types::Owner>,
     /// dsl 0.24.0 §3: the closed entity kind this path is indexed by.
     #[serde(default)]
-    pub(super) per: Option<String>,
+    pub(crate) per: Option<String>,
 }
 
 /// The members a `per: <kind>` state family is declared over (dsl 0.24.0
@@ -503,7 +506,7 @@ pub(super) struct StateDeclRaw {
 /// §2.3, closed by the one [`lute_manifest::relations::imply_sub_kind_members`]
 /// every other kind consumer uses; dsl 0.27.0 §2) — or why it cannot be: the
 /// kind is `open:` or malformed. `kinds` is this document's own `entities:`.
-pub(super) fn per_members(
+pub(crate) fn per_members(
     kinds: &lute_manifest::relations::ParsedKinds,
     kind: &str,
 ) -> Result<Vec<String>, &'static str> {
@@ -513,7 +516,7 @@ pub(super) fn per_members(
 }
 
 /// [`per_members`] over kinds whose sub-kind members are already implied.
-pub(super) fn closed_per_members<'k>(
+pub(crate) fn closed_per_members<'k>(
     kinds: &'k BTreeMap<String, lute_manifest::relations::EntityKindDecl>,
     kind: &str,
 ) -> Result<&'k [String], &'static str> {
@@ -540,7 +543,7 @@ pub(crate) fn sorted_members(members: &[String]) -> std::sync::Arc<[String]> {
 }
 
 /// `E-STATE-DECL`'s message for a `per:` that cannot index `path`.
-pub(super) fn per_fault(path: &str, kind: &str, why: &str) -> String {
+pub(crate) fn per_fault(path: &str, kind: &str, why: &str) -> String {
     format!(
         "invalid state declaration for `{path}`: `per: {kind}` {why}; `per:` indexes a path by a \
          closed entity kind (`members: [...]`), declaring `{path}.<member>` for every member"
@@ -605,7 +608,7 @@ pub(crate) fn expand_per_pending(
 }
 
 /// An `E-STATE-DECL` at a `state:` key.
-pub(super) fn state_decl_diag(message: String, span: Span) -> Diagnostic {
+pub(crate) fn state_decl_diag(message: String, span: Span) -> Diagnostic {
     Diagnostic {
         code: "E-STATE-DECL".to_string(),
         severity: Severity::Error,
@@ -631,7 +634,7 @@ fn int_default_in_range(ty: &Type, value: &Literal) -> bool {
 }
 /// A scalar default must match the declared type exactly (`int` and `double`
 /// are distinct); a list default is `E-STATE-DECL` and installs no default.
-pub(super) fn scalar_default(
+pub(crate) fn scalar_default(
     path: &str,
     ty: &Type,
     default: Option<Literal>,
@@ -778,6 +781,6 @@ pub(crate) fn per_family(
     )
 }
 
-pub(super) fn map_prefix(path: &str) -> &str {
+pub(crate) fn map_prefix(path: &str) -> &str {
     path.split_once('.').map_or(path, |(head, _)| head)
 }

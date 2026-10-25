@@ -26,14 +26,14 @@ use lute_model::scripts::ScriptedPick;
 /// sends as `bridgeResult.writes` — and the same writes resolved against the
 /// project, which `lute play`'s walk applies at the call.
 #[derive(Clone, Debug, Default)]
-pub(super) struct PlannedBridgeAnswer {
-    pub(super) fields: BridgeAnswer,
-    pub(super) input: lute_runtime::WritesInput,
-    pub(super) writes: Writes,
+pub(crate) struct PlannedBridgeAnswer {
+    pub(crate) fields: BridgeAnswer,
+    pub(crate) input: lute_runtime::WritesInput,
+    pub(crate) writes: Writes,
 }
 
 /// What a planned step does.
-pub(super) enum Action {
+pub(crate) enum Action {
     Occasion {
         occasion: String,
         target: Option<String>,
@@ -63,32 +63,32 @@ pub(super) enum Action {
 }
 
 /// One step, validated against the project.
-pub(super) struct Step {
-    pub(super) n: usize,
-    pub(super) label: Option<String>,
-    pub(super) repeat: usize,
-    pub(super) action: Action,
+pub(crate) struct Step {
+    pub(crate) n: usize,
+    pub(crate) label: Option<String>,
+    pub(crate) repeat: usize,
+    pub(crate) action: Action,
     /// The step's own `bridges:` (dsl 0.24.0 §5), resolved against the
     /// project's plugin calls — every run of the step gets them afresh.
-    pub(super) bridges: BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
+    pub(crate) bridges: BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
     /// dsl 0.27.0 (T3-22): the `include:` segments around the step,
     /// outermost first — one `Arc` per segment, shared by its steps.
-    pub(super) segments: Vec<Arc<Scope>>,
+    pub(crate) segments: Vec<Arc<Scope>>,
 }
 
 /// A [`Segment`] resolved against the project: what its steps are scripted
 /// by over the script's own `choose:` / `bridges:`.
-pub(super) struct Scope {
+pub(crate) struct Scope {
     /// `include: <file>` at `file:line:col`, for messages.
-    pub(super) include: String,
-    pub(super) choose: BTreeMap<String, Vec<ScriptedPick>>,
-    pub(super) bridges: BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
+    pub(crate) include: String,
+    pub(crate) choose: BTreeMap<String, Vec<ScriptedPick>>,
+    pub(crate) bridges: BTreeMap<String, VecDeque<PlannedBridgeAnswer>>,
 }
 
 /// A `bridges:` surface (top level, a step's, an `include:`'s) resolved
 /// against the project: each answer's fields checked against the calls that
 /// read them ([`resolve_bridges`]), then [`bridge_queues`].
-pub(super) fn resolve_script_bridges(
+pub(crate) fn resolve_script_bridges(
     p: &ExecProject,
     at: &str,
     raw: &BTreeMap<String, Vec<ScriptBridgeAnswer>>,
@@ -102,7 +102,7 @@ pub(super) fn resolve_script_bridges(
             )
         })
         .collect();
-    resolve_bridges(p, at, &fields)?;
+    resolve_bridges(p, at, &fields).map_err(|e| e.to_string())?;
     bridge_queues(p, at, raw)
 }
 
@@ -110,7 +110,7 @@ pub(super) fn resolve_script_bridges(
 /// each answer's fields as written and its `writes` (0.41.1 §4.1) resolved
 /// as the runtime resolves a `bridgeResult`'s. `Err` names the first write
 /// that does not resolve.
-pub(super) fn bridge_queues(
+pub(crate) fn bridge_queues(
     p: &ExecProject,
     at: &str,
     raw: &BTreeMap<String, Vec<ScriptBridgeAnswer>>,
@@ -121,14 +121,24 @@ pub(super) fn bridge_queues(
         for (index, answer) in answers.iter().enumerate() {
             let writes = lute_runtime::resolve_bridge_writes(p, &answer.writes).map_err(|e| {
                 // The runtime leaves an undeclared path's message for its
-                // caller to prefix with the path.
+                // caller to prefix with the path: the first write whose
+                // refusal of an empty literal reads the same. Matched by
+                // text, as in 0.49.0; matching the `ResolveError` value
+                // instead would pick a different path when two declarations
+                // render alike, a behaviour change outside this patch.
+                let message = e.to_string();
                 let path = answer
                     .writes
                     .state
                     .iter()
                     .map(|w| w.path.as_str())
-                    .find(|path| resolve_state(p, path, "").is_err_and(|m| m == e));
-                let e = path.map_or_else(|| e.clone(), |path| format!("state `{path}` {e}"));
+                    .find(|path| {
+                        resolve_state(p, path, "").is_err_and(|why| why.to_string() == message)
+                    });
+                let e = match path {
+                    Some(path) => format!("state `{path}` {message}"),
+                    None => message,
+                };
                 format!("{at}: `bridges.{tag}` answer {} `writes`: {e}", index + 1)
             })?;
             planned.push_back(PlannedBridgeAnswer {
@@ -172,15 +182,21 @@ fn resolve_writes(
             continue;
         }
         let write = match write {
-            RawWrite::Lit(lit) => resolve_state(p, path, lit).map(Write::Set),
+            RawWrite::Lit(lit) => resolve_state(p, path, lit)
+                .map(Write::Set)
+                .map_err(|e| e.to_string()),
             RawWrite::Add(d) => {
                 let ty = p
                     .state_table
                     .get(path)
                     .map(|e| e.get("type").and_then(Json::as_str));
                 let why = match ty {
-                    _ if path.starts_with("scene.") => resolve_state(p, path, "").err(),
-                    None if entry_flag(path).is_none() => resolve_state(p, path, "").err(),
+                    _ if path.starts_with("scene.") => {
+                        resolve_state(p, path, "").err().map(|e| e.to_string())
+                    }
+                    None if entry_flag(path).is_none() => {
+                        resolve_state(p, path, "").err().map(|e| e.to_string())
+                    }
                     Some(Some("int" | "double" | "number")) => None,
                     _ => Some(
                         "is not an `int` or `double` path, so it takes no `{ add: … }`".to_string(),
@@ -266,7 +282,7 @@ fn recorded_by_play(path: &str, raising: bool) -> Option<String> {
 /// declared world event. `Err` is every usage error of every refused step
 /// (`step N: …`, unlocated), in step order — a step's independent checks
 /// all run, so one refusal never hides another.
-pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<Step>, Vec<String>> {
+pub(crate) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<Step>, Vec<String>> {
     let mut answered: BTreeSet<&str> = p.index.beats.iter().map(|b| b.on.as_str()).collect();
     answered.extend(p.objective_occasions.iter().map(String::as_str));
     let mut plan = Vec::with_capacity(steps.len());
@@ -420,7 +436,7 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
         let mut segments = Vec::with_capacity(step.segments.len());
         for seg in &step.segments {
             if let Some((_, scope)) = scopes.iter().find(|(s, _)| Arc::ptr_eq(s, seg)) {
-                segments.push(scope.clone());
+                segments.push(Arc::clone(scope));
                 continue;
             }
             match resolve_script_bridges(p, &format!("step {n}: {}", seg.include), &seg.bridges) {
@@ -430,7 +446,7 @@ pub(super) fn plan_steps(p: &ExecProject, steps: &[ScriptStep]) -> Result<Vec<St
                         choose: seg.choose.clone(),
                         bridges,
                     });
-                    scopes.push((seg.clone(), scope.clone()));
+                    scopes.push((Arc::clone(seg), Arc::clone(&scope)));
                     segments.push(scope);
                 }
                 Err(e) => errs.push(e),
@@ -538,7 +554,7 @@ fn resolve_advance(
                 ));
             };
             let index = match week.labels.iter().position(|l| l == wd) {
-                Some(i) => Some(i as i64),
+                Some(i) => Some(i64::try_from(i).expect("a position is at most isize::MAX")),
                 None => wd
                     .parse::<i64>()
                     .ok()
@@ -690,7 +706,7 @@ fn plan_occasion(
 /// Round-5 T3-13: a `step N: …` usage error located at step N's file line
 /// (its play, or the steps file an `include:` spliced it from); `None` when
 /// the error names no step.
-pub(super) fn locate_step_error(steps: &[ScriptStep], e: &str) -> Option<String> {
+pub(crate) fn locate_step_error(steps: &[ScriptStep], e: &str) -> Option<String> {
     let n: usize = e
         .strip_prefix("step ")?
         .split(|c: char| !c.is_ascii_digit())
@@ -1044,7 +1060,7 @@ fn choose_entry(
 
 /// Every seed the project cannot take ([`seed_world`]), located at the
 /// script's key (or list item) it was written at.
-pub(super) fn seed_errors(script: &PlayScript, errs: &[SeedError]) -> Vec<String> {
+pub(crate) fn seed_errors(script: &PlayScript, errs: &[SeedError]) -> Vec<String> {
     errs.iter()
         .map(|e| {
             let keys: Vec<&str> = e.keys.iter().map(String::as_str).collect();
@@ -1056,7 +1072,7 @@ pub(super) fn seed_errors(script: &PlayScript, errs: &[SeedError]) -> Vec<String
 /// Plan `script`'s steps over `project` and seed its save. `Err` is exit 2
 /// with every usage error of the script, each located, in the order they
 /// were written ([`in_file_order`]).
-pub(super) fn plan_script(
+pub(crate) fn plan_script(
     project: &ExecProject,
     needles: &lute_trace::exec::record::NeedleVocab,
     script: &PlayScript,
@@ -1144,7 +1160,6 @@ fn check_needles(
 /// ([`lute_runtime::session::atom_problem`]). A misspelt `notFacts` atom
 /// would hold vacuously, a `facts` one could only miss: a usage error (exit
 /// 2) with a did-you-mean, located at the atom.
-#[allow(dead_code)]
 fn check_expect_facts(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>) {
     let problems = |expect: &yaml_serde::Value| -> Vec<(&'static str, usize, String)> {
         let mut out = Vec::new();
@@ -1186,7 +1201,6 @@ fn check_expect_facts(p: &ExecProject, script: &PlayScript, errs: &mut Vec<Strin
 /// ([`lute_runtime::session::member_of`]): a typo can never
 /// hold, so it is a usage error (exit 2) with the members and the nearest
 /// one, not a miss after the play ran.
-#[allow(dead_code)]
 fn check_expect_state_values(p: &ExecProject, script: &PlayScript, errs: &mut Vec<String>) {
     let domain_of = |path: &str| -> Option<(String, Vec<String>)> {
         if let Some(d) = p.state_domains.get(path) {

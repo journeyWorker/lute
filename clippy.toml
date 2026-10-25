@@ -1,0 +1,4 @@
+disallowed-methods = [
+  { path = "core::iter::Iterator::for_each", reason = "side effects belong in a `for` loop" },
+  { path = "core::iter::Iterator::try_for_each", reason = "side effects belong in a `for` loop" },
+]

@@ -163,7 +163,11 @@ fn a_sub_kind_beat_outranks_its_parent_kind_beat_at_equal_priority() {
     let out = project_codes(kinds, &body);
     assert!(out.is_empty(), "{out:?}");
     // The order is the specificity, not the file.
-    let ms = |xs: &[&str]| xs.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    let ms = |xs: &[&str]| {
+        xs.iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>()
+    };
     let (species, bug, horn) = (
         ms(&["hornbeetle", "bladebug", "slumbear"]),
         ms(&["hornbeetle", "bladebug"]),
@@ -200,7 +204,11 @@ fn overlapping_unrelated_kinds_keep_file_order_and_tie() {
     assert_eq!(out.len(), 1, "{out:?}");
     assert_eq!(out[0].0, "W-BEAT-PRIORITY-TIE");
     assert!(out[0].1.contains("today beat `dex.heavy`"), "{}", out[0].1);
-    let ms = |xs: &[&str]| xs.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+    let ms = |xs: &[&str]| {
+        xs.iter()
+            .map(std::string::ToString::to_string)
+            .collect::<Vec<_>>()
+    };
     let (heavy, bug) = (
         ms(&["bladebug", "slumbear"]),
         ms(&["hornbeetle", "bladebug"]),

@@ -10,7 +10,7 @@ use std::path::Path;
 use lute_check::{CheckInput, Mode};
 use lute_compile::compile;
 use proptest::prelude::*;
-use proptest::test_runner::{Config, RngAlgorithm, RngSeed, TestCaseError, TestError, TestRunner};
+use proptest::test_runner::{Config, RngAlgorithm, RngSeed, TestError, TestRunner};
 use serde_json::Value;
 
 const SEED: u64 = 0x0360_2026_1005;

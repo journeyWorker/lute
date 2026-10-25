@@ -1,5 +1,7 @@
-// Each integration-test binary compiles this module independently and uses a different subset.
-#![allow(dead_code)]
+#![expect(
+    dead_code,
+    reason = "each integration-test binary compiles this module on its own and uses a different subset of it"
+)]
 
 use std::ops::Deref;
 use std::path::{Path, PathBuf};

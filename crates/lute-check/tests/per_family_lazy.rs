@@ -80,7 +80,7 @@ fn a_family_over_a_100_000_member_kind_stores_no_member_decl() {
     let keys: Vec<String> = decls
         .keys()
         .filter(|k| k.starts_with("user."))
-        .map(|k| k.into_owned())
+        .map(std::borrow::Cow::into_owned)
         .collect();
     assert_eq!(keys.len(), MEMBERS + MEMBERS / 2);
     assert!(keys.windows(2).all(|w| w[0] < w[1]));

@@ -1,11 +1,11 @@
-use super::*;
+use super::{yaml_key, Diagnostic, Layer, Meta, Severity, TypedMeta};
 /// Frontmatter keys valid in EVERY root document kind (dsl 0.2.0 §6.1): the
 /// kind-agnostic core keys. `kind:` itself is handled separately (valid only
 /// for a root kind — Scene/Quest — never Schema/Component, dsl 0.2.0 §3.1), so
 /// it is NOT in this list; the unknown-key loop below tests it independently.
 /// `components:` (the import list, dsl §13) is valid everywhere; `component:`/
 /// `params:` are NOT — see [`COMPONENT_ONLY_KEYS`].
-pub(super) const UNIVERSAL_KEYS: &[&str] = &[
+pub(crate) const UNIVERSAL_KEYS: &[&str] = &[
     "mode",
     "title",
     "luteVersion",
@@ -69,7 +69,7 @@ const SCHEMA_KEYS: &[&str] = &["cast", "clock", "terminal", "seasons"];
 
 /// The kind-specific core keys of `kind` beyond [`UNIVERSAL_KEYS`] and the
 /// root-wide `kind:`/`extra:` — empty for the import-role kinds.
-pub(super) fn kind_keys(kind: MetaKind) -> &'static [&'static str] {
+pub(crate) fn kind_keys(kind: MetaKind) -> &'static [&'static str] {
     match kind {
         MetaKind::Scene => SCENE_KEYS,
         MetaKind::Quest => QUEST_KEYS,
@@ -83,7 +83,7 @@ pub(super) fn kind_keys(kind: MetaKind) -> &'static [&'static str] {
 /// component's own name (`component:`), its parameter signature (`params:`),
 /// and (dsl 0.24.0 §4) whether its body writes state (`effects:`).
 /// In a scene or schema doc these are unknown top-level keys.
-pub(super) const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params", "effects", "beat"];
+pub(crate) const COMPONENT_ONLY_KEYS: &[&str] = &["component", "params", "effects", "beat"];
 
 /// 0.10.0 §6.3: is a `defaults:` key legal on `kind`? A default whose key is
 /// not legal on a document's resolved kind is NOT applied to that document,
@@ -148,7 +148,7 @@ pub fn apply_quest_tier_default(
 /// exactly, so the suggestion can never name a key that would itself be
 /// rejected on this kind. Slice order is source order, which makes
 /// [`lute_manifest::suggest::nearest`]'s first-wins tie-break deterministic.
-pub(super) fn unknown_key_hint(key: &str, kind: MetaKind, component_key_allowed: bool) -> String {
+pub(crate) fn unknown_key_hint(key: &str, kind: MetaKind, component_key_allowed: bool) -> String {
     if matches!(key, "after" | "follows") && kind == MetaKind::Quest {
         return " — a quest's graph edge is the `follows=` ATTRIBUTE on its `<quest>` element, \
                 not a frontmatter key; it does not gate the quest (to wait, write \
@@ -240,7 +240,7 @@ fn owning_layer(key: &str, kind: MetaKind) -> Option<String> {
     })
 }
 
-pub(super) const REQUIRED_KEYS: &[&str] = &["character", "season", "episode"];
+pub(crate) const REQUIRED_KEYS: &[&str] = &["character", "season", "episode"];
 
 /// Which document kind's frontmatter is being parsed. A `Schema` doc (imported
 /// via `uses:`, dsl §9.2) and a `Component` doc (imported via `components:`,
@@ -364,10 +364,7 @@ pub fn resolve_doc_kind(meta: &Meta) -> (Option<DocKind>, Vec<Diagnostic>) {
             )],
         ),
         Some(v) => {
-            let kind_str = v
-                .as_str()
-                .map(str::to_string)
-                .unwrap_or_else(|| format!("{v:?}"));
+            let kind_str = v.as_str().map_or_else(|| format!("{v:?}"), str::to_string);
             match kind_str.as_str() {
                 "scene" => (Some(DocKind::Scene), Vec::new()),
                 "quest" => (Some(DocKind::Quest), Vec::new()),

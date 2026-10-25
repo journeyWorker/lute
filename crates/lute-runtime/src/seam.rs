@@ -61,26 +61,43 @@ fn decide<D: Driver>(
     })
 }
 
+/// The project's `terminal:` condition could not be decided
+/// ([`terminal_holds`]): `reason` names what was unknown, `atoms` are the
+/// reads that left it so.
+#[derive(Clone, Debug, PartialEq)]
+pub struct UndecidedError {
+    pub reason: String,
+    pub atoms: Vec<crate::UnresolvedAtom>,
+}
+
+impl std::fmt::Display for UndecidedError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.reason)
+    }
+}
+
+impl std::error::Error for UndecidedError {}
+
 /// Whether the project's `terminal:` holds in `w` (`Ok(false)` without
 /// one); `Err` names what was unknown.
 pub fn terminal_holds(
     p: &ExecProject,
     w: &World,
     observer: Option<SessionEvalObserver>,
-) -> Result<bool, String> {
+) -> Result<bool, UndecidedError> {
     match &p.conds.terminal {
         None => Ok(false),
         Some(t) => decide(
             &mut w
                 .evaluator_with_schema(
                     &p.eval_json,
-                    p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+                    std::sync::Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
                     observer,
                 )
                 .with_visited(&w.visited),
             t,
         )
-        .map_err(|(why, _)| why),
+        .map_err(|(reason, atoms)| UndecidedError { reason, atoms }),
     }
 }
 
@@ -107,7 +124,7 @@ pub fn closed(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            std::sync::Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
             observer,
         )
         .with_visited(&w.visited);
@@ -126,7 +143,7 @@ pub fn gate(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            std::sync::Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
             None,
         )
         .with_visited(&w.visited);
@@ -427,10 +444,10 @@ fn show(expr: &Expr) -> String {
             };
             format!("{name}({})", join(args))
         }
-        e => e
-            .static_path()
-            .map(|p| lute_manifest::text::bracket_spelling_of(&p))
-            .unwrap_or_else(|| "…".to_string()),
+        e => e.static_path().map_or_else(
+            || "…".to_string(),
+            |p| lute_manifest::text::bracket_spelling_of(&p),
+        ),
     }
 }
 

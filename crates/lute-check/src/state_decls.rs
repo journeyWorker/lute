@@ -62,6 +62,10 @@ impl Site<'_> {
 }
 
 impl Decl<'_> {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a whole double below 1e15 in magnitude (checked by the guard), so the cast is exact"
+    )]
     fn shape(&self) -> String {
         let mut s = type_str(self.ty);
         if let Some(d) = self.default {

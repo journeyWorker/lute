@@ -1,17 +1,20 @@
 //! What a `<when>` arm provably matches: `is` literal patterns (incl. ranges,
 //! dsl 0.18.0 §2) and conservatively-analyzed `test` guards.
 
-use super::*;
+use super::{
+    classify_is_literal, is_alternatives, CelArena, Domain, DomainInfo, DomainValue, Expr,
+    Interval, IsLiteral, IsLiteralError, IsPattern, Span, Val,
+};
 
 /// What a single `<when>` arm provably matches.
 #[derive(Default)]
-pub(super) struct ArmCoverage {
+pub(crate) struct ArmCoverage {
     /// Concrete finite-domain values (`bool`/enum-string) the arm covers.
-    pub(super) values: Vec<DomainValue>,
+    pub(crate) values: Vec<DomainValue>,
     /// Numeric points/ranges the arm covers (dsl 0.18.0 §4).
-    pub(super) intervals: Vec<Interval>,
+    pub(crate) intervals: Vec<Interval>,
     /// Whether the arm covers the `unset` case.
-    pub(super) covers_unset: bool,
+    pub(crate) covers_unset: bool,
 }
 
 /// Analyze a `<when test>` and extract the finite-domain values it provably
@@ -40,7 +43,7 @@ fn analyze_arm(raw: &str, subject: Option<&str>) -> ArmCoverage {
 /// later arm (`W-OVERLAP-ARMS`) nor complete the domain (`E-NONEXHAUSTIVE`).
 /// Both [`check_match`] and [`is_exhaustive`] fold coverage through here so
 /// they stay consistent.
-pub(super) fn arm_coverage(
+pub(crate) fn arm_coverage(
     is: Option<&IsPattern>,
     test_raw: &str,
     subject: Option<&str>,
@@ -190,6 +193,10 @@ pub(crate) fn quest_state_is_literal(lit: IsLiteral, subject: Option<&str>) -> I
 /// (subsumption per-literal identity), Task 7 (param `is=` checks), and
 /// Task 8 (`lute-compile`'s §6.4 `fold_component_matches` — is-arm literal
 /// membership against a decided subject constant).
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a position within one source text: `Span` positions are `u32`, and a text over 4 GiB wraps, as before"
+)]
 pub fn is_pattern_literals(raw: &str, span: Span) -> Vec<(String, Span)> {
     let mut out = Vec::new();
     let mut offset = 0usize;
@@ -274,7 +281,7 @@ pub(crate) fn literal_is_foreign(lit: &IsLiteral, dom: &DomainInfo) -> bool {
 /// [fail, bronze, silver, gold] ``). The `unset`-on-a-never-unset-subject
 /// case (rules 3-4) and a range against a non-numeric subject (dsl 0.18.0
 /// §2) state the reason directly instead.
-pub(super) fn foreign_literal_message(
+pub(crate) fn foreign_literal_message(
     lit_display: &str,
     lit: &IsLiteral,
     domain: &Domain,
@@ -340,7 +347,7 @@ pub(super) fn foreign_literal_message(
 
 /// Build the `E-WHEN-RANGE` message (dsl 0.18.0 §2) for a literal the shared
 /// classifier rejected.
-pub(super) fn bad_range_message(lit_display: &str, err: IsLiteralError) -> String {
+pub(crate) fn bad_range_message(lit_display: &str, err: IsLiteralError) -> String {
     match err {
         IsLiteralError::MalformedRange => format!(
             "malformed range literal `{lit_display}`: a range is `N..M`, `N..`, or `..M` with \
@@ -356,7 +363,7 @@ pub(super) fn bad_range_message(lit_display: &str, err: IsLiteralError) -> Strin
 /// Render a `Domain::Finite` member list for a diagnostic message, e.g.
 /// `fail, bronze, silver, gold` (bare, unquoted — matches the §5.4 worked
 /// example's `[fail, bronze, silver, gold]`).
-pub(super) fn domain_members_display(vals: &[DomainValue]) -> String {
+pub(crate) fn domain_members_display(vals: &[DomainValue]) -> String {
     vals.iter()
         .map(|v| match v {
             DomainValue::Str(s) => s.clone(),
@@ -455,7 +462,7 @@ fn is_unset_test(expr: &Expr, subject: Option<&str>) -> bool {
 /// cel-parser 0.10.1 carry-forward (T3.1) the AST is structure-only, so a fresh
 /// parse yields identical structure; malformed CEL (already reported in Phase 3)
 /// yields `None`.
-pub(super) fn parse_expr(raw: &str) -> Option<Expr> {
+pub(crate) fn parse_expr(raw: &str) -> Option<Expr> {
     if raw.trim().is_empty() {
         return None;
     }

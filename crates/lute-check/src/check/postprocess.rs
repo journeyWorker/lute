@@ -1,7 +1,7 @@
 //! Final diagnostic post-processing: suppressions, dedup, same-root collapse,
 //! and span normalization.
 
-use super::*;
+use super::{Diagnostic, Severity, Span, TextIndex};
 
 /// Diagnostics that only ever follow from something else being wrong: a
 /// guard that can never hold, a dead arm, a match left uncovered, a read
@@ -73,7 +73,7 @@ pub fn order_diagnostics(diags: &mut Vec<Diagnostic>) {
 /// is nonetheless safe when the match's arms cover every case (the join is an
 /// intersection over all arms, not a fall-through), so the read cannot escape
 /// unhandled — reporting it would be a false positive.
-pub(super) fn suppress_exhaustive_subject_reads(
+pub(crate) fn suppress_exhaustive_subject_reads(
     diags: &mut Vec<Diagnostic>,
     subject_spans: &[Span],
 ) {
@@ -91,7 +91,7 @@ pub(super) fn suppress_exhaustive_subject_reads(
 /// C4 (dsl 0.4.0 §5.2/§8.2): drop any `W-OVERLAP-ARMS` whose span overlaps
 /// an `E-ARM-DEAD` arm — the dead-arm error is the root; the pre-existing
 /// literal-overlap warning would otherwise pile on the same arm.
-pub(super) fn suppress_dead_arm_overlaps(diags: &mut Vec<Diagnostic>) {
+pub(crate) fn suppress_dead_arm_overlaps(diags: &mut Vec<Diagnostic>) {
     let dead_spans: Vec<Span> = diags
         .iter()
         .filter(|d| d.code == crate::reachability::E_ARM_DEAD)
@@ -154,7 +154,7 @@ const CHILD_LIST_VERDICT_CODES: &[&str] = &[
 /// parse/resolution suppresses the claims that depend on what it never built.
 /// [`crate::cel_resolve`] applies it upstream too — a `slot.ast: None` skips
 /// the AST pass outright rather than cascade off unparsed CEL.
-pub(super) fn suppress_unparsed_child_list_verdicts(diags: &mut Vec<Diagnostic>) {
+pub(crate) fn suppress_unparsed_child_list_verdicts(diags: &mut Vec<Diagnostic>) {
     let unparsed: Vec<Span> = diags
         .iter()
         .filter(|d| CHILD_PARSE_FAILURE_CODES.contains(&d.code.as_str()))
@@ -174,7 +174,7 @@ pub(super) fn suppress_unparsed_child_list_verdicts(diags: &mut Vec<Diagnostic>)
 /// target is flagged by `check_set` (`Layer::Staging`, precise `path_span`) and
 /// `check_definite_assignment` (`Layer::Logic`); we keep one. Non-`E-UNDECLARED`
 /// diagnostics pass through untouched.
-pub(super) fn dedup_undeclared(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
+pub(crate) fn dedup_undeclared(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
     let mut undeclared: Vec<Diagnostic> = Vec::new();
     let mut out: Vec<Diagnostic> = Vec::new();
     for d in diags {
@@ -215,7 +215,7 @@ pub(super) fn dedup_undeclared(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
 /// [`crate::rel_schema::at_plugin_origin`]) — every use of one faulty
 /// declaration in this document carries the same report, which is about
 /// the declaration, not the use.
-pub(super) fn dedup_rehomed(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
+pub(crate) fn dedup_rehomed(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
     let mut out: Vec<Diagnostic> = Vec::with_capacity(diags.len());
     for d in diags {
         let rehomed = !d.related.is_empty() && d.span.byte_end == 0;
@@ -270,7 +270,7 @@ fn undeclared_path(message: &str) -> Option<&str> {
 /// `dedup_undeclared` (whose overlap-merge is orthogonal and still useful
 /// pre-suppression), BEFORE `collapse_same_root` (D12) — a diagnostic
 /// suppressed here never reaches C1's key-building pass at all.
-pub(super) fn suppress_unproven_absence(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
+pub(crate) fn suppress_unproven_absence(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
     let uses_failed = diags.iter().any(|d| {
         matches!(
             d.code.as_str(),
@@ -319,7 +319,7 @@ const COLLAPSE_CODES: &[&str] = &[
 /// folded into that primary's `covered` instead of being pushed at all — so
 /// collapse never reorders a primary and, `check()` being per-file, never
 /// crosses files by construction.
-pub(super) fn collapse_same_root(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
+pub(crate) fn collapse_same_root(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
     let mut out: Vec<Diagnostic> = Vec::new();
     let mut primaries: std::collections::HashMap<(String, String), usize> =
         std::collections::HashMap::new();
@@ -362,7 +362,7 @@ pub(super) fn collapse_same_root(diags: Vec<Diagnostic>) -> Vec<Diagnostic> {
 /// name, whichever the producer names first. `None` when the message carries
 /// no backtick token at all, in which case the diagnostic is left uncollapsed
 /// (never guessed at) rather than merged on an unproven identity.
-pub(super) fn first_backtick_token(message: &str) -> Option<&str> {
+pub(crate) fn first_backtick_token(message: &str) -> Option<&str> {
     message.split('`').nth(1)
 }
 
@@ -374,7 +374,7 @@ pub(super) fn first_backtick_token(message: &str) -> Option<&str> {
 /// house zero-then-normalize convention for `d.span` itself. Offsets are
 /// clamped to the text length defensively; they are within bounds by
 /// construction.
-pub(super) fn normalize_spans(idx: &TextIndex, text: &str, diags: &mut [Diagnostic]) {
+pub(crate) fn normalize_spans(idx: &TextIndex, text: &str, diags: &mut [Diagnostic]) {
     let len = text.len();
     let fix_up = |span: Span| -> Span {
         let mut start = span.byte_start.min(len);

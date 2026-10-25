@@ -38,7 +38,7 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
         let mut em = Emitter::default();
         state = walk_seq(&mut em, &shot.body, state, &mut cx, &[], &mut Vec::new());
         // dsl 0.6.0 §3.2: positional 1-based shot number.
-        let shot_no = i as i64 + 1;
+        let shot_no = i64::try_from(i).unwrap() + 1;
         shots.push(ShotRecords::new(
             shot_no,
             "marina.s01ep02".to_string(),
@@ -117,7 +117,7 @@ fn addrs_are_dense_per_shot_and_labels_resolve() {
     assert_eq!(choice.converge, expected_past_end);
     // Option targets point at the arms' first records.
     let Command::Line(blunt_line) = &cmds[5] else {
-        panic!("{:#?}", cmds)
+        panic!("{cmds:#?}")
     };
     assert_eq!(choice.options[0].target, "002-0400");
     assert_eq!(blunt_line.text, "Oh!");

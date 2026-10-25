@@ -1,7 +1,12 @@
 //! The `<match>` exhaustiveness engine (dsl §11.2, 0.4.0 §6.3): coverage,
 //! unset coverage, the age gate, overlapping and duplicate arms.
 
-use super::*;
+use super::{
+    arm_coverage, bad_range_message, classify_is_literal, diag, domain_members_display,
+    foreign_literal_message, infer_domain, is_alternatives, is_pattern_literals,
+    literal_is_foreign, quest_state_is_literal, subject_path, Arm, BTreeSet, Ctx, Diagnostic,
+    Domain, DomainInfo, DomainValue, Interval, IsLiteral, IsPattern, Match, NumCoverage, Severity,
+};
 
 /// `E-WHEN-PATTERN`: a `<when>` arm carrying neither an `is` literal pattern nor
 /// a `test` guard (dsl §7.3.1, D-D). One of the two is REQUIRED — an empty

@@ -189,7 +189,8 @@ fn key_problems(value: &yaml_serde::Value) -> Vec<(String, String)> {
         ));
     }
     let whole = |v: &yaml_serde::Value, min: u64| {
-        v.as_u64().is_some_and(|n| n >= min && n <= u32::MAX as u64)
+        v.as_u64()
+            .is_some_and(|n| n >= min && n <= u64::from(u32::MAX))
     };
     for (dotted, min, example) in [
         ("days", 0, "`days: 1`"),

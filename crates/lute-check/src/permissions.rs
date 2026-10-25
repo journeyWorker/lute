@@ -226,7 +226,7 @@ impl PermissionChecker<'_> {
                     for arm in &m.arms {
                         match arm {
                             Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                                self.walk_nodes(body)
+                                self.walk_nodes(body);
                             }
                         }
                     }
@@ -385,7 +385,7 @@ impl PermissionChecker<'_> {
         };
         match &attr.value {
             AttrValue::Str(path) => {
-                self.check_state_write(path, attr.value_span, "choice `into` write")
+                self.check_state_write(path, attr.value_span, "choice `into` write");
             }
             _ if state_writes_restricted(self.permissions) => self.diagnostics.push(
                 permission_diag(
@@ -506,7 +506,7 @@ pub(crate) fn resolve_path(
         match segment {
             PathSegment::Literal(value) => parts.push(value.clone()),
             PathSegment::FromAttr { from_attr } => {
-                parts.push(string_attr(attrs, &from_attr.name)?.to_string())
+                parts.push(string_attr(attrs, &from_attr.name)?.to_string());
             }
         }
     }

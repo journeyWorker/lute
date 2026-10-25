@@ -21,6 +21,25 @@ pub enum FormatError {
     Preservation { span: Span, reason: String },
 }
 
+impl std::fmt::Display for FormatError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FormatError::InvalidSource(errors) => write!(
+                f,
+                "the source is not a parseable Lute document ({} error diagnostic(s))",
+                errors.len()
+            ),
+            FormatError::Preservation { span, reason } => write!(
+                f,
+                "bytes {}..{} cannot be preserved: {reason}",
+                span.byte_start, span.byte_end
+            ),
+        }
+    }
+}
+
+impl std::error::Error for FormatError {}
+
 fn trim_horizontal(s: &str) -> &str {
     s.trim_end_matches([' ', '\t'])
 }

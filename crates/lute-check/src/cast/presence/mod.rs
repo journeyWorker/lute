@@ -3,10 +3,17 @@ mod guards;
 mod lines;
 mod walk;
 
-use guards::*;
+use guards::{affected, definition, fact_atoms, read_paths, stable_text, DNF_CAP, EXPAND_DEPTH};
 pub(crate) use guards::{write_effects, Atom, Effect, Pol};
 
-use super::*;
+use super::{
+    cast_diag, classify_is_literal, decide, doc_bodies, expand_cel, is_alternatives,
+    is_anonymous_var, literal_attr, op, pattern_args, present_faults, subject_text, unit_facts,
+    visit, Arm, BTreeMap, BTreeSet, BeatOnce, BodyLiteral, CallExpr, CelSlot, ClipNode, DecideCtx,
+    Decided, DefTable, Diagnostic, Directive, Document, DomainInfo, Expr, FactEnv, FactPattern,
+    FactProducers, FactScope, FactTerm, FoldedEnv, IdedExpr, IsLiteral, KindShape, Layer, Line,
+    Match, Node, Path, RelVocab, RuleTerm, Severity, Span, Val, W_CAST_ABSENT,
+};
 
 /// `W-CAST-ABSENT` for every content line of `doc` (scene shots, quest
 /// bodies, lore entries and bundle beats) whose speaker's cast entry
@@ -164,7 +171,7 @@ pub fn check_presence(
         scene_ladder,
         scene_absent,
         &scene_after,
-        doc.sections.iter().map(|s| &s.body[..]),
+        doc.sections.iter().map(|s| &*s.body),
     );
     for quest in &doc.quests {
         let mut conds = Vec::new();
@@ -185,7 +192,7 @@ pub fn check_presence(
             &[],
             Vec::new(),
             &quest_after,
-            std::iter::once(&quest.body[..]),
+            std::iter::once(&*quest.body),
         );
         w.quest = None;
         w.quest_body = &[];
@@ -217,7 +224,7 @@ pub fn check_presence(
             ladder,
             absent,
             &entry_after,
-            std::iter::once(&entry.body[..]),
+            std::iter::once(&*entry.body),
         );
     }
     for beat in &doc.beats {
@@ -240,7 +247,7 @@ pub fn check_presence(
             ladder,
             absent,
             &beat_after,
-            std::iter::once(&beat.body[..]),
+            std::iter::once(&*beat.body),
         );
     }
     w.out
@@ -252,6 +259,7 @@ pub fn check_presence(
 /// every `::assert` site of the root ([`fact_producers`]) and (dsl 0.25.0
 /// §6) the occasions each unit of the document follows in the scenario
 /// graph ([`occasions_before`], keyed like [`FactProducers`]' units).
+#[derive(Debug)]
 pub struct PresenceProject<'a> {
     pub env: &'a FactEnv,
     pub ladder: &'a BTreeMap<usize, Vec<String>>,
@@ -313,7 +321,7 @@ pub fn reconcile_presence(
 
 /// Which side of the implication a condition is on.
 #[derive(Clone, Copy, PartialEq, Eq)]
-pub(super) enum Side {
+pub(crate) enum Side {
     /// An enclosing guard: a derived atom may add what it implies.
     Guard,
     /// `present`: only an exact rewrite; `assume` reads a negated reserved
@@ -323,7 +331,7 @@ pub(super) enum Side {
 
 /// `e`'s disjunctive normal form (of `!e` when `neg`) as literal
 /// conjunctions; `None` past [`DNF_CAP`] terms.
-pub(super) fn dnf(e: &Expr, neg: bool) -> Option<Vec<Vec<Expr>>> {
+pub(crate) fn dnf(e: &Expr, neg: bool) -> Option<Vec<Vec<Expr>>> {
     if let Expr::Call(c) = e {
         if c.target.is_none() {
             match (c.func_name.as_str(), c.args.as_slice()) {
@@ -370,7 +378,7 @@ pub(super) fn dnf(e: &Expr, neg: bool) -> Option<Vec<Vec<Expr>>> {
 }
 
 /// `a && (b && (…))`.
-pub(super) fn conjoin(items: &[Expr]) -> Option<Expr> {
+pub(crate) fn conjoin(items: &[Expr]) -> Option<Expr> {
     let (last, rest) = items.split_last()?;
     Some(rest.iter().rev().fold(last.clone(), |acc, x| {
         call(op::LOGICAL_AND, vec![x.clone(), acc])
@@ -379,7 +387,7 @@ pub(super) fn conjoin(items: &[Expr]) -> Option<Expr> {
 
 /// `e` provably false: decided `false` whole, or every disjunct of its
 /// normal form is.
-pub(super) fn refuted(e: &Expr, ctx: &DecideCtx<'_>) -> bool {
+pub(crate) fn refuted(e: &Expr, ctx: &DecideCtx<'_>) -> bool {
     if decide(e, ctx) == Some(Decided::Bool(false)) {
         return true;
     }
@@ -394,18 +402,18 @@ pub(super) fn refuted(e: &Expr, ctx: &DecideCtx<'_>) -> bool {
 /// One enclosing guard: its parsed condition (derived atoms read through
 /// their rules), expanded text (rule `cel()`s it reads appended), and fact
 /// atoms; `live` turns false once a write may have falsified it.
-pub(super) struct Guard {
-    pub(super) expr: Expr,
-    pub(super) text: String,
-    pub(super) atoms: Vec<Atom>,
-    pub(super) live: bool,
+pub(crate) struct Guard {
+    pub(crate) expr: Expr,
+    pub(crate) text: String,
+    pub(crate) atoms: Vec<Atom>,
+    pub(crate) live: bool,
 }
 
 /// A speaker's `present`: each top-level conjunct as written and read
 /// through the rules (exact rewrites only).
-pub(super) type PresentConjuncts = Vec<(Expr, Expr)>;
+pub(crate) type PresentConjuncts = Vec<(Expr, Expr)>;
 
-pub(super) struct Presence<'a> {
+pub(crate) struct Presence<'a> {
     path: &'a Path,
     folded: &'a FoldedEnv,
     facts: Option<&'a FactEnv>,
@@ -440,7 +448,7 @@ pub(super) struct Presence<'a> {
 }
 
 /// The top-level `&&` conjuncts of `e`.
-pub(super) fn conjuncts(e: &Expr, out: &mut Vec<Expr>) {
+pub(crate) fn conjuncts(e: &Expr, out: &mut Vec<Expr>) {
     if let Expr::Call(c) = e {
         if c.func_name == op::LOGICAL_AND && c.target.is_none() && c.args.len() == 2 {
             conjuncts(&c.args[0].expr, out);
@@ -451,7 +459,7 @@ pub(super) fn conjuncts(e: &Expr, out: &mut Vec<Expr>) {
     out.push(e.clone());
 }
 
-pub(super) fn call(name: &str, args: Vec<Expr>) -> Expr {
+pub(crate) fn call(name: &str, args: Vec<Expr>) -> Expr {
     Expr::Call(CallExpr {
         func_name: name.to_string(),
         target: None,
@@ -463,14 +471,14 @@ pub(super) fn call(name: &str, args: Vec<Expr>) -> Expr {
 }
 
 /// A decimal as CEL literal text (`3`, `2.5`, `-1`).
-pub(super) fn num_text(n: f64) -> String {
+pub(crate) fn num_text(n: f64) -> String {
     format!("{n}")
 }
 
 /// A `<when is="…">` pattern as a condition over the subject text `s` —
 /// its alternatives joined by `||`; `None` when any alternative does not
 /// classify (the arm then assumes nothing).
-pub(super) fn is_condition(raw: &str, s: &str, path: Option<&str>) -> Option<String> {
+pub(crate) fn is_condition(raw: &str, s: &str, path: Option<&str>) -> Option<String> {
     let mut alts = Vec::new();
     for lit in is_alternatives(raw) {
         let lit = crate::match_check::quest_state_is_literal(classify_is_literal(lit).ok()?, path);

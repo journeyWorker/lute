@@ -10,7 +10,10 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 }
 
 use crate::permissions::Permissions;
-use crate::schema::*;
+use crate::schema::{
+    AssetKindDecl, AttrDecl, BridgeCapability, CastMember, DefDecl, DirectiveDecl, EventDecl,
+    OccasionDecl, ProviderDecl, RewardKindDecl, StateShape, StateTemplate,
+};
 use crate::types::Literal;
 
 /// The built-in quest lifecycle events (dsl 0.2.0 §6.6): quest-scoped, fired
@@ -219,7 +222,7 @@ impl CapabilitySnapshot {
     }
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct SnapshotBuilder {
     plugins: BTreeMap<String, ResolvedPlugin>,
 }
@@ -438,6 +441,7 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::schema::{Lowering, OccasionSelect, OccasionTarget};
 
     #[test]
     fn version_is_deterministic_and_order_independent() {
@@ -632,10 +636,13 @@ mod tests {
     /// (the injected anchor, `sprite.exit`), so they are capability surface.
     fn dom(members: &[&str], default: Option<&str>, exits: &[&str]) -> Domain {
         Domain {
-            members: members.iter().map(|s| s.to_string()).collect(),
+            members: members
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             open: false,
             default: default.map(str::to_string),
-            exits: exits.iter().map(|s| s.to_string()).collect(),
+            exits: exits.iter().map(std::string::ToString::to_string).collect(),
             stops: Vec::new(),
             labels: BTreeMap::new(),
         }
@@ -863,7 +870,12 @@ mod tests {
         let subset = |members: &[&str]| OccasionTarget::Domain {
             prefix: "npc".into(),
             entity: "person".into(),
-            members: Some(members.iter().map(|m| m.to_string()).collect()),
+            members: Some(
+                members
+                    .iter()
+                    .map(std::string::ToString::to_string)
+                    .collect(),
+            ),
         };
         assert_ne!(stamp(subset(&["maud"])), stamp(domain("person")));
         assert_ne!(stamp(subset(&["maud"])), stamp(subset(&["maud", "ivo"])));

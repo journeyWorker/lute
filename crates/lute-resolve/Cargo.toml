@@ -13,3 +13,6 @@ lute-semantic = { path = "../lute-semantic" }
 lute-syntax = { path = "../lute-syntax" }
 serde = { workspace = true }
 yaml_serde = { workspace = true }
+
+[lints]
+workspace = true

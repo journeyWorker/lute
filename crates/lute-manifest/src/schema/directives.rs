@@ -327,8 +327,7 @@ impl TryFrom<yaml_serde::Value> for WriteValue {
                             other => {
                                 let shown = other
                                     .and_then(Value::as_str)
-                                    .map(|s| format!("`op: {s}`"))
-                                    .unwrap_or_else(|| "`op:`".into());
+                                    .map_or_else(|| "`op:`".into(), |s| format!("`op: {s}`"));
                                 return bad(format!(
                                     "{shown} is not an op (ops: {})",
                                     WRITE_OPS.join(", ")

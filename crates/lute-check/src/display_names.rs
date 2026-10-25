@@ -53,7 +53,7 @@ pub fn check_display_names(
     // name ("Eclipse Grunt") and are never counted.
     let mut shared: std::collections::BTreeSet<&str> = std::collections::BTreeSet::new();
     for cast in casts {
-        for (id, member) in cast.iter() {
+        for (id, member) in *cast {
             if let Some(name) = member.name.as_deref().filter(|n| !n.trim().is_empty()) {
                 cast_names.entry(id.as_str()).or_insert(name);
             }
@@ -235,8 +235,16 @@ fn walk<'d>(nodes: &'d [Node], f: &mut dyn FnMut(Visit<'d>)) {
                     walk(body, f);
                 }
             }
-            Node::Branch(b) => b.choices.iter().for_each(|c| walk(&c.body, f)),
-            Node::Hub(h) => h.bodies().for_each(|b| walk(b, f)),
+            Node::Branch(b) => {
+                for c in &b.choices {
+                    walk(&c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    walk(b, f);
+                }
+            }
             Node::On(o) => walk(&o.body, f),
             Node::Objective(o) => walk(&o.body, f),
             Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}

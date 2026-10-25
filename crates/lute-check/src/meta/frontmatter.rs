@@ -1,5 +1,12 @@
 use super::diagnostic_helpers::unrepresentable_yaml;
-use super::*;
+use super::{
+    datalog, default_key_legal_on, get_i64, get_params, get_ref_list, get_str, get_sub_map,
+    ident_from_name, kind_keys, lit_str, meta_key_span, meta_path_span, sanitize_dup_block_keys,
+    scan_block_dup_names, type_accepts, type_str, unknown_key_hint, yaml_key, yaml_parse_error,
+    yaml_shape, BTreeMap, BTreeSet, CapabilitySnapshot, Diagnostic, FrontmatterRef, Layer, Literal,
+    Meta, MetaKind, Severity, Span, Type, TypedMeta, COMPONENT_ONLY_KEYS, E_PATH_IDENT,
+    REQUIRED_KEYS, UNIVERSAL_KEYS,
+};
 
 /// dsl 0.15.0 §3: lift one authored `extra:` YAML value into the JSON-ready
 /// `extra_block` on `TypedMeta`. The value MUST be a mapping with string keys
@@ -367,7 +374,7 @@ pub fn parse_meta_kind_with_defaults(
     // typed by its own `get_*`/parse step); only a PLUGIN-owned key routes
     // through the declared-schema check (plugin Appendix C2).
     let component_key_allowed = kind == MetaKind::Component;
-    for (k, v) in map.iter() {
+    for (k, v) in map {
         let Some(key) = k.as_str() else {
             diags.push(err(
                 "E-META-UNKNOWN-KEY",
@@ -471,7 +478,7 @@ pub fn parse_meta_kind_with_defaults(
             match lute_manifest::ident::dotted_name_fault(what, &raw) {
                 None => typed.id = Some(raw),
                 Some(message) => {
-                    diags.push(err_at("E-META-ID", message, meta_key_span(meta, "id")))
+                    diags.push(err_at("E-META-ID", message, meta_key_span(meta, "id")));
                 }
             }
         }
@@ -486,7 +493,7 @@ pub fn parse_meta_kind_with_defaults(
         if let Some(value) = map.get(yaml_key("series")) {
             match value.as_str() {
                 Some(series) if lute_manifest::ident::is_name(series) => {
-                    typed.series = Some(series.to_string())
+                    typed.series = Some(series.to_string());
                 }
                 found => diags.push(err_at(
                     "E-META-VALUE",
@@ -728,7 +735,7 @@ pub fn parse_meta_kind_with_defaults(
             "`defs` must be a mapping of name to declaration".to_string(),
         )),
     }
-    for (name, def) in typed.defs.iter_mut() {
+    for (name, def) in &mut typed.defs {
         match crate::def_decl::lift_def(name, def, kind == MetaKind::Schema) {
             Ok(lifted) => {
                 *def = lifted;

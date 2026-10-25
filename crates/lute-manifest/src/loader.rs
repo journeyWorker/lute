@@ -6,7 +6,13 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use crate::schema::*;
+use crate::schema::{
+    AssetKindDecl, AssetKindsFile, AttrDecl, BridgeCapability, BridgeFile, CastFile, CastMember,
+    DefDecl, DefsFile, DirectiveDecl, DirectivesFile, EnumsFile, EventDecl, EventsFile,
+    FrontmatterFile, LintsFile, OccasionBody, OccasionDecl, OccasionTarget, OccasionsFile,
+    PluginManifest, ProviderDecl, ProvidersFile, RewardKindDecl, RewardKindsFile, StampAttrsFile,
+    StateFile, StateShape, StateTemplate,
+};
 use crate::types::{type_str, Type};
 
 #[derive(Clone, Debug)]
@@ -348,6 +354,8 @@ impl std::fmt::Display for LoadError {
     }
 }
 
+impl std::error::Error for LoadError {}
+
 /// Read one plugin package. `dir` MUST contain `plugin.yaml`. Any error —
 /// even a duplicate name [`load_plugins_dir`] loads past — is `Err`.
 pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
@@ -363,7 +371,10 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
 /// [`LoadError::DuplicateId`]s beside it; and a failure also carries the
 /// manifest id when the manifest named one (so assembly says the plugin
 /// failed to load rather than that it is not installed).
-#[allow(clippy::type_complexity)]
+#[expect(
+    clippy::type_complexity,
+    reason = "the error side carries the manifest id with the errors, so assembly can tell a failed load from a missing plugin; the one caller matches it in place"
+)]
 fn load_package(
     dir: &Path,
 ) -> Result<(LoadedPlugin, Vec<LoadError>), (Option<String>, Vec<LoadError>)> {
@@ -472,7 +483,7 @@ fn load_package(
                     field("name"),
                     src,
                     e,
-                )
+                );
             }),
             "state" => read_kind::<StateFile, _>(dir, &path, &mut errs, |f, src, e| {
                 if f.state_shapes.is_none() && f.state_templates.is_none() {
@@ -520,7 +531,7 @@ fn load_package(
                     field("name"),
                     src,
                     e,
-                )
+                );
             }),
             // One operation of one service; located by its `operation:`.
             "bridge" => read_kind::<BridgeFile, _>(dir, &path, &mut errs, |f, src, e| {
@@ -529,7 +540,7 @@ fn load_package(
                     let op = id.rsplit_once('.').map_or(id, |(_, op)| op);
                     field_value_at(src.text, "operation", op, n)
                 };
-                merge_named(&mut out.bridge, sites, f.bridge, "bridge", key, at, src, e)
+                merge_named(&mut out.bridge, sites, f.bridge, "bridge", key, at, src, e);
             }),
             "defs" => read_kind::<DefsFile, _>(dir, &path, &mut errs, |f, src, e| {
                 for d in &f.defs {
@@ -556,7 +567,7 @@ fn load_package(
                     field("name"),
                     src,
                     e,
-                )
+                );
             }),
             "enums" => read_kind::<EnumsFile, _>(dir, &path, &mut errs, |f, src, e| {
                 let mut reported = std::collections::BTreeSet::new();
@@ -571,7 +582,7 @@ fn load_package(
                     }
                 }
                 let items = f.enums.into_iter().map(|(k, v)| (k, v.into_domain()));
-                merge_keyed(&mut out.enums, sites, items, "enum", keyed("enums"), src, e)
+                merge_keyed(&mut out.enums, sites, items, "enum", keyed("enums"), src, e);
             }),
             "frontmatter" => read_kind::<FrontmatterFile, _>(dir, &path, &mut errs, |f, src, e| {
                 let items = f.frontmatter.into_iter().map(|d| (d.key, d.schema));
@@ -583,7 +594,7 @@ fn load_package(
                     field("key"),
                     src,
                     e,
-                )
+                );
             }),
             "docs" => { /* non-normative (plugin §6.7); skip */ }
             // Anchored at the INDIVIDUAL declaration file `read_kind` just
@@ -603,7 +614,7 @@ fn load_package(
                     field("kind"),
                     src,
                     e,
-                )
+                );
             }),
             "events" => read_kind::<EventsFile, _>(dir, &path, &mut errs, |f, src, e| {
                 for ev in &f.events {
@@ -620,7 +631,7 @@ fn load_package(
                     field("name"),
                     src,
                     e,
-                )
+                );
             }),
             "stampAttrs" => read_kind::<StampAttrsFile, _>(dir, &path, &mut errs, |f, src, e| {
                 let key = |a: &AttrDecl| a.name.clone();
@@ -634,7 +645,7 @@ fn load_package(
                     field("name"),
                     src,
                     e,
-                )
+                );
             }),
             "rewardKinds" => read_kind::<RewardKindsFile, _>(dir, &path, &mut errs, |f, src, e| {
                 let decls: Vec<RewardKindDecl> = f
@@ -658,7 +669,7 @@ fn load_package(
                     at,
                     src,
                     e,
-                )
+                );
             }),
             "occasions" => read_kind::<OccasionsFile, _>(dir, &path, &mut errs, |f, src, e| {
                 for name in f.occasions.keys() {
@@ -692,7 +703,7 @@ fn load_package(
                     at,
                     src,
                     e,
-                )
+                );
             }),
             "lints" => read_kind::<LintsFile, _>(dir, &path, &mut errs, |f, src, e| {
                 let key = |r: &crate::lint::LintRuleDecl| r.id.clone();
@@ -705,7 +716,7 @@ fn load_package(
                     field("id"),
                     src,
                     e,
-                )
+                );
             }),
             "cast" => read_kind::<CastFile, _>(dir, &path, &mut errs, |f, src, e| {
                 let decls: Vec<CastMember> = f
@@ -723,7 +734,7 @@ fn load_package(
                     keyed("cast"),
                     src,
                     e,
-                )
+                );
             }),
             _ => unreachable!("every EXPORT_KINDS entry has an arm"),
         }
@@ -1321,7 +1332,7 @@ fn read_manifest(
             file: file.clone(),
             at,
             msg,
-        })
+        });
     };
     for k in map.keys() {
         let key = shown(k);
@@ -1445,7 +1456,7 @@ where
                     file: &file,
                     text: &s,
                 };
-                merge(f, &src, errs)
+                merge(f, &src, errs);
             }
             Err(e) => errs.push(export_error(&file.display().to_string(), &s, &e)),
         }
@@ -1759,12 +1770,7 @@ fn yaml_files(path: &Path, errs: &mut Vec<LoadError>) -> Vec<std::path::PathBuf>
                 continue;
             }
         };
-        if p.is_file()
-            && matches!(
-                p.extension().and_then(|x| x.to_str()),
-                Some("yaml") | Some("yml")
-            )
-        {
+        if p.is_file() && matches!(p.extension().and_then(|x| x.to_str()), Some("yaml" | "yml")) {
             v.push(p);
         }
     }
@@ -1775,7 +1781,10 @@ fn yaml_files(path: &Path, errs: &mut Vec<LoadError>) -> Vec<std::path::PathBuf>
 /// Merge `items` — `kind` declarations from `src`, named by `key` — into
 /// `dst`, first declaration kept. `at(src, id, n)` is the byte offset of the
 /// `n`th declaration of `id` in `src`, for [`Source::admit`].
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one generic merge for every declaration kind: `kind`, `key` and `at` are the per-kind parameters, the rest is the merge state and the source"
+)]
 fn merge_named<T>(
     dst: &mut Vec<T>,
     sites: &mut Sites,

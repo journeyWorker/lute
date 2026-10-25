@@ -40,7 +40,10 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use serde::Serialize;
 
-use lute_ir::*;
+use lute_ir::{
+    BeatKind, IndexBeat, IndexDef, IndexDocument, IndexEntry, IndexOccasion, ProjectIndex,
+    RuleEntry, SeedFactEntry, StateDomain,
+};
 
 use crate::ir::{ArtifactMeta, Command, ExecutionIr};
 
@@ -148,6 +151,7 @@ fn is_scalar(ty: &lute_manifest::types::Type) -> bool {
 }
 
 /// One document's contribution to the index.
+#[derive(Debug)]
 pub struct IndexInput<'a> {
     /// Source path, forward-slash relative to the project root.
     pub path: String,
@@ -205,6 +209,8 @@ impl std::fmt::Display for IndexError {
         }
     }
 }
+
+impl std::error::Error for IndexError {}
 
 /// Accumulate one name-keyed vocabulary axis, rejecting a same-name /
 /// different-signature redeclaration. "Signature" is the entry's own SERIALIZED
@@ -630,7 +636,9 @@ pub fn document_key(artifact: &ExecutionIr) -> String {
 mod tests {
     use super::*;
     use crate::ir::{BeatIr, CelPairExt, SceneMeta};
-    use lute_ir::{AtomEntry, PrereqEdge};
+    use lute_ir::{
+        AtomEntry, BeatOnce, CelPair, DocKind, PrereqEdge, PrereqEdgeEntry, RelationEntry,
+    };
 
     fn scene(character: &str, capability: &str) -> ExecutionIr {
         ExecutionIr {
@@ -673,7 +681,7 @@ mod tests {
     fn relation(name: &str, args: &[&str]) -> RelationEntry {
         RelationEntry {
             name: name.to_string(),
-            args: args.iter().map(|a| a.to_string()).collect(),
+            args: args.iter().map(std::string::ToString::to_string).collect(),
             tier: Some("run".to_string()),
             derive: false,
             reserved: false,

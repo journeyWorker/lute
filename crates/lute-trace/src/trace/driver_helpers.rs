@@ -1,5 +1,5 @@
-use super::*;
-pub(super) fn bare_decision(
+use super::{report, Decision, Json, Span};
+pub(crate) fn bare_decision(
     construct: &str,
     id: &str,
     span: Span,
@@ -25,7 +25,7 @@ pub(super) fn bare_decision(
 /// A plugin call as the walk made it — `::tag{field="value" n=3}` from its
 /// IR record's resolved `fields` — rather than the bare `<tag>` a staging
 /// directive reads as (AS-21: a plugin tag is no markup).
-pub(super) fn plugin_call(tag: &str, cmd: Option<&Json>) -> String {
+pub(crate) fn plugin_call(tag: &str, cmd: Option<&Json>) -> String {
     let fields = cmd
         .and_then(|c| c.get("fields"))
         .and_then(Json::as_object)
@@ -47,14 +47,11 @@ pub(super) fn plugin_call(tag: &str, cmd: Option<&Json>) -> String {
 }
 
 /// A record value as display text (`unknown` for an undecided one).
-pub(super) fn json_text(v: Option<&Json>) -> String {
+pub(crate) fn json_text(v: Option<&Json>) -> String {
     match v {
         Some(Json::String(s)) => s.clone(),
         Some(Json::Bool(b)) => b.to_string(),
-        Some(Json::Number(n)) => n
-            .as_f64()
-            .map(report::format_num)
-            .unwrap_or_else(|| n.to_string()),
+        Some(Json::Number(n)) => n.as_f64().map_or_else(|| n.to_string(), report::format_num),
         _ => "unknown".to_string(),
     }
 }

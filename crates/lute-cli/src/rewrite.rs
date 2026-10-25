@@ -465,7 +465,7 @@ pub fn run_fix(paths: &[PathBuf], check: bool, json: bool) -> ExitCode {
 fn fix_targets(path: &Path) -> std::io::Result<Vec<PathBuf>> {
     fn visit(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
         let mut entries = std::fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
-        entries.sort_by_key(|e| e.file_name());
+        entries.sort_by_key(std::fs::DirEntry::file_name);
         for entry in entries {
             let p = entry.path();
             if p.is_dir() {
@@ -866,7 +866,7 @@ fn quoted_final_index(source: &str) -> Option<(String, String)> {
     else {
         return None;
     };
-    Some((key.to_string(), source[..open].trim().to_string()))
+    Some((key.clone(), source[..open].trim().to_string()))
 }
 
 fn needs_grouping(raw: &str, start: usize, end: usize) -> bool {

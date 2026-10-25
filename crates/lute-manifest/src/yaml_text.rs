@@ -9,6 +9,7 @@
 
 use std::ops::Range;
 /// One step of a path into a YAML document.
+#[derive(Debug)]
 pub enum YamlStep<'a> {
     Key(&'a str),
     Item(usize),
@@ -54,15 +55,15 @@ struct YamlSeek<'p>(&'p [YamlStep<'p>]);
 
 impl<'de> serde::de::DeserializeSeed<'de> for YamlSeek<'_> {
     type Value = ();
-    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<(), D::Error> {
-        d.deserialize_any(self)
+    fn deserialize<D: serde::Deserializer<'de>>(self, deserializer: D) -> Result<(), D::Error> {
+        deserializer.deserialize_any(self)
     }
 }
 
 impl<'de> serde::de::Visitor<'de> for YamlSeek<'_> {
     type Value = ();
-    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str("any YAML node")
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("any YAML node")
     }
     fn visit_map<A: serde::de::MapAccess<'de>>(self, mut map: A) -> Result<(), A::Error> {
         if self.at_target() {
@@ -161,20 +162,20 @@ struct YamlKey<'k>(Option<(&'k str, bool)>);
 
 impl<'de> serde::de::DeserializeSeed<'de> for YamlKey<'_> {
     type Value = bool;
-    fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<bool, D::Error> {
-        d.deserialize_any(self)
+    fn deserialize<D: serde::Deserializer<'de>>(self, deserializer: D) -> Result<bool, D::Error> {
+        deserializer.deserialize_any(self)
     }
 }
 
 impl<'de> serde::de::Visitor<'de> for YamlKey<'_> {
     type Value = bool;
-    fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        f.write_str("a mapping key")
+    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+        formatter.write_str("a mapping key")
     }
-    fn visit_str<E: serde::de::Error>(self, s: &str) -> Result<bool, E> {
+    fn visit_str<E: serde::de::Error>(self, v: &str) -> Result<bool, E> {
         match self.0 {
-            Some((want, true)) if want == s => Err(E::custom(YAML_FOUND)),
-            Some((want, false)) => Ok(want == s),
+            Some((want, true)) if want == v => Err(E::custom(YAML_FOUND)),
+            Some((want, false)) => Ok(want == v),
             _ => Ok(false),
         }
     }

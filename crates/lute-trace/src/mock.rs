@@ -24,7 +24,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use lute_check::{check_atom, FoldedEnv};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
-use lute_manifest::fact::{parse_fact, DatalogError};
+use lute_manifest::fact::parse_fact;
 use lute_manifest::types::{type_accepts, Literal, Type};
 pub use lute_manifest::yaml_text::{yaml_span, YamlStep};
 use lute_syntax::ast::{Arm, AttrValue, Document, Hub, Node};
@@ -120,36 +120,37 @@ impl ChooseSpans {
 }
 
 /// Parse a `bridges:` value (dsl 0.24.0 §5) — `{ <tag>: [ {<field>: value},
-/// … ] }` — shared by the mock grammar and `lute play`'s per-step key. `Err`
-/// is the reason, unprefixed.
-pub fn parse_bridges(v: &yaml_serde::Value) -> Result<BTreeMap<String, Vec<BridgeAnswer>>, String> {
-    let shape = "`bridges:` must be a mapping of plugin directive tag -> a list of answers, \
-                 each a mapping of bridge result field -> literal";
+/// … ] }` — shared by the mock grammar and `lute play`'s per-step key.
+///
+/// # Errors
+///
+/// [`BridgesError`], whose text is the reason, unprefixed.
+pub fn parse_bridges(
+    v: &yaml_serde::Value,
+) -> Result<BTreeMap<String, Vec<BridgeAnswer>>, BridgesError> {
     let yaml_serde::Value::Mapping(m) = v else {
-        return Err(shape.to_string());
+        return Err(BridgesError::Shape);
     };
     let mut out = BTreeMap::new();
     for (tag, answers) in m {
         let (Some(tag), yaml_serde::Value::Sequence(answers)) = (tag.as_str(), answers) else {
-            return Err(shape.to_string());
+            return Err(BridgesError::Shape);
         };
         let mut list = Vec::with_capacity(answers.len());
         for (i, answer) in answers.iter().enumerate() {
             let yaml_serde::Value::Mapping(fields) = answer else {
-                return Err(format!(
-                    "`bridges.{tag}` answer {} must be a mapping of bridge result field -> \
-                     literal, e.g. `{{ passed: true }}`",
-                    i + 1
-                ));
+                return Err(BridgesError::AnswerNotMapping {
+                    tag: tag.to_string(),
+                    answer: i + 1,
+                });
             };
             let mut one = Vec::with_capacity(fields.len());
             for (field, value) in fields {
                 let (Some(field), Some(lit)) = (field.as_str(), scalar_to_text(value)) else {
-                    return Err(format!(
-                        "`bridges.{tag}` answer {} must map field names to scalar literals \
-                         (bool/number/string)",
-                        i + 1
-                    ));
+                    return Err(BridgesError::FieldNotScalar {
+                        tag: tag.to_string(),
+                        answer: i + 1,
+                    });
                 };
                 one.push((field.to_string(), lit));
             }
@@ -160,15 +161,50 @@ pub fn parse_bridges(v: &yaml_serde::Value) -> Result<BTreeMap<String, Vec<Bridg
     Ok(out)
 }
 
+/// Why [`parse_bridges`] refused a `bridges:` value. `answer` is 1-based.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BridgesError {
+    /// Not a mapping of directive tag to a list of answers.
+    Shape,
+    /// Answer `answer` of `bridges.<tag>` is not a mapping.
+    AnswerNotMapping { tag: String, answer: usize },
+    /// Answer `answer` of `bridges.<tag>` maps a field to a non-scalar.
+    FieldNotScalar { tag: String, answer: usize },
+}
+
+impl std::fmt::Display for BridgesError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BridgesError::Shape => f.write_str(
+                "`bridges:` must be a mapping of plugin directive tag -> a list of answers, \
+                 each a mapping of bridge result field -> literal",
+            ),
+            BridgesError::AnswerNotMapping { tag, answer } => write!(
+                f,
+                "`bridges.{tag}` answer {answer} must be a mapping of bridge result field -> \
+                 literal, e.g. `{{ passed: true }}`"
+            ),
+            BridgesError::FieldNotScalar { tag, answer } => write!(
+                f,
+                "`bridges.{tag}` answer {answer} must map field names to scalar literals \
+                 (bool/number/string)"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for BridgesError {}
+
 /// A state path as a seed or expectation writes it — bare
 /// (`run.visits.lab2`) or quoted (`run.visits["lab-b2"]`) — in its canonical
 /// dotted form, the one spelling the store keys on. Text that is not a
 /// static path comes back as written, for the validation that follows to
 /// name.
 pub fn state_key(raw: &str) -> String {
-    lute_cel::path::parse_path_text(raw)
-        .map(|segs| lute_manifest::text::render_path(&segs))
-        .unwrap_or_else(|| raw.to_string())
+    lute_cel::path::parse_path_text(raw).map_or_else(
+        || raw.to_string(),
+        |segs| lute_manifest::text::render_path(&segs),
+    )
 }
 
 /// `--state`/`--mock` literals and `--choice` targets carry no real source
@@ -355,11 +391,13 @@ pub const MOCK_TOP_KEYS: &[&str] = &[
 /// preview without a new code and without a new wiring point. Enforcing it
 /// HERE rather than at each call site is the point: a mock document cannot be
 /// consumed anywhere without the gate.
-// `Diagnostic` is the crate's error currency by design (span + fixits travel
-// with every refusal); boxing it here would ripple through every `?` caller
-// for a cold path. clippy 1.96's `result_large_err` threshold is waived at
-// the four mock-parser entry points.
-#[allow(clippy::result_large_err)]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    expect(
+        clippy::result_large_err,
+        reason = "`Diagnostic` is the crate's error currency (span and fixits travel with every refusal); boxing it would ripple through every `?` caller for a cold path. On wasm32 it is under the size limit"
+    )
+)]
 pub fn parse_mock_yaml(text: &str) -> Result<MockSet, Diagnostic> {
     parse_mock_document(text, Some(MOCK_TOP_KEYS))
 }
@@ -372,14 +410,26 @@ pub fn parse_mock_yaml(text: &str) -> Result<MockSet, Diagnostic> {
 /// differently — a per-test FAILURE naming *every* offender in one run
 /// (`E-TEST-KEY`, exit 1, D-B), not a first-offender parse error (exit 2) —
 /// so it cannot delegate the gate here even for the keys the sets share.
-#[allow(clippy::result_large_err)]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    expect(
+        clippy::result_large_err,
+        reason = "`Diagnostic` is the crate's error currency (span and fixits travel with every refusal); boxing it would ripple through every `?` caller for a cold path. On wasm32 it is under the size limit"
+    )
+)]
 pub fn parse_mock_surfaces(text: &str) -> Result<MockSet, Diagnostic> {
     parse_mock_document(text, None)
 }
 
 /// The one mock parser. `legal` is `Some` for the closed mock grammar and
 /// `None` for `lute test`'s open read; see the two public wrappers.
-#[allow(clippy::result_large_err)]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    expect(
+        clippy::result_large_err,
+        reason = "`Diagnostic` is the crate's error currency (span and fixits travel with every refusal); boxing it would ripple through every `?` caller for a cold path. On wasm32 it is under the size limit"
+    )
+)]
 fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Diagnostic> {
     let span = synthetic_span();
     let value: yaml_serde::Value = yaml_serde::from_str(text).map_err(|e| {
@@ -705,7 +755,8 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
 
     // dsl 0.24.0 §5: `bridges:` answers plugin calls, per tag, in order.
     if let Some(v) = top.get("bridges") {
-        mocks.bridges = parse_bridges(v).map_err(|e| diag(E_TRACE_MOCK_PARSE, e, span))?;
+        mocks.bridges =
+            parse_bridges(v).map_err(|e| diag(E_TRACE_MOCK_PARSE, e.to_string(), span))?;
         mocks.bridge_spans = BridgeSpans::locate(text, &mocks.bridges);
     }
 
@@ -734,7 +785,13 @@ fn parse_mock_document(text: &str, legal: Option<&[&str]>) -> Result<MockSet, Di
 /// and that wins, and the six `conformance/*/mock.yaml` acceptance fixtures
 /// legitimately carry none. whole-project `check`'s pass over `mocks/*.yaml` is
 /// where the key is required.
-#[allow(clippy::result_large_err)]
+#[cfg_attr(
+    not(target_arch = "wasm32"),
+    expect(
+        clippy::result_large_err,
+        reason = "`Diagnostic` is the crate's error currency (span and fixits travel with every refusal); boxing it would ripple through every `?` caller for a cold path. On wasm32 it is under the size limit"
+    )
+)]
 pub fn mock_subject(text: &str) -> Result<Option<String>, Diagnostic> {
     let span = synthetic_span();
     let value: yaml_serde::Value = yaml_serde::from_str(text).map_err(|e| {
@@ -1066,7 +1123,9 @@ pub fn state_member_problem(
         // An inline `{ enum: […] }` has no name of its own: its path is it.
         None => (path, schema.string_members(path)?),
     };
-    lute_runtime::session::member_of(domain, members, literal).err()
+    lute_runtime::session::member_of(domain, members, literal)
+        .err()
+        .map(|e| e.to_string())
 }
 
 /// `E-TRACE-MOCK-UNDECLARED` for `path` (dsl 0.4.0 §4.3, 0.1 §11.1.1) —
@@ -1125,15 +1184,6 @@ fn reserved_quest_domain_text(path: &str) -> &'static str {
     }
 }
 
-fn describe_datalog_error(e: &DatalogError) -> String {
-    match e {
-        DatalogError::Malformed { msg, .. } => msg.clone(),
-        DatalogError::FunctionTerm { name, .. } => {
-            format!("compound term `{name}(…)` is not a legal fact argument")
-        }
-    }
-}
-
 /// `--fact` validation (§4.3): parse via [`lute_manifest::fact::parse_fact`],
 /// then D18's [`lute_check::check_atom`] reuse for unknown-relation/arity/
 /// foreign-arg — every hit re-coded [`E_TRACE_MOCK_FACT`]. `check_atom`
@@ -1147,10 +1197,7 @@ fn validate_facts(mocks: &MockSet, folded: &FoldedEnv) -> Vec<Diagnostic> {
         match parse_fact(raw) {
             Err(e) => out.push(diag(
                 E_TRACE_MOCK_FACT,
-                format!(
-                    "`--fact \"{raw}\"` does not parse as a ground fact pattern: {}",
-                    describe_datalog_error(&e)
-                ),
+                format!("`--fact \"{raw}\"` does not parse as a ground fact pattern: {e}"),
                 span,
             )),
             Ok(pattern) => {
@@ -1230,7 +1277,7 @@ fn collect_choice_ids_nodes(nodes: &[Node], out: &mut BTreeMap<String, Vec<Strin
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_choice_ids_nodes(body, out)
+                            collect_choice_ids_nodes(body, out);
                         }
                     }
                 }

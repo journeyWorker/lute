@@ -1,5 +1,10 @@
-use super::*;
-use super::{core::*, facts::*, rules::*, state::*};
+use super::{
+    core::{E_CEL_PROFILE, E_CEL_TYPE, E_DATALOG_GUARD_FACT, GUARD_FIREWALL_CALLS},
+    facts::is_profile_ident_root,
+    rules::W_QUEST_STATE_HAS,
+    state::diag,
+};
+use super::{CelKind, CelSlot, Ctx, Diagnostic, Expr, Severity, Span, Val};
 pub(crate) fn check_quest_state_isset(expr: &Expr, span: Span, diags: &mut Vec<Diagnostic>) {
     lute_cel::walk(expr, &mut |node| {
         let lute_cel::Node::Expr(expr) = node else {
@@ -159,11 +164,10 @@ pub(crate) fn check_cel_profile(
                 diags.push(diag(
                     E_CEL_PROFILE,
                     format!(
-                        "`{name}(…)` is outside the Lute-CEL profile{} — the profile has \
+                        "`{name}(…)` is outside the Lute-CEL profile{hint} — the profile has \
                          operators, int/double/bool/string literals, lists, `?:`, `in`, \
                          `has()`, `int()`, `double()`, `holds()`, `count()`, \
-                         `countDistinct(string, list, int)`, `validAt()`, `now()`, and `visited(string)`",
-                        hint
+                         `countDistinct(string, list, int)`, `validAt()`, `now()`, and `visited(string)`"
                     ),
                     slot.span,
                 ));
@@ -352,9 +356,8 @@ pub(crate) fn isset_hint(c: &cel_parser::ast::CallExpr) -> String {
 }
 
 pub(crate) fn legacy_fact_hint(c: &cel_parser::ast::CallExpr) -> Option<String> {
-    let pattern = match &c.args.first()?.expr {
-        Expr::Call(atom) => atom,
-        _ => return None,
+    let Expr::Call(pattern) = &c.args.first()?.expr else {
+        return None;
     };
     let args = legacy_atom_args(pattern).join(", ");
     let relation = &pattern.func_name;

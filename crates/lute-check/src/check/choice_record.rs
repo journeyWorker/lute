@@ -1,7 +1,10 @@
 //! The `<choice into=…>` run-record sugar (dsl 0.6.0 §2) and the
 //! `E-PERSIST-REMOVED` / `E-AS-REMOVED` migration fixits.
 
-use super::*;
+use super::{
+    resolve_type, type_accepts, Attr, AttrValue, Choice, Ctx, Diagnostic, Fixit, Layer, Literal,
+    Node, Severity, Span, TextEdit, Type,
+};
 
 /// Diagnostic codes for the `<choice … into="run.<path>">` run-record sugar
 /// (dsl 0.6.0 §2). `into=` alone records; the `persist=` attribute was REMOVED
@@ -29,7 +32,7 @@ const W_INTO_SET_DUP: &str = "W-INTO-SET-DUP";
 /// reported as unknown/extra. (The record target attribute is `into`, renamed
 /// from 0.0.1 `as`; `as` survives only on content lines as the display-label
 /// override, §7.1 — untouched here.)
-pub(super) fn check_choice_record(
+pub(crate) fn check_choice_record(
     choice: &Choice,
     ctx: &Ctx<'_>,
     src: &str,
@@ -220,7 +223,7 @@ fn str_attr(attr: &Attr) -> Option<&str> {
 /// [`Literal::Str`], so an enum member spelled like a bool or number (`"true"`,
 /// `"3"`) still resolves by string membership. Returns `None` when the value
 /// cannot inhabit the target's shape (a hard type error) or is a `@ref`.
-pub(super) fn into_literal(ty: &Type, v: &AttrValue) -> Option<Literal> {
+pub(crate) fn into_literal(ty: &Type, v: &AttrValue) -> Option<Literal> {
     match (ty, v) {
         (Type::Int, AttrValue::Str(s)) => s.parse::<i64>().ok().map(Literal::Int),
         (Type::Double, AttrValue::Str(s)) => s.parse::<f64>().ok().map(Literal::Double),

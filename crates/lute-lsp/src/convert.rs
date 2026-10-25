@@ -166,7 +166,7 @@ fn to_lsp_severity(sev: Severity) -> lsp_types::DiagnosticSeverity {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lute_core_span::{Layer, Span};
+    use lute_core_span::Layer;
     use std::str::FromStr;
 
     fn test_uri() -> lsp_types::Uri {

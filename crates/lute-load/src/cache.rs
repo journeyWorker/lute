@@ -21,7 +21,7 @@ type SnapshotKey = (
     BTreeMap<String, yaml_serde::Value>,
 );
 
-#[derive(Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 enum ProvidersKey {
     Explicit(PathBuf),
     Project(Option<PathBuf>),
@@ -39,7 +39,7 @@ pub struct ResolvedBase {
     pub diags: Vec<ResolveDiag>,
 }
 
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct InputCache {
     projects: Memo<PathBuf, LoadedProject>,
     providers: Memo<ProvidersKey, ProviderSet>,

@@ -181,7 +181,7 @@ fn queried(raw: &str) -> BTreeSet<Read> {
                             .elements
                             .iter()
                             .map(|a| match &a.expr {
-                                Expr::Literal(Val::String(s)) => Some(s.to_string()),
+                                Expr::Literal(Val::String(s)) => Some(s.clone()),
                                 Expr::Literal(Val::Boolean(b)) => Some(b.to_string()),
                                 Expr::Ident(s) if s != "_" => Some(s.clone()),
                                 _ => None,
@@ -202,7 +202,7 @@ fn queried(raw: &str) -> BTreeSet<Read> {
                                 Expr::Ident(s) if s != "_" && !columns.contains(&s.as_str()) => {
                                     Some(s.clone())
                                 }
-                                Expr::Literal(Val::String(s)) => Some(s.to_string()),
+                                Expr::Literal(Val::String(s)) => Some(s.clone()),
                                 Expr::Literal(Val::Boolean(b)) => Some(b.to_string()),
                                 _ => None,
                             })
@@ -223,7 +223,11 @@ fn queried(raw: &str) -> BTreeSet<Read> {
                     walk(&a.expr, keeps && negated, out);
                 }
             }
-            Expr::List(l) => l.elements.iter().for_each(|e| walk(&e.expr, false, out)),
+            Expr::List(l) => {
+                for e in &l.elements {
+                    walk(&e.expr, false, out);
+                }
+            }
             Expr::Select(s) => walk(&s.operand.expr, false, out),
             _ => {}
         }
@@ -639,8 +643,7 @@ fn asserters(root: &Path, group: &DocGroup) -> Asserters {
         }
         let document = rel_path(root, path);
         let scene = lute_check::connectivity::scene_key(&folded.typed)
-            .map(|k| format!("scene `{k}`"))
-            .unwrap_or_else(|| "scene".to_string());
+            .map_or_else(|| "scene".to_string(), |k| format!("scene `{k}`"));
         for shot in &doc.sections {
             record(&shot.body, format!("{scene} ({document})"));
         }
@@ -1172,9 +1175,15 @@ fn guard_reads(cel: &str) -> String {
                 if let Some(t) = &c.target {
                     walk(&t.expr, out);
                 }
-                c.args.iter().for_each(|a| walk(&a.expr, out));
+                for a in &c.args {
+                    walk(&a.expr, out);
+                }
             }
-            Expr::List(l) => l.elements.iter().for_each(|e| walk(&e.expr, out)),
+            Expr::List(l) => {
+                for e in &l.elements {
+                    walk(&e.expr, out);
+                }
+            }
             Expr::Select(s) => walk(&s.operand.expr, out),
             _ => {}
         }

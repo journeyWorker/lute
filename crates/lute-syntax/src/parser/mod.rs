@@ -13,7 +13,10 @@
 //!    `<`tag → error). Block opens (`<branch>`/`<match>`/`<timeline>`) recurse
 //!    via a per-block loop that matches the JSX self-naming close by tag name.
 
-use crate::ast::*;
+use crate::ast::{
+    interp_from_inner, Assert, BundleBeat, CelKind, CelSlot, Directive, Document, Entry,
+    InlineAttr, InlineModifier, InlineNode, Interp, Line, Meta, Node, Quest, Retract, Section, Set,
+};
 use crate::lex::{
     line_text_start_blanked, peel_frontmatter, strip_comments_checked, text_start_for_line,
     unclosed_frontmatter_end, CommentError,
@@ -239,12 +242,12 @@ fn parse_body(
     let body_slice = &text[body_start..];
     match strip_comments_checked(body_slice) {
         Ok(stripped) => stripped,
-        Err(CommentError::Unterminated) => {
+        Err(error @ CommentError::Unterminated) => {
             let pos = find_unterminated_comment(body_slice);
             diags.push(Diagnostic {
                 code: E_COMMENT_UNTERMINATED.into(),
                 severity: Severity::Error,
-                message: "unterminated `/* … */` block comment".into(),
+                message: error.to_string(),
                 evidence: None,
                 span: Span::from_bytes(idx, body_start + pos, text.len()),
                 layer: Layer::Content,
@@ -292,12 +295,12 @@ pub(crate) fn parse_body_fragment(text: &str) -> (Vec<Node>, Vec<Diagnostic>) {
     let mut diags = Vec::new();
     let body = match strip_comments_checked(text) {
         Ok(stripped) => stripped,
-        Err(CommentError::Unterminated) => {
+        Err(error @ CommentError::Unterminated) => {
             let pos = find_unterminated_comment(text);
             diags.push(Diagnostic {
                 code: E_COMMENT_UNTERMINATED.into(),
                 severity: Severity::Error,
-                message: "unterminated `/* … */` block comment".into(),
+                message: error.to_string(),
                 evidence: None,
                 span: Span::from_bytes(&idx, pos, text.len()),
                 layer: Layer::Content,
@@ -489,7 +492,6 @@ impl Parser<'_> {
         }
     }
 
-    #[allow(clippy::type_complexity)]
     fn parse_document_inner(&mut self) -> (Vec<Section>, Vec<Quest>, Vec<Entry>, Vec<BundleBeat>) {
         let mut sections = Vec::new();
         let mut quests = Vec::new();
@@ -632,7 +634,7 @@ impl Parser<'_> {
     }
 
     /// `E-REMOVED-TAG` (dsl 0.37.0 §2.2) for the `<scene>` / `</scene>` line `i`.
-    pub(super) fn report_removed_scene_tag(&mut self, i: usize) {
+    pub(crate) fn report_removed_scene_tag(&mut self, i: usize) {
         self.emit_line(
             E_REMOVED_TAG,
             "the `<scene>` tag was removed (dsl 0.37.0 §2.2) — a document's sections are `## ` \
@@ -712,7 +714,7 @@ impl Parser<'_> {
         let head_end_o = self.orig(head_end);
         self.cursor += 1;
         let body = self.parse_section_body();
-        let end_o = body.last().map(node_end).unwrap_or(head_end_o);
+        let end_o = body.last().map_or(head_end_o, node_end);
         Section {
             heading,
             id,
@@ -727,7 +729,7 @@ impl Parser<'_> {
     fn parse_headless_section(&mut self, heading: String) -> Section {
         let start_o = self.orig(self.line_content_start(self.cursor));
         let body = self.parse_section_body();
-        let end_o = body.last().map(node_end).unwrap_or(start_o);
+        let end_o = body.last().map_or(start_o, node_end);
         Section {
             heading,
             id: None,
@@ -888,7 +890,7 @@ impl Parser<'_> {
         let close = self.find_matching_brace(open);
         let inner_start = open + 1;
         let inner_end = close.unwrap_or(e);
-        let node_end = close.map(|c| c + 1).unwrap_or(e);
+        let node_end = close.map_or(e, |c| c + 1);
 
         let inner = &self.body[inner_start..inner_end];
         let ib = inner.as_bytes();
@@ -1454,7 +1456,7 @@ fn is_content_shaped_line(trimmed: &str) -> bool {
 /// (dsl 0.26.0 §3.2) a speaker param `@@who` — a sigil and an ident start.
 fn is_line_head(trimmed: &str) -> bool {
     let b = trimmed.as_bytes();
-    let ident_at = |k: usize| b.get(k).is_some_and(|c| c.is_ascii_alphabetic());
+    let ident_at = |k: usize| b.get(k).is_some_and(u8::is_ascii_alphabetic);
     match b.first() {
         Some(b'@') => ident_at(1) || (b.get(1) == Some(&b'@') && ident_at(2)),
         Some(b':') => ident_at(1),

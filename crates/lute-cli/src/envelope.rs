@@ -382,9 +382,10 @@ impl CliError {
     /// `E-CLI-IO` for a document [`lute_load::build_input`] could not read:
     /// the same message the loader already printed to stderr.
     pub(crate) fn unreadable_document(path: &Path) -> Self {
-        let message = lute_load::read_document(path)
-            .err()
-            .unwrap_or_else(|| format!("lute: cannot read {}", path.display()));
+        let message = lute_load::read_document(path).err().map_or_else(
+            || format!("lute: cannot read {}", path.display()),
+            |e| e.to_string(),
+        );
         CliError::io(path, message)
     }
 
@@ -446,10 +447,19 @@ impl CliError {
     }
 }
 
+/// The human message, as [`fail`] prints it.
+impl std::fmt::Display for CliError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.message)
+    }
+}
+
+impl std::error::Error for CliError {}
+
 /// Report `err` and return exit `2`: the human message on stderr, unchanged,
 /// and in JSON mode the error envelope on stdout (dsl 0.43.0 §4.2).
 pub(crate) fn fail(err: CliError) -> ExitCode {
-    eprintln!("{}", err.message);
+    eprintln!("{err}");
     print_envelope(&err);
     ExitCode::from(2)
 }

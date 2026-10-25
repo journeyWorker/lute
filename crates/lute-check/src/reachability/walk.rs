@@ -21,7 +21,7 @@ use super::objective::check_objective_reach;
 use super::picks::Pick;
 use super::{E_ARM_DEAD, W_OTHERWISE_DEAD};
 
-pub(super) fn walk_reach(
+pub(crate) fn walk_reach(
     nodes: &[Node],
     defs: &DefTable<'_>,
     rx: &Reach<'_>,
@@ -479,7 +479,9 @@ fn check_match_reach(
                 let foreign_literal = is
                     .as_ref()
                     .is_some_and(|pat| arm_has_foreign_literal(pat, &dom, subject));
-                let literal_cmp_owns = analysis.as_ref().is_some_and(|a| a.owns_dead_guard());
+                let literal_cmp_owns = analysis
+                    .as_ref()
+                    .is_some_and(super::super::decide::LiteralCmpAnalysis::owns_dead_guard);
                 if !foreign_literal && !literal_cmp_owns && !test.raw.trim().is_empty() {
                     if let Some(Decided::Bool(false)) = decide_slot(&test.raw, defs, ctx) {
                         let mut message = dead_guard_message("arm", &test.raw);

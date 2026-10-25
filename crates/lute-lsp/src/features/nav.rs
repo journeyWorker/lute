@@ -423,7 +423,7 @@ mod tests {
     /// state path and an imported `helped` def — exactly the shape `check()` sees
     /// after resolving a scene's `uses:` schema (dsl §9.2).
     fn schema_imports() -> lute_check::SchemaImports {
-        use lute_check::{Namespace, SchemaImports, StateDecl};
+        use lute_check::{Namespace, StateDecl};
         use lute_manifest::types::Type;
         let mut imports = SchemaImports::default();
         imports.state.decls.insert(

@@ -333,32 +333,35 @@ fn payload_fields<'de, D: serde::Deserializer<'de>>(
     struct FieldType<'f>(&'f str);
     impl<'de> DeserializeSeed<'de> for FieldType<'_> {
         type Value = Type;
-        fn deserialize<D: serde::Deserializer<'de>>(self, d: D) -> Result<Type, D::Error> {
-            d.deserialize_any(self)
+        fn deserialize<D: serde::Deserializer<'de>>(
+            self,
+            deserializer: D,
+        ) -> Result<Type, D::Error> {
+            deserializer.deserialize_any(self)
         }
     }
     impl<'de> Visitor<'de> for FieldType<'_> {
         type Value = Type;
-        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            f.write_str("a payload field's type")
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a payload field's type")
         }
-        fn visit_str<E: Error>(self, s: &str) -> Result<Type, E> {
-            payload_type(self.0, &Value::String(s.to_string())).map_err(E::custom)
+        fn visit_str<E: Error>(self, v: &str) -> Result<Type, E> {
+            payload_type(self.0, &Value::String(v.to_string())).map_err(E::custom)
         }
         fn visit_unit<E: Error>(self) -> Result<Type, E> {
             payload_type(self.0, &Value::Null).map_err(E::custom)
         }
-        fn visit_bool<E: Error>(self, b: bool) -> Result<Type, E> {
-            payload_type(self.0, &Value::Bool(b)).map_err(E::custom)
+        fn visit_bool<E: Error>(self, v: bool) -> Result<Type, E> {
+            payload_type(self.0, &Value::Bool(v)).map_err(E::custom)
         }
-        fn visit_i64<E: Error>(self, n: i64) -> Result<Type, E> {
-            payload_type(self.0, &Value::Number(n.into())).map_err(E::custom)
+        fn visit_i64<E: Error>(self, v: i64) -> Result<Type, E> {
+            payload_type(self.0, &Value::Number(v.into())).map_err(E::custom)
         }
-        fn visit_u64<E: Error>(self, n: u64) -> Result<Type, E> {
-            payload_type(self.0, &Value::Number(n.into())).map_err(E::custom)
+        fn visit_u64<E: Error>(self, v: u64) -> Result<Type, E> {
+            payload_type(self.0, &Value::Number(v.into())).map_err(E::custom)
         }
-        fn visit_f64<E: Error>(self, n: f64) -> Result<Type, E> {
-            payload_type(self.0, &Value::Number(n.into())).map_err(E::custom)
+        fn visit_f64<E: Error>(self, v: f64) -> Result<Type, E> {
+            payload_type(self.0, &Value::Number(v.into())).map_err(E::custom)
         }
         fn visit_seq<A: serde::de::SeqAccess<'de>>(self, seq: A) -> Result<Type, A::Error> {
             let v = Value::deserialize(serde::de::value::SeqAccessDeserializer::new(seq))?;
@@ -373,8 +376,8 @@ fn payload_fields<'de, D: serde::Deserializer<'de>>(
     struct Fields;
     impl<'de> Visitor<'de> for Fields {
         type Value = std::collections::BTreeMap<String, Type>;
-        fn expecting(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-            f.write_str("a mapping of each payload field to its type")
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a mapping of each payload field to its type")
         }
         fn visit_map<A: MapAccess<'de>>(self, mut map: A) -> Result<Self::Value, A::Error> {
             let mut out = std::collections::BTreeMap::new();

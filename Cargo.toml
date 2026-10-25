@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/*"]
 
 [workspace.package]
-version = "0.49.0"
+version = "0.49.1"
 edition = "2021"
 rust-version = "1.85"
 
@@ -14,6 +14,61 @@ yaml_serde = "0.10.7"
 schemars = "1"
 insta = { version = "1", features = ["yaml"] }
 tempfile = "3.27"
+
+# Rust coding rules §1 (docs/design/rust-coding-rules.md). 0.49.1 enables each
+# lint in the slice that brings it to zero; the note's full block is in place
+# after the last lint slice. CI's `clippy` job runs with `-D warnings`.
+[workspace.lints.rust]
+ambiguous_negative_literals = "warn"
+missing_debug_implementations = "warn"
+redundant_imports = "warn"
+redundant_lifetimes = "warn"
+trivial_numeric_casts = "warn"
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "warn"
+unused_lifetimes = "warn"
+
+[workspace.lints.clippy]
+# restriction
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+as_pointer_underscore = "warn"
+assertions_on_result_states = "warn"
+clone_on_ref_ptr = "warn"
+deref_by_slicing = "warn"
+disallowed_script_idents = "warn"
+empty_drop = "warn"
+empty_enum_variants_with_brackets = "warn"
+empty_structs_with_brackets = "warn"
+fn_to_numeric_cast_any = "warn"
+if_then_some_else_none = "warn"
+map_err_ignore = "warn"
+redundant_type_annotations = "warn"
+renamed_function_params = "warn"
+self_named_module_files = "warn"
+semicolon_outside_block = "warn"
+undocumented_unsafe_blocks = "warn"
+unnecessary_safety_comment = "warn"
+unnecessary_safety_doc = "warn"
+unneeded_field_pattern = "warn"
+unused_result_ok = "warn"
+# pedantic, selected
+cast_lossless = "warn"
+cast_possible_truncation = "warn"
+cast_possible_wrap = "warn"
+cast_sign_loss = "warn"
+cloned_instead_of_copied = "warn"
+enum_glob_use = "warn"
+explicit_iter_loop = "warn"
+implicit_clone = "warn"
+manual_let_else = "warn"
+map_unwrap_or = "warn"
+needless_for_each = "warn"
+redundant_closure_for_method_calls = "warn"
+semicolon_if_nothing_returned = "warn"
+uninlined_format_args = "warn"
+unnested_or_patterns = "warn"
+wildcard_imports = "warn"
 
 # Tests, CI gates and the conformance harness run the dev binary over every
 # dogfood game; at opt-level 0 their runtime dwarfs the compile. Level 1 keeps

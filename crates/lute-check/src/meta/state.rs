@@ -1,4 +1,4 @@
-use super::*;
+use super::{map_prefix, yaml_key, BTreeMap, DefParam, Namespace, Type};
 /// dsl 0.28.0 §1 (T1-12): why `path` cannot be declared in `state:` — it is
 /// a name the engine owns — or `None` when the namespace is the author's.
 /// A non-tier root with no engine meaning (`foo.bar`) is `None` here too;
@@ -51,19 +51,19 @@ pub(crate) fn namespace_of(path: &str) -> Option<Namespace> {
     }
 }
 
-pub(super) fn get_str(map: &yaml_serde::Mapping, key: &str) -> Option<String> {
+pub(crate) fn get_str(map: &yaml_serde::Mapping, key: &str) -> Option<String> {
     map.get(yaml_key(key))
         .and_then(|v| v.as_str())
         .map(str::to_string)
 }
 
-pub(super) fn get_i64(map: &yaml_serde::Mapping, key: &str) -> Option<i64> {
-    map.get(yaml_key(key)).and_then(|v| v.as_i64())
+pub(crate) fn get_i64(map: &yaml_serde::Mapping, key: &str) -> Option<i64> {
+    map.get(yaml_key(key)).and_then(yaml_serde::Value::as_i64)
 }
 
 /// `uses`/`extends` (dsl §9.2) may each be a single ref or a list of refs;
 /// normalize to a Vec.
-pub(super) fn get_ref_list(map: &yaml_serde::Mapping, key: &str) -> Vec<String> {
+pub(crate) fn get_ref_list(map: &yaml_serde::Mapping, key: &str) -> Vec<String> {
     match map.get(yaml_key(key)) {
         Some(yaml_serde::Value::String(s)) => vec![s.clone()],
         Some(yaml_serde::Value::Sequence(items)) => items
@@ -74,7 +74,7 @@ pub(super) fn get_ref_list(map: &yaml_serde::Mapping, key: &str) -> Vec<String> 
     }
 }
 
-pub(super) fn get_sub_map(
+pub(crate) fn get_sub_map(
     map: &yaml_serde::Mapping,
     key: &str,
 ) -> BTreeMap<String, yaml_serde::Value> {
@@ -113,13 +113,13 @@ pub(super) fn get_sub_map(
 /// (component resolver) turns a set flag into `E-COMPONENT-PARSE` so a malformed
 /// signature is never silently shrunk. Absent `params:` ⇒ `(empty, empty, empty, false)`.
 /// Never panics.
-pub(super) type ParsedParams = (
+pub(crate) type ParsedParams = (
     Vec<DefParam>,
     Vec<String>,
     BTreeMap<String, lute_syntax::ast::AttrValue>,
     bool,
 );
-pub(super) fn get_params(map: &yaml_serde::Mapping, key: &str) -> ParsedParams {
+pub(crate) fn get_params(map: &yaml_serde::Mapping, key: &str) -> ParsedParams {
     let mut defaults = BTreeMap::new();
     let Some(raw) = map.get(yaml_key(key)) else {
         return (Vec::new(), Vec::new(), defaults, false); // absent — fine (no params)
@@ -130,7 +130,7 @@ pub(super) fn get_params(map: &yaml_serde::Mapping, key: &str) -> ParsedParams {
     let mut params = Vec::new();
     let mut speakers = Vec::new();
     let mut malformed = false;
-    for (k, tv) in pm.iter() {
+    for (k, tv) in pm {
         let Some(name) = k.as_str() else {
             malformed = true; // non-string key
             continue;
@@ -169,7 +169,7 @@ pub(super) fn get_params(map: &yaml_serde::Mapping, key: &str) -> ParsedParams {
 /// dsl 0.26.0 §3.3: a param `default:` as the `::use` argument it stands for:
 /// `"@name"` is a def reference (resolved in the host, like `p=@name`), any
 /// other scalar the literal `p="…"` would give. `None` for a non-scalar.
-pub(super) fn param_default(v: &yaml_serde::Value) -> Option<lute_syntax::ast::AttrValue> {
+pub(crate) fn param_default(v: &yaml_serde::Value) -> Option<lute_syntax::ast::AttrValue> {
     use lute_syntax::ast::{AttrValue, CelKind, CelSlot};
     let text = match v {
         yaml_serde::Value::String(s) => s.clone(),
@@ -203,7 +203,7 @@ pub(super) fn param_default(v: &yaml_serde::Value) -> Option<lute_syntax::ast::A
 /// There is no ambiguity to resolve: `Type` has no `type` variant
 /// (`lute-manifest/src/types.rs`), so `{ type: … }` is not already a legal
 /// spelling and this cannot shadow one.
-pub(super) fn unwrap_long_form(
+pub(crate) fn unwrap_long_form(
     tv: &yaml_serde::Value,
 ) -> Option<(&yaml_serde::Value, Option<&yaml_serde::Value>)> {
     let m = tv.as_mapping()?;

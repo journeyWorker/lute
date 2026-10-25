@@ -4,7 +4,6 @@ use crate::meta::StateSchema;
 use crate::StateView;
 use lute_core_span::StableId;
 use lute_syntax::ast::{CelKind, CelSlot};
-use std::collections::BTreeMap;
 use std::sync::LazyLock;
 
 fn span() -> Span {
@@ -808,13 +807,12 @@ fn single_otherwise_has_no_dup_diag() {
 // ---- E-DUP-LINE-CODE (dsl §12, unique (speaker, code)) ------------------
 
 fn code_line(speaker: &str, code: Option<&str>, byte: usize) -> Node {
-    use lute_syntax::ast::{Attr, Line};
     let sp = Span {
         byte_start: byte,
         byte_end: byte,
         line: 1,
         column: 1,
-        utf16_range: (byte as u32, byte as u32),
+        utf16_range: (u32::try_from(byte).unwrap(), u32::try_from(byte).unwrap()),
     };
     let attrs = match code {
         Some(c) => vec![Attr {

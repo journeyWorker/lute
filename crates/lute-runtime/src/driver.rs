@@ -55,10 +55,10 @@ impl<D: Driver + ?Sized> Driver for &mut D {
         (**self).unknown(site)
     }
     fn emit(&mut self, rec: Json) {
-        (**self).emit(rec)
+        (**self).emit(rec);
     }
     fn observe(&mut self, rec: Json) {
-        (**self).observe(rec)
+        (**self).observe(rec);
     }
     fn is_preview(&self) -> bool {
         (**self).is_preview()
@@ -349,7 +349,7 @@ impl ScriptedChoices {
     /// its head. A hub: the list is its visit sequence — presentation `n`
     /// of one visit takes decision `n`.
     pub fn pick(&mut self, menu: &Menu<'_>) -> Pick {
-        let list = self.choose.get(menu.id).map(Vec::as_slice).unwrap_or(&[]);
+        let list = self.choose.get(menu.id).map_or(&[][..], Vec::as_slice);
         match menu.construct {
             MenuKind::Hub => match list.get(menu.presentation) {
                 Some(id) => Pick::Option(id.clone()),

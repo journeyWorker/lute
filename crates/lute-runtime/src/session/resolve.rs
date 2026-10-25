@@ -40,24 +40,288 @@ impl Writes {
     }
 }
 
+/// Why a literal does not fit its declared type ([`typed_literal`]) or its
+/// closed domain ([`member_of`]). `Display` is the runtime's reason,
+/// unprefixed.
+#[derive(Clone, Debug, PartialEq)]
+pub enum LiteralError {
+    /// A `bool` takes `true` or `false`.
+    Bool,
+    /// An `int` takes an integer.
+    Int(std::num::ParseIntError),
+    /// A `double` takes a number.
+    Double(std::num::ParseFloatError),
+    /// The literal is not one of the enum's members; `nearest` is the
+    /// member it most likely meant.
+    Enum {
+        members: Vec<String>,
+        nearest: Option<String>,
+    },
+    /// `lit` is not a member of the closed domain `domain`.
+    NotMember {
+        lit: String,
+        domain: String,
+        members: Vec<String>,
+        nearest: Option<String>,
+    },
+}
+
+impl std::fmt::Display for LiteralError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Bool => f.write_str("a `bool` is `true` or `false`"),
+            Self::Int(_) => f.write_str("an `int` takes an integer"),
+            Self::Double(_) => f.write_str("a `double` takes a number"),
+            Self::Enum { members, nearest } => {
+                write!(f, "the enum's members are {}", members.join(", "))?;
+                did_you_mean(f, nearest.as_deref())
+            }
+            Self::NotMember {
+                lit,
+                domain,
+                members,
+                nearest,
+            } => {
+                write!(
+                    f,
+                    "`{lit}` is not a member of `{domain}` ({})",
+                    members.join(", ")
+                )?;
+                did_you_mean(f, nearest.as_deref())
+            }
+        }
+    }
+}
+
+impl std::error::Error for LiteralError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::Int(source) => Some(source),
+            Self::Double(source) => Some(source),
+            Self::Bool | Self::Enum { .. } | Self::NotMember { .. } => None,
+        }
+    }
+}
+
+/// Why a script's write, payload, `bridges:` answer or ground atom does not
+/// resolve against the project ([`typed_payload`], [`resolve_state`],
+/// [`resolve_bridges`], [`resolve_fact`]). `Display` is the runtime's
+/// message: [`resolve_state`]'s and [`resolve_fact`]'s are predicates for
+/// the caller to prefix.
+#[derive(Clone, Debug, PartialEq)]
+pub enum ResolveError {
+    /// A raise gives a payload to an occasion that declares none.
+    NoPayload { occasion: String },
+    /// A raise gives a payload field the occasion does not declare.
+    UnknownPayloadField {
+        occasion: String,
+        field: String,
+        declared: Vec<String>,
+    },
+    /// A payload value its declared type refuses.
+    PayloadValue {
+        field: String,
+        lit: String,
+        source: Box<LiteralError>,
+    },
+    /// A raise leaves declared payload fields out: `missing` is
+    /// [`missing_payload`]'s sentence, `example` [`payload_example`]'s.
+    MissingPayload { missing: String, example: String },
+    /// A write to `scene.*`.
+    SceneWrite,
+    /// An `entry.<id>.read` / `.everRead` path whose entry no document
+    /// declares.
+    UnknownEntry { id: String },
+    /// An entry flag written a literal that is not `true` or `false`.
+    EntryFlag { lit: String },
+    /// A path the state table does not declare.
+    UndeclaredState,
+    /// A state value its declared type or domain refuses.
+    StateValue {
+        lit: String,
+        source: Box<LiteralError>,
+    },
+    /// A `bridges:` tag no plugin call reads a bridge result of.
+    UnknownBridge {
+        at: String,
+        tag: String,
+        nearest: Option<String>,
+    },
+    /// A `bridges:` answer field no effect of the tag's calls reads.
+    UnreadBridgeField {
+        at: String,
+        tag: String,
+        answer: usize,
+        field: String,
+        reads: Vec<String>,
+    },
+    /// A `bridges:` answer value a result slot's declared type refuses.
+    BridgeValue(Box<BridgeMisfit>),
+    /// A `bridges:` answer lacks a field content reads; `shape` is the
+    /// whole answer content reads.
+    MissingBridgeField {
+        at: String,
+        tag: String,
+        answer: usize,
+        field: String,
+        shape: String,
+    },
+    /// Not a ground atom `rel(arg, …)`; `hint` is [`split_atom_hint`]'s.
+    NotGround { hint: &'static str },
+    /// The relation is derived by rules.
+    Derived,
+    /// [`atom_problem`]'s reason.
+    Atom(String),
+}
+
+impl std::fmt::Display for ResolveError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::NoPayload { occasion } => write!(
+                f,
+                "`payload` — occasion `{occasion}` declares no `payload:`"
+            ),
+            Self::UnknownPayloadField {
+                occasion,
+                field,
+                declared,
+            } => write!(
+                f,
+                "`payload.{field}` — occasion `{occasion}` declares no payload field `{field}` \
+                 (declared: {})",
+                declared
+                    .iter()
+                    .map(|k| format!("`{k}`"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Self::PayloadValue { field, lit, source } => {
+                write!(f, "`payload.{field}: {lit}` — {source}")
+            }
+            Self::MissingPayload { missing, example } => {
+                write!(f, "{missing} — add `payload: {{ {example} }}` to the step")
+            }
+            Self::SceneWrite => f.write_str(
+                "is `scene.*`, which resets at every scene boundary and cannot be written",
+            ),
+            Self::UnknownEntry { id } => {
+                write!(f, "names entry `{id}`, which no document declares")
+            }
+            Self::EntryFlag { lit } => write!(f, "is a bool: `{lit}` is not `true` or `false`"),
+            Self::UndeclaredState => f.write_str("is not a declared state path in this project"),
+            Self::StateValue { lit, source } => write!(f, "does not take `{lit}`: {source}"),
+            Self::UnknownBridge { at, tag, nearest } => {
+                write!(
+                    f,
+                    "{at}: `bridges.{tag}` answers no plugin call — no document of this project \
+                     calls `::{tag}` with an effect that reads a bridge result"
+                )?;
+                did_you_mean(f, nearest.as_deref())
+            }
+            Self::UnreadBridgeField {
+                at,
+                tag,
+                answer,
+                field,
+                reads,
+            } => write!(
+                f,
+                "{at}: `bridges.{tag}` answer {answer} gives `{field}`, which no effect of the \
+                 `::{tag}` calls reads (they read: {})",
+                reads.join(", ")
+            ),
+            Self::BridgeValue(misfit) => {
+                let BridgeMisfit {
+                    at,
+                    tag,
+                    answer,
+                    field,
+                    lit,
+                    path,
+                    source,
+                } = misfit.as_ref();
+                write!(
+                    f,
+                    "{at}: `bridges.{tag}` answer {answer}: `{field}: {lit}` does not fit \
+                     `{path}` — {source}"
+                )
+            }
+            Self::MissingBridgeField {
+                at,
+                tag,
+                answer,
+                field,
+                shape,
+            } => write!(
+                f,
+                "{at}: `bridges.{tag}` answer {answer} lacks `{field}`, which content reads — an \
+                 answer gives every bridge result `::{tag}` content reads: `{shape}`"
+            ),
+            Self::NotGround { hint } => {
+                write!(f, "is not a ground fact `rel(arg, …)`{hint}")
+            }
+            Self::Derived => f.write_str("is derived by rules and cannot be asserted"),
+            Self::Atom(why) => f.write_str(why),
+        }
+    }
+}
+
+impl std::error::Error for ResolveError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            Self::PayloadValue { source, .. } | Self::StateValue { source, .. } => {
+                Some(source.as_ref())
+            }
+            Self::BridgeValue(misfit) => Some(&misfit.source),
+            Self::NoPayload { .. }
+            | Self::UnknownPayloadField { .. }
+            | Self::MissingPayload { .. }
+            | Self::SceneWrite
+            | Self::UnknownEntry { .. }
+            | Self::EntryFlag { .. }
+            | Self::UndeclaredState
+            | Self::UnknownBridge { .. }
+            | Self::UnreadBridgeField { .. }
+            | Self::MissingBridgeField { .. }
+            | Self::NotGround { .. }
+            | Self::Derived
+            | Self::Atom(_) => None,
+        }
+    }
+}
+
+/// The fields of [`ResolveError::BridgeValue`]: `bridges.<tag>` answer
+/// `answer` (1-based, written at `at`) gives `field: lit`, which the result
+/// slot `path` refuses for `source`.
+#[derive(Clone, Debug, PartialEq)]
+pub struct BridgeMisfit {
+    pub at: String,
+    pub tag: String,
+    pub answer: usize,
+    pub field: String,
+    pub lit: String,
+    pub path: String,
+    pub source: LiteralError,
+}
+
 /// A literal against a state-table entry's declared type (the trace-mock
 /// rule, `E-TRACE-MOCK-TYPE`): `bool` takes `true`/`false`, `number` a
 /// number, `enum` a member of its domain; every other type the text.
-pub fn typed_literal(entry: &Json, lit: &str) -> Result<Value, String> {
+pub fn typed_literal(entry: &Json, lit: &str) -> Result<Value, LiteralError> {
     match entry.get("type").and_then(Json::as_str) {
         Some("bool") => match lit {
             "true" => Ok(Value::Bool(true)),
             "false" => Ok(Value::Bool(false)),
-            _ => Err("a `bool` is `true` or `false`".to_string()),
+            _ => Err(LiteralError::Bool),
         },
         Some("int") => lit
             .parse::<i64>()
             .map(Value::Int)
-            .map_err(|_| "an `int` takes an integer".to_string()),
+            .map_err(LiteralError::Int),
         Some("double") => lit
             .parse::<f64>()
             .map(Value::Double)
-            .map_err(|_| "a `double` takes a number".to_string()),
+            .map_err(LiteralError::Double),
         Some("enum") => {
             let domain: Vec<&str> = entry
                 .get("domain")
@@ -69,37 +333,43 @@ pub fn typed_literal(entry: &Json, lit: &str) -> Result<Value, String> {
             if domain.contains(&lit) {
                 Ok(Value::Str(lit.to_string()))
             } else {
-                Err(format!(
-                    "the enum's members are {}{}",
-                    domain.join(", "),
-                    did_you_mean(lit, domain.iter().copied())
-                ))
+                Err(LiteralError::Enum {
+                    nearest: nearest(lit, domain.iter().copied()),
+                    members: domain.into_iter().map(str::to_string).collect(),
+                })
             }
         }
         _ => Ok(Value::Str(lit.to_string())),
     }
 }
 
-/// ` — did you mean `x`?` for the member nearest a misspelt `lit`, or empty.
-fn did_you_mean<'a>(lit: &str, members: impl IntoIterator<Item = &'a str>) -> String {
-    lute_manifest::suggest::nearest(lit, members, 2)
-        .map(|k| format!(" — did you mean `{k}`?"))
-        .unwrap_or_default()
+/// The member nearest a misspelt `lit`, if any.
+fn nearest<'a>(lit: &str, members: impl IntoIterator<Item = &'a str>) -> Option<String> {
+    lute_manifest::suggest::nearest(lit, members, 2).map(str::to_string)
+}
+
+/// ` — did you mean `x`?` for the `nearest` member, or nothing.
+fn did_you_mean(f: &mut std::fmt::Formatter<'_>, nearest: Option<&str>) -> std::fmt::Result {
+    match nearest {
+        Some(k) => write!(f, " — did you mean `{k}`?"),
+        None => Ok(()),
+    }
 }
 
 /// dsl 0.27.0 §2 (T1-2): `lit` against a closed domain `K` (a named enum or
 /// an entity kind with `members:`) — `Err` names the members and the one
 /// nearest the literal (`` `rne` is not a member of `route` (ren, mika) —
 /// did you mean `ren`? ``).
-pub fn member_of(domain: &str, members: &[String], lit: &str) -> Result<(), String> {
+pub fn member_of(domain: &str, members: &[String], lit: &str) -> Result<(), LiteralError> {
     if members.iter().any(|m| m == lit) {
         return Ok(());
     }
-    Err(format!(
-        "`{lit}` is not a member of `{domain}` ({}){}",
-        members.join(", "),
-        did_you_mean(lit, members.iter().map(String::as_str))
-    ))
+    Err(LiteralError::NotMember {
+        lit: lit.to_string(),
+        domain: domain.to_string(),
+        members: members.to_vec(),
+        nearest: nearest(lit, members.iter().map(String::as_str)),
+    })
 }
 
 /// A literal written to the declared state path `path` (its state-table
@@ -110,7 +380,7 @@ pub fn state_literal(
     path: &str,
     entry: &Json,
     lit: &str,
-) -> Result<Value, String> {
+) -> Result<Value, LiteralError> {
     let value = typed_literal(entry, lit)?;
     if let Some((domain, members)) = p.state_domains.get(path) {
         member_of(domain, members, lit)?;
@@ -126,7 +396,7 @@ pub fn payload_value(
     p: &ExecProject,
     ty: &lute_manifest::types::Type,
     lit: &str,
-) -> Result<Value, String> {
+) -> Result<Value, LiteralError> {
     use lute_manifest::types::Type;
     match ty {
         Type::Bool => typed_literal(&serde_json::json!({ "type": "bool" }), lit),
@@ -155,7 +425,7 @@ pub fn typed_payload(
     p: &ExecProject,
     occasion: &str,
     fields: &[(String, String)],
-) -> Result<BTreeMap<String, Value>, String> {
+) -> Result<BTreeMap<String, Value>, ResolveError> {
     let mut out = BTreeMap::new();
     let declared = p
         .occasions
@@ -166,24 +436,23 @@ pub fn typed_payload(
         if fields.is_empty() {
             return Ok(out);
         }
-        return Err(format!(
-            "`payload` — occasion `{occasion}` declares no `payload:`"
-        ));
+        return Err(ResolveError::NoPayload {
+            occasion: occasion.to_string(),
+        });
     };
     for (field, lit) in fields {
         let Some(ty) = declared.get(field) else {
-            return Err(format!(
-                "`payload.{field}` — occasion `{occasion}` declares no payload field `{field}` \
-                 (declared: {})",
-                declared
-                    .keys()
-                    .map(|k| format!("`{k}`"))
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ));
+            return Err(ResolveError::UnknownPayloadField {
+                occasion: occasion.to_string(),
+                field: field.clone(),
+                declared: declared.keys().cloned().collect(),
+            });
         };
-        let value =
-            payload_value(p, ty, lit).map_err(|why| format!("`payload.{field}: {lit}` — {why}"))?;
+        let value = payload_value(p, ty, lit).map_err(|source| ResolveError::PayloadValue {
+            field: field.clone(),
+            lit: lit.clone(),
+            source: Box::new(source),
+        })?;
         out.insert(
             format!(
                 "{}.{field}",
@@ -193,10 +462,10 @@ pub fn typed_payload(
         );
     }
     match missing_payload(occasion, declared, |f| fields.iter().any(|(k, _)| k == f)) {
-        Some(why) => Err(format!(
-            "{why} — add `payload: {{ {} }}` to the step",
-            payload_example(declared)
-        )),
+        Some(missing) => Err(ResolveError::MissingPayload {
+            missing,
+            example: payload_example(declared),
+        }),
         None => Ok(out),
     }
 }
@@ -270,20 +539,20 @@ pub fn ever_read_path(id: &str) -> String {
 /// entry flag names a declared entry), not `scene.*`, and the literal fits
 /// the declared type. `Err` is the reason as a predicate of the path
 /// (`… is not a declared state path`), for the caller to prefix.
-pub fn resolve_state(p: &ExecProject, path: &str, lit: &str) -> Result<Value, String> {
+pub fn resolve_state(p: &ExecProject, path: &str, lit: &str) -> Result<Value, ResolveError> {
     if path.starts_with("scene.") {
-        return Err(
-            "is `scene.*`, which resets at every scene boundary and cannot be written".to_string(),
-        );
+        return Err(ResolveError::SceneWrite);
     }
     if let Some((id, _)) = entry_flag(path) {
         if !p.entry_ids.contains(id) {
-            return Err(format!("names entry `{id}`, which no document declares"));
+            return Err(ResolveError::UnknownEntry { id: id.to_string() });
         }
         return match lit {
             "true" => Ok(Value::Bool(true)),
             "false" => Ok(Value::Bool(false)),
-            _ => Err(format!("is a bool: `{lit}` is not `true` or `false`")),
+            _ => Err(ResolveError::EntryFlag {
+                lit: lit.to_string(),
+            }),
         };
     }
     // dsl 0.23.0 §6: a save made after a run ended carries `prev.run.*`,
@@ -293,9 +562,12 @@ pub fn resolve_state(p: &ExecProject, path: &str, lit: &str) -> Result<Value, St
         _ => path,
     };
     let Some(entry) = p.state_table.get(declared) else {
-        return Err("is not a declared state path in this project".to_string());
+        return Err(ResolveError::UndeclaredState);
     };
-    state_literal(p, declared, entry, lit).map_err(|why| format!("does not take `{lit}`: {why}"))
+    state_literal(p, declared, entry, lit).map_err(|source| ResolveError::StateValue {
+        lit: lit.to_string(),
+        source: Box::new(source),
+    })
 }
 
 /// dsl 0.24.0 §5: resolve a script's `bridges:` (`at` names where it was
@@ -309,7 +581,7 @@ pub fn resolve_bridges(
     p: &ExecProject,
     at: &str,
     raw: &BTreeMap<String, Vec<crate::BridgeAnswer>>,
-) -> Result<BTreeMap<String, VecDeque<crate::BridgeAnswer>>, String> {
+) -> Result<BTreeMap<String, VecDeque<crate::BridgeAnswer>>, ResolveError> {
     // tag -> field -> the result slots the project's calls write it to.
     let mut calls: BTreeMap<&str, BTreeMap<&str, BTreeSet<&str>>> = BTreeMap::new();
     // tag -> the fields content reads, in effect order, typed by the slot
@@ -350,31 +622,36 @@ pub fn resolve_bridges(
     }
     for (tag, answers) in raw {
         let Some(fields) = calls.get(tag.as_str()) else {
-            let hint = lute_manifest::suggest::nearest(tag, calls.keys().copied(), 2)
-                .map(|k| format!(" — did you mean `{k}`?"))
-                .unwrap_or_default();
-            return Err(format!(
-                "{at}: `bridges.{tag}` answers no plugin call — no document of this project calls \
-                 `::{tag}` with an effect that reads a bridge result{hint}"
-            ));
+            return Err(ResolveError::UnknownBridge {
+                at: at.to_string(),
+                tag: tag.clone(),
+                nearest: nearest(tag, calls.keys().copied()),
+            });
         };
-        let reads = fields.keys().copied().collect::<Vec<_>>().join(", ");
         for (i, answer) in answers.iter().enumerate() {
             let n = i + 1;
             for (field, lit) in answer {
                 let Some(paths) = fields.get(field.as_str()) else {
-                    return Err(format!(
-                        "{at}: `bridges.{tag}` answer {n} gives `{field}`, which no effect of the \
-                         `::{tag}` calls reads (they read: {reads})"
-                    ));
+                    return Err(ResolveError::UnreadBridgeField {
+                        at: at.to_string(),
+                        tag: tag.clone(),
+                        answer: n,
+                        field: field.clone(),
+                        reads: fields.keys().map(|k| (*k).to_string()).collect(),
+                    });
                 };
                 for path in paths {
                     if let Some(entry) = p.state_table.get(*path) {
-                        state_literal(p, path, entry, lit).map_err(|why| {
-                            format!(
-                                "{at}: `bridges.{tag}` answer {n}: `{field}: {lit}` does not fit \
-                                 `{path}` — {why}"
-                            )
+                        state_literal(p, path, entry, lit).map_err(|source| {
+                            ResolveError::BridgeValue(Box::new(BridgeMisfit {
+                                at: at.to_string(),
+                                tag: tag.clone(),
+                                answer: n,
+                                field: field.clone(),
+                                lit: lit.clone(),
+                                path: (*path).to_string(),
+                                source,
+                            }))
                         })?;
                     }
                 }
@@ -391,10 +668,13 @@ pub fn resolve_bridges(
                         .flatten()
                         .map(|(f, t)| (*f, t.as_ref())),
                 );
-                return Err(format!(
-                    "{at}: `bridges.{tag}` answer {n} lacks `{missing}`, which content reads — an \
-                     answer gives every bridge result `::{tag}` content reads: `{shape}`"
-                ));
+                return Err(ResolveError::MissingBridgeField {
+                    at: at.to_string(),
+                    tag: tag.clone(),
+                    answer: n,
+                    field: (*missing).to_string(),
+                    shape,
+                });
             }
         }
     }
@@ -407,24 +687,21 @@ pub fn resolve_bridges(
 /// Reserved relations are allowed — the engine is exactly who asserts them.
 /// `next` is the list entry after `f`, for [`split_atom_hint`]. `Err` is
 /// the reason, unprefixed.
-pub fn resolve_fact(p: &ExecProject, f: &str, next: Option<&str>) -> Result<Fact, String> {
+pub fn resolve_fact(p: &ExecProject, f: &str, next: Option<&str>) -> Result<Fact, ResolveError> {
     let fact = parse_ground_fact(f)
         .filter(|(_, args)| args.iter().all(|a| !a.is_empty() && a != "_"))
-        .ok_or_else(|| {
-            format!(
-                "is not a ground fact `rel(arg, …)`{}",
-                split_atom_hint(f, next)
-            )
+        .ok_or_else(|| ResolveError::NotGround {
+            hint: split_atom_hint(f, next),
         })?;
     if p.index
         .relations
         .iter()
         .any(|r| r.name == fact.0 && r.derive)
     {
-        return Err("is derived by rules and cannot be asserted".to_string());
+        return Err(ResolveError::Derived);
     }
     match atom_problem(p, &fact.0, &fact.1) {
-        Some(why) => Err(why),
+        Some(why) => Err(ResolveError::Atom(why)),
         None => Ok(fact),
     }
 }
@@ -436,7 +713,10 @@ pub fn resolve_fact(p: &ExecProject, f: &str, next: Option<&str>) -> Result<Fact
 /// opened, the fix is quoting; otherwise the atom itself is unbalanced (a
 /// quoted `"empty(ada"`).
 pub fn split_atom_hint(atom: &str, next: Option<&str>) -> &'static str {
-    let open = |s: &str| s.matches('(').count() as isize - s.matches(')').count() as isize;
+    let count = |s: &str, c: char| {
+        isize::try_from(s.matches(c).count()).expect("a count is at most isize::MAX")
+    };
+    let open = |s: &str| count(s, '(') - count(s, ')');
     match open(atom) {
         0 => "",
         o if o > 0 && next.is_some_and(|n| open(n) < 0) => {
@@ -500,5 +780,85 @@ pub fn domain_members<'a>(p: &'a ExecProject, domain: &str) -> Option<&'a [Strin
             .iter()
             .find(|e| e.name == domain)
             .map(|e| e.members.as_slice()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::error::Error as _;
+
+    use serde_json::json;
+
+    use super::*;
+
+    /// `Display` is the text the `String` errors carried before 0.49.1, and
+    /// `source()` keeps the parse error the message replaces.
+    #[test]
+    fn literal_errors_keep_their_text_and_cause() {
+        let int = typed_literal(&json!({ "type": "int" }), "2.5").unwrap_err();
+        assert_eq!(int.to_string(), "an `int` takes an integer");
+        let cause = int.source().expect("an int error keeps its parse error");
+        assert!(cause.is::<std::num::ParseIntError>());
+        let double = typed_literal(&json!({ "type": "double" }), "x").unwrap_err();
+        assert_eq!(double.to_string(), "a `double` takes a number");
+        let cause = double
+            .source()
+            .expect("a double error keeps its parse error");
+        assert!(cause.is::<std::num::ParseFloatError>());
+        let bool_ = typed_literal(&json!({ "type": "bool" }), "yes").unwrap_err();
+        assert_eq!(bool_.to_string(), "a `bool` is `true` or `false`");
+        assert!(bool_.source().is_none());
+        let members = ["ren".to_string(), "mika".to_string()];
+        let enum_ =
+            typed_literal(&json!({ "type": "enum", "domain": members }), "rne").unwrap_err();
+        assert_eq!(
+            enum_.to_string(),
+            "the enum's members are ren, mika — did you mean `ren`?"
+        );
+        assert_eq!(
+            member_of("route", &members, "rne").unwrap_err().to_string(),
+            "`rne` is not a member of `route` (ren, mika) — did you mean `ren`?"
+        );
+        assert_eq!(
+            member_of("route", &members, "zzzzzz")
+                .unwrap_err()
+                .to_string(),
+            "`zzzzzz` is not a member of `route` (ren, mika)"
+        );
+        assert_eq!(member_of("route", &members, "mika"), Ok(()));
+    }
+
+    #[test]
+    fn wrapping_resolve_errors_chain_to_the_literal_error() {
+        let source = typed_literal(&json!({ "type": "int" }), "x").unwrap_err();
+        let state = ResolveError::StateValue {
+            lit: "x".to_string(),
+            source: Box::new(source.clone()),
+        };
+        assert_eq!(
+            state.to_string(),
+            "does not take `x`: an `int` takes an integer"
+        );
+        let chained = state.source().expect("a state value error has a cause");
+        assert_eq!(chained.to_string(), "an `int` takes an integer");
+        let cause = chained
+            .source()
+            .expect("the literal error keeps its parse error");
+        assert!(cause.is::<std::num::ParseIntError>());
+        let bridge = ResolveError::BridgeValue(Box::new(BridgeMisfit {
+            at: "step 2".to_string(),
+            tag: "shop.buy".to_string(),
+            answer: 1,
+            field: "price".to_string(),
+            lit: "x".to_string(),
+            path: "run.gold".to_string(),
+            source,
+        }));
+        assert_eq!(
+            bridge.to_string(),
+            "step 2: `bridges.shop.buy` answer 1: `price: x` does not fit `run.gold` — an \
+             `int` takes an integer"
+        );
+        assert!(bridge.source().is_some());
     }
 }

@@ -105,7 +105,7 @@ pub fn domain_reads_from_kinds<'a>(
                     queried.insert(a.relation.clone());
                 }
                 BodyLiteral::Guard { cel, .. } => {
-                    crate::usage::queried_relations(cel, &mut queried)
+                    crate::usage::queried_relations(cel, &mut queried);
                 }
                 BodyLiteral::Cmp { .. } => {}
             }

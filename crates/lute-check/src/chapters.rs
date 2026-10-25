@@ -81,11 +81,9 @@ pub enum Unapplied {
 
 /// Whether the manifest lists this scene without deriving its keys.
 pub fn unapplied(meta: &lute_syntax::ast::Meta) -> Option<Unapplied> {
-    if meta.raw_yaml.contains(REJECTED_MARKER) {
-        Some(Unapplied::Rejected)
-    } else {
-        None
-    }
+    meta.raw_yaml
+        .contains(REJECTED_MARKER)
+        .then_some(Unapplied::Rejected)
 }
 
 /// How a scene without `on:` that the manifest lists (unapplied) is told
@@ -779,7 +777,6 @@ fn check_chain(
 /// set, or a clock window that closes ([`crate::clock_positions::chapter_window`])
 /// — and the next listed scene's effective `after:` — derived or written —
 /// cannot hold until it plays.
-#[allow(clippy::too_many_arguments)]
 fn stall(
     index: usize,
     chain: &Chain,
@@ -938,7 +935,10 @@ mod tests {
     fn chain(on: &str, scenes: &[&str]) -> Chain {
         Chain {
             on: on.to_string(),
-            scenes: scenes.iter().map(|s| s.to_string()).collect(),
+            scenes: scenes
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             applied: true,
         }
     }

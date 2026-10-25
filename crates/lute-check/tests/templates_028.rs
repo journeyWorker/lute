@@ -4,8 +4,8 @@
 //! is one report.
 
 use lute_check::{
-    check, parse_meta, parse_meta_kind, resolve_components, CheckInput, ComponentSet, MetaKind,
-    Mode, SchemaImports,
+    check, parse_meta, parse_meta_kind, resolve_components, CheckInput, MetaKind, Mode,
+    SchemaImports,
 };
 use lute_core_span::Diagnostic;
 use lute_manifest::provider::ProviderSet;
@@ -22,7 +22,7 @@ fn run(component: &str, lore: &str) -> (CheckInput, Vec<Diagnostic>) {
     std::fs::write(dir.join("t.lute"), component).unwrap();
     let (doc, _) = lute_syntax::parse(lore);
     let (meta0, _) = parse_meta(&doc.meta, &CapabilitySnapshot::default());
-    let components: ComponentSet = resolve_components(&dir, &meta0.components, doc.meta.span);
+    let components = resolve_components(&dir, &meta0.components, doc.meta.span);
     let input = CheckInput::new(
         lore.to_string(),
         "bonds.lute".into(),

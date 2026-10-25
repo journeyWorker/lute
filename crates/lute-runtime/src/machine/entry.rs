@@ -21,7 +21,7 @@ impl<D: Driver> Machine<D> {
     /// ENGINE's `entry.<id>.read = true` write. `when` is evaluated and
     /// recorded as `eligible` (true / false / null = unknown) on the `entry`
     /// transcript event, not enforced: `--entry` asks for the presentation.
-    pub(super) fn run_entry(&mut self) {
+    pub(crate) fn run_entry(&mut self) {
         let id = self.entry.clone().unwrap_or_default();
         let Some(at) = self.code.commands.iter().position(|c| {
             c.get("kind").and_then(Json::as_str) == Some("entry")
@@ -61,9 +61,7 @@ impl<D: Driver> Machine<D> {
             None => Json::Bool(true),
             Some(when) => {
                 let site = Site::new(SiteKind::EntryWhen, &id, addr(cmd));
-                self.judge(&when, site)
-                    .map(Json::Bool)
-                    .unwrap_or(Json::Null)
+                self.judge(&when, site).map_or(Json::Null, Json::Bool)
             }
         };
         if self.stopped() {
@@ -101,8 +99,7 @@ impl<D: Driver> Machine<D> {
         self.code.commands[at + 1..]
             .iter()
             .position(|c| matches!(c.get("kind").and_then(Json::as_str), Some("entry" | "beat")))
-            .map(|i| at + 1 + i)
-            .unwrap_or(self.code.commands.len())
+            .map_or(self.code.commands.len(), |i| at + 1 + i)
     }
 
     /// Present ONE bundle beat (dsl 0.23.0 §4): its body segment runs like a
@@ -111,7 +108,7 @@ impl<D: Driver> Machine<D> {
     /// `beat` transcript event, not enforced, exactly as an entry's. The id
     /// matches the record's canonical `<document id>.<beat id>`, or its bare
     /// beat id.
-    pub(super) fn run_bundle_beat(&mut self) {
+    pub(crate) fn run_bundle_beat(&mut self) {
         let id = self.bundle_beat.clone().unwrap_or_default();
         let suffix = format!(".{id}");
         let beats: Vec<usize> = (0..self.code.commands.len())
@@ -152,9 +149,7 @@ impl<D: Driver> Machine<D> {
             None => Json::Bool(true),
             Some(when) => {
                 let site = Site::new(SiteKind::BeatWhen, &canonical, addr(cmd));
-                self.judge(&when, site)
-                    .map(Json::Bool)
-                    .unwrap_or(Json::Null)
+                self.judge(&when, site).map_or(Json::Null, Json::Bool)
             }
         };
         if self.stopped() {

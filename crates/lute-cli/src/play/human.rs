@@ -11,7 +11,7 @@ use lute_runtime::session::{
     kind_label, value_to_json, Candidate, ClockRaise, ExecProject, Pick, Played, Presented,
     StepBody, Verdict,
 };
-pub(super) use lute_runtime::str_of;
+pub(crate) use lute_runtime::str_of;
 use lute_trace::exec::record::{line_head, render_attrs, said_line};
 use serde_json::Value as Json;
 
@@ -45,7 +45,7 @@ fn render_options(opts: &[Json], rec: &Json) -> String {
 
 /// One document's commands, by address and in stream order, and how its
 /// staging prints: as authored (default) or as the lowered IR (`--ir`).
-pub(super) struct DocCmds<'a> {
+pub(crate) struct DocCmds<'a> {
     list: &'a [Json],
     at: BTreeMap<&'a str, usize>,
     /// addr -> the directive as authored ([`ExecProject::authored`]).
@@ -61,7 +61,7 @@ pub(super) struct DocCmds<'a> {
 }
 
 impl<'a> DocCmds<'a> {
-    pub(super) fn new(p: &'a ExecProject, document: &str, ir: bool) -> Self {
+    pub(crate) fn new(p: &'a ExecProject, document: &str, ir: bool) -> Self {
         let list = p
             .artifacts
             .get(document)
@@ -84,7 +84,7 @@ impl<'a> DocCmds<'a> {
         }
     }
 
-    pub(super) fn get(&self, addr: &str) -> Option<&'a Json> {
+    pub(crate) fn get(&self, addr: &str) -> Option<&'a Json> {
         self.at.get(addr).map(|&i| &self.list[i])
     }
 
@@ -505,7 +505,7 @@ fn render_records(out: &mut String, p: &ExecProject, view: View, document: &str,
     }
 }
 
-pub(super) const RULE: &str = "──────────────";
+pub(crate) const RULE: &str = "──────────────";
 
 /// The verdict text of a candidate whose `when` decided false.
 const WHEN_FALSE: &str = "when: false";
@@ -542,7 +542,7 @@ fn render_candidate(c: &Candidate) -> String {
 }
 
 /// `pick:` as written.
-pub(super) fn pick_label(pick: &Pick) -> &str {
+pub(crate) fn pick_label(pick: &Pick) -> &str {
     match pick {
         Pick::Beat(id) => id,
         Pick::Pass => "none",
@@ -583,7 +583,7 @@ pub(crate) struct View {
     pub ended_game: bool,
 }
 
-pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> String {
+pub(crate) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> String {
     let mut out = String::new();
     if !play.start.is_empty() {
         out.push_str(&format!("── start {RULE}\n"));
@@ -681,8 +681,7 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
                 days,
                 raised,
                 ended,
-                closed: _,
-                passed: _,
+                ..
             } => {
                 // dsl 0.27.0 §4: an advance that reached a finite clock's
                 // end says so on its own line.
@@ -728,7 +727,7 @@ pub(super) fn render_human(p: &ExecProject, play: &Playthrough, view: View) -> S
                 }
             }
             body @ StepBody::Occasion { .. } => {
-                render_occasion_human(&mut out, p, view, &head, body)
+                render_occasion_human(&mut out, p, view, &head, body);
             }
         }
         for v in &s.exclusive {
@@ -903,7 +902,7 @@ fn render_occasion_human(
             }
             (_, Some(id), _) => out.push_str(&format!("  → {id}\n")),
             (_, None, Some(Pick::Pass)) => {
-                out.push_str("  → (pick: none — the list closes; nothing presented)\n")
+                out.push_str("  → (pick: none — the list closes; nothing presented)\n");
             }
             (_, None, _) if !presented.is_empty() => out.push_str("  → (no eligible main beat)\n"),
             (_, None, _) => out.push_str("  → (no eligible beat — the occasion passes)\n"),
@@ -953,7 +952,7 @@ fn render_clock_raise(out: &mut String, p: &ExecProject, view: View, raised: &Pr
 }
 
 /// Why a clock raise was not made (dsl 0.27.0 §4): its closed seam.
-pub(super) fn closed_why(closed: &ClosedRaise) -> String {
+pub(crate) fn closed_why(closed: &ClosedRaise) -> String {
     match &closed.why {
         Closed::Gate { raw, reads } => format!(
             "its `raisedWhen: {raw}` is false there{}",
@@ -973,7 +972,7 @@ pub(super) fn closed_why(closed: &ClosedRaise) -> String {
 /// candidates, `skip … — when: false` lines, staging, or notes. Beside it,
 /// the index of each step's first line (a miss's nearest line prefers the
 /// step the needle's other lines were said in, round-5 T3-16).
-pub(super) fn said(p: &ExecProject, play: &Playthrough) -> (String, Vec<usize>) {
+pub(crate) fn said(p: &ExecProject, play: &Playthrough) -> (String, Vec<usize>) {
     // The transcript so far and its line count.
     let mut acc = (String::new(), 0usize);
     let push = |acc: &mut (String, usize), document: &str, records: &[Json]| {

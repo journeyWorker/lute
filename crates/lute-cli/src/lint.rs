@@ -40,7 +40,7 @@ use lute_manifest::resolve::resolve_activation;
 /// `W-DISPLAY-NAME-DUP`. Anything else is a clap usage error (exit 2),
 /// matching the "a typo'd `--deny` MUST NOT silently protect nothing"
 /// contract (spec §5).
-pub fn parse_lint_deny_code(raw: &str) -> Result<String, String> {
+pub(crate) fn parse_lint_deny_code(raw: &str) -> Result<String, String> {
     if is_lint_deniable(raw) {
         Ok(raw.to_string())
     } else {
@@ -94,7 +94,10 @@ impl LintDenyPolicy {
 /// `--config`). Returns `Ok(None)` on an absent file (defaults are fine);
 /// `Err(exit 2)` on a read failure or malformed YAML; `Ok(Some(...))` on a
 /// parsed config plus non-fatal `E-LINT-CONFIG` diagnostics.
-#[allow(clippy::type_complexity)]
+#[expect(
+    clippy::type_complexity,
+    reason = "the one caller destructures the config tuple at once; an alias for a single private use adds a name and no clarity"
+)]
 fn read_root_config(
     root: &Path,
     explicit: Option<&Path>,
@@ -139,14 +142,13 @@ fn plugin_rules_for_root(
     let (installed, _load_errs) = load_plugins_dir(&project.plugins_dir);
     // A load error surfaces through `lute check`'s project-diag channel;
     // suppress it here so `lute lint` never double-prints a `check` fault.
-    let active = match resolve_activation(
+    let Ok(active) = resolve_activation(
         &project.graph,
         project.graph.default_profile.as_str(),
         &Default::default(),
         &installed,
-    ) {
-        Ok(a) => a,
-        Err(_) => return Vec::new(),
+    ) else {
+        return Vec::new();
     };
     namespace_active_lints(&active, &installed)
 }
@@ -189,8 +191,8 @@ fn build_lint_input(
 ) -> Result<(LintDocInput, Option<BuiltInput>), ExitCode> {
     let (text, doc, built) = if with_project {
         let Some(built) = build_input(file, providers, Some(root), None) else {
-            if let Err(message) = read_document(file) {
-                return Err(envelope::fail_quietly(CliError::io(file, message)));
+            if let Err(e) = read_document(file) {
+                return Err(envelope::fail_quietly(CliError::io(file, e.to_string())));
             }
             return Err(envelope::fail(CliError::input(
                 file,
@@ -208,7 +210,7 @@ fn build_lint_input(
         (text, parsed.0, Some(built))
     } else {
         let text =
-            read_document(file).map_err(|message| envelope::fail(CliError::io(file, message)))?;
+            read_document(file).map_err(|e| envelope::fail(CliError::io(file, e.to_string())))?;
         let doc = lute_syntax::parse(&text).0;
         (text, doc, None)
     };
@@ -287,8 +289,7 @@ fn lint_target(
         }
         let fallback = path
             .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| PathBuf::from("."));
+            .map_or_else(|| PathBuf::from("."), Path::to_path_buf);
         let root = match floor {
             Some(floor) => project_root_for(path, floor),
             None => nearest_manifest_dir(path).unwrap_or(fallback),

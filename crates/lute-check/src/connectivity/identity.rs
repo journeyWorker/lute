@@ -1,4 +1,4 @@
-use super::graph_nodes::*;
+use super::graph_nodes::{scene_frontmatter_str, ConnGraph, NodeId, PrereqState};
 // Project-wide graph assembly across every parsed `.lute` document in a
 // directory (dsl 0.2.3 connectivity layer, T3+): first the canonical scene
 // identity key set ([`scene_key_set`]), then the checks built on it.
@@ -27,7 +27,7 @@ use crate::meta::{canonical_episode_key, meta_key_span, resolve_doc_kind, DocKin
 /// names the document id.
 pub const E_CONN_EPISODE_ID_DUP: &str = "E-CONN-EPISODE-ID-DUP";
 
-pub(super) fn diag(message: String, span: Span) -> Diagnostic {
+pub(crate) fn diag(message: String, span: Span) -> Diagnostic {
     Diagnostic {
         code: E_CONN_EPISODE_ID_DUP.to_string(),
         severity: Severity::Error,
@@ -53,12 +53,12 @@ pub(super) fn diag(message: String, span: Span) -> Diagnostic {
 /// `check()` and this project-wide pass must never fabricate a degenerate
 /// key (e.g. `.s00ep00`) for it, or unrelated malformed docs would cascade
 /// into a bogus dup report.
-pub(super) struct SceneIdentity {
-    pub(super) key: String,
+pub(crate) struct SceneIdentity {
+    pub(crate) key: String,
     anchor: &'static str,
 }
 
-pub(super) fn scene_identity(meta: &crate::meta::TypedMeta) -> Option<SceneIdentity> {
+pub(crate) fn scene_identity(meta: &crate::meta::TypedMeta) -> Option<SceneIdentity> {
     // The AUTHORED frontmatter, never the defaults-overlaid typed fields: a
     // manifest default must not mint a scene key, and a malformed `id:` gives
     // no identity (its own `E-META-ID` anchors).
@@ -190,7 +190,7 @@ pub fn bundle_beat_after<'d>(
 }
 
 /// The first `<beat>` of `doc` whose canonical id is `key`.
-pub(super) fn bundle_beat<'d>(
+pub(crate) fn bundle_beat<'d>(
     doc: &'d Document,
     meta: &crate::meta::TypedMeta,
     key: &str,
@@ -249,7 +249,7 @@ pub fn when_visited_unanchored(
 }
 
 /// The `visited('<id>')` calls among the top-level `&&` conjuncts of `e`.
-pub(super) fn visited_conjuncts(e: &cel_parser::ast::Expr, out: &mut Vec<String>) {
+pub(crate) fn visited_conjuncts(e: &cel_parser::ast::Expr, out: &mut Vec<String>) {
     let cel_parser::ast::Expr::Call(c) = e else {
         return;
     };
@@ -272,7 +272,7 @@ pub(super) fn visited_conjuncts(e: &cel_parser::ast::Expr, out: &mut Vec<String>
 /// reads scene and bundle beat ids alike. Only the dup check reads this;
 /// `visited(K)` resolution stays on [`scene_key_set`] (+ bundle beat keys in
 /// a condition slot), since a quest or lore document is not a scene node.
-pub(super) fn document_id_set(docs: &[ProjectDoc<'_>]) -> BTreeMap<String, Vec<(PathBuf, Span)>> {
+pub(crate) fn document_id_set(docs: &[ProjectDoc<'_>]) -> BTreeMap<String, Vec<(PathBuf, Span)>> {
     let mut by_id: BTreeMap<String, Vec<(PathBuf, Span)>> = BTreeMap::new();
     for item in docs {
         let path = item.path;

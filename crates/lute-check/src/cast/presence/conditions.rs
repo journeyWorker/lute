@@ -1,14 +1,17 @@
-use super::*;
+use super::{
+    call, conjuncts, definition, expand_cel, fact_atoms, op, read_paths, unit_facts, BTreeSet,
+    BeatOnce, BodyLiteral, CelSlot, Expr, Guard, Node, Pol, Presence, Side, Val, EXPAND_DEPTH,
+};
 
 impl Presence<'_> {
     /// `raw` with its `@def`s (and `$`, as `subject`) expanded.
-    pub(super) fn expand_text(&self, raw: &str, subject: Option<&str>) -> String {
+    pub(crate) fn expand_text(&self, raw: &str, subject: Option<&str>) -> String {
         let mut stack = Vec::new();
         expand_cel(raw, &self.defs, subject, &mut stack).unwrap_or_else(|_| raw.to_string())
     }
 
     /// `raw` with its `@def`s (and `$`, as `subject`) expanded, and parsed.
-    pub(super) fn parse(&self, raw: &str, subject: Option<&str>) -> Option<(Expr, String)> {
+    pub(crate) fn parse(&self, raw: &str, subject: Option<&str>) -> Option<(Expr, String)> {
         if raw.trim().is_empty() {
             return None;
         }
@@ -18,7 +21,7 @@ impl Presence<'_> {
         Some((arena.get(handle)?.expr.clone(), text))
     }
 
-    pub(super) fn slot_cond(&self, slot: Option<&CelSlot>) -> Option<(Expr, String)> {
+    pub(crate) fn slot_cond(&self, slot: Option<&CelSlot>) -> Option<(Expr, String)> {
         slot.and_then(|s| self.parse(&s.raw, None))
     }
 
@@ -26,7 +29,7 @@ impl Presence<'_> {
     /// the engine seam: the occasion's `raisedWhen` gate and `!terminal`
     /// ([`crate::gates::folded_seam`]) — one member's condition, or their
     /// disjunction when `occasion.target` ranges over several.
-    pub(super) fn seam_cond(&self, on: &str, target: Option<&str>) -> Option<(Expr, String)> {
+    pub(crate) fn seam_cond(&self, on: &str, target: Option<&str>) -> Option<(Expr, String)> {
         let seam = crate::gates::folded_seam(self.folded, on, target, None)?;
         let text = match seam.conds.as_slice() {
             [] => return None,
@@ -49,7 +52,7 @@ impl Presence<'_> {
     /// engine-`reserved` relation reads `false` — unless (dsl 0.25.0 §6) the
     /// relation is in [`Self::changed`].
     /// The rule `cel()`s read are pushed onto `cels`.
-    pub(super) fn expand(
+    pub(crate) fn expand(
         &self,
         e: &Expr,
         pol: Pol,
@@ -118,7 +121,7 @@ impl Presence<'_> {
 
     /// Push `cond` as one guard per top-level conjunct, so a write that
     /// may falsify one conjunct leaves the others standing.
-    pub(super) fn push(&mut self, cond: Option<(Expr, String)>) {
+    pub(crate) fn push(&mut self, cond: Option<(Expr, String)>) {
         let Some((expr, text)) = cond else { return };
         let mut parts = Vec::new();
         conjuncts(&expr, &mut parts);
@@ -152,7 +155,7 @@ impl Presence<'_> {
     /// are the occasions the unit follows (dsl 0.25.0 §6): the relations they
     /// change are no longer assumed unchanged — nor are those its own
     /// assumptions require a fact of ([`Self::required`]).
-    pub(super) fn unit<'n>(
+    pub(crate) fn unit<'n>(
         &mut self,
         conds: Vec<(Expr, String)>,
         ladder: &[String],
@@ -186,7 +189,7 @@ impl Presence<'_> {
 
     /// dsl 0.25.0 §6: the code walked from here on follows `occasion`, so the
     /// relations it changes join [`Self::changed`]. Returns the set before.
-    pub(super) fn follow(&mut self, occasion: &str) -> BTreeSet<String> {
+    pub(crate) fn follow(&mut self, occasion: &str) -> BTreeSet<String> {
         let before = self.changed.clone();
         if let Some(rels) = self.changed_on.get(occasion) {
             self.changed.extend(rels.iter().cloned());
@@ -200,7 +203,7 @@ impl Presence<'_> {
     /// held then — so the disjunction of the required objectives' `done`s.
     /// `None` (nothing assumed) when no objective is required or one's `done`
     /// is not written (a `quest=` objective's is synthesized).
-    pub(super) fn completion(&self, quest: &lute_syntax::ast::Quest) -> Option<(Expr, String)> {
+    pub(crate) fn completion(&self, quest: &lute_syntax::ast::Quest) -> Option<(Expr, String)> {
         let mut alts = Vec::new();
         for node in &quest.body {
             if let Node::Objective(o) = node {
@@ -221,7 +224,7 @@ impl Presence<'_> {
     /// leaves it standing: every objective body of the quest (those completed
     /// in the same settle play first) and the quest's earlier
     /// `questComplete` handlers.
-    pub(super) fn assume_completion(&mut self, at: usize) {
+    pub(crate) fn assume_completion(&mut self, at: usize) {
         let Some(done) = self.completion.clone() else {
             return;
         };
@@ -234,7 +237,7 @@ impl Presence<'_> {
             match node {
                 Node::Objective(o) => self.kill_writes(&o.body),
                 Node::On(h) if h.event == "questComplete" && h.span.byte_start < at => {
-                    self.kill_writes(&h.body)
+                    self.kill_writes(&h.body);
                 }
                 _ => {}
             }
@@ -251,7 +254,7 @@ impl Presence<'_> {
     /// Such a fact is the engine's, written on one of R's occasions, so code
     /// guarded by `e` runs after that occasion and `assume: true` no longer
     /// covers R there.
-    pub(super) fn required(&self, e: &Expr, depth: u8) -> BTreeSet<String> {
+    pub(crate) fn required(&self, e: &Expr, depth: u8) -> BTreeSet<String> {
         let Expr::Call(c) = e else {
             return BTreeSet::new();
         };
@@ -362,7 +365,7 @@ impl Presence<'_> {
 
     /// whole-project `check`: the facts known absent when unit `key` of this
     /// document starts, as `!holds(F)` ([`unit_facts`]).
-    pub(super) fn absent_facts(&self, key: usize, once: BeatOnce) -> Vec<String> {
+    pub(crate) fn absent_facts(&self, key: usize, once: BeatOnce) -> Vec<String> {
         let Some(producers) = self.producers else {
             return Vec::new();
         };

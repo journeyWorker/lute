@@ -66,7 +66,7 @@ pub trait WalkDriver {
     fn finish(&mut self, machine: Machine<Self::Driver>) -> Walked;
     fn halt(
         &self,
-        result: Result<(), String>,
+        result: Result<(), crate::WalkError>,
         outcome: &Walked,
         what: &str,
         doc_json: &Json,
@@ -95,7 +95,7 @@ pub fn evaluate(
     let mut eval = w
         .evaluator_with_schema(
             &p.eval_json,
-            p.store_schemas[w.derive.unwrap_or(true) as usize].clone(),
+            std::sync::Arc::clone(&p.store_schemas[usize::from(w.derive.unwrap_or(true))]),
             observer,
         )
         .with_visited(&w.visited);
@@ -103,6 +103,7 @@ pub fn evaluate(
 }
 
 /// One playthrough over one project, driven by a caller-owned walk factory.
+#[derive(Debug)]
 pub struct Session<'p, 'd, F: WalkDriver> {
     project: &'p ExecProject,
     pub world: World,
@@ -159,7 +160,7 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
 
     /// Re-derive `clock.*` after a write the walk did not make.
     pub fn refresh_clock(&mut self) {
-        refresh_clock(self.project, &mut self.world)
+        refresh_clock(self.project, &mut self.world);
     }
 
     /// Every candidate of `occasion` / `target` with its verdict, in
@@ -185,7 +186,9 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
             .world
             .evaluator_with_schema(
                 &self.project.eval_json,
-                self.project.store_schemas[self.world.derive.unwrap_or(true) as usize].clone(),
+                std::sync::Arc::clone(
+                    &self.project.store_schemas[usize::from(self.world.derive.unwrap_or(true))],
+                ),
                 self.driver.observer(),
             )
             .with_visited(&self.world.visited);
@@ -278,7 +281,6 @@ impl<'p, 'd, F: WalkDriver> Session<'p, 'd, F> {
     }
 
     /// dsl 0.24.0 §1: one `advance:` of the declared clock ([`run_advance`]).
-    #[allow(clippy::too_many_arguments)]
     pub fn advance(
         &mut self,
         n: usize,

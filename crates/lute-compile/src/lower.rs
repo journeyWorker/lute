@@ -10,7 +10,11 @@ use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::{Literal, PathSegment, Type};
 use lute_syntax::ast::{Assert, Attr, AttrValue, Directive, InlineNode, Line, Retract, Set};
 
-use crate::ir::*;
+use crate::ir::{
+    placeholder_from_interp, AcceptCmd, ActorCmd, AssertCmd, BgCmd, CameraCmd, CelPairExt, CgCmd,
+    Command, Effect, EffectSource, EndCmd, FactRecord, JumpCmd, LineCmd, MusicCmd, PluginCmd,
+    RetractCmd, Role, Segment, SequenceCmd, SetCmd, SfxCmd, Stamp, Timing, VfxCmd, VideoCmd,
+};
 use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
 use lute_ir::CelPair;
 
@@ -99,7 +103,7 @@ pub(crate) fn inline_segments(nodes: &[InlineNode]) -> Vec<Segment> {
                 InlineNode::Text { text, .. } if text.is_empty() => {}
                 InlineNode::Text { text, .. } => run(out, styles, rate).push_literal(text),
                 InlineNode::Interpolation(i) => {
-                    run(out, styles, rate).push_marker(&format!("{{{{{}}}}}", i.source))
+                    run(out, styles, rate).push_marker(&format!("{{{{{}}}}}", i.source));
                 }
                 InlineNode::Modifier(m) => {
                     let attr = |k: &str| {
@@ -789,16 +793,14 @@ fn attr_json_typed(attr: &Attr, ty: Option<&Type>) -> serde_json::Value {
         AttrValue::BoolTrue => serde_json::Value::Bool(true),
         AttrValue::Ref(slot) => serde_json::Value::String(slot.raw.clone()),
         AttrValue::Str(s) => match ty {
-            Some(Type::Int) => s
-                .parse::<i64>()
-                .ok()
-                .map(serde_json::Value::from)
-                .unwrap_or_else(|| serde_json::Value::String(s.clone())),
-            Some(Type::Double) => s
-                .parse::<f64>()
-                .ok()
-                .map(serde_json::Value::from)
-                .unwrap_or_else(|| serde_json::Value::String(s.clone())),
+            Some(Type::Int) => s.parse::<i64>().ok().map_or_else(
+                || serde_json::Value::String(s.clone()),
+                serde_json::Value::from,
+            ),
+            Some(Type::Double) => s.parse::<f64>().ok().map_or_else(
+                || serde_json::Value::String(s.clone()),
+                serde_json::Value::from,
+            ),
             Some(Type::Bool) => match s.as_str() {
                 "true" => serde_json::Value::Bool(true),
                 "false" => serde_json::Value::Bool(false),
@@ -835,7 +837,7 @@ pub fn effect_path(w: &WriteDecl, dir: &Directive) -> String {
         match seg {
             PathSegment::Literal(s) => segments.push(s.clone()),
             PathSegment::FromAttr { from_attr } => {
-                segments.push(attr_string(&dir.attrs, &from_attr.name).unwrap_or_default())
+                segments.push(attr_string(&dir.attrs, &from_attr.name).unwrap_or_default());
             }
         }
     }
@@ -845,6 +847,10 @@ pub fn effect_path(w: &WriteDecl, dir: &Directive) -> String {
 /// Resolve one manifest `WriteDecl` into an artifact-local [`Effect`] (IR A12)
 /// at [`effect_path`]. Numeric effect values use the declared destination field
 /// type, rather than the YAML number's incidental integral/fractional spelling.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a whole number from a plugin manifest: past the i64 range `as` saturates, as before"
+)]
 pub fn resolve_effect(
     w: &WriteDecl,
     dir: &Directive,
@@ -909,7 +915,7 @@ fn effect_target_type<'a>(
 ) -> Option<&'a Type> {
     let path = effect_path(w, dir);
     let mut best: Option<(String, &str)> = None;
-    for slot in decl.state.as_ref()?.declares.iter() {
+    for slot in &decl.state.as_ref()?.declares {
         let mut base = slot.scope.clone();
         for seg in &slot.path {
             match seg {
@@ -951,7 +957,6 @@ fn effect_target_type<'a>(
 #[cfg(test)]
 mod tests {
     use lute_core_span::Severity;
-    use lute_manifest::snapshot::CapabilitySnapshot;
     use lute_syntax::ast::Node;
 
     use super::*;

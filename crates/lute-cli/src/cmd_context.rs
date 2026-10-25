@@ -435,15 +435,16 @@ fn emit_context(value: serde_json::Value, json: bool) -> ExitCode {
             }
         }
     } else {
-        format!("{}\n", value)
+        format!("{value}\n")
     };
-    write_stdout(&text)
-        .map(|_| ExitCode::SUCCESS)
-        .unwrap_or_else(|_| {
+    write_stdout(&text).map_or_else(
+        |_| {
             envelope::fail_quietly(CliError::io_without_path(
                 "lute context: cannot write stdout",
             ))
-        })
+        },
+        |_| ExitCode::SUCCESS,
+    )
 }
 
 fn symbol_json(symbol: &lute_resolve::Symbol) -> serde_json::Value {
@@ -457,11 +458,19 @@ fn symbol_json(symbol: &lute_resolve::Symbol) -> serde_json::Value {
 
 fn parse_position(raw: &str) -> Result<(PathBuf, usize, usize), String> {
     let mut fields = raw.rsplitn(3, ':');
+    #[expect(
+        clippy::map_err_ignore,
+        reason = "the usage message says what is wrong; the `ParseIntError` text adds nothing"
+    )]
     let column = fields
         .next()
         .ok_or("missing column")?
         .parse()
         .map_err(|_| "column must be a positive integer")?;
+    #[expect(
+        clippy::map_err_ignore,
+        reason = "the usage message says what is wrong; the `ParseIntError` text adds nothing"
+    )]
     let line = fields
         .next()
         .ok_or("missing line")?
@@ -497,7 +506,9 @@ fn line_column_offset(source: &str, line: usize, column: usize) -> Option<usize>
         if units >= wanted {
             return Some(start + offset);
         }
-        let next = units.checked_add(character.len_utf16() as u32)?;
+        let next = units.checked_add(
+            u32::try_from(character.len_utf16()).expect("a char is 1 or 2 UTF-16 units"),
+        )?;
         if next > wanted {
             return Some(start + offset + character.len_utf8());
         }
@@ -533,7 +544,7 @@ fn sort_and_truncate(
     kind: &str,
     not_included: &mut Vec<serde_json::Value>,
 ) {
-    items.sort_by_key(|item| item.to_string());
+    items.sort_by_key(std::string::ToString::to_string);
     let available = items.len();
     if available > limit {
         let omitted = available - limit;
@@ -681,10 +692,10 @@ fn vocabulary(
             }
         }
     }
-    relations.sort_by_key(|value| value.to_string());
-    state.sort_by_key(|value| value.to_string());
-    defs.sort_by_key(|value| value.to_string());
-    enums.sort_by_key(|value| value.to_string());
+    relations.sort_by_key(std::string::ToString::to_string);
+    state.sort_by_key(std::string::ToString::to_string);
+    defs.sort_by_key(std::string::ToString::to_string);
+    enums.sort_by_key(std::string::ToString::to_string);
     sort_and_truncate(&mut relations, limit, "vocabulary.relations", not_included);
     sort_and_truncate(&mut state, limit, "vocabulary.state", not_included);
     sort_and_truncate(&mut defs, limit, "vocabulary.defs", not_included);
@@ -1166,6 +1177,10 @@ fn namespace_str(ns: Namespace) -> &'static str {
 /// Manifest `Literal` → JSON, mirroring `lute_compile`'s `literal_json`: an
 /// integral float collapses to a JSON integer (`0`, not `0.0`) for a stable
 /// authoring surface consistent with the compiled envelope.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a whole finite double below 9e15 in magnitude (checked by the guard), so the cast is exact"
+)]
 fn literal_json(l: &Literal) -> serde_json::Value {
     match l {
         Literal::Bool(b) => serde_json::Value::Bool(*b),
@@ -1193,6 +1208,10 @@ fn from_attr_name(v: &serde_json::Value) -> &str {
 /// A directive's declared write, read aloud: `= true`, `= <attr>` (the
 /// value the call passes), `= bridge result `passed``, `+= 1`, `-= <attr>`.
 fn write_value_outline(v: &serde_json::Value) -> (&'static str, String) {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a whole double below 1e15 in magnitude (checked by the guard), so the cast is exact"
+    )]
     let number = |n: &serde_json::Value| match n.as_f64() {
         Some(f) if f.fract() == 0.0 && f.abs() < 1e15 => format!("{}", f as i64),
         _ => n.to_string(),

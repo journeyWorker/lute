@@ -414,15 +414,13 @@ fn validate_options(
         let Some(dv) = defaults.get(k) else {
             let key = k
                 .as_str()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| format!("{k:?}"));
+                .map_or_else(|| format!("{k:?}"), std::string::ToString::to_string);
             return Err(format!("rule `{id}`: unknown option key `{key}`"));
         };
         if !type_compatible(dv, ov) {
             let key = k
                 .as_str()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| format!("{k:?}"));
+                .map_or_else(|| format!("{k:?}"), std::string::ToString::to_string);
             return Err(format!("rule `{id}`: option `{key}` has wrong type"));
         }
     }
@@ -430,7 +428,7 @@ fn validate_options(
 }
 
 fn type_compatible(a: &yaml_serde::Value, b: &yaml_serde::Value) -> bool {
-    use yaml_serde::Value::*;
+    use yaml_serde::Value::{Bool, Mapping, Null, Number, Sequence, String};
     match (a, b) {
         (Bool(_), Bool(_)) => true,
         (Number(_), Number(_)) => true,
@@ -463,6 +461,7 @@ fn config_diag(message: String, span: Span) -> Diagnostic {
 
 /// Everything a single-document rule pass needs. Kept as one struct so a
 /// plugin/custom `when` and every core rule read the SAME bindings.
+#[derive(Debug)]
 pub struct DocContext<'a> {
     pub tables: &'a DocTables,
     pub attrs: &'a [AttrRow],
@@ -480,9 +479,8 @@ pub fn evaluate_rule(
     project: &ProjectRow,
     rule_decl_span: Span,
 ) -> Vec<Finding> {
-    let severity = match level_severity(rule.level) {
-        Some(s) => s,
-        None => return Vec::new(), // level: off
+    let Some(severity) = level_severity(rule.level) else {
+        return Vec::new(); // level: off
     };
     match &rule.kind {
         RuleKind::Data { when, message } => {
@@ -520,7 +518,10 @@ fn evaluate_data(
             )];
         }
     };
-    let ided = arena.get(handle).unwrap().clone();
+    let ided = arena
+        .get(handle)
+        .expect("parse_slot returned this handle for this arena")
+        .clone();
 
     // Iterate the rows that match the target.
     let mut out = Vec::new();
@@ -575,7 +576,7 @@ fn evaluate_data(
                     .with("options", options.clone());
                 if let Some(f) = evaluate_env(env, s.span, Vec::new()) {
                     out.push(f);
-                    if out.last().map(|f| f.code == E_LINT_EXPR).unwrap_or(false) {
+                    if out.last().is_some_and(|f| f.code == E_LINT_EXPR) {
                         break;
                     }
                 }
@@ -599,7 +600,7 @@ fn evaluate_data(
                     .with("options", options.clone());
                 if let Some(f) = evaluate_env(env, sp.first_line_span, Vec::new()) {
                     out.push(f);
-                    if out.last().map(|f| f.code == E_LINT_EXPR).unwrap_or(false) {
+                    if out.last().is_some_and(|f| f.code == E_LINT_EXPR) {
                         break;
                     }
                 }
@@ -613,7 +614,7 @@ fn evaluate_data(
                         .with("options", options.clone());
                     if let Some(f) = evaluate_env(env, g.first_line_span, Vec::new()) {
                         out.push(f);
-                        if out.last().map(|f| f.code == E_LINT_EXPR).unwrap_or(false) {
+                        if out.last().is_some_and(|f| f.code == E_LINT_EXPR) {
                             return out;
                         }
                     }
@@ -625,12 +626,7 @@ fn evaluate_data(
             let env = Env::new()
                 .with("project", project_value(project))
                 .with("options", options.clone());
-            let anchor = ctx
-                .tables
-                .scene
-                .as_ref()
-                .map(|s| s.span)
-                .unwrap_or(rule_decl_span);
+            let anchor = ctx.tables.scene.as_ref().map_or(rule_decl_span, |s| s.span);
             if let Some(f) = evaluate_env(env, anchor, Vec::new()) {
                 out.push(f);
             }
@@ -656,13 +652,20 @@ fn expr_error(rule_id: &str, msg: String, span: Span) -> Finding {
 // ---------------------------------------------------------------------------
 
 fn opt_num(m: &yaml_serde::Mapping, key: &str) -> Option<f64> {
-    m.get(yaml_serde::Value::from(key)).and_then(|v| v.as_f64())
+    m.get(yaml_serde::Value::from(key))
+        .and_then(yaml_serde::Value::as_f64)
 }
 
 fn opt_str<'a>(m: &'a yaml_serde::Mapping, key: &str) -> Option<&'a str> {
     m.get(yaml_serde::Value::from(key)).and_then(|v| v.as_str())
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a numeric rule option: a fraction truncates and a negative or oversize value \
+              saturates (`as`), as before"
+)]
 fn eval_emotion_distribution(
     rule: &ResolvedRule,
     severity: Severity,
@@ -721,6 +724,10 @@ fn eval_emotion_distribution(
     out
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a percentage for the message: past the i64 range `as` saturates, as before"
+)]
 fn report_axis(
     reasons: &mut Vec<String>,
     axis_name: &str,
@@ -749,6 +756,12 @@ fn report_axis(
     let _ = ax.top.value; // reserved for a future dominance-detail message
 }
 
+#[expect(
+    clippy::cast_possible_truncation,
+    clippy::cast_sign_loss,
+    reason = "a numeric rule option or a percentage for the message: a fraction truncates and a \
+              negative or oversize value saturates (`as`), as before"
+)]
 fn eval_variant_composition(
     rule: &ResolvedRule,
     severity: Severity,
@@ -919,11 +932,11 @@ fn eval_asset_exists(
     let sentinels: BTreeSet<String> = match opts.get(yaml_serde::Value::from("sentinels")) {
         Some(yaml_serde::Value::Sequence(seq)) => seq
             .iter()
-            .filter_map(|v| v.as_str().map(|s| s.to_ascii_lowercase()))
+            .filter_map(|v| v.as_str().map(str::to_ascii_lowercase))
             .collect(),
         _ => ["clear", "empty", "false", "none", "null", "stop"]
             .iter()
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect(),
     };
     let code = diagnostic_code(&rule.id);
@@ -970,7 +983,7 @@ fn num(n: f64) -> Value {
 }
 
 fn int(n: u32) -> Value {
-    Value::Int(n as i64)
+    Value::Int(i64::from(n))
 }
 
 fn line_value(l: &LineRow) -> Value {
@@ -1094,7 +1107,7 @@ fn yaml_to_value(v: &yaml_serde::Value) -> Value {
             if let Some(i) = n.as_i64() {
                 Value::Int(i)
             } else {
-                n.as_f64().map(Value::Double).unwrap_or(Value::Null)
+                n.as_f64().map_or(Value::Null, Value::Double)
             }
         }
         yaml_serde::Value::String(s) => Value::Str(s.clone()),

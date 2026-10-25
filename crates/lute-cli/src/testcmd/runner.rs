@@ -1,4 +1,13 @@
-use super::*;
+use super::{
+    accumulate_coverage, arm_row_key, canonical_key, captured, closed_key_violations,
+    coverage_units, display_path, find_files_with_suffix, fold_parent_dirs, nearest_manifest_dir,
+    parse_mock_surfaces, render_human, render_json, replay, stderr_line, trace_beat_with_check,
+    trace_entries_with_check, trace_with_check, ArmRow, BTreeMap, BTreeSet, CoverageAccum,
+    CoverageUnit, ExitCode, ExpectMiss, ExpectResult, IntoParallelRefIterator, ModelDocument,
+    ModelError, ModelOptions, NodeKey, NodeKind, ParallelIterator, Path, PathBuf, ProjectModel,
+    StderrLine, TestResult, TraceExit, TraceReport, UnresolvedEntry, QUEST_STATES,
+    TEST_EXPECT_KEYS,
+};
 use lute_load::build_input;
 /// `lute test`'s flags (0.48.0 §3.14), resolved by the dispatcher.
 pub struct TestOptions<'a> {
@@ -215,7 +224,7 @@ pub fn run_test(options: &TestOptions) -> ExitCode {
     // component case already has its own honest surface, and it is not this
     // one: `W-COMPONENT-UNVERIFIED` (dsl 0.10.0 §9 rule 4, D-W) says the
     // component's contract was not verified, and says who decides.
-    let coverage_root: PathBuf = dir.to_path_buf();
+    let coverage_root = dir.to_path_buf();
     let units: Vec<CoverageUnit> = if coverage {
         match coverage_units(&coverage_root) {
             Ok(units) => units,
@@ -657,18 +666,15 @@ fn run_one_test(
             ));
         }
     };
-    let map = match top.as_mapping() {
-        Some(m) => m,
-        None => {
-            let message = format!(
-                "lute: {}: a test file must be a YAML mapping with a `file:` key",
-                test_file.display()
-            );
-            eprintln!("{message}");
-            return Err(crate::envelope::fail_quietly(
-                crate::envelope::CliError::input(test_file, message),
-            ));
-        }
+    let Some(map) = top.as_mapping() else {
+        let message = format!(
+            "lute: {}: a test file must be a YAML mapping with a `file:` key",
+            test_file.display()
+        );
+        eprintln!("{message}");
+        return Err(crate::envelope::fail_quietly(
+            crate::envelope::CliError::input(test_file, message),
+        ));
     };
 
     // #2(a) / D-B: the key set is closed at BOTH levels. A violation is a
@@ -737,10 +743,13 @@ fn run_one_test(
     let entries: Vec<String> = match (map.get("entry"), map.get("entries")) {
         (None, None) => Vec::new(),
         (Some(yaml_serde::Value::String(id)), None) => vec![id.clone()],
-        (None, Some(yaml_serde::Value::Sequence(ids))) if ids.iter().all(|i| i.is_string()) => ids
-            .iter()
-            .filter_map(|i| i.as_str().map(str::to_string))
-            .collect(),
+        (None, Some(yaml_serde::Value::Sequence(ids)))
+            if ids.iter().all(yaml_serde::Value::is_string) =>
+        {
+            ids.iter()
+                .filter_map(|i| i.as_str().map(str::to_string))
+                .collect()
+        }
         (Some(_), Some(_)) => {
             let message = format!(
                 "lute: {}: name the entries to present with ONE of `entry: <id>` or \
@@ -1956,13 +1965,13 @@ fn run_one_play(
 
 /// The `subject` of the `exit` expectation every test carries implicitly
 /// when it declares none: an incomplete trace fails (T1-13).
-pub(super) const IMPLICIT_EXIT: &str = "implicit";
+pub(crate) const IMPLICIT_EXIT: &str = "implicit";
 
 /// One unresolved atom's mock hint (`lute-trace` renders it as a `lute
 /// trace` flag, `--state p=<value>` / `--fact "f"`) in the spelling a
 /// `*.test.yaml` can actually use — the T9.11 rule `yaml_key_spelling`
 /// applies to refusals, applied to the hint an author acts on next.
-pub(super) fn yaml_atom_hint(atom: &str) -> String {
+pub(crate) fn yaml_atom_hint(atom: &str) -> String {
     if let Some((path, value)) = atom
         .strip_prefix("--state ")
         .and_then(|rest| rest.split_once('='))
@@ -1983,7 +1992,7 @@ pub(super) fn yaml_atom_hint(atom: &str) -> String {
 }
 
 /// The hint list for one unresolved entry, `, `-joined.
-pub(super) fn yaml_atom_hints(u: &UnresolvedEntry) -> String {
+pub(crate) fn yaml_atom_hints(u: &UnresolvedEntry) -> String {
     u.atoms
         .iter()
         .map(|a| yaml_atom_hint(a))
@@ -1994,7 +2003,7 @@ pub(super) fn yaml_atom_hints(u: &UnresolvedEntry) -> String {
 /// The `expected` text of the `eligible` expectation a test carries
 /// implicitly for a presented entry / beat / scene whose `when` is false
 /// (dsl 0.26.0 §7, T1-7).
-pub(super) const IMPLICIT_ELIGIBLE: &str = "an eligible presentation, or an `eligible:` assertion";
+pub(crate) const IMPLICIT_ELIGIBLE: &str = "an eligible presentation, or an `eligible:` assertion";
 
 /// Prerelease N3, round-5 T3-12: the premise that makes presented `id`
 /// ineligible, named for the miss line — an entry an earlier read spent

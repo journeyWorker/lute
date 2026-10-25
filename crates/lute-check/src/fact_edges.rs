@@ -310,7 +310,9 @@ impl Ask<'_> {
                     .terms
                     .iter()
                     .map(|t| match t {
-                        RuleTerm::Var(v) => bound.get(v.as_str()).map(|s| s.to_string()),
+                        RuleTerm::Var(v) => {
+                            bound.get(v.as_str()).map(std::string::ToString::to_string)
+                        }
                         RuleTerm::Const(c) => Some(c.clone()),
                         RuleTerm::Bool(b) => Some(b.to_string()),
                     })
@@ -324,8 +326,6 @@ impl Ask<'_> {
 mod tests {
     use super::*;
     use crate::directive_facts::EffectDirectives;
-    use crate::rel_schema::RelVocab;
-    use std::path::PathBuf;
 
     #[test]
     fn list_form_gate_extracts_required_fact_atom_and_producer() {

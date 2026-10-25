@@ -306,8 +306,8 @@ fn range_at(text: &str, byte_start: usize, byte_end: usize) -> ((u64, u64), (u64
     let s = byte_to_position(byte_start, &idx);
     let e = byte_to_position(byte_end, &idx);
     (
-        (s.line as u64, s.character as u64),
-        (e.line as u64, e.character as u64),
+        (u64::from(s.line), u64::from(s.character)),
+        (u64::from(e.line), u64::from(e.character)),
     )
 }
 
@@ -381,7 +381,7 @@ async fn analyze_declaration_cel_parse_error_has_no_antlr_vocabulary() {
         expect_range(text, "\"run.act = 1\""),
         "E-CEL-PARSE range must equal the whole `cel:` value scalar span"
     );
-    std::fs::remove_dir_all(&root).ok();
+    let _ = std::fs::remove_dir_all(&root); // best-effort cleanup
 }
 
 /// Block-style `cel:` (`x:\n  type: ...\n  cel: "..."`, no inline flow
@@ -399,7 +399,7 @@ async fn analyze_declaration_cel_parse_error_anchors_block_style_cel_value() {
         expect_range(text, "\"run.act = 1\""),
         "block-style `cel:` must anchor on its own scalar value span"
     );
-    std::fs::remove_dir_all(&root).ok();
+    let _ = std::fs::remove_dir_all(&root); // best-effort cleanup
 }
 
 /// Two defs sharing byte-identical `cel:` text: the locator is scoped to
@@ -435,7 +435,7 @@ async fn analyze_declaration_cel_parse_error_picks_right_duplicate_occurrence() 
         range_at(text, first_occ, first_occ + needle.len()),
         "`b` (defined first in source) must anchor on its own occurrence"
     );
-    std::fs::remove_dir_all(&root).ok();
+    let _ = std::fs::remove_dir_all(&root); // best-effort cleanup
 }
 
 /// A double-quoted `cel:` scalar containing an escaped inner quote
@@ -551,8 +551,7 @@ async fn analyze_declaration_cel_parse_error_escaped_scalar_whole_span_no_fixit(
             || actions
                 .as_ref()
                 .and_then(|a| a.as_array())
-                .map(|a| a.is_empty())
-                .unwrap_or(false),
+                .is_some_and(std::vec::Vec::is_empty),
         "an E-CEL-PARSE diagnostic must carry no fixit-derived code action: {actions:?}"
     );
 }
@@ -572,17 +571,16 @@ async fn analyze_declaration_cel_parse_error_anchors_literal_block_scalar_conten
     let content_idx = text
         .find("run.act = 1")
         .expect("fixture contains the block content");
-    let line_start = text[..content_idx].rfind('\n').map(|p| p + 1).unwrap_or(0);
+    let line_start = text[..content_idx].rfind('\n').map_or(0, |p| p + 1);
     let line_end = text[content_idx..]
         .find('\n')
-        .map(|p| content_idx + p)
-        .unwrap_or(text.len());
+        .map_or(text.len(), |p| content_idx + p);
     assert_eq!(
         actual_range(hit),
         range_at(text, line_start, line_end),
         "a `|` block scalar must anchor on its own content-lines span"
     );
-    std::fs::remove_dir_all(&root).ok();
+    let _ = std::fs::remove_dir_all(&root); // best-effort cleanup
 }
 
 /// Same as the literal (`|`) case, for the FOLDED (`>`) indicator —
@@ -598,17 +596,16 @@ async fn analyze_declaration_cel_parse_error_anchors_folded_block_scalar_content
     let content_idx = text
         .find("run.act = 1")
         .expect("fixture contains the block content");
-    let line_start = text[..content_idx].rfind('\n').map(|p| p + 1).unwrap_or(0);
+    let line_start = text[..content_idx].rfind('\n').map_or(0, |p| p + 1);
     let line_end = text[content_idx..]
         .find('\n')
-        .map(|p| content_idx + p)
-        .unwrap_or(text.len());
+        .map_or(text.len(), |p| content_idx + p);
     assert_eq!(
         actual_range(hit),
         range_at(text, line_start, line_end),
         "a `>` folded block scalar must anchor on its own content-lines span"
     );
-    std::fs::remove_dir_all(&root).ok();
+    let _ = std::fs::remove_dir_all(&root); // best-effort cleanup
 }
 
 /// Rock-solid fallback for a GENUINELY unresolvable entry: an anchor
@@ -632,7 +629,7 @@ async fn analyze_declaration_cel_parse_error_falls_back_to_key_span_for_unresolv
         range_at(text, key_span.byte_start, key_span.byte_end),
         "an anchor-tagged entry value must fall back to the `defs:` key span"
     );
-    std::fs::remove_dir_all(&root).ok();
+    let _ = std::fs::remove_dir_all(&root); // best-effort cleanup
 }
 
 /// A declaration `.yaml` in a project whose `defaults.uses` schema imports
@@ -691,7 +688,7 @@ async fn analyze_declaration_reports_a_failed_default_import_at_the_document() {
         .unwrap_or_else(|| panic!("expected E-USES-NOT-FOUND, got {diags:?}"));
     let line = missing
         .pointer("/range/start/line")
-        .and_then(|l| l.as_u64())
+        .and_then(serde_json::Value::as_u64)
         .expect("a range");
     assert!(line <= 1, "reported inside the document: {missing:?}");
 }

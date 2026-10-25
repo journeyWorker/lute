@@ -28,6 +28,7 @@ use crate::rules::{active_group_bys, evaluate_rule, resolve_rules, DocContext};
 /// `lute-check` policy) after the manifest's `chapters:` derivation
 /// ([`lute_check::chapters::apply_chapters`]), so a scene a chain lists is
 /// classified by the `on:` the chain gives it ([`crate::metrics::doc_kind`]).
+#[derive(Debug)]
 pub struct LintDocInput {
     pub path: PathBuf,
     pub doc: Document,
@@ -141,7 +142,7 @@ pub fn lint(
         .iter()
         .zip(scene_mask.iter())
         .filter(|(_, &is_scene)| is_scene)
-        .map(|((_, t, _), _)| t.scene.as_ref().map(|s| s.words).unwrap_or(0))
+        .map(|((_, t, _), _)| t.scene.as_ref().map_or(0, |s| s.words))
         .collect();
     let project = compute_project_row(&scene_words);
 

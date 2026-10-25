@@ -1,4 +1,9 @@
-use super::*;
+use super::{
+    attrs, interp_from_inner, is_ident_byte, leading_ws, CelKind, Fixit, InlineAttr,
+    InlineModifier, InlineNode, Interp, Layer, Line, Node, Parser, TextEdit,
+    E_CONTENT_LINE_BRACKET, E_INTERP_UNTERMINATED, E_LEGACY_CONTENT_SIGIL, E_TEXT_ESCAPE,
+    E_TEXT_MODIFIER, E_UNCLASSIFIED,
+};
 
 impl Parser<'_> {
     /// `Line ::= "@" Speaker Attrs? ":" WS Text` (dsl §7.1, 0.2.2 — the sigil
@@ -7,7 +12,7 @@ impl Parser<'_> {
     /// `@param` (`@@who:`) is kept with its `@` (`speaker == "@who"`); the
     /// checker holds it to a component's `speaker` params and each `::use`
     /// binds it to the member its argument names.
-    pub(super) fn parse_line(&mut self) -> Option<Node> {
+    pub(crate) fn parse_line(&mut self) -> Option<Node> {
         let i = self.cursor;
         let (s, e) = self.lines[i];
         let cstart = s + leading_ws(&self.body[s..e]);
@@ -127,7 +132,7 @@ impl Parser<'_> {
         nodes
     }
 
-    pub(super) fn parse_inline_nodes(
+    pub(crate) fn parse_inline_nodes(
         &mut self,
         text: &str,
         base: usize,
@@ -222,11 +227,8 @@ impl Parser<'_> {
                         let (children, after) =
                             self.parse_inline_nodes(text, base, content_start, Some(b']'), true);
                         let content_span =
-                            if after > content_start && after <= b.len() && b[after - 1] == b']' {
-                                Some(self.span(base + content_start, base + after - 1))
-                            } else {
-                                None
-                            };
+                            (after > content_start && after <= b.len() && b[after - 1] == b']')
+                                .then(|| self.span(base + content_start, base + after - 1));
                         (children, after, content_span)
                     } else {
                         (Vec::new(), k, None)

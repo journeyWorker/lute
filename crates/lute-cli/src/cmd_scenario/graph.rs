@@ -113,7 +113,7 @@ fn print_graph_for_root(
         outln!(out, "  topological layers:");
     }
     for (i, layer) in layers.iter().enumerate() {
-        let names: Vec<String> = layer.iter().map(|n| n.to_string()).collect();
+        let names: Vec<String> = layer.iter().map(std::string::ToString::to_string).collect();
         outln!(out, "    layer {i}: {}", names.join(", "));
     }
     let layered: BTreeSet<lute_check::connectivity::NodeId> =
@@ -123,7 +123,7 @@ fn print_graph_for_root(
         .nodes
         .keys()
         .filter(|id| !layered.contains(id) && !start_cycle.contains(id))
-        .map(|n| n.to_string())
+        .map(std::string::ToString::to_string)
         .collect();
     if !stuck.is_empty() {
         outln!(
@@ -133,7 +133,10 @@ fn print_graph_for_root(
         );
     }
     if !start_cycle.is_empty() {
-        let names: Vec<String> = start_cycle.iter().map(|n| n.to_string()).collect();
+        let names: Vec<String> = start_cycle
+            .iter()
+            .map(std::string::ToString::to_string)
+            .collect();
         outln!(
             out,
             "    (unlayered -- part of a start cycle, E-QUEST-START-CYCLE): {}",

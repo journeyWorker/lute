@@ -459,6 +459,10 @@ pub const E_TYPE_NUMBER: &str = "E-TYPE-NUMBER";
 /// sees the declaration take (its own `default:`, and for a state row the
 /// literal writes of its path); when each one is whole the message suggests
 /// `int`, listing at most three distinct values. No values: no suggestion.
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a whole authored number: past the i64 range `as` saturates, as before"
+)]
 pub fn number_type_message(seen: &[f64]) -> String {
     let whole = !seen.is_empty() && seen.iter().all(|v| v.is_finite() && v.fract() == 0.0);
     if !whole {

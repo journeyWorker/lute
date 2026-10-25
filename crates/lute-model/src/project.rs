@@ -75,6 +75,7 @@ impl fmt::Display for ModelError {
 }
 impl std::error::Error for ModelError {}
 
+#[derive(Debug)]
 pub struct ModelDocument {
     pub path: PathBuf,
     pub input: CheckInput,
@@ -106,6 +107,7 @@ impl ModelDocument {
     }
 }
 
+#[derive(Debug)]
 pub struct ReconciledOutputs {
     pub checks: Vec<(PathBuf, CheckResult)>,
     pub diagnostics: Vec<(PathBuf, Diagnostic)>,
@@ -114,6 +116,7 @@ pub struct ReconciledOutputs {
     pub scenarios: BTreeMap<PathBuf, crate::scenario::RootScenario>,
 }
 
+#[derive(Debug)]
 pub struct ProjectModel {
     root: PathBuf,
     manifest: Option<lute_manifest::project::ProjectConfig>,
@@ -172,13 +175,13 @@ impl ProjectModel {
             .as_ref()
             .as_ref()
             .ok()
-            .and_then(|p| p.clone());
+            .and_then(std::clone::Clone::clone);
         let providers = opts.providers.as_deref();
         let permission_profile = opts.permission_profile.as_deref();
         let mut documents: Vec<ModelDocument> = files
             .into_par_iter()
             .map(|path| {
-                let text = read_document(&path).map_err(ModelError::Input)?;
+                let text = read_document(&path).map_err(|e| ModelError::Input(e.to_string()))?;
                 let (built, parsed) = assemble_input_with_mode(
                     &cache,
                     &path,
@@ -632,7 +635,7 @@ fn yaml_files(dir: &Path) -> Vec<PathBuf> {
         };
         for entry in entries.flatten() {
             let path = entry.path();
-            if entry.file_type().map(|kind| kind.is_dir()).unwrap_or(false) {
+            if entry.file_type().is_ok_and(|kind| kind.is_dir()) {
                 stack.push(path);
             } else if matches!(
                 path.extension().and_then(|ext| ext.to_str()),
@@ -651,7 +654,7 @@ fn ledger_diagnostics(
     errors: Vec<lute_semantic::RenameError>,
 ) -> impl Iterator<Item = (PathBuf, Diagnostic)> + '_ {
     errors.into_iter().map(move |error| {
-        let mut diagnostic = resolution_diagnostic(&format!("{}: {}", error.code, error.message));
+        let mut diagnostic = resolution_diagnostic(&error.to_string());
         if let Some(span) = error.span {
             diagnostic.span = span;
         }

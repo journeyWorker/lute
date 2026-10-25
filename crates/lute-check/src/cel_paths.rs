@@ -485,7 +485,7 @@ pub(crate) fn proved_if(
             };
             match (call.func_name.as_str(), call.args.as_slice()) {
                 (op::LOGICAL_NOT, [a]) => proved_if(&a.expr, !outcome, is_family),
-                (op::LOGICAL_AND, [a, b]) | (op::LOGICAL_OR, [a, b]) => {
+                (op::LOGICAL_AND | op::LOGICAL_OR, [a, b]) => {
                     let (mut l, r) = both(&a.expr, &b.expr, outcome);
                     // `&&` true / `||` false: every operand took `outcome`.
                     if (call.func_name == op::LOGICAL_AND) == outcome {
@@ -587,7 +587,7 @@ pub(crate) fn nearest_declared_path(
     max_dist: usize,
 ) -> Option<String> {
     let keys: Vec<std::borrow::Cow<'_, str>> = schema.keys().collect();
-    lute_manifest::suggest::nearest(path, keys.iter().map(|k| k.as_ref()), max_dist)
+    lute_manifest::suggest::nearest(path, keys.iter().map(std::convert::AsRef::as_ref), max_dist)
         .map(str::to_string)
 }
 

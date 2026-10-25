@@ -140,11 +140,11 @@ fn load_refuses_another_ir_line_and_unknown_kinds() {
     let project =
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/session/hub-once/project");
     let bundle = compiled_bundle(&project, "gate");
-    assert!(Runtime::load(bundle.clone()).is_ok());
+    Runtime::load(bundle.clone()).unwrap();
 
     let mut older = bundle.clone();
     older.index["irVersion"] = Value::String("0.37.0".into());
-    let r = Runtime::load(older).err().expect("an IR 0.37 index loaded");
+    let r = Runtime::load(older).expect_err("an IR 0.37 index loaded");
     assert_eq!(r.code, "E-RUNTIME-IR-VERSION", "{}", r.message);
 
     let mut newer = bundle;
@@ -153,9 +153,7 @@ fn load_refuses_another_ir_line_and_unknown_kinds() {
         .as_array_mut()
         .unwrap()
         .push(serde_json::json!({ "kind": "hologram" }));
-    let r = Runtime::load(newer)
-        .err()
-        .expect("an unknown command kind loaded");
+    let r = Runtime::load(newer).expect_err("an unknown command kind loaded");
     assert_eq!(r.code, "E-RUNTIME-IR-VERSION", "{}", r.message);
     assert!(r.message.contains("hologram"), "{}", r.message);
 }

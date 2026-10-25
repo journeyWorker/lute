@@ -432,9 +432,9 @@ mod tests {
             value.actions["hop"],
             EffectSpec::Hop { duration: Some(_) }
         ));
-        assert!(yaml_serde::from_str::<Bindings>(
+        yaml_serde::from_str::<Bindings>(
             "bindingsVersion: '0.49'\ncanvas: {width: 1, height: 1}\nactions: {hop: {effect: hop, strength: 2}}\n",
-        ).is_err());
+        ).unwrap_err();
     }
 
     #[test]
@@ -497,10 +497,9 @@ mod tests {
         let ended = value.ui.ended.unwrap();
         assert_eq!(ended.by, "run.ending");
         assert_eq!(ended.screens["restore"].background.as_deref(), Some("dawn"));
-        assert!(yaml_serde::from_str::<Bindings>(
+        yaml_serde::from_str::<Bindings>(
             "bindingsVersion: '0.49'\ncanvas: {width: 1, height: 1}\nui:\n  ended:\n    by: run.ending\n    screens: {restore: {title: Again, text: Welcome, nope: x}}\n",
-        )
-        .is_err());
+        ).unwrap_err();
     }
 
     #[test]
@@ -517,9 +516,9 @@ mod tests {
                 music: None,
             })
         );
-        assert!(yaml_serde::from_str::<Bindings>(
+        yaml_serde::from_str::<Bindings>(
             "bindingsVersion: '0.49'\ncanvas: {width: 1, height: 1}\nui:\n  title: {heading: x}\n",
         )
-        .is_err());
+        .unwrap_err();
     }
 }

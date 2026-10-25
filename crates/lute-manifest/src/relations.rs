@@ -382,7 +382,10 @@ pub fn imply_sub_kind_members(kinds: &mut BTreeMap<String, EntityKindDecl>, orde
                 .extend(decl.labels.iter().map(|(m, l)| (m.clone(), l.clone())));
         }
         if !chain.is_empty() {
-            chains.insert(name.clone(), chain.iter().map(|p| p.to_string()).collect());
+            chains.insert(
+                name.clone(),
+                chain.iter().map(std::string::ToString::to_string).collect(),
+            );
         }
     }
     for (parent, extra) in implied {

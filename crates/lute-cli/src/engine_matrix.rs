@@ -56,7 +56,7 @@ impl EngineMatrix {
         })?;
         let matrix: Self = yaml_serde::from_str(&text).map_err(|e| EngineMatrixError::Input {
             path: path.to_owned(),
-            message: format!("E-ENGINE-MATRIX: {}", e),
+            message: format!("E-ENGINE-MATRIX: {e}"),
         })?;
         if matrix.engine.trim().is_empty() || parse_version(&matrix.ir_version).is_none() {
             return Err(EngineMatrixError::Input {

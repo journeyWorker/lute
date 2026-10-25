@@ -766,7 +766,7 @@ fn event_name_items(snapshot: &CapabilitySnapshot) -> Vec<CompletionItem> {
     let mut names: BTreeSet<String> = if snapshot.permissions.allows_quests() {
         lute_manifest::snapshot::BUILTIN_LIFECYCLE_EVENTS
             .iter()
-            .map(|s| s.to_string())
+            .map(std::string::ToString::to_string)
             .collect()
     } else {
         BTreeSet::new()
@@ -1606,9 +1606,8 @@ mod tests {
     /// directive whose `assetId` attr is typed `assetKind("CH")`.
     fn asset_snapshot() -> CapabilitySnapshot {
         use lute_manifest::schema::{
-            AssetKindDecl, AssetResolve, AssetSegment, AttrDecl, DirectiveDecl, Lowering,
+            AssetResolve, AssetSegment, AttrDecl, DirectiveDecl, Lowering,
         };
-        use lute_manifest::types::Type;
         let ch = AssetKindDecl {
             kind: "CH".to_string(),
             sep: ".".to_string(),
@@ -1764,8 +1763,7 @@ mod tests {
     /// state path and an imported `helped` def — exactly the shape `check()` sees
     /// after resolving a scene's `uses:` schema (dsl §9.2).
     fn schema_imports() -> lute_check::SchemaImports {
-        use lute_check::{Namespace, SchemaImports, StateDecl};
-        use lute_manifest::types::Type;
+        use lute_check::{Namespace, StateDecl};
         let mut imports = SchemaImports::default();
         imports.state.decls.insert(
             "run.gold".to_string(),

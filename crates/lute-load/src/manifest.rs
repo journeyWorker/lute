@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use lute_manifest::project::{
-    load_project, project_providers, resolve_document_snapshot, ProjectConfig,
+    load_project, project_providers, resolve_document_snapshot, ProjectConfig, ProjectLoadError,
 };
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -21,8 +21,12 @@ pub struct ManifestContext {
 ///
 /// Keeping this operation in the loading crate prevents adapters from each
 /// owning a subtly different manifest read/provider/snapshot assembly path.
-pub fn manifest_context(root: &Path) -> Result<ManifestContext, String> {
-    let project = load_project(root).map_err(|error| error.to_string())?;
+///
+/// # Errors
+///
+/// [`ProjectLoadError`]: `lute.project.yaml` cannot be read or is invalid.
+pub fn manifest_context(root: &Path) -> Result<ManifestContext, ProjectLoadError> {
+    let project = load_project(root)?;
     let (mut snapshot, _) = resolve_document_snapshot(project.as_ref(), None, &BTreeMap::new());
     snapshot.identity_require_stable = project
         .as_ref()

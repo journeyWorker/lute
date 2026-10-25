@@ -109,7 +109,7 @@ impl<D: Driver> Machine<D> {
     /// through the one write path and is recorded as a `set` with `effectOf:
     /// <tag>`. `false` = the walk stops here (that halt, an answer that does
     /// not fit the call, or a write the exclusivity check refused).
-    pub(super) fn exec_plugin(&mut self, cmd: &Json) -> bool {
+    pub(crate) fn exec_plugin(&mut self, cmd: &Json) -> bool {
         // dsl 0.28.0 §3: a call passing `occasion.target` writes the member
         // the beat runs for — its effect paths, fact arguments and fields
         // name that member.
@@ -262,24 +262,27 @@ impl<D: Driver> Machine<D> {
                 answered
                     .as_ref()
                     .and_then(|a| a.iter().find(|(f, _)| f == field))
-                    .map(|(_, v)| v.clone())
-                    .unwrap_or(Value::Unknown)
+                    .map_or(Value::Unknown, |(_, v)| v.clone())
             } else if let Some(op) = from.get("op").and_then(Json::as_str) {
+                #[expect(
+                    clippy::cast_possible_truncation,
+                    reason = "a whole bridge increment from the plugin: past the i64 range `as` \
+                              saturates, as before"
+                )]
                 let by = match (
                     self.store.types.get(path).map(String::as_str),
                     from.get("by").and_then(Json::as_str),
                     from.get("by").and_then(Json::as_f64),
                 ) {
-                    (Some("int"), Some(raw), _) => {
-                        raw.parse::<i64>().map(Value::Int).unwrap_or_else(|_| {
-                            Value::Error(format!("bridge increment `{raw}` is not an int"))
-                        })
-                    }
+                    (Some("int"), Some(raw), _) => raw.parse::<i64>().map_or_else(
+                        |_| Value::Error(format!("bridge increment `{raw}` is not an int")),
+                        Value::Int,
+                    ),
                     (Some("int"), None, Some(n)) if n.fract() == 0.0 => Value::Int(n as i64),
                     (Some("int"), None, Some(n)) => {
                         Value::Error(format!("bridge increment `{n}` is not an int"))
                     }
-                    (Some("double"), _, Some(n)) | (_, _, Some(n)) => Value::Double(n),
+                    (Some("double") | _, _, Some(n)) => Value::Double(n),
                     _ => Value::Unknown,
                 };
                 let cur = match self.store.read(path) {
@@ -350,6 +353,11 @@ impl<D: Driver> Machine<D> {
     fn host_writes(&mut self, cmd: &Json, tag: &str, host: &crate::session::Writes) -> bool {
         use crate::session::Write;
         for (path, write) in &host.state {
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "a host `add` to an int path: `as` drops the fraction and saturates past \
+                          the i64 range, as before"
+            )]
             let value = match write {
                 Write::Set(v) => v.clone(),
                 Write::Add(d) => match self.store.read(path) {
@@ -427,7 +435,7 @@ impl<D: Driver> Machine<D> {
     /// Only a directive whose one behaviour is its declared effects is
     /// admitted there, and those effects apply on a first read only (as the
     /// entry's own `::set`): each is recorded `skipped`, naming the call.
-    pub(super) fn rec_skipped_plugin(&mut self, cmd: &Json) {
+    pub(crate) fn rec_skipped_plugin(&mut self, cmd: &Json) {
         let tag = cmd.get("tag").and_then(Json::as_str).unwrap_or("");
         for e in cmd
             .get("effects")
@@ -560,7 +568,11 @@ fn ir_read_paths(v: &Json, in_expr: bool, out: &mut BTreeSet<String>) {
                 }
             }
         }
-        Json::Array(items) => items.iter().for_each(|i| ir_read_paths(i, in_expr, out)),
+        Json::Array(items) => {
+            for i in items {
+                ir_read_paths(i, in_expr, out);
+            }
+        }
         _ => {}
     }
 }

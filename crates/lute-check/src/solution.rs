@@ -277,6 +277,10 @@ fn intervals_cover_reals(intervals: impl Iterator<Item = Span>) -> bool {
 /// lowest uncovered number, jump past the furthest span holding it.
 fn spans_cover_ints(spans: &[Span], lo: i64, hi: i64) -> bool {
     // The last whole number a span holds (`i64::MAX` for an open top).
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "clamped to the i64 range first; `as` saturates at the bounds"
+    )]
     let top = |&(_, _, h, h_inc): &Span| -> i64 {
         if h == f64::INFINITY {
             i64::MAX
@@ -307,7 +311,7 @@ fn spans_cover_ints(spans: &[Span], lo: i64, hi: i64) -> bool {
 /// Do the two solution sets fail to intersect? `Except` pairs always share
 /// a value; mixed kinds never do; a `Union` misses when each span does.
 pub(crate) fn disjoint(a: &SolutionSet, b: &SolutionSet) -> bool {
-    use SolutionSet::*;
+    use SolutionSet::{Except, Interval, Union, Values};
     match (a, b) {
         (Union(spans), other) | (other, Union(spans)) => {
             spans.iter().all(|&(lo, lo_inc, hi, hi_inc)| {
@@ -356,7 +360,7 @@ pub(crate) fn disjoint(a: &SolutionSet, b: &SolutionSet) -> bool {
 /// Is every value of `a` a value of `b`? Sound, never complete: a number
 /// span must lie inside ONE span of `b`.
 pub(crate) fn subset(a: &SolutionSet, b: &SolutionSet) -> bool {
-    use SolutionSet::*;
+    use SolutionSet::{Except, Interval, Union, Values};
     let within = |&(lo, lo_inc, hi, hi_inc): &Span, &(l2, li2, h2, hi2): &Span| {
         (lo > l2 || (lo == l2 && (li2 || !lo_inc))) && (hi < h2 || (hi == h2 && (hi2 || !hi_inc)))
     };
@@ -404,16 +408,16 @@ pub(crate) fn solution_set(declared: &Type, opname: &str, lit: &Val) -> Option<S
                 return None; // a foreign member is its own diagnostic's problem
             }
             let all: Vec<DomainValue> = members.iter().cloned().map(DomainValue::Str).collect();
-            finite_set(&all, &DomainValue::Str(s.to_string()), opname)
+            finite_set(&all, &DomainValue::Str(s.clone()), opname)
         }
         // §5.2: equality/inequality only for `string`.
         Type::Str => {
             let Val::String(s) = lit else { return None };
             match opname {
                 op::EQUALS => Some(SolutionSet::Values(
-                    std::iter::once(DomainValue::Str(s.to_string())).collect(),
+                    std::iter::once(DomainValue::Str(s.clone())).collect(),
                 )),
-                op::NOT_EQUALS => Some(SolutionSet::Except(Decided::Str(s.to_string()))),
+                op::NOT_EQUALS => Some(SolutionSet::Except(Decided::Str(s.clone()))),
                 _ => None,
             }
         }

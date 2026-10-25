@@ -347,8 +347,8 @@ fn a_plugin_declared_pose_lowers_to_the_stamp_and_never_to_sprite_state() {
 struct NoDuplicateKeys;
 
 impl<'de> serde::Deserialize<'de> for NoDuplicateKeys {
-    fn deserialize<D: serde::Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        d.deserialize_any(NoDuplicateKeysVisitor)
+    fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        deserializer.deserialize_any(NoDuplicateKeysVisitor)
     }
 }
 
@@ -356,8 +356,8 @@ struct NoDuplicateKeysVisitor;
 
 impl<'de> serde::de::Visitor<'de> for NoDuplicateKeysVisitor {
     type Value = NoDuplicateKeys;
-    fn expecting(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("any JSON value")
+    fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("any JSON value")
     }
     fn visit_bool<E>(self, _: bool) -> Result<Self::Value, E> {
         Ok(NoDuplicateKeys)

@@ -1,8 +1,12 @@
-use super::*;
+use super::{
+    display_path, yaml_atom_hint, yaml_atom_hints, CoverageAccum, CoverageUnit, ExpectMiss,
+    ExpectResult, Path, TestResult, UnresolvedEntry, IMPLICIT_ELIGIBLE, IMPLICIT_EXIT,
+    NEVER_WRITTEN, QUEST_STATES, TEST_EXPECT_KEYS,
+};
 
 /// Human report: one block per test with per-expectation pass/fail lines on a
 /// miss, then a `N passed, M failed` summary and (optional) coverage.
-pub(super) fn render_human(
+pub(crate) fn render_human(
     dir: &Path,
     results: &[TestResult],
     cov: Option<(&CoverageAccum, &Path)>,
@@ -77,7 +81,7 @@ pub(super) fn render_human(
                      — fix the halt first",
                     ms.len(),
                     ms.iter().map(|m| m.key.as_str()).collect::<Vec<_>>().join(", ")
-                )
+                );
                 }
             }
         }
@@ -270,7 +274,7 @@ fn render_miss(out: &mut String, e: &ExpectResult) {
                 .unwrap_or_default()
         ),
         ("accepts", Some(actual)) => {
-            outln!(out, "      accepts: expected {}, got {actual}", e.expected)
+            outln!(out, "      accepts: expected {}, got {actual}", e.expected);
         }
         _ => {}
     }
@@ -526,7 +530,7 @@ fn unresolved_json(u: &UnresolvedEntry) -> serde_json::Value {
 
 /// Machine report: per-test verdicts + expectations, the summary, and
 /// (optional) coverage — stable-keyed JSON.
-pub(super) fn render_json(
+pub(crate) fn render_json(
     results: &[TestResult],
     cov: Option<(&CoverageAccum, &Path)>,
     units: &[CoverageUnit],

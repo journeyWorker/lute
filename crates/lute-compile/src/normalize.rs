@@ -136,16 +136,21 @@ fn visit_lines(nodes: &mut [Node], f: &mut dyn FnMut(&mut Line)) {
     for node in nodes {
         match node {
             Node::Line(l) => f(l),
-            Node::Branch(b) => b
-                .choices
-                .iter_mut()
-                .for_each(|c| visit_lines(&mut c.body, f)),
-            Node::Hub(h) => h.bodies_mut().for_each(|b| visit_lines(b, f)),
+            Node::Branch(b) => {
+                for c in &mut b.choices {
+                    visit_lines(&mut c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies_mut() {
+                    visit_lines(b, f);
+                }
+            }
             Node::Match(m) => {
                 for arm in &mut m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            visit_lines(body, f)
+                            visit_lines(body, f);
                         }
                     }
                 }
@@ -283,23 +288,28 @@ fn expand_target_uses(nodes: &mut Vec<Node>, targets: &OccasionScopes) {
         };
         let Some(members) = members else {
             match &mut nodes[i] {
-                Node::Branch(b) => b
-                    .choices
-                    .iter_mut()
-                    .for_each(|c| expand_target_uses(&mut c.body, targets)),
+                Node::Branch(b) => {
+                    for c in &mut b.choices {
+                        expand_target_uses(&mut c.body, targets);
+                    }
+                }
                 Node::Hub(h) => {
-                    h.choices
-                        .iter_mut()
-                        .for_each(|c| expand_target_uses(&mut c.body, targets));
+                    for c in &mut h.choices {
+                        expand_target_uses(&mut c.body, targets);
+                    }
                     if let Some(r) = &mut h.on_return {
                         expand_target_uses(&mut r.body, targets);
                     }
                 }
-                Node::Match(m) => m.arms.iter_mut().for_each(|arm| match arm {
-                    Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                        expand_target_uses(body, targets)
+                Node::Match(m) => {
+                    for arm in &mut m.arms {
+                        match arm {
+                            Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
+                                expand_target_uses(body, targets);
+                            }
+                        }
                     }
-                }),
+                }
                 Node::On(on) => expand_target_uses(&mut on.body, targets),
                 Node::Objective(o) => expand_target_uses(&mut o.body, targets),
                 _ => {}
@@ -612,7 +622,7 @@ fn normalize_nodes(
                 for arm in &mut m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            normalize_nodes(body, components, schema, uses, diags)
+                            normalize_nodes(body, components, schema, uses, diags);
                         }
                     }
                 }
@@ -1037,7 +1047,7 @@ fn bind_params(nodes: &mut [Node], args: &BTreeMap<String, AttrValue>, params: &
                 if let Some(w) = &mut d.when {
                     bind_slot(w, args, params);
                 }
-                bind_attrs(&mut d.attrs, args, params)
+                bind_attrs(&mut d.attrs, args, params);
             }
             Node::Set(s) => {
                 bind_slot(&mut s.expr, args, params);
@@ -1390,9 +1400,17 @@ fn interpolate_params(
 /// The span of `text[start..end]` for a line text beginning at `text_span`
 /// (single-line: `line` is the text's, the character column and UTF-16
 /// offset advance by the prefix's own counts).
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a position within one source text: `Span` positions are `u32`, and a text over 4 GiB wraps, as before"
+)]
 fn text_sub_span(text_span: Span, text: &str, start: usize, end: usize) -> Span {
     let (start, end) = (start.min(text.len()), end.min(text.len()));
-    let u16_len = |s: &str| s.chars().map(|c| c.len_utf16() as u32).sum::<u32>();
+    let u16_len = |s: &str| {
+        s.chars()
+            .map(|c| u32::try_from(c.len_utf16()).expect("a char is 1 or 2 UTF-16 units"))
+            .sum::<u32>()
+    };
     let prefix = text.get(..start).unwrap_or("");
     let u16_start = text_span.utf16_range.0 + u16_len(prefix);
     Span {
@@ -1430,7 +1448,7 @@ fn synth_into(choice: &mut Choice, schema: &lute_check::StateView) {
         AttrValue::Ref(_) => None, // gate: E-INTO-VALUE
     });
     let cel = into_value_cel(&decl.ty, value.as_deref());
-    let span = find("into").map(|a| a.span).unwrap_or(choice.span);
+    let span = find("into").map_or(choice.span, |a| a.span);
     choice.body.insert(
         0,
         Node::Set(Set {
@@ -1460,9 +1478,7 @@ mod tests {
 
     use lute_check::meta::{Namespace, StateDecl, StateSchema};
     use lute_check::resolve_components;
-    use lute_core_span::Severity;
-    use lute_manifest::types::{Literal, Type};
-    use lute_syntax::ast::{AttrValue, Node};
+    use lute_manifest::types::Literal;
 
     use super::*;
 

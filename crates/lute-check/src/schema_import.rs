@@ -401,6 +401,7 @@ impl ImportCache {
 /// Entries are stored behind `Arc`; cache hits clone only the pointer. The
 /// per-key `OnceLock` keeps unrelated keys independent while avoiding holding
 /// the map lock during an expensive parse.
+#[derive(Debug)]
 pub struct Memo<K, V> {
     map: Mutex<HashMap<K, Arc<OnceLock<Arc<V>>>>>,
 }
@@ -417,10 +418,13 @@ impl<K: Eq + std::hash::Hash, V> Memo<K, V> {
     /// Return the shared value for `key`, computing it once on first use.
     pub fn get_or_init(&self, key: K, init: impl FnOnce() -> V) -> Arc<V> {
         let cell = {
-            let mut map = self.map.lock().unwrap_or_else(|e| e.into_inner());
-            map.entry(key).or_default().clone()
+            let mut map = self
+                .map
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            Arc::clone(map.entry(key).or_default())
         };
-        cell.get_or_init(|| Arc::new(init())).clone()
+        Arc::clone(cell.get_or_init(|| Arc::new(init())))
     }
 }
 
@@ -1509,7 +1513,7 @@ fn read_and_parse(
     };
     let is_yaml_decl = matches!(
         canon.extension().and_then(|e| e.to_str()),
-        Some("yaml") | Some("yml")
+        Some("yaml" | "yml")
     );
     let (tm, issue_diags, quest_ids, entry_ids, meta) = if is_yaml_decl {
         let byte_end = text.len();
@@ -1830,7 +1834,10 @@ fn read_and_parse(
 /// > project-relative path and line ([`crate::rel_schema::origin_display`]),
 /// > so the project roll-up folds every importer's copy into one report;
 /// > `origin_of` locates `name` in a file (`None` keeps the importer anchor).
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "one routine for every level-duplicate report: the code, noun, name, entries, origin lookup and import order differ per caller, plus the sink and anchor"
+)]
 fn emit_level_dups<T>(
     code: &str,
     noun: &str,
@@ -1985,7 +1992,6 @@ fn detect_cycles(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn dfs_cycle(
     node: &Path,
     adj: &BTreeMap<PathBuf, Vec<(PathBuf, Edge)>>,

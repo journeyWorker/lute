@@ -219,8 +219,8 @@ pub enum Preserve {
     Constraints,
 }
 impl<'de> Deserialize<'de> for Preserve {
-    fn deserialize<D: Deserializer<'de>>(d: D) -> Result<Self, D::Error> {
-        let value = Value::deserialize(d)?;
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let value = Value::deserialize(deserializer)?;
         let object = value
             .as_object()
             .ok_or_else(|| de::Error::custom("preserve item must be an object"))?;
@@ -229,7 +229,10 @@ impl<'de> Deserialize<'de> for Preserve {
                 "preserve item must have exactly one field",
             ));
         }
-        let (key, value) = object.iter().next().unwrap();
+        let (key, value) = object
+            .iter()
+            .next()
+            .expect("the object has exactly one field (checked above)");
         let spec = request::preserve_key(key)
             .ok_or_else(|| de::Error::custom(format!("unknown preserve kind `{key}`")))?;
         let mut nodes = Vec::new();
@@ -262,17 +265,17 @@ impl<'de> Deserialize<'de> for Preserve {
     }
 }
 impl Serialize for Preserve {
-    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
         match self {
-            Self::Ids(v) => serde_json::json!({"ids":v}).serialize(s),
-            Self::LineIds => serde_json::json!({"lineIds":[]}).serialize(s),
-            Self::VoiceKeys => serde_json::json!({"voiceKeys":[]}).serialize(s),
-            Self::ChoiceEffects(v) => serde_json::json!({"choiceEffects":v}).serialize(s),
-            Self::Rewards(v) => serde_json::json!({"rewards":v}).serialize(s),
-            Self::HostContracts => serde_json::json!({"hostContracts":true}).serialize(s),
-            Self::Conditions(v) => serde_json::json!({"conditions":v}).serialize(s),
-            Self::Reachability(v) => serde_json::json!({"reachability":v}).serialize(s),
-            Self::Constraints => serde_json::json!({"constraints":true}).serialize(s),
+            Self::Ids(v) => serde_json::json!({"ids":v}).serialize(serializer),
+            Self::LineIds => serde_json::json!({"lineIds":[]}).serialize(serializer),
+            Self::VoiceKeys => serde_json::json!({"voiceKeys":[]}).serialize(serializer),
+            Self::ChoiceEffects(v) => serde_json::json!({"choiceEffects":v}).serialize(serializer),
+            Self::Rewards(v) => serde_json::json!({"rewards":v}).serialize(serializer),
+            Self::HostContracts => serde_json::json!({"hostContracts":true}).serialize(serializer),
+            Self::Conditions(v) => serde_json::json!({"conditions":v}).serialize(serializer),
+            Self::Reachability(v) => serde_json::json!({"reachability":v}).serialize(serializer),
+            Self::Constraints => serde_json::json!({"constraints":true}).serialize(serializer),
         }
     }
 }
@@ -439,11 +442,7 @@ pub fn apply_patch_to(
             path: path.clone(),
             message: error.to_string(),
         })?;
-        let actual = before
-            .files
-            .get(&path)
-            .map(|f| f.sha256.as_str())
-            .unwrap_or("");
+        let actual = before.files.get(&path).map_or("", |f| f.sha256.as_str());
         if !digest_equal(expected, actual) {
             return Err(PatchRefusal::Stale {
                 expected: expected.clone(),
@@ -473,7 +472,13 @@ pub fn apply_patch_to(
                 reason: "target has no editable source anchor".into(),
             });
         }
-        targets.push((node.clone(), item.file.clone().unwrap(), item.span.unwrap()));
+        targets.push((
+            node.clone(),
+            item.file
+                .clone()
+                .expect("a target without a file is refused above"),
+            item.span.expect("a target without a span is refused above"),
+        ));
     }
 
     let stage = make_stage(root).map_err(|e| PatchRefusal::Io {
@@ -596,11 +601,7 @@ pub fn apply_patch_to(
                     reason: error.to_string(),
                 })?;
                 let abs = root.join(&path);
-                let actual = before
-                    .files
-                    .get(&path)
-                    .map(|f| f.sha256.as_str())
-                    .unwrap_or("");
+                let actual = before.files.get(&path).map_or("", |f| f.sha256.as_str());
                 if !digest_equal(rev, actual) {
                     return Err(PatchRefusal::Edit {
                         index,
@@ -970,7 +971,13 @@ fn constraint_values(model: &ProjectModel) -> BTreeMap<String, Value> {
         &slots,
     )
     .into_iter()
-    .map(|r| (r.id.clone(), serde_json::to_value(r).unwrap()))
+    .map(|r| {
+        let id = r.id.clone();
+        let value = serde_json::to_value(r).expect(
+            "a ConstraintResult serializes: derived Serialize over strings, spans, diagnostics",
+        );
+        (id, value)
+    })
     .collect()
 }
 fn reachability_value(model: &ProjectModel, node: &NodeKey) -> Option<Value> {
@@ -1261,9 +1268,9 @@ mod tests {
     use super::*;
     #[test]
     fn node_keys_are_strict() {
-        assert!(parse_node_key("scene:x").is_ok());
-        assert!(parse_node_key("bogus:x").is_err());
-        assert!(parse_node_key("scene:").is_err());
+        parse_node_key("scene:x").unwrap();
+        parse_node_key("bogus:x").unwrap_err();
+        parse_node_key("scene:").unwrap_err();
     }
 
     #[test]

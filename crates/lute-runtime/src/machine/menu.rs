@@ -57,7 +57,7 @@ impl<D: Driver> Machine<D> {
     /// A walk-time `E-TRACE-CHOICE`: the script forced an option that is not
     /// offered at this presentation point. Halts like a fatal error, flagged
     /// so `lute play` can report it as the error (exit 1) it is.
-    pub(super) fn refuse(&mut self, msg: String) {
+    pub(crate) fn refuse(&mut self, msg: String) {
         self.fatal = Some(msg);
         self.refused = true;
     }
@@ -349,7 +349,7 @@ impl<D: Driver> Machine<D> {
         }
     }
 
-    pub(super) fn do_choice(&mut self, cmd: &Json) -> Step {
+    pub(crate) fn do_choice(&mut self, cmd: &Json) -> Step {
         let branch = cmd
             .get("branchId")
             .and_then(Json::as_str)
@@ -428,15 +428,12 @@ impl<D: Driver> Machine<D> {
             self.driver.emit(incomplete_rec(note));
             return Step::Halt;
         };
-        let opt = match options
+        let Some(opt) = options
             .iter()
             .find(|o| o.get("id").and_then(Json::as_str) == Some(&forced))
-        {
-            Some(o) => o,
-            None => {
-                self.fatal = Some(format!("choice `{branch}` has no option `{forced}`"));
-                return Step::Halt;
-            }
+        else {
+            self.fatal = Some(format!("choice `{branch}` has no option `{forced}`"));
+            return Step::Halt;
         };
         // #20 / T8.5, D-C: `lute trace` refuses a forced selection whose guard
         // decided false, and `lute test` inherits that refusal. `run` played
@@ -489,7 +486,7 @@ impl<D: Driver> Machine<D> {
     /// convergence. Exhaustion with eligible options still standing halts
     /// incomplete (`self.incomplete = true`, exit 3) rather than silently
     /// converging. Every iteration consumes one decision or leaves the loop.
-    pub(super) fn do_hub(&mut self, cmd: &Json) -> Step {
+    pub(crate) fn do_hub(&mut self, cmd: &Json) -> Step {
         let id = cmd
             .get("id")
             .and_then(Json::as_str)
@@ -763,7 +760,7 @@ impl<D: Driver> Machine<D> {
     /// [`UnknownSite`] ([`SiteKind::Arm`], or [`SiteKind::OccasionTarget`]
     /// when the unbound target is what is missing): a driver that halts
     /// stops the walk here; one that continues skips the arm.
-    pub(super) fn do_match(&mut self, cmd: &Json) -> Step {
+    pub(crate) fn do_match(&mut self, cmd: &Json) -> Step {
         let arms: &[Json] = cmd
             .get("arms")
             .and_then(Json::as_array)
@@ -895,7 +892,11 @@ fn expr_paths(node: &Json, out: &mut BTreeSet<String>) {
                 }
             }
         }
-        Json::Array(items) => items.iter().for_each(|n| expr_paths(n, out)),
+        Json::Array(items) => {
+            for n in items {
+                expr_paths(n, out);
+            }
+        }
         _ => {}
     }
 }

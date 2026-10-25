@@ -34,7 +34,7 @@ impl Backend {
     ///   ANY document's `defs:` (`def_bodies` is still a D4 stub — see
     ///   `check.rs`'s `FoldedEnv::def_bodies` doc comment); the LSP is the
     ///   first caller, closing exactly the gap B3 exists to close.
-    pub(super) async fn analyze_declaration(
+    pub(crate) async fn analyze_declaration(
         &self,
         uri: Uri,
         snapshot: &DocumentSnapshot,
@@ -198,7 +198,7 @@ impl Backend {
                         provenance: None,
                         covered: Vec::new(),
                         related: Vec::new(),
-                    })
+                    });
                 }
             }
             let expected = val

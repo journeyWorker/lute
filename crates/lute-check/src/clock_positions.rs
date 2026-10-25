@@ -315,11 +315,7 @@ impl Formula {
                     Settle::Arrival => at <= *from,
                     Settle::Within => at < *from,
                 };
-                if before {
-                    Some(false)
-                } else {
-                    None
-                }
+                before.then_some(false)
             }
             Formula::Ended => {
                 if clock.last_at() == Some(at) {
@@ -335,7 +331,11 @@ impl Formula {
     fn visit<'f>(&'f self, f: &mut impl FnMut(&'f Formula)) {
         f(self);
         match self {
-            Formula::And(fs) | Formula::Or(fs) => fs.iter().for_each(|x| x.visit(f)),
+            Formula::And(fs) | Formula::Or(fs) => {
+                for x in fs {
+                    x.visit(f);
+                }
+            }
             Formula::Not(x) => x.visit(f),
             _ => {}
         }
@@ -378,6 +378,10 @@ impl Formula {
                 ok = false;
                 return;
             }
+            #[expect(
+                clippy::cast_possible_truncation,
+                reason = "|day| <= 1e9 (checked above), so the ceiling is exact in i64"
+            )]
             let day = day.ceil() as i64;
             out = Some(out.map_or(day, |d| d.max(day)));
         });
@@ -415,11 +419,14 @@ fn positions(
     if first > last {
         return Some(Vec::new());
     }
-    let span = (last.day - first.day + 1).checked_mul(clock.slot_count() as i64)?;
-    if span > MAX_POSITIONS as i64 {
+    let slots = i64::try_from(clock.slot_count()).expect("a length is at most isize::MAX");
+    let span = (last.day - first.day + 1).checked_mul(slots)?;
+    if span > i64::try_from(MAX_POSITIONS).expect("MAX_POSITIONS is a small constant") {
         return None;
     }
-    let mut out = Vec::with_capacity(span as usize);
+    let mut out = Vec::with_capacity(
+        usize::try_from(span).expect("first <= last, so 0 < span <= MAX_POSITIONS"),
+    );
     let mut at = first;
     while at <= last {
         out.push(at);
@@ -1315,7 +1322,7 @@ fn collect_set_paths(nodes: &[Node], out: &mut BTreeSet<String>) {
                     match arm {
                         lute_syntax::ast::Arm::When { body, .. }
                         | lute_syntax::ast::Arm::Otherwise { body, .. } => {
-                            collect_set_paths(body, out)
+                            collect_set_paths(body, out);
                         }
                     }
                 }

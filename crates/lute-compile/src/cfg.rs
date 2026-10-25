@@ -47,7 +47,7 @@ pub struct Rec {
 /// (converge targets are always local); NAMED labels (`Rec::named`) may —
 /// `address::assign_addresses` resolves those against a document-wide table
 /// built BEFORE any shot is consumed.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct Emitter {
     pub recs: Vec<Rec>,
     pending: Vec<Label>,
@@ -58,7 +58,7 @@ pub struct Emitter {
 }
 
 /// The source-map bookkeeping of a mapping [`Emitter`].
-#[derive(Default)]
+#[derive(Debug, Default)]
 struct MapState {
     /// Source-only steps waiting for the next record.
     markers: Vec<SourceMarker>,
@@ -168,6 +168,7 @@ impl Emitter {
 }
 
 /// What an [`Emitter`] leaves for the addressing pass.
+#[derive(Debug)]
 pub struct Finished {
     pub recs: Vec<Rec>,
     pub trailing: Vec<Label>,

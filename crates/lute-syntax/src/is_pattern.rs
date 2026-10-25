@@ -48,6 +48,24 @@ pub enum IsLiteralError {
     EmptyRange,
 }
 
+/// The reason alone; `lute check`'s `E-WHEN-RANGE` message adds the literal.
+impl std::fmt::Display for IsLiteralError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            IsLiteralError::MalformedRange => {
+                "malformed range literal: a range is `N..M`, `N..`, or `..M` with decimal \
+                 number bounds"
+            }
+            IsLiteralError::EmptyRange => {
+                "empty range literal: its lower bound is above its upper bound, so it matches \
+                 nothing"
+            }
+        })
+    }
+}
+
+impl std::error::Error for IsLiteralError {}
+
 /// True when `lit` is a decimal `Number` literal (dsl §7.3.1) rather than an
 /// enum-member ident: a leading digit / sign / dot plus a successful `f64`
 /// parse (which also rejects `inf`/`NaN`, since those lead with a letter).

@@ -1,7 +1,11 @@
-use super::*;
+use super::{
+    authored_when, eligible_of, exec, is_true, judge, logic_diag, mock, note_premise, premise_text,
+    prereq_condition, BTreeMap, BeatKind, Diagnostic, ExecProject, Head, Machine, MockSet, Premise,
+    Seed, SessionVerdict, Step, TraceDriver,
+};
 /// A seed for a resumed presentation: the carry already holds the seeded
 /// state and facts, so only the lifecycle surfaces ride along.
-pub(super) fn carried(seed: &Seed) -> Seed {
+pub(crate) fn carried(seed: &Seed) -> Seed {
     Seed {
         state: Vec::new(),
         facts: Vec::new(),
@@ -10,7 +14,7 @@ pub(super) fn carried(seed: &Seed) -> Seed {
 }
 
 /// How the walk ended, before the report's exit code.
-pub(super) enum Walked {
+pub(crate) enum Walked {
     Continue,
     Ended,
     Incomplete,
@@ -18,12 +22,12 @@ pub(super) enum Walked {
 }
 
 /// Run the Machine and read how it ended.
-pub(super) fn run_walk(m: &mut Machine<&mut TraceDriver<'_>>) -> Walked {
+pub(crate) fn run_walk(m: &mut Machine<&mut TraceDriver<'_>>) -> Walked {
     let result = m.run();
     let refused = m.refused();
     let (incomplete, terminated) = (m.incomplete(), m.terminated());
     match result {
-        Err(msg) => Walked::Refused(vec![m.driver_mut().refusal(msg, refused)]),
+        Err(e) => Walked::Refused(vec![m.driver_mut().refusal(e.message, refused)]),
         Ok(()) if incomplete => Walked::Incomplete,
         Ok(()) if terminated => Walked::Ended,
         Ok(()) => {
@@ -42,7 +46,7 @@ pub(super) fn run_walk(m: &mut Machine<&mut TraceDriver<'_>>) -> Walked {
 /// ([`exec::session::judge_beat`]) over the mocks, SHOWN on the
 /// [`Step::Entry`] head and enforced only under
 /// [`MockSet::gate_eligibility`] (dsl 0.26.0 §7, T1-7).
-pub(super) fn present_entry(
+pub(crate) fn present_entry(
     m: &mut Machine<&mut TraceDriver<'_>>,
     entry: &lute_syntax::ast::Entry,
     judging: Option<&ExecProject>,
@@ -87,7 +91,7 @@ pub(super) fn present_entry(
 /// [`run_walk`] for one presented entry or bundle beat: a body that ran to
 /// its end shows the source-only steps after its last record too (a body
 /// ending in a `::use` closes that component's frame).
-pub(super) fn run_presented(m: &mut Machine<&mut TraceDriver<'_>>) -> Walked {
+pub(crate) fn run_presented(m: &mut Machine<&mut TraceDriver<'_>>) -> Walked {
     let walked = run_walk(m);
     if matches!(walked, Walked::Continue) {
         m.driver_mut().close_unit();
@@ -103,7 +107,7 @@ pub(super) fn run_presented(m: &mut Machine<&mut TraceDriver<'_>>) -> Walked {
 /// the canonical id and enforced only under [`MockSet::gate_eligibility`],
 /// as on an entry. An `after=` the mocks leave undecided (a quest another
 /// document declares) is reported unresolved.
-pub(super) fn present_beat(
+pub(crate) fn present_beat(
     m: &mut Machine<&mut TraceDriver<'_>>,
     beat: &lute_syntax::ast::BundleBeat,
     canonical: &str,
@@ -165,7 +169,7 @@ pub(super) fn present_beat(
         reason = "trace diagnostics are returned directly for source reporting"
     )
 )]
-pub(super) fn raised_member(
+pub(crate) fn raised_member(
     mocks: &MockSet,
     occasions: &BTreeMap<String, lute_manifest::schema::OccasionDecl>,
     unit: &str,

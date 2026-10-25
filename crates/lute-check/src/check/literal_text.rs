@@ -92,7 +92,7 @@ impl Text<'_> {
 /// The literal-text warnings for a content line. `src` is the document
 /// source `l`'s spans index, when the caller has it (a component body
 /// checked from its importer does not; its findings anchor at the text).
-pub(super) fn line_text(l: &Line, ctx: &Ctx<'_>, src: Option<&str>, diags: &mut Vec<Diagnostic>) {
+pub(crate) fn line_text(l: &Line, ctx: &Ctx<'_>, src: Option<&str>, diags: &mut Vec<Diagnostic>) {
     let text = Text {
         text: &l.text,
         span: l.text_span,
@@ -106,7 +106,7 @@ pub(super) fn line_text(l: &Line, ctx: &Ctx<'_>, src: Option<&str>, diags: &mut 
 
 /// The literal-text warnings for a `<choice>` label whose value sits at
 /// `span` in `src` (the document source, when the caller has it).
-pub(super) fn choice_label(
+pub(crate) fn choice_label(
     label: &str,
     span: Span,
     src: Option<&str>,

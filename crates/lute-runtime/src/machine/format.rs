@@ -28,7 +28,7 @@ impl<D: Driver> Machine<D> {
     /// line's `segments` splice from this one list by global marker index
     /// ([`substitute_markers`]), so a placeholder is evaluated once per line
     /// however the runs split it.
-    pub(super) fn render_markers(
+    pub(crate) fn render_markers(
         &mut self,
         text: &str,
         placeholders: Option<&Vec<Json>>,
@@ -92,7 +92,7 @@ impl<D: Driver> Machine<D> {
 
     /// The first `{{occasion.payload.<field>}}` marker among `placeholders`
     /// whose field this raise left unset (dsl 0.28.0, T1-13).
-    pub(super) fn unset_payload(&self, placeholders: Option<&Vec<Json>>) -> Option<String> {
+    pub(crate) fn unset_payload(&self, placeholders: Option<&Vec<Json>>) -> Option<String> {
         let prefix = format!(
             "{}.",
             lute_manifest::semantics::occasion_bind::OCCASION_PAYLOAD
@@ -111,7 +111,7 @@ impl<D: Driver> Machine<D> {
     /// Whether `placeholders` read `occasion.target` — `{{occasion.target}}`
     /// in any form, `{{run.count[occasion.target]}}` — with no member bound
     /// (a trace that did not mock the raise).
-    pub(super) fn unbound_target(&self, placeholders: Option<&Vec<Json>>) -> bool {
+    pub(crate) fn unbound_target(&self, placeholders: Option<&Vec<Json>>) -> bool {
         if matches!(
             self.store
                 .values
@@ -168,7 +168,7 @@ impl<D: Driver> Machine<D> {
 /// `rendered[*next..]` — `next` is the GLOBAL marker index the first marker
 /// of `text` has, advanced past every marker replaced. A marker past the
 /// list stays verbatim.
-pub(super) fn substitute_markers(text: &str, rendered: &[String], next: &mut usize) -> String {
+pub(crate) fn substitute_markers(text: &str, rendered: &[String], next: &mut usize) -> String {
     splice_markers(text, |_| {
         let value = rendered.get(*next).map(String::as_str);
         *next += 1;
@@ -184,7 +184,7 @@ pub(super) fn substitute_markers(text: &str, rendered: &[String], next: &mut usi
 /// keeps each value with its marker. A marker the source does not have
 /// stays as written. A literal `{{` (written `\{{`, lute 0.47.1 §3) is no
 /// marker, in the translation or the source.
-pub(super) fn substitute_by_marker(text: &str, source: &str, rendered: &[String]) -> String {
+pub(crate) fn substitute_by_marker(text: &str, source: &str, rendered: &[String]) -> String {
     splice_markers(text, |marker| {
         let referent = referent_of(marker);
         markers(source)

@@ -86,8 +86,16 @@ fn strip_addressing(v: &mut serde_json::Value) {
         }
     }
     match v {
-        serde_json::Value::Object(map) => map.values_mut().for_each(strip_addressing),
-        serde_json::Value::Array(arr) => arr.iter_mut().for_each(strip_addressing),
+        serde_json::Value::Object(map) => {
+            for x in map.values_mut() {
+                strip_addressing(x);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for x in arr {
+                strip_addressing(x);
+            }
+        }
         _ => {}
     }
 }

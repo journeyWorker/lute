@@ -1,4 +1,7 @@
-use super::*;
+use super::{
+    json_text, key, plugin_call, report, ComponentBoundary, ComponentSite, CoverageCount, Decision,
+    GrantCredit, GrantReward, Head, Json, SourceInfo, SourceMarker, Step, TraceDriver,
+};
 impl<'a> TraceDriver<'a> {
     // -- shots ------------------------------------------------------------
 
@@ -6,7 +9,7 @@ impl<'a> TraceDriver<'a> {
     /// heads of the shots the walk entered since the last one (every shot
     /// in between on a straight walk, only the landing shot after a
     /// `::jump`), with the trailing source-only steps of the shots it left.
-    pub(super) fn enter_unit(&mut self, unit: i64) {
+    pub(crate) fn enter_unit(&mut self, unit: i64) {
         if !self.cx.shots || unit <= self.shot {
             return;
         }
@@ -27,12 +30,12 @@ impl<'a> TraceDriver<'a> {
         self.shot = unit;
     }
 
-    pub(super) fn shot_head(&mut self, n: i64) {
+    pub(crate) fn shot_head(&mut self, n: i64) {
         let heading = self.headings.get(&n).cloned().unwrap_or_default();
         self.steps.push(Step::Shot { number: n, heading });
     }
 
-    pub(super) fn trailing(&mut self, unit: i64) {
+    pub(crate) fn trailing(&mut self, unit: i64) {
         let markers = self.cx.map.trailing.get(&unit).cloned().unwrap_or_default();
         for mk in &markers {
             self.marker(mk);
@@ -41,7 +44,7 @@ impl<'a> TraceDriver<'a> {
 
     /// A scene walk that ran to its end: the rest of the current shot and
     /// every later (empty) shot.
-    pub(super) fn finish_shots(&mut self) {
+    pub(crate) fn finish_shots(&mut self) {
         if !self.cx.shots {
             return;
         }
@@ -59,13 +62,13 @@ impl<'a> TraceDriver<'a> {
     /// The source-only steps after the last record of the unit the walk
     /// ran off the end of — a presented entry's or bundle beat's own unit:
     /// a body ending in a `::use` closes its component frame there.
-    pub(super) fn close_unit(&mut self) {
+    pub(crate) fn close_unit(&mut self) {
         if let Some(unit) = self.unit.take() {
             self.trailing(unit);
         }
     }
 
-    pub(super) fn marker(&mut self, mk: &SourceMarker) {
+    pub(crate) fn marker(&mut self, mk: &SourceMarker) {
         use lute_compile::source_map::ComponentBoundary as B;
         let component_boundary = mk.component.map(|c| match c {
             B::Begin => ComponentBoundary::Begin,
@@ -87,7 +90,7 @@ impl<'a> TraceDriver<'a> {
 
     /// The walk reached the record at `addr`: open the shot heads it
     /// entered and show the source-only steps that precede it.
-    pub(super) fn reach(&mut self, addr: &str) {
+    pub(crate) fn reach(&mut self, addr: &str) {
         if let Some(unit) = addr.split('-').next().and_then(|u| u.parse::<i64>().ok()) {
             self.enter_unit(unit);
             self.unit = Some(unit);
@@ -103,14 +106,14 @@ impl<'a> TraceDriver<'a> {
 
     /// [`Self::reach`] ahead of the record: a pick or a halt at `addr`
     /// happens before (or instead of) its record.
-    pub(super) fn reach_once(&mut self, addr: &str) {
+    pub(crate) fn reach_once(&mut self, addr: &str) {
         if self.reached.as_deref() != Some(addr) {
             self.reach(addr);
             self.reached = Some(addr.to_string());
         }
     }
 
-    pub(super) fn record(&mut self, rec: Json) {
+    pub(crate) fn record(&mut self, rec: Json) {
         let kind = rec
             .get("kind")
             .and_then(Json::as_str)
@@ -318,7 +321,7 @@ impl<'a> TraceDriver<'a> {
     /// #32 / T2.5: an `::actor` whose `action=` names a declared exit member
     /// ENDS a presence — `Domain.exits`, the list `lute-check::inject` and
     /// `lute-compile::lower` read.
-    pub(super) fn auto_exits(&self, addr: &str) -> bool {
+    pub(crate) fn auto_exits(&self, addr: &str) -> bool {
         let action = self
             .cmds
             .get(addr)
@@ -333,7 +336,7 @@ impl<'a> TraceDriver<'a> {
         })
     }
 
-    pub(super) fn menu_record(&mut self, rec: &Json, kind: &str, addr: &str) {
+    pub(crate) fn menu_record(&mut self, rec: &Json, kind: &str, addr: &str) {
         let seen = self.menu.take();
         let Some(chose) = rec.get("chose").and_then(Json::as_str) else {
             return;
@@ -381,7 +384,7 @@ impl<'a> TraceDriver<'a> {
             });
     }
 
-    pub(super) fn match_record(&mut self, rec: &Json, addr: &str) {
+    pub(crate) fn match_record(&mut self, rec: &Json, addr: &str) {
         let subject = self.subject(addr);
         let info = self.info(addr).cloned();
         let span = self.span_at(addr);
@@ -464,7 +467,7 @@ impl<'a> TraceDriver<'a> {
 
     /// Where a construct a component `::use` expanded is written: the
     /// component's file and which use (`None` for the document's own).
-    pub(super) fn component_site(&self, info: Option<&SourceInfo>) -> Option<ComponentSite> {
+    pub(crate) fn component_site(&self, info: Option<&SourceInfo>) -> Option<ComponentSite> {
         let c = info?.component.as_ref()?;
         Some(ComponentSite {
             name: c.name.clone(),
@@ -479,7 +482,7 @@ impl<'a> TraceDriver<'a> {
     }
 
     /// A `match` record's subject text.
-    pub(super) fn subject(&self, addr: &str) -> String {
+    pub(crate) fn subject(&self, addr: &str) -> String {
         self.cmds
             .get(addr)
             .and_then(|c| c.get("subject"))
@@ -488,7 +491,12 @@ impl<'a> TraceDriver<'a> {
             .to_string()
     }
 
-    pub(super) fn grant(&mut self, rec: &Json) {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "an objective index from a runtime record: where usize is 32 bits one past \
+                  u32::MAX truncates, as before"
+    )]
+    pub(crate) fn grant(&mut self, rec: &Json) {
         let reward = rec.get("reward").cloned().unwrap_or(Json::Null);
         let str_of = |v: &Json, k: &str| v.get(k).and_then(Json::as_str).map(str::to_string);
         self.steps.push(Step::Grant {

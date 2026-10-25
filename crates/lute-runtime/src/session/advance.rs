@@ -15,6 +15,7 @@ use super::world::{clock_at, refresh_clock, World};
 use crate::Value;
 
 /// One transcript an `advance:` played at a midnight.
+#[derive(Debug)]
 pub enum Played<'a> {
     Quest(&'a QuestAdvance),
     Beat(&'a Presented),
@@ -24,6 +25,7 @@ pub enum Played<'a> {
 /// midnight: the move that brought the clock there (its `set` records) and
 /// the settle after it, then the occasion raised at `at` and the quests'
 /// answer to it.
+#[derive(Debug)]
 pub struct DayRaise {
     pub at: String,
     pub writes: Vec<Json>,
@@ -39,6 +41,7 @@ pub struct DayRaise {
 /// it started and where it stopped, at which the clock's `raise.slot`
 /// occasion was not raised — it is raised once, where the clock stops.
 /// `beats`: how many beats answer that occasion.
+#[derive(Debug)]
 pub struct PassedRaise {
     pub occasion: String,
     pub at: Vec<PassedAt>,
@@ -47,6 +50,7 @@ pub struct PassedRaise {
 
 /// One position a [`PassedRaise`] names: its day and slot (`None` on a
 /// clock without slots).
+#[derive(Debug)]
 pub struct PassedAt {
     pub day: i64,
     pub slot: Option<String>,
@@ -226,7 +230,10 @@ pub fn walk_clock<F: super::WalkDriver>(
 /// there — it never skips the close of a day; `advance: day` closes the day
 /// where the clock stands), then the clock crosses to the next day's first
 /// slot and `dayStart` is raised there; each move settles the quests first.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a step entry point: the project, world, step, the advance's own inputs (`by`, `engine`, `raise`, `pick`, `choose`) and the walk driver are separate inputs from the session"
+)]
 pub fn run_advance<F: super::WalkDriver>(
     p: &ExecProject,
     w: &mut World,
@@ -249,6 +256,12 @@ pub fn run_advance<F: super::WalkDriver>(
         Advance::Slots(1) => "slot".to_string(),
         Advance::Slots(k) => k.to_string(),
         Advance::To { weekday, slot } => {
+            #[expect(
+                clippy::cast_possible_truncation,
+                clippy::cast_sign_loss,
+                reason = "the caller resolved the weekday (a label position or 0..week.length); \
+                          any other value casts as before and falls back to `weekday {wd}`"
+            )]
             let wd = weekday.map(|wd| {
                 clock
                     .week

@@ -237,17 +237,26 @@ impl ManifestError {
         }
     }
 
+    /// Author-facing message: the [`std::fmt::Display`] text.
+    pub fn message(&self) -> String {
+        self.to_string()
+    }
+}
+
+impl std::fmt::Display for ManifestError {
     /// Author-facing message: what is wrong with the declaration and the
     /// accepted set that fixes it — never a Rust `Debug` form.
-    pub fn message(&self) -> String {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ManifestError::UnknownSemanticsFlag { directive, flag } => format!(
+            ManifestError::UnknownSemanticsFlag { directive, flag } => write!(
+                f,
                 "directive `::{directive}` declares semantics flag `{flag}`, which is not one \
                  of {}{}",
                 SEMANTICS_VOCAB.join(", "),
                 crate::suggest::did_you_mean(flag, SEMANTICS_VOCAB.iter().copied())
             ),
-            ManifestError::DuplicateAttr { directive, attr } => format!(
+            ManifestError::DuplicateAttr { directive, attr } => write!(
+                f,
                 "directive `::{directive}` declares attribute `{attr}` more than once — keep \
                  one declaration"
             ),
@@ -256,12 +265,14 @@ impl ManifestError {
                 attr,
                 ty,
                 default,
-            } => format!(
+            } => write!(
+                f,
                 "directive `::{directive}` declares attribute `{attr}` as `{ty}` with \
                  `default: {default}`, which is not of type `{ty}` — give a default of the \
                  declared type"
             ),
-            ManifestError::UnknownLowerRecord { directive, record } => format!(
+            ManifestError::UnknownLowerRecord { directive, record } => write!(
+                f,
                 "directive `::{directive}` lowers to unknown record `{record}`; \
                  declarative lowering targets the staging kinds ({})",
                 lower_record_kinds().collect::<Vec<_>>().join(", ")
@@ -270,26 +281,30 @@ impl ManifestError {
                 directive,
                 record,
                 detail,
-            } => format!("directive `::{directive}` lowers to record `{record}`: {detail}"),
+            } => write!(
+                f,
+                "directive `::{directive}` lowers to record `{record}`: {detail}"
+            ),
             ManifestError::EffectWrite { directive, detail } => {
-                format!("directive `::{directive}` effects.writes: {detail}")
+                write!(f, "directive `::{directive}` effects.writes: {detail}")
             }
             ManifestError::EffectFact {
                 directive,
                 list,
                 detail,
-            } => format!("directive `::{directive}` effects.{list}: {detail}"),
+            } => write!(f, "directive `::{directive}` effects.{list}: {detail}"),
             ManifestError::StructuredAttr { owner, attr, ty } => {
-                let subject = match owner {
+                match owner {
                     AttrOwner::Directive(directive) => {
-                        format!("directive `::{directive}` declares attribute `{attr}`")
+                        write!(f, "directive `::{directive}` declares attribute `{attr}`")?;
                     }
                     AttrOwner::Stamp(plugin) => {
-                        format!("plugin `{plugin}` declares stamp attribute `{attr}`")
+                        write!(f, "plugin `{plugin}` declares stamp attribute `{attr}`")?;
                     }
-                };
-                format!(
-                    "{subject} as `{ty}`; an attribute value is written as one scalar (string, \
+                }
+                write!(
+                    f,
+                    " as `{ty}`; an attribute value is written as one scalar (string, \
                      number, bool, an enum or entity member, a provider or asset id), so no \
                      `.lute` value can satisfy a `list`, `map` or `record` — declare it `string` \
                      and parse it in the host, or split it into one attribute per field"
@@ -298,6 +313,8 @@ impl ManifestError {
         }
     }
 }
+
+impl std::error::Error for ManifestError {}
 
 pub fn validate_directive(d: &DirectiveDecl) -> Vec<ManifestError> {
     let mut errs = Vec::new();
@@ -820,15 +837,17 @@ pub fn validate_domain(name: &str, d: &crate::snapshot::Domain) -> Vec<DomainIss
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::schema::{AttrDecl, DirectiveDecl, Lowering};
-    use crate::types::Type;
+    use crate::schema::AttrDecl;
 
     fn dom(members: &[&str], default: Option<&str>, exits: &[&str]) -> crate::snapshot::Domain {
         crate::snapshot::Domain {
-            members: members.iter().map(|s| s.to_string()).collect(),
+            members: members
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             open: false,
             default: default.map(str::to_string),
-            exits: exits.iter().map(|s| s.to_string()).collect(),
+            exits: exits.iter().map(std::string::ToString::to_string).collect(),
             stops: Vec::new(),
             labels: Default::default(),
         }
@@ -838,12 +857,18 @@ mod tests {
     fn action_requires_exits_anchor_requires_default() {
         let missing_exits = validate_domain("action", &dom(&["sway"], None, &[]));
         assert_eq!(
-            missing_exits.iter().map(|i| i.code()).collect::<Vec<_>>(),
+            missing_exits
+                .iter()
+                .map(super::DomainIssue::code)
+                .collect::<Vec<_>>(),
             ["E-ENUM-MISSING-SEMANTICS"]
         );
         let missing_default = validate_domain("anchor", &dom(&["left"], None, &[]));
         assert_eq!(
-            missing_default.iter().map(|i| i.code()).collect::<Vec<_>>(),
+            missing_default
+                .iter()
+                .map(super::DomainIssue::code)
+                .collect::<Vec<_>>(),
             ["E-ENUM-MISSING-SEMANTICS"]
         );
         assert!(validate_domain("action", &dom(&["sway", "hide"], None, &["hide"])).is_empty());
@@ -855,14 +880,14 @@ mod tests {
         assert_eq!(
             validate_domain("action", &dom(&["sway"], None, &["zzz"]))
                 .iter()
-                .map(|i| i.code())
+                .map(super::DomainIssue::code)
                 .collect::<Vec<_>>(),
             ["E-ENUM-EXITS-NOT-MEMBER"]
         );
         assert_eq!(
             validate_domain("anchor", &dom(&["left"], Some("zzz"), &[]))
                 .iter()
-                .map(|i| i.code())
+                .map(super::DomainIssue::code)
                 .collect::<Vec<_>>(),
             ["E-ENUM-DEFAULT-NOT-MEMBER"]
         );
@@ -877,7 +902,7 @@ mod tests {
         assert_eq!(
             validate_domain("musicPlayback", &music)
                 .iter()
-                .map(|issue| issue.code())
+                .map(super::DomainIssue::code)
                 .collect::<Vec<_>>(),
             ["E-ENUM-STOPS-NOT-MEMBER"]
         );
@@ -885,7 +910,7 @@ mod tests {
         assert_eq!(
             validate_domain("emotion", &music)
                 .iter()
-                .map(|issue| issue.code())
+                .map(super::DomainIssue::code)
                 .collect::<Vec<_>>(),
             ["E-ENUM-UNEXPECTED-SEMANTICS"]
         );
@@ -899,7 +924,10 @@ mod tests {
         d.labels.insert("thur".into(), "Thursday".into());
         let issues = validate_domain("weekday", &d);
         assert_eq!(
-            issues.iter().map(|i| i.code()).collect::<Vec<_>>(),
+            issues
+                .iter()
+                .map(super::DomainIssue::code)
+                .collect::<Vec<_>>(),
             ["E-ENUM-LABEL-NOT-MEMBER"]
         );
         assert!(
@@ -912,7 +940,7 @@ mod tests {
     #[test]
     fn semantics_on_an_unrelated_slot_is_rejected() {
         let issues = validate_domain("emotion", &dom(&["neutral"], Some("neutral"), &["neutral"]));
-        let codes: Vec<&str> = issues.iter().map(|i| i.code()).collect();
+        let codes: Vec<&str> = issues.iter().map(super::DomainIssue::code).collect();
         assert_eq!(
             codes,
             ["E-ENUM-UNEXPECTED-SEMANTICS", "E-ENUM-UNEXPECTED-SEMANTICS"]
@@ -938,7 +966,10 @@ mod tests {
                 ty: Type::Bool,
                 default: None,
             }],
-            semantics: semantics.iter().map(|s| s.to_string()).collect(),
+            semantics: semantics
+                .iter()
+                .map(std::string::ToString::to_string)
+                .collect(),
             state: None,
             effects: None,
             bridge: None,

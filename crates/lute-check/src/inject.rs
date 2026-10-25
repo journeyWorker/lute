@@ -109,9 +109,8 @@ pub fn resolve_record_fields(
     let Some(table) = lute_manifest::validate::lower_record_fields(record) else {
         return BTreeMap::new();
     };
-    let map = match fields {
-        yaml_serde::Value::Mapping(map) => map,
-        _ => return BTreeMap::new(),
+    let yaml_serde::Value::Mapping(map) = fields else {
+        return BTreeMap::new();
     };
     let mut resolved = BTreeMap::new();
     for (key, source) in map {
@@ -474,7 +473,7 @@ pub fn lower_node_with_snapshot(
             domains,
         ),
         StageKind::Bg { fields, .. } => {
-            stage_bookkeeping_bg(&mut state, node_directive(node), &fields, &mut emit)
+            stage_bookkeeping_bg(&mut state, node_directive(node), &fields, &mut emit);
         }
         StageKind::Clear => stage_clear(&mut state, node_directive(node), &mut emit),
         StageKind::Music { fields, .. } => {
@@ -1134,8 +1133,6 @@ fn missing_anchor_domain_diag(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use lute_core_span::{Layer, Severity, Span};
-    use lute_syntax::ast::{Attr, AttrValue, Directive, Line, Node};
 
     fn span() -> Span {
         Span {
@@ -1827,7 +1824,7 @@ mod tests {
         let doms = action_domain_with_exits(&["goUnder"]);
         let (st, hid) = lower_node(staged("vesna"), &bg("hold"), &[], &doms);
         assert!(matches!(
-            &hid[..],
+            &*hid,
             [InjectedCommand {
                 kind: InjectKind::Hide { .. },
                 ..
@@ -1917,7 +1914,7 @@ mod tests {
         assert!(joined.maybe_on_stage.contains("pell"));
         let (st, hid) = lower_node(joined, &bg("slipway"), &[], &doms);
         assert!(
-            matches!(&hid[..], [InjectedCommand { kind: InjectKind::Hide { character }, .. }] if character == "pell"),
+            matches!(&*hid, [InjectedCommand { kind: InjectKind::Hide { character }, .. }] if character == "pell"),
             "{hid:?}"
         );
         assert!(st.maybe_on_stage.is_empty());

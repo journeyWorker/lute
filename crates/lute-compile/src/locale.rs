@@ -145,41 +145,38 @@ impl LocaleBundle {
         s
     }
 
-    /// Parse canonical bundle JSON. `Err` carries a human message naming the
-    /// exact defect; the CLI wraps it as `E-LOCALE-BUNDLE`. Strict on purpose —
-    /// a bundle is tool-produced, so a shape it did not produce is a mistake
-    /// worth naming, never something to guess past.
-    pub fn parse(text: &str) -> Result<Self, String> {
+    /// Parse canonical bundle JSON. Strict on purpose — a bundle is
+    /// tool-produced, so a shape it did not produce is a mistake worth naming,
+    /// never something to guess past.
+    ///
+    /// # Errors
+    ///
+    /// A [`LocaleBundleError`] naming the exact defect; the CLI wraps its text
+    /// as `E-LOCALE-BUNDLE`.
+    pub fn parse(text: &str) -> Result<Self, LocaleBundleError> {
         let value: serde_json::Value =
-            serde_json::from_str(text).map_err(|e| format!("not valid JSON: {e}"))?;
-        let obj = value
-            .as_object()
-            .ok_or_else(|| "root must be an object".to_string())?;
+            serde_json::from_str(text).map_err(LocaleBundleError::Json)?;
+        let obj = value.as_object().ok_or(LocaleBundleError::RootNotObject)?;
 
         let version = match obj.get("schemaVersion").and_then(serde_json::Value::as_i64) {
             Some(v @ (BUNDLE_SCHEMA_VERSION | LEGACY_BUNDLE_SCHEMA_VERSION)) => v,
-            Some(other) => {
-                return Err(format!(
-                    "unsupported `schemaVersion` {other} (this toolchain reads \
-                     {LEGACY_BUNDLE_SCHEMA_VERSION} and {BUNDLE_SCHEMA_VERSION})"
-                ))
-            }
-            None => return Err("missing or non-integer `schemaVersion`".to_string()),
+            Some(other) => return Err(LocaleBundleError::UnsupportedVersion(other)),
+            None => return Err(LocaleBundleError::MissingVersion),
         };
 
         let mut locales = Vec::new();
-        for (i, l) in obj
+        for (index, l) in obj
             .get("locales")
             .and_then(serde_json::Value::as_array)
-            .ok_or_else(|| "missing or non-array `locales`".to_string())?
+            .ok_or(LocaleBundleError::MissingLocales)?
             .iter()
             .enumerate()
         {
             let tag = l
                 .as_str()
-                .ok_or_else(|| format!("`locales[{i}]` is not a string"))?;
+                .ok_or(LocaleBundleError::LocaleNotString { index })?;
             if tag.is_empty() {
-                return Err(format!("`locales[{i}]` is an empty locale tag"));
+                return Err(LocaleBundleError::EmptyLocale { index });
             }
             locales.push(tag.to_string());
         }
@@ -203,34 +200,126 @@ impl LocaleBundle {
     }
 }
 
+/// Why [`LocaleBundle::parse`] refused a bundle. `table` is `entries` or
+/// `sourceHashes`.
+#[derive(Debug)]
+pub enum LocaleBundleError {
+    /// The text is not JSON.
+    Json(serde_json::Error),
+    RootNotObject,
+    /// A `schemaVersion` this toolchain does not read.
+    UnsupportedVersion(i64),
+    MissingVersion,
+    MissingLocales,
+    LocaleNotString {
+        index: usize,
+    },
+    EmptyLocale {
+        index: usize,
+    },
+    MissingTable {
+        table: &'static str,
+    },
+    RowNotObject {
+        table: &'static str,
+        line_id: String,
+    },
+    EmptyCellLocale {
+        table: &'static str,
+        line_id: String,
+    },
+    CellNotString {
+        table: &'static str,
+        line_id: String,
+        locale: String,
+    },
+}
+
+impl std::fmt::Display for LocaleBundleError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LocaleBundleError::Json(e) => write!(f, "not valid JSON: {e}"),
+            LocaleBundleError::RootNotObject => f.write_str("root must be an object"),
+            LocaleBundleError::UnsupportedVersion(other) => write!(
+                f,
+                "unsupported `schemaVersion` {other} (this toolchain reads \
+                 {LEGACY_BUNDLE_SCHEMA_VERSION} and {BUNDLE_SCHEMA_VERSION})"
+            ),
+            LocaleBundleError::MissingVersion => {
+                f.write_str("missing or non-integer `schemaVersion`")
+            }
+            LocaleBundleError::MissingLocales => f.write_str("missing or non-array `locales`"),
+            LocaleBundleError::LocaleNotString { index } => {
+                write!(f, "`locales[{index}]` is not a string")
+            }
+            LocaleBundleError::EmptyLocale { index } => {
+                write!(f, "`locales[{index}]` is an empty locale tag")
+            }
+            LocaleBundleError::MissingTable { table } => {
+                write!(f, "missing or non-object `{table}`")
+            }
+            LocaleBundleError::RowNotObject { table, line_id } => {
+                write!(f, "`{table}[{line_id}]` is not an object")
+            }
+            LocaleBundleError::EmptyCellLocale { table, line_id } => {
+                write!(f, "`{table}[{line_id}]` has an empty locale tag")
+            }
+            LocaleBundleError::CellNotString {
+                table,
+                line_id,
+                locale,
+            } => write!(f, "`{table}[{line_id}][{locale}]` is not a string"),
+        }
+    }
+}
+
+impl std::error::Error for LocaleBundleError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            LocaleBundleError::Json(e) => Some(e),
+            _ => None,
+        }
+    }
+}
+
 /// One `lineId -> locale -> string` table of a bundle (`entries`,
 /// `sourceHashes`), with the defect named exactly.
 fn string_table(
     obj: &serde_json::Map<String, serde_json::Value>,
-    key: &str,
-) -> Result<BTreeMap<String, BTreeMap<String, String>>, String> {
-    let mut table: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+    table: &'static str,
+) -> Result<BTreeMap<String, BTreeMap<String, String>>, LocaleBundleError> {
+    let mut out: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
     for (line_id, per_locale) in obj
-        .get(key)
+        .get(table)
         .and_then(serde_json::Value::as_object)
-        .ok_or_else(|| format!("missing or non-object `{key}`"))?
+        .ok_or(LocaleBundleError::MissingTable { table })?
     {
         let map = per_locale
             .as_object()
-            .ok_or_else(|| format!("`{key}[{line_id}]` is not an object"))?;
+            .ok_or_else(|| LocaleBundleError::RowNotObject {
+                table,
+                line_id: line_id.clone(),
+            })?;
         let mut values = BTreeMap::new();
         for (locale, value) in map {
             if locale.is_empty() {
-                return Err(format!("`{key}[{line_id}]` has an empty locale tag"));
+                return Err(LocaleBundleError::EmptyCellLocale {
+                    table,
+                    line_id: line_id.clone(),
+                });
             }
             let value = value
                 .as_str()
-                .ok_or_else(|| format!("`{key}[{line_id}][{locale}]` is not a string"))?;
+                .ok_or_else(|| LocaleBundleError::CellNotString {
+                    table,
+                    line_id: line_id.clone(),
+                    locale: locale.clone(),
+                })?;
             values.insert(locale.clone(), value.to_string());
         }
-        table.insert(line_id.clone(), values);
+        out.insert(line_id.clone(), values);
     }
-    Ok(table)
+    Ok(out)
 }
 
 /// Merge `bundle` into `artifact`, returning one [`W_L10N_MISSING`] warning per
@@ -491,9 +580,9 @@ mod tests {
 
     #[test]
     fn parse_rejects_a_malformed_bundle() {
-        assert!(LocaleBundle::parse("not json").is_err());
-        assert!(LocaleBundle::parse("[]").is_err());
-        assert!(LocaleBundle::parse(r#"{"locales":[],"entries":{}}"#).is_err());
+        LocaleBundle::parse("not json").unwrap_err();
+        LocaleBundle::parse("[]").unwrap_err();
+        LocaleBundle::parse(r#"{"locales":[],"entries":{}}"#).unwrap_err();
         assert!(
             LocaleBundle::parse(r#"{"schemaVersion":3,"locales":[],"entries":{}}"#).is_err(),
             "an unknown schemaVersion is refused, never guessed at"
@@ -517,6 +606,53 @@ mod tests {
             LocaleBundle::parse(r#"{"schemaVersion":1,"locales":["ja"],"entries":{"a":{"ja":7}}}"#)
                 .is_err(),
             "a non-string translation is a defect"
+        );
+    }
+
+    /// 0.49.1: the typed refusal renders the 0.49.0 `E-LOCALE-BUNDLE` text,
+    /// and a JSON refusal keeps the parser's error as its `source()`.
+    #[test]
+    fn parse_error_text_is_the_0_49_0_message() {
+        let text = |json: &str| LocaleBundle::parse(json).unwrap_err().to_string();
+        let not_json = LocaleBundle::parse("not json").unwrap_err();
+        assert!(not_json.to_string().starts_with("not valid JSON: "));
+        assert!(std::error::Error::source(&not_json).is_some());
+        assert_eq!(text("[]"), "root must be an object");
+        assert_eq!(
+            text(r#"{"locales":[]}"#),
+            "missing or non-integer `schemaVersion`"
+        );
+        assert_eq!(
+            text(r#"{"schemaVersion":3}"#),
+            "unsupported `schemaVersion` 3 (this toolchain reads 1 and 2)"
+        );
+        assert_eq!(
+            text(r#"{"schemaVersion":1}"#),
+            "missing or non-array `locales`"
+        );
+        assert_eq!(
+            text(r#"{"schemaVersion":1,"locales":[1]}"#),
+            "`locales[0]` is not a string"
+        );
+        assert_eq!(
+            text(r#"{"schemaVersion":1,"locales":["ja",""]}"#),
+            "`locales[1]` is an empty locale tag"
+        );
+        assert_eq!(
+            text(r#"{"schemaVersion":2,"locales":[],"entries":{}}"#),
+            "missing or non-object `sourceHashes`"
+        );
+        assert_eq!(
+            text(r#"{"schemaVersion":1,"locales":[],"entries":{"a":1}}"#),
+            "`entries[a]` is not an object"
+        );
+        assert_eq!(
+            text(r#"{"schemaVersion":1,"locales":[],"entries":{"a":{"":"x"}}}"#),
+            "`entries[a]` has an empty locale tag"
+        );
+        assert_eq!(
+            text(r#"{"schemaVersion":1,"locales":[],"entries":{"a":{"ja":7}}}"#),
+            "`entries[a][ja]` is not a string"
         );
     }
 

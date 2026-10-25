@@ -159,8 +159,8 @@ fn run_compile(
     // `identity:` apply, and the project verdict gates the compile).
     let resolved = resolve_project(file, project);
     let Some(built) = build_input(file, providers, resolved.as_deref(), permission_profile) else {
-        if let Err(message) = read_document(file) {
-            return envelope::fail_quietly(CliError::io(file, message));
+        if let Err(e) = read_document(file) {
+            return envelope::fail_quietly(CliError::io(file, e.to_string()));
         }
         return envelope::fail(CliError::input(
             file,

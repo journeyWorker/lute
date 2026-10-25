@@ -22,7 +22,7 @@ impl Parser<'_> {
     /// Takes `&mut self` to emit [`E_STRING_ESCAPE`] (§4.4) for undefined
     /// backslash escapes in quoted values; scanning always continues so one bad
     /// escape degrades safely rather than derailing the attribute list.
-    pub(super) fn scan_attrs(&mut self, start: usize, term: u8) -> (Vec<Attr>, usize) {
+    pub(crate) fn scan_attrs(&mut self, start: usize, term: u8) -> (Vec<Attr>, usize) {
         let b = self.body.as_bytes();
         let n = b.len();
         let mut attrs = Vec::new();
@@ -320,7 +320,7 @@ impl Parser<'_> {
 
     /// Body offset of the `}` matching the `{` at `open`, honoring `"`/`'` quotes
     /// (a CEL RHS may contain nested `{}` map literals). `None` if unbalanced.
-    pub(super) fn find_matching_brace(&self, open: usize) -> Option<usize> {
+    pub(crate) fn find_matching_brace(&self, open: usize) -> Option<usize> {
         let b = self.body.as_bytes();
         let n = b.len();
         let mut depth = 0usize;
@@ -461,7 +461,7 @@ fn char_reference(s: &str) -> Option<(char, usize)> {
 }
 
 /// Take (remove) the string value of attribute `key`, if present.
-pub(super) fn take_str(attrs: &mut Vec<Attr>, key: &str) -> Option<String> {
+pub(crate) fn take_str(attrs: &mut Vec<Attr>, key: &str) -> Option<String> {
     let pos = attrs.iter().position(|a| a.key == key)?;
     if let AttrValue::Str(s) = &attrs[pos].value {
         let s = s.clone();
@@ -476,7 +476,7 @@ pub(super) fn take_str(attrs: &mut Vec<Attr>, key: &str) -> Option<String> {
 /// flag reader [`AttrValue::flag`] (dsl 0.28.0 §1): bare, `="true"` or
 /// `="false"`. Any other value is NOT taken — it stays in `attrs` so the
 /// checker reports it (`E-FLAG-VALUE`) instead of it reading as `false`.
-pub(super) fn take_flag(attrs: &mut Vec<Attr>, key: &str) -> Option<(bool, Span)> {
+pub(crate) fn take_flag(attrs: &mut Vec<Attr>, key: &str) -> Option<(bool, Span)> {
     let pos = attrs.iter().position(|a| a.key == key)?;
     let flag = attrs[pos].value.flag()?;
     Some((flag, attrs.remove(pos).span))
@@ -486,7 +486,7 @@ pub(super) fn take_flag(attrs: &mut Vec<Attr>, key: &str) -> Option<(bool, Span)
 /// `value_span`, if present. Used for literal (non-CEL) attributes like
 /// `<when is="…">` (dsl §7.3.1) that must keep their source span without being
 /// parsed as CEL.
-pub(super) fn take_str_spanned(attrs: &mut Vec<Attr>, key: &str) -> Option<(String, Span)> {
+pub(crate) fn take_str_spanned(attrs: &mut Vec<Attr>, key: &str) -> Option<(String, Span)> {
     let pos = attrs.iter().position(|a| a.key == key)?;
     if let AttrValue::Str(s) = &attrs[pos].value {
         let s = s.clone();
@@ -500,7 +500,7 @@ pub(super) fn take_str_spanned(attrs: &mut Vec<Attr>, key: &str) -> Option<(Stri
 
 /// Take (remove) attribute `key` as a typed [`CelSlot`]. A quoted value becomes
 /// a raw CEL expression (§4.4 `CelString`); an `@ref` reuses its inner slot.
-pub(super) fn take_cel(attrs: &mut Vec<Attr>, key: &str, kind: CelKind) -> Option<CelSlot> {
+pub(crate) fn take_cel(attrs: &mut Vec<Attr>, key: &str, kind: CelKind) -> Option<CelSlot> {
     let pos = attrs.iter().position(|a| a.key == key)?;
     let attr = attrs.remove(pos);
     let vspan = attr.value_span;

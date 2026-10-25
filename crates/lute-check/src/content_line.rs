@@ -298,7 +298,7 @@ pub fn check_content_line_attrs(
                     DELIVERY_FLAGS
                         .iter()
                         .filter(|f| delivery_flags.iter().any(|a| &a.key == *f))
-                        .cloned()
+                        .copied()
                         .collect::<Vec<_>>()
                         .join("/"),
                 ),

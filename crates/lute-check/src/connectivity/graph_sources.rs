@@ -1,6 +1,8 @@
-use super::graph_assembly::*;
-use super::graph_nodes::*;
-use super::*;
+use super::graph_assembly::QuestDecls;
+use super::graph_nodes::{
+    atom_edge_kind, cycle_diag, ConnGraph, EdgeKind, NodeId, NodeInfo, PrereqState,
+};
+use super::{bundle_id, scene_key};
 use crate::ProjectDoc;
 
 use crate::meta::{resolve_doc_kind, DocKind};
@@ -12,7 +14,7 @@ use lute_syntax::ast::Node;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
-pub(super) fn top_conjuncts<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
+pub(crate) fn top_conjuncts<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
     if let Expr::Call(c) = e {
         if c.func_name == op::LOGICAL_AND && c.target.is_none() && c.args.len() == 2 {
             top_conjuncts(&c.args[0].expr, out);
@@ -25,7 +27,7 @@ pub(super) fn top_conjuncts<'e>(e: &'e Expr, out: &mut Vec<&'e Expr>) {
 
 /// The sources one `start` conjunct anchors at ([`start_anchors`]): the
 /// node it reads, or every source of an `||` whose every arm reads one.
-pub(super) fn start_sources(
+pub(crate) fn start_sources(
     e: &Expr,
     decls: &QuestDecls<'_>,
     nodes: &BTreeMap<NodeId, NodeInfo>,
@@ -55,7 +57,7 @@ pub(super) fn start_sources(
 }
 
 /// The graph node one anchoring read names (see [`start_anchors`]).
-pub(super) fn start_source(
+pub(crate) fn start_source(
     e: &Expr,
     decls: &QuestDecls<'_>,
     nodes: &BTreeMap<NodeId, NodeInfo>,
@@ -104,7 +106,7 @@ pub(super) fn start_source(
 /// bundle beat, or the accepting quest (which must be active for its body
 /// to run). A lore entry's `::accept` anchors nothing (the entry is no
 /// source until a `start` reads it); a quest never anchors itself.
-pub(super) fn accept_sources<'a>(
+pub(crate) fn accept_sources<'a>(
     docs: &'a [ProjectDoc<'a>],
     nodes: &BTreeMap<NodeId, NodeInfo>,
 ) -> BTreeMap<&'a str, Vec<NodeId>> {
@@ -152,7 +154,7 @@ pub(super) fn accept_sources<'a>(
         for quest in doc.quests.iter().filter(|q| !q.id.is_empty()) {
             let source = NodeId::Quest(quest.id.clone());
             crate::accept::walk(&quest.body, &mut |d| {
-                record(d, &source, Some(quest.id.as_str()))
+                record(d, &source, Some(quest.id.as_str()));
             });
         }
     }
@@ -269,7 +271,7 @@ pub fn omitted_refs(
 /// own sorted (`BTreeMap`) order for a deterministic, order-independent
 /// result; `edges`' `BTreeSet` targets are already sorted, so (unlike the
 /// `Vec`-adjacency precedent) there is no separate neighbor sort step.
-pub(super) fn detect_conn_cycles(
+pub(crate) fn detect_conn_cycles(
     nodes: &BTreeMap<NodeId, NodeInfo>,
     edges: &BTreeMap<NodeId, BTreeSet<NodeId>>,
     back: &BTreeMap<NodeId, BTreeSet<NodeId>>,
@@ -294,8 +296,11 @@ pub(super) fn detect_conn_cycles(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
-pub(super) fn dfs_conn_cycle(
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a recursive DFS: the graph (`nodes`, `edges`, `back`), the three traversal sets and the sink, all owned by `detect_conn_cycles`, go down each call"
+)]
+pub(crate) fn dfs_conn_cycle(
     node: &NodeId,
     nodes: &BTreeMap<NodeId, NodeInfo>,
     edges: &BTreeMap<NodeId, BTreeSet<NodeId>>,
@@ -357,7 +362,7 @@ pub(super) fn dfs_conn_cycle(
 /// zero-in-degree nodes ready at once) break on [`NodeId`]'s own `Ord` via a
 /// `BTreeSet` ready queue — independent of `nodes`/`edges`' own insertion
 /// order.
-pub(super) fn topo_sort(
+pub(crate) fn topo_sort(
     nodes: &BTreeMap<NodeId, NodeInfo>,
     edges: &BTreeMap<NodeId, BTreeSet<NodeId>>,
     back: &BTreeMap<NodeId, BTreeSet<NodeId>>,

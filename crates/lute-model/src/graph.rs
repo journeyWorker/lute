@@ -40,7 +40,7 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
         Evidence::Proven,
     );
     let mut owners: Vec<(Span, NodeKey)> = Vec::new();
-    let scene_owner = if d.folded.doc_kind == lute_check::DocKind::Scene {
+    let scene_owner = (d.folded.doc_kind == lute_check::DocKind::Scene).then(|| {
         let scene = NodeKey::new(NodeKind::Scene, doc_id.clone());
         g.node(scene.clone(), Some(d.path.clone()), Some(d.doc.span));
         g.edge(
@@ -77,10 +77,8 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
             }
         }
         owners.push((d.doc.span, scene.clone()));
-        Some(scene)
-    } else {
-        None
-    };
+        scene
+    });
     // Authored choices/options are source nodes in their own right.  Their
     // identity is document + owning branch/hub id + option id; it is stable
     // across unrelated source movement and is the spelling used by context
@@ -658,7 +656,7 @@ fn add_choice_nodes(
                 }
             }
             Node::Objective(objective) => {
-                add_choice_nodes(g, d, doc_id, parent, &objective.body, owners)
+                add_choice_nodes(g, d, doc_id, parent, &objective.body, owners);
             }
             Node::On(on) => add_choice_nodes(g, d, doc_id, parent, &on.body, owners),
             _ => {}
@@ -984,8 +982,7 @@ fn owner_for(owners: &[(Span, NodeKey)], span: Span, fallback: &NodeKey) -> Node
             candidate.byte_start <= span.byte_start && candidate.byte_end >= span.byte_end
         })
         .min_by_key(|(candidate, _)| candidate.byte_end - candidate.byte_start)
-        .map(|(_, key)| key.clone())
-        .unwrap_or_else(|| fallback.clone())
+        .map_or_else(|| fallback.clone(), |(_, key)| key.clone())
 }
 
 #[cfg(test)]
@@ -1145,8 +1142,11 @@ mod tests {
             byte_start: start,
             byte_end: start + 1,
             line: 1,
-            column: start as u32 + 1,
-            utf16_range: (start as u32, start as u32 + 1),
+            column: u32::try_from(start).unwrap() + 1,
+            utf16_range: (
+                u32::try_from(start).unwrap(),
+                u32::try_from(start).unwrap() + 1,
+            ),
         };
         let mut graph = SemanticGraph::default();
         graph.node(key.clone(), Some("scene.lute".into()), Some(span(1)));

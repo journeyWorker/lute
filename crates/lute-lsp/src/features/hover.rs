@@ -46,9 +46,8 @@ pub fn hover_at(
 ) -> Option<Hover> {
     let (mut meta, _) = parse_meta(&doc.meta, snapshot);
     lute_resolve::cursor::merge_imports(&mut meta, imports);
-    let cursor = match lute_resolve::cursor::resolve(doc, off) {
-        Some(cursor) => cursor,
-        None => return hover_with_identity(doc, off, modifier_hover(doc, off)),
+    let Some(cursor) = lute_resolve::cursor::resolve(doc, off) else {
+        return hover_with_identity(doc, off, modifier_hover(doc, off));
     };
     let md = match cursor {
         Cursor::DirectiveName(tag) => directive_hover(snapshot, tag),
@@ -705,7 +704,7 @@ mod tests {
     /// directive whose `assetId` attr is typed `assetKind("CH")`.
     fn asset_snapshot() -> CapabilitySnapshot {
         use lute_manifest::schema::{
-            AssetKindDecl, AssetResolve, AssetSegment, AttrDecl, DirectiveDecl, Lowering,
+            AssetResolve, AssetSegment, AttrDecl, DirectiveDecl, Lowering,
         };
         use lute_manifest::types::Type;
         let ch = AssetKindDecl {
@@ -774,7 +773,10 @@ mod tests {
     }
 
     #[test]
-    #[allow(non_snake_case)] // brief-specified name mirrors the `characterId` segment
+    #[expect(
+        non_snake_case,
+        reason = "the brief-specified name mirrors the `characterId` segment"
+    )]
     fn hover_characterId_segment() {
         // Cursor on `marina` → segment idx 1 (characterId, providerRef character).
         let text = "## Shot 1.\n::portrait{assetId=\"CH.marina.waitress.delighted.3\"}\n";
@@ -793,7 +795,7 @@ mod tests {
     /// state path and an imported `helped` def — exactly the shape `check()` sees
     /// after resolving a scene's `uses:` schema (dsl §9.2).
     fn schema_imports() -> lute_check::SchemaImports {
-        use lute_check::{Namespace, SchemaImports, StateDecl};
+        use lute_check::{Namespace, StateDecl};
         use lute_manifest::types::Type;
         let mut imports = SchemaImports::default();
         imports.state.decls.insert(

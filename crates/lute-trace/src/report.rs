@@ -590,6 +590,10 @@ pub(crate) fn value_text(v: &Value) -> Option<String> {
 
 /// Integral floats render without a trailing `.0` (matches
 /// `lute_compile::literal_json`'s envelope convention: `0`, not `0.0`).
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "a whole finite double below 1e15 in magnitude (checked above), so the cast is exact"
+)]
 pub(crate) fn format_num(n: f64) -> String {
     if n.is_finite() && n.fract() == 0.0 && n.abs() < 1e15 {
         format!("{}", n as i64)
@@ -828,7 +832,7 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
             ));
         }
         Step::Assert { text, effect_of } => {
-            out.push_str(&format!("    ::assert  {text}{}\n", effect_note(effect_of)))
+            out.push_str(&format!("    ::assert  {text}{}\n", effect_note(effect_of)));
         }
         Step::Retract { text, effect_of } => out.push_str(&format!(
             "    ::retract  {text}{}\n",
@@ -980,7 +984,7 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
             } else {
                 ""
             };
-            out.push_str(&format!("    quest {quest} accepted{queued}\n"))
+            out.push_str(&format!("    quest {quest} accepted{queued}\n"));
         }
         Step::Exclusive { text } => out.push_str(&format!("    ✗ exclusive: {text}\n")),
         Step::Jump { to } => out.push_str(&format!("    <jump -> {to}>\n")),

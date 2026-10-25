@@ -369,7 +369,7 @@ fn collect_choices<'a>(nodes: &'a [Node], out: &mut Vec<&'a Choice>) {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_choices(body, out)
+                            collect_choices(body, out);
                         }
                     }
                 }
@@ -529,7 +529,7 @@ fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_lines(body, out)
+                            collect_lines(body, out);
                         }
                     }
                 }

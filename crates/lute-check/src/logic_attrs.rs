@@ -587,7 +587,7 @@ pub(crate) fn check_arm_attrs(a: &Arm, diags: &mut Vec<Diagnostic>) {
     match a {
         Arm::When { attrs, .. } => close(attrs, "when", WHEN_ATTRS, &[], None, diags),
         Arm::Otherwise { attrs, .. } => {
-            close(attrs, "otherwise", OTHERWISE_ATTRS, &[], None, diags)
+            close(attrs, "otherwise", OTHERWISE_ATTRS, &[], None, diags);
         }
     }
 }

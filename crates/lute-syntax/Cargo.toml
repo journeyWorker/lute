@@ -10,3 +10,6 @@ lute-manifest = { path = "../lute-manifest" }
 
 [dev-dependencies]
 proptest = "1"
+
+[lints]
+workspace = true

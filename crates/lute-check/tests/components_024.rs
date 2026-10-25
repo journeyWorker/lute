@@ -57,7 +57,7 @@ fn scene(front: &str, body: &str) -> String {
 
 /// 1-based line of the first line of `text` containing `needle`.
 fn line_of(text: &str, needle: &str) -> u32 {
-    text.lines().position(|l| l.contains(needle)).unwrap() as u32 + 1
+    u32::try_from(text.lines().position(|l| l.contains(needle)).unwrap()).unwrap() + 1
 }
 
 const APPROVAL: &str = "---\ncomponent: approval\neffects: true\nparams:\n  delta: int\n---\n\

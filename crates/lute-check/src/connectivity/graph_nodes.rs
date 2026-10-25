@@ -1,4 +1,4 @@
-use super::*;
+use super::bundle_beat_key_set;
 use crate::ProjectDoc;
 
 use crate::meta::{meta_key_span, resolve_doc_kind, DocKind};
@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 /// silently paper over a real typo.
 pub const E_CONN_UNKNOWN_NODE: &str = "E-CONN-UNKNOWN-NODE";
 
-pub(super) fn unknown_node_diag(message: String, span: Span) -> Diagnostic {
+pub(crate) fn unknown_node_diag(message: String, span: Span) -> Diagnostic {
     Diagnostic {
         code: E_CONN_UNKNOWN_NODE.to_string(),
         severity: Severity::Error,
@@ -31,7 +31,7 @@ pub(super) fn unknown_node_diag(message: String, span: Span) -> Diagnostic {
 /// The raw `after:` frontmatter shape retained in a scene's typed metadata.
 /// Distinguishes an ABSENT key from a PRESENT-but-non-string one. The retained
 /// YAML is the parse result captured before duplicate-key sanitization.
-pub(super) enum SceneAfter {
+pub(crate) enum SceneAfter {
     /// No `after:` key at all (or the frontmatter itself failed to parse /
     /// wasn't a mapping) — a valid entry node.
     Absent,
@@ -42,7 +42,7 @@ pub(super) enum SceneAfter {
     NonString,
 }
 
-pub(super) fn scene_after(meta: &crate::meta::TypedMeta) -> SceneAfter {
+pub(crate) fn scene_after(meta: &crate::meta::TypedMeta) -> SceneAfter {
     let Some(value) = meta.yaml() else {
         return SceneAfter::Absent;
     };
@@ -81,7 +81,7 @@ pub fn quest_id_set(docs: &[ProjectDoc<'_>]) -> BTreeSet<String> {
 /// `None` when nothing is close enough; an exact match (distance 0) never
 /// reaches this helper — callers only compute a suggestion after a lookup
 /// miss.
-pub(super) fn nearest_match<'a>(
+pub(crate) fn nearest_match<'a>(
     needle: &str,
     candidates: impl Iterator<Item = &'a str>,
     max_dist: usize,
@@ -97,7 +97,7 @@ pub(super) fn nearest_match<'a>(
 /// `follows_span`), never a synthetic per-atom location (`PrereqFormula`
 /// carries none). `quest_after`: the formula is a `<quest follows=…>` — its
 /// miss says how to drop `follows=` instead (dsl 0.24.0 §2).
-pub(super) fn check_formula_atoms(
+pub(crate) fn check_formula_atoms(
     formula: &PrereqFormula,
     span: Span,
     path: &Path,
@@ -137,7 +137,7 @@ pub(super) fn check_formula_atoms(
 /// The tail of an unresolvable `<quest follows=…>` miss (dsl 0.24.0 §2): a
 /// quest has no `when`, and an accept-driven quest needs no `follows=` to be
 /// drawn — it is anchored at every `::accept` of it.
-pub(super) const QUEST_AFTER_HINT: &str =
+pub(crate) const QUEST_AFTER_HINT: &str =
     "; if the quest is taken on by `::accept`, drop `follows=` — an \
      accept-driven quest is anchored at every document that accepts it (dsl 0.24.0 §2)";
 
@@ -154,7 +154,7 @@ pub(super) const QUEST_AFTER_HINT: &str =
 /// document already fails with `E-META-PARSE`; reporting every reference to
 /// it as unknown would cascade one YAML slip into errors in files that are
 /// fine (0.21.1 T3-8, seven F3).
-pub(super) fn check_scene_key(
+pub(crate) fn check_scene_key(
     key: &str,
     cel: bool,
     span: Span,
@@ -205,7 +205,7 @@ pub(super) fn check_scene_key(
 /// dsl 0.23.0 §4: the canonical key of the bundle beat whose local `id=` is
 /// `key` — the one in `path`'s own document, else the only one in the
 /// project.
-pub(super) fn local_bundle_id(key: &str, path: &Path, key_set: &SceneKeys<'_>) -> Option<String> {
+pub(crate) fn local_bundle_id(key: &str, path: &Path, key_set: &SceneKeys<'_>) -> Option<String> {
     let local: Vec<(&String, &Vec<(PathBuf, Span)>)> = key_set
         .bundles
         .iter()
@@ -221,7 +221,7 @@ pub(super) fn local_bundle_id(key: &str, path: &Path, key_set: &SceneKeys<'_>) -
 /// The project's scene keys ([`scene_key_set`]) plus whether they are all of
 /// them: `complete` is false when some document's frontmatter does not parse
 /// ([`crate::meta::frontmatter_parses`]) — a scene whose id cannot be read.
-pub(super) struct SceneKeys<'a> {
+pub(crate) struct SceneKeys<'a> {
     keys: &'a BTreeMap<String, Vec<(PathBuf, Span)>>,
     /// dsl 0.23.0 §4: the bundle beat canonical ids ([`bundle_beat_key_set`]).
     bundles: BTreeMap<String, Vec<(PathBuf, Span)>>,
@@ -238,7 +238,7 @@ pub(super) struct SceneKeys<'a> {
 /// exactly as an `after:` `visited` atom is. Each slot is re-parsed here
 /// (the project walk holds no CEL arena); an unparseable slot is the
 /// per-file check's `E-CEL-PARSE`, never re-reported.
-pub(super) fn check_visited_calls(
+pub(crate) fn check_visited_calls(
     doc: &Document,
     meta: &crate::meta::TypedMeta,
     path: &Path,
@@ -272,7 +272,7 @@ pub(super) fn check_visited_calls(
 
 /// A top-level string value of a scene's frontmatter (the [`scene_after`]
 /// lookup, for keys whose non-string shape another pass owns).
-pub(super) fn scene_frontmatter_str(meta: &crate::meta::TypedMeta, key: &str) -> Option<String> {
+pub(crate) fn scene_frontmatter_str(meta: &crate::meta::TypedMeta, key: &str) -> Option<String> {
     meta.yaml()?.get(key)?.as_str().map(str::to_string)
 }
 
@@ -546,7 +546,7 @@ impl fmt::Display for EdgeKind {
 }
 
 /// The [`EdgeKind`] an [`Atom`] contributes.
-pub(super) fn atom_edge_kind(atom: &Atom) -> EdgeKind {
+pub(crate) fn atom_edge_kind(atom: &Atom) -> EdgeKind {
     match atom {
         Atom::Visited(_) => EdgeKind::Visited,
         Atom::Completed(_) => EdgeKind::Completed,

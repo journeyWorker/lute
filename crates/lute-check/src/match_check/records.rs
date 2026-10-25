@@ -1,7 +1,10 @@
 //! `<branch>` / `<hub>` / `<quest>` recording (dsl §11.1, 0.2.0 §5.2): ids,
 //! choice/objective checks, and the implicit decls folded into the schema.
 
-use super::*;
+use super::{
+    diag, Attr, AttrValue, BTreeSet, Branch, Diagnostic, Hub, Literal, Namespace, Node, Quest,
+    Severity, Span, StateDecl, Type, E_PATH_IDENT,
+};
 
 /// `E-BRANCH-ALL-GUARDED`: a `<branch>` whose every `<choice>` carries a `when`
 /// guard (dsl §11.1, S5). At least one UNGUARDED (`when`-less) choice is REQUIRED

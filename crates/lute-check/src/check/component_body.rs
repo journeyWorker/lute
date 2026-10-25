@@ -1,7 +1,16 @@
 //! Component-body validation (dsl §13, 0.4.0 §6): [`validate_components`], the
 //! component-mode walk and its purity scans, and `::use` cycle detection.
 
-use super::*;
+use super::{
+    cel_parse_diagnostics, check_cel_slot, check_directive, check_directive_when, check_guard,
+    check_interp_format, check_interp_referent, check_param_match, check_speaker_args, check_use,
+    check_use_typed_args, collect_use_directives, directive_when_refused, fill_document,
+    fold_directive_slots, for_each_cel_slot, interp_grammar_diag, is_bare_ref, param_domain,
+    scan_refs, text_looks_like_ref, use_diag, Arm, Attr, AttrValue, CapabilitySnapshot, CelArena,
+    CelSlot, ClipNode, ComponentSet, Ctx, DecideCtx, DefTable, Diagnostic, Directive, Document,
+    Domain, DomainInfo, Env, ExpectedType, Interp, InterpKind, Mode, Node, PathBuf, ProviderSet,
+    Span, Type, E_COMPONENT_ARG, E_COMPONENT_BODY, E_COMPONENT_CYCLE, E_COMPONENT_STATE,
+};
 
 /// Validate every component this document `::use`s (dsl §13), directly or
 /// through another component's body: its presentational body plus the
@@ -27,7 +36,7 @@ use super::*;
     clippy::too_many_arguments,
     reason = "component checking receives each independent environment explicitly"
 )]
-pub(super) fn validate_components(
+pub(crate) fn validate_components(
     components: &ComponentSet,
     snapshot: &CapabilitySnapshot,
     providers: &ProviderSet,
@@ -289,7 +298,7 @@ pub(super) fn validate_components(
 /// then quests, then entries). A component reached only through another
 /// component's body inherits the outer `::use`'s span — the importing
 /// document's only position for it.
-pub(super) fn component_use_sites(
+pub(crate) fn component_use_sites(
     doc: &Document,
     components: &ComponentSet,
 ) -> std::collections::BTreeMap<String, Span> {
@@ -341,18 +350,20 @@ fn collect_use_names(nodes: &[Node], out: &mut Vec<(String, Span)>) {
 /// nearest ancestor directory holding a `lute.project.yaml` — the project
 /// root every other path in a report is read against — with `/` separators.
 /// A component outside any project keeps its full path.
-pub(super) fn project_relative_display(src: &std::path::Path) -> String {
+pub(crate) fn project_relative_display(src: &std::path::Path) -> String {
     src.ancestors()
         .skip(1)
         .find(|dir| dir.join("lute.project.yaml").is_file())
         .and_then(|root| src.strip_prefix(root).ok())
-        .map(|rel| {
-            rel.components()
-                .map(|c| c.as_os_str().to_string_lossy().into_owned())
-                .collect::<Vec<_>>()
-                .join("/")
-        })
-        .unwrap_or_else(|| src.display().to_string())
+        .map_or_else(
+            || src.display().to_string(),
+            |rel| {
+                rel.components()
+                    .map(|c| c.as_os_str().to_string_lossy().into_owned())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            },
+        )
 }
 
 /// The component-mode analysis environment (dsl §13): the params are the ONLY ref
@@ -586,18 +597,18 @@ pub(crate) fn directive_writes_state(snapshot: &CapabilitySnapshot, tag: &str) -
 /// `effects:` flag, its own `speaker` params, the host's cast they range
 /// over, and (dsl 0.26.0 §3.3) the result slots its own plugin directives
 /// declare ([`component_own_slots`]), which it may read.
-pub(super) struct BodyScope<'a> {
-    pub(super) effects: bool,
-    pub(super) speakers: &'a [String],
-    pub(super) cast: &'a std::collections::BTreeMap<String, lute_manifest::schema::CastMember>,
-    pub(super) own: std::collections::BTreeSet<String>,
+pub(crate) struct BodyScope<'a> {
+    pub(crate) effects: bool,
+    pub(crate) speakers: &'a [String],
+    pub(crate) cast: &'a std::collections::BTreeMap<String, lute_manifest::schema::CastMember>,
+    pub(crate) own: std::collections::BTreeSet<String>,
 }
 
 /// dsl 0.26.0 §3.3: the result slots the plugin directives of a component's
 /// own body declare (a literal key: `::battle{resultKey="fight"}` →
 /// `scene.battle.fight.won`, …) — state its body MAY read, since every
 /// `::use` opens them in the host ([`fold_directive_slots`]); not ambient.
-pub(super) fn component_own_slots(
+pub(crate) fn component_own_slots(
     body: &Document,
     snapshot: &CapabilitySnapshot,
     components: &ComponentSet,
@@ -685,8 +696,11 @@ fn component_guard(
 /// the purity contract: a guard or match subject reading ambient state is
 /// still `E-COMPONENT-STATE`, and a presentational body `::use`-ing an
 /// effects component is `E-COMPONENT-BODY`.
-#[allow(clippy::too_many_arguments)]
-pub(super) fn walk_component_body(
+#[expect(
+    clippy::too_many_arguments,
+    reason = "a recursive walk: each argument is a separate read-only input of the body check, passed unchanged down the recursion, plus the diagnostic sink"
+)]
+pub(crate) fn walk_component_body(
     nodes: &[Node],
     snapshot: &CapabilitySnapshot,
     providers: &ProviderSet,
@@ -1122,7 +1136,7 @@ enum RefsOf<'a> {
 
 /// The component NAME a `::use` directive targets (a plain-string `component=`
 /// attr), or `None` for any other directive / a non-string component attr.
-pub(super) fn use_target(dir: &Directive) -> Option<&str> {
+pub(crate) fn use_target(dir: &Directive) -> Option<&str> {
     if dir.tag != "use" {
         return None;
     }
@@ -1155,7 +1169,7 @@ fn collect_use_targets(nodes: &[Node], out: &mut Vec<String>) {
                 for arm in &m.arms {
                     match arm {
                         Arm::When { body, .. } | Arm::Otherwise { body, .. } => {
-                            collect_use_targets(body, out)
+                            collect_use_targets(body, out);
                         }
                     }
                 }
@@ -1211,7 +1225,6 @@ fn detect_use_cycles(components: &ComponentSet, at: Span, diags: &mut Vec<Diagno
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn dfs_use_cycle(
     node: &str,
     adj: &std::collections::BTreeMap<String, Vec<String>>,
@@ -1255,7 +1268,7 @@ fn dfs_use_cycle(
 /// the param that carries the def in. The component's own check and each
 /// host's `::use` report it alike, so whole-project `check` keeps the one in the
 /// component.
-pub(super) fn component_def_reads(
+pub(crate) fn component_def_reads(
     body: &Document,
     params: &std::collections::BTreeMap<String, DomainInfo>,
     env: &Env,
