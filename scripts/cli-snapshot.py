@@ -65,10 +65,13 @@ VERSION_RE = re.compile(r"(?<![A-Za-z0-9])0\.(?:48|49|50)(?:\.\d+)?(?![A-Za-z0-9
 # Opt-in (`--capability-hash`): a capability hash after its key, in every form
 # the CLI prints — JSON `"capabilitySnapshot": "<hash>"` (spaced or compact),
 # text `capabilitySnapshot: <hash>` and `(capabilitySnapshot <hash>)` — and the
-# same for `capabilityVersion`. Only a 64-digit hex value is a hash; any other
-# value after the key stays, so a malformed stamp is still a difference.
+# same for `capabilityVersion`. Only a whole 64-digit hex value is a hash: a
+# quoted value must close right after it, a bare one must end at whitespace,
+# `)` or the end of the text. Any other value after the key stays, so a
+# malformed stamp (`"<hash>-bad"`) is still a difference.
 CAPABILITY_HASH_RE = re.compile(
-    r'(?P<prefix>"?\bcapability(?:Snapshot|Version)"?(?:\s*[:=]\s*|\s+)"?)[0-9a-f]{64}(?![0-9A-Za-z])'
+    r'(?P<prefix>"?\bcapability(?:Snapshot|Version)"?(?:\s*[:=]\s*|\s+)(?P<quote>")?)'
+    r'[0-9a-f]{64}(?(quote)(?=")|(?=[\s)]|$))'
 )
 
 
@@ -563,12 +566,17 @@ SELF_TEST_CAPABILITY_HASHES = (
     ("catalog", "refreshed 1 snapshot(s) in cat (capabilitySnapshot %s)\n"),
 )
 # (label, text) `--capability-hash` must leave byte-identical: a value that is
-# not a hash, the key in prose, and a hash under another key.
+# not a hash, the key in prose, a hash under another key, and a hash followed
+# by more of the value (`<hash>-bad`, `<hash> x`, `<hash>.x`).
 SELF_TEST_CAPABILITY_UNTOUCHED = (
     ("run", '{"capabilityVersion": "x", "commands": []}'),
     ("check", "carries removed field `capabilityVersion`; 0.37 reads `capabilitySnapshot` — rec"),
     ("compile", '{"sourceHash": "%s"}' % HASH_A),
     ("compile", '{"capabilitySnapshot": "%s0"}' % HASH_A),
+    ("compile", '{"capabilitySnapshot":"%s-bad"}' % HASH_A),
+    ("compile", '{"capabilityVersion": "%s x"}' % HASH_A),
+    ("context", "capabilitySnapshot: %s-bad\n" % HASH_A),
+    ("catalog", "(capabilitySnapshot %s.x)\n" % HASH_A),
 )
 
 
