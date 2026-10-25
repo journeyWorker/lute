@@ -1126,6 +1126,8 @@ rewardKinds:
 이름 제안, 낡은 공급자 스냅샷은 경고만), `required: true`는 대상 없는 보상을 거부합니다: `E-REWARD-TARGET`
 (0.26.0). 두 가지를 모두 적은 계약은 플러그인 적재에 실패합니다.
 
+0.50부터 보상 kind는 지급 시점에 적용되는 `effects`(`asserts`, `retracts`, `accepts`)도 선언할 수 있습니다. [범위 스탬프, 호스트 토큰, 보상 효과, 프로젝트 단계](#범위-스탬프-호스트-토큰-보상-효과-프로젝트-단계-050)를 참고하세요.
+
 → [퀘스트와 씬](/ko/language/quests-and-scenes/)
 
 ## 로어 엔트리
@@ -1345,6 +1347,68 @@ enums:
 
 → [타임라인과 속성 트랙](/ko/language/timeline-and-property-tracks/)
 
+## 범위 스탬프, 호스트 토큰, 보상 효과, 프로젝트 단계 (0.50)
+
+플러그인 `stampAttrs` 항목은 `on:`(표면: `line`, `branch`, `hub`, `choice`, 또는 디렉티브 태그)으로 범위를 정할 수 있습니다. `required: true`는 `on:`이 있을 때만 쓸 수 있습니다. `on:`이 없으면 교차(cross-cutting) 스탬프로, 스탬프를 실을 수 있는 모든 디렉티브와 콘텐츠 줄에 적용되며 `<branch>`/`<hub>`/`<choice>`에는 절대 적용되지 않습니다.
+
+```yaml
+# plugins/acme.stage/stampattrs/columns.yaml
+stampAttrs:
+  - { name: voiceAssetId, type: { providerRef: voice }, required: true, on: [line] }
+  - { name: assetName,    type: string, on: [bg, actor] }
+  - { name: menuType,     type: { enum: [plain, timed, minigame] }, on: [branch, hub] }
+  - { name: optionKey,    type: string, required: true, on: [choice] }
+  - { name: cue,          type: string }          # cross-cutting, as in 0.49
+```
+
+```lute
+<branch id="route" prompt="Which way?" menuType="plain">
+  <choice id="goLeft" text="Left" optionKey="L1">
+    @mira{voiceAssetId="VO.mira.0010"}: Left it is.
+  </choice>
+</branch>
+```
+
+플러그인은 `hostTokens` export(`hosttokens/*.yaml`)로 **호스트 토큰**을 선언합니다. 그러면 `{{playerName}}`은 `reserved` placeholder로 컴파일되고 호스트가 렌더링 시점에 치환합니다(`lute.core`가 `userName`을 선언). 선언되지 않은 맨 `{{name}}`은 `E-CEL-PROFILE`입니다.
+
+```yaml
+# plugins/acme.stage/hosttokens/tokens.yaml
+hostTokens:
+  playerName: { type: string }
+  rank:       { type: int }          # {{rank:ordinal}} ok, {{rank:capitalize}} is E-REF-TYPE
+  platform:   { type: { enum: [ios, android, web] } }
+```
+
+보상 kind는 지급 시점에 팩트와 수락을 적용할 수 있습니다(`@target`은 보상의 `target=`이며, `writes`는 허용되지 않고 상태 쓰기는 `credits:`입니다). 보상마다 `grant` + `credits`, 그다음 `retracts`, `asserts`, `accepts` 순입니다:
+
+```yaml
+rewardKinds:
+  BADGE:       { target: { entity: person, required: true }, effects: { asserts: ["met(@target)"] } }
+  REVOKE:      { target: { entity: person, required: true }, effects: { retracts: ["met(@target)"] } }
+  OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
+```
+
+`lute.project.yaml`은 checker `W-*` 코드의 단계(`off`, `info`, `warn`, `error`)를 정하며, 선택적으로 `paths` glob 아래에만 적용할 수 있습니다. `--deny CODE`는 `off`보다 우선하고, 오류는 절대 낮추지 않습니다.
+
+```yaml
+diagnostics:
+  W-DISPLAY-NAME-DUP: error
+  W-STAGE-ABSENT: { level: off, paths: ["scenes/imported/**"] }
+```
+
+`node` 린트(`lute.lint.yaml`의 `custom:` 또는 플러그인 `lints:` export)는 노드마다 한 번 실행됩니다. 모든 인덱스를 가드하세요:
+
+```yaml
+custom:
+  - id: beat-label-prefix
+    target: node
+    when: 'node.tag == "label" && scene.kind == "beat" && "name" in node.attrs && !node.attrs["name"].startsWith("b_")'
+    level: error
+    message: "a beat's labels start with b_"
+```
+
+→ [플러그인 매니페스트](/ko/plugins/manifests/) · [CLI](/ko/tooling/cli/) · [린팅](/ko/tooling/linting/)
+
 ## 산출물
 
 `lute compile`은 실행 IR을 씁니다. 봉투에는 `kind`, `lute`, `irVersion`, `capabilitySnapshot`, 정렬된
@@ -1393,7 +1457,7 @@ enums:
 | `lute calendar [--project <DIR>] [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds('awake', ['toma'])=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis run.aff.*=6,7] [--axis 'run.aff[run.route]=6,7'] [--axis clock=1..3] [--occasion <O>] [--occasion-axes <O>=<axis>[=<value>],…] [--target <T>] [--relation <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--format text\|csv] [--json]` | 0.23.0. 축들의 곱의 모든 칸(첫 축이 가장 느리게 바뀜)에서 계기별로 play와 같은 자격 판정을 보여 줍니다: 승자나 제시 목록, 가려진 자격 있는 비트 `+N`, 판정할 수 없는 칸 `?`, 마지막으로 어느 칸에서도 자격이 없는 비트와 (0.24.0) 어딘가에서 자격은 있었지만 한 번도 제시되지 않은 비트. 스크립트의 세이브에서 그 스텝을 재생한 상태(`--until`까지)나 선언된 기본값에서 시작합니다. `--where`는 조건이 성립하지 않는 칸을 뺍니다. 대상 있는 계기는 비트가 이름을 붙인 대상마다 열 하나를 받으며, `--target mon.inchlet`은 대상을 직접 고릅니다(`--occasion-axes`의 `=` 뒤에는 대상이 아니라 축을 씁니다). 0.24.0: `clock[=d1..d2]`는 날 × 슬롯을 시계 순서로 펼치고, `visited()` 축은 id를 세이브에 넣거나 뺍니다. `--occasion-axes dusk=clock.day`(또는 `=run.day,run.slot=night`, 바뀌는 어느 경로든)는 그 계기를 그 축의 값마다 한 번 평가하고 나머지 칸은 비웁니다. `--relation at`은 칸마다 누가 어디 있는지 보여 줍니다. 0.27.0: `--axis run.aff.*=6,7`은 `per:` 패밀리의 모든 멤버를, `--axis 'run.aff[run.route]=6,7'`은 각 칸에서 `run.route` 축이 가리키는 멤버 하나만 설정합니다(나머지는 세이브 값이나 기본값 유지). 패밀리 이름만 쓴 `--axis run.aff`는 두 형태를 알려 주는 사용 오류입니다. |
 | `lute lore [--project <DIR>]` | 대상별·시리즈별 엔트리와 비트, 그리고 그것이 드러내는 팩트. |
 | `lute context <file> [--project <DIR>] [--node <NODE> \| --at <file>:<line>:<col>] [--script <file>… \| --all-scripts] [--json]` | 여기서 쓸 수 있는 모든 것: 디렉티브(내장 포함), 어휘, 상태(`owner: engine` 표시), def, 등급과 `reserved` 여부를 담은 관계, 대상 도메인을 담은 계기, 캐스트, 컴포넌트 시그니처, 텍스트 수식어, 모든 씬·퀘스트·엔트리 id. `--json`은 기능 스냅샷 해시 `capabilitySnapshot`도 싣습니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`의 것입니다(0.27.0). |
-| `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | 프로젝트별로 설정하는 권고성 편집 린트(`L-*`). 선형 VN 지표는 비트, 컴포넌트, 퀘스트, 로어를 건너뜁니다. 0.26.0부터 `W-DISPLAY-NAME-DUP`도 보고합니다(`--deny W-DISPLAY-NAME-DUP`로 오류로 올림). |
+| `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | 프로젝트별로 설정하는 권고성 편집 린트(`L-*`). 선형 VN 지표는 비트, 컴포넌트, 퀘스트, 로어를 건너뜁니다. 0.26.0부터 `W-DISPLAY-NAME-DUP`도 보고합니다(`--deny W-DISPLAY-NAME-DUP`로 오류로 올림). 0.50부터 `custom:`이나 플러그인 규칙이 `target: node`를 쓸 수 있고, CEL 조각에 `startsWith`/`endsWith`/`contains`가 있습니다. |
 | `lute doctor [--project <DIR>] [--strict] [--json]` | 툴체인과 프로젝트 설정: 버전, 활성 플러그인, 계기별로 응답하는 비트 수, 플레이 스크립트와 테스트, `PATH`의 `lute-lsp`가 이 버전인지, (0.24.0) 실행 중인 `lute` 옆의 빌드와 같은지(`lute-lsp beside lute`), 실행 중인 `lute-lsp`가 낡았는지(에디터 재시작). `--strict`(0.26.0)는 실패한 검사(`✗`)가 하나라도 있으면 `1`로 끝납니다. 0.26.0부터 `lute-lsp`는 자기 바이너리가 교체된 것을 알아채고, 옛 빌드의 결과 대신 재시작하라는 `lute-lsp-stale` 진단 하나를 보냅니다. |
 | `lute new scene\|quest\|lore\|schema <name> [--project <DIR>]` · `lute init [<DIR>] [--template minimal\|investigation\|beats]` | 문서나 프로젝트의 뼈대를 만듭니다. 새 문서에는 `id:`가 들어가고 `defaults:`가 채워 주는 것은 빠집니다. 파일 이름은 입력한 대소문자를 그대로 둔 id를 따릅니다. `lute new scene <name> --occasion <OCCASION> [--target <prefix>.<member>]`은 계기와 대상을 프로젝트에 맞춰 검사한 뒤 비트를 씁니다. 대상 있는 계기에는 `--target`이 필요합니다. |
 
@@ -1644,6 +1708,8 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-REWARD-TARGET` | 0.26.0. 보상의 `target=`이 보상 종류의 `target:` 계약을 어깁니다: `{ entity: K }` 종류의 멤버가 아니거나, `{ provider: … }`가 모르거나, `required: true`인데 없습니다. |
 | `E-RULE-AGGREGATE-CYCLE` | 0.26.0. 규칙의 `count(…)` / `countDistinct(…)`가 그 규칙의 머리에 의존하는 관계를 셉니다. 머리가 먹이지 않는 관계만 세세요. |
 | `W-DISPLAY-NAME-DUP` | 0.26.0, 프로젝트 전체 `check`와 `lute lint`. 두 화자가 같은 표시 이름으로 보입니다: 캐스트 `name:` 둘, 캐스트 이름과 `::use{… name="…"}` 문자열, 또는 그런 문자열 둘. 하나를 바꾸거나, 의도한 역할 이름이면 캐스트 항목에 `sharedName: true`를 적으세요. |
+| `E-PLUGIN-STAMP-SURFACE` | 0.50. `stampAttrs`의 `on:`이 `line`, `branch`, `hub`, `choice`, 또는 해결된 프로필의 스탬프 가능한 디렉티브가 아닌 것을 지정합니다(오타, `jump`/`label`/`clear`, 비활성 플러그인의 디렉티브). 이름을 고치거나 그 디렉티브를 선언한 플러그인을 `depends:`에 넣으세요. |
+| `E-DIAGNOSTICS-CONFIG` | 0.50. `lute.project.yaml`의 `diagnostics:` 항목이 잘못되었거나 허용되지 않습니다: `E-*`나 `L-*` 코드, 알 수 없는 코드, 잘못된 level, 잘못된 `paths`. 단계를 바꿀 수 있는 것은 `W-*` 코드뿐입니다. |
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. 한 런에서 다시 읽힐 수 있는 엔트리(조회 엔트리, `once` 없음, 런보다 짧은 `once`, `spentBy`, `for`)가 `::set`, `::retract`, 또는 쓰기 효과만 가진 디렉티브를 씁니다: 쓰기는 한 런에서 처음 읽을 때만 적용됩니다. 반복되는 쓰기는 `<beat … once="false">`에, 아니면 `once="run"`이나 `when="!entry.<id>.read"` 가드를 쓰세요. `::assert`는 제외입니다. |
 | `E-COMPONENT-ARG` | `::use` 인자가 파라미터에 맞지 않거나 없는 파라미터를 가리킵니다. 0.26.0부터는 `speaker` 파라미터가 아닌 것에 쓴 `@@x:`나 컴포넌트 밖의 `@@x:`도 해당합니다. |
 | `E-UNKNOWN-ATTR` | 디렉티브가 선언하지 않은 속성입니다. 0.26.0부터는 내장 레코드로 로워링되는 디렉티브(`::bg`, `::sfx` 같은 코어 연출 디렉티브, `::end`, `::label`, 플러그인 `lower:` 레코드)의 `when=`과 `when`이라는 이름의 플러그인 속성도 해당합니다. |

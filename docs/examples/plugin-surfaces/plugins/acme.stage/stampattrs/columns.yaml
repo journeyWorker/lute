@@ -1,0 +1,15 @@
+# Export columns of the (imaginary) spreadsheet this project is ported from.
+# Each column names the surfaces it belongs to with `on:`; none of them is a
+# cross-cutting stamp, so each is refused anywhere else (E-UNKNOWN-ATTR).
+stampAttrs:
+  # A content line: the voice asset of the take.
+  - { name: voiceAssetId, type: string, on: [line] }
+  # One name, two types, on disjoint surfaces. On the core ::bg it is the
+  # backdrop's asset name; on the plugin ::showSpeaker it is a numeric slot.
+  - { name: assetName, type: string, on: [bg] }
+  - { name: assetName, type: int, on: [showSpeaker] }
+  # A menu's type, written on the element that owns the options.
+  - { name: menuType, type: { enum: [plain, timed] }, on: [branch, hub] }
+  # The key of each option. `required: true` is legal only because `on:` scopes
+  # it: every <choice> of a project that activates this plugin must carry one.
+  - { name: optionKey, type: string, required: true, on: [choice] }

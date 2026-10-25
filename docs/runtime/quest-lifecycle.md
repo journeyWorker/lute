@@ -112,8 +112,15 @@ accept-driven quest of the project (`E-ACCEPT-TARGET`): a quest without
 `start` that is either no one's subquest or declares `activate="accept"` —
 so an engine never sees an `accept` for a quest with a `start` predicate, nor
 for a child that activates with its parent. An accept-driven quest that no
-`::accept` in the project names and that is not `accept="external"` is
-`W-QUEST-NEVER-ACCEPTED`; a test's `accepts:` mock does not count.
+`::accept` or reward `accepts` (§Reward effects) in the project names and that
+is not `accept="external"` is `W-QUEST-NEVER-ACCEPTED`; a test's `accepts:`
+mock does not count.
+
+An accept a reward kind's `effects.accepts` produces (0.50) takes this same
+path and emits an `accept` record carrying a `grant` key (§Grant transcript
+event). When the target is already past `unset` the quest is left alone and the
+record says so (`ignored`), exactly as for a scene `::accept` of such a
+quest.
 
 **Accepted outside the script — `QuestCmd.accept: "external"`** (dsl 0.25.0
 §5). `<quest accept="external">` marks an accept-driven quest the engine
@@ -548,6 +555,33 @@ narrative reads live state after every grant of that transition has
 applied. The reverse order would make "you received X" a lie at the
 instant it plays (spec D-D).
 
+### Reward effects (0.50)
+
+A reward kind may declare `effects` (`retracts`, `asserts`, `accepts`), carried
+on the `RewardEntry` as `retracts: FactRecord[]`, `asserts: FactRecord[]` and
+`accepts: string[]` (resolved with `@target` bound; a pattern with an unbound
+`@target` is not written; each list is omitted when empty). The engine applies
+them in the grant step, **per reward**, in declaration order:
+
+1. the `grant` record and its `credits` write, as before;
+2. the reward's `retracts`, then its `asserts`, through the one assert/retract
+   path that `::assert` / `::retract` use (including the runtime
+   `E-FACT-EXCLUSIVE` check);
+3. its `accepts`, through the `accept` record's path (§Accepting from a scene):
+   an accept-driven quest of the artifact activates on the next lifecycle
+   round, and a quest already past `unset` is left alone, with the record
+   saying so.
+
+Then the next reward. The ordering above still holds around this: objective
+grants (effects included) precede quest grants, and all grants of a transition
+precede its lifecycle handler body, so a `questComplete` handler reads a fact a
+reward asserted. A reward skipped by `outcome` or by `when` applies none of its
+effects. Because an effect belongs to its grant, it fires **exactly once per
+grant**: replay and restore follow the grant's instance identity
+(`(quest, instance, objective, index)`), and a restored save does not re-fire
+the effects of a grant it already recorded. The facts and accepted quests the
+effects produce are saved like any other fact or quest state.
+
 ### Ranges are declaration data — the reference runtime never rolls
 
 `RewardEntry.amount` is either a scalar (`amount: N`) or a range (`amountMin: N`
@@ -582,6 +616,20 @@ present only for quest-owned `outcome="failed"` rewards (the default
 `(quest, instance, objective, index)` key, and a grant event only fires when
 `when` (if authored) decided `true`, so re-serializing the predicate is noise.
 Range bounds are the declared literals; a rolled amount NEVER appears.
+
+Each reward effect also emits the record its command would (`assert`,
+`retract`, `accept`), plus a `grant` key naming the grant record it follows:
+`{ "quest", "instance", "index", "objective"?, "kind" }`. These records carry no
+`position` and no `effectOf`:
+
+```
+{"kind":"grant","quest":"first","instance":1,"index":0,"reward":{"kind":"BADGE","target":"mira","amount":1}}
+{"kind":"assert","fact":"met(mira)","grant":{"quest":"first","instance":1,"index":0,"kind":"BADGE"}}
+{"kind":"accept","quest":"second","grant":{"quest":"first","instance":1,"index":1,"kind":"OFFER_QUEST"}}
+```
+
+The semantic id `lute.quest.rewardEffects/1` (§Reward effects) marks an
+artifact that uses them.
 
 ### Coexistence with `<on questComplete>` + `::grant`
 

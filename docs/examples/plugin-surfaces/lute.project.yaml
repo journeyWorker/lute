@@ -1,0 +1,18 @@
+# Plugin surfaces (0.50): scoped stamp columns, host tokens, reward effects,
+# a project diagnostic level for an imported subtree, and node lints.
+pluginsDir: plugins/
+defaultProfile: surfaces
+profiles:
+  surfaces:
+    plugins: { acme.stage: true }
+defaults:
+  uses: [world.schema.yaml]
+
+# Identity templates (dsl §10), as in the showcase project.
+identity:
+  voiceKey: "{prefix}.{speaker}-{code}"
+
+# The imported subtree is under review: its staging warnings are off there and
+# only there. The summary line counts what was suppressed.
+diagnostics:
+  W-STAGE-ABSENT: { level: off, paths: ["scenes/imported/**"] }

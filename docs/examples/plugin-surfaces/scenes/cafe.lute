@@ -1,0 +1,33 @@
+---
+kind: scene
+id: cafe.hello
+title: The cafe
+---
+/*
+Scoped stamps on every named surface, one host token, and two plugin directives.
+
+  - `assetName` on `::bg` is a string; on `::showSpeaker` the same name is an
+    int (one name, two types on disjoint surfaces).
+  - `voiceAssetId` is a stamp of content lines only.
+  - `menuType` is a stamp of `<branch>`; `optionKey` is a required stamp of
+    every `<choice>`.
+  - `{{playerName}}` and `{{rank:ordinal}}` are host tokens: the engine
+    substitutes them, and the runtime leaves the marker in the rendered text.
+*/
+
+## The door {#door}
+
+::bg{location="cafe" time="day" assetName="BG_cafe"}
+::showSpeaker{character="mira" spriteId="SPR_mira_01" assetName="7"}
+@mira{voiceAssetId="VO.mira.0010"}: Welcome, {{playerName}}. You are our {{rank:ordinal}} guest today.
+::move{mode="walk" speed="slow"}
+@narrator: She leads you between the tables.
+
+<branch id="route" prompt="Where do you sit?" menuType="plain">
+  <choice id="window" text="By the window" optionKey="L1">
+    @mira{voiceAssetId="VO.mira.0020"}: Good light there.
+  </choice>
+  <choice id="counter" text="At the counter" optionKey="R1">
+    @mira{voiceAssetId="VO.mira.0030"}: Closer to the coffee.
+  </choice>
+</branch>

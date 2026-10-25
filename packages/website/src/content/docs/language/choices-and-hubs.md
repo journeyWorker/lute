@@ -280,3 +280,48 @@ its choices must be `once` (so the eligible set provably empties and auto-exit f
 satisfies neither is `E-HUB-NO-EXIT`. Because a hub reduces at build time to one finite option
 table plus its arms, its runtime re-presentation adds no unbounded computation — totality is
 preserved.
+
+## Plugin stamps on `<branch>`, `<hub>` and `<choice>`
+
+Since 0.50 a plugin can attach its own attributes to these three elements. A [`stampAttrs`](/plugins/manifests/#scoping-a-stamp-to-surfaces-on) entry whose `on:` names `branch`, `hub` or `choice` is admissible there, and nowhere else on them: a cross-cutting stamp (no `on:`) is still `E-UNKNOWN-ATTR` on `<branch>`, `<hub>` and `<choice>`. With this manifest:
+
+```yaml
+stampAttrs:
+  - { name: menuType, type: { enum: [plain, timed, minigame] }, on: [branch, hub] }
+  - { name: optionKey, type: string, required: true, on: [choice] }
+```
+
+a menu is written
+
+```lute
+<branch id="route" prompt="Which way?" menuType="plain">
+  <choice id="goLeft" text="Left" optionKey="L1">
+    @mira: Left it is.
+  </choice>
+  <choice id="goRight" text="Right" optionKey="R1">
+    @mira: Right, then.
+  </choice>
+</branch>
+```
+
+The same attribute may be scoped to several of the three (`on: [branch, choice]`), and a hub's choices are `choice` too. Resolution is the usual strict order: the element's own attributes win (`id`, `text`, `when`, `into`, `value`, `once`, `exit` on a choice; `id`, `prompt`, `timeout`, `default` on a branch; `id`, `prompt` on a hub), then the stamp declared for that surface, then `E-UNKNOWN-ATTR`.
+
+- **Unknown here.** A name that is a stamp for other surfaces only is `E-UNKNOWN-ATTR` that says where it applies, instead of listing the element's attributes: `` `<branch>` has no attribute `optionKey`: it is a stamp of `acme.stage` for `<choice>` only ``. When the name is no stamp at all, the message lists the element's attributes and the stamps it admits: `` `<choice>` has no attribute `cue`; its attributes are `id`, `text`, `when`, `into`, `value` and the stamps `optionKey` (`acme.stage`) ``.
+- **Required.** A stamp declared `required: true` for the surface and missing from it is `E-MISSING-ATTR` at the element's opening tag: `` `<choice id="goLeft">` requires attribute `optionKey` (a stamp of `acme.stage`) ``. A declared `default:` does not fill it in.
+- **Typing.** The value is typed by the surface's declaration. A folded value outside an enum is `E-BAD-ENUM` (`<hub menuType=@m>` where `@m` folds to `"grid"`, not in the enum), and a wrong scalar is `E-ATTR-TYPE`. A `@ref` value is typed by the same declaration: `<branch menuType=@m>` with `@m` an `int` def is `E-REF-TYPE`, and `<choice optionKey=@k>` with `@k` a string def is clean.
+
+**In the artifact.** The `choice` or `hub` record carries the `<branch>` / `<hub>` element's stamps in its `stamps` object, and each option carries the `<choice>` element's stamps in its own `stamps`, serialized last. Each value is typed by the declaration of its surface. An option without stamps is byte-identical to before, and a stamp that was not authored is never injected:
+
+```json
+{
+  "kind": "choice",
+  "branchId": "route",
+  "options": [
+    {"id": "goLeft", "text": "Left", "lineId": "…", "target": "001-0200", "stamps": {"optionKey": "L1"}},
+    {"id": "goRight", "text": "Right", "lineId": "…", "target": "001-0400", "stamps": {"optionKey": "R1"}}
+  ],
+  "stamps": {"menuType": "plain"}
+}
+```
+
+Stamps are descriptive: the runtime never reads them, and the `awaitChoice` menu is unchanged. The reference player's `ChoiceView` carries the element's `stamps` and each option's `stamps`, read from the IR record at the menu's address; each is omitted when absent, and a presenter receives them through `showChoice`. A host that does not use the reference player reads the same fields from the IR record, as it reads option text (see the [runtime contract](/tooling/runtime-contract/)).

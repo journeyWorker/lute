@@ -1,0 +1,7 @@
+# Completing firstVisit grants BADGE (asserts met(mira)) and OFFER_QUEST
+# (accepts giftErrand). No `accepts:` mock: the reward is the only acceptance.
+file: ../quests/visits.lute
+state: { run.talked: true }
+expect:
+  quests: { firstVisit: complete, giftErrand: active }
+  facts: ["met(mira)"]

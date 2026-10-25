@@ -51,7 +51,7 @@ custom:
 
 | key | type | default | meaning |
 | --- | --- | --- | --- |
-| `lsp` | boolean | `false` | Publishes lint findings for open documents in the LSP only when this config file exists and sets it to `true`. Linting is otherwise absent from the LSP, even if rules are configured. LSP evaluates `line`, `section`, `scene`, `speaker`, and `group` targets; `project` rules are CLI-only in v1. |
+| `lsp` | boolean | `false` | Publishes lint findings for open documents in the LSP only when this config file exists and sets it to `true`. Linting is otherwise absent from the LSP, even if rules are configured. LSP evaluates `line`, `section`, `scene`, `speaker`, `group`, and (since 0.50) `node` targets; `project` rules are CLI-only in v1. |
 | `ignore` | list of project-root-relative globs | `[]` | Documents excluded from linting. |
 | `rules` | map | `{}` | Per-rule level and option overrides for core and active plugin rules. |
 | `custom` | list of rules | `[]` | Project-local declarative CEL rules. |
@@ -66,8 +66,10 @@ override.
 Core rule ids are bare kebab-case. Plugin rule ids are
 `<plugin-id>/<rule-id>`. A custom rule id is bare and MUST NOT collide with a
 core rule id. Malformed YAML is an exit-code-2 error. Unknown rules or option
-keys, wrong option types, and colliding custom ids are `E-LINT-CONFIG` findings;
-the bad entry is skipped, remaining rules run, and the command exits 1.
+keys, wrong option types, and colliding custom ids are `E-LINT-CONFIG` findings.
+Naming a **checker** code in `rules:` is `E-LINT-CONFIG` too, with a hint to the
+right file (since 0.50): `` `W-STAGE-ABSENT` is a checker code, not a lint rule — set its level in `lute.project.yaml` `diagnostics:` ``; for an `E-*` id the hint ends `an error cannot be re-levelled`. Lint rule levels (`L-*`) are set here, and only here.
+The bad entry is skipped, remaining rules run, and the command exits 1.
 
 ### Custom rule shape
 
@@ -76,7 +78,7 @@ Every custom entry has the same shape as a plugin rule:
 | key | required | meaning |
 | --- | --- | --- |
 | `id` | yes | Project-local bare rule id. |
-| `target` | yes | `line`, `section`, `scene`, `speaker`, `group`, or `project`. |
+| `target` | yes | `line`, `section`, `scene`, `speaker`, `group`, `project`, or `node` (since 0.50). |
 | `when` | yes | A CEL assertion over the target row and `options`; it fires when `true`. |
 | `level` | no | `off`, `hint`, `info`, `warn`, or `error`. |
 | `message` | yes | Finding text. `{path.to.field}` interpolates a metric or option path; a number renders trimmed (no trailing `.0`) and rounded to at most two decimals, so a ratio of `3.3333…` reads `3.33`. `{expr:%}` renders shares as rounded percentages. |
@@ -88,6 +90,127 @@ semantics, metric-path selection and map indexing, and `size()` for strings,
 lists, and maps. An unresolved field, type mismatch, or non-boolean `when` result
 is `E-LINT-EXPR`, reported once at the rule declaration, and skips that rule—it is
 never a silent pass.
+
+Since 0.50 the fragment also has the standard CEL string members
+`s.startsWith(t)`, `s.endsWith(t)` and `s.contains(t)`, in member-call form only,
+with both operands strings; a non-string operand is an evaluation error
+(`E-LINT-EXPR`). There are no regexes and no macros.
+
+## `node` lints (since 0.50)
+
+`target: node` (valid in plugin `lints:` exports and `lute.lint.yaml` `custom:` rules) evaluates a rule once per **node** of a document. Rows come in document order over every body the checker walks:
+
+- section bodies;
+- `<quest>` declarations and their bodies (objectives, `<on>` handlers);
+- `<reward>` children of a quest or objective, at their source position among the owner's children;
+- top-level `<entry>` and `<beat>` declarations and their bodies;
+- `<branch>` choices and choice bodies;
+- `<hub>` choices, choice bodies and its `<return>` body;
+- `<match>` arms (`<when>`, `<otherwise>`) and their bodies;
+- `<timeline>` (one row; track clips are not rows).
+
+| `node.kind` | for |
+| --- | --- |
+| `line` | a content line |
+| `directive` | every `::tag{…}`: plugin and core directives, `::set`, `::assert`, `::retract`, `::accept`, `::use`, `::label`, `::jump`, `::clear`, `::end` |
+| the element name | `branch`, `hub`, `choice`, `return`, `match`, `when`, `otherwise`, `timeline`, `quest`, `objective`, `on`, `reward`, `entry`, `beat` |
+
+A `node` rule reads three bindings: `node`, `scene` (the existing document row) and `options`.
+
+| field | meaning |
+| --- | --- |
+| `node.kind` | as in the table above |
+| `node.tag` | the directive tag or element name; `""` for a line |
+| `node.speaker` | a line's speaker; `""` otherwise |
+| `node.attrs` | map string → string of every attribute **as authored** (see below) |
+| `node.index`, `node.first`, `node.last` | 0-based position in its body; first/last in that body |
+| `node.depth` | 0 for a section's (or document's) top-level node, +1 per enclosing element |
+| `node.prev`, `node.next` | `{ kind, tag, attrs }` of the sibling in the same body; all fields empty at a body edge |
+| `node.parent` | `{ kind, tag, attrs }` of the enclosing element. At a section's top level `kind` is `"section"`; at a quest or lore document's top level `kind` is `"document"`. |
+| `node.preceding` | map tag → `{ attrs }`: for each tag, the nearest node with that tag among the earlier siblings of this node and of each of its ancestors, together with the ancestors themselves. It does **not** enter the bodies of earlier siblings (another arm is not on this path). It resets at each section and declaration. Lines are not keyed. |
+| `node.section` | `{ index, title, id }` of the enclosing section; `{ 0, "", "" }` outside sections |
+
+**Anchoring and messages** work as for `line` rows: the diagnostic spans the node (the line, directive or element), and `{node.attrs.value}` interpolates.
+
+**Authored attributes.** `node.attrs` has a key iff the author wrote it, and its value is the authored value text, unquoted. This includes attributes the parser lifts into fields (`<branch id>`, `<reward kind target amount>`, `::jump{to}`) and plugin stamps. A bare flag is `"true"`, and an `@ref` value is its source text (`@name`). An unauthored attribute is absent even when the IR carries a default, so `<reward>` without `amount` has no `amount` key. `::set`, `::assert` and `::retract` have `{}`. The text is re-read from the source by the parser's own attribute scanner, not rebuilt from parsed fields: `<reward kind="COINS" amount="+005"/>` gives `node.attrs["amount"] == "+005"`, not `"5"`. The same values result for CRLF line ends and multi-byte text.
+
+**Guard every index.** A missing key keeps CEL semantics: `node.attrs["x"]` on an absent key is an evaluation error (`E-LINT-EXPR`). `&&` short-circuits, so a rule guards **every** index it takes: `"x" in node.attrs && node.attrs["x"] …`, `"t" in node.preceding && "k" in node.preceding["t"].attrs && …`, and `key in options.cases && …` before indexing an options map.
+
+`node.preceding` is read through a borrowed view of one running map, not copied per row, so a `node` rule that reads it stays near-linear in document size. The LSP evaluates `node` rules like the other in-document targets. `node` rules change no IR, event, snapshot or `capabilitySnapshot`, and carry no semantic id.
+
+### Recipes
+
+Every index is guarded. **Policy for an unknown discriminator:** a dependent-value rule excludes a discriminator it has no case for, and a separate `*-known` rule reports the discriminator itself, so each violation is reported once, by the rule that names it.
+
+```yaml
+lints:
+  - id: signal-needs-menu
+    target: node
+    when: 'node.tag == "signal" && "value" in node.attrs && node.attrs["value"] == "puzzle" && node.next.kind != "branch"'
+    level: warn
+    message: "a puzzle ::signal must be followed by a <branch>"
+  - id: section-opens-with-bg
+    target: node
+    when: 'node.first && node.parent.kind == "section" && node.tag != "bg"'
+    level: warn
+    message: "section {node.section.title} opens with {node.tag}"
+  - id: beat-label-prefix
+    target: node
+    when: 'node.tag == "label" && scene.kind == "beat" && "name" in node.attrs && !node.attrs["name"].startsWith("b_")'
+    level: error
+    message: "a beat's labels start with b_"
+  # #177, same element: `mode` selects the legal `speed`s.
+  - id: move-mode-known
+    target: node
+    when: 'node.tag == "move" && "mode" in node.attrs && !(node.attrs["mode"] in options.speeds)'
+    level: error
+    message: "unknown move mode {node.attrs.mode}"
+    options: { speeds: { walk: [slow, normal], run: [normal, fast] } }
+  - id: speed-fits-mode
+    target: node
+    when: >-
+      node.tag == "move" && "speed" in node.attrs && "mode" in node.attrs &&
+      node.attrs["mode"] in options.speeds &&
+      !(node.attrs["speed"] in options.speeds[node.attrs["mode"]])
+    level: error
+    message: "speed {node.attrs.speed} is not legal in mode {node.attrs.mode}"
+    options: { speeds: { walk: [slow, normal], run: [normal, fast] } }
+  # #177, a marker directive before the branch decides the legal option values.
+  - id: interaction-kind-known
+    target: node
+    when: 'node.tag == "interaction" && (!("kind" in node.attrs) || !(node.attrs["kind"] in options.cases))'
+    level: error
+    message: "::interaction needs a known kind"
+    options: { cases: { greet: [wave, bow], gift: [accept, decline] } }
+  - id: option-fits-interaction
+    target: node
+    when: >-
+      node.tag == "option" && "value" in node.attrs &&
+      "interaction" in node.preceding && "kind" in node.preceding["interaction"].attrs &&
+      node.preceding["interaction"].attrs["kind"] in options.cases &&
+      !(node.attrs["value"] in options.cases[node.preceding["interaction"].attrs["kind"]])
+    level: error
+    message: "option {node.attrs.value} does not belong to this interaction"
+    options: { cases: { greet: [wave, bow], gift: [accept, decline] } }
+  # #177 with #164 stamps: the parent <branch> carries the discriminator.
+  - id: menu-type-known
+    target: node
+    when: 'node.kind == "branch" && "menuType" in node.attrs && !(node.attrs["menuType"] in options.keys)'
+    level: error
+    message: "unknown menu type {node.attrs.menuType}"
+    options: { keys: { plain: [L1, R1], timed: [T1] } }
+  - id: choice-fits-menu
+    target: node
+    when: >-
+      node.kind == "choice" && "optionKey" in node.attrs &&
+      "menuType" in node.parent.attrs && node.parent.attrs["menuType"] in options.keys &&
+      !(node.attrs["optionKey"] in options.keys[node.parent.attrs["menuType"]])
+    level: error
+    message: "option key {node.attrs.optionKey} is not a {node.parent.attrs.menuType} key"
+    options: { keys: { plain: [L1, R1], timed: [T1] } }
+```
+
+For a rule whose dependent attribute, discriminator or marker is missing (`preceding` without `interaction`, a marker without `kind`, a parent without `menuType`) there is no finding and no `E-LINT-EXPR`. An unguarded variant (`node.attrs["mode"]` without the membership test) on a node without `mode` reports `E-LINT-EXPR`, which is why the guard is there.
 
 ## Metric tables
 
@@ -209,8 +332,10 @@ cast:
   grunt2: { name: Eclipse Grunt, sharedName: true }
 ```
 
-The code is not a `lute.lint.yaml` rule, so it has no level to set there (a
-`rules:` entry naming it is an unknown rule id, `E-LINT-CONFIG`). `--deny
+The code is not a `lute.lint.yaml` rule, so it has no level to set there. A
+`rules:` entry naming it is `E-LINT-CONFIG` with a hint that points to the right
+place: `` `W-DISPLAY-NAME-DUP` is a checker code, not a lint rule — set its level in `lute.project.yaml` `diagnostics:` `` (since 0.50; for an `E-*` id the text ends `… an error cannot be re-levelled`).
+The project-level `diagnostics:` key (see [the CLI page](/tooling/cli/)) sets a checker `W-*` code to `off`, `info`, `warn` or `error`. `--deny
 W-DISPLAY-NAME-DUP`, or `--deny-warnings`, makes it an error and fails the run:
 
 <!-- lute-diagnostics -->
@@ -248,7 +373,9 @@ activation — one rule set per project root, applied to every document
 
 A plugin rule is data only when it asserts over these fixed, core-computed metric
 tables. If the rule needs another metric, traversal, ordering rule, or evaluation
-primitive, that is a core change—not a YAML extension. Plugin lint declarations
+primitive, that is a core change—not a YAML extension. Structural predicates
+(what a node is, what surrounds it, which attributes the author wrote) are the
+[`node` target](#node-lints-since-050), and balance checks (`pair`) are 0.51. Plugin lint declarations
 are advisory and are excluded from both the capability snapshot and
 `capabilitySnapshot`.
 

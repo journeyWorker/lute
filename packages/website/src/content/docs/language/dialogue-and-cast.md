@@ -385,7 +385,7 @@ render time:
 
 *(From [`docs/examples/showcase/hub-demo.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/hub-demo.lute).)*
 
-`{{userName}}` is the always-available reserved token. Any other interpolation must name a
+`{{userName}}` is the always-available reserved token. Any other bare name is a [host token](#host-tokens) a plugin declares; otherwise an interpolation must name a
 **declared** state path; an interpolation is a *read* for definite-assignment analysis, so a
 maybe-unset path interpolated without a guard is `E-MAYBE-UNSET`. Apart from interpolations and
 [inline modifiers](#inline-text-modifiers), the text after the second colon is opaque to end of
@@ -399,6 +399,22 @@ single-brace `{run.oil}` or `{run.oil > 0: …}` (`W-TEXT-SINGLE-BRACE`; interpo
 A path typed against an enum whose members carry display `labels:` renders the label, not the
 member id: `Today is {{run.weekday}}.` reads `Today is Sunday.` (see
 [Paths typed by a named enum](/state/state-model/#paths-typed-by-a-named-enum)).
+
+### Host tokens
+
+A line may name a value only the engine knows, such as the player's name, with a bare identifier: `{{playerName}}`. Since 0.50 a plugin declares such names in its [`hostTokens`](/plugins/manifests/#host-interpolation-tokens-hosttokens) export, and `lute.core` declares `userName: { type: string }`. With `hostTokens: { playerName: { type: string } }`:
+
+```lute
+@narrator: Welcome, {{playerName}}.
+```
+
+compiles to a `reserved` placeholder, `{ "kind": "reserved", "token": "playerName", "format"? }`. A token is a bare **identifier** (an ASCII letter or `_`, then letters, digits or `_`). `{{player-name}}` and `{{2nd}}` are not tokens: they stay state-path-shaped and keep their `E-CEL-PROFILE`. A state path always has a tier root and a `.`, so no spelling that was a state path changes meaning; the names that are state roots or CEL literals cannot be declared as tokens (see [Reserved names](/reference/reserved-names/)).
+
+- **Declared.** The token's type decides which [format hints](#ordinals-x-ordinal) it takes. A `string` or `enum` token takes the text hints (`{{platform:capitalize}}` is clean), and a number hint on it is `E-REF-TYPE`. An `int` token takes the number hints (`{{rank:ordinal}}` is clean), and a text hint on it (`{{rank:capitalize}}`) is `E-REF-TYPE`. `{{userName}}` behaves exactly as before.
+- **Undeclared.** A bare name no plugin declares is `E-CEL-PROFILE`. The message names "a declared host token" and lists the declared tokens: `` interpolation `playerName` is not a valid `{{…}}` form — only a state path, …, a def `@ref` / `@ref(args)`, or a declared host token (`userName`) are permitted; declare `playerName` in a plugin's `hostTokens:` export if the engine substitutes it … ``. The rest of the message is unchanged.
+- **Escape.** `\{{name}}` is unchanged: it is never a placeholder.
+- **Never a state read.** A host token takes no part in definite-assignment, dependency or quest-reference analysis, and counts as one word for lint.
+- **At runtime.** The runtime leaves every host-token marker verbatim in the rendered text, and the host or presenter substitutes it. This holds for every token, not only `userName` (see the [runtime contract](/tooling/runtime-contract/)). The editor's hover reads `` host token `playerName` — `string`, declared by `acme.stage`; the engine substitutes it at render time ``.
 
 ### Ordinals: `{{x:ordinal}}`
 
@@ -464,7 +480,7 @@ That line reads `Eleven wagons wait at the ford, eleven in all.` Plural forms ar
 
 ### Text hints and label forms: `{{x:capitalize}}`, `{{x:start}}`, `{{x:indefinite}}`
 
-Three hints format text — a string, an enum or kind label, a cast name, `{{occasion.target}}`, `{{userName}}`. `:capitalize` upper-cases the first letter. `:start` and `:indefinite` read the forms a kind's `labels:` entry may declare beside its text:
+Three hints format text — a string, an enum or kind label, a cast name, `{{occasion.target}}`, a `string` or `enum` [host token](#host-tokens) such as `{{userName}}`. `:capitalize` upper-cases the first letter. `:start` and `:indefinite` read the forms a kind's `labels:` entry may declare beside its text:
 
 ```yaml
 entities:
@@ -477,7 +493,7 @@ entities:
 
 `{{occasion.target:start}} is quiet.` reads `The smugglers' cut is quiet.` for `cut`. When a form is absent the hint falls back: `:start` capitalizes the text (`Ashwraith den`), and `:indefinite` puts `an` before a text whose first letter is a vowel and `a` before any other (`an ashwraith den`). Declare `indefinite:` for the words that rule gets wrong (`an hour`, `a unicorn`). A label entry is a string or `{ text, start, indefinite }` with `text:` required; any other key is `E-ENTITY-KIND-SHAPE`. The IR carries the hint as the placeholder's `format` and the forms as `labelForms` on the kind's `entities[]` entry and on a state path typed by the kind, so an engine can localize them. A component param spliced as a literal takes the fallbacks.
 
-The hints are `ordinal`, `ordinalWord`, `cardinalWord` and `plural` for an `int` or `double`, and `capitalize`, `start` and `indefinite` for text. Any other — `{{run.floor:roman}}`, a misspelt `{{run.day:ordinalword}}` — is `E-CEL-PROFILE`. A numeric hint on a string, enum or bool path or def, or on `{{userName}}`, is `E-REF-TYPE`, and so is a text hint on an `int`, `double`, or bool.
+The hints are `ordinal`, `ordinalWord`, `cardinalWord` and `plural` for an `int` or `double` (or an `int` host token), and `capitalize`, `start` and `indefinite` for text. Any other — `{{run.floor:roman}}`, a misspelt `{{run.day:ordinalword}}` — is `E-CEL-PROFILE`. A numeric hint on a string, enum or bool path or def, or on a `string` or `enum` host token such as `{{userName}}`, is `E-REF-TYPE`, and so is a text hint on an `int`, `double`, or bool, or on an `int` host token.
 
 ## Inline text modifiers
 

@@ -1,0 +1,5 @@
+# Names the host app substitutes at render time. The runtime keeps each
+# `{{token}}` marker verbatim in the rendered text.
+hostTokens:
+  playerName: { type: string }
+  rank:       { type: int }

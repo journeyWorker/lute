@@ -27,6 +27,7 @@ exports:                   # REQUIRED — which sub-directories the loader reads
   occasions: occasions/
   rewardKinds: rewardkinds/
   cast: cast/
+  hostTokens: hosttokens/
   lints: lints/
   docs: docs/
 options:                   # OPTIONAL — typed activation options
@@ -48,12 +49,13 @@ options:                   # OPTIONAL — typed activation options
 - `bridge/*.yaml` — 타입이 지정된 런타임 브리지 capability입니다.
 - `defs/*.yaml` — 공유 타입 지정 CEL `@refs`입니다.
 - `assetKinds`(`assetkinds/*.yaml`) — 순서가 지정된 `fallback` 훅과 함께하는 아티팩트 id 세그먼트 템플릿(조합/조회 모드)입니다.
-- `stampAttrs`(`stampattrs/*.yaml`) — 모든 디렉티브와 콘텐츠 줄에 허용되는 횡단 속성입니다(아래 참고).
+- `stampAttrs`(`stampattrs/*.yaml`) — 콘텐츠 줄, 디렉티브, 그리고(0.50부터) `<branch>` / `<hub>` / `<choice>`에 붙는 추가 속성입니다. 횡단으로 두거나 `on:`으로 이름 붙은 표면에 한정할 수 있습니다(아래 참고).
 - `enums/*.yaml`, `frontmatter/*.yaml`, `docs/*.md` — 이름 붙은 enum 도메인, 플러그인이 소유하는 메타 키, 호버 문서입니다.
 - `events/*.yaml` — 퀘스트의 `<on event>`가 이름 붙일 수 있고 `lute trace --event`가 발생시킬 수 있는 월드 이벤트입니다.
 - `occasions/*.yaml` — [비트](/ko/language/beats/)가 응답하는 엔진의 순간입니다(dsl 0.21.0). 각 순간은 프로젝트 엔티티 종류에서 가져온 대상을 위해 발생할 수 있고(dsl 0.22.0), 하나의 승자·제공 목록·시퀀스로 제시되며(dsl 0.23.0), [`raisedWhen`](#계기-게이트-raisedwhen) 조건으로 선택적으로 게이트할 수 있습니다(dsl 0.27.0).
-- `rewardKinds`(`rewardkinds/*.yaml`) — `<reward kind>` 값의 닫힌 집합입니다. 선택적인 [대상 계약](#보상-대상-계약), 추가 속성, 보상을 기록하는 상태 경로를 가질 수 있습니다(dsl 0.23.0).
+- `rewardKinds`(`rewardkinds/*.yaml`) — `<reward kind>` 값의 닫힌 집합입니다. 선택적인 [대상 계약](#보상-대상-계약), 추가 속성, 보상을 기록하는 상태 경로(dsl 0.23.0), 그리고(0.50부터) 지급이 적용하는 팩트와 퀘스트 accept([보상 효과](#보상-효과))를 가질 수 있습니다.
 - `cast/*.yaml` — 콘텐츠 줄에서 사용할 수 있는 화자와 표시 이름입니다(dsl 0.23.0).
+- `hostTokens`(`hosttokens/*.yaml`) — 엔진이 렌더 시점에 `{{name}}` 보간에 치환해 넣는 이름입니다(0.50부터, [아래](#호스트-보간-토큰hosttokens) 참고).
 - `lints/*.yaml` — 조언용 [lint 규칙](/ko/tooling/linting/)입니다. `<plugin-id>/<rule-id>`로 네임스페이스되며 capability 스냅숏에서는 제외됩니다.
 
 이 목록 밖의 export 이름은 로드 오류입니다. 모든 export 파일도 엄격하게 읽힙니다(0.24.0부터): 선언이 모르는 키는 무시되지 않고 해당 줄에서 did-you-mean과 함께 `E-PLUGIN-KEY`가 됩니다(0.28.0부터는 `plugin.yaml` 자체도 같은 방식으로 읽습니다). 이는 디렉티브와 그 attrs, state, effects와 bridge, state shape와 template, provider, bridge capability, def, enum, event, frontmatter, asset kind, stamp attribute, reward kind, occasion, cast 항목, lint 모두에 적용됩니다. 예전에는 `{ selct: all }`이 아무 말 없이 `select: first`로 로드되었습니다:
@@ -309,6 +311,28 @@ rewardKinds:
 
 엔진이 소유한 id에는 어떤 형식을 사용해야 할까요? id를 저장소에 나열하고 그곳에서 검토할 수 있다면 **엔티티 종류**를 사용합니다(위의 `schema/items.schema.yaml` 같은 리드 소유 스키마 하나). 엔진의 카탈로그가 기준 정보이고 프로젝트가 고정된 스냅숏으로 이를 검사한다면 **프로바이더**를 사용합니다([프로바이더와 카탈로그](/ko/tooling/providers-and-catalog/) 참조). 어느 쪽이든 디렉티브 속성과 보상 종류를 **동일한** 종류 또는 프로바이더로 형식 지정해야 합니다. 그러면 `::give{item}`과 `<reward kind="ITEM" target>`이 하나의 id 공간을 공유하고, `lute refs --project <DIR> --attr give.item --reward ITEM`이 두 항목을 모두 나열합니다(대상이 없는 보상은 `(no target)`으로 표시).
 
+### 보상 효과
+
+0.50부터 보상 종류는 **`effects:`**를 선언할 수 있습니다. 지급이 assert하거나 retract하는 팩트, 그리고 accept하는 퀘스트입니다. 각 목록은 모두 선택 사항입니다.
+
+```yaml
+# rewardkinds/league.yaml
+rewardKinds:
+  BADGE:       { target: { entity: person, required: true }, effects: { asserts: ["met(@target)"] } }
+  REVOKE:      { target: { entity: person, required: true }, effects: { retracts: ["met(@target)"] } }
+  OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
+```
+
+`effects`는 `asserts`, `retracts`, `accepts`만 받고 다른 키는 받지 않습니다. 빈 `effects: {}`는 `E-PLUGIN-PARSE`입니다("declares no effect"). `asserts` / `retracts`의 각 항목은 [디렉티브 효과](#디렉티브가-assert하거나-retract하는-팩트)와 같은 팩트 패턴 `relation(arg, …)`입니다.
+
+- **`writes`는 허용되지 않습니다.** 보상의 상태 쓰기는 `credits:`이므로 `effects.writes`는 `E-PLUGIN-KEY`이며, 메시지에 `` — a reward's state write is `credits:` ``가 덧붙습니다.
+- **패턴 인자**는 멤버, `true` / `false`, `@target`, 그리고 `_`(`retracts`에서만)입니다. 그 밖의 `@name`은 `E-PLUGIN-PARSE`입니다: `` reward kind `BADGE` effect `met(@rarity)` reads `@rarity`; a reward kind's effects read only `@target` (a `<reward>` takes no other attribute) ``. 보상 종류 자체의 `attrs:`는 `<reward>`에 쓸 수 없으므로 읽을 다른 값이 없습니다.
+- **`accepts`** 항목은 `@target` 또는 리터럴 퀘스트 id(식별자)입니다. 그 밖은 `E-PLUGIN-PARSE`입니다.
+- `target: { forbidden: true }`인 종류의 효과가 `@target`을 읽으면 `E-PLUGIN-PARSE`입니다. 그 효과는 바인딩될 수 없기 때문입니다.
+- `@target`은 보상의 따옴표로 묶인 `target=`에 바인딩됩니다. `target=`이 없는 `<reward>`는 그 `@target`을 읽는 패턴의 효과를 적용하지 않으며, 추가 진단도 없습니다. `target: { required: true }`인 종류는 이미 `E-REWARD-TARGET`을 보고합니다.
+
+체커는 이런 종류의 `<reward>`마다 `@target`을 바인딩해 판정합니다. 팩트 패턴은 그것의 `::assert` / `::retract`와 똑같은 기준(관계 선언, arity, 인자 종류와 멤버)으로, 같은 코드를 사용해 보상의 `kind=` 위치에서 판정되며, 각 메시지는 `` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): `` 접두사를 가집니다. `accepts`의 id는 `::accept`의 규칙으로 판정됩니다. 알 수 없는 id(did-you-mean 포함), `start`가 있는 퀘스트, 자동 활성화되는 자식 퀘스트는 `E-ACCEPT-TARGET`입니다. id가 `@target`에서 왔다면 보상의 `target=` 값 위치에, 아니면 `kind=` 위치에 보고됩니다: `` `<reward kind="OFFER_QUEST" target="secnd">` accepts quest `secnd` (its kind's `effects.accepts`), but no quest in the project declares that id — did you mean `second`? ``. 지급 시점에 효과가 무엇을 의미하고 분석이 이를 어떻게 읽는지는 [퀘스트와 씬](/ko/language/quests-and-scenes/)에 있습니다. `effects:`가 없는 종류의 해시는 이전과 같습니다.
+
 ### 캐스트
 
 ```yaml
@@ -333,7 +357,7 @@ stampAttrs:
   - { name: bonusScore, type: int }
 ```
 
-엔트리는 일반적인 `AttrDecl`입니다. 즉, 디렉티브 속성이 사용하는 것과 동일한 `{ name, required?, type, default? }` 형태이지만, 모든 디렉티브와 콘텐츠 라인(`@speaker{…}: text`)에서 해당 표면 자체의 속성에 더해 사용할 수 있습니다. 해석은 엄격합니다. 표면 자체의 선언이 먼저 적용되고, 그다음 `stampAttrs`, 그다음 `E-UNKNOWN-ATTR`이 적용됩니다. 값 형식 지정은 기존 속성 경로를 따르므로 잘못 입력하면 새 규칙이 아니라 일반적인 `E-ATTR-TYPE` / `E-BAD-ENUM`이 됩니다.
+엔트리는 일반적인 `AttrDecl`입니다. 즉, 디렉티브 속성이 사용하는 것과 동일한 `{ name, required?, type, default? }` 형태입니다. `on:`이 없는 엔트리는 **횡단**입니다. 스탬프 캐리어가 있는 **모든** 디렉티브와 콘텐츠 라인(`@speaker{…}: text`)에서 해당 표면 자체의 속성에 더해 사용할 수 있고, `<branch>`, `<hub>`, `<choice>`에서는 쓸 수 없습니다. `on:`이 있는 엔트리는 이름 붙은 표면에 **한정**됩니다(0.50부터, [아래](#표면에-스탬프-한정하기-on)). 해석은 엄격합니다. 표면 자체의 선언이 먼저 적용되고, 그다음 `stampAttrs`, 그다음 `E-UNKNOWN-ATTR`이 적용됩니다. 값 형식 지정은 기존 속성 경로를 따르므로 잘못 입력하면 새 규칙이 아니라 일반적인 `E-ATTR-TYPE` / `E-BAD-ENUM`이 됩니다.
 
 `::sfx{sound="chime" bonusId="b-02"}` 다음에 `@marina{code="0010" bonusId="b-01" bonusScore="7"}: Welcome back.`이 오면, 각각의 레코드가 핵심 키(`kind`, `family`, `position`, `timing`) 뒤의 **중첩된 `stamps` 객체 하나**(0.49부터)에 속성을 담은 두 레코드로 컴파일됩니다. 레코드 자체의 키 옆에 평탄화되지도, 레코드의 `fields` 안에 들어가지도 않습니다.
 
@@ -348,6 +372,75 @@ stampAttrs:
 
 **작성되지 않은** 스탬프 속성은 선언에 `default`가 있어도 주입되지 않습니다. 없다는 것은 없는 것이므로, 교차 어휘를 선언하고 그중 아무것도 작성하지 않으면 아티팩트는 바이트 단위로 동일합니다. 다만 선언이 무료인 것은 아닙니다. `stampAttrs`는 `capabilitySnapshot`에 참여합니다. 교차 어휘가 변경되면 capability 표면이 변경된 것이고 엔진이 불일치를 거부할 수 있어야 하기 때문입니다.
 
+### 표면에 스탬프 한정하기: `on:`
+
+0.50부터 엔트리는 키 하나를 더 가질 수 있습니다. 비어 있지 않은 표면 이름 목록인 **`on:`**입니다. 한정된 스탬프는 이름 붙은 표면에서만 쓸 수 있으며 `required`일 수 있습니다.
+
+```yaml
+# plugins/acme.stage/stampattrs/columns.yaml
+stampAttrs:
+  - { name: voiceAssetId, type: { providerRef: voice }, required: true, on: [line] }
+  - { name: assetName,    type: string, on: [bg, actor] }
+  - { name: menuType,     type: { enum: [plain, timed, minigame] }, on: [branch, hub] }
+  - { name: optionKey,    type: string, required: true, on: [choice] }
+  - { name: cue,          type: string }                          # cross-cutting, as before
+```
+
+```lute
+<branch id="route" prompt="Which way?" menuType="plain">
+  <choice id="goLeft" text="Left" optionKey="L1">
+    @mira{voiceAssetId="VO.mira.0010"}: Left it is.
+  </choice>
+</branch>
+```
+
+표면 어휘는 닫혀 있습니다.
+
+| 표면 이름 | 가리키는 대상 |
+|---|---|
+| `line` | 컴포넌트, 퀘스트, 목표, `<on>`, 엔트리, 비트 본문의 줄을 포함한 모든 콘텐츠 줄(`@speaker{…}: text`) |
+| `branch`, `hub` | 해당 이름의 요소 |
+| `choice` | `<branch>`나 `<hub>` 안의 모든 `<choice>` |
+| 디렉티브 태그 | 해석된 스냅숏의 디렉티브 중 스탬프 캐리어가 있는 것, 즉 `jump`, `label`, `clear`가 아닌 것 |
+
+`line`, `branch`, `hub`, `choice`는 항상 코어 표면을 뜻합니다(`branch`, `hub`, `choice`는 이미 예약된 플러그인 디렉티브 이름이며 `E-PLUGIN-RESERVED-NAME`입니다). 따라서 `line`이라는 태그의 플러그인 디렉티브는 `on:`에 쓸 수 없습니다. `on:`의 순서는 의미가 없습니다.
+
+**`on:`이 없으면** 엔트리의 의미는 그대로입니다. 스탬프 캐리어가 있는 모든 디렉티브와 모든 콘텐츠 줄에서 쓸 수 있고, `<branch>`, `<hub>`, `<choice>`에서는 **쓸 수 없습니다**. 이 세 요소는 횡단 스탬프에 닫혀 있으며, `on:`이 이름으로 지정한 스탬프만 거기서 허용됩니다.
+
+**로드 오류**(패키지별, 엔트리 위치의 `E-PLUGIN-PARSE`):
+
+| 오류 | 메시지 |
+|---|---|
+| `on:`이 문자열 목록이 아니거나 비어 있음 | `` stamp attribute `X` has an empty `on:` — list the surfaces it applies to, or omit `on:` for every directive and content line `` |
+| `on:`에 같은 표면이 반복됨 | `` stamp attribute `X` lists `bg` twice in `on:` `` |
+| `on:` 없이 `required: true` | `` stamp attribute `X` is `required: true` but has no `on:`; a stamp required on every record is not a column — name its surfaces with `on: […]` `` |
+
+횡단 스탬프는 `required`일 수 없습니다. 누락을 보고할 단일 위치가 없기 때문입니다. 0.50 이전에는 이런 `required: true`가 조용히 아무 일도 하지 않았습니다. `on:`이 붙은 디렉티브 속성은 여전히 `E-PLUGIN-KEY`입니다. `on:`은 `stampAttrs` 엔트리 전용입니다.
+
+**패키지 내 유일성.** 두 엔트리는 둘 다 `on:`이 있고 표면 집합이 서로소일 때만 이름을 공유할 수 있습니다. 그래서 한 이름을 표면마다 다르게 타입 지정할 수 있고(`bg`에는 `assetName: string`, `actor`에는 `assetName: int`), IR은 각각 자기 타입으로 직렬화합니다. 겹침은 모두(`on:`이 없는 엔트리는 모든 엔트리와 겹칩니다) `E-PLUGIN-DUP-ID`이며 공유된 표면을 이름으로 밝힙니다: `` stampAttr `assetName` is declared twice on the surface `bg` — give each entry disjoint `on:` surfaces ``.
+
+**Assembly.** 활성 스냅숏의 디렉티브가 알려지면 각 엔트리를 다음 순서로 검사합니다. 거부된 엔트리는 버려지고 형제 엔트리는 그대로 적용됩니다.
+
+1. 코어 스탬프 예약([아래](#예약된-스탬프-키)): `E-PLUGIN-RESERVED-STAMP-ATTR`.
+2. `on:`의 각 이름이 표면으로 해석됩니다. 네 코어 표면도 아니고 스냅숏의 디렉티브도 아닌 이름은 **`E-PLUGIN-STAMP-SURFACE`**입니다: `` stamp attribute `assetName` (`acme.stage`) names `bgg` in `on:`, which is not `line`, `branch`, `hub`, `choice` or a directive of the resolved profile — did you mean `bg`? ``. 스탬프 캐리어가 없는 디렉티브도 같은 코드입니다: `` … names `jump` in `on:`, but `::jump` emits no stamped record ``(`jump`, `label`, `clear`가 그렇습니다). 다른 플러그인의 디렉티브에 스탬프를 한정하는 플러그인은 그 플러그인을 `depends:`에 선언해, 해당 디렉티브가 이를 활성화하는 모든 프로필에 있게 해야 합니다. 태그가 설치되었지만 비활성인 플러그인에 있으면 메시지가 이를 알려 줍니다.
+3. **가림(shadowing).** 한정된 엔트리의 이름이 지정된 표면이 이미 소유한 속성이면 `E-PLUGIN-RESERVED-STAMP-ATTR`입니다: `` stamp attribute `prompt` (`acme.stage`) is scoped to `branch`, but `prompt` is an attribute of `<branch>` itself, so the stamp could never be read ``. 표면 자체의 속성은 다음과 같습니다. 디렉티브는 선언의 `attrs`(`::jump`는 `when` 추가), `line`은 콘텐츠 줄의 알려진 속성(`wait` 포함)과 가드 `when`, `branch`는 `id`, `prompt`, `timeout`, `default`, `hub`는 `id`, `prompt`, `choice`는 `id`, `text`, `when`, `into`, `value`, `once`, `exit`와 이름이 바뀌거나 제거된 `label`, `as`, `persist`입니다. 횡단 엔트리는 이전 규칙을 유지합니다. 표면 자체의 선언이 우선하고 엔트리는 거부되지 않습니다.
+4. **플러그인 간 유일성.** 두 플러그인의 엔트리가 이름이 같고 표면이 겹치면 `E-PLUGIN-DUP-ACROSS`이며 두 플러그인과 공유된 표면을 밝힙니다. 두 플러그인의 서로소 엔트리는 합법입니다.
+
+**검사.** 표면의 속성 `k`는 엄격하게, 처음 일치하는 것으로 해석됩니다. 표면 자체의 속성, 디렉티브라면 스탬프 없음 거부와 범용 타이밍 키, 해당 표면에 선언된 스탬프(그 선언으로 형식 지정: `E-ATTR-TYPE`, `E-BAD-ENUM`, `@ref` 타이핑), 이름이 바뀌거나 제거된 속성 진단, 마지막으로 `E-UNKNOWN-ATTR` 순서입니다. 이름이 다른 표면에만 선언되어 있으면 `E-UNKNOWN-ATTR`은 표면의 속성을 나열하는 대신 스탬프가 적용되는 곳을 알려 줍니다.
+
+- `` `::bg` has no attribute `voiceAssetId`: it is a stamp of `acme.stage` for content lines only ``
+- `` `<branch>` has no attribute `optionKey`: it is a stamp of `acme.stage` for `<choice>` only ``
+
+표면이 작성하지 않은 **필수(required)** 스탬프는 표면의 머리(디렉티브나 요소의 여는 태그, 또는 줄) 위치에서 `E-MISSING-ATTR`입니다.
+
+- `` `::bg` requires attribute `assetName` (a stamp of `acme.stage`) ``
+- `` this content line requires attribute `voiceAssetId` (a stamp of `acme.stage` for content lines) ``
+- `` `<choice id="goLeft">` requires attribute `optionKey` (a stamp of `acme.stage`) ``
+
+이 규칙은 컴포넌트 본문을 포함해 표면이 작성되는 모든 곳에 적용됩니다. `::use`가 끼워 넣는 줄은 해당 컴포넌트에서 한 번만 검사됩니다. 스탬프는 주입되지 않으므로 선언된 `default:`는 보지 않습니다. 로직 태그 표면은 [선택지와 허브](/ko/language/choices-and-hubs/#branch-hub-choice의-플러그인-스탬프)를 참고하세요.
+
+**스냅숏.** 한정된 엔트리는 정렬된 표면 목록과 함께 `capabilitySnapshot`에 접힙니다. `on:`이 없는 엔트리는 이전과 똑같이 해시되므로 `on:`을 쓰지 않는 매니페스트는 스냅숏을 유지합니다. `lute context`는 한정된 스탬프마다 표면을 출력합니다(`"on": "::bg, ::actor (stampAttrs)"`).
+
 ### 예약된 스탬프 키
 
 코어 스탬프는 `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`, `source`라는 8개의 이름을 소유합니다. `at`, `duration`, `delay`, `wait`, `timeline`은 `timing`으로 컴파일되는 작성용 키이고, `timing`, `provenance`, `source`는 평탄화된 레코드 키로 남습니다. 중첩된 `stamps` 객체는 그 외의 모든 이름에서 *JSON* 충돌을 없애지만, 이 여덟 이름은 계속 예약됩니다. 같은 이름의 플러그인 스탬프는 작성자에게 여전히 모호하기 때문입니다. 플러그인이 그중 하나로 속성을 선언하면 assembly에서 **`E-PLUGIN-RESERVED-STAMP-ATTR`**과 함께 거부됩니다.
@@ -359,6 +452,26 @@ lute: E-PLUGIN-RESERVED-STAMP-ATTR: plugin `arcia.bonus` declares reserved stamp
 ```
 
 두 표면 모두 적용됩니다. `stampAttrs` export와 일반적인 디렉티브별 `attrs` 엔트리가 모두 해당하므로, 플러그인은 어느 경로로도 예약 키에 접근할 수 없습니다. 문제가 있는 선언은 병합하지 않고 삭제되며, 예약되지 않은 형제 항목은 그대로 적용됩니다. 이것이 차단 플러그인 디렉티브가 자체 플래그를 `sync`로 지정하고 `wait`로 지정하지 않는 이유입니다([브리지](/ko/plugins/bridge/) 참조).
+
+## 호스트 보간 토큰(`hostTokens`)
+
+줄에는 엔진만 아는 값을 위해 맨 이름 `{{playerName}}`을 둘 수 있습니다. 플러그인 export `hostTokens`(`hosttokens/*.yaml`, 0.50부터)가 이런 이름을 선언합니다.
+
+```yaml
+# hosttokens/tokens.yaml
+hostTokens:
+  playerName: { type: string }
+  rank:       { type: int }
+  platform:   { type: { enum: [ios, android, web] } }
+```
+
+- 키가 토큰 이름이고 값은 `{ type }`이며, `type`은 `string`, `int`, `{ enum: [members…] }` 중 하나입니다. 다른 타입은 `E-PLUGIN-PARSE`, 다른 키는 `E-PLUGIN-KEY`입니다.
+- 토큰 이름은 **식별자**입니다. ASCII 문자 또는 `_`로 시작하고 문자, 숫자, `_`가 이어집니다(단순한 name이 아닙니다. 호스트 토큰은 `{{…}}` 안에 맨 이름으로 쓰이기 때문입니다). 식별자가 아닌 키는 `E-PLUGIN-PARSE`입니다: `` host token `player-name` is not an identifier (letters, digits and `_`, not starting with a digit) ``(`player-name`, `2ndName`, `-x`, 빈 키 모두 거부됩니다).
+- 상태 루트나 CEL 리터럴인 이름(`scene`, `run`, `user`, `app`, `quest`, `entry`, `prev`, `clock`, `occasion`, `season`, `true`, `false`, `null`)은 assembly에서 `E-PLUGIN-RESERVED-NAME`이며, 메시지에 이유가 담깁니다: `` `{{run}}` would read as a state root ``([예약어](/ko/reference/reserved-names/) 참고).
+- **`lute.core`는 `userName: { type: string }`을 선언합니다.** 다른 플러그인이나 `lute.core`가 선언한 토큰을 다시 선언하면 `E-PLUGIN-DUP-ACROSS`입니다.
+- `hostTokens`는 `lute.core`가 소유하지 않은 토큰이 있을 때만, 그리고 그 토큰만 `capabilitySnapshot`에 접힙니다. 따라서 토큰을 선언하지 않은 프로젝트는 스냅숏을 유지합니다. `lute context`는 선언된 비코어 토큰(이름, 타입, 플러그인)을 나열합니다.
+
+텍스트에서 토큰이 어떻게 검사되는지, 그리고 런타임이 이를 그대로 두는 것은 [대화와 캐스트](/ko/language/dialogue-and-cast/#호스트-토큰)에 있습니다.
 
 ## 선언적 낮춤
 

@@ -1,0 +1,7 @@
+# secondVisit starts on met(mira); its REVOKE retracts the fact at completion.
+file: ../quests/visits.lute
+facts: ["met(mira)"]
+state: { run.chatted: true }
+expect:
+  quests: { secondVisit: complete }
+  notFacts: ["met(mira)"]

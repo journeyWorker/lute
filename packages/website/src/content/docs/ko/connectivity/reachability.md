@@ -107,6 +107,16 @@ quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` wa
 
 앵커가 없는 퀘스트는 `reachable holds [proven]`이며 이유는 `unanchored: available from the start of play`입니다. `lute scenario reach`와 `lute constraints`는 같은 하나의 도달 가능성 주장을 읽으므로 서로 어긋날 수 없습니다.
 
+## 보상 효과가 그리는 엣지
+
+플러그인 보상 종류는 [효과](/ko/language/quests-and-scenes/#보상-효과)(0.50)를 선언할 수 있으며, 그래프는 이를 보상 소유자의 지급 지점(퀘스트의 완료 또는 실패, 목표의 완료)에서 읽습니다:
+
+- 사실을 **assert**하는 보상은 핸들러 안의 `::assert`처럼, 그 사실을 `start`나 `after`에서 읽는 퀘스트로 향하는 사실 엣지 `quest(first) -> quest(second) [asserted fact]`를 그립니다. 따라서 `holds('met', ['mira'])`로 게이트된 퀘스트는 `firstVisit`의 보상이 `met(mira)`를 assert하면 도달 가능합니다: `E-QUEST-UNREACHABLE`이 없습니다. 조건부 보상(`when=`)은 조건부 생산자입니다.
+- 퀘스트를 **accept**하는 보상은 씬의 `::accept`가 그리는 엣지인 `quest(first) -> quest(second) [accept]`를 그립니다. 보상 `accepts`만 이름을 부르는 수락 기반 퀘스트는 도달 가능하며 `W-QUEST-NEVER-ACCEPTED`를 내지 않습니다. 그 경고의 메시지는 이제 "… but no `::accept` or reward `accepts` in the project names it …"입니다.
+- **시작 순환은 그대로입니다.** 보상 accept를 포함한 `[accept]` 앵커는 퀘스트의 시작을 게이트하지 않습니다. 엔진은 어떤 `::accept` 밖에서도 퀘스트를 수락할 수 있고, accept 교착은 범위 밖입니다. 보상을 통해서만 서로를 accept하는 수락 기반 퀘스트의 순환은 `E-QUEST-START-CYCLE`도 `E-QUEST-START-SELF`도 내지 않습니다.
+- `lute scenario knowledge`와 `lute lore`는 보상이 assert한 사실의 생산자를 지목합니다: `` met(mira) — produced by reward BADGE of quest `firstVisit` ``.
+<!-- rerun-after-S8 -->
+
 ## 0.34.0의 증거
 
 시나리오 reach 결과에는 JSON에서 `evidence`가 포함됩니다. 구조적 도달 가능성

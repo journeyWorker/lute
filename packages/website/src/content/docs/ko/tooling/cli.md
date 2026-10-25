@@ -29,6 +29,53 @@ description: 모든 lute 하위 명령 — init, new, check, compile, expr, run,
 
 명령은 결과를 바꿀 수 있는 `--providers`/`--permission-profile`만 받으며, 이 옵션들은 명령이 만드는 프로젝트 모델에 그대로 전달됩니다. `--deny`/`--deny-warnings`는 명령이 종료 코드를 결정하는 판정의 진단을 승격합니다. `trace`는 check 게이트(거부, 종료 **1**), `expr`은 lowering 진단, `play`와 `calendar`는 프로젝트 compile 게이트, `test`는 테스트가 참조하는 모든 check 판정(추적한 문서마다의 check와 플레이마다의 compile 게이트)에 적용하므로, 승격된 경고는 그 테스트를 실패시킵니다.
 
+### 프로젝트 진단 level (0.50부터)
+
+프로젝트는 `lute.project.yaml`에서 checker 경고의 level을 설정할 수 있습니다:
+
+```yaml
+diagnostics:
+  W-DISPLAY-NAME-DUP: error
+  W-STAGE-ABSENT: { level: off, paths: ["scenes/imported/**"] }
+```
+
+`diagnostics:`는 진단 코드에서 level 또는 `{ level, paths }`로 가는 map이며, 코드당 항목은 하나입니다.
+
+- **Level:** `off`, `info`, `warn`, `error`.
+- **`paths`**(선택): lint `ignore:`와 같은 문법(세그먼트 안의 `*`, 세그먼트를 가로지르는 `**`)의 프로젝트 루트 기준 glob입니다. `paths`를 주면 루트 기준 경로가 glob에 맞는 문서의 진단에만 level이 적용되고, 그 밖에서는 코드가 원래 심각도를 유지합니다. 문서 경로가 없는 진단(매니페스트 진단)은 `paths`가 없는 항목에만 맞습니다.
+- **설정 가능한 것은 `W-*` 코드뿐입니다.** 오류는 절대 낮추지 않습니다. 오류는 계약 위반이기 때문입니다. `L-*` lint 규칙의 level은 `lute.lint.yaml`의 `rules:`에 둡니다.
+
+잘못된 항목은 **`E-DIAGNOSTICS-CONFIG`**(오류, 매니페스트 진단)입니다. CLI 매니페스트 패스와 LSP가 매니페스트당 한 번 보고하며, 해당 항목은 버려지고 나머지는 로드되지만 매니페스트는 유효하지 않게 됩니다:
+
+| 결함 | 메시지 형태 |
+| --- | --- |
+| `E-*` 코드 | `` `E-UNKNOWN-ATTR` is an error: an error is a contract violation and cannot be re-levelled; fix the reported source instead `` |
+| `L-*` 코드 | `` `L-…` is a lint rule; set its level in `lute.lint.yaml` `rules:` `` |
+| 툴체인이 정의하지 않은 코드 | `` `W-STAGE-ABSNT` is not a diagnostic code — did you mean `W-STAGE-ABSENT`? `` |
+| 잘못된 level | `` level `silent` is not one of `off`, `info`, `warn`, `error` `` |
+| `paths: []`, 문자열이 아닌 값, 절대 경로 또는 `..` 세그먼트 | `` `paths` takes project-relative globs, e.g. `scenes/imported/**` `` |
+
+**적용 순서**는 진단을 직렬화하고 출력하는 단 한 곳에서 정해집니다(위 진단 게이트를 받는 모든 명령이 발견된 프로젝트의 `diagnostics:`를 읽습니다):
+
+1. (코드, 경로)에 대한 프로젝트 level;
+2. 그 코드를 지명한 `--deny CODE`는 **프로젝트가 `off`로 설정했더라도** 오류로 승격합니다(명시적인 명령줄이 config보다 우선);
+3. `--deny-warnings`는 1단계 이후에도 여전히 경고인 것만 승격합니다. `off` 코드는 계속 off이고 `info` 코드는 계속 info입니다.
+
+Level은 **보고되는 내용과 종료 상태만** 바꿉니다. 분석, 아티팩트, constraint 판정, scenario graph, `.play.yaml`/`.test.yaml` 기대값이 관찰하는 것은 절대 바꾸지 않습니다. `diagnostics:`가 없는 프로젝트는 바이트 단위로 같은 출력을 냅니다.
+
+**마커와 집계.** `error`로 올린 코드는 `--deny`처럼 판정을 실패시킵니다. JSON에서는 `"severity": "error"`와 추가 필드 `"configured": "lute.project.yaml"`을 가지며, 사람이 읽는 줄에는 기존 `[denied]` 옆에 `[project]` 마커가 붙습니다. `info` 또는 `warn`으로 바꾼 코드는 새 심각도와 같은 `configured` 마커를 가집니다. 억제된(`off`) 결과는 집계됩니다:
+
+- 진단 수를 세는 모든 사람용 요약 줄은 N > 0일 **때만** `, N suppressed by lute.project.yaml`을 덧붙입니다: `ok: ./scenes/a.lute (0 warning(s), 212 suppressed by lute.project.yaml)`;
+- 진단을 담는 모든 JSON 보고서(파일별·프로젝트 전체의 `0.48.0.check` 보고서와 compile, lint, trace, expr envelope)는 **비어 있지 않을 때만** `"suppressed": { "<code>": n, … }`를 가집니다. 추가 필드이므로 보고서 id는 바뀌지 않습니다.
+
+```console
+$ lute check ./scenes/a.lute
+ok: ./scenes/a.lute (0 warning(s), 212 suppressed by lute.project.yaml)
+```
+<!-- rerun-after-S8 -->
+
+**LSP.** 언어 서버는 발행 전에 문서의 루트 기준 경로로 같은 level을 적용합니다. `off` 진단은 발행하지 않고, level이 바뀐 진단은 새 심각도로 발행합니다.
+
 ### 출력
 
 텍스트가 모든 명령의 기본이며 JSON은 `--json`일 때만 나옵니다. 출력은 스트림이 터미널인지, 환경 변수가 무엇인지에 따라 달라지지 않습니다. 자세한 내용은 [기계 판독 출력](#기계-판독-출력)을 참고하세요.

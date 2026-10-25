@@ -42,14 +42,14 @@ custom:
 
 | 키 | 타입 | 기본값 | 의미 |
 | --- | --- | --- | --- |
-| `lsp` | boolean | `false` | 이 config 파일이 존재하고 `true`로 설정된 경우에만 LSP의 열린 문서에 lint 결과를 발행합니다. 규칙이 설정되어 있어도 그 밖에는 LSP에서 lint가 없습니다. LSP는 `line`, `section`, `scene`, `speaker`, `group` 대상을 평가하며, `project` 규칙은 v1에서 CLI 전용입니다. |
+| `lsp` | boolean | `false` | 이 config 파일이 존재하고 `true`로 설정된 경우에만 LSP의 열린 문서에 lint 결과를 발행합니다. 규칙이 설정되어 있어도 그 밖에는 LSP에서 lint가 없습니다. LSP는 `line`, `section`, `scene`, `speaker`, `group`, (0.50부터) `node` 대상을 평가하며, `project` 규칙은 v1에서 CLI 전용입니다. |
 | `ignore` | 프로젝트 루트 기준 glob 목록 | `[]` | lint에서 제외할 문서입니다. |
 | `rules` | map | `{}` | core 및 활성 플러그인 규칙에 대한 규칙별 level과 option override입니다. |
 | `custom` | 규칙 목록 | `[]` | 프로젝트 로컬 선언적 CEL 규칙입니다. |
 
 `rules` map 항목은 level 축약형(예: `my-plugin/variant-coverage: off`) 또는 `{ level, options }`일 수 있습니다. level은 `off`, `hint`, `info`, `warn`, `error`이며 진단 심각도 Hint, Info, Warning, Error에 대응합니다. `off`는 규칙을 비활성화합니다. level을 생략하면 해당 규칙의 기본값을 유지합니다. option은 규칙이 선언한 기본값에 deep-merge되고, scalar 값은 override합니다.
 
-Core 규칙 id는 bare kebab-case입니다. 플러그인 규칙 id는 `<plugin-id>/<rule-id>`입니다. custom 규칙 id는 bare여야 하며 core 규칙 id와 충돌해서는 **안 됩니다**. 잘못된 YAML은 종료 코드 2 오류입니다. 알 수 없는 규칙 또는 option 키, 잘못된 option 타입, 충돌하는 custom id는 `E-LINT-CONFIG` 결과입니다. 잘못된 항목은 건너뛰고 나머지 규칙을 실행하며 명령은 1로 종료합니다.
+Core 규칙 id는 bare kebab-case입니다. 플러그인 규칙 id는 `<plugin-id>/<rule-id>`입니다. custom 규칙 id는 bare여야 하며 core 규칙 id와 충돌해서는 **안 됩니다**. 잘못된 YAML은 종료 코드 2 오류입니다. 알 수 없는 규칙 또는 option 키, 잘못된 option 타입, 충돌하는 custom id는 `E-LINT-CONFIG` 결과입니다. `rules:`에 **checker** 코드를 지정하는 것도 `E-LINT-CONFIG`이며(0.50부터) 올바른 파일을 알려주는 힌트가 붙습니다: `` `W-STAGE-ABSENT` is a checker code, not a lint rule — set its level in `lute.project.yaml` `diagnostics:` ``. `E-*` id는 힌트가 `an error cannot be re-levelled`로 끝납니다. Lint 규칙 level(`L-*`)은 여기서만 설정합니다. 잘못된 항목은 건너뛰고 나머지 규칙을 실행하며 명령은 1로 종료합니다.
 
 ### Custom 규칙 형태
 
@@ -58,13 +58,131 @@ Core 규칙 id는 bare kebab-case입니다. 플러그인 규칙 id는 `<plugin-i
 | 키 | 필수 | 의미 |
 | --- | --- | --- |
 | `id` | 예 | 프로젝트 로컬 bare 규칙 id입니다. |
-| `target` | 예 | `line`, `section`, `scene`, `speaker`, `group`, `project` 중 하나입니다. |
+| `target` | 예 | `line`, `section`, `scene`, `speaker`, `group`, `project`, `node`(0.50부터) 중 하나입니다. |
 | `when` | 예 | 대상 행과 `options`에 대한 CEL assertion이며 `true`일 때 실행됩니다. |
 | `level` | 아니요 | `off`, `hint`, `info`, `warn`, `error`입니다. |
 | `message` | 예 | 결과 텍스트입니다. `{path.to.field}`는 metric 또는 option 경로를 보간합니다. 숫자는 끝의 `.0`을 제거하고 최대 두 자리로 반올림하여 출력하므로 ratio `3.3333…`은 `3.33`으로 표시됩니다. `{expr:%}`는 share를 반올림한 백분율로 출력합니다. |
 | `options` | 아니요 | `when`과 message에 노출되는 기본값입니다. |
 
 Lint CEL fragment는 ground-only입니다. `@ref`나 `$` DSL token, 상태 경로, macro(`filter`, `map`, `exists`)를 쓸 수 없습니다. 공유 ground-operation semantics, metric-path 선택 및 map indexing, 문자열·목록·map에 대한 `size()`를 지원합니다. 해석할 수 없는 field, 타입 불일치 또는 boolean이 아닌 `when` 결과는 `E-LINT-EXPR`이며 규칙 선언 위치에서 한 번 보고되고 해당 규칙은 건너뜁니다. 절대로 조용한 통과가 아닙니다.
+
+0.50부터 fragment에는 표준 CEL 문자열 멤버 `s.startsWith(t)`, `s.endsWith(t)`, `s.contains(t)`도 있습니다. 멤버 호출 형태만 가능하고 두 피연산자 모두 문자열이어야 하며, 문자열이 아닌 피연산자는 평가 오류(`E-LINT-EXPR`)입니다. 정규식과 macro는 없습니다.
+
+## `node` lint (0.50부터)
+
+`target: node`(플러그인 `lints:` export와 `lute.lint.yaml`의 `custom:` 규칙에서 유효)는 문서의 **노드**마다 규칙을 한 번씩 평가합니다. 행은 checker가 순회하는 모든 body를 문서 순서대로 따라갑니다:
+
+- 섹션 body;
+- `<quest>` 선언과 그 body(objective, `<on>` 핸들러);
+- quest 또는 objective의 자식 `<reward>`(소유자의 자식 중 소스 위치대로);
+- 최상위 `<entry>`·`<beat>` 선언과 그 body;
+- `<branch>`의 choice와 choice body;
+- `<hub>`의 choice, choice body, `<return>` body;
+- `<match>` arm(`<when>`, `<otherwise>`)과 그 body;
+- `<timeline>`(한 행이며 트랙 clip은 행이 아닙니다).
+
+| `node.kind` | 대상 |
+| --- | --- |
+| `line` | 콘텐츠 줄 |
+| `directive` | 모든 `::tag{…}`: 플러그인·core 디렉티브, `::set`, `::assert`, `::retract`, `::accept`, `::use`, `::label`, `::jump`, `::clear`, `::end` |
+| 요소 이름 | `branch`, `hub`, `choice`, `return`, `match`, `when`, `otherwise`, `timeline`, `quest`, `objective`, `on`, `reward`, `entry`, `beat` |
+
+`node` 규칙은 세 binding을 읽습니다: `node`, `scene`(기존 문서 행), `options`.
+
+| 필드 | 의미 |
+| --- | --- |
+| `node.kind` | 위 표와 같음 |
+| `node.tag` | 디렉티브 tag 또는 요소 이름. 줄은 `""` |
+| `node.speaker` | 줄의 화자. 그 외는 `""` |
+| `node.attrs` | **작성된 그대로**의 모든 attribute를 담은 문자열 → 문자열 map(아래 참고) |
+| `node.index`, `node.first`, `node.last` | body 안에서의 0부터 시작하는 위치. 해당 body의 첫/마지막 여부 |
+| `node.depth` | 섹션(또는 문서)의 최상위 노드는 0, 감싸는 요소마다 +1 |
+| `node.prev`, `node.next` | 같은 body의 이웃 노드 `{ kind, tag, attrs }`. body 가장자리에서는 모든 필드가 비어 있음 |
+| `node.parent` | 감싸는 요소의 `{ kind, tag, attrs }`. 섹션 최상위에서 `kind`는 `"section"`, quest/lore 문서 최상위에서는 `"document"` |
+| `node.preceding` | tag → `{ attrs }` map: 각 tag에 대해, 이 노드와 각 조상의 앞쪽 형제 중 가장 가까운 같은 tag의 노드와 조상 자신. 앞쪽 형제의 body 안으로는 들어가지 **않습니다**(다른 arm은 이 경로 위에 있지 않음). 섹션과 선언마다 초기화됩니다. 줄은 키가 되지 않습니다. |
+| `node.section` | 감싸는 섹션의 `{ index, title, id }`. 섹션 밖은 `{ 0, "", "" }` |
+
+**위치와 메시지**는 `line` 행과 같습니다. 진단은 노드(줄, 디렉티브 또는 요소)를 가리키며 `{node.attrs.value}`를 보간할 수 있습니다.
+
+**작성된 attribute.** `node.attrs`는 작가가 쓴 키만 가지며, 값은 따옴표를 벗긴 작성 값 텍스트입니다. 파서가 필드로 끌어올리는 attribute(`<branch id>`, `<reward kind target amount>`, `::jump{to}`)와 플러그인 stamp도 포함합니다. 값 없는 flag는 `"true"`이고 `@ref` 값은 소스 텍스트(`@name`)입니다. IR에 기본값이 있어도 작성하지 않은 attribute는 없습니다. 따라서 `amount`가 없는 `<reward>`에는 `amount` 키가 없습니다. `::set`, `::assert`, `::retract`는 `{}`입니다. 텍스트는 파싱된 필드에서 재구성하지 않고 파서 자신의 attribute scanner로 소스에서 다시 읽습니다. `<reward kind="COINS" amount="+005"/>`는 `"5"`가 아니라 `node.attrs["amount"] == "+005"`입니다. CRLF 줄바꿈과 멀티바이트 텍스트에서도 같은 값이 나옵니다.
+
+**모든 인덱스를 가드하세요.** 없는 키는 CEL 의미를 유지합니다. 없는 키에 대한 `node.attrs["x"]`는 평가 오류(`E-LINT-EXPR`)입니다. `&&`는 단락 평가하므로 규칙은 사용하는 **모든** 인덱스를 가드합니다: `"x" in node.attrs && node.attrs["x"] …`, `"t" in node.preceding && "k" in node.preceding["t"].attrs && …`, options map을 인덱싱하기 전의 `key in options.cases && …`.
+
+`node.preceding`은 행마다 복사하지 않고 하나의 진행 중인 map을 빌려 읽는 view로 제공되므로, 이를 읽는 `node` 규칙도 문서 크기에 거의 선형으로 유지됩니다. LSP는 다른 문서 내 대상처럼 `node` 규칙을 평가합니다. `node` 규칙은 IR, 이벤트, snapshot, `capabilitySnapshot`을 바꾸지 않고 semantic id도 없습니다.
+
+### 레시피
+
+모든 인덱스를 가드합니다. **알 수 없는 discriminator 정책:** 의존 값 규칙은 자신이 case를 가지지 않는 discriminator를 제외하고, 별도의 `*-known` 규칙이 discriminator 자체를 보고합니다. 따라서 각 위반은 그것을 지목하는 규칙이 한 번만 보고합니다.
+
+```yaml
+lints:
+  - id: signal-needs-menu
+    target: node
+    when: 'node.tag == "signal" && "value" in node.attrs && node.attrs["value"] == "puzzle" && node.next.kind != "branch"'
+    level: warn
+    message: "a puzzle ::signal must be followed by a <branch>"
+  - id: section-opens-with-bg
+    target: node
+    when: 'node.first && node.parent.kind == "section" && node.tag != "bg"'
+    level: warn
+    message: "section {node.section.title} opens with {node.tag}"
+  - id: beat-label-prefix
+    target: node
+    when: 'node.tag == "label" && scene.kind == "beat" && "name" in node.attrs && !node.attrs["name"].startsWith("b_")'
+    level: error
+    message: "a beat's labels start with b_"
+  # #177, same element: `mode` selects the legal `speed`s.
+  - id: move-mode-known
+    target: node
+    when: 'node.tag == "move" && "mode" in node.attrs && !(node.attrs["mode"] in options.speeds)'
+    level: error
+    message: "unknown move mode {node.attrs.mode}"
+    options: { speeds: { walk: [slow, normal], run: [normal, fast] } }
+  - id: speed-fits-mode
+    target: node
+    when: >-
+      node.tag == "move" && "speed" in node.attrs && "mode" in node.attrs &&
+      node.attrs["mode"] in options.speeds &&
+      !(node.attrs["speed"] in options.speeds[node.attrs["mode"]])
+    level: error
+    message: "speed {node.attrs.speed} is not legal in mode {node.attrs.mode}"
+    options: { speeds: { walk: [slow, normal], run: [normal, fast] } }
+  # #177, a marker directive before the branch decides the legal option values.
+  - id: interaction-kind-known
+    target: node
+    when: 'node.tag == "interaction" && (!("kind" in node.attrs) || !(node.attrs["kind"] in options.cases))'
+    level: error
+    message: "::interaction needs a known kind"
+    options: { cases: { greet: [wave, bow], gift: [accept, decline] } }
+  - id: option-fits-interaction
+    target: node
+    when: >-
+      node.tag == "option" && "value" in node.attrs &&
+      "interaction" in node.preceding && "kind" in node.preceding["interaction"].attrs &&
+      node.preceding["interaction"].attrs["kind"] in options.cases &&
+      !(node.attrs["value"] in options.cases[node.preceding["interaction"].attrs["kind"]])
+    level: error
+    message: "option {node.attrs.value} does not belong to this interaction"
+    options: { cases: { greet: [wave, bow], gift: [accept, decline] } }
+  # #177 with #164 stamps: the parent <branch> carries the discriminator.
+  - id: menu-type-known
+    target: node
+    when: 'node.kind == "branch" && "menuType" in node.attrs && !(node.attrs["menuType"] in options.keys)'
+    level: error
+    message: "unknown menu type {node.attrs.menuType}"
+    options: { keys: { plain: [L1, R1], timed: [T1] } }
+  - id: choice-fits-menu
+    target: node
+    when: >-
+      node.kind == "choice" && "optionKey" in node.attrs &&
+      "menuType" in node.parent.attrs && node.parent.attrs["menuType"] in options.keys &&
+      !(node.attrs["optionKey"] in options.keys[node.parent.attrs["menuType"]])
+    level: error
+    message: "option key {node.attrs.optionKey} is not a {node.parent.attrs.menuType} key"
+    options: { keys: { plain: [L1, R1], timed: [T1] } }
+```
+
+의존 attribute, discriminator 또는 marker가 없는 노드(`interaction` 없는 `preceding`, `kind` 없는 marker, `menuType` 없는 parent)에서는 결과도 `E-LINT-EXPR`도 없습니다. 멤버십 검사 없이 `node.attrs["mode"]`를 인덱싱하는 가드 없는 변형은 `mode`가 없는 노드에서 `E-LINT-EXPR`를 보고하며, 이것이 가드가 있는 이유입니다.
 
 ## Metric table
 
@@ -138,7 +256,7 @@ cast:
   grunt2: { name: Eclipse Grunt, sharedName: true }
 ```
 
-이 코드는 `lute.lint.yaml` 규칙이 아니므로 그곳에서 level을 설정할 수 없습니다(`rules:`에서 이 이름을 지정하면 알 수 없는 rule id인 `E-LINT-CONFIG`입니다). `--deny W-DISPLAY-NAME-DUP` 또는 `--deny-warnings`는 이를 오류로 승격하고 실행을 실패시킵니다:
+이 코드는 `lute.lint.yaml` 규칙이 아니므로 그곳에서 level을 설정할 수 없습니다. `rules:`에서 이 이름을 지정하면 올바른 위치를 알려주는 힌트와 함께 `E-LINT-CONFIG`입니다: `` `W-DISPLAY-NAME-DUP` is a checker code, not a lint rule — set its level in `lute.project.yaml` `diagnostics:` ``(0.50부터. `E-*` id는 힌트가 `… an error cannot be re-levelled`로 끝납니다). 프로젝트의 `diagnostics:` 키([CLI 페이지](/ko/tooling/cli/))는 checker `W-*` 코드를 `off`, `info`, `warn`, `error`로 설정합니다. `--deny W-DISPLAY-NAME-DUP` 또는 `--deny-warnings`는 이를 오류로 승격하고 실행을 실패시킵니다:
 
 <!-- lute-diagnostics -->
 ```console
@@ -165,7 +283,7 @@ lints:
 
 로더는 `id`를 원문 그대로 유지합니다. 플러그인 id가 `my-plugin`이면 활성 규칙 id는 `my-plugin/variant-coverage`이며, 사용자가 `rules:` 아래에 넣는 이름이자 진단 코드의 기반입니다. 잘못된 플러그인 항목은 로드 시 `E-LINT-RULE`이며 건너뜁니다. 플러그인 규칙은 프로젝트의 **기본 프로필** 활성화에서 옵니다. 프로젝트 루트마다 규칙 집합 하나를 모든 문서에 적용합니다(문서별 프로필 활성화는 향후 개선 사항입니다).
 
-플러그인 규칙은 고정된 코어 계산 메트릭 표에 대해 단언할 때만 데이터로 취급됩니다. 규칙에 다른 메트릭, 순회, 순서 규칙 또는 평가 기본 요소가 필요하면 YAML 확장이 아니라 코어 변경입니다. 플러그인 lint 선언은 자문용이며 capability snapshot과 `capabilitySnapshot` 모두에서 제외됩니다.
+플러그인 규칙은 고정된 코어 계산 메트릭 표에 대해 단언할 때만 데이터로 취급됩니다. 규칙에 다른 메트릭, 순회, 순서 규칙 또는 평가 기본 요소가 필요하면 YAML 확장이 아니라 코어 변경입니다. 구조 술어(노드가 무엇인지, 주변에 무엇이 있는지, 작가가 어떤 attribute를 썼는지)는 [`node` 대상](#node-lint-0050부터)이 맡고, 균형 검사(`pair`)는 0.51입니다. 플러그인 lint 선언은 자문용이며 capability snapshot과 `capabilitySnapshot` 모두에서 제외됩니다.
 
 ## 코드, 거부 및 종료 상태
 

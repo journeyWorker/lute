@@ -1,0 +1,19 @@
+directives:
+  # The importer's staging row: shows the speaker before their first line. It
+  # lowers to the core `actor` record, so it stages like `::actor` (0.45).
+  # The sprite id rides the record's `costume` field.
+  - name: showSpeaker
+    attrs:
+      - { name: character, required: true, type: string }
+      - { name: spriteId, type: string }
+    lower:
+      record: actor
+      fields:
+        character: { fromAttr: character }
+        costume: { fromAttr: spriteId }
+  # A movement row with a mode and a speed. Which speeds are legal depends on
+  # the mode, and that dependency is checked by lute.lint.yaml, not here.
+  - name: move
+    attrs:
+      - { name: mode, type: string }
+      - { name: speed, type: string }

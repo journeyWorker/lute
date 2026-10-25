@@ -57,3 +57,10 @@ names already mean, and the code that reports them.
   because `once="season:week"` would sit beside `once="week"`.
 - A kind beat names its kind with a prefix (`target="kind:guest"`). The kind
   itself is declared without it (`entities: { guest: … }`).
+- A plugin **host token** (`hostTokens:`, since 0.50) is refused the names of
+  the state roots and CEL literals: `scene`, `run`, `user`, `app`, `quest`,
+  `entry`, `prev`, `clock`, `occasion`, `season`, `true`, `false`, `null`. A
+  token is written bare in `{{…}}`, so `{{run}}` would read as a state root.
+  The error is `E-PLUGIN-RESERVED-NAME` at assembly. A token name must also
+  be an identifier (letters, digits and `_`, not starting with a digit), or
+  the plugin fails to load with `E-PLUGIN-PARSE`.

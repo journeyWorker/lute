@@ -15,7 +15,7 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-ACCEPT-TARGET
 
-`::accept` 지시어가 퀘스트를 지정하지 않았거나, `quest` 값이 인용된 퀘스트 id가 아니거나, `at` 값이 `"nextRun"`이 아니거나, 이미 부모와 함께 활성화되는 `accept="external"` 퀘스트를 대상으로 지정해 수락이 아무 효과가 없습니다. 프로젝트 전체 `check`는 `::accept`나 보상 종류의 `effects.accepts`가 가리키는 퀘스트도 판정합니다. 그 퀘스트는 프로젝트에 선언되어 있어야 하고(비슷한 이름을 제안합니다) 수락 기반이어야 합니다. `start`가 있는 퀘스트나 부모와 함께 활성화되는 하위 퀘스트는 안 됩니다. 보상의 수락은 그 보상의 `target=`(또는 `kind=`)에서 보고하고 메시지에 보상을 밝힙니다.
+`::accept` 지시어가 퀘스트를 지정하지 않았거나, `quest` 값이 인용된 퀘스트 id가 아니거나, `at` 값이 `"nextRun"`이 아니거나, 이미 부모와 함께 활성화되는 `accept="external"` 퀘스트를 대상으로 지정해 수락이 아무 효과가 없습니다. 0.50.0부터는 보상 kind의 `accepts` 효과에도 같은 규칙을 적용합니다. 해결된 quest id가 알 수 없는 id(did-you-mean 포함)이거나, `start`가 있는 퀘스트이거나, 자동 활성화되는 자식이면 이 코드이며, `@target`에서 온 id는 보상의 `target=` 값에, 그렇지 않으면 `kind=`에 표시됩니다. 메시지가 보상을 지목합니다: `` `<reward kind="OFFER_QUEST" target="secnd">` accepts quest `secnd` (its kind's `effects.accepts`), but no quest in the project declares that id — did you mean `second`? ``.
 
 명세: [dsl 0.21.0 §7a.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md), [dsl 0.50.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
@@ -219,7 +219,7 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-CEL-PROFILE
 
-CEL 식이 제한된 Lute-CEL 프로파일 밖의 구문을 사용합니다. 허용되지 않는 함수 호출, 컴프리헨션 매크로, 맵/구조체 리터럴, 상태 경로나 def가 아닌 맨 식별자, 예약된 내부 토큰, 또는 조건 슬롯 밖에서 쓰인 `visited(…)`가 해당합니다. 상태 경로도, def `@ref`도, 선언된 호스트 토큰도 아닌 `{{…}}` 보간도 해당합니다(메시지가 선언된 토큰을 나열하고, 선언되지 않은 맨 이름에는 플러그인의 `hostTokens:` export에 선언하라고 알려 줍니다).
+CEL 식이 제한된 Lute-CEL 프로파일 밖의 구문을 사용합니다. 허용되지 않는 함수 호출, 컴프리헨션 매크로, 맵/구조체 리터럴, 상태 경로나 def가 아닌 맨 식별자, 예약된 내부 토큰, 또는 조건 슬롯 밖에서 쓰인 `visited(…)`가 해당합니다. 보간 `{{…}}`에서는 0.50.0부터 선언된 호스트 토큰도 허용되는 형태이며, 선언되지 않은 맨 식별자 보간의 메시지가 "a declared host token"을 언급하고 선언된 토큰(예: `userName`)을 나열합니다: `` interpolation `playerName` is not a valid `{{…}}` form — only a state path, …, a def `@ref` / `@ref(args)`, or a declared host token (`userName`) are permitted; declare `playerName` in a plugin's `hostTokens:` export if the engine substitutes it … ``. 메시지의 나머지는 그대로입니다.
 
 명세: [dsl §8.4](/ko/spec/), [dsl 0.21.0 §7a.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.50.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
@@ -533,7 +533,7 @@ context 대상 키가 프로젝트 그래프에서 없거나 모호합니다.
 
 ### E-DIAGNOSTICS-CONFIG
 
-`lute.project.yaml`의 `diagnostics:` 항목을 적용할 수 없습니다. 키가 에러 코드(에러는 레벨을 바꿀 수 없음)이거나 린트 규칙(`lute.lint.yaml` `rules:`에서 설정)이거나 진단 코드가 아니거나, 레벨이 `off`, `info`, `warn`, `error` 중 하나가 아니거나, `paths`가 프로젝트 상대 glob의 비어 있지 않은 목록이 아닌 경우입니다. 해당 항목은 버려지고 매니페스트는 유효하지 않습니다.
+`lute.project.yaml`의 `diagnostics:` 항목이 잘못되었거나 허용되지 않습니다. 매니페스트 진단이며 매니페스트당 한 번 보고하고(CLI 매니페스트 패스와 LSP), 해당 항목은 버려지고 나머지는 로드되지만 매니페스트는 유효하지 않게 됩니다. 원인과 메시지(메시지 앞에 `` `<code>`: ``가 붙습니다): `E-*` 코드(`` `E-UNKNOWN-ATTR` is an error: an error is a contract violation and cannot be re-levelled; fix the reported source instead ``), `L-*` 코드(`` `L-…` is a lint rule; set its level in `lute.lint.yaml` `rules:` ``), 툴체인이 정의하지 않은 코드(`` `W-STAGE-ABSNT` is not a diagnostic code — did you mean `W-STAGE-ABSENT`? ``), 잘못된 level(`` level `silent` is not one of `off`, `info`, `warn`, `error` ``), 잘못된 `paths` — `[]`, 문자열이 아닌 값, 절대 경로 또는 `..` 세그먼트(`` `paths` takes project-relative globs, e.g. `scenes/imported/**` ``). `level:`이 없는 매핑 항목이나 `level`/`paths` 외의 키도 이 코드입니다. 설정 가능한 것은 `W-*` 코드뿐입니다.
 
 명세: [dsl 0.50.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
@@ -848,7 +848,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-LINT-CONFIG
 
-`lute.lint.yaml`가 잘못되었습니다 — 타입이 틀렸거나 알 수 없는 최상위 키, 잘못된 규칙 오버라이드, 또는 코어 규칙 id와 충돌하는 커스텀 규칙 id입니다. 0.49.0부터는 `options.providers`의 `asset-exists` 키가 셀렉터 형태(`<tag>`, `<tag>.<attr>`, `@<attr>`) 중 어느 것도 아닌 경우도 포함합니다. `rules:`의 id가 체커 코드이면 그렇다고 알려 줍니다. 경고의 레벨은 `lute.project.yaml` `diagnostics:`에서 정하고, 에러는 레벨을 바꿀 수 없습니다.
+`lute.lint.yaml`가 잘못되었습니다 — 타입이 틀렸거나 알 수 없는 최상위 키, 잘못된 규칙 오버라이드, 또는 코어 규칙 id와 충돌하는 커스텀 규칙 id입니다. 0.49.0부터는 `options.providers`의 `asset-exists` 키가 셀렉터 형태(`<tag>`, `<tag>.<attr>`, `@<attr>`) 중 어느 것도 아닌 경우도 포함합니다. 0.50.0부터 `rules:`의 id가 checker 코드이면 "알 수 없는 규칙 id" 대신 올바른 위치를 알려 줍니다: `` `W-STAGE-ABSENT` is a checker code, not a lint rule — set its level in `lute.project.yaml` `diagnostics:` ``. `E-*` id는 `… an error cannot be re-levelled`로 끝납니다.
 
 명세: [dsl 0.49.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §6.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
@@ -940,7 +940,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-MISSING-ATTR
 
-디렉티브에 선언된 스키마가 요구하는 속성이 빠져 있습니다. 또는 디렉티브, 콘텐츠 줄, `<branch>`, `<hub>`, `<choice>`가 자기 표면(`on:`)에 `required: true`로 선언된 플러그인 스탬프를 쓰지 않았습니다. 스탬프는 주입되지 않으므로 `default:`는 셈에 들지 않습니다.
+디렉티브에 선언된 스키마가 요구하는 속성이 빠져 있습니다. 0.50.0부터는 `required: true`인 플러그인 스탬프(`on:`이 있는 항목만 가능)가 그 표면에 작성되지 않은 경우도 해당하며, 디렉티브와 콘텐츠 줄은 그 머리 span에서, `<branch>`/`<hub>`/`<choice>`는 요소 전체 span(`E-DUP-BRANCH`와 같은 span)에서 보고합니다. 컴포넌트 본문에서도 적용되고, `::use`로 삽입되는 줄은 컴포넌트에서 한 번만 검사합니다. 선언된 `default:`는 보지 않습니다(스탬프는 주입되지 않습니다). 메시지: `` `::bg` requires attribute `assetName` (a stamp of `acme.stage`) ``, `` this content line requires attribute `voiceAssetId` (a stamp of `acme.stage` for content lines) ``, `` `<choice id="goLeft">` requires attribute `optionKey` (a stamp of `acme.stage`) ``.
 
 명세: [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
@@ -1098,13 +1098,13 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-DUP-ACROSS
 
-두 개의 활성 플러그인이 같은 디렉티브, 이벤트, 보상 종류, occasion, cast id, 또는 브리지 오퍼레이션을 선언했습니다. 또는 같은 이름의 `stampAttrs` 항목들이 겹치는 표면을 가집니다(`on:` 없는 항목은 모든 항목과 겹치며, 메시지가 겹치는 표면을 알려 줍니다). 또는 플러그인이 다른 플러그인이나 `lute.core`(`userName`)가 선언한 호스트 토큰을 선언했습니다. 먼저 선언한 것을 씁니다.
+두 개의 활성 플러그인이 같은 디렉티브, 이벤트, 보상 종류, occasion, cast id, 또는 브리지 오퍼레이션을 선언했습니다. 먼저 선언한 플러그인의 것을 씁니다. 0.50.0부터는 두 플러그인의 같은 이름 `stampAttrs` 항목의 표면(`on:`)이 겹치는 경우(두 플러그인과 공유 표면을 알려 줍니다, 표면이 서로소이면 허용), 그리고 다른 플러그인(또는 `lute.core`)이 이미 선언한 호스트 토큰을 다시 선언한 경우도 해당합니다.
 
 명세: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-DUP-ID
 
-플러그인 패키지가 하나의 익스포트 종류 안에서 같은 id를 두 번 이상 선언했거나, 같은 이름의 `stampAttrs` 항목 둘의 `on:` 표면이 겹칩니다(`on:` 없는 항목은 모든 항목과 겹치며, 메시지가 겹치는 표면을 알려 줍니다). 먼저 선언한 것을 쓰고, 프로젝트의 나머지 검사는 계속합니다.
+플러그인 패키지가 하나의 익스포트 종류 안에서 같은 id를 두 번 이상 선언했습니다. 먼저 선언한 것을 쓰고, 프로젝트의 나머지 검사는 계속합니다. 0.50.0부터는 한 패키지 안에서 같은 이름의 `stampAttrs` 항목 둘의 `on:` 표면이 겹치는 경우도 같은 코드입니다(`on:`이 없는 항목은 모든 항목과 겹칩니다). 메시지가 공유 표면을 알려 줍니다: `` stampAttr `assetName` is declared twice on the surface `bg` — give each entry disjoint `on:` surfaces ``. 두 항목 모두 `on:`이 있고 표면이 서로소이면 한 이름을 다른 타입으로 선언할 수 있습니다.
 
 명세: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
@@ -1120,7 +1120,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-KEY
 
-플러그인의 `plugin.yaml`이나 export 파일에 그 파일이 받지 않는 키가 있습니다(의도한 키를 함께 알려 줍니다. 예: `dependencies` → `depends`). 또는 `plugin.yaml`의 `kind:`가 `capability`가 아닙니다. 보상 종류의 `effects.writes`에는 보상의 상태 쓰기가 `credits:`라고 덧붙입니다.
+플러그인의 `plugin.yaml`이나 export 파일에 그 파일이 받지 않는 키가 있습니다(의도한 키를 함께 알려 줍니다. 예: `dependencies` → `depends`). 또는 `plugin.yaml`의 `kind:`가 `capability`가 아닙니다. 0.50.0부터 보상 kind의 `effects.writes`도 이 코드이며, 메시지에 `` — a reward's state write is `credits:` ``가 덧붙습니다. 디렉티브 속성에 `on:`을 쓰는 경우도 계속 이 코드입니다.
 
 명세: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
@@ -1154,13 +1154,13 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-PARSE
 
-플러그인 export 파일이 올바른 YAML이 아니거나 키의 값 모양이 틀렸습니다(줄과 그 키가 받는 모양을 알려 줍니다). 또는 디렉티브의 `effects.writes`/`effects.asserts`/`effects.retracts` 항목이 해당 디렉티브가 선언하지 않은 속성을 가리킵니다(또는 assert가 `_`를 사용합니다). 또는 `stampAttrs` 항목의 `on:`이 비었거나, 표면 이름 목록이 아니거나, 한 표면을 두 번 적었거나, `on:` 없이 `required: true`입니다. 또는 보상 종류의 `effects:`가 효과를 하나도 선언하지 않았거나, 사실 효과가 `@target` 외의 `@속성`을 읽거나(`<reward>`는 다른 속성을 받지 않습니다) `_`를 assert하거나, `accepts` 항목이 `@target`도 퀘스트 id도 아니거나, `target: { forbidden: true }`인 종류가 `@target`을 읽습니다. 또는 `hostTokens`의 이름이 식별자(문자, 숫자, `_`, 숫자로 시작하지 않음)가 아니거나 `type`이 `string`, `int`, `{ enum: [...] }`가 아닙니다.
+플러그인 export 파일이 올바른 YAML이 아니거나 키의 값 모양이 틀렸습니다(줄과 그 키가 받는 모양을 알려 줍니다). 또는 디렉티브의 `effects.writes`/`effects.asserts`/`effects.retracts` 항목이 해당 디렉티브가 선언하지 않은 속성을 가리킵니다(또는 assert가 `_`를 사용합니다). 0.50.0부터는 다음 원인도 같은 코드입니다. `stampAttrs` 항목: `on:`이 문자열 목록이 아니거나 비어 있음(`` stamp attribute `X` has an empty `on:` — list the surfaces it applies to, or omit `on:` for every directive and content line ``), `on:`에 같은 표면이 두 번 나옴(`` stamp attribute `X` lists `bg` twice in `on:` ``), `on:` 없는 `required: true`(`` stamp attribute `X` is `required: true` but has no `on:`; a stamp required on every record is not a column — name its surfaces with `on: […]` ``). 호스트 토큰: 허용되지 않는 타입이나 키, 식별자가 아닌 토큰 이름(`` host token `player-name` is not an identifier (letters, digits and `_`, not starting with a digit) ``). 보상 kind `effects`: 빈 `effects: {}`("declares no effect"), `@target` 외의 `@name` 인자(`` reward kind `BADGE` effect `met(@rarity)` reads `@rarity`; a reward kind's effects read only `@target` (a `<reward>` takes no other attribute) ``), 인자가 `@target` 또는 리터럴 quest id(식별자)가 아닌 `accepts` 항목, `target: { forbidden: true }`인데 `@target`을 읽는 효과.
 
 명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-RESERVED-NAME
 
-플러그인이 코어 언어가 가진 이름을 선언했습니다. 코어 문장(`set`, `assert`, `retract`, `accept`, `use`, `body`, `cut`), 코어 블록 태그(`scene`, `on`, `quest`, `objective`, `match`, `branch`, `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`, `timeline`, `track`, `reward`, `return`), `lute.core` 디렉티브(`end`, `mark`, `bg` …)와 같은 이름의 디렉티브, 엔진 lifecycle 이벤트(`questComplete` …)나 play 스텝 키와 같은 이름의 이벤트·occasion, cast id `narrator`, 상태 루트나 CEL 리터럴과 같은 이름의 호스트 토큰(`{{run}}`은 상태 루트로 읽힙니다)이 여기에 해당합니다. 선언한 파일과 줄을 가리킵니다.
+플러그인이 코어 언어가 가진 이름을 선언했습니다. 코어 문장(`set`, `assert`, `retract`, `accept`, `use`, `body`, `cut`), 코어 블록 태그(`scene`, `on`, `quest`, `objective`, `match`, `branch`, `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`, `timeline`, `track`, `reward`, `return`), `lute.core` 디렉티브(`end`, `mark`, `bg` …)와 같은 이름의 디렉티브, 엔진 lifecycle 이벤트(`questComplete` …)나 play 스텝 키와 같은 이름의 이벤트·occasion, cast id `narrator`가 여기에 해당합니다. 0.50.0부터는 상태 루트나 CEL 리터럴(`scene`, `run`, `user`, `app`, `quest`, `entry`, `prev`, `clock`, `occasion`, `season`, `true`, `false`, `null`)과 같은 이름의 호스트 토큰(`hostTokens`)도 해당하며, 메시지가 이유를 알려 줍니다: `` `{{run}}` would read as a state root ``. 선언한 파일과 줄을 가리킵니다.
 
 예약된 이름 전체와 각 이름을 거부하는 자리, 대신 쓸 이름: [예약된 이름](/ko/reference/reserved-names/).
 
@@ -1168,13 +1168,13 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-RESERVED-STAMP-ATTR
 
-코어가 아닌 플러그인의 `stampAttrs` export 또는 디렉티브의 `attrs`가 코어 stamp가 이미 소유한 속성 이름(`at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`)을 선언했습니다. 또는 `on:`으로 한정한 `stampAttrs` 항목의 이름이 그 표면이 이미 소유한 속성(`branch`의 `prompt`, `choice`의 `text`, `line`의 `code`, 디렉티브 자신의 속성)이라 그 스탬프를 결코 읽을 수 없습니다.
+코어가 아닌 플러그인의 `stampAttrs` export 또는 디렉티브의 `attrs`가 코어 stamp가 이미 소유한 속성 이름(`at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`)을 선언했습니다. 0.50.0부터는 범위가 정해진 스탬프(`on:`)가 그 표면 자신의 속성과 같은 이름이라 읽을 수 없게 되는 경우도 같은 코드입니다: `` stamp attribute `prompt` (`acme.stage`) is scoped to `branch`, but `prompt` is an attribute of `<branch>` itself, so the stamp could never be read ``. 표면 자신의 속성은 디렉티브의 선언된 `attrs`(`::jump`은 `when`도), `line`의 알려진 속성과 가드 `when`, `branch`의 `id`/`prompt`/`timeout`/`default`, `hub`의 `id`/`prompt`, `choice`의 `id`/`text`/`when`/`into`/`value`/`once`/`exit`(그리고 이름이 바뀌거나 제거된 `label`/`as`/`persist`)입니다. 범위 없는(교차) 항목은 이 규칙을 받지 않으며 표면 자신의 선언이 우선합니다.
 
 명세: [plugin §14](/ko/spec/), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-STAMP-SURFACE
 
-`stampAttrs` 항목의 `on:`이 `line`, `branch`, `hub`, `choice`도 아니고 해석된 프로필의 디렉티브도 아닌 표면을 가리킵니다(비슷한 이름을 제안하거나, `depends:`에 선언할 설치됐지만 비활성인 플러그인을 알려 줍니다). 또는 스탬프를 실을 레코드가 없는 디렉티브(`jump`, `label`, `clear`)를 가리킵니다. 그 항목은 버려지고 형제 항목은 그대로 로드됩니다.
+플러그인 `stampAttrs` 항목의 `on:`이 스탬프를 실을 수 있는 표면이 아닌 이름을 지정했습니다. 스탬프 가능한 표면은 `line`, `branch`, `hub`, `choice`, 그리고 해결된 프로필의 디렉티브 중 스탬프를 실을 레코드가 있는 것입니다. 항목은 버려지고 나머지 항목은 그대로 적용됩니다. 메시지: `` stamp attribute `assetName` (`acme.stage`) names `bgg` in `on:`, which is not `line`, `branch`, `hub`, `choice` or a directive of the resolved profile — did you mean `bg`? ``. 스탬프 레코드가 없는 디렉티브를 지정해도 같은 코드입니다: `` … names `jump` in `on:`, but `::jump` emits no stamped record (0.49.0 §4.1) ``(`jump`, `label`, `clear`). 다른 플러그인의 디렉티브로 스탬프 범위를 정하려면 그 플러그인을 `depends:`에 선언해 그 디렉티브가 모든 활성 프로필에 들어가게 해야 합니다. 태그가 설치되어 있지만 비활성인 플러그인에 있으면 메시지가 그렇게 알려 줍니다.
 
 명세: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
@@ -1796,7 +1796,7 @@ CEL 슬롯, `::set` 대상, 또는 규칙 가드가 어떤 스키마에도 선�
 
 ### E-UNKNOWN-ATTR
 
-콘텐츠 줄, 디렉티브 또는 로직 요소가 콘텐츠 줄 문법, 해당 디렉티브 선언 또는 요소의 고정 속성 표가 인식하지 못하는 속성 키를 가지고 있습니다. 스탬프를 실을 레코드가 없는 디렉티브(`::jump`, `::label`, `::clear`)에 타이밍 키(`wait`/`duration`/`delay`)나 플러그인 스탬프를 쓴 경우도 포함합니다. 그 값은 버려지기 때문입니다. `on:`으로 다른 표면에 한정된 플러그인 스탬프는 그 스탬프가 적용되는 표면을 알려 줍니다. `<branch>`, `<hub>`, `<choice>`에서는 그 요소에 한정된 스탬프도 함께 나열합니다.
+콘텐츠 줄이나 디렉티브, 또는 `<branch>`/`<hub>`/`<choice>`가 콘텐츠 줄 문법 또는 해당 표면의 선언이 인식하지 못하는 속성 키를 가지고 있습니다. 스탬프를 실을 레코드가 없는 디렉티브(`::jump`, `::label`, `::clear`)에 타이밍 키(`wait`/`duration`/`delay`)나 플러그인 스탬프를 쓴 경우도 포함합니다. 그 값은 버려지기 때문입니다. 0.50.0부터 키가 `on:`으로 다른 표면에 범위가 정해진 플러그인 스탬프이면, 그 표면의 속성 목록 대신 스탬프가 적용되는 곳을 알려 줍니다: `` `::bg` has no attribute `voiceAssetId`: it is a stamp of `acme.stage` for content lines only ``, `` `<branch>` has no attribute `optionKey`: it is a stamp of `acme.stage` for `<choice>` only ``. 그렇지 않으면 기존 메시지를 쓰되, 로직 태그(`<branch>`/`<hub>`/`<choice>`)의 속성 목록에는 그 표면이 허용하는 스탬프가 포함됩니다: `` `<choice>` has no attribute `cue`; its attributes are `id`, `text`, `when`, `into`, `value` and the stamps `optionKey` (`acme.stage`) ``.
 
 명세: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
@@ -2151,7 +2151,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-QUEST-NEVER-ACCEPTED
 
-수락 기반(accept-driven) 퀘스트를 어떤 `::accept{quest=…}`도, 보상 종류의 `effects.accepts`도 지정하지 않고 `accept="external"`도 아니어서, 프로젝트 안에서 이 퀘스트를 수락하는 곳이 없습니다.
+수락 기반(accept-driven) 퀘스트를 어떤 `::accept{quest=…}`도, 보상 kind의 `accepts` 효과도 지정하지 않고 `accept="external"`도 아니어서, 프로젝트 안에서 이 퀘스트를 수락하는 곳이 없습니다. 0.50.0부터 메시지는 "no `::accept` or reward `accepts` in the project names it"라고 알려 줍니다.
 
 명세: [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md), [dsl 0.50.0 §5.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 

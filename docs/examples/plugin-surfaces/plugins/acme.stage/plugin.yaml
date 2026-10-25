@@ -1,0 +1,9 @@
+id: acme.stage
+version: 0.1.0
+kind: capability
+depends: [ { id: lute.core, range: "^0.0.1" } ]
+exports:
+  directives: directives/
+  stampAttrs: stampattrs/
+  hostTokens: hosttokens/
+  rewardKinds: rewardkinds/

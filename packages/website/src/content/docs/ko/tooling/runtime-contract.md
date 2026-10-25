@@ -80,6 +80,30 @@ const hud = Effect.gen(function* () {
 정렬에는 숫자 위치를 사용하고, 표시 문자열에는 `ClockView.slot`과
 `ClockView.weekdayLabel`을 사용하세요.
  
+## 0.50 추가 사항
+
+0.50의 IR 변경은 모두 추가형입니다. 새 키를 하나도 쓰지 않는 프로젝트는 `capabilitySnapshot`을 포함해 바이트 단위로 같은 아티팩트로 컴파일됩니다. 계약 스키마의 이름은 `-0.50` 계열로 바뀝니다.
+
+**branch, hub, choice의 스탬프.** `on:`이 `branch`, `hub`, `choice`를 지명하는 플러그인 `stampAttrs` 항목은 해당 요소에 작성할 수 있습니다. `choice`/`hub` 명령 레코드의 기존 `stamps` 객체는 이제 `<branch>`/`<hub>` 요소의 스탬프를 담습니다. 각 `choice`/`hub` **옵션**은 선택적 `stamps` 객체(`{ "<attr>": <value> }`)를 새로 가지며, `<choice>` 요소의 스탬프로 채워지고 마지막에 직렬화되며 비어 있으면 생략됩니다. 따라서 스탬프 없는 옵션은 0.49와 바이트 단위로 같습니다. 작성하지 않은 스탬프는 주입되지 않으며, 스탬프는 자기 표면의 선언으로 타입이 정해집니다(한 이름이 두 표면에서 서로 다른 타입으로 직렬화될 수 있음). 스탬프는 서술용입니다. 런타임은 스탬프를 읽지 않고, `awaitChoice` 메뉴(주소 `document`/`position`, verdict, `once`/`exit`)는 바뀌지 않으며, semantic id도 없습니다. 참조 player를 쓰지 않는 호스트는 옵션 텍스트를 읽듯이 메뉴 주소의 IR 레코드에서 요소·옵션 스탬프를 읽습니다. 참조 player의 `ChoiceView`와 각 옵션은 그 레코드에서 읽은 선택적 `stamps`를 가지며, 없으면 생략됩니다.
+
+**호스트 토큰은 그대로 남습니다.** 플러그인이 `hostTokens` export로 선언한 bare `{{token}}`은 `userName`이 늘 그랬듯 `reserved` placeholder, 즉 `{ "kind": "reserved", "token": "<name>", "format"? }`입니다(`lute.core`가 `userName`을 선언합니다). 새 environment 항목은 없습니다. 런타임은 **모든** 호스트 토큰 마커를 출력 텍스트에 그대로 렌더링하고, 호스트 또는 presenter가 렌더링 시점에 치환합니다. 이는 `userName`만이 아니라 선언된 모든 토큰에 적용됩니다. player 동작은 바뀌지 않습니다.
+
+**보상 효과.** `RewardEntry`는 선택적으로 해석된 `retracts`와 `asserts`(각각 `plugin` 명령의 팩트가 쓰는 `{ relation, args }` 팩트 레코드 목록), `accepts`(quest id 목록)를 새로 가지며, 각각 비어 있으면 생략되고 `credits` 뒤에 쓰입니다. `@target`은 이미 바인딩되어 있고, 바인딩되지 않은 `@target`이 남은 패턴은 쓰이지 않습니다. 보상 kind는 `rewardKinds.<K>.effects`로 이를 선언하며, `effects`가 없는 kind의 항목은 바이트 단위로 같습니다.
+
+보상이 지급되는 시점(`outcome` 필터가 전환과 맞고 `when=`이 성립하는 경우)에는 선언 순서대로 **보상마다**: 먼저 `grant` 레코드와 그 `credits` 쓰기(이전과 동일), 그다음 보상의 `retracts`, 이어서 `asserts`를 런타임의 일반 assert/retract 경로(`E-FACT-EXCLUSIVE` 런타임 검사 포함)로, 마지막으로 `accepts`를 `::accept`의 경로로 처리합니다. 아티팩트의 accept 구동 quest는 다음 lifecycle 라운드에 활성화되고, 이미 `unset`을 지난 quest는 그대로 두며 레코드가 그 사실을 알려 줍니다. objective 지급은 quest 지급보다 앞서고, 한 전환의 모든 지급은 그 lifecycle 핸들러 본문보다 앞서므로 `questComplete` 핸들러는 assert된 팩트를 읽습니다. 효과는 지급마다 정확히 한 번 발생하며, 리플레이와 복원은 지급의 기존 인스턴스 identity를 따릅니다.
+
+**효과 레코드의 `grant` 키.** 각 효과는 그 명령이 냈을 레코드에 더해 `"grant": { "quest", "instance", "index", "objective"?, "kind" }`, 즉 뒤따르는 grant 레코드의 identity를 내보냅니다. `position`도 `effectOf`도 없습니다. 호스트는 `assert`, `retract`, `accept` 레코드의 `grant` 키를 목록에 올립니다:
+
+```json
+{"kind":"grant","quest":"first","instance":1,"index":0,"reward":{"kind":"BADGE","target":"mira","amount":1}}
+{"kind":"assert","fact":"met(mira)","grant":{"quest":"first","instance":1,"index":0,"kind":"BADGE"}}
+{"kind":"accept","quest":"second","grant":{"quest":"first","instance":1,"index":1,"kind":"OFFER_QUEST"}}
+```
+
+이벤트와 스냅숏의 형태는 바뀌지 않습니다. 이벤트 스키마에서 `record` payload는 타입이 없으므로 레코드 목록만 늘고, 팩트와 수락된 quest는 이미 스냅숏에 저장됩니다. player는 `assert`/`retract`/`accept`를 bookkeeping cue로 다룹니다.
+
+**새 semantic id `lute.quest.rewardEffects/1`**(모듈 `quest`, 동작 "reward fact and accept effects"). 어떤 `RewardEntry`에 비어 있지 않은 `retracts`, `asserts`, `accepts`가 있을 **때만** 아티팩트의 `requiredSemantics`에 이 id가 들어갑니다(provenance `reward effects`). 이 필드를 무시하는 엔진은 팩트와 quest 활성화를 잃으므로 이 id는 의미를 바꾸는 id입니다. `supportedIds`에 이 id가 없는 엔진은 그런 아티팩트를 플레이백 전 semantic 협상에서 거부합니다. 레지스트리는 15개에서 16개로 늘어나며, 보상 효과를 쓰지 않는 아티팩트는 이전과 똑같이 협상됩니다.
+
 ## 0.49 런타임 추가 사항
 
 **플러그인 스탬프는 중첩된 `stamps` 객체 하나입니다.** 작성자가 디렉티브나 콘텐츠 줄에 쓴 횡단 플러그인
@@ -290,7 +314,7 @@ Lute의 정적 분석도 한계를 정직하게 드러냅니다 — 도달 가�
 | `timing` | 선택적 `{ wait?, duration?, delay?, at?, timeline? }`입니다. 모든 멤버가 없으면 생략됩니다. `line`은 `wait`를 가질 수 있습니다([0.49](#049-런타임-추가-사항) 참고). |
 | `provenance` | 컴파일러가 합성한 레코드에 붙는 선택적 `{ by, explanation }`입니다. |
 | `source` | 선택적 소스 위치입니다. |
-| `stamps` | 스탬프가 붙는 모든 명령에 있는 플러그인 `stampAttrs` 값의 선택적 객체(`{ "<attr>": <value> }`)입니다. 비어 있으면 생략되며, `jump`와 `barrier`에는 없습니다. |
+| `stamps` | 스탬프가 붙는 모든 명령에 있는 플러그인 `stampAttrs` 값의 선택적 객체(`{ "<attr>": <value> }`)입니다. 비어 있으면 생략되며, `jump`와 `barrier`에는 없습니다. 0.50부터 `choice`/`hub` 레코드의 `stamps`는 `<branch>`/`<hub>` 요소의 스탬프를 담고, 각 옵션도 자기 스탬프를 가집니다([0.50](#050-추가-사항) 참고). |
 
 | `family` | 종류 |
 | -------- | ----- |

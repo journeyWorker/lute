@@ -36,6 +36,7 @@ param은 `E-TEMPLATE`). 메시지는 그 낱말이 이미 무슨 뜻인지 말�
 | `completed` `active` | relation | `after:` 호출(`completed("<quest>")`, `active("<quest>")`). `after="completed(dorm)"`이 퀘스트 호출로 읽힌다 | E-RESERVED-NAME |
 | `cel` `not` | relation | 규칙 단어. `rules:`에서 `not(…)`은 부정이고 `cel("…")`은 조건이다 | E-RESERVED-NAME |
 | `narrator` | cast id | 내장 내레이션 화자. `@narrator:` 줄은 내레이션이므로 이 cast 항목은 보이지 않고, 그 `present:`가 모든 내레이션 줄에 걸린다 | E-RESERVED-NAME, E-PLUGIN-RESERVED-NAME |
+| `scene` `run` `user` `app` `quest` `entry` `prev` `clock` `occasion` `season` `true` `false` `null` | plugin 호스트 토큰 | state 루트이거나 CEL 리터럴. 토큰은 `{{…}}` 안에 맨 이름으로 쓰이므로 `{{run}}`은 state 루트로 읽힌다 | E-PLUGIN-RESERVED-NAME |
 | `questActive` `questComplete` `questFailed` | plugin occasion; plugin event | 엔진 수명 주기 이벤트(`<on event="questComplete">`) | E-PLUGIN-RESERVED-NAME |
 | `occasion` `newRun` `engine` `event` `advance` `end` | plugin occasion | play 스크립트 스텝 키. `- newRun: true`는 새 run을 시작하고 `- end: true`는 play를 끝낼 뿐, 그 이름의 occasion을 올리지 않는다 | E-PLUGIN-RESERVED-NAME |
 | `set` `assert` `retract` `accept` `use` `body` | plugin directive | core 문장(`::set{…}`, `::use{component=…}`). 콘텐츠는 늘 core 쪽으로 읽는다 | E-PLUGIN-RESERVED-NAME |
@@ -54,3 +55,9 @@ param은 `E-TEMPLATE`). 메시지는 그 낱말이 이미 무슨 뜻인지 말�
   `once="season:week"`이 `once="week"` 옆에 놓이기 때문이다.
 - kind beat는 kind를 접두어와 함께 쓴다(`target="kind:guest"`). kind 자체는 접두어
   없이 선언한다(`entities: { guest: … }`).
+- plugin **호스트 토큰**(`hostTokens:`, 0.50부터)은 state 루트와 CEL 리터럴의 이름
+  (`scene`, `run`, `user`, `app`, `quest`, `entry`, `prev`, `clock`, `occasion`,
+  `season`, `true`, `false`, `null`)을 쓸 수 없다. 토큰은 `{{…}}` 안에 맨 이름으로
+  쓰이므로 `{{run}}`은 state 루트로 읽힌다. 오류는 assembly의 `E-PLUGIN-RESERVED-NAME`이다.
+  토큰 이름은 식별자(문자, 숫자, `_`이며 숫자로 시작하지 않음)여야 하며, 아니면 플러그인
+  로드가 `E-PLUGIN-PARSE`로 실패한다.

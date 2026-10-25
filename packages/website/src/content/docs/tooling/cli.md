@@ -28,6 +28,53 @@ Options for one concept are declared once and mean the same on every command tha
 
 `--deny*` promotes diagnostics of the verdict the command exits on: `trace` its check gate (refusal, exit **1**), `expr` the lowering diagnostics, `play` and `calendar` the project compile gate, `test` every check verdict a test consults (each traced document's check and each play's compile gate), so a denied warning fails that test. The one short alias is `-o` for `--output`.
 
+### Project diagnostic levels (since 0.50)
+
+A project can set the level of a checker warning in `lute.project.yaml`:
+
+```yaml
+diagnostics:
+  W-DISPLAY-NAME-DUP: error
+  W-STAGE-ABSENT: { level: off, paths: ["scenes/imported/**"] }
+```
+
+`diagnostics:` is a map from diagnostic code to either a level or `{ level, paths }`; one entry per code.
+
+- **Levels:** `off`, `info`, `warn`, `error`.
+- **`paths`** (optional): project-root-relative globs, with the lint `ignore:` syntax (`*` within a segment, `**` across segments). When `paths` is given the level applies only to diagnostics of documents whose root-relative path matches a glob; elsewhere the code keeps its native severity. A diagnostic without a document path (a manifest diagnostic) matches only an entry without `paths`.
+- **Only `W-*` codes are configurable.** Errors are never demoted: an error is a contract violation. `L-*` lint rules keep their level in `lute.lint.yaml` `rules:`.
+
+A malformed entry is **`E-DIAGNOSTICS-CONFIG`** (error, a manifest diagnostic). It is reported once per manifest by the CLI manifest pass and by the LSP; the entry is dropped, the rest loads, and the manifest is invalid:
+
+| Fault | Message shape |
+| --- | --- |
+| an `E-*` code | `` `E-UNKNOWN-ATTR` is an error: an error is a contract violation and cannot be re-levelled; fix the reported source instead `` |
+| an `L-*` code | `` `L-…` is a lint rule; set its level in `lute.lint.yaml` `rules:` `` |
+| a code the toolchain does not define | `` `W-STAGE-ABSNT` is not a diagnostic code — did you mean `W-STAGE-ABSENT`? `` |
+| a bad level | `` level `silent` is not one of `off`, `info`, `warn`, `error` `` |
+| `paths: []`, a non-string, an absolute path or a `..` segment | `` `paths` takes project-relative globs, e.g. `scenes/imported/**` `` |
+
+**Order of application**, at the one place that serializes and prints diagnostics (every command that takes the diagnostic gate above reads the discovered project's `diagnostics:`):
+
+1. the project level for the (code, path);
+2. `--deny CODE` naming the code promotes it to error, **even when the project set it `off`** (an explicit command line beats the config);
+3. `--deny-warnings` promotes what is still a warning after step 1. An `off` code stays off, and an `info` code stays info.
+
+Levels change **only what is reported and the exit status**. They never change analyses, artifacts, constraint verdicts, the scenario graph, or what a `.play.yaml`/`.test.yaml` expectation observes. A project without `diagnostics:` produces byte-identical output.
+
+**Markers and counts.** A code relevelled to `error` fails the verdict as `--deny` does; in JSON it carries `"severity": "error"` and the additive `"configured": "lute.project.yaml"`, and the human line gets the marker `[project]` beside the existing `[denied]`. A code relevelled to `info` or `warn` carries its new severity and the same `configured` marker. Suppressed (`off`) findings are counted:
+
+- every human summary line that counts diagnostics appends `, N suppressed by lute.project.yaml` **only when N > 0**: `ok: ./scenes/a.lute (0 warning(s), 212 suppressed by lute.project.yaml)`;
+- every JSON report that carries diagnostics (the `0.48.0.check` report per file and for the project, and the compile, lint, trace and expr envelopes) gains `"suppressed": { "<code>": n, … }` **only when non-empty**. It is additive, so report ids are unchanged.
+
+```console
+$ lute check ./scenes/a.lute
+ok: ./scenes/a.lute (0 warning(s), 212 suppressed by lute.project.yaml)
+```
+<!-- rerun-after-S8 -->
+
+**LSP.** The language server applies the same levels with the document's root-relative path before publishing: an `off` diagnostic is not published, and a relevelled one is published at its new severity.
+
 ## Machine-readable output (0.43)
 
 Text is the default everywhere; JSON is produced only with an explicit `--json`. No output depends on whether a stream is a terminal or on an environment variable, and `--format json` no longer exists. With `--json` a command prints exactly one JSON document on stdout — the report envelope, or the error envelope on a usage, I/O or input failure — and messages that would otherwise go to stdout move to stderr.
