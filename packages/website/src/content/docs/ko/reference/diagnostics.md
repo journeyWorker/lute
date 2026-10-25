@@ -2213,9 +2213,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-STAGE-ABSENT
 
-대사 줄이나 `::actor`가, 이미 무대를 떠나(퇴장 지시어, `::bg` 장면 전환, 또는 `::clear`) 다시 등장하지 않은 캐릭터를 대상으로 하여 연출이 불가능합니다.
+대사 줄이나 `::actor`가, 이미 무대를 떠나(퇴장 지시어, `::bg` 장면 전환, 또는 `::clear`) 다시 등장하지 않은 캐릭터를 대상으로 하여 연출이 불가능합니다. 대사 줄의 메시지는 다시 등장시키는 두 방법을 함께 알려 줍니다: `::actor`, 또는 `actor` 레코드로 낮춰지는 플러그인 지시어(`lower: { record: actor, fields: { character: { fromAttr: character } } }`)입니다. 후자도 `::actor`처럼 무대에 세웁니다.
 
-명세: [dsl 0.22.0 §12](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)
+명세: [dsl 0.22.0 §12](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md), [dsl 0.50.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### W-TEMPLATE-DOT-PARAM
 

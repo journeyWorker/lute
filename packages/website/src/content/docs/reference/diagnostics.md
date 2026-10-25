@@ -2216,9 +2216,9 @@ Spec: [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-STAGE-ABSENT
 
-A content line or `::actor` targets a character who already left the stage (via a declared exit, a `::bg` scene change, or `::clear`) and was never re-shown, so the staging is impossible.
+A content line or `::actor` targets a character who already left the stage (via a declared exit, a `::bg` scene change, or `::clear`) and was never re-shown, so the staging is impossible. A line's message names both ways to show them again: an `::actor`, or a plugin directive lowered to the `actor` record (`lower: { record: actor, fields: { character: { fromAttr: character } } }`), which stages like `::actor`.
 
-Spec: [dsl 0.22.0 §12](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)
+Spec: [dsl 0.22.0 §12](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md), [dsl 0.50.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### W-TEMPLATE-DOT-PARAM
 
