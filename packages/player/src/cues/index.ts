@@ -156,6 +156,13 @@ export const speakerName = (cast: Cast, role: string, speaker: string): string =
  * source document path (`game.lute`), not the artifact file
  * (`game.lute.json`): the index `documents` rows map both the path and the
  * document key to the artifact.
+ *
+ * Commands are read from the artifact's top-level `commands` array (the
+ * schema shape `lute compile` emits), not found by walking for any record
+ * with a `kind` and a `position`: since 0.49.0 a command's plugin `stamps`
+ * (`Record<string, Json>`) may legally declare stamp names `kind` and
+ * `position`, and a stamps value of that shape would be indexed as a command
+ * and shadow the real one (issue #200).
  */
 const commandIndexFrom = (bundle: Bundle): Map<string, Map<string, JsonRecord>> => {
   const result = new Map<string, Map<string, JsonRecord>>()
@@ -163,14 +170,12 @@ const commandIndexFrom = (bundle: Bundle): Map<string, Map<string, JsonRecord>> 
     const artifact = bundle.artifacts[document.artifact]
     if (artifact === undefined) continue
     const commands = new Map<string, JsonRecord>()
-    const visit = (value: unknown): void => {
-      if (isRecord(value)) {
-        const position = positionOf(value)
-        if (position && kindOf(value)) commands.set(position, value)
-        for (const child of Object.values(value)) visit(child)
-      } else if (Array.isArray(value)) for (const child of value) visit(child)
+    const list = Array.isArray(artifact) ? artifact : isRecord(artifact) ? artifact.commands : undefined
+    for (const command of Array.isArray(list) ? list : []) {
+      if (!isRecord(command)) continue
+      const position = positionOf(command)
+      if (position && kindOf(command)) commands.set(position, command)
     }
-    visit(artifact)
     result.set(document.path, commands)
     result.set(document.key, commands)
   }

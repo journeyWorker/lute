@@ -411,6 +411,30 @@ describe("CueFactory", () => {
     expect(cues).toHaveLength(mixed.events.length)
     expect(cues.slice(-2).map((cue) => cue.kind)).toEqual(["plugin", "bookkeeping"])
   }))
+
+  it.effect("indexes only real commands, so a plugin's stamps named kind/position never shadow a command (#200)", () => Effect.gen(function* () {
+    // A command's plugin `stamps` (0.49.0 §3.1) is a `Record<string, Json>` and
+    // may legally declare stamp names `kind` and `position`. A stamps value of
+    // the shape `{ kind, position }` must not be indexed as a command: it would
+    // shadow the real command at that position (issue #200).
+    const stamped = CueFactory.make({ bundle: { index, artifacts: { "scene.json": { commands: [
+      // The real command at 002-1100: a plugin whose stamps value reuses the
+      // command's own kind/position shape (a `line` at 002-1100).
+      { kind: "plugin", family: "plugin", position: "002-1100", tag: "well", fields: {}, stamps: { kind: "line", position: "002-1100", texts: { en: "shadow" } } },
+      // A plain line at a distinct position, so we can prove the stamp's
+      // position was not indexed as a command of its own.
+      { kind: "line", family: "content", position: "002-1300", role: "dialogue", speaker: "guide", text: "Here", lineId: "line-stamp", voiceKey: "" }
+    ] } } }, bindings: bindings, plugin: { well: (call) => Effect.sync(() => { expect(call.position).toBe("002-1100") }) } })
+    const cues = yield* stamped.fromOutput(recordsOutput([
+      { kind: "plugin", position: "002-1100", tag: "well", attrs: {} },
+      { kind: "line", position: "002-1300", speaker: "guide", text: "Here", lineId: "line-stamp", voiceKey: "" }
+    ]), new Set(), "en")
+    // The plugin record resolves to its own command (a waiting plugin cue), not
+    // to the stamp value shadowing it; the real line still resolves.
+    expect(cues.map((cue) => cue.kind)).toEqual(["plugin", "line"])
+    yield* cues[0]!.execute(silentContext)
+    yield* cues[0]!.complete(silentContext)
+  }))
 })
 
 const stagingKinds: Record<string, true> = { bg: true, music: true, sfx: true, vfx: true, actor: true, camera: true, cg: true, video: true, sequence: true }
