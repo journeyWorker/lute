@@ -667,6 +667,43 @@ fn scan<'n>(nodes: &'n [Node], f: &mut impl FnMut(&'n Node)) {
     }
 }
 
+/// The fact writes — `(pattern, is_assert)`, in document order — of every
+/// `<on>` handler in `body` that answers `point`'s lifecycle event
+/// (`questComplete` / `questFailed`): `::assert` / `::retract` nodes and the
+/// declared fact effects of the directives they call, nested bodies
+/// included. Any of them may run before another handler's body, so none of
+/// what they may remove is Must where a handler starts (0.50.0 §5.4).
+fn handler_writes(
+    body: &[Node],
+    point: GrantPoint,
+    directives: &crate::directive_facts::EffectDirectives,
+) -> Vec<(FactPattern, bool)> {
+    let Some(event) = point.handler_event() else {
+        return Vec::new();
+    };
+    let mut writes = Vec::new();
+    for node in body {
+        let Node::On(o) = node else {
+            continue;
+        };
+        if o.event != event {
+            continue;
+        }
+        scan(&o.body, &mut |n| match n {
+            Node::Assert(a) => writes.push((a.pattern.clone(), true)),
+            Node::Retract(r) => writes.push((r.pattern.clone(), false)),
+            Node::Directive(d) => {
+                if let Some(facts) = crate::directive_facts::lookup(directives, d) {
+                    writes.extend(facts.retracts.iter().map(|p| (p.clone(), false)));
+                    writes.extend(facts.asserts.iter().map(|p| (p.clone(), true)));
+                }
+            }
+            _ => {}
+        });
+    }
+    writes
+}
+
 /// Walk one document from `entry` (its shots) and its quest / entry bodies
 /// from their own bases; record every guard slot into `slots` (its derived
 /// facts under `closure` are added when the slot is read). Returns the meet
@@ -709,12 +746,15 @@ fn walk_doc(
         w.quest = Some(quest);
         w.grants = QuestGrants::new(quest, item.reward_kinds);
         // 0.50.0 §5.4: each lifecycle grant point transfers its grants once,
-        // whether or not a handler follows; its handlers then run from it,
-        // in order.
+        // whether or not a handler follows. Its handlers each start from
+        // that set, independently, less every fact a handler of the same
+        // event may remove (S3 re-review).
         for point in [GrantPoint::QuestComplete, GrantPoint::QuestFailed] {
             let mut at = Some(base.clone());
             w.complete(quest, point, &mut at);
             w.lifecycle.insert(point, at);
+            let writes = handler_writes(&quest.body, point, root.vocab.effect_directives());
+            w.handler_writes.insert(point, writes);
         }
         let mut flow = Some(base);
         w.walk(&quest.body, &mut flow);
@@ -722,6 +762,7 @@ fn walk_doc(
     w.quest = None;
     w.grants = QuestGrants::default();
     w.lifecycle.clear();
+    w.handler_writes.clear();
     for entry in &doc.entries {
         let mut base = Some(root.start());
         if let Some(when) = &entry.when {
@@ -770,9 +811,14 @@ struct Walk<'a> {
     quest: Option<&'a Quest>,
     grants: QuestGrants<'a>,
     /// Per lifecycle grant point (`QuestComplete` / `QuestFailed`): the set
-    /// after its grants and the `questComplete` / `questFailed` handlers
-    /// walked so far — the next handler starts there.
+    /// after its grants, where every `questComplete` / `questFailed`
+    /// handler starts (the engine grants once, then judges every handler's
+    /// guard before running any body).
     lifecycle: BTreeMap<GrantPoint, Flow>,
+    /// Per lifecycle grant point: the fact writes of every handler of its
+    /// event ([`handler_writes`]). A fact one of them may remove is not
+    /// Must at the start of any of them, nor through any one's guard.
+    handler_writes: BTreeMap<GrantPoint, Vec<(FactPattern, bool)>>,
 }
 
 impl<'a> Walk<'a> {
@@ -793,6 +839,7 @@ impl<'a> Walk<'a> {
             quest: None,
             grants: QuestGrants::default(),
             lifecycle: BTreeMap::new(),
+            handler_writes: BTreeMap::new(),
         }
     }
 
@@ -982,37 +1029,34 @@ impl<'a> Walk<'a> {
                 Node::Hub(h) => self.hub(h, flow),
                 Node::Match(m) => self.match_arms(m, flow),
                 Node::On(o) => {
-                    // 0.50.0 §5.4: a `questComplete` / `questFailed` handler
-                    // of the walked quest starts where its grant point's
-                    // grants and the handlers before it left the set (the
-                    // engine grants once, then runs the firing handlers in
-                    // order); one with a `when=` may not run, so after it
-                    // the set is the meet of both routes.
+                    // 0.50.0 §5.4 (S3 re-review): a `questComplete` /
+                    // `questFailed` handler of the walked quest starts from
+                    // its grant point's set, independently of its siblings:
+                    // the engine grants once, judges every handler's guard,
+                    // then runs the selected bodies in order. A fact any
+                    // handler of the event (itself included) may remove is
+                    // therefore not Must at its start, and its `when=`
+                    // contributes only facts no handler may remove.
                     let point = match o.event.as_str() {
                         "questComplete" => Some(GrantPoint::QuestComplete),
                         "questFailed" => Some(GrantPoint::QuestFailed),
                         _ => None,
                     };
-                    let chained = point.filter(|_| self.quest.is_some());
-                    let pre = match chained {
+                    let lifecycle = point.filter(|_| self.quest.is_some());
+                    let mut body = match lifecycle {
                         Some(p) => self.lifecycle.get(&p).cloned().flatten(),
                         None => Some(self.body_base.clone()),
                     };
-                    let mut body = pre.clone();
+                    let writes = lifecycle
+                        .and_then(|p| self.handler_writes.get(&p))
+                        .cloned()
+                        .unwrap_or_default();
+                    self.remove_writes(&writes, &mut body);
                     if let Some(when) = &o.when {
                         self.assume(when, &mut body);
+                        self.remove_writes(&writes, &mut body);
                     }
                     self.walk(&o.body, &mut body);
-                    if let Some(p) = chained {
-                        let next = if o.when.is_some() {
-                            let mut both = pre;
-                            meet(&mut both, body);
-                            both
-                        } else {
-                            body
-                        };
-                        self.lifecycle.insert(p, next);
-                    }
                 }
                 Node::Objective(o) => {
                     let base = Some(self.body_base.clone());
@@ -1111,17 +1155,32 @@ impl<'a> Walk<'a> {
     }
 
     /// A fact an objective's grant asserted that still holds when the
-    /// walked quest completes: crossing ([`Root::crosses`]) and kept by
-    /// every reset between the two — a `tier: user` / `app` fact, or any
-    /// crossing fact of a `tier="run"` quest (its progress resets with the
-    /// run). A run or season fact of a longer-lived quest may be cleared
-    /// before its last objective completes it.
+    /// walked quest completes: crossing ([`Root::crosses`]) and of a
+    /// `tier: user` / `app` relation. A run or season fact may be cleared
+    /// between the objective and the completion (a season can reopen within
+    /// a run without resetting a run-tier quest), so it is never carried
+    /// (S3 re-review).
     fn outlives_quest(&self, f: &GroundFact) -> bool {
-        let run_quest = self
-            .quest
-            .and_then(|q| q.tier.as_ref())
-            .is_some_and(|(tier, _)| tier == "run");
-        self.root.crosses(f) && (run_quest || self.user_tier(f))
+        self.root.crosses(f) && self.user_tier(f)
+    }
+
+    /// Remove from `flow` every fact `writes` may remove: what each retract
+    /// matches, and what each assert displaces (it may run), keeping
+    /// nothing an assert would add.
+    fn remove_writes(&self, writes: &[(FactPattern, bool)], flow: &mut Flow) {
+        for (pattern, assert) in writes {
+            if *assert {
+                let Some(before) = flow.clone() else {
+                    return;
+                };
+                self.assert_pattern(pattern, 0, flow);
+                if let Some(after) = flow.as_mut() {
+                    after.retain(|g| before.contains_key(g));
+                }
+            } else {
+                self.retract_pattern(pattern, flow);
+            }
+        }
     }
 
     fn directive(&mut self, d: &Directive, flow: &mut Flow) {

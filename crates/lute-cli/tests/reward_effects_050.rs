@@ -439,7 +439,8 @@ fn a_completed_quest_s_reward_assert_is_possible_only_downstream() {
 
 /// S3 review R2: the grant transfers once; the first `questComplete`
 /// handler retracts the granted fact, so the second handler's nested
-/// `!holds` arm is live (the engine runs the handlers in order).
+/// `!holds` arm is live (a handler starts without what any handler of its
+/// event may remove).
 #[test]
 fn a_handler_s_retract_reaches_the_next_handler() {
     let negated = GUARD.replace("holds('met'", "!holds('met'");
@@ -453,6 +454,84 @@ fn a_handler_s_retract_reaches_the_next_handler() {
              <on event=\"questComplete\">\n    {negated}\n  </on>\n</quest>\n"
         ),
         &[],
+    );
+    assert_eq!(check(&dir), Vec::<String>::new());
+}
+
+/// S3 re-review P1 (guard timing): the engine judges every handler's
+/// guard before running any body, so a second handler guarded by
+/// `holds('met', ['mira'])` still runs after the first retracts `met` —
+/// its guard contributes no Must fact a handler may remove, and its nested
+/// `!holds` arm is live.
+#[test]
+fn a_handler_guard_gives_no_fact_a_sibling_handler_removes() {
+    let negated = GUARD.replace("holds('met'", "!holds('met'");
+    let dir = project(
+        "re-r2-guarded",
+        &format!(
+            "<quest id=\"firstVisit\" tier=\"user\" title=\"First visit\" start=\"true\">\n  \
+             <objective id=\"c1\" title=\"Do it\" done=\"run.flag\"/>\n  \
+             <reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n  \
+             <on event=\"questComplete\">\n    ::retract{{met(mira)}}\n  </on>\n  \
+             <on event=\"questComplete\" when=\"holds('met', ['mira'])\">\n    {negated}\n  \
+             </on>\n</quest>\n"
+        ),
+        &[],
+    );
+    assert_eq!(check(&dir), Vec::<String>::new());
+}
+
+/// S3 re-review P2: a jump out of a handler ends that handler, and the
+/// next handlers still run; handlers never inherit each other's writes,
+/// so the third handler's label meets the first handler's jump with its
+/// own start (which lacks `met`: the second handler retracts it), and its
+/// nested `!holds` arm is live.
+#[test]
+fn a_jump_out_of_a_handler_carries_no_fact_past_a_sibling_retract() {
+    let negated = GUARD.replace("holds('met'", "!holds('met'");
+    let dir = project(
+        "re-r2-jump",
+        &format!(
+            "<quest id=\"firstVisit\" tier=\"user\" title=\"First visit\" start=\"true\">\n  \
+             <objective id=\"c1\" title=\"Do it\" done=\"run.flag\"/>\n  \
+             <on event=\"questComplete\">\n    ::assert{{met(mira)}}\n    \
+             ::jump{{to=\"later\"}}\n  </on>\n  \
+             <on event=\"questComplete\">\n    ::retract{{met(mira)}}\n  </on>\n  \
+             <on event=\"questComplete\">\n    ::label{{name=\"later\"}}\n    {negated}\n  \
+             </on>\n</quest>\n"
+        ),
+        &[],
+    );
+    assert_eq!(check(&dir), Vec::<String>::new());
+}
+
+/// S3 re-review P1 (season): a season can close and reopen within a run,
+/// clearing its facts without resetting a run-tier quest's progress, so an
+/// objective's `season:s` reward assert is not carried to the quest's
+/// completion — the completion handler's `!holds` arm is live.
+#[test]
+fn an_objective_s_season_assert_does_not_carry_to_completion() {
+    let negated = GUARD.replace("holds('met'", "!holds('met'");
+    let schema = SCHEMA
+        .replace(
+            "met: { args: [person], tier: user }",
+            "met: { args: [person], tier: \"season:s\" }",
+        )
+        .replace(
+            "state:\n",
+            "state:\n  user.sOn: { type: bool, default: false }\n",
+        )
+        + "seasons:\n  s: { live: \"user.sOn\" }\n";
+    let dir = project(
+        "re-season",
+        &format!(
+            "<quest id=\"firstVisit\" tier=\"run\" title=\"First visit\" start=\"true\">\n  \
+             <objective id=\"c1\" title=\"Do it\" done=\"run.flag\">\n    \
+             <reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n  </objective>\n  \
+             <objective id=\"c2\" title=\"Again\" done=\"run.other\"/>\n  \
+             <on event=\"questComplete\">\n    {negated}\n  </on>\n</quest>\n"
+        ),
+        &[("schema/world.schema.yaml", &schema)],
     );
     assert_eq!(check(&dir), Vec::<String>::new());
 }
