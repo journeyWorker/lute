@@ -82,6 +82,30 @@ const hud = Effect.gen(function* () {
 Keep the numeric position for ordering, and use `ClockView.slot` and
 `ClockView.weekdayLabel` for display text.
  
+## 0.50 additions
+
+Every 0.50 IR change is additive: a project that uses none of the new keys compiles to byte-identical artifacts (`capabilitySnapshot` included). The contract schemas are renamed to the `-0.50` line.
+
+**Stamps on branch, hub and choice.** A plugin `stampAttrs` entry whose `on:` names `branch`, `hub` or `choice` can be authored on that element. The `choice`/`hub` command record's existing `stamps` object now holds the `<branch>`/`<hub>` element's stamps. Each `choice`/`hub` **option** gains an optional `stamps` object (`{ "<attr>": <value> }`, filled from the `<choice>` element's stamps, serialized last, omitted when empty), so an option without stamps is byte-identical to 0.49. An unauthored stamp is never injected, and a stamp is typed by its surface's declaration (one name can serialize with a different type on two surfaces). Stamps are descriptive: the runtime never reads them, the `awaitChoice` menu is unchanged (it carries the address `document`/`position`, verdicts and `once`/`exit`), and there is no semantic id. A host that does not use the reference player reads element and option stamps from the IR record at the menu's address, as it reads option text. The reference player's `ChoiceView` and each option carry an optional `stamps` read from that record, omitted when absent.
+
+**Host tokens stay verbatim.** A bare `{{token}}` that a plugin declares in its `hostTokens` export is a `reserved` placeholder, `{ "kind": "reserved", "token": "<name>", "format"? }`, exactly as `userName` always was (`lute.core` declares `userName`). There is no new environment entry. The runtime renders **every** host-token marker verbatim in the output text, and the host or presenter substitutes it at render time; this holds for every declared token, not only `userName`. Player behaviour is unchanged.
+
+**Reward effects.** `RewardEntry` gains optional resolved `retracts` and `asserts` (each a list of `{ relation, args }` fact records, the shape a `plugin` command's facts carry) and `accepts` (a list of quest ids), each omitted when empty and written after `credits`. `@target` is already bound; a pattern left with an unbound `@target` is not written. A reward kind declares these with `rewardKinds.<K>.effects`; a kind without `effects` produces byte-identical entries.
+
+At the grant instant, for a reward that is granted (its `outcome` filter matches the transition and its `when=` holds), in declaration order and **per reward**: the `grant` record and its `credits` write, as before; then the reward's `retracts`, then `asserts`, through the runtime's ordinary assert/retract path (including the `E-FACT-EXCLUSIVE` runtime check); then its `accepts`, through `::accept`'s path. An accept-driven quest of the artifact activates on the next lifecycle round, and a quest already past `unset` is left alone, with the record saying so. Objective grants precede quest grants, and all grants of a transition precede its lifecycle handler body, so a `questComplete` handler reads the asserted fact. An effect fires exactly once per grant, and replay and restore follow the grant's existing instance identity.
+
+**The `grant` key on effect records.** Each effect emits the record its command would, plus `"grant": { "quest", "instance", "index", "objective"?, "kind" }`, the identity of the grant record it follows. It has no `position` and no `effectOf`. A host lists the `grant` key on `assert`, `retract` and `accept` records:
+
+```json
+{"kind":"grant","quest":"first","instance":1,"index":0,"reward":{"kind":"BADGE","target":"mira","amount":1}}
+{"kind":"assert","fact":"met(mira)","grant":{"quest":"first","instance":1,"index":0,"kind":"BADGE"}}
+{"kind":"accept","quest":"second","grant":{"quest":"first","instance":1,"index":1,"kind":"OFFER_QUEST"}}
+```
+
+The event and snapshot shapes do not change: the `record` payload is untyped in the event schema, so only the record catalogue grows, and facts and accepted quests are already saved in snapshots. The player treats `assert`/`retract`/`accept` as bookkeeping cues.
+
+**New semantic id `lute.quest.rewardEffects/1`** (module `quest`, behaviour "reward fact and accept effects"). An artifact lists it in `requiredSemantics` (provenance `reward effects`) **only** when some `RewardEntry` has a non-empty `retracts`, `asserts` or `accepts`. An engine that ignores these fields would lose facts and quest activations, so the id is meaning-changing: an engine that does not list it in `supportedIds` refuses such an artifact at semantic negotiation, before playback. The registry goes from 15 to 16 ids, and an artifact that uses no reward effect negotiates exactly as before.
+
 ## 0.49 runtime additions
 
 **Plugin stamps are one nested `stamps` object.** A cross-cutting plugin
@@ -324,7 +348,7 @@ Every command record has three required fields and four optional siblings:
 | `timing` | optional `{ wait?, duration?, delay?, at?, timeline? }`; omitted when every member is absent. A `line` may carry `wait` (see [0.49](#049-runtime-additions)). |
 | `provenance` | optional `{ by, explanation }` on a record the compiler synthesized. |
 | `source` | optional source location. |
-| `stamps` | optional object of plugin `stampAttrs` values (`{ "<attr>": <value> }`), on every stamped command; omitted when empty. A `jump` and a `barrier` carry none. |
+| `stamps` | optional object of plugin `stampAttrs` values (`{ "<attr>": <value> }`), on every stamped command; omitted when empty. A `jump` and a `barrier` carry none. Since 0.50 a `choice` or `hub` record's `stamps` holds the `<branch>`/`<hub>` element's stamps, and each of its options carries its own (see [0.50](#050-additions)). |
 
 | `family` | kinds |
 | -------- | ----- |

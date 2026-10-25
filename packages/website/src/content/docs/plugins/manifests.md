@@ -27,6 +27,7 @@ exports:                   # REQUIRED — which sub-directories the loader reads
   occasions: occasions/
   rewardKinds: rewardkinds/
   cast: cast/
+  hostTokens: hosttokens/
   lints: lints/
   docs: docs/
 options:                   # OPTIONAL — typed activation options
@@ -48,12 +49,13 @@ Each export kind has a normative schema. All are typed by one small manifest typ
 - `bridge/*.yaml` — typed runtime bridge capabilities.
 - `defs/*.yaml` — shared typed-CEL `@refs`.
 - `assetKinds` (`assetkinds/*.yaml`) — asset-id segment templates (compose / query modes) with ordered `fallback` hooks.
-- `stampAttrs` (`stampattrs/*.yaml`) — cross-cutting attributes admissible on every directive and content line (below).
+- `stampAttrs` (`stampattrs/*.yaml`) — extra attributes on content lines, directives and (since 0.50) `<branch>` / `<hub>` / `<choice>`, cross-cutting or scoped to named surfaces with `on:` (below).
 - `enums/*.yaml`, `frontmatter/*.yaml`, `docs/*.md` — named enum domains, plugin-owned meta keys, and hover docs.
 - `events/*.yaml` — world events a quest's `<on event>` may name and `lute trace --event` fires.
 - `occasions/*.yaml` — the engine moments [beats](/language/beats/) answer (dsl 0.21.0), each optionally raised for a target drawn from a project entity kind (dsl 0.22.0), presented as one winner, an offered list, or a sequence (dsl 0.23.0), and optionally gated by a [`raisedWhen`](#occasion-gates-raisedwhen) condition (dsl 0.27.0).
-- `rewardKinds` (`rewardkinds/*.yaml`) — the closed set of `<reward kind>` values, with an optional [target contract](#reward-target-contracts), extra attributes, and the state path a grant credits (dsl 0.23.0).
+- `rewardKinds` (`rewardkinds/*.yaml`) — the closed set of `<reward kind>` values, with an optional [target contract](#reward-target-contracts), extra attributes, the state path a grant credits (dsl 0.23.0), and (since 0.50) the facts and quest accepts a grant applies ([Reward effects](#reward-effects)).
 - `cast/*.yaml` — the speakers content lines may use, with display names (dsl 0.23.0).
+- `hostTokens` (`hosttokens/*.yaml`) — names the engine substitutes into `{{name}}` interpolations at render time (since 0.50; [below](#host-interpolation-tokens-hosttokens)).
 - `lints/*.yaml` — advisory [lint rules](/tooling/linting/), namespaced `<plugin-id>/<rule-id>`; excluded from the capability snapshot.
 
 An export name outside this list is a load error. Every export file is also read strictly (0.24.0): a key the declaration does not know is `E-PLUGIN-KEY` at its line, with a did-you-mean, instead of being ignored (0.28.0 also reads `plugin.yaml` itself this way). This covers directives and their attrs, state, effects and bridge, state shapes and templates, providers, bridge capabilities, defs, enums, events, frontmatter, asset kinds, stamp attributes, reward kinds, occasions, cast entries and lints. Before, `{ selct: all }` loaded as `select: first` without a word:
@@ -347,6 +349,28 @@ Only a quoted `target="…"` reaches the artifact: a reward's target is static d
 
 Which form to use for ids the engine owns: an **entity kind** when the ids can be listed in the repository and reviewed there (one lead-owned schema such as `schema/items.schema.yaml` above), a **provider** when the engine's catalog is the source of truth and the project checks against a pinned snapshot of it (see [Providers & catalog](/tooling/providers-and-catalog/)). Either way, type the directive attribute and the reward kind by the **same** kind or provider, so `::give{item}` and `<reward kind="ITEM" target>` share one id space, and `lute refs --project <DIR> --attr give.item --reward ITEM` lists both (a reward without a target as `(no target)`).
 
+### Reward effects
+
+Since 0.50 a reward kind may declare **`effects:`**: the facts its grant asserts or retracts and the quests it accepts. Every list is optional:
+
+```yaml
+# rewardkinds/league.yaml
+rewardKinds:
+  BADGE:       { target: { entity: person, required: true }, effects: { asserts: ["met(@target)"] } }
+  REVOKE:      { target: { entity: person, required: true }, effects: { retracts: ["met(@target)"] } }
+  OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
+```
+
+`effects` takes `asserts`, `retracts` and `accepts`, and no other key. An empty `effects: {}` is `E-PLUGIN-PARSE` ("declares no effect"). Each `asserts` / `retracts` entry is the same fact pattern a [directive's effects](#facts-a-directive-asserts-or-retracts) use, `relation(arg, …)`.
+
+- **`writes` is not admitted.** A reward's state write is `credits:`, so `effects.writes` is `E-PLUGIN-KEY`, and its message adds `` — a reward's state write is `credits:` ``.
+- **Pattern arguments** are members, `true` / `false`, `@target`, and `_` (in `retracts` only). Any other `@name` is `E-PLUGIN-PARSE`: `` reward kind `BADGE` effect `met(@rarity)` reads `@rarity`; a reward kind's effects read only `@target` (a `<reward>` takes no other attribute) ``. A reward kind's own `attrs:` cannot be authored on `<reward>`, so there is nothing else to read.
+- **`accepts`** entries are `@target` or a literal quest id (an identifier). Anything else is `E-PLUGIN-PARSE`.
+- A kind with `target: { forbidden: true }` whose effects read `@target` is `E-PLUGIN-PARSE`: the effect could never bind.
+- `@target` is bound to the reward's quoted `target=`. A `<reward>` with no `target=` applies no effect for a pattern that reads it, with no extra diagnostic; a kind with `target: { required: true }` already reports `E-REWARD-TARGET` there.
+
+The checker judges each `<reward>` of such a kind with its `@target` bound. A fact pattern is held to exactly what an `::assert` / `::retract` of it is (relation declared, arity, argument kinds and members), with the same codes, at the reward's `kind=`; each message is prefixed `` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): ``. An `accepts` id is judged by `::accept`'s rule: `E-ACCEPT-TARGET` for an unknown id (with a did-you-mean), for a quest that has `start`, and for an auto-activating child. It is reported at the reward's `target=` value when the id came from `@target`, otherwise at `kind=`: `` `<reward kind="OFFER_QUEST" target="secnd">` accepts quest `secnd` (its kind's `effects.accepts`), but no quest in the project declares that id — did you mean `second`? ``. What the effects mean at the grant, and how analyses read them, is in [Quests & scenes](/language/quests-and-scenes/). A kind without `effects:` hashes as it did before.
+
 ### Cast
 
 ```yaml
@@ -371,7 +395,7 @@ stampAttrs:
   - { name: bonusScore, type: int }
 ```
 
-Entries are ordinary `AttrDecl`s — the same `{ name, required?, type, default? }` shape a directive attr uses — but they are admissible on **every** directive *and* on content lines (`@speaker{…}: text`), on top of that surface's own attributes. Resolution is strict: the surface's own declarations win, then `stampAttrs`, then `E-UNKNOWN-ATTR`. Value typing rides the existing attribute path, so a mistyped one is a plain `E-ATTR-TYPE` / `E-BAD-ENUM` — no new rules.
+Entries are ordinary `AttrDecl`s — the same `{ name, required?, type, default? }` shape a directive attr uses. An entry without `on:` is **cross-cutting**: admissible on **every** directive that has a stamp carrier *and* on content lines (`@speaker{…}: text`), on top of that surface's own attributes, and never on `<branch>`, `<hub>` or `<choice>`. An entry with `on:` is **scoped** to the surfaces it names (since 0.50, [below](#scoping-a-stamp-to-surfaces-on)). Resolution is strict: the surface's own declarations win, then `stampAttrs`, then `E-UNKNOWN-ATTR`. Value typing rides the existing attribute path, so a mistyped one is a plain `E-ATTR-TYPE` / `E-BAD-ENUM` — no new rules.
 
 `::sfx{sound="chime" bonusId="b-02"}` followed by `@marina{code="0010" bonusId="b-01" bonusScore="7"}: Welcome back.` compiles to two records that each carry the attribute in **one nested `stamps` object** (since 0.49), after the core keys (`kind`, `family`, `position`, `timing`) — never flattened beside the record's own keys and never in its `fields`:
 
@@ -386,6 +410,75 @@ Each entry's JSON value is typed by the declaring plugin's attribute declaration
 
 An **unauthored** stamp attribute is not injected — not even when its declaration carries a `default`. Absent means absent, so declaring a cross-cutting vocabulary and authoring none of it leaves the artifact byte-identical. The declaration is not free, though: `stampAttrs` participates in `capabilitySnapshot`, because a changed cross-cutting vocabulary is a changed capability surface and an engine must be able to refuse the mismatch.
 
+### Scoping a stamp to surfaces: `on:`
+
+Since 0.50 an entry may carry one more key, **`on:`**, a non-empty list of surface names. A scoped stamp is admissible only on the surfaces it names, and may be `required`:
+
+```yaml
+# plugins/acme.stage/stampattrs/columns.yaml
+stampAttrs:
+  - { name: voiceAssetId, type: { providerRef: voice }, required: true, on: [line] }
+  - { name: assetName,    type: string, on: [bg, actor] }
+  - { name: menuType,     type: { enum: [plain, timed, minigame] }, on: [branch, hub] }
+  - { name: optionKey,    type: string, required: true, on: [choice] }
+  - { name: cue,          type: string }                          # cross-cutting, as before
+```
+
+```lute
+<branch id="route" prompt="Which way?" menuType="plain">
+  <choice id="goLeft" text="Left" optionKey="L1">
+    @mira{voiceAssetId="VO.mira.0010"}: Left it is.
+  </choice>
+</branch>
+```
+
+The surface vocabulary is closed:
+
+| Surface name | Names |
+|---|---|
+| `line` | every content line (`@speaker{…}: text`), including lines in component, quest, objective, `<on>`, entry and beat bodies |
+| `branch`, `hub` | the element of that name |
+| `choice` | every `<choice>`, in a `<branch>` or a `<hub>` |
+| a directive tag | a directive of the resolved snapshot that has a stamp carrier, that is, not `jump`, `label` or `clear` |
+
+`line`, `branch`, `hub` and `choice` always mean the core surface (`branch`, `hub` and `choice` are already reserved plugin directive names, `E-PLUGIN-RESERVED-NAME`), so a plugin directive tagged `line` cannot be named in `on:`. The order of `on:` is not significant.
+
+**Without `on:`** the entry keeps its meaning exactly: it is admissible on every directive that has a stamp carrier and on every content line, and it is **not** admissible on `<branch>`, `<hub>` or `<choice>`. Those three stay closed to a cross-cutting stamp; only a stamp whose `on:` names them is admissible there.
+
+**Load faults** (per package, `E-PLUGIN-PARSE` at the entry):
+
+| Fault | Message |
+|---|---|
+| `on:` is not a list of strings, or is empty | `` stamp attribute `X` has an empty `on:` — list the surfaces it applies to, or omit `on:` for every directive and content line `` |
+| a surface repeated in `on:` | `` stamp attribute `X` lists `bg` twice in `on:` `` |
+| `required: true` without `on:` | `` stamp attribute `X` is `required: true` but has no `on:`; a stamp required on every record is not a column — name its surfaces with `on: […]` `` |
+
+A cross-cutting stamp cannot be `required`: there is no single place to report it missing. Before 0.50 such a `required: true` was a silent no-op. A directive attribute with `on:` stays `E-PLUGIN-KEY`; `on:` belongs to `stampAttrs` entries only.
+
+**Uniqueness within a package.** Two entries may share a name only if both have `on:` and their surface sets are disjoint, so one name may be typed differently per surface (`assetName: string` on `bg`, `assetName: int` on `actor`), and the IR serializes each with its own type. Any overlap (an entry without `on:` overlaps every entry) is `E-PLUGIN-DUP-ID`, naming the shared surfaces: `` stampAttr `assetName` is declared twice on the surface `bg` — give each entry disjoint `on:` surfaces ``.
+
+**Assembly.** Once the active snapshot's directives are known, each entry is checked in this order. A refused entry is dropped and its siblings still land:
+
+1. The core stamp reservation ([below](#reserved-stamp-keys)): `E-PLUGIN-RESERVED-STAMP-ATTR`.
+2. Each `on:` name resolves to a surface. A name that is none of the four core surfaces and no directive of the snapshot is **`E-PLUGIN-STAMP-SURFACE`**: `` stamp attribute `assetName` (`acme.stage`) names `bgg` in `on:`, which is not `line`, `branch`, `hub`, `choice` or a directive of the resolved profile — did you mean `bg`? ``. A directive without a stamp carrier draws the same code: `` … names `jump` in `on:`, but `::jump` emits no stamped record `` (it is one of `jump`, `label`, `clear`). A plugin that scopes a stamp to another plugin's directive declares that plugin in `depends:`, so that the directive is in every profile that activates it; the message says so when the tag exists in an installed but inactive plugin.
+3. **Shadowing.** A scoped entry whose name is an attribute the named surface already owns is `E-PLUGIN-RESERVED-STAMP-ATTR`: `` stamp attribute `prompt` (`acme.stage`) is scoped to `branch`, but `prompt` is an attribute of `<branch>` itself, so the stamp could never be read ``. A surface's own attributes are: for a directive, its declaration's `attrs` (plus `when` on `::jump`); for `line`, the content line's known attributes (including `wait`) and the guard `when`; for `branch`, `id`, `prompt`, `timeout`, `default`; for `hub`, `id`, `prompt`; for `choice`, `id`, `text`, `when`, `into`, `value`, `once`, `exit`, and the renamed or removed `label`, `as`, `persist`. A cross-cutting entry keeps its earlier rule: the surface's own declaration wins and the entry is not refused.
+4. **Uniqueness across plugins.** Two plugins' entries with the same name and overlapping surfaces are `E-PLUGIN-DUP-ACROSS`, naming both plugins and the shared surfaces. Disjoint entries from two plugins are legal.
+
+**Checking.** An attribute `k` on a surface resolves strictly, first match wins: the surface's own attributes; for a directive, the unstamped refusal and the universal timing keys; the stamp declared for that surface (typed by its declaration: `E-ATTR-TYPE`, `E-BAD-ENUM`, `@ref` typing); renamed or removed attribute diagnostics; then `E-UNKNOWN-ATTR`. When the name is declared for other surfaces only, `E-UNKNOWN-ATTR` says where the stamp applies instead of listing the surface's attributes:
+
+- `` `::bg` has no attribute `voiceAssetId`: it is a stamp of `acme.stage` for content lines only ``
+- `` `<branch>` has no attribute `optionKey`: it is a stamp of `acme.stage` for `<choice>` only ``
+
+A **required** stamp that its surface does not author is `E-MISSING-ATTR`, at the surface's head (the directive or element's opening tag, or the line):
+
+- `` `::bg` requires attribute `assetName` (a stamp of `acme.stage`) ``
+- `` this content line requires attribute `voiceAssetId` (a stamp of `acme.stage` for content lines) ``
+- `` `<choice id="goLeft">` requires attribute `optionKey` (a stamp of `acme.stage`) ``
+
+The rule applies wherever the surface is authored, component bodies included; a line that `::use` splices in is checked once, in its component. It does not look at a declared `default:`, because a stamp is never injected. For the logic-tag surfaces see [Choices & hubs](/language/choices-and-hubs/#plugin-stamps-on-branch-hub-and-choice).
+
+**Snapshot.** A scoped entry folds into `capabilitySnapshot` with its sorted surface list; an entry without `on:` hashes exactly as before, so a manifest that uses no `on:` keeps its snapshot. `lute context` prints each scoped stamp's surfaces (`"on": "::bg, ::actor (stampAttrs)"`).
+
 ### Reserved stamp keys
 
 The core stamp owns eight names — `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`, `source`. `at`, `duration`, `delay`, `wait` and `timeline` are authoring keys that compile into `timing`; `timing`, `provenance` and `source` stay flattened record keys. The nested `stamps` object removes the *JSON* collision for every other name, but these eight stay reserved, since a plugin stamp named like one would still be ambiguous to the author. A plugin declaring an attribute under any of them is rejected at assembly with **`E-PLUGIN-RESERVED-STAMP-ATTR`**:
@@ -397,6 +490,26 @@ lute: E-PLUGIN-RESERVED-STAMP-ATTR: plugin `arcia.bonus` declares reserved stamp
 ```
 
 Both surfaces are covered — the `stampAttrs` export *and* an ordinary per-directive `attrs` entry — so a plugin cannot reach a reserved key through either door. The offending declaration is dropped rather than merged; its non-reserved siblings still land. This is why a blocking plugin directive names its own flag `sync` and not `wait` (see [Bridge](/plugins/bridge/)).
+
+## Host interpolation tokens (`hostTokens`)
+
+A line may carry a bare `{{playerName}}` for a value only the engine knows. The plugin export `hostTokens` (`hosttokens/*.yaml`, since 0.50) declares such names:
+
+```yaml
+# hosttokens/tokens.yaml
+hostTokens:
+  playerName: { type: string }
+  rank:       { type: int }
+  platform:   { type: { enum: [ios, android, web] } }
+```
+
+- The key is the token name and the value is `{ type }`, where `type` is `string`, `int` or `{ enum: [members…] }`. Any other type is `E-PLUGIN-PARSE`, and any other key is `E-PLUGIN-KEY`.
+- A token name is an **identifier**: an ASCII letter or `_`, then letters, digits or `_` (not merely a name; a host token is written bare inside `{{…}}`). A non-identifier key is `E-PLUGIN-PARSE`: `` host token `player-name` is not an identifier (letters, digits and `_`, not starting with a digit) `` (`player-name`, `2ndName`, `-x` and the empty key are all refused).
+- A name that is a state root or CEL literal (`scene`, `run`, `user`, `app`, `quest`, `entry`, `prev`, `clock`, `occasion`, `season`, `true`, `false`, `null`) is `E-PLUGIN-RESERVED-NAME` at assembly, with the reason in the message: `` `{{run}}` would read as a state root `` (see [Reserved names](/reference/reserved-names/)).
+- **`lute.core` declares `userName: { type: string }`.** Redeclaring a token that another plugin or `lute.core` declares is `E-PLUGIN-DUP-ACROSS`.
+- `hostTokens` folds into `capabilitySnapshot` only when a token not owned by `lute.core` exists, and only those tokens fold in, so a project that declares none keeps its snapshot. `lute context` lists the declared non-core tokens (name, type, plugin).
+
+How a token is checked in text, and that the runtime leaves it verbatim, is in [Dialogue & cast](/language/dialogue-and-cast/#host-tokens).
 
 ## Declarative lowering
 

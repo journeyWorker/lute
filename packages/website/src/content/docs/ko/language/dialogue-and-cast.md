@@ -393,9 +393,25 @@ diner.lute:10:7: error [E-MONO-POV] `@mira{mono}` is an interior monologue, but 
 
 *([`docs/examples/showcase/hub-demo.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/hub-demo.lute)에서 가져왔습니다.)*
 
-`{{userName}}`은 항상 사용할 수 있는 예약 토큰입니다. 그 밖의 보간은 **선언된** 상태 경로를 지정해야 합니다. 보간은 확정 할당 분석에서 *읽기*이므로, 가드 없이 설정되지 않을 수 있는 경로를 보간하면 `E-MAYBE-UNSET`입니다. 보간과 [인라인 수식자](#인라인-텍스트-수식자)를 제외하면 두 번째 콜론 뒤의 텍스트는 줄 끝까지 불투명합니다. 괄호, `<`, `//`, `#`, 단일 중괄호 등은 모두 리터럴이며 파싱되지 않습니다. 검사기는 Ink 또는 Yarn에서 마크업으로 쓰이는 모양을 플레이어가 보게 되는 경우 경고합니다. 단일 중괄호 `{run.oil}` 또는 `{run.oil > 0: …}`(`W-TEXT-SINGLE-BRACE`; 보간은 `{{run.oil}}`, 조건부 텍스트는 가드된 줄), ` // note`나 끝의 `# tag`(`W-TEXT-COMMENT-LIKE`; 주석은 자체 줄에 `//`를 씁니다)가 그 예입니다. [Ink 또는 Yarn에서 넘어오기](/ko/guides/coming-from-ink-yarn/)를 참고하세요.
+`{{userName}}`은 항상 사용할 수 있는 예약 토큰입니다. 그 밖의 맨 이름은 플러그인이 선언하는 [호스트 토큰](#호스트-토큰)이고, 그렇지 않은 보간은 **선언된** 상태 경로를 지정해야 합니다. 보간은 확정 할당 분석에서 *읽기*이므로, 가드 없이 설정되지 않을 수 있는 경로를 보간하면 `E-MAYBE-UNSET`입니다. 보간과 [인라인 수식자](#인라인-텍스트-수식자)를 제외하면 두 번째 콜론 뒤의 텍스트는 줄 끝까지 불투명합니다. 괄호, `<`, `//`, `#`, 단일 중괄호 등은 모두 리터럴이며 파싱되지 않습니다. 검사기는 Ink 또는 Yarn에서 마크업으로 쓰이는 모양을 플레이어가 보게 되는 경우 경고합니다. 단일 중괄호 `{run.oil}` 또는 `{run.oil > 0: …}`(`W-TEXT-SINGLE-BRACE`; 보간은 `{{run.oil}}`, 조건부 텍스트는 가드된 줄), ` // note`나 끝의 `# tag`(`W-TEXT-COMMENT-LIKE`; 주석은 자체 줄에 `//`를 씁니다)가 그 예입니다. [Ink 또는 Yarn에서 넘어오기](/ko/guides/coming-from-ink-yarn/)를 참고하세요.
 
 표시 `labels:`가 붙은 enum에 대해 타입이 지정된 경로는 멤버 id가 아니라 라벨을 렌더링합니다: `Today is {{run.weekday}}.`는 `Today is Sunday.`로 읽힙니다([이름 붙은 enum으로 타입 지정된 경로](/ko/state/state-model/#이름-있는-열거형으로-타입을-지정한-경로) 참고).
+
+### 호스트 토큰
+
+줄은 플레이어 이름처럼 엔진만 아는 값을 맨 식별자로 가리킬 수 있습니다: `{{playerName}}`. 0.50부터 플러그인은 [`hostTokens`](/ko/plugins/manifests/#호스트-보간-토큰hosttokens) export에서 이런 이름을 선언하며, `lute.core`는 `userName: { type: string }`을 선언합니다. `hostTokens: { playerName: { type: string } }`가 있으면
+
+```lute
+@narrator: Welcome, {{playerName}}.
+```
+
+는 `reserved` 플레이스홀더 `{ "kind": "reserved", "token": "playerName", "format"? }`로 컴파일됩니다. 토큰은 맨 **식별자**(ASCII 문자 또는 `_`, 이어서 문자, 숫자, `_`)입니다. `{{player-name}}`과 `{{2nd}}`는 토큰이 아닙니다. 상태 경로 모양으로 남으며 기존의 `E-CEL-PROFILE`을 그대로 받습니다. 상태 경로에는 항상 티어 루트와 `.`이 있으므로, 상태 경로이던 표기의 의미가 바뀌는 일은 없습니다. 상태 루트나 CEL 리터럴인 이름은 토큰으로 선언할 수 없습니다([예약어](/ko/reference/reserved-names/) 참고).
+
+- **선언된 토큰.** 토큰의 타입이 받을 수 있는 [형식 힌트](#서수-xordinal)를 정합니다. `string` 또는 `enum` 토큰은 텍스트 힌트를 받고(`{{platform:capitalize}}`는 깨끗합니다) 숫자 힌트는 `E-REF-TYPE`입니다. `int` 토큰은 숫자 힌트를 받고(`{{rank:ordinal}}`은 깨끗합니다) 텍스트 힌트(`{{rank:capitalize}}`)는 `E-REF-TYPE`입니다. `{{userName}}`은 이전과 똑같이 동작합니다.
+- **선언되지 않은 토큰.** 어떤 플러그인도 선언하지 않은 맨 이름은 `E-CEL-PROFILE`입니다. 메시지는 "a declared host token"을 언급하고 선언된 토큰을 나열합니다: `` interpolation `playerName` is not a valid `{{…}}` form — only a state path, …, a def `@ref` / `@ref(args)`, or a declared host token (`userName`) are permitted; declare `playerName` in a plugin's `hostTokens:` export if the engine substitutes it … ``. 메시지의 나머지는 그대로입니다.
+- **이스케이프.** `\{{name}}`은 그대로입니다. 플레이스홀더가 되지 않습니다.
+- **상태 읽기가 아님.** 호스트 토큰은 확정 할당, 의존성, 퀘스트 참조 분석에 참여하지 않으며 lint에서는 한 단어로 셉니다.
+- **런타임.** 런타임은 모든 호스트 토큰 표시를 렌더된 텍스트에 그대로 남기고, 호스트나 프레젠터가 이를 치환합니다. `userName`만이 아니라 모든 토큰에 해당합니다([런타임 계약](/ko/tooling/runtime-contract/) 참고). 에디터 호버는 `` host token `playerName` — `string`, declared by `acme.stage`; the engine substitutes it at render time ``라고 읽습니다.
 
 ### 서수: `{{x:ordinal}}`
 
@@ -456,7 +472,7 @@ state:
 
 ### 텍스트 힌트와 라벨 형식: `{{x:capitalize}}`, `{{x:start}}`, `{{x:indefinite}}`
 
-세 힌트가 문자열, enum 또는 종류 라벨, 캐스트 이름, `{{occasion.target}}`, `{{userName}}`을 형식화합니다. `:capitalize`는 첫 글자를 대문자로 바꿉니다. `:start`와 `:indefinite`는 종류의 `labels:` 항목이 텍스트와 함께 선언할 수 있는 형식을 읽습니다:
+세 힌트가 문자열, enum 또는 종류 라벨, 캐스트 이름, `{{occasion.target}}`, `{{userName}}` 같은 `string` 또는 `enum` [호스트 토큰](#호스트-토큰)을 형식화합니다. `:capitalize`는 첫 글자를 대문자로 바꿉니다. `:start`와 `:indefinite`는 종류의 `labels:` 항목이 텍스트와 함께 선언할 수 있는 형식을 읽습니다:
 
 ```yaml
 entities:
@@ -469,7 +485,7 @@ entities:
 
 `{{occasion.target:start}} is quiet.`는 `cut`에 대해 `The smugglers' cut is quiet.`로 읽힙니다. 형식이 없으면 힌트가 대체 동작을 합니다. `:start`는 텍스트를 대문자로 만들고(`Ashwraith den`), `:indefinite`는 첫 글자가 모음이면 `an`, 그 밖에는 `a`를 텍스트 앞에 붙입니다(`an ashwraith den`). 규칙이 틀리는 단어(`an hour`, `a unicorn`)에는 `indefinite:`를 선언하세요. 라벨 항목은 문자열이거나 `{ text, start, indefinite }`이며 `text:`가 필수입니다. 다른 키는 모두 `E-ENTITY-KIND-SHAPE`입니다. IR은 힌트를 플레이스홀더의 `format`으로, 형식을 종류의 `entities[]` 항목과 종류로 타입 지정된 상태 경로의 `labelForms`로 전달하므로 엔진이 지역화할 수 있습니다. 리터럴로 삽입된 컴포넌트 매개변수는 대체 형식을 사용합니다.
 
-힌트는 `int` 또는 `double`에 대한 `ordinal`, `ordinalWord`, `cardinalWord`, `plural`과 텍스트에 대한 `capitalize`, `start`, `indefinite`입니다. 그 밖의 힌트 — `{{run.floor:roman}}`, 잘못 쓴 `{{run.day:ordinalword}}` — 는 `E-CEL-PROFILE`입니다. 문자열, enum 또는 bool 경로/def에 숫자 힌트를 쓰거나 `{{userName}}`에 숫자 힌트를 쓰면 `E-REF-TYPE`이고, `int`, `double`, bool에 텍스트 힌트를 써도 같습니다.
+힌트는 `int` 또는 `double`(또는 `int` 호스트 토큰)에 대한 `ordinal`, `ordinalWord`, `cardinalWord`, `plural`과 텍스트에 대한 `capitalize`, `start`, `indefinite`입니다. 그 밖의 힌트 — `{{run.floor:roman}}`, 잘못 쓴 `{{run.day:ordinalword}}` — 는 `E-CEL-PROFILE`입니다. 문자열, enum 또는 bool 경로/def에 숫자 힌트를 쓰거나 `{{userName}}` 같은 `string` 또는 `enum` 호스트 토큰에 숫자 힌트를 쓰면 `E-REF-TYPE`이고, `int`, `double`, bool 또는 `int` 호스트 토큰에 텍스트 힌트를 써도 같습니다.
 ## 인라인 텍스트 수식자
 
 줄의 텍스트는 표현을 위해 일부를 마크업할 수 있습니다 — 스타일이 지정된 단어, 일시 정지, 느려진 구절 등입니다. **수식자(modifier)**는 콜론, lowerCamel 이름, 그리고 대괄호로 감싼 스팬, 중괄호 속성 목록 또는 둘 다로 이루어집니다:

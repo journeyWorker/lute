@@ -515,3 +515,26 @@ bridge는 `after: 'visited("demo.archive")'`로 순서가 정해지고 세 줄�
 ### 아직 쓰이지 않은 팩트 위의 가드
 
 스토리를 작성하는 동안에는 가드가 dead인 이유가 그 팩트를 assert하는 씬이 아직 존재하지 않기 때문인 경우가 많습니다. `lute check --project <DIR> --wip`(dsl 0.23.0)는 관계에 **producer가 전혀 없기 때문에** 가드가 dead인 경우 `E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`을 경고로 보고합니다. 즉 시드도, 어디에도 `::assert`도, 규칙도, `reserved:`도 없어야 합니다. 경고의 note가 그 이유를 말합니다. producer는 있지만 질의와 절대 일치할 수 없는 관계는 여전히 오류이며, dead 콘텐츠가 downstream에서 발생시키는 `E-CONN-UNREACHABLE` 같은 것도 마찬가지입니다. [작업 중](/ko/language/beats/#작업-중)을 참고하세요.
+
+## 보상 효과가 만드는 사실
+
+플러그인 [보상 종류](/ko/language/quests-and-scenes/#보상-효과)는 `effects: { asserts, retracts }`(0.50)를 선언할 수 있습니다. 이런 보상이 쓰는 사실은 평범한 사실입니다. 프로젝트 전체 `lute check`는 각 효과를 **소유자의 지급 지점 맨 앞에 해당 `::assert` / `::retract`를 쓴 것처럼** 읽으므로 위의 모든 내용이 그대로 적용됩니다: May와 Must 집합, `E-QUEST-UNREACHABLE`, `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `W-FACT-GUARANTEED`, `W-RELATION-UNREAD`(보상의 assert는 생산자입니다), `E-FACT-EXCLUSIVE`. 캐스트 존재 분석도 효과를 읽습니다.
+
+| 보상 | 지급 지점 | 사실이 적용되는 곳 |
+|---|---|---|
+| 퀘스트 수준, `outcome` 없음 | 퀘스트 완료 | 퀘스트의 모든 `<on event="questComplete">` 본문, 그리고 `after:` / `completed(...)`를 따라 흐르는 완료 상태 |
+| 퀘스트 수준, `outcome="failed"` | 퀘스트 실패 | 모든 `<on event="questFailed">` 본문, 마찬가지 |
+| 목표 수준 | 목표 완료 | `done` 이후 목표 본문의 진입점, 그리고 목표 완료 상태 |
+
+- **가드 없는 assert**는 지급 지점부터 May와 Must 모두에 들어갑니다.
+- **가드 있는 assert**(`<reward when="…">`)는 가드 있는 `::assert`처럼 분기합니다. 항상 May에 들어가고, Must에는 가드가 성립하는 경로에서만 들어갑니다. `lute check`는 `when ⇒ fact` 함의를 유지하지 않으므로 지급 뒤 그 사실은 *가능*일 뿐이며, 이를 검사하는 가드는 `W-FACT-GUARANTEED`를 내지 않습니다.
+- **retract**는 가드 유무와 관계없이 일치하는 것을 Must에서 제거하며 `E-FACT-EXCLUSIVE`를 위해 May에 기록됩니다.
+- 한 보상 안의 순서: `retracts`, 이어서 `asserts`. 보상은 선언 순서이며 목표 보상이 퀘스트 보상보다 먼저입니다. 같은 사실을 assert한 뒤 retract하는 두 보상은 지급 뒤 사실이 없는 상태로 남깁니다. 같은 패턴의 `retracts`와 `asserts`를 모두 가진 한 종류는 사실이 있는 상태로 남깁니다.
+- `accepts` 효과는 사실 효과가 없습니다. [도달 가능성](/ko/connectivity/reachability/#보상-효과가-그리는-엣지)과 `W-QUEST-NEVER-ACCEPTED`에만 반영됩니다.
+
+`@target`을 읽는데 `target=`이 없는 보상은 아무것도 적용하지 않으므로 사실을 만들지 않습니다. `lute scenario knowledge`와 `lute lore`는 보상을 생산자로 지목합니다:
+
+```text
+met(mira) — produced by reward BADGE of quest `firstVisit`
+```
+<!-- rerun-after-S8 -->

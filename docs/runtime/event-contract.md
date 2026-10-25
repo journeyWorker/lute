@@ -210,6 +210,25 @@ carry `quest`, `instance`, optional `objective`, `index`, `reward` and the
 machine's remaining fields; `instance` is the settlement key. The host
 settles the grant, not the runtime.
 
+Since 0.50 a reward kind may declare effects, and each effect emits the record
+its command would (`assert`, `retract`, `accept`) with one more key, `grant`:
+`{ "quest", "instance", "index", "objective"?, "kind" }`, the identity of the
+grant record the effect follows. These records carry no `position` and no
+`effectOf`. A host that settles grants by `(quest, instance, objective, index)`
+attributes them with it. An `accept` for a quest already past `unset` is still
+emitted, and the record says it was ignored.
+
+```json
+{"kind":"grant","quest":"first","instance":1,"index":0,"reward":{"kind":"BADGE","target":"mira","amount":1}}
+{"kind":"assert","fact":"met(mira)","grant":{"quest":"first","instance":1,"index":0,"kind":"BADGE"}}
+{"kind":"accept","quest":"second","grant":{"quest":"first","instance":1,"index":1,"kind":"OFFER_QUEST"}}
+```
+
+Rendered text keeps every host-token marker (`{{playerName}}`, and any other
+token a plugin declares in `hostTokens`) verbatim: the runtime never substitutes
+a host token, for any token, and the host or presenter does. The IR placeholder
+is `{ "kind": "reserved", "token": "<name>", "format"? }`.
+
 The read-only queries are part of the 0.40 contract (spec §4.1), not an
 implementation-only report:
 
@@ -300,6 +319,13 @@ await is serialized as `continuation.stage`, and `stage()` returns it.
 `position`, `presentation`, optional `prompt`, `timeout` and `default`, and
 ordered options with `id`, `verdict` (`open`, `closed` or `spent`), `exit` and
 `once`. Hubs omit `timeout` and `default`.
+
+Plugin stamps on a `<branch>`, `<hub>` or `<choice>` (0.50) are not part of the
+menu. The runtime never reads stamps and the menu keeps this shape. A host that
+does not use the reference player reads them from the IR `choice` or `hub`
+record at the menu's address (`document`, `position`): the record's `stamps`
+and each option's `stamps` (omitted when absent), the same place it reads
+option `text`, `texts` and `prompt`.
 An undecided guard never becomes an `unknown` menu verdict: it halts as
 `incomplete`. Request ids are unsigned integers, incremented for each await
 and never reused within a state lineage. Restoring preserves the pending id.

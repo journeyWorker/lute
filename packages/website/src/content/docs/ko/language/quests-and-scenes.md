@@ -173,6 +173,46 @@ state:
   { "kind": "BADGE", "amount": 1 }
 ]
 ```
+
+### 보상 효과
+
+플러그인의 보상 종류는 **효과**(플러그인 매니페스트의 `effects:`, 0.50부터)를 선언할 수 있습니다. 그 종류의 `<reward>`가 지급될 때마다 종류가 assert하거나 retract하는 사실, 그리고 수락하는 퀘스트입니다. 예전에는 호스트가 `BADGE` 보상을 읽고 `met(mira)`를 직접 썼지만, 이제는 체커와 런타임이 대신하므로 그 사실이 도달 가능성 분석과 가드에 보입니다. 매니페스트 쪽은 [매니페스트](/ko/plugins/manifests/) 페이지에 있습니다:
+
+```yaml
+rewardKinds:
+  BADGE:       { target: { entity: person, required: true }, effects: { asserts: ["met(@target)"] } }
+  REVOKE:      { target: { entity: person, required: true }, effects: { retracts: ["met(@target)"] } }
+  OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
+```
+
+`@target`은 보상의 따옴표 붙은 `target=`입니다. `<reward>`는 다른 속성을 받지 않으므로 효과가 읽을 수 있는 이름은 이것뿐입니다. `writes`는 효과가 아닙니다. 보상의 상태 쓰기는 `credits:`입니다.
+
+```lute unverified="0.50 feature; verified after S1-S8 land"
+<quest id="firstVisit" title="Meet Mira" start="true">
+  <objective id="talk" title="Talk to Mira" done="visited('town.mira')"/>
+  <reward kind="BADGE" target="mira"/>
+  <reward kind="OFFER_QUEST" target="secondVisit"/>
+</quest>
+```
+
+**`<reward>`별 검사.** 효과를 선언한 종류의 각 보상은 해석된 효과를 `::assert`, `::retract`, `::accept`로 쓴 것처럼 판정합니다:
+
+- **사실.** 해석된 각 패턴은 `::assert` / `::retract`의 검사를 받습니다. 관계가 선언되어 있는지, 인자 개수와 종류와 멤버가 맞는지, 닫힌 종류 멤버십이 성립하는지입니다. 코드는 그 디렉티브가 내는 것과 같고 보상의 `kind=`에서 보고하며, 메시지에는 `` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): `` 접두사가 붙습니다.
+- **수락.** 해석된 각 퀘스트 id는 프로젝트 전체에서 `::accept`의 규칙을 받습니다. 알 수 없는 id(did-you-mean 포함), `start`가 있는 퀘스트, 자동 활성화되는 자식에 대해 **`E-ACCEPT-TARGET`**입니다. 앵커는 id가 `@target`에서 왔다면 보상의 `target=` 값이고, 아니면 `kind=`입니다. 메시지는 보상을 지목합니다: `` `<reward kind="OFFER_QUEST" target="secnd">` accepts quest `secnd` (its kind's `effects.accepts`), but no quest in the project declares that id — did you mean `second`? ``
+- **`target=`이 없을 때.** `@target`을 읽는 효과는 적용되지 않으며 추가 진단도 없습니다. `target`이 `required: true`인 종류는 이미 `E-REWARD-TARGET`을 보고합니다.
+- **`W-QUEST-NEVER-ACCEPTED`.** 보상 `accepts`가 퀘스트를 지목하면 씬의 `::accept`와 마찬가지로 이 경고를 없앱니다. 메시지는 이제 ``… but no `::accept` or reward `accepts` in the project names it …``입니다.
+- `W-REWARD-DOUBLE-CREDIT`은 그대로입니다.
+
+**지급 시점의 순서.** 보상이 지급될 때(`outcome`이 전환과 맞고 `when=`이 성립할 때), 선언 순서대로 **보상별로**:
+
+1. 이전처럼 `grant` 레코드와 `credits` 쓰기;
+2. 종류의 `retracts`, 이어서 `asserts`를 `::retract` / `::assert`와 같은 경로로 처리(런타임 `E-FACT-EXCLUSIVE` 검사 포함);
+3. `accepts`를 `::accept`의 경로로 처리: 수락 기반 퀘스트는 다음 생명주기 라운드에 활성화되고, 이미 `unset`을 지난 퀘스트는 그대로 두며 레코드가 그렇게 기록합니다.
+
+그다음 보상으로 넘어갑니다. 이전과 같이 목표 보상이 퀘스트 보상보다 먼저 지급되고, 한 전환의 모든 지급은 그 전환의 생명주기 핸들러 본문보다 앞서므로 `questComplete` 핸들러는 보상이 assert한 사실을 읽습니다. 효과는 지급 한 번당 정확히 한 번 발생하며, 재생과 복원은 지급 자체의 인스턴스 정체성을 따릅니다. 가드가 거짓인 `<reward when="…">`는 효과를 포함해 아무것도 지급하지 않습니다.
+
+분석은 각 효과를 소유자의 지급 지점 **맨 앞에** 해당 `::assert` / `::retract` / `::accept`를 쓴 것처럼 읽습니다. `outcome`이 없는 퀘스트 보상은 퀘스트 완료 시점(`questComplete` 핸들러 앞), `outcome="failed"`는 실패 시점(`questFailed` 앞), 목표 보상은 목표 완료 시점입니다. 결과는 [사실과 Datalog](/ko/state/facts-and-datalog/#보상-효과가-만드는-사실)와 [도달 가능성](/ko/connectivity/reachability/#보상-효과가-그리는-엣지)에 있습니다.
+
 ### 퀘스트가 씬 및 계기를 만나는 방식
 
 세 가지 작은 추가 기능(dsl 0.21.0 §7a)으로 씬이 상태를 거쳐 플래그를 전달하지 않고 퀘스트를 직접 움직일 수 있습니다.

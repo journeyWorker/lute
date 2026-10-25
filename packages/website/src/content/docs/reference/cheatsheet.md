@@ -1108,6 +1108,8 @@ A `target: { entity: <kind> }` or `{ provider: <name> }` contract validates each
 (did-you-mean for an entity; a stale provider snapshot only warns), and `required: true` rejects a
 reward with none: `E-REWARD-TARGET` (0.26.0). A contract naming both fails the plugin load.
 
+Since 0.50 a reward kind can also declare `effects` (`asserts`, `retracts`, `accepts`) that apply at the grant; see [Scoped stamps, host tokens, reward effects & project levels](#scoped-stamps-host-tokens-reward-effects--project-levels-050).
+
 → [Quests & scenes](/language/quests-and-scenes/)
 
 ## Lore entries
@@ -1328,6 +1330,68 @@ timeline at its `duration`.
 
 → [Timeline & property tracks](/language/timeline-and-property-tracks/)
 
+## Scoped stamps, host tokens, reward effects & project levels (0.50)
+
+A plugin `stampAttrs` entry can scope itself with `on:` (surfaces: `line`, `branch`, `hub`, `choice`, or a directive tag). `required: true` is allowed only with `on:`. Without `on:` it is cross-cutting: every stamp-carrying directive and content line, never `<branch>`/`<hub>`/`<choice>`.
+
+```yaml
+# plugins/acme.stage/stampattrs/columns.yaml
+stampAttrs:
+  - { name: voiceAssetId, type: { providerRef: voice }, required: true, on: [line] }
+  - { name: assetName,    type: string, on: [bg, actor] }
+  - { name: menuType,     type: { enum: [plain, timed, minigame] }, on: [branch, hub] }
+  - { name: optionKey,    type: string, required: true, on: [choice] }
+  - { name: cue,          type: string }          # cross-cutting, as in 0.49
+```
+
+```lute
+<branch id="route" prompt="Which way?" menuType="plain">
+  <choice id="goLeft" text="Left" optionKey="L1">
+    @mira{voiceAssetId="VO.mira.0010"}: Left it is.
+  </choice>
+</branch>
+```
+
+A plugin declares a **host token** with a `hostTokens` export (`hosttokens/*.yaml`); `{{playerName}}` then compiles to a `reserved` placeholder that the host substitutes at render time (`lute.core` declares `userName`). An undeclared bare `{{name}}` is `E-CEL-PROFILE`.
+
+```yaml
+# plugins/acme.stage/hosttokens/tokens.yaml
+hostTokens:
+  playerName: { type: string }
+  rank:       { type: int }          # {{rank:ordinal}} ok, {{rank:capitalize}} is E-REF-TYPE
+  platform:   { type: { enum: [ios, android, web] } }
+```
+
+A reward kind can apply facts and accepts at the grant (`@target` is the reward's `target=`; `writes` is not admitted, `credits:` is the state write). Per reward: `grant` + `credits`, then `retracts`, `asserts`, `accepts`:
+
+```yaml
+rewardKinds:
+  BADGE:       { target: { entity: person, required: true }, effects: { asserts: ["met(@target)"] } }
+  REVOKE:      { target: { entity: person, required: true }, effects: { retracts: ["met(@target)"] } }
+  OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
+```
+
+`lute.project.yaml` sets the level of a checker `W-*` code (`off`, `info`, `warn`, `error`), optionally only under `paths` globs. `--deny CODE` beats `off`; errors are never demoted.
+
+```yaml
+diagnostics:
+  W-DISPLAY-NAME-DUP: error
+  W-STAGE-ABSENT: { level: off, paths: ["scenes/imported/**"] }
+```
+
+A `node` lint (`lute.lint.yaml` `custom:` or a plugin `lints:` export) runs once per node; guard every index:
+
+```yaml
+custom:
+  - id: beat-label-prefix
+    target: node
+    when: 'node.tag == "label" && scene.kind == "beat" && "name" in node.attrs && !node.attrs["name"].startsWith("b_")'
+    level: error
+    message: "a beat's labels start with b_"
+```
+
+→ [Plugin manifests](/plugins/manifests/) · [CLI](/tooling/cli/) · [Linting](/tooling/linting/)
+
 ## Compiled artifact
 
 `lute compile` writes the execution IR. The envelope carries `kind`, `lute`, `irVersion`,
@@ -1378,7 +1442,7 @@ command by its `kind` and `position`.
 | `lute calendar --project <DIR> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds('awake', ['toma'])=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis run.aff.*=6,7] [--axis 'run.aff[run.route]=6,7'] [--axis clock=1..3] [--occasion <O>] [--occasion-axes <O>=<axis>[=<value>],…] [--target <T>] [--relation <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--format text\|csv \| --json]` | 0.23.0. For every cell of the axes' product (first axis slowest), play's own eligibility per occasion: the winner or the presented list, `+N` shadowed eligible beats, `?` for an undecided cell, then the beats never eligible in any cell and (0.24.0) those eligible somewhere but never presented. It starts from the script's save with its steps replayed (up to `--until`), or the declared defaults. `--where` drops cells where the condition does not hold. A targeted occasion gets one column per target its beats name; `--target mon.inchlet` names one instead (`--occasion-axes` takes axes, not targets). 0.24.0: `clock[=d1..d2]` expands to day × slot in clock order; a `visited()` axis puts an id in or out of the save; `--occasion-axes dusk=clock.day` (or `--occasion-axes dusk=run.day,run.slot=night`, any varied path) evaluates that occasion once per value of that axis, blank elsewhere; `--relation at` prints who is where per cell. 0.27.0: `--axis run.aff.*=6,7` sets every member of a `per:` family, `--axis 'run.aff[run.route]=6,7'` only the member the `run.route` axis names in each cell (the others keep their seed or default); a bare `--axis run.aff` is a usage error naming both forms. |
 | `lute lore --project <DIR>` | Entries and beats by target and series, and which facts they reveal. |
 | `lute context <file> [--project <DIR>] [--node <kind:key> \| --at <file>:<line>:<column>] [--script <file>]… [--all-scripts] [--json]` | Everything legal to write here: directives (built-ins included) with their attributes, vocabulary, delivery flags, text modifiers, state (marking `owner: engine`), defs, relations with their tier and `reserved`, occasions with target domains, the cast, component signatures, and every scene, quest, and entry id. `--json` carries the `capabilitySnapshot` hash and `textModifiers` (the core `pause` / `speed` forms). Without `--project`, of the nearest `lute.project.yaml` above the file (0.27.0). |
-| `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | Advisory editorial lints (`L-*`), configured per project. The linear-VN metrics skip beats, components, quests, and lore. Since 0.26.0 it also reports `W-DISPLAY-NAME-DUP` (`--deny W-DISPLAY-NAME-DUP` accepts the code). |
+| `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | Advisory editorial lints (`L-*`), configured per project. The linear-VN metrics skip beats, components, quests, and lore. Since 0.26.0 it also reports `W-DISPLAY-NAME-DUP` (`--deny W-DISPLAY-NAME-DUP` accepts the code). Since 0.50 a `custom:` or plugin rule can use `target: node`, and the CEL fragment has `startsWith`/`endsWith`/`contains`. |
 | `lute doctor [--project <DIR>] [--strict]` | Toolchain and project setup: versions, active plugins, occasions with the number of beats answering each, play scripts and tests, whether the `lute-lsp` on `PATH` is this version, whether (0.24.0) it is the build beside the running `lute` (`lute-lsp beside lute`), and whether a running `lute-lsp` is stale (restart the editor). `--strict` (0.26.0) exits `1` when any check fails (`✗`). Since 0.26.0 `lute-lsp` itself notices that its binary was replaced and publishes one `lute-lsp-stale` "restart" diagnostic instead of an older build's results. |
 | `lute new scene\|quest\|lore\|schema <name> [--project <DIR>]` · `lute init [<DIR>] [--template minimal\|investigation\|beats]` | Scaffold a document or a project. New documents get an `id:` and omit what `defaults:` supplies. The file is named after the id, which keeps the case you type. `lute new scene <name> --occasion <OCCASION> [--target <prefix>.<member>]` writes a beat, checking both against the project; a targeted occasion needs `--target`. |
 
@@ -1645,6 +1709,8 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-REWARD-TARGET` | 0.26.0. A reward's `target=` breaks its kind's `target:` contract: not a member of the `{ entity: K }` kind, unknown to the `{ provider: … }`, or missing where `required: true`. |
 | `E-RULE-AGGREGATE-CYCLE` | 0.26.0. A rule's `count(…)` / `countDistinct(…)` reads a relation that depends on the rule's own head. Count only relations the head does not feed. |
 | `W-DISPLAY-NAME-DUP` | 0.26.0, whole-project `check` and `lute lint`. Two speakers are shown with the same display name: two cast `name:`s, a cast name and a `::use{… name="…"}` string, or two such strings. Rename one, or mark an intended role name `sharedName: true` on the cast entries. |
+| `E-PLUGIN-STAMP-SURFACE` | 0.50. A `stampAttrs` `on:` names something that is not `line`, `branch`, `hub`, `choice` or a stampable directive of the resolved profile (a typo, `jump`/`label`/`clear`, or a directive of an inactive plugin). Fix the name, or `depends:` on the plugin that declares the directive. |
+| `E-DIAGNOSTICS-CONFIG` | 0.50. A `diagnostics:` entry in `lute.project.yaml` is malformed or illegal: an `E-*` or `L-*` code, an unknown code, a bad level, or bad `paths`. Only `W-*` codes can be re-levelled. |
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. An entry that can be read again in a run (a lookup entry, no `once`, a `once` shorter than the run, `spentBy`, `for`) `::set`s, `::retract`s or calls an effect-only directive that writes: its writes apply on the first read in a run only. Use `<beat … once="false">` for a repeating write, `once="run"`, or a `when="!entry.<id>.read"` guard. `::assert` is exempt. |
 | `E-COMPONENT-ARG` | A `::use` argument does not fit its param, or names none. Since 0.26.0 also `@@x:` for a param that is not a `speaker` param, or outside a component. |
 | `E-UNKNOWN-ATTR` | An attribute the directive does not declare. Since 0.26.0 also `when=` on a directive that lowers to a built-in record (the core staging directives such as `::bg` and `::sfx`, `::end`, `::label`, a plugin `lower:` record), and a plugin attribute named `when`. |

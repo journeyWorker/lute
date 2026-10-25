@@ -518,3 +518,26 @@ It is reported once per project, at the declaration: the schema file's line, or 
 ### Guards over facts not written yet
 
 While a story is being written, a guard is often dead only because the scene that asserts its fact does not exist yet. `lute check --project <DIR> --wip` (dsl 0.23.0) reports `E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` as warnings when the guard is dead only because a relation has **no producer at all**: no seed, no `::assert` anywhere, no rule, and not `reserved:`. The warning's note says so. A relation that has producers but can never match the query stays an error, as does anything the dead content causes downstream, such as an `E-CONN-UNREACHABLE`. See [Work in progress](/language/beats/#work-in-progress).
+
+## Facts produced by reward effects
+
+A plugin [reward kind](/language/quests-and-scenes/#reward-effects) can declare `effects: { asserts, retracts }` (0.50). A fact such a reward writes is an ordinary fact. Whole-project `lute check` reads each effect **as if the matching `::assert` / `::retract` were written first at the owner's grant point**, so everything above applies to it: the May and Must sets, `E-QUEST-UNREACHABLE`, `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `W-FACT-GUARANTEED`, `W-RELATION-UNREAD` (a reward's assert is a producer) and `E-FACT-EXCLUSIVE`. Cast presence reads the effects too.
+
+| Reward | Grant point | Facts apply to |
+|---|---|---|
+| quest-level, no `outcome` | the quest's completion | every `<on event="questComplete">` body of the quest, and the completion state that flows along `after:` / `completed(...)` |
+| quest-level, `outcome="failed"` | the quest's failure | every `<on event="questFailed">` body, likewise |
+| objective-level | the objective's completion | the objective body's entry after `done`, and the objective-completion state |
+
+- An **unguarded assert** is in May and in Must from the grant point on.
+- A **guarded assert** (`<reward when="…">`) forks the way a guarded `::assert` does: it is in May always, and in Must only on the route where its guard holds. `lute check` keeps no `when ⇒ fact` implication, so after the grant the fact is *possible* only, and a guard testing it draws no `W-FACT-GUARANTEED`.
+- A **retract**, guarded or not, removes what it matches from Must, and is recorded in May for `E-FACT-EXCLUSIVE`.
+- Order within a reward: its `retracts`, then its `asserts`. Rewards go in declaration order, and objective rewards before quest rewards. Two rewards that assert and then retract the same fact leave it absent after the grant. One kind with both `retracts` and `asserts` of the same pattern leaves it present.
+- An `accepts` effect has no fact effect. It feeds [reachability](/connectivity/reachability/#edges-that-reward-effects-draw) and `W-QUEST-NEVER-ACCEPTED`.
+
+A reward with no `target=` that reads `@target` applies nothing, so it contributes no fact. `lute scenario knowledge` and `lute lore` name the reward as the producer:
+
+```text
+met(mira) — produced by reward BADGE of quest `firstVisit`
+```
+<!-- rerun-after-S8 -->
