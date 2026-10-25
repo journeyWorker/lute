@@ -18,7 +18,7 @@ import type { AudioPlay, AudioPort, PlayMode, PluginCall, Presenter, StageCue } 
 const decodeOutput = Schema.decodeUnknownSync(Runtime.Contract.Output)
 const decodeBindings = Schema.decodeUnknownSync(Bindings.Bindings)
 const bindings = decodeBindings({
-  bindingsVersion: "0.49",
+  bindingsVersion: "0.50",
   canvas: { width: 1920, height: 1080 },
   assets: { bg: "bg.png", actor: "actor.png", cg: "cg.png", video: "video.mp4", music: "music.ogg", sfx: "sfx.ogg" },
   volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 },
@@ -80,7 +80,7 @@ const runtimeAttrs = (position: string) => {
   return attrs
 }
 const bundle: Runtime.Bundle.Bundle = { index, artifacts: { "scene.json": { commands } } }
-const output = decodeOutput({ eventVersion: "0.49", await: { type: "idle" }, events: [
+const output = decodeOutput({ eventVersion: "0.50", await: { type: "idle" }, events: [
   { type: "record", document: "scene", record: { kind: "line", position: "001-0100", speaker: "guide", text: "Hello", lineId: "line-1", voiceKey: "voice-1" } },
   { type: "record", document: "scene", record: { kind: "bg", position: "001-0200", attrs: { location: "foyer", time: "night", assetId: "bg" } } },
   { type: "record", document: "scene", record: { kind: "actor", position: "001-0300", attrs: { character: "guide", emotion: "happy", action: "enter" } } },
@@ -189,7 +189,7 @@ describe("CueFactory", () => {
     expect(stop?.timing.wait).toBe(false)
   }))
   it.effect("normalizes timing defaults by cue kind", () => Effect.gen(function* () {
-    const localOutput = decodeOutput({ eventVersion: "0.49", await: { type: "idle" }, events: [{ type: "record", document: "scene", record: { kind: "video", position: "001-0500", attrs: { assetId: "video", display: "show" } } }, { type: "record", document: "scene", record: { kind: "line", position: "001-0100" } }, { type: "record", document: "scene", record: { kind: "sequence", position: "001-0800", attrs: { name: "intro" } } }] })
+    const localOutput = decodeOutput({ eventVersion: "0.50", await: { type: "idle" }, events: [{ type: "record", document: "scene", record: { kind: "video", position: "001-0500", attrs: { assetId: "video", display: "show" } } }, { type: "record", document: "scene", record: { kind: "line", position: "001-0100" } }, { type: "record", document: "scene", record: { kind: "sequence", position: "001-0800", attrs: { name: "intro" } } }] })
     const cues = yield* factory.fromOutput(localOutput, new Set(), "en")
     expect(cues.map((cue) => cue.timing.wait)).toEqual([true, true, true])
   }))
@@ -316,7 +316,7 @@ describe("CueFactory", () => {
   }))
 
   it("collects a restored stage's files with the same resolution its cues and music use", () => {
-    const unbound = decodeBindings({ bindingsVersion: "0.49", canvas: { width: 1, height: 1 }, music: { moods: { calm: "calm.ogg" } } })
+    const unbound = decodeBindings({ bindingsVersion: "0.50", canvas: { width: 1, height: 1 }, music: { moods: { calm: "calm.ogg" } } })
     const stage = { actors: [], bg: { assetId: "bg/hall.png" }, cg: { assetId: "cg/one.png" }, music: { assetId: "bgm/theme.ogg", mood: "calm" } }
     expect(CueFactory.stageFiles(unbound, stage)).toEqual(["bg/hall.png", "cg/one.png", "bgm/theme.ogg"])
     expect(CueFactory.stageMusic(unbound, stage)?.file).toBe("bgm/theme.ogg")
@@ -326,7 +326,7 @@ describe("CueFactory", () => {
   })
 
   it.effect("a bg or music record with an unmapped assetId names that file, as its restored stage does", () => Effect.gen(function* () {
-    const unbound = decodeBindings({ bindingsVersion: "0.49", canvas: { width: 1, height: 1 } })
+    const unbound = decodeBindings({ bindingsVersion: "0.50", canvas: { width: 1, height: 1 } })
     const local = CueFactory.make({ bundle: { index, artifacts: { "scene.json": { commands: [
       { kind: "bg", family: "staging", position: "003-0100", assetId: "bg/hall.png" },
       { kind: "music", family: "staging", position: "003-0200", assetId: "bgm/theme.ogg" }
@@ -415,7 +415,7 @@ describe("CueFactory", () => {
 
 const stagingKinds: Record<string, true> = { bg: true, music: true, sfx: true, vfx: true, actor: true, camera: true, cg: true, video: true, sequence: true }
 const recordsOutput = (records: ReadonlyArray<Readonly<Record<string, unknown>>>) =>
-  decodeOutput({ eventVersion: "0.49", await: { type: "idle" }, events: records.map((record) => {
+  decodeOutput({ eventVersion: "0.50", await: { type: "idle" }, events: records.map((record) => {
     if (!stagingKinds[String(record.kind)] || record.attrs !== undefined) return { type: "record", document: "scene", record }
     const source = commands.find((command) => command.position === record.position)
     const attrs = source === undefined ? {} : Object.fromEntries(Object.entries(source).filter(([key]) => !["kind", "family", "position", "timing"].includes(key)))

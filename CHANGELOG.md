@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.49.1`, the grammar and semantics the checker
+- **Language** — currently `0.50.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.49.1`) and gated on by consuming engines.
+  artifact (currently `0.50.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,274 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.50.0]
+
+**Authoring extensibility** (spec
+[`0.50.0.md`](docs/proposals/scenario-dsl/0.50.0.md); plan
+[`2026-10-26-lute-0.50.0-extensibility.md`](docs/superpowers/plans/2026-10-26-lute-0.50.0-extensibility.md);
+decisions [`2026-10-25-lute-0.50-decisions.md`](docs/superpowers/notes/2026-10-25-lute-0.50-decisions.md);
+options [`0.50-extensibility-options.md`](docs/design/0.50-extensibility-options.md)).
+The release answers the large-port dogfood issues #162, #163, #164, #166,
+#169, #172 and #177 with authoring surface and no new control flow: there is
+**no new keyword and no new element**. It adds two plugin manifest keys
+(`stampAttrs[].on`, `rewardKinds.<K>.effects`), one plugin export
+(`hostTokens`), one project manifest key (`diagnostics:`) and one lint target
+(`node`), and fixes the defects found on the way (#200, #203, #204, #205).
+Every axis reads `0.50.0`; the contract schemas move to the `0.50` line
+(`schemas/lute-{ir,events,snapshot,player-bindings}-0.50.schema.json`),
+`bindingsVersion` is `"0.50"` and the player's save/profile format is
+`"0.50"`. The seven npm packages align to `0.50.0`. Every report id is
+unchanged, and `capabilitySnapshot` moves only for a manifest that uses a new
+key. This is a clean cutover (ADR D6).
+
+### Breaking
+
+| Class (D6) | Change | Migration |
+|---|---|---|
+| Plugin | A cross-cutting `stampAttrs` entry with `required: true` is refused at load (`E-PLUGIN-PARSE`; it was a silent no-op) (§3.2; #163). | Add `on: […]`, or drop `required`. |
+| Plugin | A scoped stamp shadowed by its surface's own attribute (`E-PLUGIN-RESERVED-STAMP-ATTR`), or naming no stampable surface (`E-PLUGIN-STAMP-SURFACE`), is refused (§3.2). | New declarations only. |
+| IR (additive) | `choice` / `hub` option entries gain `stamps`; the `choice` / `hub` record's `stamps` carries the element's stamps; `RewardEntry` gains `retracts` / `asserts` / `accepts` (§3.5, §5.5). | Engines MAY read them. An engine that does not implement `lute.quest.rewardEffects/1` refuses an artifact that needs it (D5). |
+| Semantic | Reward effects are applied at the grant and read by every analysis (§5). | New declarations only. |
+| Language (looser) | A declared host token is a valid `{{…}}` form (§4). | None. |
+| CLI (additive) | `diagnostics:` levels; the `[project]` marker and JSON `configured`; `suppressed` counts (§6). `compile` fails on a `--deny` / `--deny-warnings`-promoted check warning (#204). | None without the key; a build that relied on `compile` ignoring `--deny` drops the flag. |
+| Lint (additive) | `target: node`; the string members `startsWith`, `endsWith`, `contains` (§8). | None. |
+| Rust API | `CapabilitySnapshot.stamp_attrs: StampAttrs` (`lute_manifest::stamps`); `CapabilitySnapshot.host_tokens`; `RewardKindDecl.effects`; `ProjectConfig.diagnostics` / `diagnostics_diags`; `lute_lint::glob` moved to `lute_manifest::glob` (no re-export); `InterpKind::Reserved` means "a host token"; `LintTarget::Node`; `lute_syntax::authored_attrs`. | Follow the types; the PR carries `api-change`. |
+| TS API | `ChoiceView.stamps` and option `stamps` (player ports); regenerated `Ir.ts` (option `stamps`, `RewardEntry` effects). | Additive. |
+| Release | All axes `0.50.0`; schemas `-0.50`; `bindingsVersion` and saves `"0.50"`. | Widen gates from `0.49` to `0.50`; a `"0.49"` save is refused as every minor's is. |
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- **Reward effects.** A reward kind may declare `effects:` —
+  `retracts`, `asserts` and `accepts` — that every `<reward kind="K">` of that
+  kind performs when it is granted, `@target` binding the reward's `target=`.
+  The checker resolves them once per project pass (`GrantTable`) and every
+  analysis reads them: an `accepts` is a way into its quest (no false
+  `E-QUEST-UNREACHABLE` / `W-QUEST-NEVER-ACCEPTED`), a reward's asserts feed
+  the May set, producers, fact edges, knowledge, lore and endings, and its
+  retracts remove. A reward's asserts are **possible only**, never Must: a
+  `judge: before` occasion defers lifecycle handlers, so other grants and the
+  occasion's beats may run in between. Per-reward checks report fact faults
+  at `kind=`, prefixed `` `<reward kind="K">` asserts `f(x)` (its kind's
+  `effects`): ``, and an `accepts` target with `E-ACCEPT-TARGET`. (#169)
+- **Required stamps.** A stamp declared `required: true` on its `on:`
+  surfaces is `E-MISSING-ATTR` where it is absent (a line, a directive, or the
+  whole `<branch>` / `<hub>` / `<choice>` element). (#163)
+- **Stamps on logic elements.** `<branch>`, `<hub>` and `<choice>` admit a
+  plugin stamp whose `on:` names them, typed by its declaration (`@ref` values
+  included: `E-REF-TYPE`, and the folded value `E-BAD-ENUM` / `E-ATTR-TYPE`).
+  A stamp scoped elsewhere is `E-UNKNOWN-ATTR` naming its surfaces. (#164)
+- **Host tokens.** A bare identifier `{{name}}` resolves against the host
+  tokens the snapshot declares (`lute.core` declares `userName`); its format
+  hint is typed by the token (`string` / enum take text hints, `int` number
+  hints, else `E-REF-TYPE`). An undeclared one stays `E-CEL-PROFILE`, now
+  naming the declared tokens and the `hostTokens:` export. `{{run}}` /
+  `{{true}}` keep their 0.49 diagnostics. (#162)
+- **A deferred lifecycle handler's own guard** adds to Must only facts that
+  outlast a deferral (monotone and not `tier: season:<name>`), so a
+  `questComplete` / `questFailed` handler no longer reports a false
+  `E-ARM-DEAD` / `W-FACT-GUARANTEED` for a fact a `chapterEnd` beat retracts.
+  (#203)
+- **A quest's `start=` facts** enter Must in its body only when they outlast
+  the quest (`tier: user` / `app`, `tier: run` in a `tier="run"` quest,
+  `tier: season:<s>` in a `tier="season:<s>"` quest); otherwise they are
+  possible only, since a `newRun` or a season opening resets them while the
+  quest stays active. (#205)
+
+### IR
+
+- `choice` / `hub` option entries carry their `<choice>`'s plugin `stamps`
+  (omitted when none is authored), and the record's existing `stamps` holds
+  the `<branch>` / `<hub>` element's stamps. (#164)
+- `RewardEntry` gains `retracts`, `asserts` (fact records) and `accepts`
+  after `credits`, resolved from the kind's `effects` with `@target` bound;
+  omitted when empty. New semantic id **`lute.quest.rewardEffects/1`**,
+  collected only by an artifact with a reward effect. (#169)
+- Host tokens compile to the existing `reserved` placeholder; no new field.
+- Every corpus document's IR, `capabilitySnapshot` and `requiredSemantics` are
+  unchanged. The schema file is `schemas/lute-ir-0.50.schema.json`
+  (`rewardEntry` effects and `$defs/factRecord`, option `stamps`).
+
+### Plugin
+
+- **`stampAttrs[].on`** names the surfaces a stamp applies to: `line`,
+  `branch`, `hub`, `choice`, or a directive tag with a stamp carrier. Without
+  `on:` a stamp keeps the 0.49 meaning (every stamped directive and content
+  line, never a logic element). Load faults are `E-PLUGIN-PARSE` (an empty or
+  malformed `on:`, a cross-cutting `required: true`); assembly refuses an
+  unknown surface (`E-PLUGIN-STAMP-SURFACE`), a scoped stamp shadowed by its
+  surface's own attribute (`E-PLUGIN-RESERVED-STAMP-ATTR`), and overlapping
+  (name, surface) declarations (`E-PLUGIN-DUP-ID` in a package,
+  `E-PLUGIN-DUP-ACROSS` across plugins); each refusal drops only its own
+  entry. The `capabilitySnapshot` folds `on:` only for scoped entries. (#163,
+  #164)
+- **`hostTokens`** export (`hosttokens/*.yaml`): `name: { type: string | int
+  | { enum: [...] } }`. A name is an identifier (else `E-PLUGIN-PARSE`); a
+  state root or CEL literal is `E-PLUGIN-RESERVED-NAME`; a name another plugin
+  or `lute.core` declares is `E-PLUGIN-DUP-ACROSS`. Only non-core tokens fold
+  into `capabilitySnapshot`; `lute context` lists `hostTokens` once one
+  exists; LSP hover names the token's type and plugin. (#162)
+- **`rewardKinds.<K>.effects`** (`asserts`, `retracts`, `accepts`), checked
+  like directive fact effects; `@target` is the only reference, and a reward
+  state write is `credits:` (`effects.writes` is `E-PLUGIN-KEY`). A kind
+  without `effects` keeps its `capabilitySnapshot`. (#169)
+- `schemas/lute.plugin.json` gains `on`, `hostTokens` and `rewardEffects`.
+
+### Bindings
+
+- None. `bindingsVersion` is `"0.50"`.
+
+### CLI
+
+- **Project diagnostic levels.** `lute.project.yaml` `diagnostics:` maps a
+  `W-*` code to `off` / `info` / `warn` / `error`, optionally `{ level, paths
+  }` with project-relative globs. Applied at the reporting boundary of
+  `check`, `compile`, `trace`, `expr` and `lint` (never to analyses,
+  artifacts or verdicts; the simulating `test`, `play` and `calendar` keep
+  native results). `--deny CODE` beats the config; `--deny-warnings` promotes
+  what is still a warning. A relevelled diagnostic carries `[project]` (human)
+  and `"configured": "lute.project.yaml"` (JSON); summaries append `, N
+  suppressed by lute.project.yaml` and reports gain `suppressed` only when
+  non-zero. A malformed entry is `E-DIAGNOSTICS-CONFIG`. The LSP applies the
+  same levels. (#166)
+- `compile <FILE>` and `compile -o` fail on every promoted check warning (a
+  project `error` level, `--deny`, `--deny-warnings`): diagnostics printed,
+  exit `1`, no IR written. (#204)
+- `lute run` / `lute play` / `lute trace` print a reward effect as `(effect
+  of reward <KIND>)`; `lute lore` and `scenario knowledge` name reward
+  producers.
+- Every report id is unchanged; every other output is identical to 0.49.1
+  apart from stamps and the classes the spec's §14 lists.
+
+### Lint
+
+- **`target: node`** (plugin `lints:` exports and `lute.lint.yaml`
+  `custom:`): one row per node in document order — lines, directives and
+  every logic element — binding `node` (`kind`, `tag`, `speaker`, `attrs` as
+  authored, position, depth, section, `prev` / `next`, `parent` and the
+  borrowed `preceding` map), `scene` and `options`; findings anchor at the node. The
+  walk runs only when a node rule is active. Guarded recipes for adjacency,
+  pairing and dependent attribute domains are in `docs/linting.md`. (#172,
+  #177)
+- String members `startsWith`, `endsWith`, `contains` (both operands strings,
+  else `E-LINT-EXPR`).
+- `E-LINT-CONFIG` names `lute.project.yaml` `diagnostics:` for a checker code
+  in `rules:`.
+- `lute-bench lint-nodes` measures the node walk's growth.
+
+### Runtime
+
+- A granted reward's effects run after its `grant` record, in the order
+  retracts, asserts, accepts, each record naming its grant (`grant: { quest,
+  instance, index, objective?, kind }`) through the one assert/retract/accept
+  path every source uses. `conformance/reward-effects` covers the eight cases.
+  (#169)
+- Host-token markers stay verbatim in rendered text; the host substitutes.
+
+### Player
+
+- `ChoiceView.stamps` and each option's `stamps`, read from the IR command;
+  omitted when none is authored. (#164)
+- The cue index reads only IR commands, never a `stamps` map whose keys
+  happen to be `kind` / `position`. (#200)
+- The save and profile format version is `"0.50"`, so a 0.49 save is refused
+  `SaveIncompatible`.
+
+### Diagnostics
+
+- New: `E-PLUGIN-STAMP-SURFACE` (plugin assembly) and `E-DIAGNOSTICS-CONFIG`
+  (project manifest).
+- Changed messages, sites and `--explain` text: `E-UNKNOWN-ATTR`,
+  `E-MISSING-ATTR`, `E-PLUGIN-PARSE`, `E-PLUGIN-DUP-ID`,
+  `E-PLUGIN-DUP-ACROSS`, `E-PLUGIN-RESERVED-STAMP-ATTR`,
+  `E-PLUGIN-RESERVED-NAME` (and `E-RESERVED-NAME`'s shared table),
+  `E-PLUGIN-KEY`, `E-CEL-PROFILE`, `E-ACCEPT-TARGET`,
+  `W-QUEST-NEVER-ACCEPTED` ("no `::accept` or reward `accepts`"),
+  `W-STAGE-ABSENT` (the line hint names a plugin directive declared `lower: {
+  record: actor, fields: { character: { fromAttr: character } } }`; #166),
+  `E-LINT-CONFIG`.
+
+### Identity
+
+- None. Line ids and voice keys do not move; `eventVersion` /
+  `snapshotVersion` read `0.50.0`.
+
+### Fixed
+
+- **A project can declare its own host tokens.**
+  ([#162](https://github.com/journeyWorker/lute/issues/162))
+- **A stamp can be scoped to named surfaces, and `required` on it is
+  enforced instead of silently ignored.**
+  ([#163](https://github.com/journeyWorker/lute/issues/163))
+- **`<branch>` / `<hub>` / `<choice>` accept the plugin stamps scoped to
+  them.** ([#164](https://github.com/journeyWorker/lute/issues/164))
+- **`W-*` codes can be silenced or promoted per path, and the
+  `W-STAGE-ABSENT` hint names a lowering that stages the speaker.**
+  ([#166](https://github.com/journeyWorker/lute/issues/166); the line flag
+  and `staging: implicit` are not developed)
+- **A reward can assert, retract and accept; content gated on a
+  reward-produced fact or accept is no longer a false `E-QUEST-UNREACHABLE` /
+  `W-QUEST-NEVER-ACCEPTED`.**
+  ([#169](https://github.com/journeyWorker/lute/issues/169))
+- **Per-node lint predicates (adjacency, order, attributes).**
+  ([#172](https://github.com/journeyWorker/lute/issues/172): the `node`
+  target; `pair` is 0.51)
+- **An attribute domain that depends on another attribute is a guarded node
+  lint recipe.** ([#177](https://github.com/journeyWorker/lute/issues/177);
+  no new type)
+- **The player no longer indexes a stamp map as a command.**
+  ([#200](https://github.com/journeyWorker/lute/issues/200))
+- **No false `E-ARM-DEAD` / `W-FACT-GUARANTEED` in a deferred lifecycle
+  handler from its own `when=`.**
+  ([#203](https://github.com/journeyWorker/lute/issues/203))
+- **`compile` honours `--deny` / `--deny-warnings` on check warnings.**
+  ([#204](https://github.com/journeyWorker/lute/issues/204))
+- **No false `E-ARM-DEAD` / `W-FACT-GUARANTEED` in a quest body from a
+  `start=` fact a `newRun` or season opening resets.**
+  ([#205](https://github.com/journeyWorker/lute/issues/205))
+
+### Documentation
+
+- Website (EN/KO) and `llms-full.txt`: scoped and required stamps, host
+  tokens and reward effects (`plugins/manifests`, `plugins/concepts`,
+  `language/*`), reward-produced facts (`state/facts-and-datalog`), reward
+  accept and fact edges (`connectivity/reachability`), node lints
+  (`tooling/linting`), `diagnostics:` (`tooling/cli`), the runtime contract,
+  `reference/reserved-names` and `reference/diagnostics`;
+  `docs/runtime/{quest-lifecycle,event-contract,state-lifecycle,execution-model}.md`.
+- New guide **Porting a content set** (EN/KO) collecting the port recipes,
+  and the example project `docs/examples/plugin-surfaces/`.
+
+### Out of scope
+
+- **0.51:** #159 bounded backward `::jump`; #170 declared `effects.raises` and
+  occasion `raisedBy: declared`; #165 attribute type `text`; #172 lint
+  `target: pair`; #176 list attribute values (only if still needed).
+- **Not developed:** the #166 line flag and frontmatter `staging: implicit`;
+  #170 A/B; #159's host flow effect; #163 B/C; #169 B/C; #172 B; #172/#177
+  `enumBy`; #176 `map` / `record`.
+- **Found, not fixed:** reward kind `attrs:` are declared but cannot be
+  authored on `<reward>`
+  ([#201](https://github.com/journeyWorker/lute/issues/201)). LSP stamp
+  completion does not exist. The reference player renders host-token markers
+  verbatim (the host substitutes), as for `userName`.
+
+### Migration notes
+
+| Class | Change | Migration |
+|---|---|---|
+| Plugin | A cross-cutting `required: true` stamp fails to load. | Add `on: […]`, or drop `required`. |
+| IR | Option `stamps`, element stamps on `choice` / `hub`, `RewardEntry` effects, `lute.quest.rewardEffects/1`. | Read them when needed; implement the semantic id before running artifacts that need it; gate on `0.50`. |
+| CLI | `compile` fails on `--deny` / `--deny-warnings`-promoted check warnings. | Fix the warnings or drop the flags. |
+| Player | Saves are `"0.50"`. | Re-save. |
+| Release | All axes `0.50.0`; schemas `-0.50`; `bindingsVersion: "0.50"`. | Widen gates from `0.49` to `0.50`. |
+
+From 0.49.1: run `lute fix` to raise `luteVersion` stamps to `0.50.0` and
+`bindingsVersion` to `"0.50"`.
 
 ## [0.49.1]
 

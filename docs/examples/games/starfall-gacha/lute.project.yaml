@@ -16,7 +16,7 @@ profiles:
   starfall:
     plugins: { starfall.engine: true }
 defaults:
-  luteVersion: "0.49.1"
+  luteVersion: "0.50.0"
   uses:
     - schema/world.schema.yaml
     - schema/roster.schema.yaml

@@ -2,6 +2,6 @@ defaultProfile: default
 profiles:
   default: {}
 defaults:
-  luteVersion: "0.49.1"
+  luteVersion: "0.50.0"
   uses:
     - world.schema.yaml

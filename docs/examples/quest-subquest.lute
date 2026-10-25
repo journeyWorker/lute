@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.49.1"
+luteVersion: "0.50.0"
 title: Act 1 — Save the Grove (subquest tree)
 state:
   run.act:               { type: int, default: 0 }
