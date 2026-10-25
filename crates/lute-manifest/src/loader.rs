@@ -9,9 +9,9 @@ use std::path::Path;
 use crate::schema::{
     AssetKindDecl, AssetKindsFile, AttrDecl, BridgeCapability, BridgeFile, CastFile, CastMember,
     DefDecl, DefsFile, DirectiveDecl, DirectivesFile, EnumsFile, EventDecl, EventsFile,
-    FrontmatterFile, LintsFile, OccasionBody, OccasionDecl, OccasionTarget, OccasionsFile,
-    PluginManifest, ProviderDecl, ProvidersFile, RewardKindDecl, RewardKindsFile, StampAttrsFile,
-    StateFile, StateShape, StateTemplate,
+    FrontmatterFile, HostTokenType, HostTokensFile, LintsFile, OccasionBody, OccasionDecl,
+    OccasionTarget, OccasionsFile, PluginManifest, ProviderDecl, ProvidersFile, RewardKindDecl,
+    RewardKindsFile, StampAttrsFile, StateFile, StateShape, StateTemplate,
 };
 use crate::types::{type_str, Type};
 
@@ -57,6 +57,12 @@ pub struct LoadedPlugin {
     /// names. Folded into [`crate::snapshot::CapabilitySnapshot::cast`] at
     /// assembly as a guarded `capabilitySnapshot` section.
     pub cast: Vec<CastMember>,
+    /// 0.50.0 §4.1 `hosttokens/*.yaml`: the bare `{{name}}` tokens the
+    /// engine substitutes, by name. Each name is an identifier; assembly
+    /// refuses a reserved one and one another plugin (or `lute.core`)
+    /// declares, and folds the rest into
+    /// [`crate::snapshot::CapabilitySnapshot::host_tokens`].
+    pub host_tokens: BTreeMap<String, HostTokenType>,
     /// Where each named declaration sits in the package's files — kind
     /// (`directive`, `event`, `occasion`, `rewardKind`, `cast`, …) → name →
     /// `path:line:column` of its FIRST declaration — so an error assembly
@@ -196,6 +202,7 @@ pub const EXPORT_KINDS: &[&str] = &[
     "occasions",
     "lints",
     "cast",
+    "hostTokens",
 ];
 
 /// Export keys renamed in 0.28 (old → new); the old spelling is refused with
@@ -457,6 +464,7 @@ fn load_package(
         occasions: Vec::new(),
         lints: Vec::new(),
         cast: Vec::new(),
+        host_tokens: BTreeMap::new(),
         sites: BTreeMap::new(),
         invalid: Vec::new(),
     };
@@ -795,6 +803,26 @@ fn load_package(
                     e,
                 );
             }),
+            "hostTokens" => read_kind::<HostTokensFile, _>(dir, &path, &mut errs, |f, src, e| {
+                for name in f.host_tokens.keys() {
+                    let at = key_offset(src.text, &["hostTokens", name]);
+                    check_name(host_token_fault(name), at, src, e);
+                }
+                let items = f
+                    .host_tokens
+                    .into_iter()
+                    .filter(|(name, _)| crate::ident::is_ident(name))
+                    .map(|(name, body)| (name, body.ty));
+                merge_keyed(
+                    &mut out.host_tokens,
+                    sites,
+                    items,
+                    "hostToken",
+                    keyed("hostTokens"),
+                    src,
+                    e,
+                );
+            }),
             _ => unreachable!("every EXPORT_KINDS entry has an arm"),
         }
     }
@@ -1075,6 +1103,17 @@ fn check_name(
             msg,
         });
     }
+}
+
+/// Why `name` cannot be a host token (0.50.0 §4.1): it is written bare
+/// inside `{{…}}`, so it is an identifier, not merely a name.
+fn host_token_fault(name: &str) -> Option<String> {
+    (!crate::ident::is_ident(name)).then(|| {
+        format!(
+            "host token `{name}` is not an identifier (letters, digits and `_`, not starting \
+             with a digit)"
+        )
+    })
 }
 
 /// Byte offset of the first whole-word occurrence of `word` in `text` at or
@@ -1722,6 +1761,7 @@ fn top_level_shape(key: &str) -> Option<&'static str> {
         "occasions" => "`occasions:` maps each occasion name to its declaration: `occasions: { talk: { select: first } }`",
         "rewardKinds" => "`rewardKinds:` maps each kind to its declaration: `rewardKinds: { GOLD: {} }`",
         "cast" => "`cast:` maps each speaker id to its declaration: `cast: { mira: { name: Mira } }`",
+        "hostTokens" => "`hostTokens:` maps each token name to its declaration: `hostTokens: { playerName: { type: string } }`",
         "enums" => "`enums:` maps each enum name to its members: `enums: { mood: [calm, tense] }`",
         "events" => "`events:` is a list: `events: [ { name: combatEnd } ]`",
         "directives" => "`directives:` is a list: `directives: [ { name: give, attrs: [ { name: item, type: string } ] } ]`",

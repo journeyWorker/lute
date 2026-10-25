@@ -666,6 +666,37 @@ pub fn assemble_snapshot(
             cast_owner.insert(c.id.clone(), ap.id.clone());
             snap.cast.insert(c.id.clone(), c.clone());
         }
+        // 0.50.0 §4.1: host tokens — a reserved name is refused and dropped
+        // (it would never classify as a token), and one name has one owner,
+        // `lute.core` included (`userName`).
+        for (name, ty) in &pkg.host_tokens {
+            if let Some(why) = reserved_why(
+                crate::reserved::Slot::HostToken,
+                "a plugin host token",
+                name,
+                false,
+            ) {
+                errs.push(AssembleError::ReservedName {
+                    id: name.clone(),
+                    plugin: ap.id.clone(),
+                    why,
+                    site: pkg.site("hostToken", name).map(str::to_string),
+                });
+                continue;
+            }
+            if let Some(first) = snap.host_tokens.get(name) {
+                let first = first.plugin.clone();
+                errs.push(merging.duplicate("hostToken", "hostToken", name, &first));
+                continue;
+            }
+            snap.host_tokens.insert(
+                name.clone(),
+                crate::schema::HostTokenDecl {
+                    ty: ty.clone(),
+                    plugin: ap.id.clone(),
+                },
+            );
+        }
         for b in &pkg.bridge {
             let id = format!("{}.{}", b.service, b.operation);
             let k = (b.service.clone(), b.operation.clone());

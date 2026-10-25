@@ -227,6 +227,7 @@ fn assembled_snapshot(directives: Vec<DirectiveDecl>, stamps: &[&str]) -> Capabi
         occasions: Vec::new(),
         lints: Vec::new(),
         cast: Vec::new(),
+        host_tokens: BTreeMap::new(),
         sites: Default::default(),
         invalid: Vec::new(),
     };

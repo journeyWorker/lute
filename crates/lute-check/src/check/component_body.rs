@@ -56,7 +56,7 @@ pub(crate) fn validate_components(
         };
         // dsl 0.24.0 §4: a `speaker` param is this host's cast ids.
         let params = crate::component_effects::host_param_types(&def.params, &def.speakers, cast);
-        let env = component_env(&params);
+        let env = component_env(&params, host);
         let ctx = Ctx {
             env: &env,
             in_match: false,
@@ -369,8 +369,9 @@ pub(crate) fn project_relative_display(src: &std::path::Path) -> String {
 
 /// The component-mode analysis environment (dsl §13): the params are the ONLY ref
 /// namespace (each a 0-arity `@param`), and the state schema is EMPTY so any
-/// scene/run/user/app read in a body is undeclared.
-fn component_env(params: &[(String, Type)]) -> Env {
+/// scene/run/user/app read in a body is undeclared. The host tokens are the
+/// importing document's (`host`): the snapshot's, which a body may render.
+fn component_env(params: &[(String, Type)], host: &Env) -> Env {
     let mut defs = std::collections::BTreeSet::new();
     let mut def_types = std::collections::BTreeMap::new();
     let mut def_params = std::collections::BTreeMap::new();
@@ -396,6 +397,7 @@ fn component_env(params: &[(String, Type)]) -> Env {
         terminal_persists: false,
         seasons: Default::default(),
         occasion_scopes: Default::default(),
+        host_tokens: std::sync::Arc::clone(&host.host_tokens),
     }
 }
 
@@ -517,8 +519,13 @@ fn component_interp_scan(
     };
     for interp in interps {
         match interp.kind {
-            InterpKind::Reserved => check_interp_format(interp, ctx.env, false, diags),
-            InterpKind::Path => {
+            // 0.50.0 §4.2: a declared host token renders in a body too; an
+            // undeclared bare name is read as the ambient state it was in
+            // 0.49 (or a missing `@` before a param), below.
+            InterpKind::Reserved if ctx.env.host_tokens.contains_key(&interp.raw) => {
+                check_interp_format(interp, ctx.env, false, diags);
+            }
+            InterpKind::Reserved | InterpKind::Path => {
                 let has_dollar = scan_refs(&interp.raw).iter().any(|r| r.is_dollar);
                 if has_dollar {
                     check_interp_referent(&interp.raw, interp, &interp_ctx, true, diags);
@@ -549,7 +556,7 @@ fn component_interp_scan(
             }
             InterpKind::Ref => {
                 if !is_bare_ref(&interp.raw) {
-                    diags.push(interp_grammar_diag(&interp.raw, interp.span));
+                    diags.push(interp_grammar_diag(&interp.raw, interp.span, ctx.env));
                     continue;
                 }
                 check_interp_referent(&interp.raw, interp, &interp_ctx, true, diags);

@@ -1452,6 +1452,7 @@ fn fold_env_in(
         terminal_persists,
         seasons,
         occasion_scopes,
+        host_tokens: Arc::new(snapshot.host_tokens.clone()),
     };
     let member_envs = member_envs(&env);
     let declared_cast = crate::cast::declared_cast(snapshot, imports, &typed.cast);

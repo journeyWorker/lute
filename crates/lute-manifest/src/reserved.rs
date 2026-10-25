@@ -39,6 +39,8 @@ pub enum Slot {
     Event,
     /// A directive a plugin declares.
     Directive,
+    /// A host token a plugin declares (0.50.0 §4.1).
+    HostToken,
     /// A beat template's param.
     BeatTemplateParam,
     /// A component's param.
@@ -62,6 +64,7 @@ impl Slot {
             Slot::Occasion => "plugin occasion",
             Slot::Event => "plugin event",
             Slot::Directive => "plugin directive",
+            Slot::HostToken => "plugin host token",
             Slot::BeatTemplateParam => "beat template param",
             Slot::ComponentParam => "component param",
         }
@@ -72,7 +75,9 @@ impl Slot {
     /// are `E-TEMPLATE`'s, everything a project declares `E-RESERVED-NAME`.
     pub fn code(self) -> &'static str {
         match self {
-            Slot::Occasion | Slot::Event | Slot::Directive => "E-PLUGIN-RESERVED-NAME",
+            Slot::Occasion | Slot::Event | Slot::Directive | Slot::HostToken => {
+                "E-PLUGIN-RESERVED-NAME"
+            }
             Slot::BeatTemplateParam | Slot::ComponentParam => "E-TEMPLATE",
             _ => "E-RESERVED-NAME",
         }
@@ -99,6 +104,14 @@ pub const STATE_ROOTS: &[&str] = &[
 
 /// CEL's literal words.
 pub const CEL_LITERALS: &[&str] = &["true", "false", "null"];
+
+/// The names a host token cannot take (0.50.0 §4.1): a bare `{{run}}` reads
+/// as a state root and a bare `{{true}}` as the literal, so neither is ever
+/// classified as a host token.
+pub const HOST_TOKEN_RESERVED: &[&str] = &[
+    "scene", "run", "user", "app", "quest", "entry", "prev", "clock", "occasion", "season", "true",
+    "false", "null",
+];
 
 /// CEL's reserved words (besides its literals): none can be written as an
 /// identifier, so none can be a path segment or a relation.
@@ -185,6 +198,19 @@ const PERIODS: &[&str] = &["run", "user", "day", "week", "slot"];
 /// The table. [`refusal`] takes the first row naming both the name and the
 /// slot, so a more specific row comes first.
 pub const GROUPS: &[Group] = &[
+    Group {
+        names: HOST_TOKEN_RESERVED,
+        slots: &[Slot::HostToken],
+        is: "a state root or a CEL literal: `{{run}}` would read as a state root and `{{true}}` \
+             as the literal, never as a host token",
+        says: |name, _| {
+            if CEL_LITERALS.contains(&name) {
+                format!("a CEL literal: `{{{{{name}}}}}` would read as the literal")
+            } else {
+                format!("a state root: `{{{{{name}}}}}` would read as a state root")
+            }
+        },
+    },
     Group {
         names: &["unset"],
         slots: &[Slot::EntityMember, Slot::EnumMember, Slot::Id],
@@ -464,7 +490,7 @@ pub fn instead(name: &str, slot: Slot) -> String {
     };
     let generic = matches!(
         slot,
-        Slot::Occasion | Slot::Event | Slot::Season | Slot::Def | Slot::Directive
+        Slot::Occasion | Slot::Event | Slot::Season | Slot::Def | Slot::Directive | Slot::HostToken
     );
     if let (Some(word), false) = (fixed, generic) {
         return word.to_string();
@@ -481,6 +507,7 @@ pub fn instead(name: &str, slot: Slot) -> String {
         Slot::Def => format!("is{cap}"),
         Slot::Relation => format!("is{cap}"),
         Slot::Directive | Slot::BeatTemplateParam | Slot::ComponentParam => format!("my{cap}"),
+        Slot::HostToken => format!("host{cap}"),
         _ => format!("the{cap}"),
     }
 }

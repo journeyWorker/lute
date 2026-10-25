@@ -744,6 +744,7 @@ mod tests {
             occasions: vec![],
             lints: vec![],
             cast: vec![],
+            host_tokens: Default::default(),
             sites: Default::default(),
             invalid: Vec::new(),
         }

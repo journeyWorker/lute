@@ -50,6 +50,7 @@ fn plugin_with_directive(id: &str, dname: &str) -> LoadedPlugin {
         occasions: vec![],
         lints: vec![],
         cast: vec![],
+        host_tokens: BTreeMap::new(),
         sites: Default::default(),
         invalid: Vec::new(),
     }

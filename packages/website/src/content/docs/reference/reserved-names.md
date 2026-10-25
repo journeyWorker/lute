@@ -25,6 +25,7 @@ names already mean, and the code that reports them.
 <!-- reserved-names:begin -->
 | Names | Refused as | Because it is | Code |
 | --- | --- | --- | --- |
+| `scene` `run` `user` `app` `quest` `entry` `prev` `clock` `occasion` `season` `true` `false` `null` | plugin host token | a state root or a CEL literal: `{{run}}` would read as a state root and `{{true}}` as the literal, never as a host token | E-PLUGIN-RESERVED-NAME |
 | `unset` | entity member; enum member; scene, beat, entry or choice id | the no-value word: `is="unset"` and `== 'unset'` test for a path that holds nothing, so a value named `unset` can never be matched | E-RESERVED-NAME |
 | `true` `false` `null` | entity member; enum member; scene, beat, entry or choice id; relation; season; state path segment (and quest, objective, entry, branch or hub id) | a CEL literal: in a condition and in `is=` it is read as the value, never as a name | E-RESERVED-NAME |
 | `_` | entity member; enum member | the wildcard of fact patterns (`holds('knows', ['_'])` in a condition, `knows(_)` in a rule) and the fallback key of `per:` defaults | E-RESERVED-NAME |

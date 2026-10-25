@@ -10,6 +10,7 @@ pub enum SchemaError {
     RewardTarget(String),
     RewardEffects(String),
     OccasionTarget(String),
+    HostToken(String),
 }
 impl fmt::Display for SchemaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -20,7 +21,8 @@ impl fmt::Display for SchemaError {
             | Self::Lowering(message)
             | Self::RewardTarget(message)
             | Self::RewardEffects(message)
-            | Self::OccasionTarget(message) => message,
+            | Self::OccasionTarget(message)
+            | Self::HostToken(message) => message,
         };
         f.write_str(message)
     }
@@ -30,6 +32,7 @@ impl std::error::Error for SchemaError {}
 
 mod directives;
 mod files;
+mod host_tokens;
 mod manifest;
 mod occasions;
 #[cfg(test)]
@@ -45,6 +48,7 @@ pub use files::{
     BridgeFile, DefsFile, DirectivesFile, EnumDecl, EnumsFile, EventsFile, FrontmatterDecl,
     FrontmatterFile, LintsFile, ProvidersFile, StampAttrEntry, StampAttrsFile, StateFile,
 };
+pub use host_tokens::{HostTokenBody, HostTokenDecl, HostTokenType, HostTokensFile, CORE_PLUGIN};
 pub use manifest::{
     AssetKindDecl, AssetKindsFile, AssetMatch, AssetResolve, AssetSegment, Depends, OptionDecl,
     PluginManifest,

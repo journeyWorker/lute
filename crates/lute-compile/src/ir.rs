@@ -896,7 +896,9 @@ pub enum Placeholder {
         #[serde(skip_serializing_if = "Option::is_none")]
         forms: Option<Vec<String>>,
     },
-    /// A reserved token (only `userName` in 0.1), with its text hint.
+    /// A host token (`userName`, or one a plugin's `hostTokens` declares;
+    /// 0.50.0 §4.3), with its format hint. The engine substitutes it; the
+    /// runtime keeps the marker verbatim.
     Reserved {
         token: String,
         #[serde(skip_serializing_if = "Option::is_none")]

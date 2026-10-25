@@ -173,8 +173,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-CEL-PROFILE",
-        summary: "A CEL expression uses a construct outside the restricted Lute-CEL profile — a disallowed function call, a comprehension macro, a map/struct literal, a bare identifier that is not a state path or def, a reserved internal token, or `visited(…)` used outside a condition slot.",
-        spec: &["dsl §8.4", "dsl 0.21.0 §7a.1"],
+        summary: "A CEL expression uses a construct outside the restricted Lute-CEL profile — a disallowed function call, a comprehension macro, a map/struct literal, a bare identifier that is not a state path or def, a reserved internal token, or `visited(…)` used outside a condition slot. A `{{…}}` interpolation that is not a state path, a def `@ref`, or a declared host token (the message lists them; an undeclared bare name is told to declare it in a plugin's `hostTokens:` export).",
+        spec: &["dsl §8.4", "dsl 0.21.0 §7a.1", "dsl 0.50.0 §4.2"],
     },
     Code {
         code: "E-CEL-TYPE",
@@ -953,8 +953,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-DUP-ACROSS",
-        summary: "Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation, or `stampAttrs` entries of one name on overlapping surfaces (an entry without `on:` overlaps every entry; the message names the shared surfaces); the first plugin's declaration is used.",
-        spec: &["dsl 0.50.0 §3.2"],
+        summary: "Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation, or `stampAttrs` entries of one name on overlapping surfaces (an entry without `on:` overlaps every entry; the message names the shared surfaces), or a plugin declares a host token another plugin or `lute.core` (`userName`) declares; the first declaration is used.",
+        spec: &["dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1"],
     },
     Code {
         code: "E-PLUGIN-DUP-ID",
@@ -1003,13 +1003,13 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-PARSE",
-        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect, a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, or a kind with `target: { forbidden: true }` reads `@target`.",
-        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §5.1"],
+        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect, a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, or a kind with `target: { forbidden: true }` reads `@target`, or a `hostTokens` name is not an identifier (letters, digits and `_`, not starting with a digit) or its `type` is not `string`, `int` or `{ enum: [...] }`.",
+        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1", "dsl 0.50.0 §5.1"],
     },
     Code {
         code: "E-PLUGIN-RESERVED-NAME",
-        summary: "A plugin declares a name the core language owns: a directive named like a core statement (`set`, `assert`, `retract`, `accept`, `use`, `body`, `cut`), a core block tag (`scene`, `on`, `quest`, `objective`, `match`, `branch`, `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`, `timeline`, `track`, `reward`, `return`) or a `lute.core` directive (`end`, `mark`, `bg`, …); an event or occasion named like an engine lifecycle event (`questComplete`, …) or a play step key; a cast id `narrator`. Reported at the declaration's file and line.",
-        spec: &["dsl §10", "dsl 0.28.0 §1"],
+        summary: "A plugin declares a name the core language owns: a directive named like a core statement (`set`, `assert`, `retract`, `accept`, `use`, `body`, `cut`), a core block tag (`scene`, `on`, `quest`, `objective`, `match`, `branch`, `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`, `timeline`, `track`, `reward`, `return`) or a `lute.core` directive (`end`, `mark`, `bg`, …); an event or occasion named like an engine lifecycle event (`questComplete`, …) or a play step key; a cast id `narrator`; a host token named like a state root or a CEL literal (`{{run}}` would read as a state root). Reported at the declaration's file and line.",
+        spec: &["dsl §10", "dsl 0.28.0 §1", "dsl 0.50.0 §4.1"],
     },
     Code {
         code: "E-PLUGIN-RESERVED-STAMP-ATTR",

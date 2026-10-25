@@ -11,8 +11,8 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 
 use crate::permissions::Permissions;
 use crate::schema::{
-    AssetKindDecl, BridgeCapability, CastMember, DefDecl, DirectiveDecl, EventDecl, OccasionDecl,
-    ProviderDecl, RewardKindDecl, StateShape, StateTemplate,
+    AssetKindDecl, BridgeCapability, CastMember, DefDecl, DirectiveDecl, EventDecl, HostTokenDecl,
+    OccasionDecl, ProviderDecl, RewardKindDecl, StateShape, StateTemplate,
 };
 use crate::types::Literal;
 
@@ -82,6 +82,13 @@ pub struct CapabilitySnapshot {
     /// Empty = speakers stay shape-only; populated, a speaker outside it is
     /// `E-CAST-UNKNOWN`. GUARDED in [`capability_version`] like `occasions`.
     pub cast: BTreeMap<String, CastMember>,
+    /// Host interpolation tokens (0.50.0 §4.1): `lute.core`'s `userName` and
+    /// every active plugin's `hostTokens` export, by name. A bare
+    /// `{{name}}` interpolation is checked against it. Only the tokens a
+    /// plugin other than `lute.core` declares fold into
+    /// [`capability_version`], so a project without plugin tokens keeps its
+    /// stamp.
+    pub host_tokens: BTreeMap<String, HostTokenDecl>,
     pub permissions: Permissions,
     /// Project policy consumed by the checker, not part of the capability
     /// surface. It is deliberately excluded from [`capability_version`] and
@@ -403,6 +410,24 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
             h.update(id.as_bytes());
             h.update(b"=");
             h.update(format!("{c:?}").as_bytes());
+            h.update(b";");
+        }
+    }
+    // GUARDED, and over the non-core tokens only (0.50.0 §4.1): every
+    // snapshot holds `lute.core`'s `userName`, so the section appears only
+    // when a plugin declares a token, and a project without one keeps the
+    // pre-0.50 stamp.
+    let plugin_tokens: Vec<(&String, &HostTokenDecl)> = snap
+        .host_tokens
+        .iter()
+        .filter(|(_, t)| !t.is_core())
+        .collect();
+    if !plugin_tokens.is_empty() {
+        h.update(b"\nhostTokens\n");
+        for (name, t) in plugin_tokens {
+            h.update(name.as_bytes());
+            h.update(b"=");
+            h.update(format!("{t:?}").as_bytes());
             h.update(b";");
         }
     }
@@ -969,5 +994,34 @@ mod tests {
         snapshot.restrict_permissions(&second);
         assert!(snapshot.permissions.allows_directive("bg"));
         assert!(!snapshot.permissions.allows_directive("music"));
+    }
+
+    /// 0.50.0 §4.1: only tokens a plugin other than `lute.core` declares
+    /// fold into the version — a snapshot holding only `userName` hashes as
+    /// one with no token, and a plugin token (or a change of its type)
+    /// changes the stamp.
+    #[test]
+    fn only_plugin_host_tokens_fold_into_the_version() {
+        use crate::schema::{HostTokenType, CORE_PLUGIN};
+        let token = |ty: HostTokenType, plugin: &str| HostTokenDecl {
+            ty,
+            plugin: plugin.to_string(),
+        };
+        let bare = CapabilitySnapshot::builder().build();
+        let mut core = bare.clone();
+        core.host_tokens
+            .insert("userName".into(), token(HostTokenType::Str, CORE_PLUGIN));
+        assert_eq!(capability_version(&core), bare.version);
+
+        let mut plugin = core.clone();
+        plugin
+            .host_tokens
+            .insert("rank".into(), token(HostTokenType::Int, "acme.stage"));
+        let with_rank = capability_version(&plugin);
+        assert_ne!(with_rank, bare.version);
+        plugin
+            .host_tokens
+            .insert("rank".into(), token(HostTokenType::Str, "acme.stage"));
+        assert_ne!(capability_version(&plugin), with_rank);
     }
 }

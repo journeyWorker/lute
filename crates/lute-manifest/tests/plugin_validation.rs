@@ -61,6 +61,7 @@ fn backdrop_plugin(lower: Lowering) -> LoadedPlugin {
         occasions: vec![],
         lints: vec![],
         cast: vec![],
+        host_tokens: BTreeMap::new(),
         sites: Default::default(),
         invalid: Vec::new(),
     }

@@ -1021,6 +1021,23 @@ fn authoring_surface(
         "occasions".into(),
         serde_json::to_value(&snap.occasions).unwrap_or_else(|_| serde_json::json!({})),
     );
+    // 0.50.0 §4.3: the host tokens a bare `{{name}}` may name — listed once a
+    // plugin declares one, so a project with only `userName` keeps its
+    // surface.
+    if snap.host_tokens.values().any(|t| !t.is_core()) {
+        let tokens: Vec<Value> = snap
+            .host_tokens
+            .iter()
+            .map(|(name, t)| {
+                serde_json::json!({
+                    "name": name,
+                    "type": serde_json::to_value(&t.ty).unwrap_or(Value::Null),
+                    "plugin": t.plugin,
+                })
+            })
+            .collect();
+        root.insert("hostTokens".into(), tokens.into());
+    }
     root.insert(
         "questsAllowed".into(),
         snap.permissions.allows_quests().into(),
@@ -1426,6 +1443,24 @@ single quotes are required inside double-quoted attributes\n",
         let _ = writeln!(out, "rewardKinds ({}):", reward_kinds.len());
         for name in reward_kinds.keys() {
             let _ = writeln!(out, "  {name}");
+        }
+    }
+    if let Some(tokens) = surface
+        .get("hostTokens")
+        .and_then(serde_json::Value::as_array)
+    {
+        let _ = writeln!(out, "hostTokens ({}):", tokens.len());
+        for t in tokens {
+            let ty = match &t["type"] {
+                serde_json::Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            let _ = writeln!(
+                out,
+                "  {{{{{}}}}}: {ty} ({})",
+                t["name"].as_str().unwrap_or(""),
+                t["plugin"].as_str().unwrap_or("")
+            );
         }
     }
     if let Some(occasions) = surface["occasions"].as_object() {

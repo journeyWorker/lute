@@ -4,3 +4,4 @@ kind: capability
 exports:
   directives: directives/
   enums: enums.yaml
+  hostTokens: hosttokens.yaml

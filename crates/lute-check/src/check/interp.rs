@@ -13,7 +13,8 @@ use super::{
 /// the folded `state:` schema (`E-UNDECLARED`) and a `Ref` against `defs:`
 /// (`E-UNDECLARED-REF`) exactly as a guard read does. A `Ref` additionally MUST
 /// produce a **renderable** type (number/bool/enum, §7.6) — a declared def of any
-/// other type is `E-REF-TYPE`. The reserved `userName` token always renders. The
+/// other type is `E-REF-TYPE`. A declared host token (0.50.0 §4.2) always
+/// renders; an undeclared one is `E-CEL-PROFILE`. The
 /// definite-assignment half (`E-MAYBE-UNSET`, §9.4) is proven in the
 /// path-sensitive `defassign` pass at the line's position — not here.
 ///
@@ -33,7 +34,7 @@ pub(crate) fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<D
     };
     for interp in interps {
         // §7.6 grammar: an interp is EXACTLY a bare state `Path`, a def `Ref`
-        // (`@name` / `@name(args)`), or the reserved `userName` — NOT an arbitrary
+        // (`@name` / `@name(args)`), or a declared host token — NOT an arbitrary
         // CEL expression (the ONLY CEL admitted inside `{{…}}` is a `@fn(args)`
         // argument). Enforce the grammar BEFORE CEL-validating, so a profile-valid
         // but interp-illegal body like `{{run.coins + 1}}` is rejected rather than
@@ -41,10 +42,15 @@ pub(crate) fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<D
         // as a `Path` raw `"$"`) is exempt here — the resolver owns its scope
         // diagnostic (`E-DOLLAR-OUTSIDE-MATCH`, §8.2), so let it flow through.
         let referent = match interp.kind {
-            // The reserved player-name token always renders (dsl §7.6); only
-            // a format hint on it can be wrong (dsl 0.24.0 §4).
+            // A declared host token always renders (0.50.0 §4.2); only a
+            // format hint on it can be wrong (dsl 0.24.0 §4). An undeclared
+            // one is no `{{…}}` form.
             InterpKind::Reserved => {
-                check_interp_format(interp, ctx.env, false, diags);
+                if ctx.env.host_tokens.contains_key(&interp.raw) {
+                    check_interp_format(interp, ctx.env, false, diags);
+                } else {
+                    diags.push(interp_grammar_diag(&interp.raw, interp.span, ctx.env));
+                }
                 continue;
             }
             InterpKind::Path => {
@@ -73,14 +79,14 @@ pub(crate) fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<D
                     && !indexed
                     && crate::cel_paths::text_state_path(&interp.raw).is_none()
                 {
-                    diags.push(interp_grammar_diag(&interp.raw, interp.span));
+                    diags.push(interp_grammar_diag(&interp.raw, interp.span, ctx.env));
                     continue;
                 }
                 &interp.raw
             }
             InterpKind::Ref => {
                 if !is_bare_ref(&interp.raw) {
-                    diags.push(interp_grammar_diag(&interp.raw, interp.span));
+                    diags.push(interp_grammar_diag(&interp.raw, interp.span, ctx.env));
                     continue;
                 }
                 &interp.raw
@@ -195,11 +201,13 @@ pub(crate) fn is_renderable(ty: &Type) -> bool {
 }
 
 /// §7.6 interpolation-grammar violation: a `{{…}}` interior that is neither a
-/// bare state path, a well-formed `@ref`/`@ref(args)`, nor `userName`. Reuses
+/// bare state path, a well-formed `@ref`/`@ref(args)`, nor a host token `env`
+/// declares (0.50.0 §4.2). Reuses
 /// [`E_CEL_PROFILE`] (the closed-CEL-surface code) — a bare CEL expression here
 /// is CEL used where the profile does not admit it (§7.6: the only CEL inside
-/// `{{…}}` is a `@fn(args)` argument).
-pub(crate) fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
+/// `{{…}}` is a `@fn(args)` argument). The message lists the declared host
+/// tokens, and an undeclared bare identifier is told where to declare it.
+pub(crate) fn interp_grammar_diag(raw: &str, span: Span, env: &crate::ctx::Env) -> Diagnostic {
     // dsl 0.28.0 (T3-4): conditional text is a line with its own `when`; a
     // `@def` only helps a computed number (a string def is not shown either,
     // `E-REF-TYPE` — ledger LG28-2).
@@ -226,13 +234,25 @@ pub(crate) fn interp_grammar_diag(raw: &str, span: Span) -> Diagnostic {
                 .to_string(),
         }
     };
+    let tokens: Vec<String> = env.host_tokens.keys().map(|t| format!("`{t}`")).collect();
+    let tokens = if tokens.is_empty() {
+        String::new()
+    } else {
+        format!(" ({})", tokens.join(", "))
+    };
+    let declare = if lute_syntax::ast::classify_interp(raw) == InterpKind::Reserved {
+        format!("declare `{raw}` in a plugin's `hostTokens:` export if the engine substitutes it; ")
+    } else {
+        String::new()
+    };
     Diagnostic {
         code: crate::cel_resolve::E_CEL_PROFILE.to_string(),
         severity: Severity::Error,
         message: format!(
             "interpolation `{raw}` is not a valid `{{{{…}}}}` form — only a state path, a \
              family path indexed by the raised member (`user.bond[occasion.target]`), a def \
-             `@ref` / `@ref(args)`, or `userName` are permitted; {advice}"
+             `@ref` / `@ref(args)`, or a declared host token{tokens} are permitted; \
+             {declare}{advice}"
         ),
         evidence: None,
         span,
@@ -310,7 +330,7 @@ const HINT_LIST: &str = "`:ordinal`, `:ordinalWord`, `:cardinalWord` and \
 /// bare plural are [`E_PLURAL_FORM`]. A number hint
 /// ([`lute_manifest::text::INTERP_NUMBER_FORMATS`]) on a referent whose type is
 /// KNOWN and not a number — a declared state path, a def's produced type,
-/// the reserved `userName` string — and a text hint
+/// a declared host token's type (0.50.0 §4.2) — and a text hint
 /// ([`lute_manifest::text::INTERP_TEXT_FORMATS`]) on a number or a bool are
 /// `E-REF-TYPE`, the interpolation rendering-type code. An unresolved
 /// referent (already `E-UNDECLARED` / `E-UNDECLARED-REF`) and one
@@ -350,7 +370,7 @@ pub(crate) fn check_interp_format(
         )
     } else {
         let ty = match interp.kind {
-            InterpKind::Reserved => Some(Type::Str),
+            InterpKind::Reserved => env.host_tokens.get(raw).map(|t| t.ty.as_type()),
             InterpKind::Path => match crate::cel_paths::occasion_indexed_family(raw) {
                 // Every member path of a family shares its declared type.
                 Some(family) => env

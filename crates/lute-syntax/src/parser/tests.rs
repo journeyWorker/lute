@@ -624,6 +624,30 @@ fn interps_are_scanned_and_classified() {
     );
 }
 
+/// 0.50.0 §4.2: a bare identifier is a host token; a name that is not an
+/// identifier, a state root and a CEL literal stay in the `Path` bucket and
+/// keep their 0.49 diagnostics.
+#[test]
+fn bare_identifiers_classify_as_host_tokens() {
+    for (inner, kind) in [
+        ("userName", InterpKind::Reserved),
+        ("playerName", InterpKind::Reserved),
+        ("_rank2", InterpKind::Reserved),
+        ("player-name", InterpKind::Path),
+        ("2nd", InterpKind::Path),
+        ("-x", InterpKind::Path),
+        ("run", InterpKind::Path),
+        ("occasion", InterpKind::Path),
+        ("true", InterpKind::Path),
+        ("null", InterpKind::Path),
+        ("run.coins", InterpKind::Path),
+        ("$", InterpKind::Path),
+        ("@fond", InterpKind::Ref),
+    ] {
+        assert_eq!(crate::ast::classify_interp(inner), kind, "{inner}");
+    }
+}
+
 #[test]
 fn escaped_and_unterminated_interp() {
     let (doc, diags) =
@@ -670,7 +694,8 @@ fn escaped_then_real_interp_same_line() {
         panic!()
     };
     let kinds: Vec<_> = l.interps.iter().map(|p| (p.kind, p.raw.as_str())).collect();
-    assert_eq!(kinds, [(InterpKind::Path, "later")]);
+    // A bare identifier is a host token (0.50.0 §4.2).
+    assert_eq!(kinds, [(InterpKind::Reserved, "later")]);
 }
 
 #[test]

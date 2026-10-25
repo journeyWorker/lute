@@ -109,11 +109,20 @@ pub fn hover_at(
             InterpKind::Ref => {
                 interp_ref_name(&i.raw).and_then(|name| ref_hover(&meta, snapshot, &name))
             }
-            // A reserved token (`userName`) always renders and has no decl.
-            InterpKind::Reserved => Some(format!(
-                "**reserved token** `{}` — always renders; no declaration",
-                i.raw
-            )),
+            // A host token (0.50.0 §4.2): its type and declaring plugin; the
+            // engine substitutes it, so it has no decl site in the project.
+            InterpKind::Reserved => Some(match snapshot.host_tokens.get(&i.raw) {
+                Some(t) => format!(
+                    "host token `{}` — `{}`, declared by `{}`; the engine substitutes it at \
+                     render time",
+                    i.raw, t.ty, t.plugin
+                ),
+                None => format!(
+                    "`{}` is not a declared host token — declare it in a plugin's \
+                     `hostTokens:` export if the engine substitutes it",
+                    i.raw
+                ),
+            }),
         },
         Cursor::IsPattern { subject_path } => subject_domain(doc, &meta, subject_path)
             .map(|domain| format!("**pattern** — domain: {}", domain.join(", ")))
@@ -895,15 +904,57 @@ mod tests {
         assert!(s.contains("bool"), "shows the def type: {s}");
     }
 
-    /// D1: hover inside `{{userName}}` (Reserved) surfaces a one-line note, not a
-    /// decl lookup.
+    /// D1, 0.50.0 §4.2: hover inside `{{userName}}` names the host token, its
+    /// type and `lute.core`, not a decl lookup.
     #[test]
     fn hover_on_interp_reserved_shows_note() {
         let doc = parsed(WITH_INTERPS);
         let off = interp_off(WITH_INTERPS, "{{userName}}");
         let h = hover_at(&doc, &load_core_snapshot(), &SchemaImports::default(), off).unwrap();
         let s = contents_text(&h);
-        assert!(s.contains("reserved"), "notes the reserved token: {s}");
+        // The line's identity note follows in its own paragraph.
+        assert_eq!(
+            s.split("\n\n").next(),
+            Some(
+                "host token `userName` — `string`, declared by `lute.core`; the engine \
+                 substitutes it at render time"
+            ),
+            "{s}"
+        );
+    }
+
+    /// 0.50.0 §4.2: a plugin's host token hovers with its own type and
+    /// plugin; an undeclared bare name says where to declare it.
+    #[test]
+    fn hover_on_a_plugin_host_token_names_its_plugin() {
+        let text = WITH_INTERPS.replace("{{userName}}", "{{playerName}} {{rank}}");
+        let doc = parsed(&text);
+        let mut snap = load_core_snapshot();
+        snap.host_tokens.insert(
+            "playerName".into(),
+            lute_manifest::schema::HostTokenDecl {
+                ty: lute_manifest::schema::HostTokenType::Str,
+                plugin: "acme.stage".into(),
+            },
+        );
+        let off = interp_off(&text, "{{playerName}}");
+        let h = hover_at(&doc, &snap, &SchemaImports::default(), off).unwrap();
+        let s = contents_text(&h);
+        assert_eq!(
+            s.split("\n\n").next(),
+            Some(
+                "host token `playerName` — `string`, declared by `acme.stage`; the engine \
+                 substitutes it at render time"
+            ),
+            "{s}"
+        );
+        let off = interp_off(&text, "{{rank}}");
+        let h = hover_at(&doc, &snap, &SchemaImports::default(), off).unwrap();
+        assert!(
+            contents_text(&h).starts_with("`rank` is not a declared host token"),
+            "{}",
+            contents_text(&h)
+        );
     }
 
     /// D3: hover on a `<when is="gold">` value whose `<match>` subject is a

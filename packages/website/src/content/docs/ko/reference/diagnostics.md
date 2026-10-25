@@ -219,9 +219,9 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-CEL-PROFILE
 
-CEL 식이 제한된 Lute-CEL 프로파일 밖의 구문을 사용합니다. 허용되지 않는 함수 호출, 컴프리헨션 매크로, 맵/구조체 리터럴, 상태 경로나 def가 아닌 맨 식별자, 예약된 내부 토큰, 또는 조건 슬롯 밖에서 쓰인 `visited(…)`가 해당합니다.
+CEL 식이 제한된 Lute-CEL 프로파일 밖의 구문을 사용합니다. 허용되지 않는 함수 호출, 컴프리헨션 매크로, 맵/구조체 리터럴, 상태 경로나 def가 아닌 맨 식별자, 예약된 내부 토큰, 또는 조건 슬롯 밖에서 쓰인 `visited(…)`가 해당합니다. 상태 경로도, def `@ref`도, 선언된 호스트 토큰도 아닌 `{{…}}` 보간도 해당합니다(메시지가 선언된 토큰을 나열하고, 선언되지 않은 맨 이름에는 플러그인의 `hostTokens:` export에 선언하라고 알려 줍니다).
 
-명세: [dsl §8.4](/ko/spec/), [dsl 0.21.0 §7a.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md)
+명세: [dsl §8.4](/ko/spec/), [dsl 0.21.0 §7a.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.50.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-CEL-TYPE
 
@@ -1092,9 +1092,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-DUP-ACROSS
 
-두 개의 활성 플러그인이 같은 디렉티브, 이벤트, 보상 종류, occasion, cast id, 또는 브리지 오퍼레이션을 선언했습니다. 또는 같은 이름의 `stampAttrs` 항목들이 겹치는 표면을 가집니다(`on:` 없는 항목은 모든 항목과 겹치며, 메시지가 겹치는 표면을 알려 줍니다). 먼저 선언한 플러그인의 것을 씁니다.
+두 개의 활성 플러그인이 같은 디렉티브, 이벤트, 보상 종류, occasion, cast id, 또는 브리지 오퍼레이션을 선언했습니다. 또는 같은 이름의 `stampAttrs` 항목들이 겹치는 표면을 가집니다(`on:` 없는 항목은 모든 항목과 겹치며, 메시지가 겹치는 표면을 알려 줍니다). 또는 플러그인이 다른 플러그인이나 `lute.core`(`userName`)가 선언한 호스트 토큰을 선언했습니다. 먼저 선언한 것을 씁니다.
 
-명세: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+명세: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-DUP-ID
 
@@ -1148,17 +1148,17 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-PARSE
 
-플러그인 export 파일이 올바른 YAML이 아니거나 키의 값 모양이 틀렸습니다(줄과 그 키가 받는 모양을 알려 줍니다). 또는 디렉티브의 `effects.writes`/`effects.asserts`/`effects.retracts` 항목이 해당 디렉티브가 선언하지 않은 속성을 가리킵니다(또는 assert가 `_`를 사용합니다). 또는 `stampAttrs` 항목의 `on:`이 비었거나, 표면 이름 목록이 아니거나, 한 표면을 두 번 적었거나, `on:` 없이 `required: true`입니다. 또는 보상 종류의 `effects:`가 효과를 하나도 선언하지 않았거나, 사실 효과가 `@target` 외의 `@속성`을 읽거나(`<reward>`는 다른 속성을 받지 않습니다) `_`를 assert하거나, `accepts` 항목이 `@target`도 퀘스트 id도 아니거나, `target: { forbidden: true }`인 종류가 `@target`을 읽습니다.
+플러그인 export 파일이 올바른 YAML이 아니거나 키의 값 모양이 틀렸습니다(줄과 그 키가 받는 모양을 알려 줍니다). 또는 디렉티브의 `effects.writes`/`effects.asserts`/`effects.retracts` 항목이 해당 디렉티브가 선언하지 않은 속성을 가리킵니다(또는 assert가 `_`를 사용합니다). 또는 `stampAttrs` 항목의 `on:`이 비었거나, 표면 이름 목록이 아니거나, 한 표면을 두 번 적었거나, `on:` 없이 `required: true`입니다. 또는 보상 종류의 `effects:`가 효과를 하나도 선언하지 않았거나, 사실 효과가 `@target` 외의 `@속성`을 읽거나(`<reward>`는 다른 속성을 받지 않습니다) `_`를 assert하거나, `accepts` 항목이 `@target`도 퀘스트 id도 아니거나, `target: { forbidden: true }`인 종류가 `@target`을 읽습니다. 또는 `hostTokens`의 이름이 식별자(문자, 숫자, `_`, 숫자로 시작하지 않음)가 아니거나 `type`이 `string`, `int`, `{ enum: [...] }`가 아닙니다.
 
-명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-RESERVED-NAME
 
-플러그인이 코어 언어가 가진 이름을 선언했습니다. 코어 문장(`set`, `assert`, `retract`, `accept`, `use`, `body`, `cut`), 코어 블록 태그(`scene`, `on`, `quest`, `objective`, `match`, `branch`, `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`, `timeline`, `track`, `reward`, `return`), `lute.core` 디렉티브(`end`, `mark`, `bg` …)와 같은 이름의 디렉티브, 엔진 lifecycle 이벤트(`questComplete` …)나 play 스텝 키와 같은 이름의 이벤트·occasion, cast id `narrator`가 여기에 해당합니다. 선언한 파일과 줄을 가리킵니다.
+플러그인이 코어 언어가 가진 이름을 선언했습니다. 코어 문장(`set`, `assert`, `retract`, `accept`, `use`, `body`, `cut`), 코어 블록 태그(`scene`, `on`, `quest`, `objective`, `match`, `branch`, `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`, `timeline`, `track`, `reward`, `return`), `lute.core` 디렉티브(`end`, `mark`, `bg` …)와 같은 이름의 디렉티브, 엔진 lifecycle 이벤트(`questComplete` …)나 play 스텝 키와 같은 이름의 이벤트·occasion, cast id `narrator`, 상태 루트나 CEL 리터럴과 같은 이름의 호스트 토큰(`{{run}}`은 상태 루트로 읽힙니다)이 여기에 해당합니다. 선언한 파일과 줄을 가리킵니다.
 
 예약된 이름 전체와 각 이름을 거부하는 자리, 대신 쓸 이름: [예약된 이름](/ko/reference/reserved-names/).
 
-명세: [dsl §10](/ko/spec/), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+명세: [dsl §10](/ko/spec/), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-RESERVED-STAMP-ATTR
 

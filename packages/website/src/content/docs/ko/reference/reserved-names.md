@@ -24,6 +24,7 @@ param은 `E-TEMPLATE`). 메시지는 그 낱말이 이미 무슨 뜻인지 말�
 
 | 이름 | 거부하는 선언 | 이미 뜻하는 것 | 코드 |
 | --- | --- | --- | --- |
+| `scene` `run` `user` `app` `quest` `entry` `prev` `clock` `occasion` `season` `true` `false` `null` | 플러그인 호스트 토큰 | 상태 루트나 CEL 리터럴. `{{run}}`은 상태 루트로, `{{true}}`는 리터럴로 읽히고 호스트 토큰으로 읽히지 않는다 | E-PLUGIN-RESERVED-NAME |
 | `unset` | entity 멤버; enum 멤버; scene·beat·entry·choice id | 값이 없음을 뜻하는 말. `is="unset"`과 `== 'unset'`은 아무 값도 없는 경로를 검사하므로 `unset`이라는 값은 결코 맞지 않는다 | E-RESERVED-NAME |
 | `true` `false` `null` | entity 멤버; enum 멤버; scene·beat·entry·choice id; relation; 시즌; state 경로 조각(quest·objective·entry·branch·hub id 포함) | CEL 리터럴. 조건과 `is=`에서 이름이 아니라 값으로 읽힌다 | E-RESERVED-NAME |
 | `_` | entity member; enum member | 사실 패턴의 와일드카드(`holds('knows', ['_'])`)이자 `per:` 기본값의 나머지 키 | E-RESERVED-NAME |
