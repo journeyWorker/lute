@@ -483,3 +483,137 @@ async fn analyze_names_a_quest_read_in_a_reference_interpolation_argument() {
     assert_eq!(start["line"], 9, "{diags:?}");
     assert_eq!(start["character"], 11, "at the interpolation: {diags:?}");
 }
+
+/// `(code, severity)` of each diagnostic `service` publishes on opening
+/// `path` with `text`.
+async fn published_on_open(
+    service: &mut tower_lsp_server::LspService<Backend>,
+    socket: &mut tower_lsp_server::ClientSocket,
+    path: &std::path::Path,
+    text: &str,
+) -> Vec<(String, u64)> {
+    use futures::StreamExt;
+    use tower::{Service, ServiceExt};
+    use tower_lsp_server::jsonrpc::Request as RpcRequest;
+    let open = RpcRequest::build("textDocument/didOpen")
+        .params(serde_json::json!({
+            "textDocument": {
+                "uri": format!("file://{}", path.display()),
+                "languageId": "lute", "version": 1, "text": text
+            }
+        }))
+        .finish();
+    service.ready().await.unwrap().call(open).await.unwrap();
+    let note = socket.next().await.expect("didOpen should publish");
+    assert_eq!(note.method(), "textDocument/publishDiagnostics");
+    note.params()
+        .and_then(|p| p.get("diagnostics").cloned())
+        .and_then(|d| d.as_array().cloned())
+        .expect("publish carries a diagnostics array")
+        .iter()
+        .map(|d| {
+            (
+                d["code"].as_str().unwrap_or_default().to_string(),
+                d["severity"].as_u64().unwrap_or_default(),
+            )
+        })
+        .collect()
+}
+
+/// dsl 0.50.0 §6.2: the LSP publishes with the project's `diagnostics:`
+/// levels — a code `off` under `paths` is not published there and is
+/// published elsewhere, a re-levelled one is published at its level — and
+/// an open `lute.project.yaml` publishes its `E-DIAGNOSTICS-CONFIG` faults.
+#[tokio::test(flavor = "current_thread")]
+async fn analyze_publishes_with_the_project_diagnostic_levels() {
+    use std::fs;
+    use tower::{Service, ServiceExt};
+    use tower_lsp_server::jsonrpc::Request as RpcRequest;
+    use tower_lsp_server::LspService;
+
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lsp_levels");
+    fs::create_dir_all(root.join("scenes/imported")).unwrap();
+    let manifest = root.join("lute.project.yaml");
+    let manifest_text = "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n\
+                         diagnostics:\n  \
+                         W-STAGE-ABSENT: { level: off, paths: [\"scenes/imported/**\"] }\n  \
+                         W-TEXT-GLUE: info\n  W-WIP: silent\n";
+    fs::write(&manifest, manifest_text).unwrap();
+    let scene = "---\nkind: scene\nid: s\nenums:\n  action:\n    members: [show, hide]\n    \
+                 exits: [hide]\n  anchor:\n    members: [left, center, right]\n    default: \
+                 center\n---\n\n## Shot 1.\n\n::actor{character=\"vesna\" action=\"show\"}\n\
+                 ::actor{character=\"vesna\" action=\"hide\"}\n@vesna: Gone <> now.\n";
+    let imported = root.join("scenes/imported/b.lute");
+    let elsewhere = root.join("scenes/a.lute");
+    fs::write(&imported, scene).unwrap();
+    fs::write(&elsewhere, scene).unwrap();
+
+    let (mut service, mut socket) = LspService::new(Backend::new);
+    let init = RpcRequest::build("initialize")
+        .params(serde_json::json!({ "capabilities": {} }))
+        .id(1)
+        .finish();
+    service.ready().await.unwrap().call(init).await.unwrap();
+
+    // LSP severity: 1 error, 2 warning, 3 information.
+    let got = published_on_open(&mut service, &mut socket, &imported, scene).await;
+    assert_eq!(got, [("W-TEXT-GLUE".to_string(), 3)], "{got:?}");
+    let mut got = published_on_open(&mut service, &mut socket, &elsewhere, scene).await;
+    got.sort();
+    assert_eq!(
+        got,
+        [
+            ("W-STAGE-ABSENT".to_string(), 2),
+            ("W-TEXT-GLUE".to_string(), 3)
+        ],
+        "{got:?}"
+    );
+    let got = published_on_open(&mut service, &mut socket, &manifest, manifest_text).await;
+    assert_eq!(got, [("E-DIAGNOSTICS-CONFIG".to_string(), 1)], "{got:?}");
+}
+
+/// dsl 0.50.0 §8.1: the LSP evaluates `node` rules on the open buffer —
+/// `node.attrs` is read from the buffer text, not from the file on disk.
+#[tokio::test(flavor = "current_thread")]
+async fn analyze_runs_node_lints_over_the_buffer_text() {
+    use std::fs;
+    use tower::{Service, ServiceExt};
+    use tower_lsp_server::jsonrpc::Request as RpcRequest;
+    use tower_lsp_server::LspService;
+
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lsp_node_lints");
+    fs::create_dir_all(root.join("scenes")).unwrap();
+    fs::write(
+        root.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("lute.lint.yaml"),
+        "lsp: true\ncustom:\n  - id: move-mode-known\n    target: node\n    \
+         when: 'node.tag == \"move\" && \"mode\" in node.attrs && \
+         !(node.attrs[\"mode\"] in options.modes)'\n    level: error\n    \
+         message: \"unknown move mode {node.attrs.mode}\"\n    \
+         options: { modes: [walk, run] }\n",
+    )
+    .unwrap();
+    let scene = root.join("scenes/a.lute");
+    let on_disk = "---\nkind: scene\nid: a\n---\n\n## Shot 1.\n\n::move{mode=\"walk\"}\n";
+    fs::write(&scene, on_disk).unwrap();
+    let buffer = on_disk.replace("walk", "swim");
+
+    let (mut service, mut socket) = LspService::new(Backend::new);
+    let init = RpcRequest::build("initialize")
+        .params(serde_json::json!({ "capabilities": {} }))
+        .id(1)
+        .finish();
+    service.ready().await.unwrap().call(init).await.unwrap();
+
+    let got = published_on_open(&mut service, &mut socket, &scene, &buffer).await;
+    assert!(
+        got.contains(&("L-MOVE-MODE-KNOWN".to_string(), 1)),
+        "the buffer's `swim` is unknown: {got:?}"
+    );
+}

@@ -26,15 +26,17 @@ fn snapshot() -> CapabilitySnapshot {
     snap.enums
         .insert("sequence".into(), sequence.members.clone());
     snap.domains.insert("sequence".into(), sequence);
-    snap.stamp_attrs.insert(
-        "bonusId".into(),
-        AttrDecl {
-            name: "bonusId".into(),
-            required: false,
-            ty: Type::Str,
-            default: None,
-        },
-    );
+    snap.stamp_attrs
+        .insert(lute_manifest::stamps::StampAttrDecl::cross_cutting(
+            "test",
+            AttrDecl {
+                name: "bonusId".into(),
+                required: false,
+                ty: Type::Str,
+                default: None,
+            },
+        ))
+        .unwrap();
     snap
 }
 

@@ -6,7 +6,7 @@ description: Complete player.bindings.yaml sections, effect catalogue, parameter
 `player.bindings.yaml` is optional and sits beside `lute.project.yaml`. Whole-project `lute check` (`lute check --project <DIR>`, no document operands) reads it after compilation. It does not affect the project fingerprint or runtime execution. Relative paths are resolved under `assetsBase`, which defaults to `assets/` beside the bindings file.
 
 ```yaml
-bindingsVersion: "0.49"
+bindingsVersion: "0.50"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }
@@ -63,7 +63,7 @@ flow:
 
 ## `bindingsVersion`
 
-`bindingsVersion` follows the `luteVersion` rule. Its value is `"MAJOR.MINOR"`; the **toolchain line** is the `MAJOR.MINOR` of the toolchain version (`"0.49"` for Lute 0.49.x).
+`bindingsVersion` follows the `luteVersion` rule. Its value is `"MAJOR.MINOR"`; the **toolchain line** is the `MAJOR.MINOR` of the toolchain version (`"0.50"` for Lute 0.50.x).
 
 - Whole-project `lute check` reports `W-BINDINGS-VERSION-STALE` at the value when it differs from the toolchain line. An older line says to update it to the toolchain line, which `lute fix` does; a newer line says to upgrade the toolchain rather than downgrade the stamp; a value that is not `MAJOR.MINOR` (such as `"0.47.0"`) is told to restamp it.
 - A section newer than the declared line is `E-BINDINGS-VERSION` at that section's key, naming the line it needs, for example `` `ui.ended` needs bindingsVersion "0.46" or newer; this file declares "0.45" ``. Sections are not checked when the value is not `MAJOR.MINOR`.

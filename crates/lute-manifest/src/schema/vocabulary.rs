@@ -1,4 +1,4 @@
-use super::directives::AttrDecl;
+use super::directives::{AttrDecl, FactEffect};
 use super::SchemaError;
 use crate::types::{Field, PathSegment, Type};
 use serde::{Deserialize, Serialize};
@@ -186,6 +186,144 @@ pub struct RewardKindBody {
     /// dsl 0.23.0 §8: the state path a grant of this kind credits.
     #[serde(default)]
     pub credits: Option<String>,
+    /// 0.50.0 §5.1 (#169): the facts a grant of this kind asserts and
+    /// retracts and the quests it accepts.
+    #[serde(default)]
+    pub effects: Option<RewardEffects>,
+}
+
+/// A reward kind's `effects:` (0.50.0 §5.1): what a grant of the kind does
+/// besides its `credits:` write — the facts it retracts, then asserts
+/// ([`FactEffect`] patterns, the directive grammar; an `@attr` may only be
+/// `@target`), then the quests it accepts. Every list is optional, but the
+/// block declares at least one effect. A reward's state write is
+/// `credits:`, so `writes` is no key here.
+#[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(try_from = "RawRewardEffects")]
+pub struct RewardEffects {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub asserts: Vec<FactEffect>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub retracts: Vec<FactEffect>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accepts: Vec<AcceptEffect>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawRewardEffects {
+    #[serde(default)]
+    asserts: Vec<FactEffect>,
+    #[serde(default)]
+    retracts: Vec<FactEffect>,
+    #[serde(default)]
+    accepts: Vec<AcceptEffect>,
+}
+
+impl TryFrom<RawRewardEffects> for RewardEffects {
+    type Error = SchemaError;
+    fn try_from(raw: RawRewardEffects) -> Result<Self, SchemaError> {
+        if raw.asserts.is_empty() && raw.retracts.is_empty() && raw.accepts.is_empty() {
+            return Err(SchemaError::RewardEffects(
+                "a reward kind's `effects:` declares no effect; list at least one of `asserts:`, \
+                 `retracts:` or `accepts:`, or remove `effects:`"
+                    .to_string(),
+            ));
+        }
+        Ok(RewardEffects {
+            asserts: raw.asserts,
+            retracts: raw.retracts,
+            accepts: raw.accepts,
+        })
+    }
+}
+
+impl RewardEffects {
+    /// The fact patterns in the order a grant applies them: `retracts`,
+    /// then `asserts` (`true` for an assert).
+    pub fn facts(&self) -> impl Iterator<Item = (&FactEffect, bool)> {
+        self.retracts
+            .iter()
+            .map(|f| (f, false))
+            .chain(self.asserts.iter().map(|f| (f, true)))
+    }
+
+    /// Whether any effect reads the reward's `@target`.
+    pub fn reads_target(&self) -> bool {
+        self.facts()
+            .any(|(f, _)| f.attrs().any(|a| a == REWARD_TARGET_ATTR))
+            || self.accepts.contains(&AcceptEffect::Target)
+    }
+}
+
+/// Printed as the three lists, each only when non-empty.
+impl std::fmt::Debug for RewardEffects {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut s = f.debug_struct("RewardEffects");
+        if !self.asserts.is_empty() {
+            s.field("asserts", &self.asserts);
+        }
+        if !self.retracts.is_empty() {
+            s.field("retracts", &self.retracts);
+        }
+        if !self.accepts.is_empty() {
+            s.field("accepts", &self.accepts);
+        }
+        s.finish()
+    }
+}
+
+/// The one attribute a reward kind's effects may read: the `<reward>`'s
+/// quoted `target=` (0.50.0 §5.1; a `<reward>` takes no other attribute).
+pub const REWARD_TARGET_ATTR: &str = "target";
+
+/// One `effects.accepts` entry (0.50.0 §5.1): the reward's `@target`, or a
+/// literal quest id. Written and serialized as that one string.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub enum AcceptEffect {
+    /// `@target`: the quest the reward's `target=` names.
+    Target,
+    /// A quest id, as written.
+    Quest(String),
+}
+
+impl std::fmt::Display for AcceptEffect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AcceptEffect::Target => write!(f, "@{REWARD_TARGET_ATTR}"),
+            AcceptEffect::Quest(id) => f.write_str(id),
+        }
+    }
+}
+
+impl std::fmt::Debug for AcceptEffect {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.to_string())
+    }
+}
+
+impl From<AcceptEffect> for String {
+    fn from(a: AcceptEffect) -> String {
+        a.to_string()
+    }
+}
+
+impl TryFrom<String> for AcceptEffect {
+    type Error = SchemaError;
+    fn try_from(s: String) -> Result<Self, SchemaError> {
+        let t = s.trim();
+        if t.strip_prefix('@') == Some(REWARD_TARGET_ATTR) {
+            return Ok(AcceptEffect::Target);
+        }
+        if crate::ident::is_name(t) {
+            return Ok(AcceptEffect::Quest(t.to_string()));
+        }
+        Err(SchemaError::RewardEffects(format!(
+            "a reward kind's `effects.accepts` entry `{s}` is neither `@{REWARD_TARGET_ATTR}` nor \
+             a quest id; an accept names the reward's `@{REWARD_TARGET_ATTR}` or one quest id"
+        )))
+    }
 }
 
 /// A reward kind's `target:` contract (dsl 0.16.0 §4, 0.26.0 §2.5): the
@@ -295,7 +433,8 @@ impl std::fmt::Debug for RewardTarget {
 /// (`assemble` rejects a kind whose provider is absent); `attrs` (optional)
 /// carries game-specific extra slots parsed as ordinary [`AttrDecl`]s.
 /// `credits` (dsl 0.23.0 §8, optional) names the state path a grant of this
-/// kind adds its amount to (`lute run` / `lute play` apply it).
+/// kind adds its amount to (`lute run` / `lute play` apply it); `effects`
+/// (0.50.0 §5.1, optional) the facts it writes and the quests it accepts.
 #[derive(Clone, Serialize, Deserialize, Default)]
 pub struct RewardKindDecl {
     pub name: String,
@@ -305,11 +444,13 @@ pub struct RewardKindDecl {
     pub attrs: Vec<AttrDecl>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub credits: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub effects: Option<RewardEffects>,
 }
 
-/// Hand-written so a kind without `credits` prints exactly as it did before
-/// the field existed: `capabilitySnapshot` hashes this `Debug`, and a
-/// vocabulary that declares no credit path must keep its stamp.
+/// Hand-written so a kind without `credits` or `effects` prints exactly as
+/// it did before those fields existed: `capabilitySnapshot` hashes this
+/// `Debug`, and a vocabulary that declares neither must keep its stamp.
 impl std::fmt::Debug for RewardKindDecl {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = f.debug_struct("RewardKindDecl");
@@ -318,6 +459,9 @@ impl std::fmt::Debug for RewardKindDecl {
             .field("attrs", &self.attrs);
         if let Some(credits) = &self.credits {
             s.field("credits", credits);
+        }
+        if let Some(effects) = &self.effects {
+            s.field("effects", effects);
         }
         s.finish()
     }

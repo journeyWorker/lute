@@ -11,6 +11,7 @@ use super::{
     Domain, DomainInfo, Env, ExpectedType, Interp, InterpKind, Mode, Node, PathBuf, ProviderSet,
     Span, Type, E_COMPONENT_ARG, E_COMPONENT_BODY, E_COMPONENT_CYCLE, E_COMPONENT_STATE,
 };
+use crate::directives::AttrSite;
 
 /// Validate every component this document `::use`s (dsl §13), directly or
 /// through another component's body: its presentational body plus the
@@ -55,7 +56,7 @@ pub(crate) fn validate_components(
         };
         // dsl 0.24.0 §4: a `speaker` param is this host's cast ids.
         let params = crate::component_effects::host_param_types(&def.params, &def.speakers, cast);
-        let env = component_env(&params);
+        let env = component_env(&params, host);
         let ctx = Ctx {
             env: &env,
             in_match: false,
@@ -368,8 +369,9 @@ pub(crate) fn project_relative_display(src: &std::path::Path) -> String {
 
 /// The component-mode analysis environment (dsl §13): the params are the ONLY ref
 /// namespace (each a 0-arity `@param`), and the state schema is EMPTY so any
-/// scene/run/user/app read in a body is undeclared.
-fn component_env(params: &[(String, Type)]) -> Env {
+/// scene/run/user/app read in a body is undeclared. The host tokens are the
+/// importing document's (`host`): the snapshot's, which a body may render.
+fn component_env(params: &[(String, Type)], host: &Env) -> Env {
     let mut defs = std::collections::BTreeSet::new();
     let mut def_types = std::collections::BTreeMap::new();
     let mut def_params = std::collections::BTreeMap::new();
@@ -395,6 +397,7 @@ fn component_env(params: &[(String, Type)]) -> Env {
         terminal_persists: false,
         seasons: Default::default(),
         occasion_scopes: Default::default(),
+        host_tokens: std::sync::Arc::clone(&host.host_tokens),
     }
 }
 
@@ -516,8 +519,13 @@ fn component_interp_scan(
     };
     for interp in interps {
         match interp.kind {
-            InterpKind::Reserved => check_interp_format(interp, ctx.env, false, diags),
-            InterpKind::Path => {
+            // 0.50.0 §4.2: a declared host token renders in a body too; an
+            // undeclared bare name is read as the ambient state it was in
+            // 0.49 (or a missing `@` before a param), below.
+            InterpKind::Reserved if ctx.env.host_tokens.contains_key(&interp.raw) => {
+                check_interp_format(interp, ctx.env, false, diags);
+            }
+            InterpKind::Reserved | InterpKind::Path => {
                 let has_dollar = scan_refs(&interp.raw).iter().any(|r| r.is_dollar);
                 if has_dollar {
                     check_interp_referent(&interp.raw, interp, &interp_ctx, true, diags);
@@ -548,7 +556,7 @@ fn component_interp_scan(
             }
             InterpKind::Ref => {
                 if !is_bare_ref(&interp.raw) {
-                    diags.push(interp_grammar_diag(&interp.raw, interp.span));
+                    diags.push(interp_grammar_diag(&interp.raw, interp.span, ctx.env));
                     continue;
                 }
                 check_interp_referent(&interp.raw, interp, &interp_ctx, true, diags);
@@ -715,7 +723,7 @@ pub(crate) fn walk_component_body(
     for node in nodes {
         match node {
             Node::Line(l) => {
-                body_attr_refs(&l.attrs, snapshot, arena, ctx, RefsOf::Line, &scope.own, diags);
+                body_attr_refs(&l.attrs, snapshot, arena, ctx, &AttrSite::Line, &scope.own, diags);
                 // finding 2 (Task 7b, the SAME class as finding 1 below):
                 // `check_content_line_attrs` was skipped here entirely, so
                 // NO content-line attribute rule applied inside a component
@@ -825,7 +833,7 @@ pub(crate) fn walk_component_body(
                 );
                 check_use_typed_args(d, components, snapshot, providers, domains, diags);
                 check_speaker_args(d, components, scope.cast, scope.speakers, diags);
-                body_attr_refs(&d.attrs, snapshot, arena, ctx, RefsOf::Untyped, &scope.own, diags);
+                body_attr_refs(&d.attrs, snapshot, arena, ctx, &AttrSite::Untyped, &scope.own, diags);
                 let writes = scope.effects
                     && use_target(d).is_some_and(|n| components.table.get(n).is_some_and(|c| c.effects));
                 component_guard(d, snapshot, arena, ctx, writes, scope, diags);
@@ -848,7 +856,7 @@ pub(crate) fn walk_component_body(
                 // judged at each `::use` against the host (spliced there);
                 // here its attrs resolve against the params only.
                 let mut ds = check_directive(d, snapshot, providers, domains, ctx);
-                body_attr_refs(&d.attrs, snapshot, arena, ctx, RefsOf::Directive(&d.tag), &scope.own, &mut ds);
+                body_attr_refs(&d.attrs, snapshot, arena, ctx, &AttrSite::Directive(&d.tag), &scope.own, &mut ds);
                 diags.extend(ds.into_iter().filter(|d| !is_host_schema_code(&d.code)));
                 component_guard(d, snapshot, arena, ctx, true, scope, diags);
             }
@@ -872,7 +880,7 @@ pub(crate) fn walk_component_body(
                     ));
                 } else {
                     diags.extend(check_directive(d, snapshot, providers, domains, ctx));
-                    body_attr_refs(&d.attrs, snapshot, arena, ctx, RefsOf::Directive(&d.tag), &scope.own, diags);
+                    body_attr_refs(&d.attrs, snapshot, arena, ctx, &AttrSite::Directive(&d.tag), &scope.own, diags);
                     component_guard(d, snapshot, arena, ctx, false, scope, diags);
                 }
             }
@@ -1103,35 +1111,18 @@ fn body_attr_refs(
     snapshot: &CapabilitySnapshot,
     arena: &CelArena,
     ctx: &Ctx<'_>,
-    of: RefsOf<'_>,
+    of: &AttrSite<'_>,
     own: &std::collections::BTreeSet<String>,
     diags: &mut Vec<Diagnostic>,
 ) {
     for attr in attrs {
         if let AttrValue::Ref(slot) = &attr.value {
-            let expected = match of {
-                RefsOf::Directive(tag) => {
-                    crate::directives::directive_ref_type(snapshot, tag, &attr.key)
-                        .map(ExpectedType::Ty)
-                }
-                RefsOf::Line => {
-                    crate::content_line::typed_line_attr(&attr.key).map(|a| ExpectedType::Ty(a.ty))
-                }
-                RefsOf::Untyped => None,
-            };
+            let expected =
+                crate::directives::attr_ref_type(snapshot, of, &attr.key).map(ExpectedType::Ty);
             diags.extend(check_cel_slot(slot, arena, ctx, expected.as_ref()));
             component_slot_state_scan(slot, arena, own, diags);
         }
     }
-}
-
-/// Whose attributes [`body_attr_refs`] checks: a directive's (typed by its
-/// declaration), a content line's (`wait`, 0.49.0 §4.2), or untyped.
-#[derive(Clone, Copy)]
-enum RefsOf<'a> {
-    Directive(&'a str),
-    Line,
-    Untyped,
 }
 
 /// The component NAME a `::use` directive targets (a plain-string `component=`

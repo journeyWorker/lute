@@ -3,8 +3,8 @@ use super::Code;
 pub(crate) const CODES: &[Code] = &[
     Code {
         code: "E-ACCEPT-TARGET",
-        summary: r#"An `::accept` directive names no quest, gives `quest` a value that is not a quoted quest id, gives `at` a value other than `"nextRun"`, or targets a quest declared `accept="external"` that already activates with its parent (making the acceptance a no-op)."#,
-        spec: &["dsl 0.21.0 §7a.3", "dsl 0.24.0 §2", "dsl 0.25.0 §5"],
+        summary: r#"An `::accept` directive names no quest, gives `quest` a value that is not a quoted quest id, gives `at` a value other than `"nextRun"`, or targets a quest declared `accept="external"` that already activates with its parent (making the acceptance a no-op). Whole-project `check` also judges each quest an `::accept` or a reward kind's `effects.accepts` names: it must be declared in the project (did-you-mean) and accept-driven — not a quest with `start`, nor a subquest child that activates with its parent; a reward's is reported at its `target=` (or `kind=`) and names the reward."#,
+        spec: &["dsl 0.21.0 §7a.3", "dsl 0.24.0 §2", "dsl 0.25.0 §5", "dsl 0.50.0 §5.2"],
     },
     Code {
         code: "E-ADVANCE-CASCADE",
@@ -173,8 +173,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-CEL-PROFILE",
-        summary: "A CEL expression uses a construct outside the restricted Lute-CEL profile — a disallowed function call, a comprehension macro, a map/struct literal, a bare identifier that is not a state path or def, a reserved internal token, or `visited(…)` used outside a condition slot.",
-        spec: &["dsl §8.4", "dsl 0.21.0 §7a.1"],
+        summary: "A CEL expression uses a construct outside the restricted Lute-CEL profile — a disallowed function call, a comprehension macro, a map/struct literal, a bare identifier that is not a state path or def, a reserved internal token, or `visited(…)` used outside a condition slot. A `{{…}}` interpolation that is not a state path, a def `@ref`, or a declared host token (the message lists them; an undeclared bare name is told to declare it in a plugin's `hostTokens:` export).",
+        spec: &["dsl §8.4", "dsl 0.21.0 §7a.1", "dsl 0.50.0 §4.2"],
     },
     Code {
         code: "E-CEL-TYPE",
@@ -447,6 +447,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.3.0 §5"],
     },
     Code {
+        code: "E-DIAGNOSTICS-CONFIG",
+        summary: "A `lute.project.yaml` `diagnostics:` entry cannot apply: its key is an error code (an error is never re-levelled), a lint rule (set in `lute.lint.yaml` `rules:`) or no diagnostic code at all, its level is not one of `off`, `info`, `warn`, `error`, or its `paths` is not a non-empty list of project-relative globs. The entry is dropped and the manifest is invalid.",
+        spec: &["dsl 0.50.0 §6.1"],
+    },
+    Code {
         code: "E-DIFF-INPUT",
         summary: "A diff side cannot be read, safely materialized, or built into a complete project model.",
         spec: &["dsl 0.36.0 §4", "dsl 0.36.0 §8"],
@@ -713,8 +718,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-LINT-CONFIG",
-        summary: "`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id. Since 0.49.0 it also covers an `asset-exists` `options.providers` key that is none of the selector shapes (`<tag>`, `<tag>.<attr>`, `@<attr>`).",
-        spec: &["dsl 0.49.0 §7.3"],
+        summary: "`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id. Since 0.49.0 it also covers an `asset-exists` `options.providers` key that is none of the selector shapes (`<tag>`, `<tag>.<attr>`, `@<attr>`). A `rules:` id that is a checker code is named as one: a warning's level is set in `lute.project.yaml` `diagnostics:`, and an error cannot be re-levelled.",
+        spec: &["dsl 0.49.0 §7.3", "dsl 0.50.0 §6.4"],
     },
     Code {
         code: "E-LINT-EXPR",
@@ -803,8 +808,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-MISSING-ATTR",
-        summary: "A directive is missing an attribute its declared schema requires.",
-        spec: &[],
+        summary: "A directive is missing an attribute its declared schema requires, or a directive, content line, `<branch>`, `<hub>` or `<choice>` does not author a plugin stamp declared `required: true` on its surface (`on:`); a stamp is never injected, so its `default:` does not count.",
+        spec: &["dsl 0.50.0 §3.4"],
     },
     Code {
         code: "E-MOCK-SUBJECT",
@@ -953,13 +958,13 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-DUP-ACROSS",
-        summary: "Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation; the first plugin's declaration is used.",
-        spec: &[],
+        summary: "Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation, or `stampAttrs` entries of one name on overlapping surfaces (an entry without `on:` overlaps every entry; the message names the shared surfaces), or a plugin declares a host token another plugin or `lute.core` (`userName`) declares; the first declaration is used.",
+        spec: &["dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1"],
     },
     Code {
         code: "E-PLUGIN-DUP-ID",
-        summary: "A plugin package declares the same id more than once within one export kind; the first declaration is used and the rest of the project is still checked.",
-        spec: &[],
+        summary: "A plugin package declares the same id more than once within one export kind, or two `stampAttrs` entries of one name whose `on:` surfaces overlap (an entry without `on:` overlaps every entry; the message names the shared surfaces); the first declaration is used and the rest of the project is still checked.",
+        spec: &["dsl 0.50.0 §3.2"],
     },
     Code {
         code: "E-PLUGIN-INVALID-DIRECTIVE",
@@ -973,8 +978,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-KEY",
-        summary: "A key in a plugin's `plugin.yaml` or one of its export files is not one that file takes (with the key meant, e.g. `dependencies` → `depends`), or `plugin.yaml` declares a `kind:` other than `capability`.",
-        spec: &["dsl 0.28.0 §1"],
+        summary: "A key in a plugin's `plugin.yaml` or one of its export files is not one that file takes (with the key meant, e.g. `dependencies` → `depends`), or `plugin.yaml` declares a `kind:` other than `capability`. A reward kind's `effects.writes` adds that a reward's state write is `credits:`.",
+        spec: &["dsl 0.28.0 §1", "dsl 0.50.0 §5.1"],
     },
     Code {
         code: "E-PLUGIN-MANIFEST",
@@ -1003,18 +1008,23 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-PARSE",
-        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`).",
-        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7"],
+        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect, a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, or a kind with `target: { forbidden: true }` reads `@target`, or a `hostTokens` name is not an identifier (letters, digits and `_`, not starting with a digit) or its `type` is not `string`, `int` or `{ enum: [...] }`.",
+        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1", "dsl 0.50.0 §5.1"],
     },
     Code {
         code: "E-PLUGIN-RESERVED-NAME",
-        summary: "A plugin declares a name the core language owns: a directive named like a core statement (`set`, `assert`, `retract`, `accept`, `use`, `body`, `cut`), a core block tag (`scene`, `on`, `quest`, `objective`, `match`, `branch`, `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`, `timeline`, `track`, `reward`, `return`) or a `lute.core` directive (`end`, `mark`, `bg`, …); an event or occasion named like an engine lifecycle event (`questComplete`, …) or a play step key; a cast id `narrator`. Reported at the declaration's file and line.",
-        spec: &["dsl §10", "dsl 0.28.0 §1"],
+        summary: "A plugin declares a name the core language owns: a directive named like a core statement (`set`, `assert`, `retract`, `accept`, `use`, `body`, `cut`), a core block tag (`scene`, `on`, `quest`, `objective`, `match`, `branch`, `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`, `timeline`, `track`, `reward`, `return`) or a `lute.core` directive (`end`, `mark`, `bg`, …); an event or occasion named like an engine lifecycle event (`questComplete`, …) or a play step key; a cast id `narrator`; a host token named like a state root or a CEL literal (`{{run}}` would read as a state root). Reported at the declaration's file and line.",
+        spec: &["dsl §10", "dsl 0.28.0 §1", "dsl 0.50.0 §4.1"],
     },
     Code {
         code: "E-PLUGIN-RESERVED-STAMP-ATTR",
-        summary: "A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp.",
-        spec: &["plugin §14"],
+        summary: "A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp. Also a `stampAttrs` entry scoped with `on:` to a surface that owns an attribute of the same name (`prompt` on `branch`, `text` on `choice`, `code` on `line`, a directive's own attribute), so the stamp could never be read there.",
+        spec: &["plugin §14", "dsl 0.50.0 §3.2"],
+    },
+    Code {
+        code: "E-PLUGIN-STAMP-SURFACE",
+        summary: "A `stampAttrs` entry's `on:` names a surface that is not `line`, `branch`, `hub`, `choice` or a directive of the resolved profile (with a did-you-mean, or the installed but inactive plugin to declare in `depends:`), or a directive with no stamp carrier (`jump`, `label`, `clear`). The entry is dropped; its siblings still load.",
+        spec: &["dsl 0.50.0 §3.2"],
     },
     Code {
         code: "E-PLUGIN-UNKNOWN-ASSETKIND",
@@ -1558,8 +1568,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-UNKNOWN-ATTR",
-        summary: "A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it.",
-        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1"],
+        summary: "A content line, directive or logic element carries an attribute key that the content-line grammar, the directive's own declaration or the element's fixed attribute table does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to; on `<branch>`, `<hub>` and `<choice>` the message also lists the stamps scoped to that element.",
+        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1", "dsl 0.50.0 §3.4"],
     },
     Code {
         code: "E-UNKNOWN-DIRECTIVE",
@@ -1868,8 +1878,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-QUEST-NEVER-ACCEPTED",
-        summary: r#"An accept-driven quest is never named by any `::accept{quest=…}` and is not `accept="external"`, so nothing in the project ever accepts it."#,
-        spec: &["dsl 0.24.0 §2", "dsl 0.25.0 §5"],
+        summary: r#"An accept-driven quest is never named by any `::accept{quest=…}` or reward kind `effects.accepts` and is not `accept="external"`, so nothing in the project ever accepts it."#,
+        spec: &["dsl 0.24.0 §2", "dsl 0.25.0 §5", "dsl 0.50.0 §5.4"],
     },
     Code {
         code: "W-QUEST-REARM-CONSTANT",
@@ -1923,8 +1933,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-STAGE-ABSENT",
-        summary: "A content line or `::actor` targets a character who already left the stage (via a declared exit, a `::bg` scene change, or `::clear`) and was never re-shown, so the staging is impossible.",
-        spec: &["dsl 0.22.0 §12"],
+        summary: "A content line or `::actor` targets a character who already left the stage (via a declared exit, a `::bg` scene change, or `::clear`) and was never re-shown, so the staging is impossible. A line's message names both ways to show them again: an `::actor`, or a plugin directive lowered to the `actor` record (`lower: { record: actor, fields: { character: { fromAttr: character } } }`), which stages like `::actor`.",
+        spec: &["dsl 0.22.0 §12", "dsl 0.50.0 §7"],
     },
     Code {
         code: "W-TEMPLATE-DOT-PARAM",

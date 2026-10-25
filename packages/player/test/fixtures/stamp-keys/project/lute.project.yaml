@@ -1,0 +1,9 @@
+pluginsDir: plugins/
+defaultProfile: keys
+profiles:
+  keys:
+    plugins: { acme.keys: true }
+defaults:
+  luteVersion: "0.50.0"
+  contentLang: en
+  uses: [world.schema.yaml]

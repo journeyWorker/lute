@@ -1,8 +1,10 @@
 use super::document::canonical_path_of;
 use super::Backend;
-use crate::convert::to_lsp_diagnostic;
-use lute_core_span::{Diagnostic, TextIndex};
-use std::path::PathBuf;
+use crate::convert::{to_lsp_diagnostic, to_lsp_range};
+use lute_core_span::{Diagnostic, Severity, Span, TextIndex};
+use lute_manifest::diagnostic_levels::DiagnosticLevel;
+use lute_manifest::project::ProjectConfig;
+use std::path::{Path, PathBuf};
 use tower_lsp_server::ls_types::{
     Diagnostic as LspDiagnostic, DiagnosticRelatedInformation, DiagnosticSeverity, Location,
     Position, Range, Uri,
@@ -149,4 +151,57 @@ pub(crate) fn resolve_diag_to_lsp(d: &lute_manifest::project::ResolveDiag) -> Ls
         message: lute_core_span::plain_message(&d.message).into_owned(),
         ..Default::default()
     }
+}
+
+/// dsl 0.50.0 §6.2: apply the project's `diagnostics:` levels to what is
+/// about to be published for `file` (under project `root`), as the CLI's
+/// severity policy reports them: a code set `off` is dropped, a re-levelled
+/// one takes its new severity, and an error is never demoted. Reporting
+/// only — `diags` was computed before this.
+pub(crate) fn apply_project_levels(
+    diags: &mut Vec<Diagnostic>,
+    project: Option<&ProjectConfig>,
+    root: &Path,
+    file: &Path,
+) {
+    let Some(levels) = project.map(|p| &p.diagnostics).filter(|l| !l.is_empty()) else {
+        return;
+    };
+    let rel = file
+        .strip_prefix(root)
+        .ok()
+        .map(|r| r.to_string_lossy().replace('\\', "/"));
+    diags.retain_mut(|d| {
+        if d.severity == Severity::Error {
+            return true;
+        }
+        match levels
+            .level_for(&d.code, rel.as_deref())
+            .map(DiagnosticLevel::severity)
+        {
+            None => true,
+            Some(None) => false,
+            Some(Some(severity)) => {
+                d.severity = severity;
+                true
+            }
+        }
+    });
+}
+
+/// dsl 0.50.0 §6.1: the manifest's `E-DIAGNOSTICS-CONFIG` faults, located in
+/// `text` (the manifest as it was loaded), published on the manifest itself
+/// — once per manifest, as the CLI's manifest pass reports them.
+pub(crate) fn diagnostics_config_lsp(project: &ProjectConfig, text: &str) -> Vec<LspDiagnostic> {
+    let idx = TextIndex::new(text);
+    lute_check::diagnostics_config::diagnostics_config_diags(project)
+        .iter()
+        .map(|d| {
+            let mut lsp = resolve_diag_to_lsp(d);
+            if let Some(r) = &d.span {
+                lsp.range = to_lsp_range(&Span::from_bytes(&idx, r.start, r.end), &idx);
+            }
+            lsp
+        })
+        .collect()
 }

@@ -1,6 +1,6 @@
 # Quest
 
-**Semantic ids:** `lute.quest.lifecycle/1`, `lute.quest.rewards/1`.
+**Semantic ids:** `lute.quest.lifecycle/1`, `lute.quest.rewards/1`, `lute.quest.rewardEffects/1`.
 
 ## Constructs and rules
 
@@ -10,6 +10,7 @@
 - **Accept/start:** `start` roots evaluate at settle; `::accept{quest=...}` queues activation, with `at="nextRun"` applied after reset. `follows` is graph metadata, not an activation gate.
 - **Cadence/rearm:** `tier="run|season:name"` and false→true `rearm` reset scratch and preserve the save-wide instance counter.
 - **Rewards/grants:** `<reward id kind target amount when outcome>` entries are ordered declaration data, not body commands. The optional `id` token (`[A-Za-z][A-Za-z0-9_-]{0,63}`) is unique within its quest (`E-REWARD-DUP`) and is the stable reward key in source maps, the model and IR `RewardEntry.id`; an untagged reward falls back to its declaration index. Fresh objective grants precede quest grants and corresponding handlers; grant identity is `(quest, instance, objective?, index)`.
+- **Reward effects:** a reward kind's `effects: { retracts, asserts, accepts }` (patterns over members, `true`/`false`, `_` in retracts, and `@target`) are stamped into `RewardEntry.retracts`/`asserts`/`accepts` with `@target` bound to the reward's `target=`; a pattern left unbound is not written. At the grant, after its `grant` record, the engine applies the retracts, then the asserts, then the accepts, through the `::retract`/`::assert`/`::accept` paths, before the next reward and the lifecycle handler. Each effect record carries `grant: { quest, instance, index, objective?, kind }`. An artifact with any effect requires `lute.quest.rewardEffects/1`.
 - **Handlers:** `<on event when target>` uses the pre-event snapshot. With default `judge: after`, world handlers run after beat presentation and before objective judgment; with `judge: before`, objective judgment runs before beats and handlers are deferred until after beats. Lifecycle handlers run after grants.
 
 ## Evaluation and lowering

@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::constraints::{parse_constraints, ConstraintDecl};
 use crate::core::load_core_snapshot;
+use crate::diagnostic_levels::DiagnosticLevels;
 use crate::loader::load_plugins_dir;
 use crate::permissions::{PermissionSet, Permissions};
 use crate::resolve::{
@@ -113,6 +114,12 @@ pub struct ProjectConfig {
     /// Typed project-level constraints and declaration diagnostics.
     pub constraints: Vec<ConstraintDecl>,
     pub constraint_diags: Vec<ResolveDiag>,
+    /// dsl 0.50.0 §6: the `diagnostics:` levels, and the
+    /// `E-DIAGNOSTICS-CONFIG` shape faults of the entries it dropped. Codes
+    /// are validated by `lute_check::diagnostics_config`; both are reported
+    /// once per manifest (the CLI manifest pass, the LSP).
+    pub diagnostics: DiagnosticLevels,
+    pub diagnostics_diags: Vec<ResolveDiag>,
 }
 
 impl ProjectConfig {
@@ -174,7 +181,7 @@ pub const E_MANIFEST: &str = "E-MANIFEST";
 
 /// The top-level keys of `lute.project.yaml`. The removed `sequence:` is
 /// [`E_REMOVED_PROJECT_KEY`], refused before the unknown-key pass.
-pub const MANIFEST_KEYS: [&str; 9] = [
+pub const MANIFEST_KEYS: [&str; 10] = [
     "defaultProfile",
     "profiles",
     "pluginsDir",
@@ -184,6 +191,7 @@ pub const MANIFEST_KEYS: [&str; 9] = [
     "chapters",
     "permissions",
     "constraints",
+    "diagnostics",
 ];
 
 /// dsl 0.37.0 §2.2/§4: the removed project key `sequence:`. It is never
@@ -234,6 +242,8 @@ struct RawProject {
     chapters: Option<yaml_serde::Value>,
     #[serde(default)]
     constraints: Option<yaml_serde::Value>,
+    #[serde(default)]
+    diagnostics: Option<yaml_serde::Value>,
     #[serde(default)]
     permissions: PermissionSet,
 }
@@ -1608,6 +1618,8 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, Project
     let chapter_origins = chapter_origins(&text, raw.chapters.as_ref(), &path);
     let (chapters, chapter_diags) = resolve_chapters(raw.chapters);
     let (constraints, constraint_diags) = parse_constraints(raw.constraints.as_ref(), &text);
+    let (diagnostics, diagnostics_diags) =
+        crate::diagnostic_levels::resolve_diagnostics(raw.diagnostics.as_ref(), &locate);
     let (defaults, defaults_diags) = resolve_defaults(project_dir, raw.defaults, &locate);
     let mut defaults = defaults.with_chapters(chapters);
     if defaults.get("questTier").is_some() {
@@ -1636,6 +1648,8 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, Project
         key_diags,
         constraints,
         constraint_diags,
+        diagnostics,
+        diagnostics_diags,
     }))
 }
 

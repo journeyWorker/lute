@@ -46,8 +46,9 @@ pub struct LintRuleDecl {
     /// consumer, NEVER stored here — the same plugin package can be reused
     /// under a different id and this decl still applies.
     pub id: String,
-    /// One of `line | shot | scene | speaker | group | project` — the
-    /// metric table row `when` binds over (design §4, §6).
+    /// One of `line | section | scene | speaker | group | project | node` —
+    /// the metric table row `when` binds over (design §4, §6; `node`: dsl
+    /// 0.50.0 §8.1, one row per body node).
     pub target: LintTarget,
     /// A lint-CEL expression evaluated over the `target`'s row (design §5).
     /// Held as a string here; parsing is deferred to `lute-lint`, so a
@@ -85,6 +86,9 @@ pub enum LintTarget {
     Speaker,
     Group,
     Project,
+    /// Every body node — line, directive or element — with its authored
+    /// attributes, siblings, parent and `preceding` scope (dsl 0.50.0 §8.1).
+    Node,
 }
 
 /// Severity level a lint fires at (design §3). Serialized lowercase to

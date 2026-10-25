@@ -134,10 +134,14 @@ pub fn validate_manifests_under(dir: &Path) -> std::io::Result<Vec<ManifestVerdi
         let diags = config
             .as_ref()
             .map(|c| {
+                // dsl 0.50.0 §6.1: `E-DIAGNOSTICS-CONFIG`, once per manifest,
+                // beside `defaults:`.
+                let levels = lute_check::diagnostics_config::diagnostics_config_diags(c);
                 c.key_diags
                     .iter()
                     .chain(c.identity_diags.iter())
                     .chain(c.defaults_diags.iter())
+                    .chain(levels.iter())
                     .map(|d| located_diagnostic(&text, &d.code, d.message.clone(), d.span.as_ref()))
                     .collect::<Vec<_>>()
             })
@@ -158,13 +162,16 @@ pub fn validate_manifests_under(dir: &Path) -> std::io::Result<Vec<ManifestVerdi
 /// message`. A mock diagnostic (D-AB) has a right FILE and no right line —
 /// printing `:0:0` claims a position that does not exist, which is the
 /// exact defect §8 opens with (`scenes/wake.lute:0:0`).
-pub fn spanless_line(path: &Path, d: &Diagnostic, denied: bool) -> String {
-    let severity = if denied || d.severity == Severity::Error {
-        "error"
-    } else {
-        "warning"
+///
+/// `reported` is how the severity policy shows `d`. Unmarked, a non-error
+/// prints `warning` (a manifest row is an error or a warning).
+pub fn spanless_line(path: &Path, d: &Diagnostic, reported: crate::output::Reported) -> String {
+    let severity = match (reported.severity, reported.marker) {
+        (Severity::Error, _) => "error",
+        (severity, Some(_)) => crate::output::severity_str(severity),
+        (_, None) => "warning",
     };
-    let marker = if denied { " [denied]" } else { "" };
+    let marker = crate::output::marker_str(reported.marker);
     let at = if d.span.line > 0 {
         format!(":{}:{}", d.span.line, d.span.column)
     } else {
@@ -190,7 +197,10 @@ pub fn report_and_gate(verdicts: &[ManifestVerdict]) -> bool {
             println!("{e}");
         }
         for d in &v.diags {
-            println!("{}", spanless_line(&v.path, d, false));
+            println!(
+                "{}",
+                spanless_line(&v.path, d, crate::output::Reported::native(d))
+            );
         }
         invalid |= v.is_invalid();
     }
@@ -213,7 +223,10 @@ pub fn gate_chapters(verdicts: &[ManifestVerdict]) -> bool {
                 d.message.clone(),
                 Some(&span),
             );
-            println!("{}", spanless_line(&v.path, &d, false));
+            println!(
+                "{}",
+                spanless_line(&v.path, &d, crate::output::Reported::native(&d))
+            );
             invalid = true;
         }
     }

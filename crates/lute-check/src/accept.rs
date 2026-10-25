@@ -13,6 +13,10 @@
 //! - whole-project `check` ([`check_project_never_accepted`]): an accept-driven
 //!   quest nothing accepts is [`W_QUEST_NEVER_ACCEPTED`] (dsl 0.24.0 §2);
 //!   `accept="external"` is the one non-content acceptance (dsl 0.25.0 §5).
+//!
+//! A granted reward whose kind declares `effects.accepts` accepts too
+//! (0.50.0 §5.2, §5.4, [`crate::reward_effects`]): both passes read it beside
+//! the `::accept`s, judged by the same rule.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -28,10 +32,11 @@ use crate::ProjectDoc;
 /// subquest child that activates with its parent (dsl 0.25.0 §5).
 pub const E_ACCEPT_TARGET: &str = "E-ACCEPT-TARGET";
 
-/// An accept-driven quest that no `::accept` in the project names and that
-/// is not `accept="external"`: nothing ever activates it (dsl 0.24.0 §2,
-/// 0.25.0 §5, whole-project `check` only). A test or trace mock's `accepts:` is
-/// no acceptance — it proves the test, not the game.
+/// An accept-driven quest that no `::accept` and no reward `accepts` in the
+/// project names and that is not `accept="external"`: nothing ever
+/// activates it (dsl 0.24.0 §2, 0.25.0 §5, 0.50.0 §5.4, whole-project
+/// `check` only). A test or trace mock's `accepts:` is no acceptance — it
+/// proves the test, not the game.
 pub const W_QUEST_NEVER_ACCEPTED: &str = "W-QUEST-NEVER-ACCEPTED";
 
 /// The one legal value of `::accept{… at=}` (dsl 0.24.0 §2): the
@@ -186,11 +191,36 @@ pub(crate) fn accept_driven_quests<'a>(docs: &'a [ProjectDoc<'a>]) -> BTreeSet<&
 /// the per-file check's, never re-reported here. The engine's acceptance of
 /// a `<quest accept="external">` child that activates with its parent is
 /// the same no-op (dsl 0.25.0 §5), [`E_ACCEPT_TARGET`] at the `accept`
-/// value; beside `start` it is the per-file `E-ATTR-TYPE`.
+/// value; beside `start` it is the per-file `E-ATTR-TYPE`. 0.50.0 §5.2: each
+/// quest a reward's kind accepts (`effects.accepts`) is judged by the same
+/// rule, anchored at the reward's `target=` when the id came from it, else
+/// at its `kind=`.
 pub fn check_project_accepts(docs: &[ProjectDoc<'_>]) -> Vec<(PathBuf, Diagnostic)> {
     let project = ProjectQuests::new(docs);
     let mut out = Vec::new();
-    for_each_accept(docs, |path, d| check_target(d, &project, path, &mut out));
+    for_each_accept(docs, |path, d| {
+        let Some((id, span)) = d.accept_quest() else {
+            return;
+        };
+        let subject = format!("`::accept` targets quest `{id}`");
+        check_target(
+            id,
+            span,
+            &subject,
+            " (dsl 0.21.0 §7a.3)",
+            &project,
+            path,
+            &mut out,
+        );
+    });
+    let grants = crate::reward_effects::GrantTable::build(docs);
+    for (path, grant, id) in grants.accepts() {
+        let subject = format!(
+            "{} accepts quest `{id}` (its kind's `effects.accepts`)",
+            grant.reward_text()
+        );
+        check_target(id, grant.anchor(), &subject, "", &project, path, &mut out);
+    }
     for item in docs {
         let path = item.path;
         let doc = item.doc;
@@ -242,9 +272,19 @@ pub fn check_project_never_accepted(
             named.insert(id);
         }
     });
+    // 0.50.0 §5.4: a reward's `accepts` names the quest too.
+    let grants = crate::reward_effects::GrantTable::build(docs);
+    let mut by_rewards: BTreeSet<String> = BTreeSet::new();
+    for (_, _, id) in grants.accepts() {
+        by_rewards.insert(id.to_string());
+    }
     let mut out = Vec::new();
     for (id, q) in &project.quests {
-        if project.accept_driven(id) != Some(true) || named.contains(id) || q.external {
+        if project.accept_driven(id) != Some(true)
+            || named.contains(id)
+            || by_rewards.contains(*id)
+            || q.external
+        {
             continue;
         }
         let only_mocks = match mocked.get(*id).map(Vec::as_slice) {
@@ -264,16 +304,16 @@ pub fn check_project_never_accepted(
         let message = match project.parents.get(id) {
             Some(parent) if q.on_accept => format!(
                 "quest `{id}` waits for an acceptance (`activate=\"accept\"`), but no \
-                 `::accept` in the project names it{only_mocks}, so it never activates; \
-                 accept it from a scene with `::accept{{quest=\"{id}\"}}`, {external}, or \
+                 `::accept` or reward `accepts` in the project names it{only_mocks}, so it never \
+                 activates; accept it from a scene with `::accept{{quest=\"{id}\"}}`, {external}, or \
                  remove `activate=\"accept\"` so it activates with its parent `{parent}` \
                  (dsl 0.24.0 §2, 0.25.0 §5)"
             ),
             _ => format!(
-                "quest `{id}` is accept-driven (no `start`), but no `::accept` in the project \
-                 names it{only_mocks}, so it never activates; accept it from a scene with \
-                 `::accept{{quest=\"{id}\"}}`, {external}, or give it a `start` condition \
-                 (dsl 0.24.0 §2, 0.25.0 §5)"
+                "quest `{id}` is accept-driven (no `start`), but no `::accept` or reward \
+                 `accepts` in the project names it{only_mocks}, so it never activates; accept it \
+                 from a scene with `::accept{{quest=\"{id}\"}}`, {external}, or give it a `start` \
+                 condition (dsl 0.24.0 §2, 0.25.0 §5)"
             ),
         };
         let (path, span) = q.anchor;
@@ -284,37 +324,37 @@ pub fn check_project_never_accepted(
     out
 }
 
+/// Judge one acceptance of quest `id` (at `span`): the quest is declared
+/// and accept-driven. `subject` opens each message (`` `::accept` targets
+/// quest `x` ``); `cite` closes the unknown-id one.
 fn check_target(
-    d: &Directive,
+    id: &str,
+    span: Span,
+    subject: &str,
+    cite: &str,
     project: &ProjectQuests<'_>,
     path: &Path,
     out: &mut Vec<(PathBuf, Diagnostic)>,
 ) {
-    let Some((id, span)) = d.accept_quest() else {
-        return;
-    };
     if !lute_manifest::ident::is_name(id) {
         return;
     }
     let message = match project.quests.get(id) {
         Some(q) if q.start => format!(
-            "`::accept` targets quest `{id}`, which has a `start` condition and activates on \
-             its own; only an accept-driven quest (no `start`) can be accepted (dsl 0.21.0 §7a.3)"
+            "{subject}, which has a `start` condition and activates on its own; only an \
+             accept-driven quest (no `start`) can be accepted (dsl 0.21.0 §7a.3)"
         ),
         Some(q) => match project.parents.get(id) {
             Some(parent) if !q.on_accept => format!(
-                "`::accept` targets quest `{id}`, which activates with its parent `{parent}`; \
-                 declare `activate=\"accept\"` on it to accept it from a scene (dsl 0.24.0 §2)"
+                "{subject}, which activates with its parent `{parent}`; declare \
+                 `activate=\"accept\"` on it to accept it from a scene (dsl 0.24.0 §2)"
             ),
             _ => return,
         },
         None => {
             let hint = lute_manifest::suggest::nearest(id, project.quests.keys().copied(), 2)
                 .map_or_else(String::new, |near| format!(" — did you mean `{near}`?"));
-            format!(
-                "`::accept` targets quest `{id}`, but no quest in the project declares that \
-                 id{hint} (dsl 0.21.0 §7a.3)"
-            )
+            format!("{subject}, but no quest in the project declares that id{hint}{cite}")
         }
     };
     out.push((

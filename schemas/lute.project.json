@@ -68,9 +68,33 @@
     "constraints": {
       "type": "array",
       "items": { "$ref": "#/definitions/constraint" }
+    },
+    "diagnostics": {
+      "description": "dsl 0.50.0 §6: the project's level for a warning code (`W-*`), everywhere or under project-relative `paths` globs. Levels change only what is reported and the exit status.",
+      "type": "object",
+      "propertyNames": { "pattern": "^W-[A-Z0-9-]+$" },
+      "additionalProperties": {
+        "oneOf": [
+          { "$ref": "#/definitions/diagnosticLevel" },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["level"],
+            "properties": {
+              "level": { "$ref": "#/definitions/diagnosticLevel" },
+              "paths": {
+                "type": "array",
+                "minItems": 1,
+                "items": { "type": "string", "minLength": 1, "pattern": "^(?!/)(?!.*(^|/)\\.\\.(/|$)).*$" }
+              }
+            }
+          }
+        ]
+      }
     }
   },
   "definitions": {
+    "diagnosticLevel": { "enum": ["off", "info", "warn", "error"] },
     "constraint": {
       "type": "object",
       "additionalProperties": false,

@@ -1,0 +1,5 @@
+# 0.50.0 §4.1: the host tokens every project has. A host token is a bare
+# `{{name}}` interpolation the engine substitutes at render time; the runtime
+# keeps the marker verbatim. A plugin declares more in its `hostTokens` export.
+hostTokens:
+  userName: { type: string }

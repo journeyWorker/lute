@@ -28,6 +28,7 @@ use lute_manifest::asset::{self, AssetIssue, DecomposeError};
 use lute_manifest::provider::{IdStatus, ProviderSet};
 use lute_manifest::schema::AttrDecl;
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
+use lute_manifest::stamps::{StampAttrDecl, StampSurface};
 use lute_manifest::types::{type_accepts, Literal, Type};
 use lute_syntax::ast::{Attr, AttrValue, Directive};
 
@@ -187,6 +188,15 @@ pub fn check_directive(
     // checkers take an already-rendered owner precisely so a content line does
     // not inherit the directive sigil (`crate::content_line`).
     let owner = format!("::{}", dir.tag);
+    // The directive as a stamp surface (0.50.0 §3.3); built only when a
+    // plugin declares stamps, so a stamp-less project allocates nothing.
+    let surface =
+        (!snapshot.stamp_attrs.is_empty()).then(|| StampSurface::Directive(dir.tag.clone()));
+    let stamp = |key: &str| {
+        surface
+            .as_ref()
+            .and_then(|s| snapshot.stamp_attrs.get(s, key))
+    };
 
     // Per-attribute validation.
     for attr in &dir.attrs {
@@ -244,15 +254,15 @@ pub fn check_directive(
                 );
                 continue;
             }
-            // plugin §14.1: a plugin-declared CROSS-CUTTING `stampAttrs` entry
-            // is admissible on EVERY directive, not just the one that declared
-            // it — real engines carry metadata (analytics tags, scoring ids) on
-            // every record regardless of kind. Resolution order is strict: the
-            // directive's OWN `AttrDecl`s win (the `find` above), then this,
-            // then `E-UNKNOWN-ATTR`. Value typing runs through the exact same
-            // `check_attr_value` path a declared directive attr uses, so
-            // `E-ATTR-TYPE`/`E-BAD-ENUM` behave identically on both surfaces.
-            if let Some(sdecl) = snapshot.stamp_attrs.get(&attr.key) {
+            // plugin §14.1: a plugin stamp admissible on this directive — a
+            // cross-cutting one on every directive, a scoped one on the
+            // directives its `on:` names (0.50.0 §3.4). Resolution order is
+            // strict: the directive's OWN `AttrDecl`s win (the `find` above),
+            // then this, then `E-UNKNOWN-ATTR`. Value typing runs through the
+            // exact same `check_attr_value` path a declared directive attr
+            // uses, so `E-ATTR-TYPE`/`E-BAD-ENUM` behave identically on both
+            // surfaces.
+            if let Some(sdecl) = stamp(&attr.key) {
                 check_attr_value(
                     &owner, sdecl, attr, snapshot, providers, domains, &mut diags,
                 );
@@ -264,11 +274,17 @@ pub fn check_directive(
                 diags.push(d);
                 continue;
             }
+            let elsewhere = surface
+                .as_ref()
+                .map(|s| snapshot.stamp_attrs.scoped_elsewhere(s, &attr.key))
+                .unwrap_or_default();
             diags.push(diag(
                 "E-UNKNOWN-ATTR",
                 Severity::Error,
                 if dir.tag == lute_manifest::core::CLEAR_DIRECTIVE {
                     clear_attr_message(&attr.key)
+                } else if !elsewhere.is_empty() {
+                    scoped_elsewhere_message(&format!("`::{}`", dir.tag), &attr.key, &elsewhere)
                 } else {
                     let near = lute_manifest::suggest::did_you_mean(
                         &attr.key,
@@ -376,6 +392,28 @@ pub fn check_directive(
             ));
         }
     }
+    // 0.50.0 §3.4: a stamp declared `required` on this directive (only a
+    // scoped one can be, §3.2) must be authored. A stamp is never injected,
+    // so a declared `default:` does not count.
+    if let Some(surface) = &surface {
+        for sdecl in snapshot
+            .stamp_attrs
+            .for_surface(surface)
+            .filter(|s| s.decl.required)
+        {
+            if !dir.attrs.iter().any(|a| a.key == sdecl.decl.name) {
+                diags.push(diag(
+                    "E-MISSING-ATTR",
+                    Severity::Error,
+                    format!(
+                        "`::{}` requires attribute `{}` (a stamp of `{}`)",
+                        dir.tag, sdecl.decl.name, sdecl.plugin
+                    ),
+                    dir.span,
+                ));
+            }
+        }
+    }
     // dsl 0.37.0 §3.3: a camera move needs something to do.
     diags.extend(crate::renames::camera_empty(dir));
     // dsl 0.27.0 §4: the facts the call's declared `effects.asserts` /
@@ -413,7 +451,7 @@ pub const UNIVERSAL_TIMING_ATTRS: &[(&str, Type)] = &[
 fn unstamped_attr_message(tag: &str, key: &str, snapshot: &CapabilitySnapshot) -> Option<String> {
     use lute_manifest::core::{CLEAR_DIRECTIVE, JUMP_DIRECTIVE, LABEL_DIRECTIVE};
     let carried = UNIVERSAL_TIMING_ATTRS.iter().any(|(name, _)| *name == key)
-        || snapshot.stamp_attrs.contains_key(key);
+        || snapshot.stamp_attrs.contains(key);
     if !carried || !lute_manifest::core::UNSTAMPED_DIRECTIVES.contains(&tag) {
         return None;
     }
@@ -439,6 +477,46 @@ fn clear_attr_message(key: &str) -> String {
         "`::clear` has no attribute `{key}` — it takes no attributes; every character on stage \
          exits with its own exit (dsl 0.24.0 §4)"
     )
+}
+
+/// 0.50.0 §3.4: the `E-UNKNOWN-ATTR` message for a stamp `key` written on a
+/// surface its `on:` does not name — `elsewhere`, the scoped declarations of
+/// `key` ([`lute_manifest::stamps::StampAttrs::scoped_elsewhere`]) — naming
+/// where it applies instead of listing the surface's attributes. `owner` is
+/// the surface as the sentence's subject (`` `::bg` ``, `a content line`).
+pub(crate) fn scoped_elsewhere_message(
+    owner: &str,
+    key: &str,
+    elsewhere: &[&StampAttrDecl],
+) -> String {
+    let mut by_plugin: BTreeMap<&str, Vec<&StampSurface>> = BTreeMap::new();
+    for sdecl in elsewhere {
+        by_plugin
+            .entry(sdecl.plugin.as_str())
+            .or_default()
+            .extend(sdecl.on.iter().flatten());
+    }
+    let parts: Vec<String> = by_plugin
+        .into_iter()
+        .map(|(plugin, mut surfaces)| {
+            surfaces.sort();
+            let surfaces: Vec<String> = surfaces.into_iter().map(StampSurface::quoted).collect();
+            format!("`{plugin}` for {}", and_list(&surfaces))
+        })
+        .collect();
+    format!(
+        "{owner} has no attribute `{key}`: it is a stamp of {} only",
+        parts.join(", and of ")
+    )
+}
+
+/// `a`, `a and b`, `a, b and c`.
+pub(crate) fn and_list(items: &[String]) -> String {
+    match items.split_last() {
+        None => String::new(),
+        Some((last, [])) => last.clone(),
+        Some((last, rest)) => format!("{} and {last}", rest.join(", ")),
+    }
 }
 
 /// Synthetic [`AttrDecl`] for an undeclared reserved timing key
@@ -471,20 +549,42 @@ pub(crate) fn timing_ref_decl(tag: &str, key: &str) -> Option<AttrDecl> {
     universal_timing_decl(key)
 }
 
-/// The type a `@ref` value of attribute `key` on a known `::tag` is checked
-/// against (`E-REF-TYPE`): the directive's own declaration, else an
-/// undeclared timing key's universal type ([`timing_ref_decl`], #193).
-pub(crate) fn directive_ref_type(
+/// Where an attribute with a `@ref` value is written, for the type that
+/// value is checked against (`E-REF-TYPE`, dsl §8; 0.50.0 §3.4).
+#[derive(Clone, Debug)]
+pub(crate) enum AttrSite<'a> {
+    /// No declaration types it: a `::use` argument, `<objective>`, `<on>`.
+    Untyped,
+    /// A content line: its typed line attribute (`wait`, 0.49.0 §4.2).
+    Line,
+    /// A known directive, by tag: its own declaration, else an undeclared
+    /// timing key's universal type ([`timing_ref_decl`], #193).
+    Directive(&'a str),
+    /// `<branch>`, `<hub>` or `<choice>`: the plugin stamp its `on:` admits
+    /// there (0.50.0 §3.4).
+    Element(StampSurface),
+}
+
+/// The type a `@ref` value of attribute `key` written at `site` is checked
+/// against; `None` leaves the slot untyped.
+pub(crate) fn attr_ref_type(
     snapshot: &CapabilitySnapshot,
-    tag: &str,
+    site: &AttrSite<'_>,
     key: &str,
 ) -> Option<Type> {
-    let decl = snapshot.directive(tag)?;
-    decl.attrs
-        .iter()
-        .find(|a| a.name == key)
-        .map(|a| a.ty.clone())
-        .or_else(|| timing_ref_decl(tag, key).map(|a| a.ty))
+    match site {
+        AttrSite::Untyped => None,
+        AttrSite::Line => crate::content_line::typed_line_attr(key).map(|a| a.ty),
+        AttrSite::Directive(tag) => {
+            let decl = snapshot.directive(tag)?;
+            decl.attrs
+                .iter()
+                .find(|a| a.name == key)
+                .map(|a| a.ty.clone())
+                .or_else(|| timing_ref_decl(tag, key).map(|a| a.ty))
+        }
+        AttrSite::Element(surface) => snapshot.stamp_attrs.get(surface, key).map(|a| a.ty.clone()),
+    }
 }
 
 /// A declared attr `default` as the authored attribute value it stands in

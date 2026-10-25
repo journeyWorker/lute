@@ -13,10 +13,20 @@
 //! arity, or a non-`bool` `when` result is a structured [`EvalError`]. The
 //! rule engine turns each into a single `E-LINT-EXPR` diagnostic anchored
 //! to the rule's declaration site, then skips the rule (spec §5).
+//!
+//! **By reference** (dsl 0.50.0 §8.1 "Cost"). A select/index chain rooted at
+//! a binding resolves to a [`Ref`] into the bound value: reading
+//! `node.attrs["x"]` copies neither the row nor its attribute map. A binding
+//! may also be a [`Record`], a host structure that answers one field (or its
+//! size) at a time (the `node` row and its `preceding` scope); it becomes a
+//! [`Value`] only when a rule reads it whole (comparing or rendering it).
+//!
+//! [`apply_op`]: lute_check::apply_op
 
+use std::borrow::Cow;
 use std::collections::BTreeMap;
 
-use cel_parser::ast::{operators as op, CallExpr, Expr};
+use cel_parser::ast::{operators as op, CallExpr, Expr, IdedExpr};
 use cel_parser::reference::Val;
 
 /// A ground value the evaluator produces or consumes. Distinct from
@@ -68,27 +78,126 @@ impl Value {
     }
 }
 
-/// A binding table for the target-row env (`line`, `shot`, `scene`,
-/// `speaker`, `group`, `project`, `options`). Undeclared bindings resolve
-/// to a missing-field error the moment they're read.
-#[derive(Debug, Default, Clone)]
-pub struct Env {
-    pub bindings: BTreeMap<String, Value>,
+/// A map-shaped structure the evaluator reads one field at a time. Its
+/// fields are never copied by a select, an index, an `in` test or `size()`;
+/// only [`Record::materialize`] builds the whole map, for a rule that reads
+/// it whole otherwise (rendering or comparing it).
+pub trait Record {
+    /// The field `key`, or `None` when the record has no such key.
+    fn field(&self, key: &str) -> Option<Ref<'_>>;
+    /// The number of fields (`size()`), without building the map.
+    fn len(&self) -> usize;
+    /// Whether the record has no field.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+    /// Every field, as one map value.
+    fn materialize(&self) -> Value;
 }
 
-impl Env {
+/// What an expression resolves to: a value borrowed from a binding, a value
+/// computed by the expression, or a [`Record`].
+pub enum Ref<'a> {
+    Borrowed(&'a Value),
+    Owned(Value),
+    Record(&'a dyn Record),
+}
+
+impl std::fmt::Debug for Ref<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Ref::Borrowed(v) => f.debug_tuple("Borrowed").field(v).finish(),
+            Ref::Owned(v) => f.debug_tuple("Owned").field(v).finish(),
+            Ref::Record(_) => f.write_str("Record(..)"),
+        }
+    }
+}
+
+impl Ref<'_> {
+    /// The same reference, borrowed from `self`.
+    fn reborrow(&self) -> Ref<'_> {
+        match self {
+            Ref::Borrowed(v) => Ref::Borrowed(v),
+            Ref::Owned(v) => Ref::Borrowed(v),
+            Ref::Record(r) => Ref::Record(*r),
+        }
+    }
+
+    /// The value itself; a [`Record`] is materialized.
+    fn as_value(&self) -> Cow<'_, Value> {
+        match self {
+            Ref::Borrowed(v) => Cow::Borrowed(v),
+            Ref::Owned(v) => Cow::Borrowed(v),
+            Ref::Record(r) => Cow::Owned(r.materialize()),
+        }
+    }
+
+    fn into_value(self) -> Value {
+        match self {
+            Ref::Borrowed(v) => v.clone(),
+            Ref::Owned(v) => v,
+            Ref::Record(r) => r.materialize(),
+        }
+    }
+
+    /// The value, unless this is a [`Record`].
+    fn value(&self) -> Option<&Value> {
+        match self {
+            Ref::Borrowed(v) => Some(v),
+            Ref::Owned(v) => Some(v),
+            Ref::Record(_) => None,
+        }
+    }
+
+    fn type_name(&self) -> &'static str {
+        self.value().map_or("map", Value::type_name)
+    }
+}
+
+/// A binding table for the target-row env (`line`, `section`, `scene`,
+/// `speaker`, `group`, `project`, `node`, `options`). Undeclared bindings
+/// resolve to a missing-field error the moment they're read. A binding is
+/// owned, borrowed (a shared `options` map is bound once per rule, not
+/// copied per row) or a [`Record`].
+#[derive(Debug, Default)]
+pub struct Env<'a> {
+    bindings: Vec<(&'a str, Ref<'a>)>,
+}
+
+impl<'a> Env<'a> {
     pub fn new() -> Self {
         Self::default()
     }
-    pub fn with(mut self, name: &str, v: Value) -> Self {
-        self.bindings.insert(name.to_string(), v);
+    /// Bind `name` to an owned value.
+    pub fn with(mut self, name: &'a str, v: Value) -> Self {
+        self.bind(name, v);
         self
     }
-    pub fn bind(&mut self, name: &str, v: Value) {
-        self.bindings.insert(name.to_string(), v);
+    /// Bind `name` to a borrowed value.
+    pub fn with_ref(mut self, name: &'a str, v: &'a Value) -> Self {
+        self.put(name, Ref::Borrowed(v));
+        self
     }
-    pub fn get(&self, name: &str) -> Option<&Value> {
-        self.bindings.get(name)
+    /// Bind `name` to a [`Record`].
+    pub fn with_record(mut self, name: &'a str, r: &'a dyn Record) -> Self {
+        self.put(name, Ref::Record(r));
+        self
+    }
+    pub fn bind(&mut self, name: &'a str, v: Value) {
+        self.put(name, Ref::Owned(v));
+    }
+    fn put(&mut self, name: &'a str, r: Ref<'a>) {
+        match self.bindings.iter_mut().find(|(n, _)| *n == name) {
+            Some(slot) => slot.1 = r,
+            None => self.bindings.push((name, r)),
+        }
+    }
+    /// The binding `name`, by reference.
+    pub fn get(&self, name: &str) -> Option<Ref<'_>> {
+        self.bindings
+            .iter()
+            .find(|(n, _)| *n == name)
+            .map(|(_, r)| r.reborrow())
     }
 }
 
@@ -118,23 +227,27 @@ impl std::fmt::Display for EvalError {
 impl std::error::Error for EvalError {}
 
 /// Evaluate a top-level CEL expression under `env`.
-pub fn eval(expr: &Expr, env: &Env) -> Result<Value, EvalError> {
+pub fn eval(expr: &Expr, env: &Env<'_>) -> Result<Value, EvalError> {
+    resolve(expr, env).map(Ref::into_value)
+}
+
+/// Evaluate `expr`, keeping a select/index chain as a reference into `env`.
+fn resolve<'e>(expr: &Expr, env: &'e Env<'_>) -> Result<Ref<'e>, EvalError> {
     match expr {
-        Expr::Literal(v) => literal_value(v),
+        Expr::Literal(v) => literal_value(v).map(Ref::Owned),
         Expr::Ident(name) => env
             .get(name)
-            .cloned()
             .ok_or_else(|| EvalError::new(format!("unknown binding `{name}`"))),
         Expr::Select(s) => {
-            let base = eval(&s.operand.expr, env)?;
-            select_field(&base, &s.field)
+            let base = resolve(&s.operand.expr, env)?;
+            select_field(base, &s.field)
         }
         Expr::List(l) => {
             let mut out = Vec::with_capacity(l.elements.len());
             for e in &l.elements {
                 out.push(eval(&e.expr, env)?);
             }
-            Ok(Value::List(out))
+            Ok(Ref::Owned(Value::List(out)))
         }
         Expr::Call(c) => eval_call(c, env),
         // Map / struct literals aren't authored in lint rules (options ships
@@ -165,94 +278,98 @@ fn literal_value(v: &Val) -> Result<Value, EvalError> {
     })
 }
 
-fn select_field(base: &Value, field: &str) -> Result<Value, EvalError> {
+/// `base.field` (or `base["field"]`): a map's or record's entry, by
+/// reference when `base` is.
+fn select_field<'e>(base: Ref<'e>, field: &str) -> Result<Ref<'e>, EvalError> {
+    let missing = || EvalError::new(format!("missing key `{field}`"));
     match base {
-        Value::Map(m) => m
-            .get(field)
-            .cloned()
-            .ok_or_else(|| EvalError::new(format!("missing key `{field}`"))),
-        Value::Null => Err(EvalError::new(format!(
-            "select `.{field}` on null (missing binding upstream)"
-        ))),
-        other => Err(EvalError::new(format!(
-            "select `.{field}` on {} value",
-            other.type_name()
-        ))),
+        Ref::Borrowed(Value::Map(m)) => m.get(field).map(Ref::Borrowed).ok_or_else(missing),
+        Ref::Owned(Value::Map(mut m)) => m.remove(field).map(Ref::Owned).ok_or_else(missing),
+        Ref::Record(r) => r.field(field).ok_or_else(missing),
+        other => match other.value() {
+            Some(Value::Null) => Err(EvalError::new(format!(
+                "select `.{field}` on null (missing binding upstream)"
+            ))),
+            _ => Err(EvalError::new(format!(
+                "select `.{field}` on {} value",
+                other.type_name()
+            ))),
+        },
     }
 }
 
-fn eval_call(c: &CallExpr, env: &Env) -> Result<Value, EvalError> {
+fn eval_call<'e>(c: &CallExpr, env: &'e Env<'_>) -> Result<Ref<'e>, EvalError> {
     let name = c.func_name.as_str();
+    if let Some(target) = &c.target {
+        return member_call(name, target, &c.args, env).map(Ref::Owned);
+    }
     // Short-circuit connectives (Kleene-style, matching decide.rs). A bare
     // scalar op is dispatched to `apply_op`; anything list/map-shaped is
     // handled inline.
     match (name, c.args.as_slice()) {
         (op::LOGICAL_AND, [a, b]) => {
-            let av = eval(&a.expr, env)?;
-            let ab = to_bool(&av)?;
-            if !ab {
-                return Ok(Value::Bool(false));
+            if !to_bool(&resolve(&a.expr, env)?)? {
+                return Ok(Ref::Owned(Value::Bool(false)));
             }
-            let bv = eval(&b.expr, env)?;
-            Ok(Value::Bool(to_bool(&bv)?))
+            Ok(Ref::Owned(Value::Bool(to_bool(&resolve(&b.expr, env)?)?)))
         }
         (op::LOGICAL_OR, [a, b]) => {
-            let av = eval(&a.expr, env)?;
-            if to_bool(&av)? {
-                return Ok(Value::Bool(true));
+            if to_bool(&resolve(&a.expr, env)?)? {
+                return Ok(Ref::Owned(Value::Bool(true)));
             }
-            let bv = eval(&b.expr, env)?;
-            Ok(Value::Bool(to_bool(&bv)?))
+            Ok(Ref::Owned(Value::Bool(to_bool(&resolve(&b.expr, env)?)?)))
         }
-        (op::LOGICAL_NOT, [a]) => {
-            let v = eval(&a.expr, env)?;
-            Ok(Value::Bool(!to_bool(&v)?))
-        }
+        (op::LOGICAL_NOT, [a]) => Ok(Ref::Owned(Value::Bool(!to_bool(&resolve(&a.expr, env)?)?))),
         (op::CONDITIONAL, [c_, t, e]) => {
-            let cv = eval(&c_.expr, env)?;
-            if to_bool(&cv)? {
-                eval(&t.expr, env)
+            if to_bool(&resolve(&c_.expr, env)?)? {
+                resolve(&t.expr, env)
             } else {
-                eval(&e.expr, env)
+                resolve(&e.expr, env)
             }
         }
         (op::INDEX, [container, key]) => {
-            let base = eval(&container.expr, env)?;
-            let k = eval(&key.expr, env)?;
-            index_value(&base, &k)
+            let base = resolve(&container.expr, env)?;
+            let k = resolve(&key.expr, env)?;
+            index_value(base, &k.as_value())
         }
         (op::IN, [needle, haystack]) => {
-            let n = eval(&needle.expr, env)?;
-            let h = eval(&haystack.expr, env)?;
-            match h {
-                Value::List(items) => Ok(Value::Bool(items.iter().any(|v| v == &n))),
-                Value::Map(m) => match n {
-                    Value::Str(s) => Ok(Value::Bool(m.contains_key(&s))),
-                    _ => Err(EvalError::new("`in` needle for a map must be string")),
+            let n = resolve(&needle.expr, env)?;
+            let n = n.as_value();
+            let found = match resolve(&haystack.expr, env)? {
+                Ref::Record(r) => match n.as_ref() {
+                    Value::Str(s) => r.field(s).is_some(),
+                    _ => return Err(EvalError::new("`in` needle for a map must be string")),
                 },
-                other => Err(EvalError::new(format!(
-                    "`in` right side is {} (need list or map)",
-                    other.type_name()
-                ))),
-            }
+                h => match h.value() {
+                    Some(Value::List(items)) => items.iter().any(|v| v == n.as_ref()),
+                    Some(Value::Map(m)) => match n.as_ref() {
+                        Value::Str(s) => m.contains_key(s),
+                        _ => return Err(EvalError::new("`in` needle for a map must be string")),
+                    },
+                    _ => {
+                        return Err(EvalError::new(format!(
+                            "`in` right side is {} (need list or map)",
+                            h.type_name()
+                        )))
+                    }
+                },
+            };
+            Ok(Ref::Owned(Value::Bool(found)))
         }
         ("size", [x]) => {
-            let v = eval(&x.expr, env)?;
-            match v {
-                Value::Str(s) => Ok(Value::Int(
-                    i64::try_from(s.chars().count()).expect("a length is at most isize::MAX"),
-                )),
-                Value::List(l) => Ok(Value::Int(
-                    i64::try_from(l.len()).expect("a length is at most isize::MAX"),
-                )),
-                Value::Map(m) => Ok(Value::Int(
-                    i64::try_from(m.len()).expect("a length is at most isize::MAX"),
-                )),
-                other => Err(EvalError::new(format!(
-                    "size() on {} value",
-                    other.type_name()
-                ))),
-            }
+            let v = resolve(&x.expr, env)?;
+            let len = match &v {
+                Ref::Record(r) => r.len(),
+                v => match v.value() {
+                    Some(Value::Str(s)) => s.chars().count(),
+                    Some(Value::List(l)) => l.len(),
+                    Some(Value::Map(m)) => m.len(),
+                    _ => return Err(EvalError::new(format!("size() on {} value", v.type_name()))),
+                },
+            };
+            Ok(Ref::Owned(Value::Int(
+                i64::try_from(len).expect("a length is at most isize::MAX"),
+            )))
         }
         // Scalar arithmetic/comparison/equality via apply_op.
         (
@@ -264,21 +381,18 @@ fn eval_call(c: &CallExpr, env: &Env) -> Result<Value, EvalError> {
             | op::GREATER
             | op::GREATER_EQUALS
             | op::LESS
-            | op::LESS_EQUALS,
+            | op::LESS_EQUALS
+            | op::EQUALS
+            | op::NOT_EQUALS,
             [a, b],
         ) => {
-            let av = eval(&a.expr, env)?;
-            let bv = eval(&b.expr, env)?;
-            apply_scalar(name, &[av, bv])
-        }
-        (op::EQUALS | op::NOT_EQUALS, [a, b]) => {
-            let av = eval(&a.expr, env)?;
-            let bv = eval(&b.expr, env)?;
-            apply_scalar(name, &[av, bv])
+            let av = resolve(&a.expr, env)?;
+            let bv = resolve(&b.expr, env)?;
+            apply_scalar(name, &[&av.as_value(), &bv.as_value()]).map(Ref::Owned)
         }
         (op::NEGATE, [a]) => {
-            let av = eval(&a.expr, env)?;
-            apply_scalar(name, &[av])
+            let av = resolve(&a.expr, env)?;
+            apply_scalar(name, &[&av.as_value()]).map(Ref::Owned)
         }
         _ => Err(EvalError::new(format!(
             "unsupported call `{name}` with {} args",
@@ -287,10 +401,42 @@ fn eval_call(c: &CallExpr, env: &Env) -> Result<Value, EvalError> {
     }
 }
 
+/// A member call `target.name(args)`: the CEL string members `startsWith`,
+/// `endsWith` and `contains` (dsl 0.50.0 §8.2), each with one argument and
+/// both operands strings. No other member is defined.
+fn member_call(
+    name: &str,
+    target: &IdedExpr,
+    args: &[IdedExpr],
+    env: &Env<'_>,
+) -> Result<Value, EvalError> {
+    let test: fn(&str, &str) -> bool = match (name, args.len()) {
+        ("startsWith", 1) => |s, t| s.starts_with(t),
+        ("endsWith", 1) => |s, t| s.ends_with(t),
+        ("contains", 1) => |s, t| s.contains(t),
+        _ => {
+            return Err(EvalError::new(format!(
+                "unsupported member call `.{name}` with {} args",
+                args.len()
+            )))
+        }
+    };
+    let s = resolve(&target.expr, env)?;
+    let t = resolve(&args[0].expr, env)?;
+    match (s.value(), t.value()) {
+        (Some(Value::Str(s)), Some(Value::Str(t))) => Ok(Value::Bool(test(s, t))),
+        _ => Err(EvalError::new(format!(
+            "`.{name}` needs string operands, got {} and {}",
+            s.type_name(),
+            t.type_name()
+        ))),
+    }
+}
+
 /// Dispatch a scalar op to [`lute_check::apply_op`]. Values that are neither
 /// bool/num/string bail out with a type mismatch — an authored `speaker.axis
 /// > 3` (map compared to a number) is a fragment error, not a silent pass.
-fn apply_scalar(name: &str, args: &[Value]) -> Result<Value, EvalError> {
+fn apply_scalar(name: &str, args: &[&Value]) -> Result<Value, EvalError> {
     let bad = || EvalError::new(format!("scalar op `{name}` failed (type/overflow)"));
     match (name, args) {
         (op::NEGATE, [Value::Int(a)]) => a.checked_neg().map(Value::Int).ok_or_else(bad),
@@ -347,28 +493,41 @@ fn apply_scalar(name: &str, args: &[Value]) -> Result<Value, EvalError> {
     }
 }
 
-fn index_value(base: &Value, key: &Value) -> Result<Value, EvalError> {
-    match (base, key) {
-        (Value::Map(m), Value::Str(k)) => m
-            .get(k)
-            .cloned()
-            .ok_or_else(|| EvalError::new(format!("missing key `{k}`"))),
-        (Value::List(l), Value::Int(n)) => {
+/// `base[key]`: a map's or record's string key, or a list's whole index —
+/// by reference when `base` is.
+fn index_value<'e>(base: Ref<'e>, key: &Value) -> Result<Ref<'e>, EvalError> {
+    let mismatch = |base: &Ref<'_>| {
+        EvalError::new(format!(
+            "index {}[{}] type mismatch",
+            base.type_name(),
+            key.type_name()
+        ))
+    };
+    if let Value::Str(k) = key {
+        if matches!(base, Ref::Record(_)) || matches!(base.value(), Some(Value::Map(_))) {
+            return select_field(base, k);
+        }
+    }
+    let Some(Value::List(list)) = base.value() else {
+        return Err(mismatch(&base));
+    };
+    let len = list.len();
+    let out_of_bounds =
+        |shown: String| EvalError::new(format!("list index {shown} out of bounds (size {len})"));
+    let i = match key {
+        Value::Int(n) => {
             #[expect(
                 clippy::cast_possible_truncation,
                 reason = "an authored index: on a 32-bit target one past the isize range \
                           truncates, as before"
             )]
             let i = *n as isize;
-            match usize::try_from(i).ok().and_then(|u| l.get(u)) {
-                Some(item) => Ok(item.clone()),
-                None => Err(EvalError::new(format!(
-                    "list index {i} out of bounds (size {})",
-                    l.len()
-                ))),
+            match usize::try_from(i) {
+                Ok(u) if u < len => u,
+                _ => return Err(out_of_bounds(i.to_string())),
             }
         }
-        (Value::List(l), Value::Double(n)) if n.fract() == 0.0 && *n >= 0.0 => {
+        Value::Double(n) if n.fract() == 0.0 && *n >= 0.0 => {
             #[expect(
                 clippy::cast_possible_truncation,
                 clippy::cast_sign_loss,
@@ -376,24 +535,23 @@ fn index_value(base: &Value, key: &Value) -> Result<Value, EvalError> {
                           saturates, as before"
             )]
             let i = *n as usize;
-            if i >= l.len() {
-                return Err(EvalError::new(format!(
-                    "list index {i} out of bounds (size {})",
-                    l.len()
-                )));
+            if i >= len {
+                return Err(out_of_bounds(i.to_string()));
             }
-            Ok(l[i].clone())
+            i
         }
-        _ => Err(EvalError::new(format!(
-            "index {}[{}] type mismatch",
-            base.type_name(),
-            key.type_name()
-        ))),
+        _ => return Err(mismatch(&base)),
+    };
+    match base {
+        Ref::Borrowed(Value::List(l)) => Ok(Ref::Borrowed(&l[i])),
+        Ref::Owned(Value::List(mut l)) => Ok(Ref::Owned(l.swap_remove(i))),
+        other => Err(mismatch(&other)),
     }
 }
 
-fn to_bool(v: &Value) -> Result<bool, EvalError> {
-    v.as_bool()
+fn to_bool(v: &Ref<'_>) -> Result<bool, EvalError> {
+    v.value()
+        .and_then(Value::as_bool)
         .ok_or_else(|| EvalError::new(format!("expected bool, got {}", v.type_name())))
 }
 
@@ -407,7 +565,7 @@ fn to_bool(v: &Value) -> Result<bool, EvalError> {
 /// renders a share/ratio as a rounded percentage (`0.72` → `72%`). An
 /// unresolvable path renders as `?` so a template mishap never masks the
 /// underlying finding.
-pub fn render_message(template: &str, env: &Env) -> String {
+pub fn render_message(template: &str, env: &Env<'_>) -> String {
     let bytes = template.as_bytes();
     let mut out = String::with_capacity(template.len());
     let mut i = 0;
@@ -452,27 +610,21 @@ fn next_char_boundary(bytes: &[u8], i: usize) -> usize {
     clippy::cast_possible_truncation,
     reason = "a percentage of an authored number: past the i64 range `as` saturates, as before"
 )]
-fn render_path(path: &str, format: Option<&str>, env: &Env) -> String {
-    let segments: Vec<&str> = path.split('.').collect();
-    if segments.is_empty() {
+fn render_path(path: &str, format: Option<&str>, env: &Env<'_>) -> String {
+    let mut segments = path.split('.');
+    let Some(mut cur) = segments.next().and_then(|root| env.get(root)) else {
         return "?".into();
-    }
-    let mut cur = match env.get(segments[0]) {
-        Some(v) => v.clone(),
-        None => return "?".into(),
     };
-    for seg in &segments[1..] {
-        cur = match &cur {
-            Value::Map(m) => match m.get(*seg) {
-                Some(v) => v.clone(),
-                None => return "?".into(),
-            },
-            _ => return "?".into(),
+    for seg in segments {
+        cur = match select_field(cur, seg) {
+            Ok(next) => next,
+            Err(_) => return "?".into(),
         };
     }
+    let cur = cur.as_value();
     match format {
-        Some("%") => match cur {
-            Value::Int(n) => format!("{}%", (n as f64 * 100.0).round() as i64),
+        Some("%") => match cur.as_ref() {
+            Value::Int(n) => format!("{}%", (*n as f64 * 100.0).round() as i64),
             Value::Double(n) => format!("{}%", (n * 100.0).round() as i64),
             _ => "?".into(),
         },
@@ -512,7 +664,6 @@ fn trim_number(n: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use cel_parser::ast::IdedExpr;
 
     fn parse_when(raw: &str) -> IdedExpr {
         let mut arena = lute_cel::CelArena::default();
@@ -520,7 +671,7 @@ mod tests {
         arena.get(h).expect("handle").clone()
     }
 
-    fn scenario_env() -> Env {
+    fn scenario_env() -> Env<'static> {
         let mut e = Env::new();
         let mut line = BTreeMap::new();
         line.insert("words".to_string(), Value::Int(41));
@@ -619,5 +770,120 @@ mod tests {
         );
         let msg = render_message("{p.ratio} {p.half} {p.tiny}", &e);
         assert_eq!(msg, "3.33 1.5 0");
+    }
+
+    fn run(raw: &str, env: &Env<'_>) -> Result<Value, EvalError> {
+        eval(&parse_when(raw).expr, env)
+    }
+
+    // dsl 0.50.0 §8.2: `startsWith`, `endsWith`, `contains`, member form,
+    // both operands strings.
+    #[test]
+    fn string_members() {
+        let e = scenario_env();
+        for (raw, want) in [
+            (r#"line.speaker.startsWith("al")"#, true),
+            (r#"line.speaker.startsWith("ce")"#, false),
+            (r#"line.speaker.endsWith("ice")"#, true),
+            (r#"line.speaker.endsWith("al")"#, false),
+            (r#"line.speaker.contains("lic")"#, true),
+            (r#"line.speaker.contains("bob")"#, false),
+            (r#"line.attrs["emotion"].startsWith("")"#, true),
+            (r#""별빛".startsWith("별")"#, true),
+        ] {
+            assert_eq!(run(raw, &e), Ok(Value::Bool(want)), "{raw}");
+        }
+    }
+
+    #[test]
+    fn string_members_refuse_other_operands_and_forms() {
+        let e = scenario_env();
+        for (raw, reason) in [
+            (
+                "line.words.startsWith(\"4\")",
+                "`.startsWith` needs string operands, got int and string",
+            ),
+            (
+                "line.speaker.endsWith(1)",
+                "`.endsWith` needs string operands, got string and int",
+            ),
+            (
+                "line.attrs.contains(\"emotion\")",
+                "`.contains` needs string operands, got map and string",
+            ),
+            (
+                "line.speaker.contains()",
+                "unsupported member call `.contains` with 0 args",
+            ),
+            (
+                "line.speaker.matches(\"a.*\")",
+                "unsupported member call `.matches` with 1 args",
+            ),
+            (
+                "startsWith(line.speaker, \"al\")",
+                "unsupported call `startsWith` with 2 args",
+            ),
+        ] {
+            assert_eq!(run(raw, &e), Err(EvalError::new(reason)), "{raw}");
+        }
+    }
+
+    /// A record that counts its whole reads.
+    struct Counted {
+        inner: Value,
+        reads: std::cell::Cell<u32>,
+    }
+
+    impl Record for Counted {
+        fn field(&self, key: &str) -> Option<Ref<'_>> {
+            match &self.inner {
+                Value::Map(m) => m.get(key).map(Ref::Borrowed),
+                _ => None,
+            }
+        }
+        fn len(&self) -> usize {
+            match &self.inner {
+                Value::Map(m) => m.len(),
+                _ => 0,
+            }
+        }
+        fn materialize(&self) -> Value {
+            self.reads.set(self.reads.get() + 1);
+            self.inner.clone()
+        }
+    }
+
+    // dsl 0.50.0 §8.1: a select/index/`in` chain reads a record by
+    // reference; only a whole read builds it.
+    #[test]
+    fn records_are_read_by_reference_until_read_whole() {
+        let scope = Counted {
+            inner: Value::Map(BTreeMap::from([(
+                "t".to_string(),
+                Value::Map(BTreeMap::from([("k".to_string(), Value::Str("v".into()))])),
+            )])),
+            reads: std::cell::Cell::new(0),
+        };
+        let e = scenario_env().with_record("scope", &scope);
+        for raw in [
+            r#""t" in scope && "k" in scope["t"] && scope["t"]["k"] == "v""#,
+            r#"!("u" in scope) && scope.t.k.startsWith("v")"#,
+        ] {
+            assert_eq!(run(raw, &e), Ok(Value::Bool(true)), "{raw}");
+        }
+        assert_eq!(render_message("{scope.t.k}", &e), "v");
+        assert_eq!(scope.reads.get(), 0);
+        assert_eq!(run("size(scope)", &e), Ok(Value::Int(1)));
+        assert_eq!(scope.reads.get(), 0, "size() reads the record's length");
+        assert_eq!(render_message("{scope}", &e), "t");
+        assert_eq!(scope.reads.get(), 1);
+        assert_eq!(
+            run(r#"scope["u"]"#, &e),
+            Err(EvalError::new("missing key `u`"))
+        );
+        assert_eq!(
+            run("scope[1]", &e),
+            Err(EvalError::new("index map[int] type mismatch"))
+        );
     }
 }

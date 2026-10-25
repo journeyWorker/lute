@@ -102,13 +102,26 @@ struct SeriesGroup {
 struct FactRow {
     fact: String,
     /// `"entries"` (lore entries), `"beats"` (bundle beats), `"scenes"`
-    /// (scenes and quests), `"components"` (a component at a `::use`), or
+    /// (scenes and quests), `"components"` (a component at a `::use`),
+    /// `"rewards"` (a reward kind's `effects.asserts`, 0.50.0 §5.4), or
     /// `"both"` (more than one of those).
     revealed_by: &'static str,
     entries: Vec<String>,
     beats: Vec<String>,
     documents: Vec<String>,
     components: Vec<ComponentSite>,
+    /// 0.50.0 §5.4: the rewards whose kind's effects assert the fact;
+    /// absent when none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    rewards: Vec<RewardSite>,
+}
+
+/// A reward asserting a fact through its kind's `effects` at its grant.
+#[derive(Serialize, PartialEq, Eq, PartialOrd, Ord)]
+struct RewardSite {
+    kind: String,
+    quest: String,
+    document: String,
 }
 
 /// A component asserting a fact where it is used.
@@ -150,6 +163,7 @@ struct Sources {
     beats: BTreeSet<String>,
     documents: BTreeSet<String>,
     components: BTreeSet<ComponentSite>,
+    rewards: BTreeSet<RewardSite>,
 }
 
 /// Which kind of source revealed a fact.
@@ -160,6 +174,8 @@ enum Source<'a> {
     Document,
     /// A component, at a use labelled `via`.
     Component(String, &'a str),
+    /// A reward of kind `.0` of quest `.1` (0.50.0 §5.4).
+    Reward(&'a str, &'a str),
 }
 
 /// Every well-formed ground `::assert` pattern in `nodes` — and (dsl 0.27.0
@@ -231,16 +247,20 @@ fn ground_fact(p: &FactPattern) -> Option<String> {
 }
 
 /// Fold one parsed document into the running entry list and fact table;
-/// `components` are the project's component documents, by name.
+/// `folded` is its checked environment (its typed frontmatter and the reward
+/// vocabulary it was checked against), `components` the project's component
+/// documents, by name.
 fn fold_document(
     document: &str,
     doc: &Document,
-    typed_meta: &lute_check::TypedMeta,
+    folded: &lute_check::FoldedEnv,
     effects: &lute_check::directive_facts::EffectDirectives,
     components: &BTreeMap<&str, &Document>,
     entries: &mut Vec<EntryRow>,
     facts: &mut BTreeMap<String, BTreeMap<String, Sources>>,
 ) {
+    let typed_meta = &folded.typed;
+    let reward_kinds = &folded.snapshot.reward_kinds;
     let meta = typed_meta.yaml().and_then(yaml_serde::Value::as_mapping);
     let field = |k: &str| {
         meta.as_ref()?
@@ -263,8 +283,25 @@ fn fold_document(
                 component,
                 via: via.to_string(),
             }),
+            Source::Reward(kind, quest) => sources.rewards.insert(RewardSite {
+                kind: kind.to_string(),
+                quest: quest.to_string(),
+                document: document.to_string(),
+            }),
         };
     };
+    // 0.50.0 §5.4: a quest's reward effects assert at the reward's grant.
+    for quest in &doc.quests {
+        for grant in lute_check::reward_effects::quest_grants(quest, reward_kinds) {
+            if let Some(fact) = grant
+                .fact()
+                .filter(|(_, assert)| *assert)
+                .and_then(|(p, _)| ground_fact(p))
+            {
+                record(fact, Source::Reward(grant.kind(), &quest.id));
+            }
+        }
+    }
     // Every fact `nodes` asserts, and the components it uses assert there.
     let mut reveal = |nodes: &[Node], source: Source<'_>, via: &str| {
         let mut own = Vec::new();
@@ -455,17 +492,20 @@ fn build_report(
                         s.beats.is_empty(),
                         s.documents.is_empty(),
                         s.components.is_empty(),
+                        s.rewards.is_empty(),
                     ) {
-                        (false, true, true, true) => "entries",
-                        (true, false, true, true) => "beats",
-                        (true, true, false, true) => "scenes",
-                        (true, true, true, false) => "components",
+                        (false, true, true, true, true) => "entries",
+                        (true, false, true, true, true) => "beats",
+                        (true, true, false, true, true) => "scenes",
+                        (true, true, true, false, true) => "components",
+                        (true, true, true, true, false) => "rewards",
                         _ => "both",
                     },
                     entries: s.entries.into_iter().collect(),
                     beats: s.beats.into_iter().collect(),
                     documents: s.documents.into_iter().collect(),
                     components: s.components.into_iter().collect(),
+                    rewards: s.rewards.into_iter().collect(),
                 })
                 .collect(),
         })
@@ -571,6 +611,20 @@ fn render_text(r: &Report) -> String {
                     .collect();
                 out.push_str(&format!("      components: {}\n", each.join(", ")));
             }
+            if !f.rewards.is_empty() {
+                let each: Vec<String> = f
+                    .rewards
+                    .iter()
+                    .map(|r| {
+                        format!(
+                            "{} ({})",
+                            crate::knowledge::reward_site(&r.kind, &r.quest),
+                            r.document
+                        )
+                    })
+                    .collect();
+                out.push_str(&format!("      produced by {}\n", each.join(", ")));
+            }
         }
     }
     if !r.derived.is_empty() {
@@ -663,16 +717,16 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
             continue;
         }
         let document = path.strip_prefix(dir).unwrap_or(path).display().to_string();
-        let typed_meta = by_root
+        let folded = by_root
             .values()
             .flat_map(|group| group.iter())
             .find(|(candidate, _, _)| candidate == path)
-            .map(|(_, _, folded)| &folded.typed)
+            .map(|(_, _, folded)| folded)
             .expect("collected lore document metadata");
         fold_document(
             &document,
             &doc,
-            typed_meta,
+            folded,
             &effects,
             &components,
             &mut entries,

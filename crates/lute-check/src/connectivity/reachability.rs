@@ -7,7 +7,7 @@ use crate::meta::{resolve_doc_kind, DocKind};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::fact::FactPattern;
 use lute_manifest::semantics::prereq::{atoms, PrereqFormula};
-use lute_syntax::ast::{Arm, Assert, Node};
+use lute_syntax::ast::{Arm, Assert, Node, Quest};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -551,6 +551,7 @@ pub fn live_assert_sites<'d>(
             };
             if assert_site_is_live(node_reach) {
                 collect_asserted(&quest.body, effects, &mut sites);
+                collect_reward_asserts(quest, item.reward_kinds, &mut sites);
             }
         }
         for entry in &doc.entries {
@@ -585,6 +586,27 @@ pub fn collect_asserted<'d>(
     );
 }
 
+/// 0.50.0 §5.4: every fact pattern `quest`'s rewards assert through their
+/// kinds' `effects` — producers like an `::assert` in the quest's grant
+/// point, guarded or not.
+pub fn collect_reward_asserts(
+    quest: &Quest,
+    kinds: &crate::reward_effects::RewardKinds,
+    out: &mut Vec<Cow<'_, FactPattern>>,
+) {
+    out.extend(
+        crate::reward_effects::quest_grants(quest, kinds)
+            .into_iter()
+            .filter_map(|g| match g.effect {
+                crate::reward_effects::Effect::Fact {
+                    pattern,
+                    assert: true,
+                } => Some(Cow::Owned(pattern)),
+                _ => None,
+            }),
+    );
+}
+
 /// Every `::assert{R(…)}` relation name, per document — the producer half of
 /// the producer→consumer edge `lute scenario`'s facts section renders
 /// (#15, T4.7).
@@ -608,6 +630,7 @@ pub fn assert_relations_per_doc(
         }
         for quest in &doc.quests {
             collect_asserted(&quest.body, effects, &mut sites);
+            collect_reward_asserts(quest, item.reward_kinds, &mut sites);
         }
         for entry in &doc.entries {
             collect_asserted(&entry.body, effects, &mut sites);

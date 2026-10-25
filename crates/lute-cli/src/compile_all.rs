@@ -29,7 +29,8 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use crate::envelope::{self, CliError};
-use crate::{render_diagnostics, DenyPolicy};
+use crate::output::{diagnostics_json, insert_suppressed};
+use crate::{render_diagnostics, SeverityPolicy};
 use lute_model::{relocate_imported_diags, ModelError, ModelOptions, ProjectModel};
 use serde_json::json;
 
@@ -90,7 +91,7 @@ pub fn run(
     permission_profile: Option<&str>,
     json: bool,
     bundle: Option<&LocaleBundle>,
-    policy: &DenyPolicy,
+    policy: &SeverityPolicy,
 ) -> ExitCode {
     // 0.10.0 §7 (D-D): `compile` aligns to `check`. `--all` forces every
     // document onto the invoked root, so before this it opened NO nested
@@ -188,11 +189,48 @@ pub fn run(
     relocate_imported_diags(&mut per_doc, &mut project_diagnostics, project);
     let project_errors: Vec<_> = project_diagnostics
         .iter()
-        .filter(|(_, diagnostic)| diagnostic.severity == lute_core_span::Severity::Error)
+        .filter(|(path, diagnostic)| {
+            diagnostic.severity == lute_core_span::Severity::Error
+                || policy.promoted(diagnostic, path)
+        })
         .collect();
     if !project_errors.is_empty() {
-        for (_, diagnostic) in project_errors {
-            eprintln!("lute compile: {}", diagnostic.text());
+        // A promoted project diagnostic (dsl 0.50.0 §6.3) is reported as the
+        // policy shows it — code, severity and marker, and in `--json` the
+        // COMPILE envelope; a native project error keeps its line.
+        let promoted = project_errors
+            .iter()
+            .any(|(path, d)| policy.promoted(d, path));
+        if json && promoted {
+            let mut diagnostics = Vec::new();
+            for (path, d) in &project_errors {
+                match diagnostics_json(std::slice::from_ref(d), path, policy) {
+                    Ok((values, _)) => diagnostics.extend(values),
+                    Err(e) => {
+                        eprintln!("lute: failed to serialize diagnostics: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
+            let payload = json!({ "diagnostics": diagnostics });
+            let wrapped = envelope::report(envelope::version::COMPILE, 1, payload);
+            match serde_json::to_string_pretty(&wrapped) {
+                Ok(s) => println!("{s}"),
+                Err(e) => {
+                    eprintln!("lute: failed to serialize diagnostics: {e}");
+                    return ExitCode::from(2);
+                }
+            }
+        }
+        for (path, diagnostic) in &project_errors {
+            if policy.promoted(diagnostic, path) {
+                eprint!(
+                    "{}",
+                    render_diagnostics(path, std::slice::from_ref(diagnostic), policy)
+                );
+            } else {
+                eprintln!("lute compile: {}", diagnostic.text());
+            }
         }
         eprintln!("lute compile: project diagnostics prevent output");
         return ExitCode::FAILURE;
@@ -214,9 +252,21 @@ pub fn run(
             );
             return ExitCode::from(2);
         };
-        if !doc.check.ok {
+        // A diagnostic the policy promotes (`--deny`, a project `error`
+        // level) fails its document like an error (dsl 0.50.0 §6.3).
+        if !doc.check.ok || policy.any_promoted(&doc.path, &doc.check.diagnostics) {
             let rendered = if json {
-                let payload = json!({ "diagnostics": doc.check.diagnostics });
+                let payload = match diagnostics_json(&doc.check.diagnostics, &doc.path, policy) {
+                    Ok((diagnostics, suppressed)) => {
+                        let mut payload = json!({ "diagnostics": diagnostics });
+                        insert_suppressed(&mut payload, &suppressed);
+                        payload
+                    }
+                    Err(e) => {
+                        eprintln!("lute: failed to serialize diagnostics: {e}");
+                        return ExitCode::from(2);
+                    }
+                };
                 let wrapped = envelope::report(envelope::version::COMPILE, 1, payload);
                 match serde_json::to_string_pretty(&wrapped) {
                     Ok(mut s) => {
@@ -251,7 +301,10 @@ pub fn run(
                 );
                 continue;
             }
-            denied += merged.iter().filter(|d| policy.denied(d)).count();
+            denied += merged
+                .iter()
+                .filter(|d| policy.promoted(d, &doc.path))
+                .count();
             warnings.push_str(&render_diagnostics(&doc.path, &merged, policy));
         }
         compiled.push(Compiled {

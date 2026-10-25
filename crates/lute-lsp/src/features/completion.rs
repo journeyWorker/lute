@@ -26,7 +26,7 @@
 
 use std::collections::BTreeSet;
 
-use lute_check::content_line::{CONTENT_LINE_DOMAIN_SLOTS, KNOWN_ATTRS};
+use lute_check::content_line::CONTENT_LINE_DOMAIN_SLOTS;
 use lute_check::directives::UNIVERSAL_TIMING_ATTRS;
 use lute_check::{parse_meta, SchemaImports};
 use lute_core_span::Span;
@@ -181,8 +181,8 @@ pub fn complete_at(
 }
 
 /// A tag whose open-tag keys are a small fixed set the checker closes over
-/// (`lute_check::logic_attrs`: `BRANCH_ATTRS`, `BRANCH_CHOICE_ATTRS`,
-/// `HUB_CHOICE_ATTRS`, `MATCH_ATTRS`) but which the cursor resolver gives no
+/// (`lute_manifest::core`: `BRANCH_ATTRS`, `BRANCH_CHOICE_ATTRS`,
+/// `HUB_CHOICE_ATTRS`; `lute_check::logic_attrs`: `MATCH_ATTRS`) but which the cursor resolver gives no
 /// attr-area cursor of its own.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum OpenTag {
@@ -632,7 +632,7 @@ fn construct_attr_keys(construct: QuestConstruct) -> &'static [(&'static str, &'
 /// Content-line attribute keys (dsl 0.37.0 §3.4; `when`, dsl 0.4.0 §7.2): a
 /// `@speaker{…}:` line's fixed vocabulary is, like
 /// [`construct_attr_key_items`]'s constructs, NOT capability-schema-driven —
-/// it is the checker's own [`KNOWN_ATTRS`] table plus `when` (extracted into
+/// it is the checker's own [`lute_manifest::core::LINE_ATTRS`] table plus `when` (extracted into
 /// `Line.when` at parse time, so never in `l.attrs`), kind `FIELD`, minus keys
 /// already written. `mono`/`os`/`vo` are the mutually exclusive bare delivery
 /// flags selecting the line role; none is offered once one is written, nor on
@@ -648,7 +648,7 @@ fn content_line_attr_key_items(line: &Line) -> Vec<CompletionItem> {
         .collect();
     let no_delivery =
         line.speaker == "narrator" || DELIVERY.iter().any(|flag| present.contains(flag));
-    KNOWN_ATTRS
+    lute_manifest::core::LINE_ATTRS
         .iter()
         .copied()
         .chain(std::iter::once("when"))
@@ -2022,10 +2022,9 @@ mod tests {
     /// offered, like `after`/`quest=` were) is a drift bug.
     #[test]
     fn construct_attr_keys_match_the_checker_tables() {
-        use lute_check::logic_attrs::{
-            ENTRY_ATTRS, HUB_ATTRS, OBJECTIVE_ATTRS, ON_ATTRS, QUEST_ATTRS,
-        };
+        use lute_check::logic_attrs::{ENTRY_ATTRS, OBJECTIVE_ATTRS, ON_ATTRS, QUEST_ATTRS};
         use lute_check::BUNDLE_BEAT_ATTRS;
+        use lute_manifest::core::HUB_ATTRS;
         for (construct, table) in [
             (QuestConstruct::Quest, QUEST_ATTRS),
             (QuestConstruct::Objective, OBJECTIVE_ATTRS),

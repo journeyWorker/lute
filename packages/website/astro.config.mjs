@@ -110,7 +110,11 @@ export default defineConfig({
         {
           label: "Guides",
           translations: { ko: "가이드" },
-          items: [{ slug: "guides/multi-author" }, { slug: "guides/coming-from-ink-yarn" }],
+          items: [
+            { slug: "guides/multi-author" },
+            { slug: "guides/porting-a-content-set" },
+            { slug: "guides/coming-from-ink-yarn" },
+          ],
         },
         {
           label: "Language",

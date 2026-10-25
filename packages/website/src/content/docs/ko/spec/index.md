@@ -6,7 +6,7 @@ description: 버전별 Lute 사양 스택 — 모든 시나리오 DSL 개정판�
 Lute는 [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs/proposals) 아래에 **버전별 제안서 스택**으로 사양이 정의되어 있습니다. 각 개정판은 이전 개정판을 호환 가능한 방식으로 정제하거나 확장하므로, 이 스택은 누적해서 읽습니다. `0.1.0`은 씬 종류와 공유 커널이며, 이후의 모든 개정판이 이를 인용합니다.
 
 :::note
-**저장소 파일이 규범적 진실의 원천입니다.** 이 사이트는 읽기 편한 동반 문서입니다. 둘이 다를 경우 저장소의 제안서가 우선합니다. 현재 언어 및 IR 버전은 **0.49.1**입니다.
+**저장소 파일이 규범적 진실의 원천입니다.** 이 사이트는 읽기 편한 동반 문서입니다. 둘이 다를 경우 저장소의 제안서가 우선합니다. 현재 언어 및 IR 버전은 **0.50.0**입니다.
 :::
 
 ## 시나리오 DSL (언어)
@@ -64,6 +64,7 @@ Lute는 [`docs/proposals/`](https://github.com/journeyWorker/lute/tree/main/docs
 | `0.34.0` | **프로젝트 의미 모델과 영향 분석**: 하나의 공유 프로젝트 모델이 프로젝트 명령을 구동합니다. `lute impact`는 결정적인 역방향 의존성 폐쇄를 보고하고 `lute constraints`는 도달 가능, 완료 가능, 화자 가드 및 단일 슬롯 진행 정책을 검사합니다. 진단과 분석 결과에는 명시적인 증거 수준과 제한된 범위가 포함됩니다. | [0.34.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.34.0.md) |
 | `0.36.6` | **AI 편집 루프**: 손실 없는 구문과 표준 형식 지정, 원본/프로젝트 개정판, 작업 범위 컨텍스트와 위치 쿼리, 의미론적 diff 및 원자적 개정판 검증 원본 패치입니다. | [0.36.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md) |
 | `0.37.0` | **표면 정리 — 호환성이 깨지는 깨끗한 전환**: 선택적인 안정 `{#id}`가 붙은 `##` 섹션, `::actor`, `::cg{assetId display layout}`, `::sequence{name}`, `::music{playback}`, `::video{display}`가 추가됩니다. `::camera`는 프로젝트에서 선언한 `framing` / `move` / `transition` 멤버를 취합니다. `::jump{to}` / `::label{name}`, choice `text=`, `<match subject=>`, `<reward id>`가 추가됩니다. `{mono}`는 관점 또는 `monoSpeakers:`에만 사용합니다. 모든 행에 `voiceKey`가 추가됩니다. 인라인 텍스트 수정자 `:pause{s}`, `:speed[…]{rate}`와 `textStyle` 범위가 추가됩니다. frontmatter `title:`이 유일한 제목입니다. IR은 모든 명령에 `family`와 `position`을 부여하고, 타이밍을 `timing` 안에 중첩하며, 종류를 `bg` / `actor` / `cg`로 역할을 `mono` / `os` / `vo`로 이름을 바꾸고 `capabilitySnapshot`을 담습니다. `lute fix`는 손실 없이 이름이 변경된 항목을 다시 작성합니다. | [0.37.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md) |
+| `0.50.0` | **작성 확장성**: 새 키워드나 요소 없이 작성 표면을 확장합니다: 이름 있는 표면(`line`, `branch`, `hub`, `choice`, 디렉티브 태그)으로 범위를 정하는 플러그인 `stampAttrs`의 `on:`(범위가 정해진 스탬프는 `required`일 수 있음), 플러그인 `hostTokens` export로 선언하는 호스트 보간 토큰, 지급 시점에 적용되고 모든 분석이 읽는 보상 kind의 `effects`(`asserts`, `retracts`, `accepts`), `lute.project.yaml`의 checker `W-*` 코드용 프로젝트 `diagnostics:` level, 문자열 멤버를 갖춘 `target: node` lint. 새 코드 `E-PLUGIN-STAMP-SURFACE`와 `E-DIAGNOSTICS-CONFIG`. IR은 추가형입니다(옵션 `stamps`, `RewardEntry` 효과, semantic id `lute.quest.rewardEffects/1`). | [0.50.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md) |
 | — | 상태 모델 설계 근거 및 감사 기록 — 4계층(`scene`/`run`/`user`/`app`) 상태 모델이 왜 이런 형태인지 설명하는, `0.0.1` §9의 비규범적 동반 문서입니다. | [state-model-design.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/state-model-design.md) |
 
 어휘 슬롯을 작성자 측에서 읽는 방법 — 세 가지 선언

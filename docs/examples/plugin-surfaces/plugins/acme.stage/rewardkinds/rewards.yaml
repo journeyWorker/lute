@@ -1,0 +1,6 @@
+# What a quest can pay, beyond a credit: facts and quest activations the engine
+# applies at the grant. A reward kind's effects read only `@target` and constants.
+rewardKinds:
+  BADGE:       { target: { entity: person, required: true }, effects: { asserts: ["met(@target)"] } }
+  REVOKE:      { target: { entity: person, required: true }, effects: { retracts: ["met(@target)"] } }
+  OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }

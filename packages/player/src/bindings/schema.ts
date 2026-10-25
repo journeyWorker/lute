@@ -1,6 +1,6 @@
 // THIS FILE IS GENERATED — DO NOT EDIT.
 // Generator: packages/runtime/scripts/contract-codegen.ts
-// Source: schemas/lute-player-bindings-0.49.schema.json
+// Source: schemas/lute-player-bindings-0.50.schema.json
 
 import * as Schema from "effect/Schema";
 import type * as SchemaAST from "effect/SchemaAST";

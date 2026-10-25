@@ -1199,8 +1199,8 @@ fn run_one_test(
     };
     // `--deny` / `--deny-warnings` promote the check verdict this test
     // consults: a denied warning refuses the trace, failing the test
-    // (0.48.0 §2.2).
-    if build.policy.any_denied(&checked.diagnostics) {
+    // (0.48.0 §2.2). `lute test` carries no project levels (0.50.0 §6.2).
+    if build.policy.any_promoted(&lute_path, &checked.diagnostics) {
         checked.ok = false;
     }
     let eligibility_mocks = judges_eligibility_by_id.then(|| (mocks.clone(), checked.clone()));
@@ -2221,9 +2221,9 @@ impl ForeignQuestStart {
             .get(id)
             .map(|s| s.trim_matches(['\'', '"']).to_string());
         let accepted = self.accepted.iter().any(|a| a == id)
-            || report.steps.iter().any(
-                |s| matches!(s, lute_trace::Step::Accept { quest, next_run: false } if quest == id),
-            );
+            || report.steps.iter().any(|s| {
+                matches!(s, lute_trace::Step::Accept { quest, next_run: false, .. } if quest == id)
+            });
         let state = match seeded {
             Some(s) if s != "unset" => s,
             _ if accepted => "active".to_string(),

@@ -39,5 +39,5 @@ pub mod walk;
 
 pub use ast::scan_label_interps;
 pub use format::{format_source, format_yaml_source, FormatError, FormatOptions, FormatResult};
-pub use parser::{parse, parse_inline_text};
+pub use parser::{authored_attrs, parse, parse_inline_text, AuthoredAttr};
 pub use trivia::{source_stream, SourceStream, SourceToken, TokenKind};

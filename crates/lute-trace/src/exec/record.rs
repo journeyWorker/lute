@@ -419,7 +419,7 @@ impl NeedleVocab {
 
     /// Every key a line head can show, flags first.
     pub fn keys(&self) -> Vec<&str> {
-        let valued = lute_check::content_line::KNOWN_ATTRS
+        let valued = lute_manifest::core::LINE_ATTRS
             .iter()
             .copied()
             .filter(|key| !HEAD_FLAGS.contains(key) && !HEAD_SKIP_AUTHORED.contains(key));
@@ -455,7 +455,12 @@ pub fn needle_vocab(input: &lute_check::CheckInput, meta: &lute_check::TypedMeta
                 (slot.to_string(), members)
             })
             .collect(),
-        stamps: input.snapshot().stamp_attrs.keys().cloned().collect(),
+        stamps: input
+            .snapshot()
+            .stamp_attrs
+            .names()
+            .map(str::to_string)
+            .collect(),
         speakers: (!cast.is_empty()).then(|| {
             cast.into_keys()
                 .chain(std::iter::once("narrator".to_string()))

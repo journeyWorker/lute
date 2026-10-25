@@ -515,6 +515,35 @@ fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, 
     for beat in &d.doc.beats {
         lute_check::directive_facts::for_each_call(&beat.body, &mut directive_effects);
     }
+    // 0.50.0 §5.4: a reward's effects write facts at its grant point.
+    for quest in &d.doc.quests {
+        for grant in
+            lute_check::reward_effects::quest_grants(quest, &d.folded.snapshot.reward_kinds)
+        {
+            let Some((pattern, asserted)) = grant.fact() else {
+                continue;
+            };
+            let span = grant.reward.kind_span;
+            let terms = pattern
+                .args
+                .iter()
+                .map(|a| a.term.clone())
+                .collect::<Vec<_>>();
+            g.edge(
+                owner_for(&owners, span, &document),
+                fact_node(&pattern.relation, &terms),
+                if asserted { "asserts" } else { "retracts" },
+                format!(
+                    "reward {}: {}",
+                    grant.kind(),
+                    lute_check::directive_facts::pattern_text(pattern)
+                ),
+                Some(d.path.clone()),
+                Some(span),
+                Evidence::Proven,
+            );
+        }
+    }
     for u in feed.defs {
         let dk = NodeKey::new(NodeKind::Def, u.name.clone());
         g.edge(

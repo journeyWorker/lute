@@ -19,7 +19,9 @@ use lute_load::{assemble_input, find_lute_files, read_document, BuiltInput, Inpu
 use serde::Serialize;
 
 use crate::envelope::{self, CliError};
-use crate::{render_diagnostics, write_stdout, DenyPolicy};
+use crate::output::{diagnostics_json, insert_suppressed};
+use crate::{render_diagnostics, write_stdout, SeverityPolicy};
+
 /// The name diagnostics of the condition are rendered under.
 const EXPR_LABEL: &str = "<expr>";
 
@@ -47,7 +49,7 @@ pub(crate) struct ExprOptions<'a> {
     pub(crate) cel: &'a str,
     pub(crate) project: Option<&'a Path>,
     pub(crate) permission_profile: Option<&'a str>,
-    pub(crate) policy: &'a DenyPolicy,
+    pub(crate) policy: &'a SeverityPolicy,
     pub(crate) json: bool,
 }
 
@@ -57,7 +59,7 @@ pub(crate) fn run_expr(opts: &ExprOptions<'_>) -> ExitCode {
     let ExprOptions {
         cel: raw,
         permission_profile,
-        policy,
+        policy: gate_policy,
         json,
         ..
     } = *opts;
@@ -68,6 +70,9 @@ pub(crate) fn run_expr(opts: &ExprOptions<'_>) -> ExitCode {
         Err(error) => return envelope::fail(error),
     };
     let project = project.as_path();
+    // dsl 0.50.0 §6.2: the expression has no document path, so only a
+    // project level without `paths` applies to its diagnostics.
+    let policy = &gate_policy.for_project(Some(project));
     if !project.join("lute.project.yaml").is_file() {
         let message = format!("lute expr: no lute.project.yaml in {} — pass the project directory with --project <DIR>", project.display());
         // A directory that does not exist cannot be read; an existing one
@@ -140,7 +145,7 @@ pub(crate) fn run_expr(opts: &ExprOptions<'_>) -> ExitCode {
         });
     // `--deny` / `--deny-warnings`: a promoted diagnostic fails the lowering
     // like an error, so nothing is lowered.
-    let lowered = lowered.filter(|_| !policy.any_denied(&diagnostics));
+    let lowered = lowered.filter(|_| !policy.any_promoted(Path::new(EXPR_LABEL), &diagnostics));
     finish(json, lowered.as_ref(), raw, &diagnostics, policy)
 }
 
@@ -150,7 +155,7 @@ fn finish(
     lowered: Option<&(String, lute_ir::ExprNode)>,
     raw: &str,
     diagnostics: &[Diagnostic],
-    policy: &DenyPolicy,
+    policy: &SeverityPolicy,
 ) -> ExitCode {
     let report = Report {
         ok: lowered.is_some(),
@@ -167,14 +172,18 @@ fn finish(
                 return ExitCode::from(2);
             }
         };
-        if let Some(items) = payload
-            .get_mut("diagnostics")
-            .and_then(serde_json::Value::as_array_mut)
-        {
-            for (diag, item) in diagnostics.iter().zip(items) {
-                crate::output::apply_deny_json(diag, policy, item);
+        let reported = diagnostics_json(diagnostics, Path::new(EXPR_LABEL), policy);
+        let (items, suppressed) = match reported {
+            Ok(v) => v,
+            Err(e) => {
+                eprintln!("lute expr: failed to serialize the result: {e}");
+                return ExitCode::from(2);
             }
+        };
+        if let serde_json::Value::Object(map) = &mut payload {
+            map.insert("diagnostics".into(), items.into());
         }
+        insert_suppressed(&mut payload, &suppressed);
         serde_json::to_string(&envelope::report(
             envelope::version::EXPR,
             if report.ok { 0 } else { 1 },

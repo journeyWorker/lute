@@ -25,6 +25,7 @@ names already mean, and the code that reports them.
 <!-- reserved-names:begin -->
 | Names | Refused as | Because it is | Code |
 | --- | --- | --- | --- |
+| `scene` `run` `user` `app` `quest` `entry` `prev` `clock` `occasion` `season` `true` `false` `null` | plugin host token | a state root or a CEL literal: `{{run}}` would read as a state root and `{{true}}` as the literal, never as a host token | E-PLUGIN-RESERVED-NAME |
 | `unset` | entity member; enum member; scene, beat, entry or choice id | the no-value word: `is="unset"` and `== 'unset'` test for a path that holds nothing, so a value named `unset` can never be matched | E-RESERVED-NAME |
 | `true` `false` `null` | entity member; enum member; scene, beat, entry or choice id; relation; season; state path segment (and quest, objective, entry, branch or hub id) | a CEL literal: in a condition and in `is=` it is read as the value, never as a name | E-RESERVED-NAME |
 | `_` | entity member; enum member | the wildcard of fact patterns (`holds('knows', ['_'])` in a condition, `knows(_)` in a rule) and the fallback key of `per:` defaults | E-RESERVED-NAME |
@@ -56,3 +57,10 @@ names already mean, and the code that reports them.
   because `once="season:week"` would sit beside `once="week"`.
 - A kind beat names its kind with a prefix (`target="kind:guest"`). The kind
   itself is declared without it (`entities: { guest: … }`).
+- A plugin **host token** (`hostTokens:`, since 0.50) is refused the names of
+  the state roots and CEL literals: `scene`, `run`, `user`, `app`, `quest`,
+  `entry`, `prev`, `clock`, `occasion`, `season`, `true`, `false`, `null`. A
+  token is written bare in `{{…}}`, so `{{run}}` would read as a state root.
+  The error is `E-PLUGIN-RESERVED-NAME` at assembly. A token name must also
+  be an identifier (letters, digits and `_`, not starting with a digit), or
+  the plugin fails to load with `E-PLUGIN-PARSE`.

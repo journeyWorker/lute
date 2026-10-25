@@ -3,7 +3,7 @@ use super::vocabulary::{
     BridgeCapability, DefDecl, EventDecl, ProviderDecl, StateShape, StateTemplate,
 };
 use super::SchemaError;
-use crate::types::Type;
+use crate::types::{Literal, Type};
 use serde::Deserialize;
 // Every struct below that a plugin export file deserializes into denies
 // unknown keys (dsl 0.24.0 T1-3): a typo'd key (`selct: all`) or a flow-map
@@ -198,28 +198,73 @@ pub struct EventsFile {
     pub events: Vec<EventDecl>,
 }
 
-/// plugin §14.1 cross-cutting stamp-attribute declaration file (export
+/// plugin §14.1 stamp-attribute declaration file (export
 /// `stampAttrs/*.yaml`).
 ///
-/// Each entry is an ordinary [`AttrDecl`] — the SAME name/required/type/default
-/// surface a directive attr uses — but admissible on EVERY directive AND on
-/// content lines rather than on one directive, and lowered into the IR
-/// record's stamp (`Stamp.stamps`, serialized as the nested `stamps` object,
-/// 0.49.0 §3.1) instead of the record's own fields. A name colliding with a
-/// reserved stamp key (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/
-/// `provenance`/`source`) is an assembly-time `E-PLUGIN-RESERVED-STAMP-ATTR`
-/// (plugin §14, Appendix C4).
+/// Each entry is a [`StampAttrEntry`]: the SAME name/required/type/default
+/// surface a directive attr uses, plus the optional `on:` surface list
+/// (0.50.0 §3.1). Without `on:` it is admissible on every directive with a
+/// stamp carrier AND on content lines; with `on:` exactly on the named
+/// surfaces. A stamp lowers into the IR record's stamp (`Stamp.stamps`,
+/// serialized as the nested `stamps` object, 0.49.0 §3.1) instead of the
+/// record's own fields. A name colliding with a reserved stamp key
+/// (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`)
+/// is an assembly-time `E-PLUGIN-RESERVED-STAMP-ATTR` (plugin §14, Appendix
+/// C4).
 ///
-/// `required` and `default` are inert on this surface by construction: a
-/// cross-cutting attr is optional on every record (requiring one would make
-/// EVERY directive in the document illegal without it), and an unauthored
-/// stamp attr is NOT default-injected — absent means absent, so a document
-/// that authors none produces a byte-identical artifact.
+/// An unauthored stamp attr is NOT default-injected — absent means absent,
+/// so a document that authors none produces a byte-identical artifact.
+/// `required: true` needs `on:` (0.50.0 §3.2): a stamp required on every
+/// record would make every directive illegal without it.
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StampAttrsFile {
     #[serde(rename = "stampAttrs")]
-    pub stamp_attrs: Vec<AttrDecl>,
+    pub stamp_attrs: Vec<StampAttrEntry>,
+}
+
+/// One `stampAttrs` entry as written: the [`AttrDecl`] fields repeated (serde
+/// cannot combine `flatten` with `deny_unknown_fields`, and `on:` is not an
+/// [`AttrDecl`] key, so a directive attribute with `on:` stays
+/// `E-PLUGIN-KEY`) plus `on:`, kept as the raw YAML value so the loader can
+/// word each fault of its shape (0.50.0 §3.2).
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct StampAttrEntry {
+    pub name: String,
+    #[serde(default)]
+    pub required: bool,
+    #[serde(rename = "type")]
+    pub ty: Type,
+    #[serde(default)]
+    pub default: Option<Literal>,
+    /// `Some(Null)` for an `on:` written without a value.
+    #[serde(default, deserialize_with = "present")]
+    pub on: Option<yaml_serde::Value>,
+}
+
+impl StampAttrEntry {
+    /// The entry's [`AttrDecl`] and its raw `on:` value.
+    pub fn into_parts(self) -> (AttrDecl, Option<yaml_serde::Value>) {
+        (
+            AttrDecl {
+                name: self.name,
+                required: self.required,
+                ty: self.ty,
+                default: self.default,
+            },
+            self.on,
+        )
+    }
+}
+
+/// A key that is present deserializes to `Some`, even when its value is
+/// null; an absent key falls back to `#[serde(default)]`'s `None`.
+fn present<'de, D>(d: D) -> Result<Option<yaml_serde::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    <yaml_serde::Value as Deserialize>::deserialize(d).map(Some)
 }
 
 /// plugin `lints/*.yaml` export file (lint-system design §6): a top-level

@@ -173,6 +173,73 @@ state:
   { "kind": "BADGE", "amount": 1 }
 ]
 ```
+
+### 보상 효과
+
+플러그인의 보상 종류는 **효과**(플러그인 매니페스트의 `effects:`, 0.50부터)를 선언할 수 있습니다. 그 종류의 `<reward>`가 지급될 때마다 종류가 assert하거나 retract하는 사실, 그리고 수락하는 퀘스트입니다. 예전에는 호스트가 `BADGE` 보상을 읽고 `met(mira)`를 직접 썼지만, 이제는 체커와 런타임이 대신하므로 그 사실이 도달 가능성 분석과 가드에 보입니다. 매니페스트 쪽은 [매니페스트](/ko/plugins/manifests/) 페이지에 있습니다:
+
+```yaml
+rewardKinds:
+  BADGE:       { target: { entity: person, required: true }, effects: { asserts: ["met(@target)"] } }
+  REVOKE:      { target: { entity: person, required: true }, effects: { retracts: ["met(@target)"] } }
+  OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
+```
+
+`@target`은 보상의 따옴표 붙은 `target=`입니다. `<reward>`는 다른 속성을 받지 않으므로 효과가 읽을 수 있는 이름은 이것뿐입니다. `writes`는 효과가 아닙니다. 보상의 상태 쓰기는 `credits:`입니다.
+
+[plugin-surfaces 예제](https://github.com/journeyWorker/lute/tree/main/docs/examples/plugin-surfaces)는 이 세 종류를 선언하고 지급합니다:
+
+```lute check-in-project="docs/examples/plugin-surfaces/quests/visits.lute"
+---
+kind: quest
+id: visits.quests
+title: Visits
+---
+/*
+Reward effects (0.50):
+  - firstVisit's BADGE asserts met(mira) at the grant; secondVisit starts on
+    that fact, so it is reachable only because the reward produces it. Its
+    `follows` places it in the scenario graph, where `lute scenario --facts`
+    draws the fact edge firstVisit -> secondVisit [met(mira)].
+  - firstVisit's OFFER_QUEST accepts giftErrand, an accept-driven quest no
+    `::accept` names.
+  - secondVisit's REVOKE retracts met(mira) when it completes.
+*/
+
+<quest id="firstVisit" tier="run" title="Say hello to Mira" start="true">
+  <reward kind="BADGE" amount="1" target="mira"/>
+  <reward kind="OFFER_QUEST" target="giftErrand"/>
+  <objective id="talk" title="Talk to Mira" done="run.talked"/>
+</quest>
+
+<quest id="secondVisit" tier="run" title="Visit Mira again" follows="completed('firstVisit')" start="holds('met', ['mira'])">
+  <reward kind="REVOKE" target="mira"/>
+  <objective id="chat" title="Have a second chat" done="run.chatted"/>
+</quest>
+
+<quest id="giftErrand" tier="run" title="Carry Mira's gift to Tomas">
+  <objective id="deliver" title="Deliver the gift" done="run.delivered"/>
+</quest>
+```
+
+**`<reward>`별 검사.** 효과를 선언한 종류의 각 보상은 해석된 효과를 `::assert`, `::retract`, `::accept`로 쓴 것처럼 판정합니다:
+
+- **사실.** 해석된 각 패턴은 `::assert` / `::retract`의 검사를 받습니다. 관계가 선언되어 있는지, 인자 개수와 종류와 멤버가 맞는지, 닫힌 종류 멤버십이 성립하는지입니다. 코드는 그 디렉티브가 내는 것과 같고 보상의 `kind=`에서 보고하며, 메시지에는 `` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): `` 접두사가 붙습니다.
+- **수락.** 해석된 각 퀘스트 id는 프로젝트 전체에서 `::accept`의 규칙을 받습니다. 알 수 없는 id(did-you-mean 포함), `start`가 있는 퀘스트, 자동 활성화되는 자식에 대해 **`E-ACCEPT-TARGET`**입니다. 앵커는 id가 `@target`에서 왔다면 보상의 `target=` 값이고, 아니면 `kind=`입니다. 메시지는 보상을 지목합니다: `` `<reward kind="OFFER_QUEST" target="secnd">` accepts quest `secnd` (its kind's `effects.accepts`), but no quest in the project declares that id — did you mean `second`? ``
+- **`target=`이 없을 때.** `@target`을 읽는 효과는 적용되지 않으며 추가 진단도 없습니다. `target`이 `required: true`인 종류는 이미 `E-REWARD-TARGET`을 보고합니다.
+- **`W-QUEST-NEVER-ACCEPTED`.** 보상 `accepts`가 퀘스트를 지목하면 씬의 `::accept`와 마찬가지로 이 경고를 없앱니다. 메시지는 이제 ``… but no `::accept` or reward `accepts` in the project names it …``입니다.
+- `W-REWARD-DOUBLE-CREDIT`은 그대로입니다.
+
+**지급 시점의 순서.** 보상이 지급될 때(`outcome`이 전환과 맞고 `when=`이 성립할 때), 선언 순서대로 **보상별로**:
+
+1. 이전처럼 `grant` 레코드와 `credits` 쓰기;
+2. 종류의 `retracts`, 이어서 `asserts`를 `::retract` / `::assert`와 같은 경로로 처리(런타임 `E-FACT-EXCLUSIVE` 검사 포함);
+3. `accepts`를 `::accept`의 경로로 처리: 수락 기반 퀘스트는 다음 생명주기 라운드에 활성화되고, 이미 `unset`을 지난 퀘스트는 그대로 두며 레코드가 그렇게 기록합니다.
+
+그다음 보상으로 넘어갑니다. 이전과 같이 목표 보상이 퀘스트 보상보다 먼저 지급되고, 한 전환의 모든 지급은 그 전환의 생명주기 핸들러 본문보다 앞서므로 `questComplete` 핸들러는 보상이 assert한 사실을 읽습니다. 효과는 지급 한 번당 정확히 한 번 발생하며, 재생과 복원은 지급 자체의 인스턴스 정체성을 따릅니다. 가드가 거짓인 `<reward when="…">`는 효과를 포함해 아무것도 지급하지 않습니다.
+
+분석은 각 효과를 소유자의 지급 지점에서 읽습니다. `outcome`이 없는 퀘스트 보상은 퀘스트 완료 시점(`questComplete` 핸들러 앞), `outcome="failed"`는 실패 시점(`questFailed` 앞), 목표 보상은 목표 완료 시점입니다. 보상의 assert는 생산자일 뿐입니다. 그 사실에 걸린 퀘스트를 도달 가능하게 하지만, 지급 뒤 그 사실이 *보장*되지는 않으므로(핸들러는 다른 지급 뒤로 미뤄질 수 있고, 호스트는 퀘스트를 완료로 시드할 수 있습니다) 그것을 검사하는 가드는 `W-FACT-GUARANTEED`도 `E-ARM-DEAD`도 받지 않습니다. 보상의 retract는 보장된 사실에서 그것을 제거합니다. 결과는 [사실과 Datalog](/ko/state/facts-and-datalog/#보상-효과가-만드는-사실)와 [도달 가능성](/ko/connectivity/reachability/#보상-효과가-그리는-엣지)에 있습니다.
+
 ### 퀘스트가 씬 및 계기를 만나는 방식
 
 세 가지 작은 추가 기능(dsl 0.21.0 §7a)으로 씬이 상태를 거쳐 플래그를 전달하지 않고 퀘스트를 직접 움직일 수 있습니다.
@@ -235,11 +302,11 @@ occasions:
 </branch>
 ```
 
-퀘스트가 이미 active, complete 또는 failed이면 수락해도 아무 일도 일어나지 않습니다. `::accept`에는 가드를 붙일 수 있습니다. `::accept{quest="calmTheShed" when="run.shedPressure > 2"}`처럼 쓰며(dsl 0.26.0 §4, [디렉티브에 가드하기](/ko/language/directives/#디렉티브-가드하기-when) 참고), 가드가 거짓이면 건너뜁니다. 프로젝트 전체 `lute check`는 어떤 `::accept`도 이름 붙이지 않는 수락 기반 퀘스트에 **`W-QUEST-NEVER-ACCEPTED`**를 경고합니다(dsl 0.24.0 §2). 프로젝트의 어떤 것도 활성화할 수 없기 때문입니다. dsl 0.25.0 §5부터 `accepts:` mock(`mocks/*.yaml`, `*.test.yaml`)은 더 이상 이를 세지 않습니다. mock은 테스트만 증명하고 게임은 증명하지 않으므로, mock만 수락하는 퀘스트도 계속 경고하며 메시지에 mock 파일을 표시합니다. 문서 바깥에서 엔진이 수락하는 퀘스트는 [`accept="external"`](#스크립트-바깥에서-수락하기-acceptexternal)을 대신 선언합니다. `--deny W-QUEST-NEVER-ACCEPTED`는 경고를 오류로 만듭니다.
+퀘스트가 이미 active, complete 또는 failed이면 수락해도 아무 일도 일어나지 않습니다. `::accept`에는 가드를 붙일 수 있습니다. `::accept{quest="calmTheShed" when="run.shedPressure > 2"}`처럼 쓰며(dsl 0.26.0 §4, [디렉티브에 가드하기](/ko/language/directives/#디렉티브-가드하기-when) 참고), 가드가 거짓이면 건너뜁니다. 프로젝트 전체 `lute check`는 어떤 `::accept`도, [보상 `accepts`](#보상-효과)도 이름 붙이지 않는 수락 기반 퀘스트에 **`W-QUEST-NEVER-ACCEPTED`**를 경고합니다(dsl 0.24.0 §2). 프로젝트의 어떤 것도 활성화할 수 없기 때문입니다. dsl 0.25.0 §5부터 `accepts:` mock(`mocks/*.yaml`, `*.test.yaml`)은 더 이상 이를 세지 않습니다. mock은 테스트만 증명하고 게임은 증명하지 않으므로, mock만 수락하는 퀘스트도 계속 경고하며 메시지에 mock 파일을 표시합니다. 문서 바깥에서 엔진이 수락하는 퀘스트는 [`accept="external"`](#스크립트-바깥에서-수락하기-acceptexternal)을 대신 선언합니다. `--deny W-QUEST-NEVER-ACCEPTED`는 경고를 오류로 만듭니다.
 
 <!-- lute-diagnostics -->
 ```
-./quests/lamp.lute:24:12: warning [W-QUEST-NEVER-ACCEPTED] quest `lostDog` is accept-driven (no `start`), but no `::accept` in the project names it (only the `accepts:` mock of `tests/dog.test.yaml` does, and a test mock is no acceptance in the game), so it never activates; accept it from a scene with `::accept{quest="lostDog"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or give it a `start` condition
+./quests/lamp.lute:24:12: warning [W-QUEST-NEVER-ACCEPTED] quest `lostDog` is accept-driven (no `start`), but no `::accept` or reward `accepts` in the project names it (only the `accepts:` mock of `tests/dog.test.yaml` does, and a test mock is no acceptance in the game), so it never activates; accept it from a scene with `::accept{quest="lostDog"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or give it a `start` condition
 ```
 
 **다음 런에 수락하기.** 런이 끝난 뒤 허브나 현상금 게시판에서 수락한 run-tier 퀘스트는 끝나는 런에서 활성화되었다가 `newRun`으로 초기화됩니다. `::accept{quest="<id>" at="nextRun"}`(dsl 0.24.0 §2)는 대신 수락을 대기열에 넣습니다. 다음 `newRun` 초기화 직후 적용되어 새 런의 첫 정착에서 퀘스트를 활성화합니다:
@@ -469,7 +536,7 @@ state:
 <!-- lute-diagnostics unverified="verbatim whole-project lute check output shape (names from this example); the W-QUEST-NEVER-ACCEPTED message is assembled from several pieces in crates/lute-check/src/accept.rs, so no single format! literal matches" -->
 ```
 scenes/ferry.lute:17:21: error [E-ACCEPT-TARGET] `::accept` targets quest `force`, which activates with its parent `crossing`; declare `activate="accept"` on it to accept it from a scene
-quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for an acceptance (`activate="accept"`), but no `::accept` in the project names it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or remove `activate="accept"` so it activates with its parent `crossing`
+quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for an acceptance (`activate="accept"`), but no `::accept` or reward `accepts` in the project names it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or remove `activate="accept"` so it activates with its parent `crossing`
 ```
 
 ### `<on>`을 이용한 생명주기 반응

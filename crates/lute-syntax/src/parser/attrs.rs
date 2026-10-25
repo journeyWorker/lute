@@ -5,10 +5,268 @@
 //! quoted string are literal (`\` escapes the next char, §4.4). Three value
 //! shapes: `key="str"` → [`AttrValue::Str`]; `key=@ref` → [`AttrValue::Ref`]
 //! (a [`CelSlot`] of [`CelKind::AttrValue`]); bare `key` → [`AttrValue::BoolTrue`].
+//!
+//! The scan itself is [`scan_attr_list`], over byte offsets only: the parser
+//! builds its [`Attr`]s from it ([`Parser::scan_attrs`]), and
+//! [`crate::authored_attrs`] re-reads a node's head as written with the same
+//! function, so there is one attribute grammar.
 
 use super::{is_ident_byte, Parser, E_ATTR_QUOTE, E_STRING_ESCAPE};
 use crate::ast::{Attr, AttrValue, CelKind, CelSlot};
 use lute_core_span::{Layer, Span};
+
+/// One attribute as [`scan_attr_list`] reads it. Every offset indexes the
+/// scanned text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct ScannedAttr {
+    /// The key's `(start, end)`.
+    pub(crate) key: (usize, usize),
+    pub(crate) value: ScannedValue,
+    /// Offset just past the attribute (past a closing quote when there is one).
+    pub(crate) end: usize,
+}
+
+/// The value shape of a [`ScannedAttr`]; each range is the value text as
+/// written, without its quotes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum ScannedValue {
+    /// `key="…"`: its stored text is [`decode_value`] of the range.
+    Quoted(usize, usize),
+    /// `key='…'`, `key=“…”` (each an `E-ATTR-QUOTE`) or an unquoted
+    /// `key=token`: stored verbatim.
+    Verbatim(usize, usize),
+    /// `key=@ref` or `key=@ref(args)`, from the `@`.
+    Ref(usize, usize),
+    /// A bare `key` (dsl §4.5: `true`).
+    Flag,
+}
+
+/// What one attribute list holds: its attributes, the offset just past the
+/// terminator (or where the scan stopped), and the lexical faults to report.
+#[derive(Debug, Default)]
+pub(crate) struct AttrScan {
+    pub(crate) attrs: Vec<ScannedAttr>,
+    pub(crate) after: usize,
+    /// `(start, end)` of each undefined backslash escape (`E-STRING-ESCAPE`).
+    pub(crate) escapes: Vec<(usize, usize)>,
+    /// `(start, end)` of each single-quoted value (`E-ATTR-QUOTE`).
+    pub(crate) single_quoted: Vec<(usize, usize)>,
+    /// `(start, end, quote)` of each curly quote used as a delimiter
+    /// (`E-ATTR-QUOTE`).
+    pub(crate) curly: Vec<(usize, usize, char)>,
+}
+
+/// Scan the attribute list of `text` from offset `start` up to the unquoted
+/// terminator byte `term` (`}` for directives and lines, `>` for tags) or the
+/// line end. A scan never reads past a `\n` (dsl §2.3).
+pub(crate) fn scan_attr_list(text: &str, start: usize, term: u8) -> AttrScan {
+    let b = text.as_bytes();
+    let n = b.len();
+    let mut scan = AttrScan::default();
+    let mut j = start;
+    loop {
+        while j < n && (b[j] == b' ' || b[j] == b'\t') {
+            j += 1;
+        }
+        if j >= n || b[j] == term || b[j] == b'\n' {
+            break;
+        }
+        let key_start = j;
+        while j < n && is_ident_byte(b[j]) {
+            j += 1;
+        }
+        if j == key_start {
+            // Not an ident: unparseable token — skip to avoid a spin loop.
+            j += 1;
+            continue;
+        }
+        let key = (key_start, j);
+        if !(j < n && b[j] == b'=') {
+            // Bare ident ⇒ boolean true (§4.5).
+            scan.attrs.push(ScannedAttr {
+                key,
+                value: ScannedValue::Flag,
+                end: j,
+            });
+            continue;
+        }
+        j += 1; // past '='
+        let value = if j < n && b[j] == b'"' {
+            j += 1; // past opening quote
+            let inner_start = j;
+            let mut esc = false;
+            // The first curly double quote that could close this value
+            // (`label="Open the oven”>`): used only when no straight `"`
+            // closes it on this line.
+            let mut curly_close: Option<(usize, char)> = None;
+            while j < n {
+                let c = b[j];
+                if esc {
+                    esc = false;
+                } else if c == b'\\' {
+                    esc = true;
+                    // §4.4: only `\" \\ \n \t` are defined String escapes.
+                    // `\'` is exempted — a CelString value (indistinguishable
+                    // here) may embed a CEL single-quoted string using `\'`.
+                    // Any other escape is undefined; span the two bytes `\x`.
+                    // A trailing `\` with no next byte (`j + 1 == n`) is an
+                    // incomplete escape, not flagged.
+                    if j + 1 < n {
+                        let e = b[j + 1];
+                        if !matches!(e, b'"' | b'\\' | b'n' | b't' | b'\'') {
+                            scan.escapes.push((j, j + 2));
+                        }
+                    }
+                } else if c == b'"' {
+                    break;
+                } else if c == b'\n' {
+                    // RC2 (dsl §2.3): a physical newline INSIDE a quoted value
+                    // is never part of the value — the one-line model forbids
+                    // a tag/attribute list from wrapping. Stop here
+                    // (unterminated on this line) rather than scanning into
+                    // the next physical line looking for the closing quote.
+                    break;
+                }
+                if curly_close.is_none() {
+                    if let Some(q @ ('\u{201C}' | '\u{201D}')) = curly_quote_at(b, j) {
+                        if closes_value(b, j + 3, term) {
+                            curly_close = Some((j, q));
+                        }
+                    }
+                }
+                j += 1;
+            }
+            let mut inner_end = j;
+            if j < n && b[j] == b'"' {
+                j += 1; // past closing quote (only when actually found)
+            } else if let Some((at, q)) = curly_close {
+                // Unterminated on this line, but a curly quote sits where the
+                // closing `"` belongs: end the value there.
+                scan.curly.push((at, at + 3, q));
+                inner_end = at;
+                j = at + 3;
+            }
+            ScannedValue::Quoted(inner_start, inner_end)
+        } else if j < n && b[j] == b'@' {
+            let ref_start = j;
+            j += 1;
+            while j < n && is_ident_byte(b[j]) {
+                j += 1;
+            }
+            if j < n && b[j] == b'(' {
+                // Consume balanced `(...)` args, honoring quotes.
+                j += 1;
+                let mut depth = 1;
+                let mut q: Option<u8> = None;
+                let mut e2 = false;
+                while j < n && depth > 0 {
+                    let c = b[j];
+                    if c == b'\n' {
+                        // RC2 (dsl §2.3): stop at the physical line end — an
+                        // `@ref(...)` arg list (quoted or not) never wraps to
+                        // a later line.
+                        break;
+                    }
+                    match q {
+                        Some(qc) => {
+                            if e2 {
+                                e2 = false;
+                            } else if c == b'\\' {
+                                e2 = true;
+                            } else if c == qc {
+                                q = None;
+                            }
+                        }
+                        None => match c {
+                            b'"' | b'\'' => q = Some(c),
+                            b'(' => depth += 1,
+                            b')' => depth -= 1,
+                            _ => {}
+                        },
+                    }
+                    j += 1;
+                }
+            }
+            ScannedValue::Ref(ref_start, j)
+        } else if j < n && b[j] == b'\'' {
+            // `key='…'`: not attribute quoting (§4.4 quotes with `"` only).
+            // Consume the whole single-quoted run so the rest of the list
+            // still parses, keep its inner text as the value, and report
+            // `E-ATTR-QUOTE` — never let the quotes leak into the value
+            // silently.
+            let quote_start = j;
+            j += 1;
+            let inner_start = j;
+            let mut esc = false;
+            while j < n && b[j] != b'\n' {
+                if esc {
+                    esc = false;
+                } else if b[j] == b'\\' {
+                    esc = true;
+                } else if b[j] == b'\'' {
+                    break;
+                }
+                j += 1;
+            }
+            let inner_end = j;
+            if j < n && b[j] == b'\'' {
+                j += 1;
+            }
+            scan.single_quoted.push((quote_start, j));
+            ScannedValue::Verbatim(inner_start, inner_end)
+        } else if let Some(q) = curly_quote_at(b, j) {
+            // `key=“…”`: a word processor's curly quote is not attribute
+            // quoting (§4.4). Read the curly-quoted span as the value — up to
+            // a matching quote (curly or straight) that ends the token — so
+            // the words inside do not become one bogus attribute each, and
+            // report `E-ATTR-QUOTE` once.
+            let quote_start = j;
+            let double = matches!(q, '\u{201C}' | '\u{201D}');
+            let inner_start = j + 3;
+            let mut k = inner_start;
+            let mut close: Option<(usize, usize)> = None;
+            while k < n && b[k] != b'\n' {
+                let len = match curly_quote_at(b, k) {
+                    Some(c) if matches!(c, '\u{201C}' | '\u{201D}') == double => 3,
+                    None if b[k] == if double { b'"' } else { b'\'' } => 1,
+                    _ => 0,
+                };
+                if len > 0 && closes_value(b, k + len, term) {
+                    close = Some((k, k + len));
+                    break;
+                }
+                k += 1;
+            }
+            let inner_end = match close {
+                Some((end, after)) => {
+                    j = after;
+                    end
+                }
+                None => {
+                    // No closing quote on this line: read it like a bare
+                    // token so the rest of the list still parses.
+                    j = inner_start;
+                    while j < n && b[j] != b' ' && b[j] != b'\t' && b[j] != term && b[j] != b'\n' {
+                        j += 1;
+                    }
+                    j
+                }
+            };
+            scan.curly.push((quote_start, j, q));
+            ScannedValue::Verbatim(inner_start, inner_end)
+        } else {
+            // `key=` with a bare/unquoted token: read to whitespace/term.
+            let vstart = j;
+            while j < n && b[j] != b' ' && b[j] != b'\t' && b[j] != term && b[j] != b'\n' {
+                j += 1;
+            }
+            ScannedValue::Verbatim(vstart, j)
+        };
+        scan.attrs.push(ScannedAttr { key, value, end: j });
+    }
+    scan.after = if j < n && b[j] == term { j + 1 } else { j };
+    scan
+}
 
 impl Parser<'_> {
     /// Scan an attribute list from body offset `start` up to the unquoted
@@ -23,267 +281,33 @@ impl Parser<'_> {
     /// backslash escapes in quoted values; scanning always continues so one bad
     /// escape degrades safely rather than derailing the attribute list.
     pub(crate) fn scan_attrs(&mut self, start: usize, term: u8) -> (Vec<Attr>, usize) {
-        let b = self.body.as_bytes();
-        let n = b.len();
-        let mut attrs = Vec::new();
-        // Body-offset `(start, end)` spans of undefined escapes, emitted after
-        // the `b` borrow of `self.body` ends (emit needs `&mut self`).
-        let mut escapes: Vec<(usize, usize)> = Vec::new();
-        // Body-offset spans of single-quoted values (`E-ATTR-QUOTE`), same
-        // deferred-emit reason as `escapes`.
-        let mut single_quoted: Vec<(usize, usize)> = Vec::new();
-        // Body-offset spans of curly (word-processor) quotes used as value
-        // delimiters (`E-ATTR-QUOTE`), with the quote found.
-        let mut curly: Vec<(usize, usize, char)> = Vec::new();
-        let mut j = start;
-        loop {
-            while j < n && (b[j] == b' ' || b[j] == b'\t') {
-                j += 1;
-            }
-            if j >= n || b[j] == term || b[j] == b'\n' {
-                break;
-            }
-            let key_start = j;
-            while j < n && is_ident_byte(b[j]) {
-                j += 1;
-            }
-            if j == key_start {
-                // Not an ident: unparseable token — skip to avoid a spin loop.
-                j += 1;
-                continue;
-            }
-            let key = self.body[key_start..j].to_string();
-            if j < n && b[j] == b'=' {
-                j += 1; // past '='
-                if j < n && b[j] == b'"' {
-                    j += 1; // past opening quote
-                    let inner_start = j;
-                    let mut esc = false;
-                    // The first curly double quote that could close this
-                    // value (`label="Open the oven”>`): used only when no
-                    // straight `"` closes it on this line.
-                    let mut curly_close: Option<(usize, char)> = None;
-                    while j < n {
-                        let c = b[j];
-                        if esc {
-                            esc = false;
-                        } else if c == b'\\' {
-                            esc = true;
-                            // §4.4: only `\" \\ \n \t` are defined String
-                            // escapes. `\'` is exempted — a CelString value
-                            // (indistinguishable here) may embed a CEL
-                            // single-quoted string using `\'`. Any other escape
-                            // is undefined; span the two bytes `\x`. A trailing
-                            // `\` with no next byte (`j + 1 == n`) is an
-                            // incomplete escape, not flagged.
-                            if j + 1 < n {
-                                let e = b[j + 1];
-                                if !matches!(e, b'"' | b'\\' | b'n' | b't' | b'\'') {
-                                    escapes.push((j, j + 2));
-                                }
-                            }
-                        } else if c == b'"' {
-                            break;
-                        } else if c == b'\n' {
-                            // RC2 (dsl §2.3): a physical newline INSIDE a quoted
-                            // value is never part of the value — the one-line
-                            // model forbids a tag/attribute list from wrapping.
-                            // Stop here (unterminated on this line) rather than
-                            // scanning into the next physical line looking for
-                            // the closing quote.
-                            break;
-                        }
-                        if curly_close.is_none() {
-                            if let Some(q @ ('\u{201C}' | '\u{201D}')) = curly_quote_at(b, j) {
-                                if closes_value(b, j + 3, term) {
-                                    curly_close = Some((j, q));
-                                }
-                            }
-                        }
-                        j += 1;
-                    }
-                    let mut inner_end = j;
-                    if j < n && b[j] == b'"' {
-                        j += 1; // past closing quote (only when actually found)
-                    } else if let Some((at, q)) = curly_close {
-                        // Unterminated on this line, but a curly quote sits
-                        // where the closing `"` belongs: end the value there.
-                        curly.push((at, at + 3, q));
-                        inner_end = at;
-                        j = at + 3;
-                    }
-                    let value = decode_value(&self.body[inner_start..inner_end]);
-                    let vspan = self.span(inner_start, inner_end);
-                    attrs.push(Attr {
-                        key,
-                        value: AttrValue::Str(value),
-                        value_span: vspan,
-                        span: self.span(key_start, j),
-                    });
-                } else if j < n && b[j] == b'@' {
-                    let ref_start = j;
-                    j += 1;
-                    while j < n && is_ident_byte(b[j]) {
-                        j += 1;
-                    }
-                    if j < n && b[j] == b'(' {
-                        // Consume balanced `(...)` args, honoring quotes.
-                        j += 1;
-                        let mut depth = 1;
-                        let mut q: Option<u8> = None;
-                        let mut e2 = false;
-                        while j < n && depth > 0 {
-                            let c = b[j];
-                            if c == b'\n' {
-                                // RC2 (dsl §2.3): stop at the physical line
-                                // end — an `@ref(...)` arg list (quoted or
-                                // not) never wraps to a later line.
-                                break;
-                            }
-                            match q {
-                                Some(qc) => {
-                                    if e2 {
-                                        e2 = false;
-                                    } else if c == b'\\' {
-                                        e2 = true;
-                                    } else if c == qc {
-                                        q = None;
-                                    }
-                                }
-                                None => match c {
-                                    b'"' | b'\'' => q = Some(c),
-                                    b'(' => depth += 1,
-                                    b')' => depth -= 1,
-                                    _ => {}
-                                },
-                            }
-                            j += 1;
-                        }
-                    }
-                    let raw = self.body[ref_start..j].to_string();
-                    let vspan = self.span(ref_start, j);
-                    let slot = CelSlot::raw(CelKind::AttrValue, raw, vspan);
-                    attrs.push(Attr {
-                        key,
-                        value: AttrValue::Ref(slot),
-                        value_span: vspan,
-                        span: self.span(key_start, j),
-                    });
-                } else if j < n && b[j] == b'\'' {
-                    // `key='…'`: not attribute quoting (§4.4 quotes with `"`
-                    // only). Consume the whole single-quoted run so the rest
-                    // of the list still parses, keep its inner text as the
-                    // value, and report `E-ATTR-QUOTE` — never let the quotes
-                    // leak into the value silently.
-                    let quote_start = j;
-                    j += 1;
-                    let inner_start = j;
-                    let mut esc = false;
-                    while j < n && b[j] != b'\n' {
-                        if esc {
-                            esc = false;
-                        } else if b[j] == b'\\' {
-                            esc = true;
-                        } else if b[j] == b'\'' {
-                            break;
-                        }
-                        j += 1;
-                    }
-                    let inner_end = j;
-                    if j < n && b[j] == b'\'' {
-                        j += 1;
-                    }
-                    single_quoted.push((quote_start, j));
-                    let value = self.body[inner_start..inner_end].to_string();
-                    let vspan = self.span(inner_start, inner_end);
-                    attrs.push(Attr {
-                        key,
-                        value: AttrValue::Str(value),
-                        value_span: vspan,
-                        span: self.span(key_start, j),
-                    });
-                } else if let Some(q) = curly_quote_at(b, j) {
-                    // `key=“…”`: a word processor's curly quote is not
-                    // attribute quoting (§4.4). Read the curly-quoted span as
-                    // the value — up to a matching quote (curly or straight)
-                    // that ends the token — so the words inside do not become
-                    // one bogus attribute each, and report `E-ATTR-QUOTE` once.
-                    let quote_start = j;
-                    let double = matches!(q, '\u{201C}' | '\u{201D}');
-                    let inner_start = j + 3;
-                    let mut k = inner_start;
-                    let mut close: Option<(usize, usize)> = None;
-                    while k < n && b[k] != b'\n' {
-                        let len = match curly_quote_at(b, k) {
-                            Some(c) if matches!(c, '\u{201C}' | '\u{201D}') == double => 3,
-                            None if b[k] == if double { b'"' } else { b'\'' } => 1,
-                            _ => 0,
-                        };
-                        if len > 0 && closes_value(b, k + len, term) {
-                            close = Some((k, k + len));
-                            break;
-                        }
-                        k += 1;
-                    }
-                    let inner_end = match close {
-                        Some((end, after)) => {
-                            j = after;
-                            end
-                        }
-                        None => {
-                            // No closing quote on this line: read it like a
-                            // bare token so the rest of the list still parses.
-                            j = inner_start;
-                            while j < n
-                                && b[j] != b' '
-                                && b[j] != b'\t'
-                                && b[j] != term
-                                && b[j] != b'\n'
-                            {
-                                j += 1;
-                            }
-                            j
-                        }
-                    };
-                    curly.push((quote_start, j, q));
-                    let value = self.body[inner_start..inner_end].to_string();
-                    let vspan = self.span(inner_start, inner_end);
-                    attrs.push(Attr {
-                        key,
-                        value: AttrValue::Str(value),
-                        value_span: vspan,
-                        span: self.span(key_start, j),
-                    });
-                } else {
-                    // `key=` with a bare/unquoted token: read to whitespace/term.
-                    let vstart = j;
-                    while j < n && b[j] != b' ' && b[j] != b'\t' && b[j] != term && b[j] != b'\n' {
-                        j += 1;
-                    }
-                    let value = self.body[vstart..j].to_string();
-                    let vspan = self.span(vstart, j);
-                    attrs.push(Attr {
-                        key,
-                        value: AttrValue::Str(value),
-                        value_span: vspan,
-                        span: self.span(key_start, j),
-                    });
+        let scan = scan_attr_list(&self.body, start, term);
+        let mut attrs = Vec::with_capacity(scan.attrs.len());
+        for a in &scan.attrs {
+            let key = self.body[a.key.0..a.key.1].to_string();
+            let (value, value_span) = match a.value {
+                ScannedValue::Quoted(s, e) => (
+                    AttrValue::Str(decode_value(&self.body[s..e])),
+                    self.span(s, e),
+                ),
+                ScannedValue::Verbatim(s, e) => {
+                    (AttrValue::Str(self.body[s..e].to_string()), self.span(s, e))
                 }
-            } else {
-                // Bare ident ⇒ boolean true (§4.5).
-                let key_end = key_start + key.len();
-                let kspan = self.span(key_start, key_end);
-                attrs.push(Attr {
-                    key,
-                    value: AttrValue::BoolTrue,
-                    value_span: kspan,
-                    span: kspan,
-                });
-            }
+                ScannedValue::Ref(s, e) => {
+                    let vspan = self.span(s, e);
+                    let slot = CelSlot::raw(CelKind::AttrValue, self.body[s..e].to_string(), vspan);
+                    (AttrValue::Ref(slot), vspan)
+                }
+                ScannedValue::Flag => (AttrValue::BoolTrue, self.span(a.key.0, a.key.1)),
+            };
+            attrs.push(Attr {
+                key,
+                value,
+                value_span,
+                span: self.span(a.key.0, a.end),
+            });
         }
-        let after = if j < n && b[j] == term { j + 1 } else { j };
-        // `b`'s borrow of `self.body` has ended; safe to emit via `&mut self`.
-        for (s, e) in escapes {
+        for (s, e) in scan.escapes {
             self.emit_o(
                 E_STRING_ESCAPE,
                 "only \\\" \\\\ \\n \\t are defined escapes (dsl §4.4)".to_string(),
@@ -292,7 +316,7 @@ impl Parser<'_> {
                 Layer::Content,
             );
         }
-        for (s, e) in single_quoted {
+        for (s, e) in scan.single_quoted {
             self.emit_o(
                 E_ATTR_QUOTE,
                 "attribute values are quoted with `\"`, not `'`: write `key=\"…\"`, and \
@@ -303,7 +327,7 @@ impl Parser<'_> {
                 Layer::Content,
             );
         }
-        for (s, e, q) in curly {
+        for (s, e, q) in scan.curly {
             self.emit_o(
                 E_ATTR_QUOTE,
                 format!(
@@ -315,7 +339,7 @@ impl Parser<'_> {
                 Layer::Content,
             );
         }
-        (attrs, after)
+        (attrs, scan.after)
     }
 
     /// Body offset of the `}` matching the `{` at `open`, honoring `"`/`'` quotes
@@ -355,6 +379,104 @@ impl Parser<'_> {
             i += 1;
         }
         None
+    }
+}
+
+/// One attribute of a node's head as the author wrote it (dsl 0.50.0 §8.1):
+/// lint reads these instead of the AST's typed fields, which drop the text
+/// of a lifted attribute (`<reward amount="+005">` keeps only `5`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AuthoredAttr<'s> {
+    pub key: &'s str,
+    /// The value text as written, without its quotes: a quoted value's
+    /// escapes and character references are not decoded, an `@ref` keeps
+    /// its `@` and arguments, and a bare flag reads `"true"` (dsl §4.5).
+    pub raw_value: &'s str,
+    /// Byte range of the key in the source.
+    pub key_span: std::ops::Range<usize>,
+    /// Byte range of the value text in the source (the key's, for a flag).
+    pub value_span: std::ops::Range<usize>,
+}
+
+/// Every attribute written in the head of the node whose span is `head`,
+/// in source order, read with the parser's own scanner ([`scan_attr_list`]).
+///
+/// The head starts at `head.byte_start`: a `<tag …>` opener, a
+/// `::tag{…}` directive or a `@speaker{…}:` content line. A head of another
+/// shape (a `::tag` without braces, a line without `{…}`) has no
+/// attributes, and so does a span that does not start inside `source`.
+/// Block comments on the head line are blanked first, as the parser's
+/// whole-body pass does: the head starts outside any comment and string,
+/// and a comment still open at the line end runs on past it.
+/// Each attribute is returned once per occurrence, so a repeated key is
+/// repeated here.
+pub fn authored_attrs(source: &str, head: Span) -> Vec<AuthoredAttr<'_>> {
+    let start = head.byte_start;
+    let Some(rest) = source.get(start..) else {
+        return Vec::new();
+    };
+    let line = rest.find('\n').map_or(rest, |n| &rest[..n]);
+    let Some((list, term)) = attr_list_start(line) else {
+        return Vec::new();
+    };
+    let blanked;
+    let view = if line.contains("/*") {
+        // Close a comment left open at the line end, so it is blanked to
+        // the end of the line as the whole-body pass blanks it, then drop
+        // the closer again (blanking keeps byte length). The closer is
+        // spaced off so it cannot join the line's last byte into a new
+        // delimiter (a terminal `/` would make `/*/`).
+        let mut closed = String::with_capacity(line.len() + 3);
+        closed.push_str(line);
+        closed.push_str(" */");
+        match crate::lex::strip_comments_checked(&closed) {
+            Ok(mut text) => {
+                text.truncate(line.len());
+                blanked = text;
+                blanked.as_str()
+            }
+            Err(_) => line,
+        }
+    } else {
+        line
+    };
+    let scan = scan_attr_list(view, list, term);
+    scan.attrs
+        .into_iter()
+        .filter_map(|a| {
+            let (value, value_span) = match a.value {
+                ScannedValue::Quoted(s, e)
+                | ScannedValue::Verbatim(s, e)
+                | ScannedValue::Ref(s, e) => (line.get(s..e)?, s..e),
+                ScannedValue::Flag => ("true", a.key.0..a.key.1),
+            };
+            Some(AuthoredAttr {
+                key: line.get(a.key.0..a.key.1)?,
+                raw_value: value,
+                key_span: start + a.key.0..start + a.key.1,
+                value_span: start + value_span.start..start + value_span.end,
+            })
+        })
+        .collect()
+}
+
+/// Where the attribute list of the head `line` starts, and its terminator:
+/// past `<name` (`>`), past `::name{` (`}`) or past `@speaker{` / `@@param{`
+/// (`}`) — the openers [`Parser::scan_attrs`] is called on.
+fn attr_list_start(line: &str) -> Option<(usize, u8)> {
+    let b = line.as_bytes();
+    let ident_end = |mut j: usize| {
+        while j < b.len() && is_ident_byte(b[j]) {
+            j += 1;
+        }
+        j
+    };
+    let braced = |j: usize| (b.get(j) == Some(&b'{')).then_some((j + 1, b'}'));
+    match b.first()? {
+        b'<' => Some((ident_end(1), b'>')),
+        b':' if b.get(1) == Some(&b':') => braced(ident_end(2)),
+        b'@' => braced(ident_end(if b.get(1) == Some(&b'@') { 2 } else { 1 })),
+        _ => None,
     }
 }
 
@@ -712,5 +834,195 @@ mod tests {
             sound.value
         );
         assert!(d.attrs.iter().any(|a| a.key == "note"), "{:?}", d.attrs);
+    }
+
+    /// `(key, raw value)` of every attribute `authored_attrs` reads at
+    /// `head`, after checking each span indexes `src` at that text.
+    fn authored(src: &str, head: lute_core_span::Span) -> Vec<(String, String)> {
+        crate::authored_attrs(src, head)
+            .into_iter()
+            .map(|a| {
+                assert_eq!(&src[a.key_span.clone()], a.key);
+                if a.raw_value != "true" || src[a.value_span.clone()] != *a.key {
+                    assert_eq!(&src[a.value_span.clone()], a.raw_value);
+                }
+                (a.key.to_string(), a.raw_value.to_string())
+            })
+            .collect()
+    }
+
+    fn pairs(list: &[(&str, &str)]) -> Vec<(String, String)> {
+        list.iter()
+            .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
+            .collect()
+    }
+
+    fn quest_rewards(src: &str) -> Vec<Vec<(String, String)>> {
+        let (doc, _) = parse(src);
+        doc.quests[0]
+            .rewards
+            .iter()
+            .map(|r| authored(src, r.span))
+            .collect()
+    }
+
+    const QUEST: &str = "---\nkind: quest\nid: q\n---\n<quest id=\"q\">\n\
+                         <objective id=\"o\" done=\"true\"/>\n\
+                         <reward kind=\"COINS\" amount=\"+005\"/>\n\
+                         <reward kind=\"COINS\" amount=\"5\"/>\n\
+                         <reward kind=\"BADGE\"/>\n</quest>\n";
+
+    // dsl 0.50.0 §8.1: a lifted attribute keeps its authored text, and an
+    // unauthored one is absent although the AST carries a parsed value.
+    #[test]
+    fn a_lifted_attribute_keeps_its_authored_text() {
+        let (doc, _) = parse(QUEST);
+        assert_eq!(
+            doc.quests[0].rewards[0].amount,
+            Some(crate::ast::RewardAmount::Scalar(5))
+        );
+        assert_eq!(
+            quest_rewards(QUEST),
+            [
+                pairs(&[("kind", "COINS"), ("amount", "+005")]),
+                pairs(&[("kind", "COINS"), ("amount", "5")]),
+                pairs(&[("kind", "BADGE")]),
+            ]
+        );
+    }
+
+    #[test]
+    fn element_directive_and_line_heads_are_read_as_written() {
+        let src = "## Shot 1.\n<branch id=\"route\" menuType=\"timed\">\n\
+                   <choice id=\"c\" /* note */ text=\"Go\" optionKey=@key once>\n\
+                   @mira{emotion=\"fond\" vo when=\"run.x\"}: Hi\n\
+                   ::sfx{sound=\"a\\\"b &amp; c\" volume=@loud(2, \"x y\") loop}\n\
+                   ::bg\n</choice>\n</branch>\n";
+        let (doc, _) = parse(src);
+        let crate::ast::Node::Branch(b) = &doc.sections[0].body[0] else {
+            panic!("branch expected");
+        };
+        assert!(
+            b.attrs.iter().all(|a| a.key != "id"),
+            "id is lifted out of the AST attrs"
+        );
+        assert_eq!(
+            authored(src, b.span),
+            pairs(&[("id", "route"), ("menuType", "timed")])
+        );
+        let c = &b.choices[0];
+        assert_eq!(
+            authored(src, c.span),
+            pairs(&[
+                ("id", "c"),
+                ("text", "Go"),
+                ("optionKey", "@key"),
+                ("once", "true")
+            ])
+        );
+        let body: Vec<_> = c
+            .body
+            .iter()
+            .map(|n| match n {
+                crate::ast::Node::Line(l) => authored(src, l.span),
+                crate::ast::Node::Directive(d) => authored(src, d.span),
+                other => panic!("unexpected {other:?}"),
+            })
+            .collect();
+        assert_eq!(
+            body,
+            [
+                pairs(&[("emotion", "fond"), ("vo", "true"), ("when", "run.x")]),
+                pairs(&[
+                    ("sound", "a\\\"b &amp; c"),
+                    ("volume", "@loud(2, \"x y\")"),
+                    ("loop", "true"),
+                ]),
+                Vec::new(),
+            ]
+        );
+    }
+
+    #[test]
+    fn crlf_and_multibyte_sources_read_the_same_values() {
+        let lf = "---\nkind: quest\nid: q\n---\n<quest id=\"q\" title=\"별빛 퀘스트\">\n\
+                  <reward kind=\"별\" amount=\"+005\"/>\n</quest>\n";
+        let crlf = lf.replace('\n', "\r\n");
+        for src in [lf, crlf.as_str()] {
+            let (doc, _) = parse(src);
+            assert_eq!(
+                authored(src, doc.quests[0].span),
+                pairs(&[("id", "q"), ("title", "별빛 퀘스트")]),
+                "{src:?}"
+            );
+            assert_eq!(
+                authored(src, doc.quests[0].rewards[0].span),
+                pairs(&[("kind", "별"), ("amount", "+005")]),
+                "{src:?}"
+            );
+        }
+    }
+
+    // S7 review: a comment opened at the end of the head line and closed on
+    // the next one still blanks the head's earlier closed comments, as the
+    // whole-body pass does; and (S7 re-review) a terminal `/` does not join
+    // the closer added for that into a new comment opener.
+    #[test]
+    fn a_comment_left_open_at_the_line_end_keeps_earlier_comments_blanked() {
+        for src in [
+            "## A\n::sfx{/* loop */ sound=\"bell\"} /*\ncontinued */\n",
+            "## A\n::sfx{/* } */ sound=\"bell\"} /*\ncontinued */\n",
+            "## A\n::sfx{/* loop */ sound=\"bell\"} /\n",
+            "## A\n::sfx{/* } */ sound=\"bell\"} /\n",
+            "## A\r\n::sfx{/* loop */ sound=\"bell\"} /\r\n",
+        ] {
+            let (doc, _) = parse(src);
+            let crate::ast::Node::Directive(d) = &doc.sections[0].body[0] else {
+                panic!("directive expected: {src:?}");
+            };
+            let parsed: Vec<_> = d.attrs.iter().map(|a| a.key.as_str()).collect();
+            assert_eq!(parsed, ["sound"], "{src:?}");
+            assert_eq!(
+                authored(src, d.span),
+                pairs(&[("sound", "bell")]),
+                "{src:?}"
+            );
+        }
+        let src = "## A\n<branch id=\"b\">\n<choice /* > */ id=\"c\" text=\"Go\"> /*\n\
+                   continued */\n@x: a\n</choice>\n</branch>\n";
+        let (doc, _) = parse(src);
+        let crate::ast::Node::Branch(b) = &doc.sections[0].body[0] else {
+            panic!("branch expected");
+        };
+        assert_eq!(b.choices[0].text, "Go");
+        assert_eq!(
+            authored(src, b.choices[0].span),
+            pairs(&[("id", "c"), ("text", "Go")])
+        );
+    }
+
+    #[test]
+    fn a_span_that_is_no_head_has_no_attributes() {
+        let src = "## Shot 1.\n@x: a\n";
+        let (doc, _) = parse(src);
+        let crate::ast::Node::Line(l) = &doc.sections[0].body[0] else {
+            panic!("line expected");
+        };
+        assert!(authored(src, l.span).is_empty());
+        assert!(authored(src, doc.sections[0].span).is_empty());
+        let past_end = lute_core_span::Span {
+            byte_start: src.len() + 4,
+            byte_end: src.len() + 4,
+            line: 1,
+            column: 1,
+            utf16_range: (0, 0),
+        };
+        assert!(crate::authored_attrs(src, past_end).is_empty());
+        // Inside a multi-byte character.
+        let mid = lute_core_span::Span {
+            byte_start: 1,
+            ..past_end
+        };
+        assert!(crate::authored_attrs("별", mid).is_empty());
     }
 }

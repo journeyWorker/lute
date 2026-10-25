@@ -296,10 +296,22 @@ pub(crate) fn extend_surface(
     every.push(
         json!({ "name": "at", "type": "time", "on": "a directive inside a <track> clip only" }),
     );
-    for (name, a) in &input.snapshot().stamp_attrs {
+    // A cross-cutting stamp keeps its 0.49 text; a scoped one names its
+    // surfaces (0.50.0 §3.7), one row per declaration.
+    for stamp in input.snapshot().stamp_attrs.iter() {
+        let on = match &stamp.on {
+            None => format!("{but_unstamped} (stampAttrs)"),
+            Some(surfaces) => format!(
+                "{} (stampAttrs)",
+                surfaces
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        };
         every.push(json!({
-            "name": name, "type": crate::attr_type_str(&a.ty).0,
-            "on": format!("{but_unstamped} (stampAttrs)")
+            "name": stamp.decl.name, "type": crate::attr_type_str(&stamp.decl.ty).0, "on": on
         }));
     }
     root.insert("directiveAttrs".into(), every.into());
@@ -485,7 +497,9 @@ fn project_docs(
 fn project_ids(docs: &[(PathBuf, lute_syntax::ast::Document, lute_check::TypedMeta)]) -> Value {
     let views: Vec<lute_check::ProjectDoc<'_>> = docs
         .iter()
-        .map(|(p, d, m)| lute_check::ProjectDoc::new(p, d, m))
+        .map(|(p, d, m)| {
+            lute_check::ProjectDoc::new(p, d, m, &lute_check::reward_effects::NO_REWARD_KINDS)
+        })
         .collect();
     let scenes: Vec<String> = lute_check::connectivity::scene_key_set(&views)
         .into_keys()

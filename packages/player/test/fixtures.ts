@@ -107,3 +107,21 @@ export const compileChimeBatch: Effect.Effect<string> = compileBundle(join(fixtu
  * `run.over` (lute 0.49.0 §4.2).
  */
 export const compileLineWait: Effect.Effect<string> = compileBundle(join(fixtures, "line-wait", "project"))
+
+/**
+ * `choice-stamps`: `crossing` (occasion `visit`) offers a `<branch>` stamped
+ * `menuType="timed" cue="b1"` whose `left` choice is stamped `cue="c1"
+ * weight=2` and whose `right` choice has no stamps, then an unstamped `<hub>`,
+ * then sets the terminal `run.over`; `acme.menus` scopes the stamps to the
+ * logic elements (lute 0.50.0 §3.1, §3.6).
+ */
+export const compileChoiceStamps: Effect.Effect<string> = compileBundle(join(fixtures, "choice-stamps", "project"))
+
+/**
+ * `stamp-keys`: `dock` (occasion `visit`) shows a line at `001-0100`, a line
+ * stamped `kind="note" position="001-0100"`, a `::bg` stamped `kind="note"
+ * position="001-0300"` (its own position), then sets the terminal
+ * `run.over`; `acme.keys` declares the cross-cutting stamps `kind` and
+ * `position` (#200).
+ */
+export const compileStampKeys: Effect.Effect<string> = compileBundle(join(fixtures, "stamp-keys", "project"))

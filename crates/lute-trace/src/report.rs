@@ -106,11 +106,17 @@ pub enum Step {
         text: String,
         #[serde(rename = "effectOf", skip_serializing_if = "Option::is_none")]
         effect_of: Option<String>,
+        /// 0.50.0 §5.6: the grant whose reward effect this assert is
+        /// (rendered `(effect of reward <KIND>)`).
+        #[serde(skip_serializing_if = "Option::is_none")]
+        grant: Option<GrantRef>,
     },
     Retract {
         text: String,
         #[serde(rename = "effectOf", skip_serializing_if = "Option::is_none")]
         effect_of: Option<String>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        grant: Option<GrantRef>,
     },
     Directive {
         tag: String,
@@ -222,6 +228,9 @@ pub enum Step {
         quest: String,
         #[serde(rename = "nextRun", skip_serializing_if = "std::ops::Not::not")]
         next_run: bool,
+        /// 0.50.0 §5.6: the grant whose reward effect this accept is.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        grant: Option<GrantRef>,
     },
     /// dsl 0.25.0 §1: right after the write that made them hold together,
     /// two facts of relations that exclude each other
@@ -274,6 +283,19 @@ pub struct GrantReward {
 pub struct GrantCredit {
     pub path: String,
     pub value: String,
+}
+
+/// 0.50.0 §5.6: the identity of the grant a reward effect record follows
+/// — the grant record's own `(quest, instance, index, objective?)` plus
+/// the reward's `kind`.
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct GrantRef {
+    pub quest: String,
+    pub instance: u64,
+    pub index: usize,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub objective: Option<String>,
+    pub kind: String,
 }
 
 /// One decision (§4.5: "the construct kind, its id/span, the outcome, and
@@ -828,15 +850,26 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
             let annot = if *sugar { "  (into sugar)" } else { "" };
             out.push_str(&format!(
                 "    ::set  {path} = {value}{annot}{}\n",
-                effect_note(effect_of)
+                effect_note(effect_of, &None)
             ));
         }
-        Step::Assert { text, effect_of } => {
-            out.push_str(&format!("    ::assert  {text}{}\n", effect_note(effect_of)));
+        Step::Assert {
+            text,
+            effect_of,
+            grant,
+        } => {
+            out.push_str(&format!(
+                "    ::assert  {text}{}\n",
+                effect_note(effect_of, grant)
+            ));
         }
-        Step::Retract { text, effect_of } => out.push_str(&format!(
+        Step::Retract {
+            text,
+            effect_of,
+            grant,
+        } => out.push_str(&format!(
             "    ::retract  {text}{}\n",
-            effect_note(effect_of)
+            effect_note(effect_of, grant)
         )),
         Step::Directive {
             tag,
@@ -978,13 +1011,20 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
         Step::Skipped { effect, text } => {
             out.push_str(&format!("    ::{effect}  {text}  (skipped: re-read)\n"));
         }
-        Step::Accept { quest, next_run } => {
+        Step::Accept {
+            quest,
+            next_run,
+            grant,
+        } => {
             let queued = if *next_run {
                 " (queued: applies after the next run start)"
             } else {
                 ""
             };
-            out.push_str(&format!("    quest {quest} accepted{queued}\n"));
+            out.push_str(&format!(
+                "    quest {quest} accepted{queued}{}\n",
+                effect_note(&None, grant)
+            ));
         }
         Step::Exclusive { text } => out.push_str(&format!("    ✗ exclusive: {text}\n")),
         Step::Jump { to } => out.push_str(&format!("    <jump -> {to}>\n")),
@@ -1037,10 +1077,12 @@ fn component_name(name: &Option<String>) -> String {
         .unwrap_or_default()
 }
 
-/// `"  (effect of ::tag)"` for a plugin directive's declared effect.
-fn effect_note(effect_of: &Option<String>) -> String {
-    effect_of
-        .as_deref()
-        .map(|tag| format!("  (effect of ::{tag})"))
-        .unwrap_or_default()
+/// `"  (effect of ::tag)"` for a plugin directive's declared effect, and
+/// `"  (effect of reward BADGE)"` for a reward's (0.50.0 §5.6).
+fn effect_note(effect_of: &Option<String>, grant: &Option<GrantRef>) -> String {
+    match (effect_of, grant) {
+        (Some(tag), _) => format!("  (effect of ::{tag})"),
+        (None, Some(g)) => format!("  (effect of reward {})", g.kind),
+        (None, None) => String::new(),
+    }
 }

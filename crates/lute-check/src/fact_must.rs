@@ -10,6 +10,9 @@
 //! its relation is neither reserved, unbounded, nor derived. `tier: scene`
 //! facts never cross a document boundary at all, nor do `tier: quest` facts
 //! (the engine clears them with their quest, at a time no document controls).
+//! A quest's `start=` facts enter its body only when they also outlast the
+//! quest (#205, [`Root::outlasts_quest`]): no `newRun` or season opening
+//! resets them while the quest stays active.
 //!
 //! **Within a document** the walk is a forward must-dataflow over the node
 //! stream with the fork/join shape of definite assignment
@@ -75,13 +78,14 @@ use crate::fact_env::{
     GroundFact, MaySet, MustClosure, MustFact, MustMap, Provenance, QueryPattern, RootVocab,
 };
 use crate::rel_schema::RelVocab;
+use crate::reward_effects::{GrantEffect, GrantPoint, QuestGrants};
 use crate::ProjectDoc;
 use cel_parser::ast::{operators as op, Expr};
 use lute_core_span::Span;
 use lute_manifest::fact::{FactPattern, FactTerm};
 use lute_manifest::semantics::prereq::PrereqFormula;
 use lute_syntax::ast::{
-    Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Hub, Match, Node, Retract,
+    Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Hub, Match, Node, Quest, Retract,
 };
 
 /// Guaranteed facts, each with where it is established.
@@ -259,7 +263,11 @@ pub fn compute_must(
 }
 
 /// The non-seed facts an `after:` formula guarantees on arrival (§4 entry
-/// points; `must_out` holds each scene's non-seed crossing facts).
+/// points; `must_out` holds each scene's non-seed crossing facts). A
+/// `completed(q)` / `active(q)` guarantees nothing: a quest's reward
+/// asserts are possible there, never Must (0.50.0 §5.4) — a run or season
+/// reset clears its facts but not a `user`-tier quest's status, and a host
+/// may seed a quest complete without its grants.
 fn after_facts(f: &PrereqFormula, must_out: &BTreeMap<String, FactMap>) -> FactMap {
     match f {
         PrereqFormula::Visited(key) => must_out.get(key).cloned().unwrap_or_default(),
@@ -477,6 +485,22 @@ impl<'a> Root<'a> {
                     }
                 });
             }
+            // 0.50.0 §5.4: a reward's effects write like an `::assert` /
+            // `::retract` in its grant point.
+            for quest in &doc.quests {
+                for grant in crate::reward_effects::quest_grants(quest, item.reward_kinds) {
+                    match grant.fact() {
+                        Some((p, true)) => {
+                            asserted.insert(p.relation.clone());
+                            for f in vocab.asserted_facts(p) {
+                                produced.entry(f.relation).or_default().insert(f.args);
+                            }
+                        }
+                        Some((p, false)) => retracts.extend(QueryPattern::from_fact_pattern(p)),
+                        None => {}
+                    }
+                }
+            }
         }
         let mut key_groups: BTreeMap<String, HashMap<Vec<String>, Vec<Vec<String>>>> =
             BTreeMap::new();
@@ -596,6 +620,37 @@ impl<'a> Root<'a> {
                 .get(&f.relation)
                 .is_some_and(|d| !matches!(d.tier.as_deref(), Some("scene" | "quest")))
     }
+
+    /// Monotone and not `tier: season:<name>` (a season's opening resets
+    /// those to the seeds) — still holds after anything the engine may run
+    /// between judging a deferred lifecycle handler's guard and running its
+    /// body (#203, 0.50.0 §5.4).
+    fn outlasts_deferral(&self, f: &GroundFact) -> bool {
+        self.monotone(f)
+            && self.vocab.relations.get(&f.relation).is_some_and(|d| {
+                d.tier
+                    .as_deref()
+                    .and_then(lute_manifest::season::season_ref)
+                    .is_none()
+            })
+    }
+
+    /// Crossing and reset no earlier than `quest` (#205, 0.50.0 §5.4): a
+    /// `start=` fact holds throughout the quest's body only if every reset
+    /// that clears it also returns the quest to `unset` — `tier: user` /
+    /// `app` (never reset), `tier: run` in a `tier="run"` quest (`newRun`
+    /// resets both), `tier: season:<s>` in a `tier="season:<s>"` quest (the
+    /// season's opening resets both). A user-tier quest stays active across
+    /// both resets. An absent relation `tier:` is `run`.
+    fn outlasts_quest(&self, f: &GroundFact, quest: &Quest) -> bool {
+        self.crosses(f)
+            && self.vocab.relations.get(&f.relation).is_some_and(|d| {
+                match d.tier.as_deref().unwrap_or("run") {
+                    "user" | "app" => true,
+                    tier => quest.tier.as_ref().is_some_and(|(t, _)| t == tier),
+                }
+            })
+    }
 }
 
 /// The `key:` tuple (`key`, non-empty) of a fact with `args`; an
@@ -646,6 +701,43 @@ fn scan<'n>(nodes: &'n [Node], f: &mut impl FnMut(&'n Node)) {
     }
 }
 
+/// The fact writes — `(pattern, is_assert)`, in document order — of every
+/// `<on>` handler in `body` that answers `point`'s lifecycle event
+/// (`questComplete` / `questFailed`): `::assert` / `::retract` nodes and the
+/// declared fact effects of the directives they call, nested bodies
+/// included. Any of them may run before another handler's body, so none of
+/// what they may remove is Must where a handler starts (0.50.0 §5.4).
+fn handler_writes(
+    body: &[Node],
+    point: GrantPoint,
+    directives: &crate::directive_facts::EffectDirectives,
+) -> Vec<(FactPattern, bool)> {
+    let Some(event) = point.handler_event() else {
+        return Vec::new();
+    };
+    let mut writes = Vec::new();
+    for node in body {
+        let Node::On(o) = node else {
+            continue;
+        };
+        if o.event != event {
+            continue;
+        }
+        scan(&o.body, &mut |n| match n {
+            Node::Assert(a) => writes.push((a.pattern.clone(), true)),
+            Node::Retract(r) => writes.push((r.pattern.clone(), false)),
+            Node::Directive(d) => {
+                if let Some(facts) = crate::directive_facts::lookup(directives, d) {
+                    writes.extend(facts.retracts.iter().map(|p| (p.clone(), false)));
+                    writes.extend(facts.asserts.iter().map(|p| (p.clone(), true)));
+                }
+            }
+            _ => {}
+        });
+    }
+    writes
+}
+
 /// Walk one document from `entry` (its shots) and its quest / entry bodies
 /// from their own bases; record every guard slot into `slots` (its derived
 /// facts under `closure` are added when the slot is read). Returns the meet
@@ -679,15 +771,32 @@ fn walk_doc(
         let mut base = root.start();
         if let Some(start) = &quest.start {
             for (fact, provenance) in w.assumptions(start) {
-                if root.crosses(&fact) {
+                if root.outlasts_quest(&fact, quest) {
                     base.add(fact, provenance);
                 }
             }
         }
         w.body_base = base.clone();
+        w.quest = Some(quest);
+        w.grants = QuestGrants::new(quest, item.reward_kinds);
+        // 0.50.0 §5.4: each lifecycle grant point transfers its grants once,
+        // whether or not a handler follows. Its handlers each start from
+        // that set, independently, less every fact a handler of the same
+        // event may remove (S3 re-review).
+        for point in [GrantPoint::QuestComplete, GrantPoint::QuestFailed] {
+            let mut at = Some(base.clone());
+            w.complete(quest, point, &mut at);
+            w.lifecycle.insert(point, at);
+            let writes = handler_writes(&quest.body, point, root.vocab.effect_directives());
+            w.handler_writes.insert(point, writes);
+        }
         let mut flow = Some(base);
         w.walk(&quest.body, &mut flow);
     }
+    w.quest = None;
+    w.grants = QuestGrants::default();
+    w.lifecycle.clear();
+    w.handler_writes.clear();
     for entry in &doc.entries {
         let mut base = Some(root.start());
         if let Some(when) = &entry.when {
@@ -731,6 +840,19 @@ struct Walk<'a> {
     exit: Flow,
     /// Where an `<on>` / `<objective>` body starts (engine-chosen time).
     body_base: Facts,
+    /// The quest whose body is walked, and (0.50.0 §5.4) the effects its
+    /// rewards apply at their grant points, grouped by owner.
+    quest: Option<&'a Quest>,
+    grants: QuestGrants<'a>,
+    /// Per lifecycle grant point (`QuestComplete` / `QuestFailed`): the set
+    /// after its grants, where every `questComplete` / `questFailed`
+    /// handler starts (the engine grants once, then judges every handler's
+    /// guard before running any body).
+    lifecycle: BTreeMap<GrantPoint, Flow>,
+    /// Per lifecycle grant point: the fact writes of every handler of its
+    /// event ([`handler_writes`]). A fact one of them may remove is not
+    /// Must at the start of any of them, nor through any one's guard.
+    handler_writes: BTreeMap<GrantPoint, Vec<(FactPattern, bool)>>,
 }
 
 impl<'a> Walk<'a> {
@@ -748,6 +870,10 @@ impl<'a> Walk<'a> {
             pending: BTreeMap::new(),
             exit: None,
             body_base: root.start(),
+            quest: None,
+            grants: QuestGrants::default(),
+            lifecycle: BTreeMap::new(),
+            handler_writes: BTreeMap::new(),
         }
     }
 
@@ -783,6 +909,20 @@ impl<'a> Walk<'a> {
         };
         for (fact, provenance) in self.assumptions(slot) {
             facts.add(fact, provenance);
+        }
+    }
+
+    /// Add `slot`'s assumptions that outlast a deferral
+    /// ([`Root::outlasts_deferral`]) to `flow`: a deferred lifecycle
+    /// handler's `when=` (#203).
+    fn assume_lasting(&self, slot: &CelSlot, flow: &mut Flow) {
+        let Some(facts) = flow else {
+            return;
+        };
+        for (fact, provenance) in self.assumptions(slot) {
+            if self.root.outlasts_deferral(&fact) {
+                facts.add(fact, provenance);
+            }
         }
     }
 
@@ -937,9 +1077,45 @@ impl<'a> Walk<'a> {
                 Node::Hub(h) => self.hub(h, flow),
                 Node::Match(m) => self.match_arms(m, flow),
                 Node::On(o) => {
-                    let mut body = Some(self.body_base.clone());
+                    // 0.50.0 §5.4 (S3 re-review): a `questComplete` /
+                    // `questFailed` handler of the walked quest starts from
+                    // its grant point's set, independently of its siblings:
+                    // the engine grants once, judges every handler's guard,
+                    // then runs the selected bodies in order. A fact any
+                    // handler of the event (itself included) may remove is
+                    // therefore not Must at its start. Under a `judge:
+                    // before` occasion the bodies run only after the
+                    // occasion's beats, other quests' grants and handlers
+                    // and the cadence's season openings (#203), so neither
+                    // its `when=` nor its quest's `start=` (#205: a season
+                    // opening also resets a same-season quest, yet the
+                    // selected body still runs) contributes a fact that may
+                    // be removed meanwhile ([`Root::outlasts_deferral`]).
+                    let point = match o.event.as_str() {
+                        "questComplete" => Some(GrantPoint::QuestComplete),
+                        "questFailed" => Some(GrantPoint::QuestFailed),
+                        _ => None,
+                    };
+                    let lifecycle = point.filter(|_| self.quest.is_some());
+                    let mut body = match lifecycle {
+                        Some(p) => self.lifecycle.get(&p).cloned().flatten().map(|mut b| {
+                            let seeds = Arc::clone(&b.seeds);
+                            b.retain(|f| seeds.contains_key(f) || self.root.outlasts_deferral(f));
+                            b
+                        }),
+                        None => Some(self.body_base.clone()),
+                    };
+                    let writes = lifecycle
+                        .and_then(|p| self.handler_writes.get(&p))
+                        .cloned()
+                        .unwrap_or_default();
+                    self.remove_writes(&writes, &mut body);
                     if let Some(when) = &o.when {
-                        self.assume(when, &mut body);
+                        match lifecycle {
+                            Some(_) => self.assume_lasting(when, &mut body),
+                            None => self.assume(when, &mut body),
+                        }
+                        self.remove_writes(&writes, &mut body);
                     }
                     self.walk(&o.body, &mut body);
                 }
@@ -954,10 +1130,84 @@ impl<'a> Walk<'a> {
                     }
                     let mut body = base;
                     self.assume(&o.done, &mut body);
+                    // 0.50.0 §5.4: the objective's grants run at its `done`.
+                    let grants = std::mem::take(&mut self.grants);
+                    for g in grants.objective(o) {
+                        self.apply_grant(g, &mut body, true);
+                    }
+                    self.grants = grants;
                     self.walk(&o.body, &mut body);
                 }
                 Node::Set(_) | Node::Timeline(_) => {}
             }
+        }
+    }
+
+    /// 0.50.0 §5.4: the reward grants of `quest` at its completion
+    /// (`QuestComplete`) or failure (`QuestFailed`), applied to `flow` in
+    /// grant order. At completion the objective grants of its required
+    /// objectives (every one, unless `complete="any"`) ran earlier, at each
+    /// objective's `done`: what they may remove stays removed.
+    fn complete(&mut self, quest: &Quest, point: GrantPoint, flow: &mut Flow) {
+        let grants = std::mem::take(&mut self.grants);
+        if point == GrantPoint::QuestComplete && !quest.completes_on_any() {
+            for (o, owned) in grants.objectives() {
+                if o.optional {
+                    continue;
+                }
+                for g in owned {
+                    self.apply_grant(g, flow, false);
+                }
+            }
+        }
+        for g in grants.at(point) {
+            self.apply_grant(g, flow, true);
+        }
+        self.grants = grants;
+    }
+
+    /// The Must transfer of one reward effect (0.50.0 §5.4): it may run, so
+    /// it removes what it may remove — a retract, guarded or not, what it
+    /// matches; an assert, what it displaces — and adds nothing. A reward's
+    /// assert is never Must: a `judge: before` occasion defers lifecycle
+    /// handlers, so other quests' rewards and beats may run between a grant
+    /// and any later read. `at_grant`: `flow` is the set at the grant point
+    /// itself, so the reward's slots (its `kind=`, for `E-FACT-EXCLUSIVE`,
+    /// and its `when=`) are recorded; an objective grant replayed at the
+    /// quest's completion is judged at its own objective.
+    fn apply_grant(&mut self, g: &GrantEffect<'_>, flow: &mut Flow, at_grant: bool) {
+        if g.order.effect == 0 && at_grant {
+            self.record_span(g.reward.kind_span, flow);
+        }
+        let Some((pattern, assert)) = g.fact() else {
+            return;
+        };
+        if let (Some(when), true) = (g.guard(), at_grant) {
+            self.record(when, flow);
+        }
+        self.remove_write(pattern, assert, flow);
+    }
+
+    /// Remove from `flow` every fact `writes` may remove ([`Self::remove_write`]).
+    fn remove_writes(&self, writes: &[(FactPattern, bool)], flow: &mut Flow) {
+        for (pattern, assert) in writes {
+            self.remove_write(pattern, *assert, flow);
+        }
+    }
+
+    /// Remove from `flow` every fact one write may remove: what a retract
+    /// matches, and what an assert displaces (it may run), keeping nothing
+    /// an assert would add. What stays keeps its own provenance: the assert
+    /// is applied to a copy, which only decides membership.
+    fn remove_write(&self, pattern: &FactPattern, assert: bool, flow: &mut Flow) {
+        if assert {
+            let mut after = flow.clone();
+            self.assert_pattern(pattern, 0, &mut after);
+            if let (Some(facts), Some(after)) = (flow.as_mut(), after) {
+                facts.retain(|g| after.contains_key(g));
+            }
+        } else {
+            self.retract_pattern(pattern, flow);
         }
     }
 

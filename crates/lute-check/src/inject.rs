@@ -1022,6 +1022,14 @@ fn exit_inert_diag(speaker: &str, action: &str, span: Span) -> Diagnostic {
 /// reaching it (dsl 0.22.0 §12).
 pub const W_STAGE_ABSENT: &str = "W-STAGE-ABSENT";
 
+/// The plugin form the `W-STAGE-ABSENT` line hints name beside `::actor`
+/// (0.50.0 §7): a directive lowered to the `actor` record stages like
+/// `::actor` (0.45.0 §2). Spelled as the loader accepts it — a record
+/// lowering needs `fields:`, and an `actor` one binds `character`
+/// (`E-LOWER-RECORD-FIELD`) — so the hint never names a rejected spelling.
+const ACTOR_LOWERING_HINT: &str =
+    "lower: { record: actor, fields: { character: { fromAttr: character } } }";
+
 /// The staging event `W-STAGE-ABSENT` is about.
 #[derive(Clone, Copy)]
 enum Staged {
@@ -1042,14 +1050,16 @@ fn stage_absent_diag(character: &str, how: Departure, what: Staged, span: Span) 
         (Staged::Line, Departure::Exit { line }) => format!(
             "`{character}` left the stage on an earlier declared exit (line {line}) on a path \
              that reaches here and has not been shown again, so a spoken line here stages \
-             someone who is not present. Show them again with an `::actor` before this point, or \
-             remove the earlier exit (dsl 0.10.0 §11.2, 0.22.0 §12)"
+             someone who is not present. Show them again with an `::actor` (or a plugin \
+             directive declared `{ACTOR_LOWERING_HINT}`) before this point, or remove the \
+             earlier exit (dsl 0.10.0 §11.2, 0.22.0 §12)"
         ),
         (Staged::Line, Departure::SceneChange { line, tag }) => format!(
             "`{character}` was auto-hidden by an earlier `::{tag}` scene change (line {line}) on a \
              path that reaches here and has not been shown again, so a spoken line here stages \
-             someone who is not present. Show them again with an `::actor` after the `::{tag}` (dsl \
-             0.10.0 §11.2, 0.22.0 §12)"
+             someone who is not present. Show them again with an `::actor` (or a plugin \
+             directive declared `{ACTOR_LOWERING_HINT}`) after the `::{tag}` (dsl 0.10.0 \
+             §11.2, 0.22.0 §12)"
         ),
         (Staged::Exit, Departure::Exit { line }) => format!(
             "`{character}` already left on the declared exit at line {line} on a path that \
@@ -1064,8 +1074,8 @@ fn stage_absent_diag(character: &str, how: Departure, what: Staged, span: Span) 
         (Staged::Line, Departure::Clear { line }) => format!(
             "`{character}` was taken off stage by an earlier `::clear` (line {line}) on a path \
              that reaches here and has not been shown again, so a spoken line here stages \
-             someone who is not present. Show them again with an `::actor` after the `::clear` \
-             (dsl 0.24.0 §4)"
+             someone who is not present. Show them again with an `::actor` (or a plugin \
+             directive declared `{ACTOR_LOWERING_HINT}`) after the `::clear` (dsl 0.24.0 §4)"
         ),
         (Staged::Exit, Departure::Clear { line }) => format!(
             "`{character}` is already off stage (taken off by the `::clear` at line {line}) on a \
@@ -1228,8 +1238,8 @@ mod tests {
         assert_eq!(st2.on_stage["marina"].emotion.as_deref(), Some("delighted"));
     }
 
-    /// `pose` is not a content-line attribute (`content_line.rs`'s
-    /// KNOWN_ATTRS), so `@x{pose="…"}` is E-UNKNOWN-ATTR and the reducer could
+    /// `pose` is not a content-line attribute (`lute_manifest::core::
+    /// LINE_ATTRS`), so `@x{pose="…"}` is E-UNKNOWN-ATTR and the reducer could
     /// never observe one. The reads were unreachable; this pins that the
     /// stateful set is exactly the four real sprite-affecting slots.
     #[test]

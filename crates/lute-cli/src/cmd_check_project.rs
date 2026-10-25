@@ -9,7 +9,10 @@ use crate::cmd_check::{engine_semantic_diags, merge_gate_diags};
 use crate::envelope::{self, CliError};
 use crate::manifests;
 use crate::mockcheck;
-use crate::output::{print_human, severity_str, DenyPolicy};
+use crate::output::{
+    count_reported, marker_str, print_human, severity_str, suppressed_tail, Reported,
+    SeverityPolicy,
+};
 use crate::project::{canonical_path, collect_project_inputs, normalize_span_from_text};
 use lute_check::CheckInput;
 use lute_core_span::{Diagnostic, Severity, Span};
@@ -30,10 +33,11 @@ pub(crate) fn run_check_project(
     json: bool,
     providers: Option<&Path>,
     permission_profile: Option<&str>,
-    policy: &DenyPolicy,
+    gate: &SeverityPolicy,
     wip: bool,
     engine: Option<&Path>,
 ) -> ExitCode {
+    let policy = &gate.for_project(Some(dir));
     let matrix = match crate::EngineMatrix::load(engine) {
         Ok(matrix) => matrix,
         Err(crate::engine_matrix::EngineMatrixError::Io { path, message }) => {
@@ -62,7 +66,10 @@ pub(crate) fn run_check_project(
                     ));
                 }
                 for d in &verdict.diags {
-                    eprintln!("{}", manifests::spanless_line(&verdict.path, d, false));
+                    eprintln!(
+                        "{}",
+                        manifests::spanless_line(&verdict.path, d, Reported::native(d))
+                    );
                     manifest_diags.push((verdict.path.clone(), d.clone()));
                 }
                 invalid |= verdict.is_invalid();
@@ -72,6 +79,7 @@ pub(crate) fn run_check_project(
                     &[],
                     Some(&manifest_diags),
                     false,
+                    |_| policy,
                     policy,
                 );
             }
@@ -412,22 +420,26 @@ pub(crate) fn run_check_project(
     });
     let lead = project_diags.partition_point(|(path, _)| cause_rank(path) < CauseRank::Document);
 
-    // §5 verdict: a promoted (denied) diagnostic — in a per-file result OR the
-    // project-wide set — fails an otherwise-clean project.
+    // §5 verdict: a promoted diagnostic (`--deny`, or a project `error`
+    // level) — in a per-file result OR the project-wide set — fails an
+    // otherwise-clean project.
     // A plugin error the walk checked past (printed on the `lute:` channel)
     // still fails the project.
     let project_ok = resolve_errors == 0
         && !project_diags
             .iter()
-            .any(|(_, d)| d.severity == Severity::Error || policy.denied(d));
-    let file_ok = |r: &lute_check::CheckResult| r.ok && !policy.any_denied(&r.diagnostics);
-    let ok = project_ok && file_results.iter().all(|(_, r)| file_ok(r));
+            .any(|(path, d)| d.severity == Severity::Error || policy.promoted(d, path));
+    let file_ok = |path: &Path, r: &lute_check::CheckResult| {
+        r.ok && !policy.any_promoted(path, &r.diagnostics)
+    };
+    let ok = project_ok && file_results.iter().all(|(path, r)| file_ok(path, r));
 
     if json {
         return crate::cmd_check::print_check_report(
             &file_results,
             Some(&project_diags),
             ok,
+            |_| policy,
             policy,
         );
     } else {
@@ -447,22 +459,16 @@ pub(crate) fn run_check_project(
                 print_project_row(path, d, policy);
             }
         }
-        let project_error_count = project_diags
-            .iter()
-            .filter(|(_, d)| d.severity == Severity::Error || policy.denied(d))
-            .count();
-        let project_warning_count = crate::output::count_severity(
-            project_diags.iter().map(|(_, d)| d),
-            Severity::Warning,
-            policy,
-        );
+        let project_items = || project_diags.iter().map(|(path, d)| (path.as_path(), d));
+        let project_error_count = count_reported(project_items(), Severity::Error, policy);
+        let project_warning_count = count_reported(project_items(), Severity::Warning, policy);
         let project_infos = crate::output::info_tail(
-            crate::output::count_severity(
-                project_diags.iter().map(|(_, d)| d),
-                Severity::Info,
-                policy,
-            ),
+            count_reported(project_items(), Severity::Info, policy),
             "project-wide info",
+        );
+        let project_infos = format!(
+            "{project_infos}{}",
+            suppressed_tail(&policy.suppressed(project_items()))
         );
         let project_error_count = project_error_count + resolve_errors;
         if ok {
@@ -535,27 +541,25 @@ fn cause_rank(path: &Path) -> CauseRank {
     }
 }
 
-/// One project-wide row, human form.
-fn print_project_row(path: &Path, d: &Diagnostic, policy: &DenyPolicy) {
-    let denied = policy.denied(d);
+/// One project-wide row, human form; nothing for a suppressed one.
+fn print_project_row(path: &Path, d: &Diagnostic, policy: &SeverityPolicy) {
+    let Some(reported) = policy.report(d, path) else {
+        return;
+    };
     if d.span.line == 0 && d.span.column == 0 {
         // A right file with no right line (D-Z for manifests, D-AB for
         // mocks): print no position rather than claiming `0:0`.
-        println!("{}", manifests::spanless_line(path, d, denied));
+        println!("{}", manifests::spanless_line(path, d, reported));
         return;
     }
-    let marker = if denied { " [denied]" } else { "" };
     println!(
-        "{}:{}:{}: {} [{}]{marker} {}",
+        "{}:{}:{}: {} [{}]{} {}",
         path.display(),
         d.span.line,
         d.span.column,
-        if denied {
-            "error"
-        } else {
-            severity_str(d.severity)
-        },
+        severity_str(reported.severity),
         d.code,
+        marker_str(reported.marker),
         d.text(),
     );
 }

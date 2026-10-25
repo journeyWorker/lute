@@ -164,6 +164,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-DERIVE-TIER", DiagnosticClass::SourceError),
         ("E-DERIVE-UNDECLARED", DiagnosticClass::SourceError),
         ("E-DERIVED-WRITE", DiagnosticClass::SourceError),
+        ("E-DIAGNOSTICS-CONFIG", DiagnosticClass::SourceError),
         ("E-DIFF-INPUT", DiagnosticClass::SourceError),
         ("E-DIFF-MODEL", DiagnosticClass::SourceError),
         ("E-DOLLAR-OUTSIDE-MATCH", DiagnosticClass::SourceError),
@@ -308,6 +309,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-PLUGIN-PARSE", DiagnosticClass::SourceError),
         ("E-PLUGIN-RESERVED-NAME", DiagnosticClass::SourceError),
         ("E-PLUGIN-RESERVED-STAMP-ATTR", DiagnosticClass::SourceError),
+        ("E-PLUGIN-STAMP-SURFACE", DiagnosticClass::SourceError),
         ("E-PLUGIN-UNKNOWN-ASSETKIND", DiagnosticClass::SourceError),
         ("E-PLUGIN-UNKNOWN-EXPORT", DiagnosticClass::SourceError),
         (

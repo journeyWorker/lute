@@ -1,3 +1,4 @@
+mod lint_nodes;
 mod vocab;
 
 use std::collections::BTreeMap;
@@ -28,7 +29,7 @@ const VOCAB_PHASES: [Phase; 5] = [
     Phase::Serialization,
     Phase::PlayAssembly,
 ];
-const USAGE: &str = "usage: lute-bench --root <checkout> --tier tiny|medium|large|vocab|all --phase <name>|all --samples <n> --json <path>|-\n       lute-bench generate-vocab <outdir> [-S scenes] [-N quests] [-M per-paths] [-K kinds] [-P members]";
+const USAGE: &str = "usage: lute-bench --root <checkout> --tier tiny|medium|large|vocab|all --phase <name>|all --samples <n> --json <path>|-\n       lute-bench generate-vocab <outdir> [-S scenes] [-N quests] [-M per-paths] [-K kinds] [-P members]\n       lute-bench lint-nodes [--samples <n>] [--check work|both] [--json <path>|-]";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
@@ -147,8 +148,10 @@ enum TestPresentation {
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args.first().map(String::as_str) == Some("generate-vocab") {
-        std::process::exit(generate_vocab(&args[1..]));
+    match args.first().map(String::as_str) {
+        Some("generate-vocab") => std::process::exit(generate_vocab(&args[1..])),
+        Some("lint-nodes") => std::process::exit(lint_nodes::main(&args[1..])),
+        _ => {}
     }
     let config = match parse_args(args) {
         Ok(config) => config,

@@ -324,18 +324,10 @@ impl<D: Driver> Machine<D> {
         for (key, assert) in [("retracts", false), ("asserts", true)] {
             for f in cmd.get(key).and_then(Json::as_array).into_iter().flatten() {
                 let (rel, args) = fact_record(f);
-                let before = self.store.exclusive_now();
-                let rec = if assert {
-                    self.store.assert((rel.clone(), args.clone()));
-                    json!({ "position": addr(cmd), "kind": "assert",
-                            "fact": render_fact(&rel, &args), "effectOf": tag })
-                } else {
-                    self.store.retract(&rel, &args);
-                    json!({ "position": addr(cmd), "kind": "retract",
-                            "pattern": render_fact(&rel, &args), "effectOf": tag })
-                };
-                self.driver.emit(rec);
-                self.exclusive_check(&before);
+                let mut rec = serde_json::Map::new();
+                rec.insert("position".into(), Json::String(addr(cmd).to_string()));
+                rec.insert("effectOf".into(), Json::String(tag.clone()));
+                self.write_fact(&rel, &args, assert, rec);
                 if self.stopped() {
                     return false;
                 }
@@ -388,45 +380,19 @@ impl<D: Driver> Machine<D> {
                 return false;
             }
         }
-        for (fact, assert) in host
+        for ((rel, args), assert) in host
             .facts
             .iter()
             .map(|f| (f, true))
             .chain(host.retract.iter().map(|f| (f, false)))
         {
-            let (rel, args) = fact;
-            let before = self.store.exclusive_now();
-            let rec = if assert {
-                self.store.assert((rel.clone(), args.clone()));
-                json!({ "position": addr(cmd), "kind": "assert",
-                        "fact": render_fact(rel, args), "effectOf": tag, "by": "host" })
-            } else {
-                self.store.retract(rel, args);
-                json!({ "position": addr(cmd), "kind": "retract",
-                        "pattern": render_fact(rel, args), "effectOf": tag, "by": "host" })
-            };
-            self.driver.emit(rec);
-            self.exclusive_check(&before);
+            self.write_fact(rel, args, assert, host_rec(cmd, tag));
             if self.stopped() {
                 return false;
             }
         }
         for quest in &host.accept {
-            let mut rec = serde_json::Map::new();
-            rec.insert("position".into(), Json::String(addr(cmd).to_string()));
-            rec.insert("kind".into(), Json::String("accept".into()));
-            rec.insert("quest".into(), Json::String(quest.clone()));
-            rec.insert("effectOf".into(), Json::String(tag.to_string()));
-            rec.insert("by".into(), Json::String("host".into()));
-            if let Some(state) = self
-                .quest_status
-                .get(quest)
-                .filter(|s| s.as_str() != "unset")
-            {
-                rec.insert("ignored".into(), Json::String(format!("already {state}")));
-            }
-            self.driver.emit(Json::Object(rec));
-            self.accepted.push(quest.clone());
+            self.accept_quest(quest.clone(), host_rec(cmd, tag));
         }
         true
     }
@@ -668,4 +634,14 @@ fn bind_target(cmd: &Json, member: &str) -> Json {
         }
     }
     cmd
+}
+
+/// The identifying keys of a host-answer write record at plugin call `cmd`
+/// (dsl 0.41.0 §5.3): its position, `effectOf: <tag>`, `by: "host"`.
+fn host_rec(cmd: &Json, tag: &str) -> serde_json::Map<String, Json> {
+    let mut rec = serde_json::Map::new();
+    rec.insert("position".into(), Json::String(addr(cmd).to_string()));
+    rec.insert("effectOf".into(), Json::String(tag.to_string()));
+    rec.insert("by".into(), Json::String("host".into()));
+    rec
 }

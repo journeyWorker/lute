@@ -363,14 +363,22 @@ D-C) and is not credited by the reference runner. Content that also
 `::set`s the path in the same quest's `<on>` or objective body pays twice
 (`W-REWARD-DOUBLE-CREDIT`).
 
+A reward kind's `effects` (0.50, `retracts` / `asserts` / `accepts`) change
+state the same way: the facts they assert or retract, and the quests they
+accept, are saved like any other fact or quest state. There is no new snapshot
+field, and each effect fires once per grant (see
+[quest-lifecycle.md](./quest-lifecycle.md)).
+
 ## Interpolation reads
 
 `line.text` / choice option `text` keep their verbatim `{{…}}` markers (and so
 do the text runs of a line's `segments`); the parallel `placeholders` list
 (IR A3, `ir.rs::Placeholder`) names each referent — a state `path`, an
-`@`-`ref`, or a `reserved` token (only `userName` today). The engine
-substitutes these against live state at present time; the raw text is kept so
-an uninterpolated fallback is always available.
+`@`-`ref`, or a `reserved` token (any host token a plugin declares in
+`hostTokens`, 0.50, and the core `userName`). The engine or host substitutes
+these at present time; every host-token marker stays verbatim in the rendered
+text, for every token and not only `userName`, and the raw text is kept so an
+uninterpolated fallback is always available.
 
 The artifact carries no defs table, so a `ref` placeholder carries its def
 body inlined as `expr` (a `{cel, expr, authored?}` slot like every other CEL

@@ -43,15 +43,17 @@ fn snap_with_stamp_attrs() -> CapabilitySnapshot {
         },
     );
     for (name, ty) in [("bonusId", Type::Str), ("bonusScore", Type::Double)] {
-        snap.stamp_attrs.insert(
-            name.to_string(),
-            AttrDecl {
-                name: name.to_string(),
-                required: false,
-                ty,
-                default: None,
-            },
-        );
+        snap.stamp_attrs
+            .insert(lute_manifest::stamps::StampAttrDecl::cross_cutting(
+                "test",
+                AttrDecl {
+                    name: name.to_string(),
+                    required: false,
+                    ty,
+                    default: None,
+                },
+            ))
+            .unwrap();
     }
     snap
 }
@@ -133,8 +135,14 @@ fn unauthored_stamp_attrs_are_never_injected() {
     // A decl with a `default` must NOT materialize on a record that never
     // authored the attr — absent means absent (byte-stability).
     let mut snap = snap_with_stamp_attrs();
-    snap.stamp_attrs.get_mut("bonusId").unwrap().default =
-        Some(lute_manifest::types::Literal::Str("fallback".into()));
+    let surface = lute_manifest::stamps::StampSurface::Line;
+    let mut bonus = snap.stamp_attrs.get(&surface, "bonusId").unwrap().clone();
+    bonus.default = Some(lute_manifest::types::Literal::Str("fallback".into()));
+    snap.stamp_attrs = [lute_manifest::stamps::StampAttrDecl::cross_cutting(
+        "test", bonus,
+    )]
+    .into_iter()
+    .collect();
     let text = format!("{HDR}::sfx{{assetId=\"x\"}}\n@narrator: hi\n");
     let cmds = commands(&text, snap);
     let sfx = find(&cmds, "sfx");
@@ -204,17 +212,22 @@ fn assembled_snapshot(directives: Vec<DirectiveDecl>, stamps: &[&str]) -> Capabi
         // `stampAttrs:\n  - name: <name>\n    type: string`, per name
         stamp_attrs: stamps
             .iter()
-            .map(|name| AttrDecl {
-                name: (*name).to_string(),
-                required: false,
-                ty: Type::Str,
-                default: None,
+            .map(|name| lute_manifest::stamps::DeclaredStampAttr {
+                decl: AttrDecl {
+                    name: (*name).to_string(),
+                    required: false,
+                    ty: Type::Str,
+                    default: None,
+                },
+                on: None,
+                site: None,
             })
             .collect(),
         reward_kinds: Vec::new(),
         occasions: Vec::new(),
         lints: Vec::new(),
         cast: Vec::new(),
+        host_tokens: BTreeMap::new(),
         sites: Default::default(),
         invalid: Vec::new(),
     };
@@ -239,9 +252,9 @@ fn assembled_snapshot(directives: Vec<DirectiveDecl>, stamps: &[&str]) -> Capabi
     );
     for name in stamps {
         assert!(
-            snap.stamp_attrs.contains_key(*name),
+            snap.stamp_attrs.contains(name),
             "the `{name}` stampAttr must merge into the snapshot, got {:?}",
-            snap.stamp_attrs.keys().collect::<Vec<_>>()
+            snap.stamp_attrs.names().collect::<Vec<_>>()
         );
     }
     for (name, dom) in lute_test_vocab::test_domains() {
@@ -255,7 +268,7 @@ fn assembled_snapshot(directives: Vec<DirectiveDecl>, stamps: &[&str]) -> Capabi
 /// dsl 0.9.0 / plugin §14.1 — `pose` is DELIBERATELY left unreserved, and the
 /// guarantee that makes leaving it unreserved safe is **stamp-only lowering**.
 ///
-/// `pose` is absent from `content_line.rs`'s `KNOWN_ATTRS`, so `@x{pose="…"}`
+/// `pose` is absent from `lute_manifest::core::LINE_ATTRS`, so `@x{pose="…"}`
 /// is normally `E-UNKNOWN-ATTR`. That arm has exactly ONE escape hatch: a
 /// plugin-declared cross-cutting `stampAttrs` entry. And `pose` is likewise
 /// absent from `assemble.rs`'s `RESERVED_STAMP_ATTR_NAMES`, so a third-party

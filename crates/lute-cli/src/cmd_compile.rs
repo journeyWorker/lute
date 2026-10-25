@@ -11,7 +11,10 @@ use crate::cmd_check::{component_name_of, component_root_diag};
 use crate::compile_all;
 use crate::envelope::{self, CliError};
 use crate::loc;
-use crate::output::{pretty_json, render_diagnostics, severity_str, write_stdout, DenyPolicy};
+use crate::output::{
+    diagnostics_json, insert_suppressed, marker_str, pretty_json, render_diagnostics, severity_str,
+    suppressed_tail, write_stdout, SeverityPolicy,
+};
 use crate::project::resolve_project;
 use lute_load::{build_input, read_document, BuiltInput};
 use lute_model::project_gate_result;
@@ -85,7 +88,7 @@ pub(crate) fn dispatch_compile(opts: &CompileOptions<'_>) -> ExitCode {
         }
         return crate::stream::run(file, providers, project, permission_profile);
     }
-    let policy = DenyPolicy::new(deny, deny_warnings);
+    let policy = SeverityPolicy::new(deny, deny_warnings);
     if let Some(file) = file {
         return run_compile(
             file,
@@ -120,7 +123,7 @@ pub(crate) fn dispatch_compile(opts: &CompileOptions<'_>) -> ExitCode {
         permission_profile,
         json,
         bundle.as_ref(),
-        &policy,
+        &policy.for_project(Some(&project)),
     )
 }
 
@@ -146,7 +149,7 @@ fn run_compile(
     permission_profile: Option<&str>,
     out: Option<&Path>,
     locales: Option<&Path>,
-    policy: &DenyPolicy,
+    gate_policy: &SeverityPolicy,
 ) -> ExitCode {
     // Loaded BEFORE the compile so a malformed bundle fails fast, before any
     // work — and, with `-o`, before the previous execution IR is overwritten.
@@ -158,6 +161,7 @@ fn run_compile(
     // `--project`, else the nearest manifest (its `defaults:`, profile and
     // `identity:` apply, and the project verdict gates the compile).
     let resolved = resolve_project(file, project);
+    let policy = &gate_policy.for_project(resolved.as_deref());
     let Some(built) = build_input(file, providers, resolved.as_deref(), permission_profile) else {
         if let Err(e) = read_document(file) {
             return envelope::fail_quietly(CliError::io(file, e.to_string()));
@@ -203,10 +207,16 @@ fn run_compile(
 
     // A component is not a root document (see [`component_root_diag`]): there is
     // no standalone execution IR to emit. Refused AFTER the gate, so a component
-    // with real check errors still reports them.
-    let compiled = match component_name_of(file).filter(|_| gate.ok) {
-        Some((component, at)) => Err(vec![component_root_diag(&component, at)]),
-        None => lute_compile::compile_with_check(&input, gate, &identity),
+    // with real check errors still reports them. A diagnostic the policy
+    // promotes (`--deny`, a project `error` level) fails the gate like an
+    // error (dsl 0.50.0 §6.3).
+    let compiled = if gate.ok && policy.any_promoted(file, &gate.diagnostics) {
+        Err(gate.diagnostics)
+    } else {
+        match component_name_of(file).filter(|_| gate.ok) {
+            Some((component, at)) => Err(vec![component_root_diag(&component, at)]),
+            None => lute_compile::compile_with_check(&input, gate, &identity),
+        }
     };
     match compiled {
         Ok(mut artifact) => {
@@ -257,7 +267,7 @@ fn run_compile(
                     eprintln!("locale merge failed; no execution IR emitted");
                     return ExitCode::FAILURE;
                 }
-                let denied = merged.iter().filter(|d| policy.denied(d)).count();
+                let denied = merged.iter().filter(|d| policy.promoted(d, file)).count();
                 if denied > 0 {
                     eprintln!("--deny promoted {denied} diagnostic(s); no execution IR emitted");
                     return ExitCode::FAILURE;
@@ -293,7 +303,17 @@ fn run_compile(
         }
         Err(diags) => {
             let s = if json {
-                let payload = serde_json::json!({ "diagnostics": diags });
+                let payload = match diagnostics_json(&diags, file, policy) {
+                    Ok((diagnostics, suppressed)) => {
+                        let mut payload = serde_json::json!({ "diagnostics": diagnostics });
+                        insert_suppressed(&mut payload, &suppressed);
+                        payload
+                    }
+                    Err(error) => {
+                        eprintln!("lute: failed to serialize diagnostics: {error}");
+                        return ExitCode::from(2);
+                    }
+                };
                 let wrapped = envelope::report(envelope::version::COMPILE, 1, payload);
                 let mut s = match pretty_json(&wrapped) {
                     Ok(s) => s,
@@ -306,23 +326,27 @@ fn run_compile(
                 s
             } else {
                 let mut s = String::new();
+                let mut errors = 0usize;
                 for d in &diags {
+                    let Some(reported) = policy.report(d, file) else {
+                        continue;
+                    };
+                    errors += usize::from(reported.severity == Severity::Error);
                     let _ = writeln!(
                         s,
-                        "{}:{}:{}: {} [{}] {}",
+                        "{}:{}:{}: {} [{}]{} {}",
                         file.display(),
                         d.span.line,
                         d.span.column,
-                        severity_str(d.severity),
+                        severity_str(reported.severity),
                         d.code,
+                        marker_str(reported.marker),
                         d.text()
                     );
                 }
-                let errors = diags
-                    .iter()
-                    .filter(|d| d.severity == Severity::Error)
-                    .count();
-                let _ = writeln!(s, "{errors} error(s); no execution IR emitted");
+                let suppressed =
+                    suppressed_tail(&policy.suppressed(diags.iter().map(|d| (file, d))));
+                let _ = writeln!(s, "{errors} error(s){suppressed}; no execution IR emitted");
                 s
             };
             if write_stdout(&s).is_err() {
@@ -346,7 +370,7 @@ fn stamp_project_identity_renames(
     permission_profile: Option<&str>,
     declarations: &[lute_manifest::project::IdentityRenameDecl],
     manifest_diags: &[lute_manifest::project::ResolveDiag],
-    policy: &DenyPolicy,
+    policy: &SeverityPolicy,
 ) -> Result<(), ExitCode> {
     if declarations.is_empty() && manifest_diags.is_empty() {
         return Ok(());

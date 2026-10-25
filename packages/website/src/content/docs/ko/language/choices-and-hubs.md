@@ -267,3 +267,48 @@ title: The lighthouse
 둘 다 만족하지 않는 허브는 `E-HUB-NO-EXIT`입니다. 허브는 빌드 시 하나의 유한한 옵션 테이블과
 그 분기들로 축소되므로, 런타임에 다시 제시하더라도 계산이 무한히 늘어나지 않으며 — 전체성이
 보존됩니다.
+
+## `<branch>`, `<hub>`, `<choice>`의 플러그인 스탬프
+
+0.50부터 플러그인은 이 세 요소에 자체 속성을 붙일 수 있습니다. `on:`이 `branch`, `hub`, `choice`를 이름으로 지정하는 [`stampAttrs`](/ko/plugins/manifests/#표면에-스탬프-한정하기-on) 엔트리는 그곳에서 허용되며, 그 밖의 곳에서는 허용되지 않습니다. 횡단 스탬프(`on:` 없음)는 `<branch>`, `<hub>`, `<choice>`에서 여전히 `E-UNKNOWN-ATTR`입니다. 다음 매니페스트가 있으면
+
+```yaml
+stampAttrs:
+  - { name: menuType, type: { enum: [plain, timed, minigame] }, on: [branch, hub] }
+  - { name: optionKey, type: string, required: true, on: [choice] }
+```
+
+메뉴는 다음과 같이 씁니다.
+
+```lute
+<branch id="route" prompt="Which way?" menuType="plain">
+  <choice id="goLeft" text="Left" optionKey="L1">
+    @mira: Left it is.
+  </choice>
+  <choice id="goRight" text="Right" optionKey="R1">
+    @mira: Right, then.
+  </choice>
+</branch>
+```
+
+같은 속성을 세 요소 중 여러 곳에 한정할 수 있고(`on: [branch, choice]`), 허브의 선택지도 `choice`입니다. 해석은 평소의 엄격한 순서를 따릅니다. 요소 자체의 속성(선택지는 `id`, `text`, `when`, `into`, `value`, `once`, `exit`, 브랜치는 `id`, `prompt`, `timeout`, `default`, 허브는 `id`, `prompt`)이 먼저이고, 그다음 해당 표면에 선언된 스탬프, 그다음 `E-UNKNOWN-ATTR`입니다.
+
+- **알 수 없는 속성.** 다른 표면에만 있는 스탬프 이름은 요소의 속성을 나열하는 대신 적용되는 곳을 알려 주는 `E-UNKNOWN-ATTR`입니다: `` `<branch>` has no attribute `optionKey`: it is a stamp of `acme.stage` for `<choice>` only ``. 스탬프가 전혀 아닌 이름이면 메시지가 요소의 속성과 허용되는 스탬프를 나열합니다: `` `<choice>` has no attribute `cue`; its attributes are `id`, `text`, `when`, `into`, `value` and the stamps `optionKey` (`acme.stage`) ``.
+- **필수.** 해당 표면에 `required: true`로 선언되었는데 빠진 스탬프는 요소의 여는 태그 위치에서 `E-MISSING-ATTR`입니다: `` `<choice id="goLeft">` requires attribute `optionKey` (a stamp of `acme.stage`) ``. 선언된 `default:`가 이를 채우지는 않습니다.
+- **형식 지정.** 값은 그 표면의 선언으로 형식이 지정됩니다. enum 밖으로 접힌 값은 `E-BAD-ENUM`(`@m`이 enum에 없는 `"grid"`로 접히는 `<hub menuType=@m>`), 잘못된 스칼라는 `E-ATTR-TYPE`입니다. `@ref` 값도 같은 선언으로 형식이 지정됩니다. `@m`이 `int` def인 `<branch menuType=@m>`은 `E-REF-TYPE`이고, `@k`가 문자열 def인 `<choice optionKey=@k>`는 깨끗합니다.
+
+**아티팩트에서.** `choice` 또는 `hub` 기록은 `<branch>` / `<hub>` 요소의 스탬프를 자체 `stamps` 객체에 담고, 각 옵션은 `<choice>` 요소의 스탬프를 마지막에 직렬화되는 자체 `stamps`에 담습니다. 각 값은 해당 표면의 선언으로 형식이 지정됩니다. 스탬프가 없는 옵션은 이전과 바이트 단위로 동일하며, 작성하지 않은 스탬프는 주입되지 않습니다.
+
+```json
+{
+  "kind": "choice",
+  "branchId": "route",
+  "options": [
+    {"id": "goLeft", "text": "Left", "lineId": "…", "target": "001-0200", "stamps": {"optionKey": "L1"}},
+    {"id": "goRight", "text": "Right", "lineId": "…", "target": "001-0400", "stamps": {"optionKey": "R1"}}
+  ],
+  "stamps": {"menuType": "plain"}
+}
+```
+
+스탬프는 설명용입니다. 런타임은 이를 읽지 않으며 `awaitChoice` 메뉴도 바뀌지 않습니다. 레퍼런스 플레이어의 `ChoiceView`는 메뉴 주소의 IR 기록에서 읽은 요소의 `stamps`와 각 옵션의 `stamps`를 담고, 없으면 생략하며, 프레젠터는 `showChoice`로 이를 받습니다. 레퍼런스 플레이어를 쓰지 않는 호스트는 옵션 텍스트를 읽듯 IR 기록에서 같은 필드를 읽습니다([런타임 계약](/ko/tooling/runtime-contract/) 참고).

@@ -10,12 +10,14 @@
 //! emission sites are body-shape rules about children.
 //!
 //! Per **D-J** this is a CHECKER rule with a fixed per-tag table, modelled on
-//! the content-line surface: logic tags are core grammar and, unlike
-//! directives, are NOT plugin-extensible, so the table is a constant and not a
-//! capability lookup. It emits [`E_UNKNOWN_ATTR`] — the code the other two
-//! surfaces already raise — at the offending attribute's own span, once per
-//! attribute. A bespoke code would defeat the point: the surface becomes
-//! uniform, or #6 was not worth doing.
+//! the content-line surface: logic tags are core grammar, so the tables are
+//! constants and not a capability lookup. The only plugin extension point is
+//! a stamp whose `on:` names the tag (0.50.0 §3.4). The per-surface lists a
+//! stamp may not shadow (`<branch>`, `<hub>`, `<choice>`) live in
+//! `lute_manifest::core`, which plugin assembly reads too. It emits
+//! [`E_UNKNOWN_ATTR`] — the code the other two surfaces already raise — at the
+//! offending attribute's own span, once per attribute. A bespoke code would
+//! defeat the point: the surface becomes uniform, or #6 was not worth doing.
 //!
 //! ## What the tables are enumerated FROM
 //!
@@ -40,29 +42,56 @@
 //! `<branch id>`/`<hub id>`/`<match on>` already has its own diagnostic
 //! (`E-DUP-BRANCH`, `E-NONEXHAUSTIVE`, …) and this rule does not mint a second
 //! opinion. The required keys appear in the tables only because a required key
-//! that survives into the residual list must be permitted.
+//! that survives into the residual list must be permitted. The one exception
+//! is a plugin stamp declared `required: true` on `<branch>`, `<hub>` or
+//! `<choice>` (0.50.0 §3.4): nothing else reports its absence, so a missing
+//! one is `E-MISSING-ATTR` at the element.
+
+use std::collections::BTreeMap;
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_ir::BeatOnce;
+use lute_manifest::provider::ProviderSet;
+use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
+use lute_manifest::stamps::StampSurface;
 use lute_syntax::ast::{
     Arm, Attr, AttrValue, Branch, BundleBeat, Choice, Entry, Hub, Match, Objective, On, Quest,
     Reward,
 };
 
+use lute_manifest::core::{
+    BRANCH_ATTRS, BRANCH_CHOICE_ATTRS, CHOICE_RETIRED_ATTRS, HUB_ATTRS, HUB_CHOICE_ATTRS,
+};
+
 use crate::content_line::E_UNKNOWN_ATTR;
 
-/// dsl 0.11.0 (branch prompt/timeout): `<branch>`'s two engine-wire fields
-/// for the countdown UI, joining `id` in the permitted set. `close` only
-/// enforces that no OTHER key appears; their own VALUES are checked below
-/// by [`check_branch_value_attrs`], because the parser accepts any `Str`.
-const BRANCH_ATTRS: &[&str] = &["id", "prompt", "timeout", "default"];
+/// The capability surface a logic element's plugin stamps resolve and type
+/// against (0.50.0 §3.4): the snapshot's `stampAttrs`, and what
+/// `check_attr_value` needs to judge a value.
+#[derive(Clone, Copy)]
+pub(crate) struct StampCx<'a> {
+    pub(crate) snapshot: &'a CapabilitySnapshot,
+    pub(crate) providers: &'a ProviderSet,
+    pub(crate) domains: &'a BTreeMap<String, Domain>,
+}
+
+/// One logic element as a stamp surface: which surface, and the context
+/// its stamps resolve in.
+#[derive(Clone, Copy)]
+struct Stamped<'a> {
+    surface: &'a StampSurface,
+    cx: StampCx<'a>,
+}
+
+// The `<branch>` and `<hub>` tables are `lute_manifest::core`'s
+// `BRANCH_ATTRS` (dsl 0.11.0: `prompt`/`timeout`/`default`, the engine-wire
+// fields for the countdown UI) and `HUB_ATTRS` (dsl 0.23.0 §4: `prompt`).
+// `close` only enforces that no OTHER key appears; their own VALUES are
+// checked below ([`check_branch_value_attrs`], [`check_prompt_attr`]),
+// because the parser accepts any `Str`.
 const MATCH_ATTRS: &[&str] = &["subject"];
 const WHEN_ATTRS: &[&str] = &["is", "test"];
 const OTHERWISE_ATTRS: &[&str] = &[];
-/// dsl 0.23.0 §4: `<hub prompt>` attaches the prompt line shown with the
-/// hub's options — the same non-empty-string rule as `<branch prompt>`
-/// ([`check_prompt_attr`], `E-BRANCH-PROMPT`).
-pub const HUB_ATTRS: &[&str] = &["id", "prompt"];
 /// dsl 0.16.0 §2: `<reward>` closes over the five wire-contract keys.
 /// Every OTHER attribute is `E-UNKNOWN-ATTR` at its own span; a malformed
 /// `amount=` survives here as a residual so [`check_reward_attrs`] can
@@ -243,23 +272,23 @@ pub(crate) fn names_occasion_misspelt(attrs: &[Attr], own: &str) -> bool {
 /// (`E-BEAT-ATTR`), so it is permitted here rather than double-reported.
 pub const ON_ATTRS: &[&str] = &["event", "when", "target"];
 
-/// D-L: the two `<choice>` positions have DIFFERENT permitted sets. `once` and
-/// `exit` attach to `HubChoice` in `0.1.0 §7.3`'s grammar and to nothing else,
-/// and the hub reducer is their only reader (`stage.rs:342-343,377`;
-/// `match_check.rs:488-490`); `walk_branch` never reads them. Enforcing one
-/// merged set would leave a branch choice carrying `exit` silent, which is the
-/// defect §4 closes wearing a smaller hat.
-const BRANCH_CHOICE_ATTRS: &[&str] = &["id", "text", "when", "into", "value"];
-const HUB_CHOICE_ATTRS: &[&str] = &["id", "text", "when", "into", "value", "once", "exit"];
-
-/// §4's fourth column: keys a DEDICATED removal code already reports. It is
-/// NOT a permitted set — `as` and `persist` on a `<choice>` are errors, and
-/// that is the whole point of §4 — but each is reported ONCE, by its own code.
-/// The checker already holds this invariant for `persist` deliberately: the
-/// attribute is recognised at its own site so it is *"never reported as
-/// unknown/extra"* and `E-PERSIST-REMOVED` stays *"the sole report for it"*
-/// (`check.rs:2564-2565`, `:2571-2572`). `as` joins it in `E-AS-REMOVED`.
-const CHOICE_REMOVED_ATTRS: &[&str] = &["as", "persist"];
+// D-L: the two `<choice>` positions have DIFFERENT permitted sets
+// (`lute_manifest::core::BRANCH_CHOICE_ATTRS` / `HUB_CHOICE_ATTRS`). `once`
+// and `exit` attach to `HubChoice` in `0.1.0 §7.3`'s grammar and to nothing
+// else, and the hub reducer is their only reader (`stage.rs:342-343,377`;
+// `match_check.rs:488-490`); `walk_branch` never reads them. Enforcing one
+// merged set would leave a branch choice carrying `exit` silent, which is
+// the defect §4 closes wearing a smaller hat.
+//
+// §4's fourth column (`lute_manifest::core::CHOICE_RETIRED_ATTRS`): keys a
+// DEDICATED code already reports. It is NOT a permitted set — `as` and
+// `persist` on a `<choice>` are errors, and that is the whole point of §4 —
+// but each is reported ONCE, by its own code (`label` by its rename in
+// `RENAMED_ATTRS`). The checker already holds this invariant for `persist`
+// deliberately: the attribute is recognised at its own site so it is
+// *"never reported as unknown/extra"* and `E-PERSIST-REMOVED` stays *"the
+// sole report for it"* (`check.rs:2564-2565`, `:2571-2572`). `as` joins it
+// in `E-AS-REMOVED`.
 
 /// The remedy a hub-choice flag on a BRANCH choice carries: the key is not
 /// unknown to the language, it is in the wrong position.
@@ -275,9 +304,68 @@ pub(crate) enum ChoicePos {
     Hub,
 }
 
-pub(crate) fn check_branch_attrs(b: &Branch, diags: &mut Vec<Diagnostic>) {
-    close(&b.attrs, "branch", BRANCH_ATTRS, &[], None, diags);
+pub(crate) fn check_branch_attrs(b: &Branch, cx: StampCx<'_>, diags: &mut Vec<Diagnostic>) {
+    let stamped = Stamped {
+        surface: &StampSurface::Branch,
+        cx,
+    };
+    close(
+        &b.attrs,
+        "branch",
+        BRANCH_ATTRS,
+        &[],
+        None,
+        Some(stamped),
+        diags,
+    );
+    check_required_stamps(&b.attrs, stamped, &b.id, b.span, diags);
     check_branch_value_attrs(b, diags);
+}
+
+/// 0.50.0 §3.4: every stamp declared `required` on the element's surface
+/// (only a scoped one can be, §3.2) that `attrs` does not author is
+/// `E-MISSING-ATTR` at the element (`id` names it), the span its other
+/// element-level findings (`E-DUP-BRANCH`, `E-HUB-NO-EXIT`) use. A stamp is
+/// never injected, so a declared `default:` does not count.
+fn check_required_stamps(
+    attrs: &[Attr],
+    stamped: Stamped<'_>,
+    id: &str,
+    span: Span,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for sdecl in stamped
+        .cx
+        .snapshot
+        .stamp_attrs
+        .for_surface(stamped.surface)
+        .filter(|s| s.decl.required)
+    {
+        if !attrs.iter().any(|a| a.key == sdecl.decl.name) {
+            diags.push(Diagnostic {
+                code: "E-MISSING-ATTR".to_string(),
+                severity: Severity::Error,
+                message: format!(
+                    "`<{}{}>` requires attribute `{}` (a stamp of `{}`)",
+                    stamped.surface.name(),
+                    if id.is_empty() {
+                        String::new()
+                    } else {
+                        format!(" id=\"{id}\"")
+                    },
+                    sdecl.decl.name,
+                    sdecl.plugin
+                ),
+                evidence: None,
+                span,
+                layer: Layer::Logic,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            });
+        }
+    }
 }
 
 /// `E-BRANCH-PROMPT`: `<branch prompt>` must be a non-empty string — it is
@@ -393,8 +481,23 @@ fn push_logic_error(diags: &mut Vec<Diagnostic>, code: &str, message: String, at
     });
 }
 
-pub(crate) fn check_hub_attrs(h: &Hub, diags: &mut Vec<Diagnostic>) {
-    close(&h.attrs, "hub", HUB_ATTRS, &[], None, diags);
+pub(crate) fn check_hub_attrs(h: &Hub, cx: StampCx<'_>, diags: &mut Vec<Diagnostic>) {
+    let stamped = Stamped {
+        surface: &StampSurface::Hub,
+        cx,
+    };
+    close(&h.attrs, "hub", HUB_ATTRS, &[], None, Some(stamped), diags);
+    // `<hub>` keeps its `id` in the residual list (module docs).
+    let id = h
+        .attrs
+        .iter()
+        .find(|a| a.key == "id")
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some(s.as_str()),
+            _ => None,
+        })
+        .unwrap_or("");
+    check_required_stamps(&h.attrs, stamped, id, h.span, diags);
     for attr in h.attrs.iter().filter(|a| a.key == "prompt") {
         if let Some((code, message)) = check_prompt_attr(attr, "hub", "dsl 0.23.0 §4") {
             push_logic_error(diags, code, message, attr);
@@ -407,16 +510,16 @@ pub(crate) fn check_hub_attrs(h: &Hub, diags: &mut Vec<Diagnostic>) {
             "`<return>` runs every time an option hands control back; guard its lines \
              instead (`@narrator{when=\"…\"}: …`) or wrap them in a `<match>`",
         );
-        close(&r.attrs, "return", &[], &[], Some(hint), diags);
+        close(&r.attrs, "return", &[], &[], Some(hint), None, diags);
     }
 }
 
 pub(crate) fn check_match_attrs(m: &Match, diags: &mut Vec<Diagnostic>) {
-    close(&m.attrs, "match", MATCH_ATTRS, &[], None, diags);
+    close(&m.attrs, "match", MATCH_ATTRS, &[], None, None, diags);
 }
 
 pub(crate) fn check_reward_attrs(r: &Reward, diags: &mut Vec<Diagnostic>) {
-    close(&r.attrs, "reward", REWARD_ATTRS, &[], None, diags);
+    close(&r.attrs, "reward", REWARD_ATTRS, &[], None, None, diags);
 }
 
 pub(crate) fn check_entry_attrs(e: &Entry, diags: &mut Vec<Diagnostic>) {
@@ -447,7 +550,7 @@ pub(crate) fn check_entry_attrs(e: &Entry, diags: &mut Vec<Diagnostic>) {
         return;
     }
     // dsl 0.23.0 §3: `also` on an entry is `crate::beats`' `E-BEAT-ATTR`.
-    close(&e.attrs, "entry", ENTRY_ATTRS, &["also"], None, diags);
+    close(&e.attrs, "entry", ENTRY_ATTRS, &["also"], None, None, diags);
 }
 
 /// dsl 0.23.0 §4: `<beat>` closes over [`crate::bundles::BUNDLE_BEAT_ATTRS`];
@@ -459,6 +562,7 @@ pub(crate) fn check_bundle_beat_attrs(b: &BundleBeat, diags: &mut Vec<Diagnostic
         crate::bundles::BUNDLE_BEAT_ATTRS,
         &[],
         None,
+        None,
         diags,
     );
 }
@@ -468,7 +572,7 @@ pub(crate) fn check_bundle_beat_attrs(b: &BundleBeat, diags: &mut Vec<Diagnostic
     reason = "quest attribute validation keeps each declaration's legal values and evidence"
 )]
 pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
-    close(&q.attrs, "quest", QUEST_ATTRS, &[], None, diags);
+    close(&q.attrs, "quest", QUEST_ATTRS, &[], None, None, diags);
     // Each enumerated `<quest>` attribute is a quoted string from a fixed
     // set; a bare/non-string value stays residual and is reported too.
     let enumerated: [(&str, &Option<(String, Span)>, &[&str], &str); 4] = [
@@ -574,38 +678,57 @@ fn attr_type(message: String, span: Span) -> Diagnostic {
 }
 
 pub(crate) fn check_objective_attrs(o: &Objective, diags: &mut Vec<Diagnostic>) {
-    close(&o.attrs, "objective", OBJECTIVE_ATTRS, &[], None, diags);
+    close(
+        &o.attrs,
+        "objective",
+        OBJECTIVE_ATTRS,
+        &[],
+        None,
+        None,
+        diags,
+    );
     // A flag value the parser could not read stays residual.
     check_flags(&o.attrs, "objective", &["optional"], diags);
 }
 
 pub(crate) fn check_on_attrs(o: &On, diags: &mut Vec<Diagnostic>) {
-    close(&o.attrs, "on", ON_ATTRS, &[], None, diags);
+    close(&o.attrs, "on", ON_ATTRS, &[], None, None, diags);
 }
 
 pub(crate) fn check_arm_attrs(a: &Arm, diags: &mut Vec<Diagnostic>) {
     match a {
-        Arm::When { attrs, .. } => close(attrs, "when", WHEN_ATTRS, &[], None, diags),
+        Arm::When { attrs, .. } => close(attrs, "when", WHEN_ATTRS, &[], None, None, diags),
         Arm::Otherwise { attrs, .. } => {
-            close(attrs, "otherwise", OTHERWISE_ATTRS, &[], None, diags);
+            close(attrs, "otherwise", OTHERWISE_ATTRS, &[], None, None, diags);
         }
     }
 }
 
-pub(crate) fn check_choice_attrs(c: &Choice, pos: ChoicePos, diags: &mut Vec<Diagnostic>) {
+pub(crate) fn check_choice_attrs(
+    c: &Choice,
+    pos: ChoicePos,
+    cx: StampCx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
     let permitted = match pos {
         ChoicePos::Branch => BRANCH_CHOICE_ATTRS,
         ChoicePos::Hub => HUB_CHOICE_ATTRS,
     };
     let hint = matches!(pos, ChoicePos::Branch).then_some(HUB_ONLY_HINT);
+    let stamped = Stamped {
+        surface: &StampSurface::Choice,
+        cx,
+    };
     close(
         &c.attrs,
         "choice",
         permitted,
-        CHOICE_REMOVED_ATTRS,
+        CHOICE_RETIRED_ATTRS,
         hint,
+        Some(stamped),
         diags,
     );
+    check_required_stamps(&c.attrs, stamped, &c.id, c.span, diags);
     if pos == ChoicePos::Hub {
         check_flags(&c.attrs, "choice", &["once", "exit"], diags);
     }
@@ -651,30 +774,65 @@ pub(crate) fn check_flags(attrs: &[Attr], tag: &str, flags: &[&str], diags: &mut
     }
 }
 
-/// One construct's closure: every attr whose key is outside `permitted` and not
-/// in `told_elsewhere` draws one [`E_UNKNOWN_ATTR`] at its own span.
+/// One construct's closure: every attr whose key is outside `permitted` draws
+/// one [`E_UNKNOWN_ATTR`] at its own span — or its rename's code, when the key
+/// was renamed — unless it is in `told_elsewhere`, which a dedicated code
+/// reports. On `<branch>`, `<hub>` and `<choice>` (`stamps`), a plugin stamp
+/// the element's surface admits is permitted after the construct's own keys,
+/// and its value is typed by its declaration (0.50.0 §3.4).
 fn close(
     attrs: &[Attr],
     tag: &str,
     permitted: &[&str],
     told_elsewhere: &[&str],
     hint: Option<(&[&str], &str)>,
+    stamps: Option<Stamped<'_>>,
     diags: &mut Vec<Diagnostic>,
 ) {
     for attr in attrs {
         let key = attr.key.as_str();
-        if permitted.contains(&key) || told_elsewhere.contains(&key) {
+        if permitted.contains(&key) {
             continue;
+        }
+        if let Some(Stamped { surface, cx }) = stamps {
+            if let Some(sdecl) = cx.snapshot.stamp_attrs.get(surface, key) {
+                // Typed like a directive attribute; re-layered to the
+                // element's own layer, as a content line re-layers its stamps.
+                let before = diags.len();
+                crate::directives::check_attr_value(
+                    &format!("<{tag}>"),
+                    sdecl,
+                    attr,
+                    cx.snapshot,
+                    cx.providers,
+                    cx.domains,
+                    diags,
+                );
+                for d in &mut diags[before..] {
+                    d.layer = Layer::Logic;
+                }
+                continue;
+            }
         }
         let renamed = RENAMED_ATTRS
             .iter()
             .find(|(t, old, _, _)| *t == tag && *old == key);
+        if renamed.is_none() && told_elsewhere.contains(&key) {
+            continue;
+        }
         let meant = MEANT_ATTRS
             .iter()
             .find(|(t, keys, _)| *t == tag && keys.contains(&key));
         let code = renamed.map_or(E_UNKNOWN_ATTR, |(_, _, code, _)| *code);
+        let elsewhere = stamps.map_or_else(Vec::new, |s| {
+            s.cx.snapshot.stamp_attrs.scoped_elsewhere(s.surface, key)
+        });
         let message = match (renamed, meant, hint) {
             (Some((_, _, _, message)), _, _) => (*message).to_string(),
+            // 0.50.0 §3.4: a stamp scoped to other surfaces names them.
+            _ if !elsewhere.is_empty() => {
+                crate::directives::scoped_elsewhere_message(&format!("`<{tag}>`"), key, &elsewhere)
+            }
             (None, Some((_, _, remedy)), _) => {
                 format!("`<{tag}>` has no attribute `{key}` — {remedy}")
             }
@@ -688,10 +846,30 @@ fn close(
                 format!("`<{tag}>` has no attribute `{key}`: it takes no attributes")
             }
             _ => {
-                let near = lute_manifest::suggest::did_you_mean(key, permitted.iter().copied());
+                // The stamps the element admits join its own table, in the
+                // spelling neighbours and in the listing (0.50.0 §3.4).
+                let admitted: Vec<&lute_manifest::stamps::StampAttrDecl> = stamps
+                    .map(|s| s.cx.snapshot.stamp_attrs.for_surface(s.surface).collect())
+                    .unwrap_or_default();
+                let near = lute_manifest::suggest::did_you_mean(
+                    key,
+                    permitted
+                        .iter()
+                        .copied()
+                        .chain(admitted.iter().map(|s| s.decl.name.as_str())),
+                );
                 let listed: Vec<String> = permitted.iter().map(|k| format!("`{k}`")).collect();
+                let stamped = if admitted.is_empty() {
+                    String::new()
+                } else {
+                    let names: Vec<String> = admitted
+                        .iter()
+                        .map(|s| format!("`{}` (`{}`)", s.decl.name, s.plugin))
+                        .collect();
+                    format!(" and the stamps {}", crate::directives::and_list(&names))
+                };
                 format!(
-                    "`<{tag}>` has no attribute `{key}`{near}; its attributes are {}",
+                    "`<{tag}>` has no attribute `{key}`{near}; its attributes are {}{stamped}",
                     listed.join(", ")
                 )
             }

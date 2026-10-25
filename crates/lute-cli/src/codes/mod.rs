@@ -383,6 +383,25 @@ mod tests {
         assert_eq!(classified, registry, "registry and evidence table drifted");
     }
 
+    /// dsl 0.50.0 §6.1: a project may level any warning the CLI reports, and
+    /// `E-DIAGNOSTICS-CONFIG` judges a `diagnostics:` key by the evidence
+    /// table — so every registry `W-*` code is a defined one there.
+    #[test]
+    fn every_registry_warning_can_be_levelled() {
+        let warnings: Vec<&str> = CODES
+            .iter()
+            .map(|code| code.code)
+            .filter(|code| code.starts_with("W-"))
+            .collect();
+        assert!(!warnings.is_empty());
+        for code in warnings {
+            assert!(
+                lute_check::evidence::classification(code).is_some(),
+                "{code} is not in the evidence table, so `diagnostics:` would refuse it"
+            );
+        }
+    }
+
     /// The reserved-names reference is the one table: the English page holds
     /// its rows verbatim, the Korean twin names every reserved name, and
     /// `lute --explain E-RESERVED-NAME` prints the list.

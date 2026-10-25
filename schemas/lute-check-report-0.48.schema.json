@@ -20,9 +20,18 @@
     "project_diagnostics": {
       "type": "array",
       "items": { "$ref": "#/definitions/projectDiagnostic" }
+    },
+    "suppressed": {
+      "$ref": "#/definitions/suppressed",
+      "description": "Project-wide diagnostics `lute.project.yaml` `diagnostics:` turned `off`, counted by code (dsl 0.50.0 §6.4). Present only when non-empty."
     }
   },
   "definitions": {
+    "suppressed": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": { "type": "integer", "minimum": 1 }
+    },
     "file": {
       "type": "object",
       "required": ["path", "ok", "diagnostics", "resolved"],
@@ -35,6 +44,10 @@
         "diagnostics": {
           "type": "array",
           "items": { "$ref": "#/definitions/diagnostic" }
+        },
+        "suppressed": {
+          "$ref": "#/definitions/suppressed",
+          "description": "The document's diagnostics `lute.project.yaml` `diagnostics:` turned `off`, counted by code (dsl 0.50.0 §6.4). Present only when non-empty."
         },
         "resolved": {
           "description": "What the checker resolved for the document; null for a schema operand or a document whose project did not resolve.",
@@ -77,6 +90,10 @@
         "denied": {
           "const": true,
           "description": "Present when `--deny` promoted the diagnostic to an error."
+        },
+        "configured": {
+          "const": "lute.project.yaml",
+          "description": "Present when `lute.project.yaml` `diagnostics:` re-levelled the diagnostic; `severity` is the configured level (dsl 0.50.0 §6.3)."
         },
         "span": {
           "type": "object",

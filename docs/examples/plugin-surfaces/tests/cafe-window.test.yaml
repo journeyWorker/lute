@@ -1,0 +1,9 @@
+# The branch carries `menuType`, each choice its required `optionKey`. Stamps
+# are descriptive, so the test observes the text; `lute compile` shows the stamps.
+file: ../scenes/cafe.lute
+choose: { route: window }
+expect:
+  transcriptContains:
+    - "@mira: Welcome, {{playerName}}."
+    - "@mira: Good light there."
+  transcriptLacks: ["@mira: Closer to the coffee."]

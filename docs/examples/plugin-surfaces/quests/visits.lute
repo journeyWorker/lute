@@ -1,0 +1,30 @@
+---
+kind: quest
+id: visits.quests
+title: Visits
+---
+/*
+Reward effects (0.50):
+  - firstVisit's BADGE asserts met(mira) at the grant; secondVisit starts on
+    that fact, so it is reachable only because the reward produces it. Its
+    `follows` places it in the scenario graph, where `lute scenario --facts`
+    draws the fact edge firstVisit -> secondVisit [met(mira)].
+  - firstVisit's OFFER_QUEST accepts giftErrand, an accept-driven quest no
+    `::accept` names.
+  - secondVisit's REVOKE retracts met(mira) when it completes.
+*/
+
+<quest id="firstVisit" tier="run" title="Say hello to Mira" start="true">
+  <reward kind="BADGE" amount="1" target="mira"/>
+  <reward kind="OFFER_QUEST" target="giftErrand"/>
+  <objective id="talk" title="Talk to Mira" done="run.talked"/>
+</quest>
+
+<quest id="secondVisit" tier="run" title="Visit Mira again" follows="completed('firstVisit')" start="holds('met', ['mira'])">
+  <reward kind="REVOKE" target="mira"/>
+  <objective id="chat" title="Have a second chat" done="run.chatted"/>
+</quest>
+
+<quest id="giftErrand" tier="run" title="Carry Mira's gift to Tomas">
+  <objective id="deliver" title="Deliver the gift" done="run.delivered"/>
+</quest>

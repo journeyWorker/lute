@@ -49,7 +49,7 @@ All types live in `src/model.ts` unless noted; modules import only `model.ts`,
 
 ```ts
 /** Every record the runtime emits, decoded with the generated IR schemas. */
-type IrRecord = Ir.Command            // from @lute-lang/runtime (generated from schemas/lute-ir-0.49.schema.json)
+type IrRecord = Ir.Command            // from @lute-lang/runtime (generated from schemas/lute-ir-0.50.schema.json)
 
 interface CueContext {
   readonly presenter: Presenter
@@ -362,7 +362,9 @@ creates fibers that outlive a call.
 `CueFactory.choiceView(await_, locale)` resolves authored branch/hub prompt and
 option text (with locale fallback) from the bundle index. Presenters receive a
 `ChoiceView`, including runtime verdicts, timeout, default, once, and exit
-metadata. Before `Presenter.restore(stage)` on load, rollback or `restore`,
+metadata, and the plugin `stamps` authored on the `<branch>`/`<hub>` element
+and on each `<choice>`, read from the IR command at the menu's address (each
+absent when none is authored). Before `Presenter.restore(stage)` on load, rollback or `restore`,
 the director ensures `stageFiles(bindings, stage)` so bound background,
 sprites, CG/video, and the music `stageMusic` restarts are available. Cues and
 restored stages name files with one rule: an asset id is its `assets` entry,

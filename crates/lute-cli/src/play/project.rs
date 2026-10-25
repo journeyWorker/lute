@@ -27,13 +27,14 @@ fn project_rel(path: &Path, root: &Path) -> Option<String> {
 
 /// What a command that compiles the project passes the build: the provider
 /// directory, the permission profile and the `--deny`/`--deny-warnings`
-/// policy (0.48.0 §2.2). The default is the manifest's own catalog, no
-/// profile, no promotion.
+/// policy (0.48.0 §2.2). It carries no project `diagnostics:` levels: `play`,
+/// `test` and `calendar` simulate on native results (0.50.0 §6.2). The
+/// default is the manifest's own catalog, no profile, no promotion.
 #[derive(Clone, Default)]
 pub(crate) struct Build<'a> {
     pub providers: Option<&'a Path>,
     pub permission_profile: Option<&'a str>,
-    pub policy: crate::DenyPolicy,
+    pub policy: crate::SeverityPolicy,
 }
 
 /// The command a project is compiled for, as its messages name it.
@@ -215,7 +216,9 @@ fn assemble_bundle_from_model(
     }
     let project_errors: Vec<_> = project_diagnostics
         .iter()
-        .filter(|(_, d)| d.severity == lute_core_span::Severity::Error || policy.denied(d))
+        .filter(|(path, d)| {
+            d.severity == lute_core_span::Severity::Error || policy.promoted(d, path)
+        })
         .collect();
     if !project_errors.is_empty() {
         for (path, diagnostic) in &project_errors {
@@ -275,7 +278,7 @@ fn assemble_bundle_from_model(
             &desugared,
             &source.folded.typed,
         ));
-        if !source.check.ok || policy.any_denied(&source.check.diagnostics) {
+        if !source.check.ok || policy.any_promoted(file, &source.check.diagnostics) {
             failures.insert(
                 file.clone(),
                 crate::render_diagnostics(file, &source.check.diagnostics, policy),

@@ -3,12 +3,26 @@ use super::{
     write_effects, Arm, ClipNode, Directive, Expr, FactPattern, Match, Node, Presence,
     EXPAND_DEPTH,
 };
+use crate::reward_effects::{GrantEffect, GrantPoint};
 
 impl Presence<'_> {
     /// Walk `body` under `conds` added to the guards pushed so far; they
     /// are popped when it ends. A write inside still reaches the outer
     /// guards: the region runs before what follows it.
     fn region(&mut self, conds: Vec<(Expr, String)>, body: &[Node]) {
+        self.region_after(conds, None, body);
+    }
+
+    /// [`Self::region`] in which `objective`'s reward effects (0.50.0 §5.4)
+    /// write once `conds` — its `done` — are pushed, before `body`: the
+    /// engine grants after judging `done`, so a retract there can kill the
+    /// guard the region opened.
+    fn region_after(
+        &mut self,
+        conds: Vec<(Expr, String)>,
+        objective: Option<&lute_syntax::ast::Objective>,
+        body: &[Node],
+    ) {
         let depth = self.guards.len();
         let before = self.changed.clone();
         for c in conds {
@@ -16,9 +30,27 @@ impl Presence<'_> {
             self.changed.extend(required);
             self.push(Some(c));
         }
+        if let Some(o) = objective {
+            let owned = std::mem::take(&mut self.grants);
+            self.grant_writes(owned.objective(o));
+            self.grants = owned;
+        }
         self.walk(body);
         self.guards.truncate(depth);
         self.changed = before;
+    }
+
+    /// 0.50.0 §5.4: the quest's reward effects at lifecycle `point`, before
+    /// its handlers are judged — at completion, its objectives' first.
+    fn lifecycle_writes(&mut self, point: GrantPoint) {
+        let owned = std::mem::take(&mut self.grants);
+        if point == GrantPoint::QuestComplete {
+            for (_, g) in owned.objectives() {
+                self.grant_writes(g);
+            }
+        }
+        self.grant_writes(owned.at(point));
+        self.grants = owned;
     }
 
     /// Alternative paths (a branch's choices, a match's arms): each starts
@@ -123,6 +155,12 @@ impl Presence<'_> {
                     if o.event == "questComplete" {
                         self.assume_completion(o.span.byte_start);
                     }
+                    // 0.50.0 §5.4: the quest's grants run before the handler.
+                    match o.event.as_str() {
+                        "questComplete" => self.lifecycle_writes(GrantPoint::QuestComplete),
+                        "questFailed" => self.lifecycle_writes(GrantPoint::QuestFailed),
+                        _ => {}
+                    }
                     self.region(conds, &o.body);
                     self.guards.truncate(depth);
                     self.changed = before;
@@ -131,7 +169,9 @@ impl Presence<'_> {
                     let cond = self.parse(&o.done.raw, None);
                     // An `on=` objective completes when its occasion judges it.
                     let before = o.on.as_ref().map(|(on, _)| self.follow(on));
-                    self.region(cond.into_iter().collect(), &o.body);
+                    // 0.50.0 §5.4: the objective's grants run at its `done`,
+                    // after it is judged.
+                    self.region_after(cond.into_iter().collect(), Some(o), &o.body);
                     if let Some(before) = before {
                         self.changed = before;
                     }
@@ -154,6 +194,21 @@ impl Presence<'_> {
             // dsl 0.27.0 §4: a call's declared fact effects.
             for (pattern, up) in facts.writes() {
                 self.kill_fact(pattern, up);
+            }
+        }
+    }
+
+    /// 0.50.0 §5.4: reward effects, each a write like the `::assert` /
+    /// `::retract` / `::accept` it stands for.
+    fn grant_writes(&mut self, grants: &[GrantEffect<'_>]) {
+        for g in grants {
+            match g.fact() {
+                Some((pattern, up)) => self.kill_fact(pattern, up),
+                None => {
+                    if let Some(q) = g.accepted() {
+                        self.kill_path(&format!("quest.{q}"));
+                    }
+                }
             }
         }
     }

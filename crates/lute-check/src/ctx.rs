@@ -100,6 +100,11 @@ pub struct Env {
     /// (or `for=`) beat of the document — a slot binding it as a fact-query
     /// argument or a family index is judged once per member there.
     pub occasion_scopes: crate::occasion_bind::OccasionScopes,
+    /// 0.50.0 §4.2: the snapshot's host tokens (`lute.core`'s `userName`
+    /// and every plugin's), which a bare `{{name}}` interpolation is checked
+    /// against. `Arc`-wrapped, like `domains`, so the per-member and
+    /// component environments derived from this one share the table.
+    pub host_tokens: Arc<BTreeMap<String, lute_manifest::schema::HostTokenDecl>>,
 }
 
 /// Checker context threaded through the directive/CEL/state validators.

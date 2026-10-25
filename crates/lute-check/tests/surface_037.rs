@@ -233,7 +233,7 @@ fn core_vocabulary_is_lower_camel() {
     }
     keys.extend(snap.domains.keys().cloned());
     for list in [
-        lute_check::content_line::KNOWN_ATTRS,
+        lute_manifest::core::LINE_ATTRS,
         lute_check::meta::SCENE_KEYS,
         lute_check::logic_attrs::REWARD_ATTRS,
         lute_check::logic_attrs::QUEST_ATTRS,

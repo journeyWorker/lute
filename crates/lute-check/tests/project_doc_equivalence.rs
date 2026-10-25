@@ -42,7 +42,12 @@ fn manifest_defaults_never_mint_a_scene_key() {
     let doc = parse("---\nkind: scene\n---\n## Shot 1.\n@narrator: hi\n");
     let typed = typed_with_defaults(&doc, &defaults);
     assert_eq!(scene_key(&typed), None);
-    let views = [ProjectDoc::new(Path::new("a.lute"), &doc, &typed)];
+    let views = [ProjectDoc::new(
+        Path::new("a.lute"),
+        &doc,
+        &typed,
+        &lute_check::reward_effects::NO_REWARD_KINDS,
+    )];
     assert!(
         scene_key_set(&views).is_empty(),
         "{:?}",
@@ -55,7 +60,12 @@ fn a_malformed_authored_id_gives_no_scene_key() {
     let doc = parse("---\nkind: scene\nid: \"not a name!\"\n---\n## Shot 1.\n@narrator: hi\n");
     let typed = typed_with_defaults(&doc, &MetaDefaults::default());
     assert_eq!(scene_key(&typed), None);
-    let views = [ProjectDoc::new(Path::new("a.lute"), &doc, &typed)];
+    let views = [ProjectDoc::new(
+        Path::new("a.lute"),
+        &doc,
+        &typed,
+        &lute_check::reward_effects::NO_REWARD_KINDS,
+    )];
     assert!(scene_key_set(&views).is_empty());
 }
 

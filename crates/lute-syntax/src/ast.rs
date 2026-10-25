@@ -720,20 +720,27 @@ pub enum InterpKind {
     Path,
     /// `@def` / `@fn(args)`.
     Ref,
-    /// Reserved token (`userName`).
+    /// A host token (0.50.0 §4.2): a bare identifier the engine substitutes
+    /// at render time (`userName`, or one a plugin's `hostTokens` declares).
     Reserved,
 }
 
 /// Classify a `{{…}}` interpolation's interior text (already trimmed) into its
-/// [`InterpKind`] (dsl §7.6): a `@…` is a `Ref`, the bare `userName` token is
-/// `Reserved`, anything else is a `Path`. The checker owns rejecting a referent
-/// that is not actually a bare state path / well-formed `@ref` (§7.6 grammar);
-/// this only picks the syntactic bucket. Single source of truth shared by the
-/// content-line scan (parser) and the `<choice label>` scan (checker).
+/// [`InterpKind`] (dsl §7.6, 0.50.0 §4.2): a `@…` is a `Ref`; a bare
+/// identifier ([`lute_manifest::ident::is_ident`]: no `.`, `[`, `(`, `-`, no
+/// `$`, not starting with a digit) is `Reserved`, a host token — except a
+/// state root or CEL literal ([`lute_manifest::reserved::HOST_TOKEN_RESERVED`]:
+/// `{{run}}` reads as a state root); anything else is a `Path`. The checker
+/// owns rejecting a referent that is not actually a bare state path /
+/// well-formed `@ref` / declared host token (§7.6 grammar); this only picks
+/// the syntactic bucket. Single source of truth shared by the content-line
+/// scan (parser) and the `<choice label>` scan (checker).
 pub fn classify_interp(inner: &str) -> InterpKind {
     if inner.starts_with('@') {
         InterpKind::Ref
-    } else if inner == "userName" {
+    } else if lute_manifest::ident::is_ident(inner)
+        && !lute_manifest::reserved::HOST_TOKEN_RESERVED.contains(&inner)
+    {
         InterpKind::Reserved
     } else {
         InterpKind::Path

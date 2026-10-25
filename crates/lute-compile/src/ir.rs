@@ -896,7 +896,9 @@ pub enum Placeholder {
         #[serde(skip_serializing_if = "Option::is_none")]
         forms: Option<Vec<String>>,
     },
-    /// A reserved token (only `userName` in 0.1), with its text hint.
+    /// A host token (`userName`, or one a plugin's `hostTokens` declares;
+    /// 0.50.0 §4.3), with its format hint. The engine substitutes it; the
+    /// runtime keeps the marker verbatim.
     Reserved {
         token: String,
         #[serde(skip_serializing_if = "Option::is_none")]
@@ -1293,6 +1295,12 @@ pub struct ChoiceOption {
     /// text, keyed on this option's `lineId`. See `LineCmd::texts`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub texts: BTreeMap<String, String>,
+    /// 0.50.0 §3.5: the plugin stamps the `<choice>` authors (`on:` naming
+    /// `choice`), typed by their declarations. Absent when it authors none,
+    /// so an option without stamps is byte-identical to 0.49. Serialized
+    /// last.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub stamps: BTreeMap<String, serde_json::Value>,
 }
 
 /// `<hub>` (§7.3.2, IR A2): structurally a `choice` plus revisit flags. The
@@ -1350,6 +1358,10 @@ pub struct HubOption {
     /// text, keyed on this option's `lineId`. See `LineCmd::texts`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub texts: BTreeMap<String, String>,
+    /// 0.50.0 §3.5: the `<choice>`'s plugin stamps, as on
+    /// [`ChoiceOption::stamps`].
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub stamps: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1930,6 +1942,19 @@ pub struct RewardEntry {
     /// at compile; omitted when the kind credits nothing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub credits: Option<String>,
+    /// 0.50.0 §5.5: the facts the reward kind's `effects.retracts` names,
+    /// `@target` bound to `target` (a pattern left unbound is not written).
+    /// Stamped at compile; applied at the grant, before `asserts`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub retracts: Vec<FactRecord>,
+    /// 0.50.0 §5.5: the facts the kind's `effects.asserts` names, applied
+    /// after `retracts`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub asserts: Vec<FactRecord>,
+    /// 0.50.0 §5.5: the quest ids the kind's `effects.accepts` resolves to,
+    /// applied after the facts through `::accept`'s path.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub accepts: Vec<String>,
 }
 
 impl RewardEntry {
@@ -1966,6 +1991,9 @@ impl RewardEntry {
             when: reward.when.as_ref().map(CelPair::from_slot),
             outcome,
             credits: None,
+            retracts: Vec::new(),
+            asserts: Vec::new(),
+            accepts: Vec::new(),
         }
     }
 }

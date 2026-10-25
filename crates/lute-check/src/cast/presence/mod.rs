@@ -119,6 +119,7 @@ pub fn check_presence(
         quest: None,
         quest_body: &[],
         completion: None,
+        grants: crate::reward_effects::QuestGrants::default(),
         changed_on,
         changed: BTreeSet::new(),
         present: BTreeMap::new(),
@@ -186,6 +187,7 @@ pub fn check_presence(
         w.quest = (!quest.id.is_empty()).then(|| quest.id.clone());
         w.quest_body = &quest.body;
         w.completion = w.completion(quest);
+        w.grants = crate::reward_effects::QuestGrants::new(quest, &w.folded.snapshot.reward_kinds);
         let quest_after = after(quest.span.byte_start, None);
         w.unit(
             conds,
@@ -197,6 +199,7 @@ pub fn check_presence(
         w.quest = None;
         w.quest_body = &[];
         w.completion = None;
+        w.grants = crate::reward_effects::QuestGrants::default();
     }
     for entry in &doc.entries {
         let mut conds: Vec<(Expr, String)> = w.slot_cond(entry.when.as_ref()).into_iter().collect();
@@ -432,6 +435,10 @@ pub(crate) struct Presence<'a> {
     /// ([`Self::completion`]), for its `questComplete` handlers.
     quest_body: &'a [Node],
     completion: Option<(Expr, String)>,
+    /// 0.50.0 §5.4: the effects that quest's rewards apply at their grant
+    /// points, grouped by owner — writes like an `::assert` / `::retract` /
+    /// `::accept` there.
+    grants: crate::reward_effects::QuestGrants<'a>,
     /// dsl 0.25.0 §6: occasion → the engine-`reserved` relations whose
     /// `changedOn:` names it.
     changed_on: BTreeMap<String, BTreeSet<String>>,

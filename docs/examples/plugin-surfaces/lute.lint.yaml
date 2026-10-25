@@ -1,0 +1,44 @@
+# Node lints (0.50): structural and dependent-attribute rules over the AST.
+# Every index is guarded, so a node without the attribute raises no E-LINT-EXPR,
+# and an unknown discriminator is reported once, by its own `*-known` rule.
+custom:
+  - id: section-opens-with-bg
+    target: node
+    when: 'node.first && node.parent.kind == "section" && node.tag != "bg"'
+    level: warn
+    message: "section {node.section.title} opens with a node that is not ::bg"
+  - id: bg-asset-prefix
+    target: node
+    when: 'node.tag == "bg" && "assetName" in node.attrs && !node.attrs["assetName"].startsWith("BG_")'
+    level: error
+    message: "a backdrop's assetName starts with BG_, not {node.attrs.assetName}"
+  - id: move-mode-known
+    target: node
+    when: 'node.tag == "move" && "mode" in node.attrs && !(node.attrs["mode"] in options.speeds)'
+    level: error
+    message: "unknown move mode {node.attrs.mode}"
+    options: { speeds: { walk: [slow, normal], run: [normal, fast] } }
+  - id: speed-fits-mode
+    target: node
+    when: >-
+      node.tag == "move" && "speed" in node.attrs && "mode" in node.attrs &&
+      node.attrs["mode"] in options.speeds &&
+      !(node.attrs["speed"] in options.speeds[node.attrs["mode"]])
+    level: error
+    message: "speed {node.attrs.speed} is not legal in mode {node.attrs.mode}"
+    options: { speeds: { walk: [slow, normal], run: [normal, fast] } }
+  - id: menu-type-known
+    target: node
+    when: 'node.kind == "branch" && "menuType" in node.attrs && !(node.attrs["menuType"] in options.keys)'
+    level: error
+    message: "unknown menu type {node.attrs.menuType}"
+    options: { keys: { plain: [L1, R1], timed: [T1] } }
+  - id: choice-fits-menu
+    target: node
+    when: >-
+      node.kind == "choice" && "optionKey" in node.attrs &&
+      "menuType" in node.parent.attrs && node.parent.attrs["menuType"] in options.keys &&
+      !(node.attrs["optionKey"] in options.keys[node.parent.attrs["menuType"]])
+    level: error
+    message: "option key {node.attrs.optionKey} is not a {node.parent.attrs.menuType} key"
+    options: { keys: { plain: [L1, R1], timed: [T1] } }

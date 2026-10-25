@@ -1,0 +1,231 @@
+{
+  "commands": [
+    {
+      "kind": "quest",
+      "quest": "first",
+      "state": "active"
+    },
+    {
+      "kind": "quest",
+      "quest": "helper",
+      "state": "active"
+    },
+    {
+      "kind": "quest",
+      "quest": "doomed",
+      "state": "active"
+    },
+    {
+      "done": true,
+      "kind": "objective",
+      "objective": "greet",
+      "quest": "first"
+    },
+    {
+      "index": 0,
+      "instance": 1,
+      "kind": "grant",
+      "objective": "greet",
+      "quest": "first",
+      "reward": {
+        "amount": 1,
+        "kind": "BADGE",
+        "target": "theo"
+      }
+    },
+    {
+      "fact": "met(theo)",
+      "grant": {
+        "index": 0,
+        "instance": 1,
+        "kind": "BADGE",
+        "objective": "greet",
+        "quest": "first"
+      },
+      "kind": "assert"
+    },
+    {
+      "kind": "quest",
+      "quest": "first",
+      "state": "complete"
+    },
+    {
+      "index": 0,
+      "instance": 1,
+      "kind": "grant",
+      "quest": "first",
+      "reward": {
+        "amount": 1,
+        "kind": "REVOKE",
+        "target": "theo"
+      }
+    },
+    {
+      "grant": {
+        "index": 0,
+        "instance": 1,
+        "kind": "REVOKE",
+        "quest": "first"
+      },
+      "kind": "retract",
+      "pattern": "met(theo)"
+    },
+    {
+      "index": 1,
+      "instance": 1,
+      "kind": "grant",
+      "quest": "first",
+      "reward": {
+        "amount": 1,
+        "kind": "BADGE",
+        "target": "mira"
+      }
+    },
+    {
+      "fact": "met(mira)",
+      "grant": {
+        "index": 1,
+        "instance": 1,
+        "kind": "BADGE",
+        "quest": "first"
+      },
+      "kind": "assert"
+    },
+    {
+      "index": 3,
+      "instance": 1,
+      "kind": "grant",
+      "quest": "first",
+      "reward": {
+        "amount": 1,
+        "kind": "OFFER",
+        "target": "helper"
+      }
+    },
+    {
+      "grant": {
+        "index": 3,
+        "instance": 1,
+        "kind": "OFFER",
+        "quest": "first"
+      },
+      "ignored": "already active",
+      "kind": "accept",
+      "quest": "helper"
+    },
+    {
+      "index": 4,
+      "instance": 1,
+      "kind": "grant",
+      "quest": "first",
+      "reward": {
+        "amount": 1,
+        "kind": "OFFER",
+        "target": "second"
+      }
+    },
+    {
+      "grant": {
+        "index": 4,
+        "instance": 1,
+        "kind": "OFFER",
+        "quest": "first"
+      },
+      "kind": "accept",
+      "quest": "second"
+    },
+    {
+      "kind": "set",
+      "path": "run.sawMet",
+      "position": "001-0300",
+      "value": true
+    },
+    {
+      "kind": "set",
+      "path": "run.sawTheo",
+      "position": "001-0400",
+      "value": false
+    },
+    {
+      "failedBy": "fail",
+      "kind": "quest",
+      "quest": "doomed",
+      "state": "failed"
+    },
+    {
+      "index": 0,
+      "instance": 1,
+      "kind": "grant",
+      "onFailed": true,
+      "quest": "doomed",
+      "reward": {
+        "amount": 1,
+        "kind": "SCAR",
+        "target": "mira"
+      }
+    },
+    {
+      "fact": "rival(mira)",
+      "grant": {
+        "index": 0,
+        "instance": 1,
+        "kind": "SCAR",
+        "quest": "doomed"
+      },
+      "kind": "assert"
+    },
+    {
+      "kind": "set",
+      "path": "run.scarred",
+      "position": "004-0300",
+      "value": true
+    },
+    {
+      "kind": "quest",
+      "quest": "second",
+      "state": "active"
+    },
+    {
+      "done": true,
+      "kind": "objective",
+      "objective": "finish",
+      "quest": "second"
+    },
+    {
+      "kind": "quest",
+      "quest": "second",
+      "state": "complete"
+    }
+  ],
+  "exit": "complete",
+  "facts": [
+    "met(mira)",
+    "rival(mira)"
+  ],
+  "irVersion": "0.50",
+  "kind": "quest",
+  "quests": {
+    "doomed": "failed",
+    "first": "complete",
+    "helper": "active",
+    "second": "complete"
+  },
+  "state": {
+    "quest.doomed.failedBy": "fail",
+    "quest.doomed.objectives.hold.done": false,
+    "quest.doomed.state": "failed",
+    "quest.first.objectives.greet.done": true,
+    "quest.first.state": "complete",
+    "quest.helper.objectives.wait.done": false,
+    "quest.helper.state": "active",
+    "quest.second.objectives.finish.done": true,
+    "quest.second.state": "complete",
+    "run.fail": true,
+    "run.flag": false,
+    "run.go": true,
+    "run.never": false,
+    "run.sawMet": true,
+    "run.sawTheo": false,
+    "run.scarred": true
+  }
+}

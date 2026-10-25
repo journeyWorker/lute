@@ -28,6 +28,7 @@ const STAGING: SemanticId = SemanticId("lute.staging/1");
 const TIMELINE: SemanticId = SemanticId("lute.timeline/1");
 const QUEST_LIFECYCLE: SemanticId = SemanticId("lute.quest.lifecycle/1");
 const QUEST_REWARDS: SemanticId = SemanticId("lute.quest.rewards/1");
+const REWARD_EFFECTS: SemanticId = SemanticId("lute.quest.rewardEffects/1");
 const CLOCK: SemanticId = SemanticId("lute.time.clock/1");
 const CADENCE: SemanticId = SemanticId("lute.time.cadence/1");
 const SEASONS: SemanticId = SemanticId("lute.time.seasons/1");
@@ -64,6 +65,11 @@ pub const REGISTRY: &[SemanticEntry] = &[
         id: QUEST_REWARDS,
         module: "quest",
         behavior: "quest rewards and grants",
+    },
+    SemanticEntry {
+        id: REWARD_EFFECTS,
+        module: "quest",
+        behavior: "reward fact and accept effects",
     },
     SemanticEntry {
         id: CLOCK,
@@ -121,6 +127,7 @@ pub const REGISTRY: &[SemanticEntry] = &[
 /// intentionally traversed only at their containing key.
 pub const FIELD_TABLE: &[&str] = &[
     "accept",
+    "accepts",
     "action",
     "activate",
     "active",
@@ -723,6 +730,11 @@ fn collect_rewards(out: &mut Collected, rewards: &[RewardEntry], addr: Option<&s
         if let Some(pair) = &reward.when {
             scan_cel(out, pair, addr, "reward condition");
         }
+        // 0.50.0 §5.5 (D5): an engine that ignores these loses facts and
+        // quest activations — meaning-changing, so its own id.
+        if !reward.retracts.is_empty() || !reward.asserts.is_empty() || !reward.accepts.is_empty() {
+            out.add(REWARD_EFFECTS, addr, "reward effects");
+        }
     }
 }
 
@@ -782,8 +794,8 @@ mod tests {
     use lute_ir::{DocKind, EnumEntry, PrereqEdgeEntry};
 
     #[test]
-    fn registry_has_all_fifteen_ids() {
-        assert_eq!(REGISTRY.len(), 15);
+    fn registry_has_all_sixteen_ids() {
+        assert_eq!(REGISTRY.len(), 16);
         assert!(REGISTRY
             .iter()
             .all(|entry| is_registered(entry.id.as_str())));
@@ -822,6 +834,76 @@ mod tests {
         let got = collect(&ir);
         assert!(got.ids.contains(QUEST_LIFECYCLE.as_str()));
         assert!(!got.ids.contains(QUEST_REWARDS.as_str()));
+    }
+
+    /// 0.50.0 §5.5: `lute.quest.rewardEffects/1` only when a reward carries
+    /// a resolved effect; a reward without one needs only the rewards id.
+    #[test]
+    fn reward_effects_are_collected_only_when_present() {
+        let quest = |reward: RewardEntry| {
+            let mut ir = test_ir();
+            ir.commands.push(Command::Quest(QuestCmd {
+                position: "q".into(),
+                id: "q".into(),
+                title: None,
+                title_line_id: None,
+                start: None,
+                fail: None,
+                objectives: vec![],
+                rewards: vec![reward],
+                tier: None,
+                activate: None,
+                complete: None,
+                accept: None,
+                rearm: None,
+                stamp: Stamp::default(),
+            }));
+            collect(&ir)
+        };
+        let plain = RewardEntry {
+            id: None,
+            kind: "COINS".into(),
+            target: None,
+            amount: Some(1),
+            amount_min: None,
+            amount_max: None,
+            when: None,
+            outcome: None,
+            credits: None,
+            retracts: vec![],
+            asserts: vec![],
+            accepts: vec![],
+        };
+        let without = quest(plain.clone());
+        assert!(without.ids.contains(QUEST_REWARDS.as_str()));
+        assert!(!without.ids.contains(REWARD_EFFECTS.as_str()));
+        for with in [
+            RewardEntry {
+                accepts: vec!["second".into()],
+                ..plain.clone()
+            },
+            RewardEntry {
+                asserts: vec![crate::ir::FactRecord {
+                    relation: "met".into(),
+                    args: vec!["mira".into()],
+                }],
+                ..plain.clone()
+            },
+            RewardEntry {
+                retracts: vec![crate::ir::FactRecord {
+                    relation: "met".into(),
+                    args: vec!["_".into()],
+                }],
+                ..plain.clone()
+            },
+        ] {
+            let got = quest(with);
+            assert!(got.ids.contains(REWARD_EFFECTS.as_str()));
+            assert_eq!(
+                got.provenance[REWARD_EFFECTS.as_str()][0].what,
+                "reward effects"
+            );
+        }
     }
 
     #[test]
@@ -904,8 +986,8 @@ mod tests {
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
             kind: DocKind::Scene,
-            lute: "0.49.1".into(),
-            ir_version: "0.49.1".into(),
+            lute: "0.50.0".into(),
+            ir_version: "0.50.0".into(),
             capability_snapshot: "cap".into(),
             identity_renames: vec![],
             required_semantics: vec![],

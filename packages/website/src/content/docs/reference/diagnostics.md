@@ -16,9 +16,9 @@ A position `file:line:column` counts lines and columns from 1, and the column co
 
 ### E-ACCEPT-TARGET
 
-An `::accept` directive names no quest, gives `quest` a value that is not a quoted quest id, gives `at` a value other than `"nextRun"`, or targets a quest declared `accept="external"` that already activates with its parent (making the acceptance a no-op).
+An `::accept` directive names no quest, gives `quest` a value that is not a quoted quest id, gives `at` a value other than `"nextRun"`, or targets a quest declared `accept="external"` that already activates with its parent (making the acceptance a no-op). Whole-project `check` also judges each quest an `::accept` or a reward kind's `effects.accepts` names: it must be declared in the project (did-you-mean) and accept-driven — not a quest with `start`, nor a subquest child that activates with its parent; a reward's is reported at its `target=` (or `kind=`) and names the reward.
 
-Spec: [dsl 0.21.0 §7a.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
+Spec: [dsl 0.21.0 §7a.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md), [dsl 0.50.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-ADVANCE-CASCADE
 
@@ -218,9 +218,9 @@ Spec: [dsl 0.4.0 §8.1](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 ### E-CEL-PROFILE
 
-A CEL expression uses a construct outside the restricted Lute-CEL profile — a disallowed function call, a comprehension macro, a map/struct literal, a bare identifier that is not a state path or def, a reserved internal token, or `visited(…)` used outside a condition slot.
+A CEL expression uses a construct outside the restricted Lute-CEL profile — a disallowed function call, a comprehension macro, a map/struct literal, a bare identifier that is not a state path or def, a reserved internal token, or `visited(…)` used outside a condition slot. A `{{…}}` interpolation that is not a state path, a def `@ref`, or a declared host token (the message lists them; an undeclared bare name is told to declare it in a plugin's `hostTokens:` export).
 
-Spec: [dsl §8.4](/spec/), [dsl 0.21.0 §7a.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md)
+Spec: [dsl §8.4](/spec/), [dsl 0.21.0 §7a.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.50.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-CEL-TYPE
 
@@ -529,6 +529,12 @@ Spec: [dsl 0.3.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/pro
 Content asserts or retracts a relation declared `derive: true`, though a derived relation is computed by `rules:` and must not be written directly.
 
 Spec: [dsl 0.3.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
+
+### E-DIAGNOSTICS-CONFIG
+
+A `lute.project.yaml` `diagnostics:` entry cannot apply: its key is an error code (an error is never re-levelled), a lint rule (set in `lute.lint.yaml` `rules:`) or no diagnostic code at all, its level is not one of `off`, `info`, `warn`, `error`, or its `paths` is not a non-empty list of project-relative globs. The entry is dropped and the manifest is invalid.
+
+Spec: [dsl 0.50.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-DIFF-INPUT
 
@@ -842,9 +848,9 @@ Spec: [dsl §7.1](/spec/)
 
 ### E-LINT-CONFIG
 
-`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id. Since 0.49.0 it also covers an `asset-exists` `options.providers` key that is none of the selector shapes (`<tag>`, `<tag>.<attr>`, `@<attr>`).
+`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id. Since 0.49.0 it also covers an `asset-exists` `options.providers` key that is none of the selector shapes (`<tag>`, `<tag>.<attr>`, `@<attr>`). A `rules:` id that is a checker code is named as one: a warning's level is set in `lute.project.yaml` `diagnostics:`, and an error cannot be re-levelled.
 
-Spec: [dsl 0.49.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+Spec: [dsl 0.49.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §6.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-LINT-EXPR
 
@@ -934,7 +940,9 @@ Spec: [dsl 0.15.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-MISSING-ATTR
 
-A directive is missing an attribute its declared schema requires.
+A directive is missing an attribute its declared schema requires, or a directive, content line, `<branch>`, `<hub>` or `<choice>` does not author a plugin stamp declared `required: true` on its surface (`on:`); a stamp is never injected, so its `default:` does not count.
+
+Spec: [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-MOCK-SUBJECT
 
@@ -1088,11 +1096,15 @@ A plugin's `assetKinds` export declares a segment type outside the four a segmen
 
 ### E-PLUGIN-DUP-ACROSS
 
-Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation; the first plugin's declaration is used.
+Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation, or `stampAttrs` entries of one name on overlapping surfaces (an entry without `on:` overlaps every entry; the message names the shared surfaces), or a plugin declares a host token another plugin or `lute.core` (`userName`) declares; the first declaration is used.
+
+Spec: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-DUP-ID
 
-A plugin package declares the same id more than once within one export kind; the first declaration is used and the rest of the project is still checked.
+A plugin package declares the same id more than once within one export kind, or two `stampAttrs` entries of one name whose `on:` surfaces overlap (an entry without `on:` overlaps every entry; the message names the shared surfaces); the first declaration is used and the rest of the project is still checked.
+
+Spec: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-INVALID-DIRECTIVE
 
@@ -1106,9 +1118,9 @@ A plugin export file or directory could not be read due to an I/O or encoding fa
 
 ### E-PLUGIN-KEY
 
-A key in a plugin's `plugin.yaml` or one of its export files is not one that file takes (with the key meant, e.g. `dependencies` → `depends`), or `plugin.yaml` declares a `kind:` other than `capability`.
+A key in a plugin's `plugin.yaml` or one of its export files is not one that file takes (with the key meant, e.g. `dependencies` → `depends`), or `plugin.yaml` declares a `kind:` other than `capability`. A reward kind's `effects.writes` adds that a reward's state write is `credits:`.
 
-Spec: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+Spec: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-MANIFEST
 
@@ -1140,23 +1152,29 @@ Spec: [plugin Appendix C1](/spec/)
 
 ### E-PLUGIN-PARSE
 
-A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`).
+A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect, a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, or a kind with `target: { forbidden: true }` reads `@target`, or a `hostTokens` name is not an identifier (letters, digits and `_`, not starting with a digit) or its `type` is not `string`, `int` or `{ enum: [...] }`.
 
-Spec: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+Spec: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-RESERVED-NAME
 
-A plugin declares a name the core language owns: a directive named like a core statement (`set`, `assert`, `retract`, `accept`, `use`, `body`, `cut`), a core block tag (`scene`, `on`, `quest`, `objective`, `match`, `branch`, `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`, `timeline`, `track`, `reward`, `return`) or a `lute.core` directive (`end`, `mark`, `bg`, …); an event or occasion named like an engine lifecycle event (`questComplete`, …) or a play step key; a cast id `narrator`. Reported at the declaration's file and line.
+A plugin declares a name the core language owns: a directive named like a core statement (`set`, `assert`, `retract`, `accept`, `use`, `body`, `cut`), a core block tag (`scene`, `on`, `quest`, `objective`, `match`, `branch`, `hub`, `choice`, `when`, `otherwise`, `entry`, `beat`, `timeline`, `track`, `reward`, `return`) or a `lute.core` directive (`end`, `mark`, `bg`, …); an event or occasion named like an engine lifecycle event (`questComplete`, …) or a play step key; a cast id `narrator`; a host token named like a state root or a CEL literal (`{{run}}` would read as a state root). Reported at the declaration's file and line.
 
 Every reserved name, where it is refused and what to write instead: [Reserved names](/reference/reserved-names/).
 
-Spec: [dsl §10](/spec/), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+Spec: [dsl §10](/spec/), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-RESERVED-STAMP-ATTR
 
-A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp.
+A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp. Also a `stampAttrs` entry scoped with `on:` to a surface that owns an attribute of the same name (`prompt` on `branch`, `text` on `choice`, `code` on `line`, a directive's own attribute), so the stamp could never be read there.
 
-Spec: [plugin §14](/spec/)
+Spec: [plugin §14](/spec/), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+
+### E-PLUGIN-STAMP-SURFACE
+
+A `stampAttrs` entry's `on:` names a surface that is not `line`, `branch`, `hub`, `choice` or a directive of the resolved profile (with a did-you-mean, or the installed but inactive plugin to declare in `depends:`), or a directive with no stamp carrier (`jump`, `label`, `clear`). The entry is dropped; its siblings still load.
+
+Spec: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-UNKNOWN-ASSETKIND
 
@@ -1780,9 +1798,9 @@ Spec: [dsl §8.1](/spec/)
 
 ### E-UNKNOWN-ATTR
 
-A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it.
+A content line, directive or logic element carries an attribute key that the content-line grammar, the directive's own declaration or the element's fixed attribute table does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to; on `<branch>`, `<hub>` and `<choice>` the message also lists the stamps scoped to that element.
 
-Spec: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+Spec: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-UNKNOWN-DIRECTIVE
 
@@ -2136,9 +2154,9 @@ Spec: [dsl 0.22.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-QUEST-NEVER-ACCEPTED
 
-An accept-driven quest is never named by any `::accept{quest=…}` and is not `accept="external"`, so nothing in the project ever accepts it.
+An accept-driven quest is never named by any `::accept{quest=…}` or reward kind `effects.accepts` and is not `accept="external"`, so nothing in the project ever accepts it.
 
-Spec: [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
+Spec: [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md), [dsl 0.50.0 §5.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### W-QUEST-REARM-CONSTANT
 
@@ -2198,9 +2216,9 @@ Spec: [dsl 0.28.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-STAGE-ABSENT
 
-A content line or `::actor` targets a character who already left the stage (via a declared exit, a `::bg` scene change, or `::clear`) and was never re-shown, so the staging is impossible.
+A content line or `::actor` targets a character who already left the stage (via a declared exit, a `::bg` scene change, or `::clear`) and was never re-shown, so the staging is impossible. A line's message names both ways to show them again: an `::actor`, or a plugin directive lowered to the `actor` record (`lower: { record: actor, fields: { character: { fromAttr: character } } }`), which stages like `::actor`.
 
-Spec: [dsl 0.22.0 §12](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md)
+Spec: [dsl 0.22.0 §12](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.22.0.md), [dsl 0.50.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### W-TEMPLATE-DOT-PARAM
 

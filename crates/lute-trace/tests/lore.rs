@@ -112,6 +112,7 @@ fn first_read_applies_assert_and_set() {
             Step::Assert {
                 text: "knows(vesna, project_lumen)".into(),
                 effect_of: None,
+                grant: None,
             },
             Step::Set {
                 path: "run.logsRead".into(),

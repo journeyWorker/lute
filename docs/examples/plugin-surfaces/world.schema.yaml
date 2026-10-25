@@ -1,0 +1,18 @@
+# Shared world for the plugin-surfaces example.
+# The host reports these three: a play script writes them with `engine:` steps
+# (content cannot ::set engine-owned state).
+state:
+  run.talked:    { type: bool, default: false, owner: engine }
+  run.chatted:   { type: bool, default: false, owner: engine }
+  run.delivered: { type: bool, default: false, owner: engine }
+
+# The slot `::showSpeaker` (lowered to `actor`) needs a default anchor from.
+enums:
+  anchor: { members: [left, center, right], default: center }
+
+entities:
+  person: { members: [mira, tomas] }
+
+relations:
+  # Asserted by the BADGE reward kind, retracted by REVOKE.
+  met: { args: [person], tier: run }

@@ -1,0 +1,7 @@
+pluginsDir: plugins/
+defaultProfile: stage
+profiles:
+  stage:
+    plugins: { acme.logic: true }
+defaults:
+  uses: [refs.schema.yaml]

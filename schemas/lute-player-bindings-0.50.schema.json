@@ -998,7 +998,7 @@
       "type": "object"
     }
   },
-  "$id": "https://lute-lang.vercel.app/schemas/lute-player-bindings-0.49.schema.json",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-player-bindings-0.50.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {

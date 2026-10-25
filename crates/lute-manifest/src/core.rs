@@ -1,20 +1,24 @@
 //! Built-in `lute.core` capability snapshot (plugin §5, dsl Appendix A).
 //!
-//! The three YAML assets under `assets/lute.core/` are embedded at compile time
-//! via `include_str!` so the language's baseline directives and enums ship with
-//! the binary — no filesystem lookup, no network. `load_core_snapshot` is the
-//! deterministic baseline every checker/LSP consumer resolves on top of.
+//! The YAML assets under `assets/lute.core/` are embedded at compile time
+//! via `include_str!` so the language's baseline directives, enums and host
+//! tokens ship with the binary — no filesystem lookup, no network.
+//! `load_core_snapshot` is the deterministic baseline every checker/LSP
+//! consumer resolves on top of.
 
 use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::{Arc, LazyLock};
 
-use crate::schema::{DirectivesFile, EnumsFile, PluginManifest};
+use crate::schema::{
+    DirectivesFile, EnumsFile, HostTokenDecl, HostTokensFile, PluginManifest, CORE_PLUGIN,
+};
 use crate::snapshot::{capability_version, CapabilitySnapshot, Domain, ResolvedPlugin};
 
 const MANIFEST: &str = include_str!("../assets/lute.core/plugin.yaml");
 const STAGING: &str = include_str!("../assets/lute.core/directives/staging.yaml");
 const ENUMS: &str = include_str!("../assets/lute.core/enums.yaml");
+const HOST_TOKENS: &str = include_str!("../assets/lute.core/hosttokens.yaml");
 
 /// The `lute.core` tag of the walk terminator, `::end` (dsl 0.8.0). The ONE
 /// directive declaring `terminatesWalk` ([`crate::validate::SEMANTICS_VOCAB`]),
@@ -74,6 +78,55 @@ pub const CLEAR_DIRECTIVE: &str = "clear";
 /// directive lowers to a stamped record.
 pub const UNSTAMPED_DIRECTIVES: [&str; 3] = [JUMP_DIRECTIVE, LABEL_DIRECTIVE, CLEAR_DIRECTIVE];
 
+/// The attributes a content line owns (dsl 0.2.2 §7.1, §D7). `lute-compile`'s
+/// `lower_line` reads exactly these and consumes this slice directly, so the
+/// checker and the compiler cannot drift: a key here is a record field
+/// (`wait`: the record's `timing.wait`, 0.49.0 §4.2), a key NOT here may be a
+/// plugin stamp, which lowers into the record's stamp instead (plugin §14.1).
+/// `duration`/`delay` are not line keys. One of the per-surface lists that
+/// plugin assembly (stamp shadowing, 0.50.0 §3.2) and the checker share.
+pub const LINE_ATTRS: &[&str] = &[
+    "code",
+    "emotion",
+    "variant",
+    "action",
+    "dialogMotion",
+    "mono",
+    "os",
+    "vo",
+    "as",
+    "wait",
+];
+
+/// A content line's guard, `when=`: the parser takes it off the attribute
+/// list, so it is not in [`LINE_ATTRS`], but the line owns it.
+pub const LINE_GUARD_ATTR: &str = "when";
+
+/// A content line's removed attributes: `id=` is `E-RENAMED-ATTR` (dsl
+/// 0.37.0 §3.5, write `::label{name}` instead), reported before any stamp
+/// lookup, so a stamp of that name could never be read on a line.
+pub const LINE_RETIRED_ATTRS: &[&str] = &["id"];
+
+/// `<branch>`'s attributes (dsl 0.10.0 §4, + `prompt`/`timeout`/`default`,
+/// dsl 0.11.0).
+pub const BRANCH_ATTRS: &[&str] = &["id", "prompt", "timeout", "default"];
+
+/// `<hub>`'s attributes (dsl 0.10.0 §4, + `prompt`, dsl 0.23.0 §4).
+pub const HUB_ATTRS: &[&str] = &["id", "prompt"];
+
+/// A `<choice>`'s attributes inside a `<branch>` (dsl 0.10.0 D-L).
+pub const BRANCH_CHOICE_ATTRS: &[&str] = &["id", "text", "when", "into", "value"];
+
+/// A `<choice>`'s attributes inside a `<hub>`: the branch set plus the
+/// hub-choice flags `once` and `exit` (dsl 0.10.0 D-L).
+pub const HUB_CHOICE_ATTRS: &[&str] = &["id", "text", "when", "into", "value", "once", "exit"];
+
+/// A `<choice>`'s renamed or removed attributes, each reported by its own
+/// code: `label` (`E-RENAMED-TAG-ATTR`, now `text`), `as`
+/// (`E-AS-REMOVED`) and `persist` (`E-PERSIST-REMOVED`). Not permitted, but
+/// never reported as unknown, and never a stamp name on `<choice>`.
+pub const CHOICE_RETIRED_ATTRS: &[&str] = &["label", "as", "persist"];
+
 /// Failure loading one of the embedded `lute.core` assets.
 #[derive(Clone, Debug)]
 pub enum CoreLoadError {
@@ -116,6 +169,11 @@ fn build_core_snapshot() -> Result<CapabilitySnapshot, CoreLoadError> {
         asset: "enums.yaml",
         source: Arc::new(e),
     })?;
+    let host_tokens: HostTokensFile =
+        yaml_serde::from_str(HOST_TOKENS).map_err(|e| CoreLoadError::AssetParse {
+            asset: "hosttokens.yaml",
+            source: Arc::new(e),
+        })?;
 
     let mut directives = BTreeMap::new();
     for d in staging.directives {
@@ -154,6 +212,19 @@ fn build_core_snapshot() -> Result<CapabilitySnapshot, CoreLoadError> {
             .enums
             .iter()
             .map(|(k, v)| (k.clone(), v.clone().into_domain().members))
+            .collect(),
+        // 0.50.0 §4.1: `userName`. Not folded into the version (only
+        // non-core tokens are), so the core stamp is unchanged.
+        host_tokens: host_tokens
+            .host_tokens
+            .into_iter()
+            .map(|(name, body)| {
+                let decl = HostTokenDecl {
+                    ty: body.ty,
+                    plugin: CORE_PLUGIN.to_string(),
+                };
+                (name, decl)
+            })
             .collect(),
         ..Default::default()
     };
@@ -362,5 +433,39 @@ mod tests {
         );
         assert_eq!(ty("music", "mood"), Type::Domain("mood".into()));
         assert_eq!(ty("vfx", "type"), Type::Domain("vfxType".into()));
+    }
+
+    /// 0.50.0 §4.1: the core declares exactly `userName`, a string, owned by
+    /// `lute.core`, and its name is an identifier like every host token.
+    #[test]
+    fn core_declares_the_user_name_host_token() {
+        let snap = load_core_snapshot();
+        let tokens: Vec<(&str, &HostTokenDecl)> = snap
+            .host_tokens
+            .iter()
+            .map(|(n, t)| (n.as_str(), t))
+            .collect();
+        assert_eq!(
+            tokens,
+            [(
+                "userName",
+                &HostTokenDecl {
+                    ty: crate::schema::HostTokenType::Str,
+                    plugin: CORE_PLUGIN.to_string(),
+                }
+            )]
+        );
+        assert!(snap.host_tokens.keys().all(|n| crate::ident::is_ident(n)));
+    }
+
+    /// 0.50.0 §4.1: core host tokens are not folded into
+    /// `capabilitySnapshot`, so the core stamp is the one it was before
+    /// `userName` was declared.
+    #[test]
+    fn core_host_tokens_leave_the_core_stamp_unchanged() {
+        let mut snap = load_core_snapshot();
+        let stamped = snap.version.clone();
+        snap.host_tokens.clear();
+        assert_eq!(capability_version(&snap), stamped);
     }
 }

@@ -1,0 +1,19 @@
+---
+kind: scene
+id: imported.street
+title: The street (imported)
+---
+/*
+What an importer emits row by row. The second `::bg` takes Tomas off stage, so
+his next line is W-STAGE-ABSENT. `lute.project.yaml` sets that code `off` for
+`scenes/imported/**` while the port is reviewed; the fix, once reviewed, is a
+`::showSpeaker` after the `::bg`, as scenes/cafe.lute does before its first line.
+*/
+
+## The street {#street}
+
+::bg{location="street" time="day" assetName="BG_street"}
+::showSpeaker{character="tomas" spriteId="SPR_tomas_02"}
+@tomas: Morning.
+::bg{location="alley" time="night" assetName="BG_alley"}
+@tomas: Still here?

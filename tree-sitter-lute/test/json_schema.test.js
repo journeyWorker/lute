@@ -169,8 +169,34 @@ constraints:
       expect(ok).toBe(false);
     });
   }
-});
 
+  test("accepts `diagnostics:` levels, scoped and unscoped (dsl 0.50.0 §6.1)", () => {
+    const { ajv, projectSchema } = loadAjv();
+    const doc = Bun.YAML.parse(`
+defaultProfile: core
+diagnostics:
+  W-DISPLAY-NAME-DUP: error
+  W-STAGE-ABSENT: { level: off, paths: ["scenes/imported/**"] }
+`);
+    const { ok, errors } = validateAgainst(ajv, projectSchema.$id, doc);
+    expect(ok, JSON.stringify(errors)).toBe(true);
+  });
+
+  for (const [name, yaml] of [
+    ["an error code", "diagnostics: { E-UNKNOWN-ATTR: off }\n"],
+    ["a bad level", "diagnostics: { W-WIP: silent }\n"],
+    ["empty paths", "diagnostics: { W-WIP: { level: off, paths: [] } }\n"],
+    ["an absolute path", "diagnostics: { W-WIP: { level: off, paths: [\"/a/**\"] } }\n"],
+    ["a `..` segment", "diagnostics: { W-WIP: { level: off, paths: [\"../a/**\"] } }\n"],
+    ["a missing level", "diagnostics: { W-WIP: { paths: [\"a/**\"] } }\n"],
+  ]) {
+    test(`rejects diagnostics with ${name}`, () => {
+      const { ajv, projectSchema } = loadAjv();
+      const { ok } = validateAgainst(ajv, projectSchema.$id, Bun.YAML.parse(yaml));
+      expect(ok).toBe(false);
+    });
+  }
+});
 
 // --- schemas/lute.schema.json: state/defs/enums/entities declaration doc ---
 
@@ -627,8 +653,8 @@ options:
 
 describe("generated runtime contract schemas", () => {
   test("every conformance and contract-fixture line validates", () => {
-    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.49.schema.json`, "utf8"));
-    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.49.schema.json`, "utf8"));
+    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.50.schema.json`, "utf8"));
+    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.50.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     const eventValidate = ajv.compile(events);
     const snapshotValidate = ajv.compile(snapshots);
@@ -671,7 +697,7 @@ describe("generated runtime contract schemas", () => {
 // index types; every index the corpus compiles must validate against them.
 describe("generated IR index schema", () => {
   test("every compiled project.index.json validates as `projectIndex`", () => {
-    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.49.schema.json`, "utf8"));
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.50.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     ajv.addSchema(ir);
     const validate = ajv.compile({ $ref: `${ir.$id}#/$defs/projectIndex` });
@@ -703,7 +729,7 @@ describe("generated IR index schema", () => {
   });
 
   test("an index def row is closed to the documented shape", () => {
-    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.49.schema.json`, "utf8"));
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.50.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     ajv.addSchema(ir);
     const def = ajv.compile({ $ref: `${ir.$id}#/$defs/indexDef` });
@@ -716,6 +742,33 @@ describe("generated IR index schema", () => {
     expect(def(row), JSON.stringify(def.errors)).toBe(true);
     expect(def({ ...row, params: [{ name: "n", type: "number" }] })).toBe(false);
     expect(def({ cel: "x" })).toBe(false);
+  });
+});
+
+// 0.50.0 §3.5: `<choice>` options carry the plugin stamps they author; the
+// option `$defs` are closed, so the schema must name `stamps`.
+describe("IR option stamps", () => {
+  test("a compiled document with element and option stamps validates", () => {
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.50.schema.json`, "utf8"));
+    const ajv = new (Ajv2020)({ allErrors: true, strict: false });
+    const validate = ajv.compile(ir);
+    const project = `${ROOT}/crates/lute-cli/tests/fixtures/plugin-stamps-050-logic`;
+    const run = Bun.spawnSync(
+      [luteBin(), "compile", "--project", project, `${project}/scenes/ok.lute`],
+      { cwd: ROOT },
+    );
+    expect(run.success, run.stderr.toString()).toBe(true);
+    const doc = JSON.parse(run.stdout.toString());
+    const menus = doc.commands.filter((c) => c.kind === "choice" || c.kind === "hub");
+    expect(menus.map((c) => c.kind)).toEqual(["choice", "hub"]);
+    for (const menu of menus) {
+      expect(menu.stamps).toBeDefined();
+      for (const option of menu.options) expect(option.stamps).toBeDefined();
+    }
+    expect(validate(doc), JSON.stringify(validate.errors)).toBe(true);
+    // The closed option shape still refuses an undocumented key.
+    menus[0].options[0].extra = true;
+    expect(validate(doc)).toBe(false);
   });
 });
 
@@ -787,6 +840,25 @@ describe("lute check report schema", () => {
     expect(json.files).toEqual([]);
     expect(json.project_diagnostics.length).toBeGreaterThan(0);
     expect(json.project_diagnostics[0].path.endsWith("lute.project.yaml")).toBe(true);
+    expect(validate(json), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  test("`suppressed` counts and `configured` markers validate (dsl 0.50.0 §6.3-§6.4)", () => {
+    const validate = reportValidator();
+    const dir = `${tmpdir()}/lute-check-levels-${process.pid}-${Math.random().toString(36).slice(2)}`;
+    mkdirSync(`${dir}/scenes`, { recursive: true });
+    writeFileSync(
+      `${dir}/lute.project.yaml`,
+      "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndiagnostics:\n  W-TEXT-GLUE: info\n  W-STAGE-ABSENT: off\n",
+    );
+    writeFileSync(
+      `${dir}/scenes/a.lute`,
+      "---\nkind: scene\nid: a\nenums:\n  action:\n    members: [show, hide]\n    exits: [hide]\n  anchor:\n    members: [left, center, right]\n    default: center\n---\n\n## Shot 1.\n\n::actor{character=\"vesna\" action=\"show\"}\n::actor{character=\"vesna\" action=\"hide\"}\n@vesna: Gone <> now.\n",
+    );
+    const { code, json } = checkJson(["--project", dir]);
+    expect(code).toBe(0);
+    expect(json.files[0].suppressed).toEqual({ "W-STAGE-ABSENT": 1 });
+    expect(json.files[0].diagnostics[0].configured).toBe("lute.project.yaml");
     expect(validate(json), JSON.stringify(validate.errors)).toBe(true);
   });
 

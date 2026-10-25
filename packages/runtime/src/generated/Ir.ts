@@ -1,6 +1,6 @@
 // THIS FILE IS GENERATED — DO NOT EDIT.
 // Generator: packages/runtime/scripts/contract-codegen.ts
-// Source: schemas/lute-ir-0.49.schema.json
+// Source: schemas/lute-ir-0.50.schema.json
 
 import * as Schema from "effect/Schema";
 
@@ -613,7 +613,8 @@ export const choiceOption = Schema.Struct({
   "when": Schema.optionalKey(Schema.suspend(() => celSlot)),
   "target": Schema.suspend(() => position),
   "placeholders": Schema.optionalKey(Schema.Array(Schema.suspend(() => placeholder))),
-  "texts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String))
+  "texts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type choiceOption = typeof choiceOption.Type;
 
@@ -629,7 +630,8 @@ export const hubOption = Schema.Struct({
   "when": Schema.optionalKey(Schema.suspend(() => celSlot)),
   "target": Schema.suspend(() => position),
   "placeholders": Schema.optionalKey(Schema.Array(Schema.suspend(() => placeholder))),
-  "texts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String))
+  "texts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type hubOption = typeof hubOption.Type;
 
@@ -660,9 +662,21 @@ export const rewardEntry = Schema.Struct({
   "outcome": Schema.optionalKey(Schema.Literals([
     "failed"
   ])),
-  "credits": Schema.optionalKey(Schema.String)
+  "credits": Schema.optionalKey(Schema.String),
+  "retracts": Schema.optionalKey(Schema.Array(Schema.suspend(() => factRecord))),
+  "asserts": Schema.optionalKey(Schema.Array(Schema.suspend(() => factRecord))),
+  "accepts": Schema.optionalKey(Schema.Array(Schema.String))
 });
 export type rewardEntry = typeof rewardEntry.Type;
+
+/**
+ * 0.50.0 §5.5: one fact a reward's effects write — the `relation` + `args` shape of an `assert` / `retract` record ("_" a retract wildcard).
+ */
+export const factRecord = Schema.Struct({
+  "relation": Schema.String,
+  "args": Schema.Array(Schema.String)
+});
+export type factRecord = typeof factRecord.Type;
 
 /**
  * One objective inlined in QuestCmd.objectives (dsl 0.2.0 §6.4). Declaration data only; the engine derives completion (all non-optional objectives done ⇒ quest complete).

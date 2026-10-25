@@ -3,7 +3,7 @@
 This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
 compiler — it checks a `.lute` document and lowers it to the execution IR
-described by the current schema (`schemas/lute-ir-0.49.schema.json`). It runs
+described by the current schema (`schemas/lute-ir-0.50.schema.json`). It runs
 no CEL, no Datalog fixpoint, keeps no fact store, and fires no bridge at
 compile time. Everything on the far side of the execution IR is the engine's
 job.
@@ -86,7 +86,7 @@ loads, exactly as it concatenates the command streams.
 
 `lute compile --project` writes that union, plus the document table and the
 project-wide capability vocabulary, as `project.index.json`. Its shape is the
-`projectIndex` definition of `schemas/lute-ir-0.49.schema.json`: the index
+`projectIndex` definition of `schemas/lute-ir-0.50.schema.json`: the index
 `$defs` (`projectIndex`, `indexDocument`, `indexEntry`, `indexBeat`,
 `indexOccasion`, `indexStateDomain`, `indexDef`, `fieldType`) are generated
 from the Rust index types by `lute-contract-schema` and `$ref` the hand-written
@@ -660,6 +660,24 @@ stores it per lineId and locale in the bundle (`schemaVersion: 2`,
 `sourceHashes`). `compile --locale-bundle` reports `W-L10N-STALE` for a merged
 translation whose stored hash differs from the record's current source (dsl
 0.47.0 §3.2); the translation still merges.
+
+## Reward effects in the grant step
+
+A `RewardEntry` may carry `retracts`, `asserts` (both `{ relation, args }` fact
+records) and `accepts` (quest ids) since 0.50, stamped at compile from the
+plugin reward kind's `effects` with `@target` bound to the reward's `target=`.
+Each list is omitted when empty, so a reward of a kind without effects is
+byte-identical to 0.49. They run inside the grant step, per reward and in
+declaration order, after the `grant` record and its `credits` write: first the
+`retracts`, then the `asserts` (through the same assert/retract path as the
+`assert` / `retract` records, including the `E-FACT-EXCLUSIVE` check), then the
+`accepts` (through the `accept` record's path). Objective grants precede quest
+grants, and every grant of a transition precedes its lifecycle handler body.
+An artifact with any non-empty `retracts`, `asserts` or `accepts` lists the
+semantic id `lute.quest.rewardEffects/1` in `requiredSemantics`; an engine that
+ignores the fields would lose facts and quest activations, so the id is
+meaning-changing. See [quest-lifecycle.md](./quest-lifecycle.md) for the order,
+the records and replay.
 
 ## Dispatcher loop
 

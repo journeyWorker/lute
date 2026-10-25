@@ -326,7 +326,7 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 
 ```json
 {
-  "saveVersion": "0.49",
+  "saveVersion": "0.50",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -335,7 +335,7 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 }
 ```
 
-런타임 스냅숏에는 `world.stage`와 필요한 경우 `continuation.stage`가 포함되고, 플레이어는 deterministic input log와 backlog를 추가합니다. 프로필은 `profileVersion`(릴리스 라인, `"0.49"`), project fingerprint, `readLines`, settings을 사용합니다. 슬롯 키(`save:quick`, `save:auto`, `save:1`…)에는 namespace가 없습니다. 각 저장이 project fingerprint를 담고 있어 다른 프로젝트의 저장은 거절되며, 프로필은 `profile:<project>`에 저장됩니다. 게임이 다른 데이터도 저장한다면 플레이어에게 별도(또는 접두사를 붙인) store를 주세요. 다른 프로젝트나 형식 버전이면 `SaveIncompatible`, 손상된 데이터면 `SaveCorrupt`를 반환합니다.
+런타임 스냅숏에는 `world.stage`와 필요한 경우 `continuation.stage`가 포함되고, 플레이어는 deterministic input log와 backlog를 추가합니다. 프로필은 `profileVersion`(릴리스 라인, `"0.50"`), project fingerprint, `readLines`, settings을 사용합니다. 슬롯 키(`save:quick`, `save:auto`, `save:1`…)에는 namespace가 없습니다. 각 저장이 project fingerprint를 담고 있어 다른 프로젝트의 저장은 거절되며, 프로필은 `profile:<project>`에 저장됩니다. 게임이 다른 데이터도 저장한다면 플레이어에게 별도(또는 접두사를 붙인) store를 주세요. 다른 프로젝트나 형식 버전이면 `SaveIncompatible`, 손상된 데이터면 `SaveCorrupt`를 반환합니다.
 
 0.47부터 프로필은 기록된 **lineage**도 담습니다(아래 회차 간 모델 참고). 다른 `profileVersion`의 프로필도 거절되지 않습니다. 읽기 기록과 settings은 유지되고 lineage는 없습니다.
 
@@ -371,5 +371,9 @@ locale은 마운트 옵션이 아니라 설정(`settings.locale`)입니다. 불�
 
 `Presenter.showChoice`는 작성된 prompt와 locale별 option text, runtime
 verdict, timeout, default, once, exit 정보를 담은 `ChoiceView`를 받습니다.
-load와 rollback에서는 director가 `Presenter.restore`를 호출하기 전에 복원된
-stage의 바인딩 파일을 먼저 보장합니다.
+0.50부터는 `<branch>`/`<hub>` 요소에 작성된 플러그인 스탬프(`ChoiceView.stamps`)와
+각 `<choice>`의 스탬프(`options[i].stamps`)도 담으며, 메뉴 주소의 IR 명령에서
+읽습니다. 작성된 스탬프가 없으면 각각 생략됩니다. 레퍼런스 플레이어를 쓰지 않는
+호스트는 같은 `stamps`를 그 IR 레코드에서 읽습니다. load와 rollback에서는
+director가 `Presenter.restore`를 호출하기 전에 복원된 stage의 바인딩 파일을
+먼저 보장합니다.

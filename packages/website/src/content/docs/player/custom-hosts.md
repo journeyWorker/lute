@@ -341,7 +341,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 
 ```json
 {
-  "saveVersion": "0.49",
+  "saveVersion": "0.50",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -350,7 +350,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 }
 ```
 
-The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion` (the release line, `"0.49"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
+The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log and backlog. Profiles use `profileVersion` (the release line, `"0.50"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
 
 Since 0.47 a profile also holds the **lineage** when one was written (see the cross-run model below). A profile of another `profileVersion` is never refused: its read marks and settings are kept, and it has no lineage.
 
@@ -388,5 +388,9 @@ For a complete architecture contract, see [`docs/player/architecture.md`](https:
 
 `Presenter.showChoice` receives a `ChoiceView` with the authored prompt and
 localized option text, plus runtime verdict, timeout, default, once, and exit
-metadata. On load and rollback, the director ensures the restored stage's
-bound files before calling `Presenter.restore`.
+metadata. Since 0.50 it also carries the plugin stamps authored on the
+`<branch>`/`<hub>` element (`ChoiceView.stamps`) and on each `<choice>`
+(`options[i].stamps`), read from the IR command at the menu's address; each is
+absent when none is authored. A host without the reference player reads the
+same `stamps` from that IR record. On load and rollback, the director ensures
+the restored stage's bound files before calling `Presenter.restore`.

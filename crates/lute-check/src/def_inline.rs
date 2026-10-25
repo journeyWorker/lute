@@ -31,6 +31,8 @@ use crate::cel_expand::{expand_cel, DefTable, ExpandError};
 use crate::check::{CheckInput, FoldedEnv};
 use crate::component_import::ComponentSet;
 use crate::decide::{decide_slot, DecideCtx, Decided};
+use crate::directives::AttrSite;
+use lute_manifest::stamps::StampSurface;
 
 pub const E_ATTR_DEF_DYNAMIC: &str = "E-ATTR-DEF-DYNAMIC";
 pub const E_INTERP_DEF: &str = "E-INTERP-DEF";
@@ -189,15 +191,15 @@ pub(crate) fn check_def_inlining(
         cx.nodes(&shot.body);
     }
     for quest in &doc.quests {
-        cx.attrs(&quest.attrs, None);
+        cx.attrs(&quest.attrs, &AttrSite::Untyped);
         cx.nodes(&quest.body);
     }
     for entry in &doc.entries {
-        cx.attrs(&entry.attrs, None);
+        cx.attrs(&entry.attrs, &AttrSite::Untyped);
         cx.nodes(&entry.body);
     }
     for beat in &doc.beats {
-        cx.attrs(&beat.attrs, None);
+        cx.attrs(&beat.attrs, &AttrSite::Untyped);
         cx.nodes(&beat.body);
     }
     cx.diags
@@ -221,9 +223,9 @@ impl Cx<'_> {
                 }
                 Node::Directive(d) if d.tag == "use" => self.use_args(d),
                 Node::Directive(d) if d.is_accept() => {}
-                Node::Directive(d) => self.attrs(&d.attrs, Some(d)),
+                Node::Directive(d) => self.attrs(&d.attrs, &AttrSite::Directive(&d.tag)),
                 Node::Branch(b) => {
-                    self.attrs(&b.attrs, None);
+                    self.attrs(&b.attrs, &AttrSite::Element(StampSurface::Branch));
                     for c in &b.choices {
                         self.choice_attrs(&c.attrs);
                         self.interps(&lute_syntax::scan_label_interps(&c.text, c.span));
@@ -231,7 +233,7 @@ impl Cx<'_> {
                     }
                 }
                 Node::Hub(h) => {
-                    self.attrs(&h.attrs, None);
+                    self.attrs(&h.attrs, &AttrSite::Element(StampSurface::Hub));
                     for c in &h.choices {
                         self.choice_attrs(&c.attrs);
                         self.interps(&lute_syntax::scan_label_interps(&c.text, c.span));
@@ -254,17 +256,17 @@ impl Cx<'_> {
                     for track in &t.tracks {
                         for clip in &track.clips {
                             if let ClipNode::Directive(d) = &clip.node {
-                                self.attrs(&d.attrs, Some(d));
+                                self.attrs(&d.attrs, &AttrSite::Directive(&d.tag));
                             }
                         }
                     }
                 }
                 Node::On(o) => {
-                    self.attrs(&o.attrs, None);
+                    self.attrs(&o.attrs, &AttrSite::Untyped);
                     self.nodes(&o.body);
                 }
                 Node::Objective(o) => {
-                    self.attrs(&o.attrs, None);
+                    self.attrs(&o.attrs, &AttrSite::Untyped);
                     self.nodes(&o.body);
                 }
                 Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}
@@ -273,44 +275,63 @@ impl Cx<'_> {
     }
 
     fn choice_attrs(&mut self, attrs: &[Attr]) {
+        let site = AttrSite::Element(StampSurface::Choice);
         for a in attrs {
             if !choice_attr_owned_elsewhere(&a.key) {
-                self.attr(a, None);
+                self.attr(a, &site);
             }
         }
     }
 
-    fn attrs(&mut self, attrs: &[Attr], dir: Option<&Directive>) {
+    fn attrs(&mut self, attrs: &[Attr], site: &AttrSite<'_>) {
         for a in attrs {
-            self.attr(a, dir);
+            self.attr(a, site);
         }
     }
 
-    /// One `@ref` attr: it must fold; a folded literal on a directive is then
-    /// validated like the author had written it (`E-BAD-ENUM`, `E-ATTR-TYPE`,
-    /// …) — the literal is what the record ships.
-    fn attr(&mut self, a: &Attr, dir: Option<&Directive>) {
+    /// One `@ref` attr: it must fold; a folded literal on a directive or a
+    /// logic element's plugin stamp is then validated like the author had
+    /// written it (`E-BAD-ENUM`, `E-ATTR-TYPE`, …) — the literal is what the
+    /// record ships.
+    fn attr(&mut self, a: &Attr, site: &AttrSite<'_>) {
         let Some(folded) = self.fold(a) else {
-            return;
-        };
-        let Some(dir) = dir else {
             return;
         };
         let input = self.input;
         let snapshot = input.snapshot();
-        // The directive's own attr, a plugin stamp, else an undeclared timing
-        // key's universal type (#193) on a known directive.
-        let decl = snapshot
-            .directive(&dir.tag)
-            .and_then(|d| d.attrs.iter().find(|ad| ad.name == a.key))
-            .or_else(|| snapshot.stamp_attrs.get(&a.key))
-            .map(std::borrow::Cow::Borrowed)
-            .or_else(|| {
-                snapshot.directive(&dir.tag)?;
-                crate::directives::timing_ref_decl(&dir.tag, &a.key).map(std::borrow::Cow::Owned)
-            });
-        if let Some(adecl) = decl {
-            self.check_folded(&format!("::{}", dir.tag), &adecl, a, &folded);
+        match site {
+            // A content line's attrs are judged by `line_attrs`.
+            AttrSite::Untyped | AttrSite::Line => {}
+            AttrSite::Directive(tag) => {
+                // The directive's own attr, a plugin stamp, else an undeclared
+                // timing key's universal type (#193) on a known directive.
+                let decl = snapshot
+                    .directive(tag)
+                    .and_then(|d| d.attrs.iter().find(|ad| ad.name == a.key))
+                    .or_else(|| {
+                        let surface = StampSurface::Directive((*tag).to_string());
+                        snapshot.stamp_attrs.get(&surface, &a.key)
+                    })
+                    .map(std::borrow::Cow::Borrowed)
+                    .or_else(|| {
+                        snapshot.directive(tag)?;
+                        crate::directives::timing_ref_decl(tag, &a.key).map(std::borrow::Cow::Owned)
+                    });
+                if let Some(adecl) = decl {
+                    self.check_folded(&format!("::{tag}"), &adecl, a, &folded);
+                }
+            }
+            // 0.50.0 §3.4: a logic element's own attributes are judged by
+            // `logic_attrs`; a stamp its surface admits is typed here.
+            AttrSite::Element(surface) => {
+                if let Some(adecl) = snapshot.stamp_attrs.get(surface, &a.key) {
+                    let before = self.diags.len();
+                    self.check_folded(&surface.to_string(), adecl, a, &folded);
+                    for d in &mut self.diags[before..] {
+                        d.layer = Layer::Logic;
+                    }
+                }
+            }
         }
     }
 

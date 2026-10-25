@@ -10,6 +10,7 @@ const ALL_IDS: &[&str] = &[
     "lute.timeline/1",
     "lute.quest.lifecycle/1",
     "lute.quest.rewards/1",
+    "lute.quest.rewardEffects/1",
     "lute.time.clock/1",
     "lute.time.cadence/1",
     "lute.time.seasons/1",
@@ -558,4 +559,113 @@ fn copy_tree(src: &Path, dst: &Path) {
             std::fs::copy(from, to).unwrap();
         }
     }
+}
+
+/// A project whose plugin declares reward kinds `BADGE` (with `effects`)
+/// and `COINS` (without), and one quest document granting `kind`.
+fn reward_project(tag: &str, kind: &str) -> (lute_scratch::ScratchDir, PathBuf, Json) {
+    let dir = lute_scratch::ScratchDir::named(tag);
+    write(
+        &dir,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: game\nprofiles:\n  game:\n    plugins:\n      \
+         acme.rewards: true\ndefaults:\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &dir,
+        "plugins/acme.rewards/plugin.yaml",
+        "id: acme.rewards\nversion: 0.1.0\nkind: capability\ndepends:\n  - { id: lute.core, \
+         range: \"^0.0.1\" }\nexports:\n  rewardKinds: rewardkinds/\n",
+    );
+    write(
+        &dir,
+        "plugins/acme.rewards/rewardkinds/r.yaml",
+        "rewardKinds:\n  BADGE: { target: { entity: person, required: true }, effects: { \
+         asserts: [\"met(@target)\"] } }\n  COINS: {}\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "entities:\n  person: { members: [mira] }\nrelations:\n  met: { args: [person], \
+         tier: user }\nstate:\n  run.go: { type: bool, default: false }\n",
+    );
+    let target = if kind == "BADGE" {
+        " target=\"mira\""
+    } else {
+        ""
+    };
+    let source = write(
+        &dir,
+        "q.lute",
+        &format!(
+            "---\nkind: quest\nid: acme.q\n---\n\n<quest id=\"first\" tier=\"run\" \
+             title=\"First\" start=\"true\">\n  <objective id=\"o\" title=\"O\" \
+             done=\"run.go\"/>\n  <reward kind=\"{kind}\"{target}/>\n</quest>\n"
+        ),
+    );
+    let artifact = dir.join("q.json");
+    let out = run(&[
+        "compile".into(),
+        source.display().to_string(),
+        "-o".into(),
+        artifact.display().to_string(),
+    ]);
+    assert!(
+        out.status.success(),
+        "compile failed: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let json: Json = serde_json::from_str(&std::fs::read_to_string(&artifact).unwrap()).unwrap();
+    (dir, artifact, json)
+}
+
+/// 0.50.0 §5.5: `lute.quest.rewardEffects/1` is required only by an
+/// artifact whose rewards carry effects, and an engine matrix without it
+/// refuses that artifact before playback.
+#[test]
+fn reward_effects_require_their_semantic_id_only_when_used() {
+    const EFFECTS: &str = "lute.quest.rewardEffects/1";
+    let (_plain_dir, _, plain) = reward_project("reward-plain", "COINS");
+    assert!(!required_ids(&plain).contains(&EFFECTS), "{plain}");
+    assert!(required_ids(&plain).contains(&"lute.quest.rewards/1"));
+
+    let (_dir, artifact, json) = reward_project("reward-effects", "BADGE");
+    assert!(required_ids(&json).contains(&EFFECTS), "{json}");
+    assert_eq!(
+        json["commands"][0]["rewards"][0]["asserts"],
+        serde_json::json!([{ "relation": "met", "args": ["mira"] }])
+    );
+    let dir = artifact.parent().unwrap();
+    let ir = ir_version(&json);
+    let without: Vec<&str> = ALL_IDS
+        .iter()
+        .copied()
+        .filter(|id| *id != EFFECTS)
+        .collect();
+    let old = matrix_file(dir, "old.yaml", "old-engine", ir, &without, "");
+    let refused = run_str(&[
+        "run",
+        artifact.to_str().unwrap(),
+        "--engine",
+        old.to_str().unwrap(),
+    ]);
+    assert_eq!(refused.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(stderr.contains("E-ENGINE-SEMANTICS"), "{stderr}");
+    assert!(stderr.contains(EFFECTS), "{stderr}");
+    assert!(refused.stdout.is_empty(), "refused playback emits nothing");
+
+    let all = matrix_file(dir, "all.yaml", "new-engine", ir, ALL_IDS, "");
+    let accepted = run_str(&[
+        "run",
+        artifact.to_str().unwrap(),
+        "--engine",
+        all.to_str().unwrap(),
+    ]);
+    assert!(
+        accepted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
 }

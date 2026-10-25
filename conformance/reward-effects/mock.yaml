@@ -1,0 +1,4 @@
+state:
+  run.go: true
+  run.fail: true
+accepts: [helper]

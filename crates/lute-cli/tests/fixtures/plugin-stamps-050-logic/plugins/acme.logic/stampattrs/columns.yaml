@@ -1,0 +1,6 @@
+# 0.50.0 §3.1 (#164): stamps scoped to the logic elements.
+stampAttrs:
+  - { name: cue, type: string, on: [branch, hub, choice] }
+  - { name: menuType, type: { enum: [plain, timed, minigame] }, on: [branch, hub] }
+  - { name: optionKey, type: string, required: true, on: [choice] }
+  - { name: track, type: string }

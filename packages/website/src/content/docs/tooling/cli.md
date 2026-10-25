@@ -28,6 +28,54 @@ Options for one concept are declared once and mean the same on every command tha
 
 `--deny*` promotes diagnostics of the verdict the command exits on: `trace` its check gate (refusal, exit **1**), `expr` the lowering diagnostics, `play` and `calendar` the project compile gate, `test` every check verdict a test consults (each traced document's check and each play's compile gate), so a denied warning fails that test. The one short alias is `-o` for `--output`.
 
+### Project diagnostic levels (since 0.50)
+
+A project can set the level of a checker warning in `lute.project.yaml`:
+
+```yaml
+diagnostics:
+  W-DISPLAY-NAME-DUP: error
+  W-STAGE-ABSENT: { level: off, paths: ["scenes/imported/**"] }
+```
+
+`diagnostics:` is a map from diagnostic code to either a level or `{ level, paths }`; one entry per code.
+
+- **Levels:** `off`, `info`, `warn`, `error`.
+- **`paths`** (optional): project-root-relative globs, with the lint `ignore:` syntax (`*` within a segment, `**` across segments). When `paths` is given the level applies only to diagnostics of documents whose root-relative path matches a glob; elsewhere the code keeps its native severity. A diagnostic without a document path (a manifest diagnostic) matches only an entry without `paths`.
+- **Only `W-*` codes are configurable.** Errors are never demoted: an error is a contract violation. `L-*` lint rules keep their level in `lute.lint.yaml` `rules:`.
+
+A malformed entry is **`E-DIAGNOSTICS-CONFIG`** (error, a manifest diagnostic). It is reported once per manifest by the CLI manifest pass and by the LSP; the entry is dropped, the rest loads, and the manifest is invalid:
+
+| Fault | Message shape |
+| --- | --- |
+| an `E-*` code | `` `E-UNKNOWN-ATTR` is an error: an error is a contract violation and cannot be re-levelled; fix the reported source instead `` |
+| an `L-*` code | `` `L-…` is a lint rule; set its level in `lute.lint.yaml` `rules:` `` |
+| a code the toolchain does not define | `` `W-STAGE-ABSNT` is not a diagnostic code — did you mean `W-STAGE-ABSENT`? `` |
+| a bad level | `` level `silent` is not one of `off`, `info`, `warn`, `error` `` |
+| `paths: []`, a non-string, an absolute path or a `..` segment | `` `paths` takes project-relative globs, e.g. `scenes/imported/**` `` |
+
+**Order of application**, at the one place that serializes and prints diagnostics (`check`, `compile`, `lint`, `trace` and `expr` read the project's `diagnostics:`: a document command each document's own project, a directory command the invoked root's; the simulating commands `test`, `play` and `calendar` apply no project levels and keep the plain `--deny`/`--deny-warnings` gate, so a project `error` level never fails a test):
+
+1. the project level for the (code, path);
+2. `--deny CODE` naming the code promotes it to error, **even when the project set it `off`** (an explicit command line beats the config);
+3. `--deny-warnings` promotes what is still a warning after step 1. An `off` code stays off, and an `info` code stays info.
+
+Levels change **only what is reported and the exit status**. They never change analyses, artifacts, constraint verdicts, the scenario graph, or what a `.play.yaml`/`.test.yaml` expectation observes. A project without `diagnostics:` produces byte-identical output.
+
+**Markers and counts.** A code relevelled to `error` fails the verdict as `--deny` does; in JSON it carries `"severity": "error"` and the additive `"configured": "lute.project.yaml"`, and the human line gets the marker `[project]` beside the existing `[denied]`. A code relevelled to `info` or `warn` carries its new severity and the same `configured` marker. Suppressed (`off`) findings are counted:
+
+- every human summary line that counts diagnostics appends `, N suppressed by lute.project.yaml` **only when N > 0**: `ok: ./scenes/a.lute (0 warning(s), 212 suppressed by lute.project.yaml)`;
+- every JSON report that carries diagnostics (the `0.48.0.check` report per file and for the project, and the compile, lint, trace and expr envelopes) gains `"suppressed": { "<code>": n, … }` **only when non-empty**. It is additive, so report ids are unchanged.
+
+```console
+$ cd docs/examples/plugin-surfaces
+$ lute check ./scenes/imported/street.lute
+lute: note: using project . (nearest lute.project.yaml); pass --project to choose another
+ok: ./scenes/imported/street.lute (0 warning(s), 1 suppressed by lute.project.yaml)
+```
+
+**LSP.** The language server applies the same levels with the document's root-relative path before publishing: an `off` diagnostic is not published, and a relevelled one is published at its new severity.
+
 ## Machine-readable output (0.43)
 
 Text is the default everywhere; JSON is produced only with an explicit `--json`. No output depends on whether a stream is a terminal or on an environment variable, and `--format json` no longer exists. With `--json` a command prints exactly one JSON document on stdout — the report envelope, or the error envelope on a usage, I/O or input failure — and messages that would otherwise go to stdout move to stderr.
@@ -105,7 +153,7 @@ Describes the command line itself as the `schema` report (always JSON; reads no 
 Each `lute` invocation appends one line to `telemetry.jsonl` in Lute's state directory — `$XDG_STATE_HOME/lute` when that is an absolute path, else `$HOME/.local/state/lute`; `%LOCALAPPDATA%\lute` on Windows:
 
 ```json
-{"v":1,"ts":1760400000000,"lute":"0.49.1","command":"check","json":true,"exit":0,"durationMs":12}
+{"v":1,"ts":1760400000000,"lute":"0.50.0","command":"check","json":true,"exit":0,"durationMs":12}
 ```
 
 That is the whole record: the command id (or `null`), whether the run was in JSON mode, the exit code, the wall time and the toolchain version. No argument or flag value, path, file content, output or environment is recorded, and nothing is sent anywhere — the file stays on your machine. It is rotated to `telemetry.jsonl.1` at 1 MiB; recording is best-effort and never changes a command's output or exit code. Turn it off with `LUTE_TELEMETRY=0` (or `false`, `off`, `no`) or `DO_NOT_TRACK=1`; `lute doctor` shows which (`• Telemetry: off (LUTE_TELEMETRY)`, or the file path when it is on). The repository's own tests, scripts and CI run with it off.
@@ -328,7 +376,7 @@ calendar aggregate results also carry `scope`. Parse, type, and declaration
 errors omit evidence.
 
 The impact and constraints sections were introduced in the historical 0.34.0
-contract; the repository's current release is 0.49.1 and the AI edit-loop
+contract; the repository's current release is 0.50.0 and the AI edit-loop
 commands are documented below.
 
 ## compile
@@ -940,7 +988,7 @@ $ lute play --script <FILE> [--project <DIR>] [--providers <DIR>] [--permission-
 Play a story through a WHOLE project as a sequence of raised **occasions** (dsl 0.21.0) — the reference-runtime consumer of [beats and occasions](/tooling/play/). The project (`--project`, else discovered) is compiled once, in memory, with the same gate and declaration union the project compile uses (scene, quest, and lore documents). `--engine <FILE>` loads `lute.engine.yaml`, performs the exact-major.minor IR gate first, then compares the project-index `requiredSemantics` union with `supportedIds`. A missing id refuses with exit **2** and `E-ENGINE-SEMANTICS` before any step, command, condition, asset, or bridge runs; malformed matrices and unsupported IR lines use `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`. Omit it for the built-in `reference` matrix. The required `--script` is a `*.play.yaml` file with a closed key set. Its `steps:` each do one thing — raise an `occasion:` (with `target:`, `pick:`, and a step-local `choose:` that replaces the script's `choose:` key by key for that presentation), start a `newRun:`, write what the engine owns with `engine:` (`state:` literals or `{ add: <n> }`, `facts:`, `retract:`), fire a world `event:`, move a declared clock with `advance: slot | day | <n>` (dsl 0.24.0: writes the clock's paths, settles the quests, raises `dayEnd` / `dayStart` at each midnight it crosses and the `slot` occasion once where it stops, per the clock's `raise:`; it may carry the same moment's `engine:` writes, which land where the clock arrives — after any `dayEnd` / `dayStart` on the way, before the final settle and raise), or end the playthrough with `end: true` — and any step may carry `label:`, `repeat: <n>`, its own `bridges:` answers, and `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`; `- include: <file>` splices another file's steps in place. Beside `steps:`, the script takes the `lute trace --mock` grammars for `state:`, `facts:`, `choose:` and `bridges:`, a save to start from (`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, and a top-level `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }` judging the end of the play (dsl 0.22.0). Each occasion step lists the occasion's candidate beats with their verdicts, presents the winner (or the step's `pick` on a `select: all` occasion; `pick: none`, or no `pick` when nothing is eligible, presents nothing) through `lute run`'s reference evaluator, and advances every quest lifecycle, so later `when` conditions and `after: completed(…)` see real progress. `--json` emits the same transcript as one object.
 
 Since dsl 0.26.0: `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }` moves the clock to the next such position (forward only, never zero steps), and a step `expect:` takes `clock: { weekday, slot, day }` (since 0.28, also `ended`); `engine: { accept: [quest ids] }` accepts an accept-driven quest mid-play (`quest <id> accepted (engine)`); an entry may be named `<document id>.<entry id>` in `pick:`, `entriesRead:` and the selection expectations; a beat targeting `kind:<kind>` answers every member of the kind; a guarded directive that did not run prints `skip ::give{item="potion"} — when: false`; a bridge answer is typed by its result slot or the capability's `result:`, and an untyped one is refused (exit **2**); and a project whose documents declare one state path with two types is refused (exit **1**). The project loads once per play — on Monster League a play load fell from about 12 s to about 1.5 s. See [Playing a story](/tooling/play/).
-`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.49.1"`. It cannot be combined with `--json`, `--ir`, `--derivation`, or `--conditions-output`.
+`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.50.0"`. It cannot be combined with `--json`, `--ir`, `--derivation`, or `--conditions-output`.
 
 `--no-derive` (or the script's `derive: false`; the flag wins) stops applying the project's Datalog rules, so an unmocked derived atom is unknown and halts the walk incomplete. `--derivation <ATOM>` (repeatable) prints, after the play, the derivation tree of a ground atom — the rule used and each premise's own support (seed fact, asserted, or derived in turn), negated premises shown `(absent)` — or, when it does not hold, every rule that could conclude it with its failing premises; `--json` carries the same tree under `explain`.
 

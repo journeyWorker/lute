@@ -1,0 +1,14 @@
+---
+kind: scene
+id: dock
+title: Dock
+on: visit
+once: false
+---
+
+## Dock
+
+@narrator{code="0010"}: The tide is out.
+@narrator{code="0020" kind="note" position="001-0100"}: Gulls circle the mast.
+::bg{assetId="dock" kind="note" position="001-0300"}
+::set{run.over = true}

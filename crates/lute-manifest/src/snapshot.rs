@@ -11,7 +11,7 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 
 use crate::permissions::Permissions;
 use crate::schema::{
-    AssetKindDecl, AttrDecl, BridgeCapability, CastMember, DefDecl, DirectiveDecl, EventDecl,
+    AssetKindDecl, BridgeCapability, CastMember, DefDecl, DirectiveDecl, EventDecl, HostTokenDecl,
     OccasionDecl, ProviderDecl, RewardKindDecl, StateShape, StateTemplate,
 };
 use crate::types::Literal;
@@ -51,15 +51,17 @@ pub struct CapabilitySnapshot {
     /// part of the resolved capability surface, so NOT folded into the version.
     pub inactive: BTreeMap<String, String>,
     pub events: BTreeMap<String, EventDecl>,
-    /// Plugin-declared CROSS-CUTTING attrs (plugin §14.1 `stampAttrs:`),
-    /// folded from every active plugin's `stampattrs` export. Admissible on
-    /// EVERY directive and content line — the checker resolves an attr key
-    /// against the record's own decls FIRST and falls back here — and lowered
-    /// into the IR record's nested `stamps` object (`Stamp.stamps`, 0.49.0
-    /// §3.1), never its own fields. A name colliding with a reserved stamp
-    /// key is rejected at assembly (`E-PLUGIN-RESERVED-STAMP-ATTR`), so a
-    /// plugin stamp never reads as the core stamp.
-    pub stamp_attrs: BTreeMap<String, AttrDecl>,
+    /// Plugin-declared stamp attributes (plugin §14.1 `stampAttrs:`, 0.50.0
+    /// §3), folded from every active plugin's `stampattrs` export and
+    /// indexed by surface. A cross-cutting entry (no `on:`) is admissible on
+    /// every directive with a stamp carrier and on every content line; a
+    /// scoped entry only on the surfaces its `on:` names. Each surface's own
+    /// attributes win; a stamp lowers into the IR record's nested `stamps`
+    /// object (`Stamp.stamps`, 0.49.0 §3.1), never its own fields. A name
+    /// colliding with a reserved stamp key is rejected at assembly
+    /// (`E-PLUGIN-RESERVED-STAMP-ATTR`), so a plugin stamp never reads as
+    /// the core stamp.
+    pub stamp_attrs: crate::stamps::StampAttrs,
     /// Plugin-declared reward kinds (dsl 0.16.0 §4 `rewardKinds:`) folded
     /// from every active plugin's `rewardKinds` export. Consumed by the
     /// checker's `E-REWARD-KIND` closure; the empty map means "shape-only"
@@ -80,6 +82,13 @@ pub struct CapabilitySnapshot {
     /// Empty = speakers stay shape-only; populated, a speaker outside it is
     /// `E-CAST-UNKNOWN`. GUARDED in [`capability_version`] like `occasions`.
     pub cast: BTreeMap<String, CastMember>,
+    /// Host interpolation tokens (0.50.0 §4.1): `lute.core`'s `userName` and
+    /// every active plugin's `hostTokens` export, by name. A bare
+    /// `{{name}}` interpolation is checked against it. Only the tokens a
+    /// plugin other than `lute.core` declares fold into
+    /// [`capability_version`], so a project without plugin tokens keeps its
+    /// stamp.
+    pub host_tokens: BTreeMap<String, HostTokenDecl>,
     pub permissions: Permissions,
     /// Project policy consumed by the checker, not part of the capability
     /// surface. It is deliberately excluded from [`capability_version`] and
@@ -357,18 +366,14 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
         }
     }
     // GUARDED for the same reason as `events` above: a snapshot with no
-    // plugin-declared cross-cutting vocabulary hashes byte-identically to a
-    // pre-`stampAttrs` snapshot. A CHANGED cross-cutting vocabulary IS a
-    // changed capability surface (plugin §14.1), so once populated it folds
-    // in unconditionally.
+    // plugin-declared stamp vocabulary hashes byte-identically to a
+    // pre-`stampAttrs` snapshot. A CHANGED stamp vocabulary IS a changed
+    // capability surface (plugin §14.1), so once populated it folds in
+    // unconditionally; an entry's `on:` folds in only when written
+    // (0.50.0 §3.3), so a manifest without `on:` hashes as in 0.49.
     if !snap.stamp_attrs.is_empty() {
         h.update(b"\nstampAttrs\n");
-        for (name, a) in &snap.stamp_attrs {
-            h.update(name.as_bytes());
-            h.update(b"=");
-            h.update(format!("{a:?}").as_bytes());
-            h.update(b";");
-        }
+        snap.stamp_attrs.fold_into(&mut h);
     }
     // GUARDED for the same reason as `events`/`stampAttrs`/`domains` above:
     // a snapshot with no declared reward vocabulary hashes byte-identically
@@ -405,6 +410,24 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
             h.update(id.as_bytes());
             h.update(b"=");
             h.update(format!("{c:?}").as_bytes());
+            h.update(b";");
+        }
+    }
+    // GUARDED, and over the non-core tokens only (0.50.0 §4.1): every
+    // snapshot holds `lute.core`'s `userName`, so the section appears only
+    // when a plugin declares a token, and a project without one keeps the
+    // pre-0.50 stamp.
+    let plugin_tokens: Vec<(&String, &HostTokenDecl)> = snap
+        .host_tokens
+        .iter()
+        .filter(|(_, t)| !t.is_core())
+        .collect();
+    if !plugin_tokens.is_empty() {
+        h.update(b"\nhostTokens\n");
+        for (name, t) in plugin_tokens {
+            h.update(name.as_bytes());
+            h.update(b"=");
+            h.update(format!("{t:?}").as_bytes());
             h.update(b";");
         }
     }
@@ -971,5 +994,34 @@ mod tests {
         snapshot.restrict_permissions(&second);
         assert!(snapshot.permissions.allows_directive("bg"));
         assert!(!snapshot.permissions.allows_directive("music"));
+    }
+
+    /// 0.50.0 §4.1: only tokens a plugin other than `lute.core` declares
+    /// fold into the version — a snapshot holding only `userName` hashes as
+    /// one with no token, and a plugin token (or a change of its type)
+    /// changes the stamp.
+    #[test]
+    fn only_plugin_host_tokens_fold_into_the_version() {
+        use crate::schema::{HostTokenType, CORE_PLUGIN};
+        let token = |ty: HostTokenType, plugin: &str| HostTokenDecl {
+            ty,
+            plugin: plugin.to_string(),
+        };
+        let bare = CapabilitySnapshot::builder().build();
+        let mut core = bare.clone();
+        core.host_tokens
+            .insert("userName".into(), token(HostTokenType::Str, CORE_PLUGIN));
+        assert_eq!(capability_version(&core), bare.version);
+
+        let mut plugin = core.clone();
+        plugin
+            .host_tokens
+            .insert("rank".into(), token(HostTokenType::Int, "acme.stage"));
+        let with_rank = capability_version(&plugin);
+        assert_ne!(with_rank, bare.version);
+        plugin
+            .host_tokens
+            .insert("rank".into(), token(HostTokenType::Str, "acme.stage"));
+        assert_ne!(capability_version(&plugin), with_rank);
     }
 }

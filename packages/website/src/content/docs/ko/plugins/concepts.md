@@ -15,7 +15,7 @@ Lute에는 **고정된 문법**과 **전체적이며 튜링 완전하지 않은(
 - **상태 shape** — 타입이 지정된 재사용 레코드와 타입이 지정된 슬롯을 여는 구조화된 경로 템플릿입니다.
 - **Provider** — 라이브 네트워크 호출이 아니라 고정된 카탈로그에 대해 해석되는, 스냅숏 우선 id 레지스트리(캐릭터 id, 아티팩트 id, 미니게임 id)입니다.
 - **브리지 시그니처** — 타입이 지정된 런타임 호출입니다. 디렉티브가 스토리 상태에 되돌려 쓸 수 있는 값은 선언된 결과 필드뿐입니다([브리지](/ko/plugins/bridge/) 참고).
-- **Enum, def, 프런트매터 키, 아티팩트 종류, 월드 이벤트, 횡단 속성** — 닫힌 값 집합, 공유 타입 지정 CEL `@refs`, 플러그인이 소유한 `---` 메타 키, 구조화된 아티팩트 id 템플릿, `<on event>` 트리거, 모든 디렉티브와 콘텐츠 줄에 허용되는 [`stampAttrs`](/ko/plugins/manifests/)입니다.
+- **Enum, def, 프런트매터 키, 아티팩트 종류, 월드 이벤트, 호스트 토큰, 스탬프 속성** — 닫힌 값 집합, 공유 타입 지정 CEL `@refs`, 플러그인이 소유한 `---` 메타 키, 구조화된 아티팩트 id 템플릿, `<on event>` 트리거, 엔진이 `{{…}}` 텍스트에 치환해 넣는 이름, 그리고 [`stampAttrs`](/ko/plugins/manifests/)입니다. 스탬프는 **횡단**(`on:` 없음: 스탬프 캐리어가 있는 모든 디렉티브와 모든 콘텐츠 줄에서 허용)이거나 **한정**(`on:`이 적용 표면을 지정: 콘텐츠 줄, 특정 디렉티브, `<branch>`, `<hub>`, `<choice>`; 0.50부터)입니다.
 - **진단** — 속성별 메시지, 지원 중단(deprecation), 별칭, fix-it입니다.
 
 ## 플러그인이 추가해서는 안 되는 것
@@ -28,7 +28,7 @@ Lute에는 **고정된 문법**과 **전체적이며 튜링 완전하지 않은(
 
 ## 선언은 신뢰되는 것이 아니라 검사됩니다
 
-매니페스트에 표면을 선언했다고 해서 도구체인이 이를 믿게 되는 것은 아닙니다. 작성자가 플러그인 소유 표면에 도달하기 전에 모두 검증됩니다: 활성화 시 [옵션 값](/ko/plugins/profiles/)(`E-PLUGIN-OPTION-UNKNOWN`, `E-PLUGIN-OPTION-TYPE`), [코어 스탬프에 대한 속성 이름](/ko/plugins/manifests/)(`E-PLUGIN-RESERVED-STAMP-ATTR`), [대상 레코드의 실제 필드 테이블에 대한 선언적 낮춤](/ko/plugins/manifests/)(`E-LOWER-RECORD-UNKNOWN`, `E-LOWER-RECORD-FIELD`)입니다. 이 검사는 모두 로드, 조립 또는 활성화 단계에서 실패하므로, 잘못된 매니페스트가 작성자를 오도하기 전에 막습니다.
+매니페스트에 표면을 선언했다고 해서 도구체인이 이를 믿게 되는 것은 아닙니다. 작성자가 플러그인 소유 표면에 도달하기 전에 모두 검증됩니다: 활성화 시 [옵션 값](/ko/plugins/profiles/)(`E-PLUGIN-OPTION-UNKNOWN`, `E-PLUGIN-OPTION-TYPE`), [코어 스탬프에 대한 속성 이름](/ko/plugins/manifests/)(`E-PLUGIN-RESERVED-STAMP-ATTR`), [스탬프의 `on:`이 이름으로 지정한 표면](/ko/plugins/manifests/#표면에-스탬프-한정하기-on)(`E-PLUGIN-STAMP-SURFACE`), [대상 레코드의 실제 필드 테이블에 대한 선언적 낮춤](/ko/plugins/manifests/)(`E-LOWER-RECORD-UNKNOWN`, `E-LOWER-RECORD-FIELD`)입니다. 이 검사는 모두 로드, 조립 또는 활성화 단계에서 실패하므로, 잘못된 매니페스트가 작성자를 오도하기 전에 막습니다.
 
 플러그인 소유 **프런트매터 키**도 마찬가지입니다. `frontmatter/*.yaml` export는 `{ key, schema }` 쌍을 선언하고, 체커는 `E-META-UNKNOWN-KEY`를 넘겨 이 키를 허용하는 동시에 선언된 `schema`에 따라 값을 검증합니다. 위반은 키 자체의 범위에서 **`E-FRONTMATTER-SCHEMA`**로 보고됩니다:
 

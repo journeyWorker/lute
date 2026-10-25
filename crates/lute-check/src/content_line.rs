@@ -10,31 +10,15 @@
 use std::collections::BTreeMap;
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::core::{LINE_ATTRS, LINE_GUARD_ATTR};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
+use lute_manifest::stamps::StampSurface;
 use lute_syntax::ast::{Attr, AttrValue, Line};
 
-use crate::directives::{check_attr_value, check_domain_member, universal_timing_decl};
-
-/// Known content-line attribute keys (dsl 0.2.2 §7.1, §D7) — the keys a
-/// content line OWNS. `lute-compile`'s `lower_line` reads exactly these
-/// (`get(...)`/`attr_bool(...)`) and consumes this slice directly, so the two
-/// crates cannot drift: a key here is a record field (`wait`: the record's
-/// `timing.wait`, 0.49.0 §4.2), a key NOT here may be a plugin-declared
-/// cross-cutting `stampAttrs` entry, which lowers into the record's stamp
-/// instead (plugin §14.1). `duration`/`delay` are not line keys.
-pub const KNOWN_ATTRS: &[&str] = &[
-    "code",
-    "emotion",
-    "variant",
-    "action",
-    "dialogMotion",
-    "mono",
-    "os",
-    "vo",
-    "as",
-    "wait",
-];
+use crate::directives::{
+    check_attr_value, check_domain_member, scoped_elsewhere_message, universal_timing_decl,
+};
 
 /// The declared type of a content-line attribute whose value is typed by
 /// [`check_attr_value`] — `wait` (bool, 0.49.0 §4.2). A `@ref` value is
@@ -123,17 +107,17 @@ pub fn check_content_line_attrs(
             ));
             continue;
         }
-        if !KNOWN_ATTRS.contains(&attr.key.as_str()) {
-            // plugin §14.1: a plugin-declared CROSS-CUTTING `stampAttrs` entry
-            // is admissible on a content line too — the driving case is an
-            // engine that carries the same metadata on EVERY record, dialogue
-            // included. Resolution order mirrors the directive surface: the
-            // built-in content-line set above wins, then `stampAttrs`, then
-            // `E-UNKNOWN-ATTR`. Typing runs through the SAME
-            // `check_attr_value` a directive attr uses; like `emotion`/`action`
-            // below, its `Layer::Staging` output is re-layered to
-            // `Layer::Content` (dsl 0.1.0 §7.1).
-            if let Some(sdecl) = snapshot.stamp_attrs.get(&attr.key) {
+        if !LINE_ATTRS.contains(&attr.key.as_str()) {
+            // plugin §14.1: a plugin stamp admissible on a content line — a
+            // cross-cutting one, or one whose `on:` names `line` (0.50.0
+            // §3.4). The driving case is an engine that carries the same
+            // metadata on EVERY record, dialogue included. Resolution order
+            // mirrors the directive surface: the built-in content-line set
+            // ([`LINE_ATTRS`]) wins, then the stamps, then `E-UNKNOWN-ATTR`.
+            // Typing runs through the SAME `check_attr_value` a directive
+            // attr uses; like `emotion`/`action` below, its `Layer::Staging`
+            // output is re-layered to `Layer::Content` (dsl 0.1.0 §7.1).
+            if let Some(sdecl) = snapshot.stamp_attrs.get(&StampSurface::Line, &attr.key) {
                 let mut scratch = Vec::new();
                 check_attr_value(
                     &owner,
@@ -150,15 +134,27 @@ pub fn check_content_line_attrs(
                 }
                 continue;
             }
+            let elsewhere = snapshot
+                .stamp_attrs
+                .scoped_elsewhere(&StampSurface::Line, &attr.key);
+            if !elsewhere.is_empty() {
+                diags.push(err(
+                    E_UNKNOWN_ATTR,
+                    scoped_elsewhere_message("a content line", &attr.key, &elsewhere),
+                    attr.span,
+                ));
+                continue;
+            }
             // `when=` is the line's guard: the parser takes it off the
             // attribute list, so it is named here with the keys a line owns.
             // `test=` is the `<when>` arm's guard, the one a line most often
             // borrows.
-            let known = KNOWN_ATTRS
-                .iter()
-                .copied()
-                .chain(["when"])
-                .chain(snapshot.stamp_attrs.keys().map(String::as_str));
+            let known = LINE_ATTRS.iter().copied().chain([LINE_GUARD_ATTR]).chain(
+                snapshot
+                    .stamp_attrs
+                    .for_surface(&StampSurface::Line)
+                    .map(|s| s.decl.name.as_str()),
+            );
             let hint = if attr.key == "test" {
                 " — a line is guarded with `when=` (`test=` guards a `<when>` arm)".to_string()
             } else {
@@ -169,7 +165,7 @@ pub fn check_content_line_attrs(
                 format!(
                     "unknown content-line attribute `{}`{hint}; a line takes `when`, {}",
                     attr.key,
-                    KNOWN_ATTRS
+                    LINE_ATTRS
                         .iter()
                         .map(|a| format!("`{a}`"))
                         .collect::<Vec<_>>()
@@ -307,6 +303,31 @@ pub fn check_content_line_attrs(
         }
     }
     check_inline_modifiers(&line.inline, domains, diags);
+    check_required_stamps(line, snapshot, diags);
+}
+
+/// 0.50.0 §3.4: every stamp declared `required` on content lines (only a
+/// scoped one can be, §3.2) that `line` does not author is `E-MISSING-ATTR`
+/// at the line. A stamp is never injected, so a declared `default:` does not
+/// count.
+fn check_required_stamps(line: &Line, snapshot: &CapabilitySnapshot, diags: &mut Vec<Diagnostic>) {
+    for sdecl in snapshot
+        .stamp_attrs
+        .for_surface(&StampSurface::Line)
+        .filter(|s| s.decl.required)
+    {
+        if !line.attrs.iter().any(|a| a.key == sdecl.decl.name) {
+            diags.push(err(
+                "E-MISSING-ATTR",
+                format!(
+                    "this content line requires attribute `{}` (a stamp of `{}` for content \
+                     lines)",
+                    sdecl.decl.name, sdecl.plugin
+                ),
+                line.span,
+            ));
+        }
+    }
 }
 
 /// The project domain whose members name the inline text-style spans (dsl

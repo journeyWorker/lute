@@ -175,6 +175,18 @@ pub fn fact_producers(
                 });
             }
         }
+        // 0.50.0 §5.4: a quest's reward effects produce in its unit.
+        for quest in &doc.quests {
+            for grant in crate::reward_effects::quest_grants(quest, item.reward_kinds) {
+                if let Some((p, true)) = grant.fact() {
+                    out.0.entry(p.relation.clone()).or_default().push((
+                        path.to_path_buf(),
+                        quest.span.byte_start,
+                        pattern_args(p),
+                    ));
+                }
+            }
+        }
     }
     out
 }
@@ -251,6 +263,30 @@ pub(crate) fn fact_writes(
                     _ => {}
                 }
             });
+        }
+        // 0.50.0 §5.4: each reward effect, at its reward.
+        for quest in &doc.quests {
+            for grant in crate::reward_effects::quest_grants(quest, item.reward_kinds) {
+                let Some((p, up)) = grant.fact() else {
+                    continue;
+                };
+                if p.relation.is_empty() {
+                    continue;
+                }
+                let verb = if up { "asserts" } else { "retracts" };
+                out.push(FactWrite {
+                    rel: p.relation.clone(),
+                    args: pattern_args(p),
+                    up,
+                    text: format!(
+                        "`<reward kind=\"{}\">` (it {verb} `{}`)",
+                        grant.kind(),
+                        crate::directive_facts::pattern_text(p)
+                    ),
+                    path: path.to_path_buf(),
+                    span: grant.reward.kind_span,
+                });
+            }
         }
     }
     out

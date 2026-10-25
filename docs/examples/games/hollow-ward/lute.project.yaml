@@ -8,7 +8,7 @@ identity:
   requireStable: true
 defaults:
   pov: nell
-  luteVersion: "0.49.1"
+  luteVersion: "0.50.0"
   uses:
     - schema/world.schema.yaml
     - schema/vocabulary.schema.yaml

@@ -1,0 +1,5 @@
+pluginsDir: plugins/
+defaultProfile: game
+profiles:
+  game:
+    plugins: { acme.rewards: true }

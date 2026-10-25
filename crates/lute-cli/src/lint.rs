@@ -18,12 +18,14 @@
 //! usage.
 
 use crate::envelope::{self, CliError};
-use std::collections::{BTreeMap, BTreeSet};
+use crate::output::{count_reported, suppressed_tail, Reported};
+use crate::SeverityPolicy;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_core_span::{Diagnostic, Severity, Span, TextIndex};
-use lute_lint::{lint, parse_config, LintConfig, LintDocInput, LintOutcome, LintScope};
+use lute_lint::{lint, parse_config, LintConfig, LintDocInput, LintScope};
 use lute_load::{
     build_input, find_lute_files, nearest_manifest_dir, project_root_for, read_document, BuiltInput,
 };
@@ -61,32 +63,6 @@ fn is_lint_deniable(code: &str) -> bool {
             .chars()
             .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-'),
         _ => false,
-    }
-}
-
-/// Lint-scoped promotion policy — a private mirror of [`crate::DenyPolicy`]
-/// with the same semantics (spec §5) over the lint code universe. Kept
-/// separate so `lute check`'s registry-backed `--deny` is not perturbed by
-/// dynamic `L-*` ids.
-#[derive(Default, Clone)]
-pub struct LintDenyPolicy {
-    codes: BTreeSet<String>,
-    warnings: bool,
-}
-
-impl LintDenyPolicy {
-    pub fn new(codes: &[String], warnings: bool) -> Self {
-        Self {
-            codes: codes.iter().cloned().collect(),
-            warnings,
-        }
-    }
-
-    /// Same semantics as `check`'s: promote iff not already an error AND
-    /// the code is named OR `--deny-warnings` is on and severity is Warning.
-    pub fn denied(&self, d: &Diagnostic) -> bool {
-        d.severity != Severity::Error
-            && (self.codes.contains(&d.code) || (self.warnings && d.severity == Severity::Warning))
     }
 }
 
@@ -259,14 +235,33 @@ fn project_for_root(
         .map(Some)
 }
 
+/// One diagnostic `lute lint` reports.
+struct Finding {
+    /// The path it prints: relative to its document's project root (the
+    /// paths `lute.lint.yaml` `ignore:` globs match), or a config file's.
+    shown: PathBuf,
+    /// The file itself, spelled from the working directory (or absolute):
+    /// what the invoked project's `diagnostics:` `paths` globs match, whatever
+    /// nested root `shown` is relative to.
+    file: PathBuf,
+    diagnostic: Diagnostic,
+}
+
+/// Every diagnostic of one `lute lint` run, in report order.
+#[derive(Default)]
+struct Findings {
+    diagnostics: Vec<Finding>,
+    config_diagnostics: Vec<Finding>,
+}
+
 /// once per root. Returns `Err(exit 2)` on any I/O / malformed-YAML failure.
 fn lint_target(
     path: &Path,
     floor: Option<&Path>,
     providers_dir: Option<&Path>,
     explicit_config: Option<&Path>,
-) -> Result<LintOutcome, ExitCode> {
-    let mut aggregated = LintOutcome::default();
+) -> Result<Findings, ExitCode> {
+    let mut aggregated = Findings::default();
 
     // Two shapes: a single .lute file or a directory tree.
     let meta = match std::fs::metadata(path) {
@@ -387,35 +382,63 @@ fn lint_target(
             outcome.config_diagnostics.push((anchor.clone(), d));
         }
 
-        // dsl 0.26.0 §2.8: `W-DISPLAY-NAME-DUP` over the root's documents,
-        // each against the cast its own profile and imports declare.
-        if let Some(project) = &project {
-            let builts: Vec<_> = builts.iter().flatten().collect();
-            outcome.diagnostics.extend(display_name_dups(
-                &root,
-                &project.plugins_dir,
-                &builts,
-                &inputs,
-            ));
-        }
-
-        aggregated.diagnostics.extend(outcome.diagnostics);
+        // Each document's printed (root-relative) path -> its file. The
+        // engine anchors a finding at a document or at the config file it
+        // was handed (already a file path).
+        let file_of: BTreeMap<&Path, &Path> = inputs
+            .iter()
+            .map(|input| input.path.as_path())
+            .zip(files.iter().map(PathBuf::as_path))
+            .collect();
+        let finding = |(shown, diagnostic): (PathBuf, Diagnostic), file: PathBuf| Finding {
+            shown,
+            file,
+            diagnostic,
+        };
+        let resolved = |(shown, d): (PathBuf, Diagnostic)| {
+            let file = file_of
+                .get(shown.as_path())
+                .map_or_else(|| shown.clone(), |f| f.to_path_buf());
+            finding((shown, d), file)
+        };
+        aggregated
+            .diagnostics
+            .extend(outcome.diagnostics.into_iter().map(resolved));
         aggregated
             .config_diagnostics
-            .extend(outcome.config_diagnostics);
+            .extend(outcome.config_diagnostics.into_iter().map(resolved));
+
+        // dsl 0.26.0 §2.8: `W-DISPLAY-NAME-DUP` over the root's documents,
+        // each against the cast its own profile and imports declare. A cast
+        // home's printed path is `root`-relative ([`display_name_dups`]).
+        if let Some(project) = &project {
+            let builts: Vec<_> = builts.iter().flatten().collect();
+            let dups = display_name_dups(&root, &project.plugins_dir, &builts, &inputs);
+            aggregated
+                .diagnostics
+                .extend(dups.into_iter().map(|(shown, d)| {
+                    let file = file_of
+                        .get(shown.as_path())
+                        .map_or_else(|| root.join(&shown), |f| f.to_path_buf());
+                    finding((shown, d), file)
+                }));
+        }
     }
 
     // Deterministic order across roots.
-    aggregated.diagnostics.sort_by(|(pa, da), (pb, db)| {
-        pa.cmp(pb)
-            .then_with(|| da.span.byte_start.cmp(&db.span.byte_start))
-            .then_with(|| da.code.cmp(&db.code))
-    });
-    aggregated.config_diagnostics.sort_by(|(pa, da), (pb, db)| {
-        pa.cmp(pb)
-            .then_with(|| da.span.byte_start.cmp(&db.span.byte_start))
-            .then_with(|| da.code.cmp(&db.code))
-    });
+    let order = |a: &Finding, b: &Finding| {
+        a.shown
+            .cmp(&b.shown)
+            .then_with(|| {
+                a.diagnostic
+                    .span
+                    .byte_start
+                    .cmp(&b.diagnostic.span.byte_start)
+            })
+            .then_with(|| a.diagnostic.code.cmp(&b.diagnostic.code))
+    };
+    aggregated.diagnostics.sort_by(order);
+    aggregated.config_diagnostics.sort_by(order);
     Ok(aggregated)
 }
 
@@ -493,7 +516,12 @@ fn display_name_dups(
         .iter()
         .zip(inputs)
         .map(|(built, input)| {
-            lute_check::ProjectDoc::new(input.path.as_path(), &input.doc, &built.meta)
+            lute_check::ProjectDoc::new(
+                input.path.as_path(),
+                &input.doc,
+                &built.meta,
+                &built.input.snapshot().reward_kinds,
+            )
         })
         .collect();
     let casts: Vec<_> = per_doc.iter().map(|(c, _, _)| c).collect();
@@ -554,25 +582,21 @@ fn severity_str(s: Severity) -> &'static str {
     }
 }
 
-fn diag_to_json(path: &Path, d: &Diagnostic, denied: bool) -> serde_json::Value {
+/// One diagnostic's JSON under the policy: `path`, then the reported
+/// severity and marker (`--deny`: `denied`; `lute.project.yaml`:
+/// `configured`).
+fn diag_to_json(path: &Path, d: &Diagnostic, reported: Reported) -> serde_json::Value {
     let mut v = serde_json::to_value(d).unwrap_or_else(|_| serde_json::json!({}));
     if let serde_json::Value::Object(map) = &mut v {
         map.insert("path".into(), path.display().to_string().into());
-        if denied {
-            map.insert("severity".into(), serde_json::json!("error"));
-            map.insert("denied".into(), serde_json::json!(true));
-        }
     }
+    crate::output::apply_reported_json(d, reported, &mut v);
     v
 }
 
-fn print_human_line(path: &Path, d: &Diagnostic, denied: bool) {
-    let marker = if denied { " [denied]" } else { "" };
-    let severity = if denied {
-        "error"
-    } else {
-        severity_str(d.severity)
-    };
+fn print_human_line(path: &Path, d: &Diagnostic, reported: Reported) {
+    let marker = crate::output::marker_str(reported.marker);
+    let severity = severity_str(reported.severity);
     if d.span.line == 0 && d.span.column == 0 {
         // A config-file diagnostic anchored at the file head via a zero
         // span still prints with a real 1:1 position (config-file parse
@@ -621,8 +645,14 @@ pub fn run_lint(opts: &LintOptions<'_>) -> ExitCode {
         deny_warnings,
         config,
     } = *opts;
-    let policy = LintDenyPolicy::new(deny, deny_warnings);
     let path = path.or(project).unwrap_or_else(|| Path::new("."));
+    // `--deny`/`--deny-warnings` plus the project's `diagnostics:` levels
+    // (0.50.0 §6): lint reports the checker's `W-DISPLAY-NAME-DUP`, which a
+    // project may re-level; `L-*` findings keep the lint config's levels.
+    let root = project
+        .map(Path::to_path_buf)
+        .or_else(|| nearest_manifest_dir(path));
+    let policy = SeverityPolicy::new(deny, deny_warnings).for_project(root.as_deref());
     let outcome = match lint_target(path, project, providers, config) {
         Ok(v) => v,
         Err(code) => return code,
@@ -631,29 +661,38 @@ pub fn run_lint(opts: &LintOptions<'_>) -> ExitCode {
     // Verdict: an Error diagnostic (native or promoted) — in either bucket
     // — fails the run. Config diagnostics (`E-LINT-CONFIG`) are already
     // Error severity, so they gate exit 1 naturally.
-    let any_error = |diags: &[(PathBuf, Diagnostic)]| -> bool {
-        diags
-            .iter()
-            .any(|(_, d)| d.severity == Severity::Error || policy.denied(d))
+    let any_error = |findings: &[Finding]| -> bool {
+        findings.iter().any(|f| {
+            f.diagnostic.severity == Severity::Error || policy.promoted(&f.diagnostic, &f.file)
+        })
     };
     let ok = !any_error(&outcome.diagnostics) && !any_error(&outcome.config_diagnostics);
-
-    if json {
-        let diagnostics: Vec<serde_json::Value> = outcome
+    let all = || {
+        outcome
             .diagnostics
             .iter()
-            .map(|(p, d)| diag_to_json(p, d, policy.denied(d)))
-            .collect();
-        let config_diagnostics: Vec<serde_json::Value> = outcome
-            .config_diagnostics
-            .iter()
-            .map(|(p, d)| diag_to_json(p, d, policy.denied(d)))
-            .collect();
-        let payload = serde_json::json!({
+            .chain(outcome.config_diagnostics.iter())
+    };
+    let at_file = || all().map(|f| (f.file.as_path(), &f.diagnostic));
+    let suppressed = policy.suppressed(at_file());
+
+    if json {
+        let reported = |findings: &[Finding]| -> Vec<serde_json::Value> {
+            findings
+                .iter()
+                .filter_map(|f| {
+                    policy
+                        .report(&f.diagnostic, &f.file)
+                        .map(|r| diag_to_json(&f.shown, &f.diagnostic, r))
+                })
+                .collect()
+        };
+        let mut payload = serde_json::json!({
             "ok": ok,
-            "diagnostics": diagnostics,
-            "configDiagnostics": config_diagnostics,
+            "diagnostics": reported(&outcome.diagnostics),
+            "configDiagnostics": reported(&outcome.config_diagnostics),
         });
+        crate::output::insert_suppressed(&mut payload, &suppressed);
         let exit = if ok { 0 } else { 1 };
         let report = envelope::report(crate::envelope::version::LINT, exit, payload);
         match serde_json::to_string_pretty(&report) {
@@ -665,21 +704,22 @@ pub fn run_lint(opts: &LintOptions<'_>) -> ExitCode {
             }
         }
     } else {
-        for (p, d) in &outcome.diagnostics {
-            print_human_line(p, d, policy.denied(d));
+        for f in all() {
+            if let Some(reported) = policy.report(&f.diagnostic, &f.file) {
+                print_human_line(&f.shown, &f.diagnostic, reported);
+            }
         }
-        for (p, d) in &outcome.config_diagnostics {
-            print_human_line(p, d, policy.denied(d));
-        }
-        let (errors, warnings) = count(&outcome, &policy);
+        let errors = count_reported(at_file(), Severity::Error, &policy);
+        let warnings = count_reported(at_file(), Severity::Warning, &policy);
+        let suppressed = suppressed_tail(&suppressed);
         if ok {
             println!(
-                "ok: {} ({errors} error(s), {warnings} warning(s))",
+                "ok: {} ({errors} error(s), {warnings} warning(s){suppressed})",
                 path.display()
             );
         } else {
             println!(
-                "failed: {} ({errors} error(s), {warnings} warning(s))",
+                "failed: {} ({errors} error(s), {warnings} warning(s){suppressed})",
                 path.display(),
             );
         }
@@ -690,23 +730,6 @@ pub fn run_lint(opts: &LintOptions<'_>) -> ExitCode {
     } else {
         ExitCode::FAILURE
     }
-}
-
-fn count(outcome: &LintOutcome, policy: &LintDenyPolicy) -> (usize, usize) {
-    let all = outcome
-        .diagnostics
-        .iter()
-        .chain(outcome.config_diagnostics.iter());
-    let mut errors = 0;
-    let mut warnings = 0;
-    for (_, d) in all {
-        if d.severity == Severity::Error || policy.denied(d) {
-            errors += 1;
-        } else if d.severity == Severity::Warning {
-            warnings += 1;
-        }
-    }
-    (errors, warnings)
 }
 
 #[cfg(test)]

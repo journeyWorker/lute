@@ -253,9 +253,9 @@ enums:
 `@marina: Fine. One more minute.` is silent — on the `stay` path she never left. The line after
 the branch is not, because the `leave` path reaches it with her gone:
 
-<!-- lute-diagnostics -->
+<!-- lute-diagnostics unverified="real lute check output (0.50 build); the hint is spliced in from the ACTOR_LOWERING_HINT const, which the literal matcher cannot pin" -->
 ```
-platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` before this point, or remove the earlier exit
+platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` (or a plugin directive declared `lower: { record: actor, fields: { character: { fromAttr: character } } }`) before this point, or remove the earlier exit
 ```
 
 An `::actor{character="marina" action="fadeInUp"}` before that line, or at the end of the `leave`
@@ -310,9 +310,9 @@ per character, with no record of its own and no new IR kind, so an engine needs 
 A cleared character is gone until an `::actor` shows them again, so the last line above warns, and
 the warning names the `::clear`:
 
-<!-- lute-diagnostics -->
+<!-- lute-diagnostics unverified="real lute check output (0.50 build); the hint is spliced in from the ACTOR_LOWERING_HINT const, which the literal matcher cannot pin" -->
 ```
-platform.lute:25:1: warning [W-STAGE-ABSENT] `marina` was taken off stage by an earlier `::clear` (line 23) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` after the `::clear`
+platform.lute:25:1: warning [W-STAGE-ABSENT] `marina` was taken off stage by an earlier `::clear` (line 23) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` (or a plugin directive declared `lower: { record: actor, fields: { character: { fromAttr: character } } }`) after the `::clear`
 ```
 
 [`lute play`](/tooling/play/) prints `::clear` where it ran, and `lute trace` records it as an
