@@ -617,6 +617,20 @@ impl<'a> Root<'a> {
                 .get(&f.relation)
                 .is_some_and(|d| !matches!(d.tier.as_deref(), Some("scene" | "quest")))
     }
+
+    /// Monotone and not `tier: season:<name>` (a season's opening resets
+    /// those to the seeds) — still holds after anything the engine may run
+    /// between judging a deferred lifecycle handler's guard and running its
+    /// body (#203, 0.50.0 §5.4).
+    fn outlasts_deferral(&self, f: &GroundFact) -> bool {
+        self.monotone(f)
+            && self.vocab.relations.get(&f.relation).is_some_and(|d| {
+                d.tier
+                    .as_deref()
+                    .and_then(lute_manifest::season::season_ref)
+                    .is_none()
+            })
+    }
 }
 
 /// The `key:` tuple (`key`, non-empty) of a fact with `args`; an
@@ -878,6 +892,20 @@ impl<'a> Walk<'a> {
         }
     }
 
+    /// Add `slot`'s assumptions that outlast a deferral
+    /// ([`Root::outlasts_deferral`]) to `flow`: a deferred lifecycle
+    /// handler's `when=` (#203).
+    fn assume_lasting(&self, slot: &CelSlot, flow: &mut Flow) {
+        let Some(facts) = flow else {
+            return;
+        };
+        for (fact, provenance) in self.assumptions(slot) {
+            if self.root.outlasts_deferral(&fact) {
+                facts.add(fact, provenance);
+            }
+        }
+    }
+
     /// Record, then assume.
     fn guard(&mut self, slot: &CelSlot, flow: &mut Flow) {
         self.record(slot, flow);
@@ -1035,8 +1063,12 @@ impl<'a> Walk<'a> {
                     // the engine grants once, judges every handler's guard,
                     // then runs the selected bodies in order. A fact any
                     // handler of the event (itself included) may remove is
-                    // therefore not Must at its start, and its `when=`
-                    // contributes only facts no handler may remove.
+                    // therefore not Must at its start. Under a `judge:
+                    // before` occasion the bodies run only after the
+                    // occasion's beats, other quests' grants and handlers
+                    // and the cadence's season openings (#203), so its
+                    // `when=` contributes only facts nothing may remove
+                    // ([`Root::outlasts_deferral`]).
                     let point = match o.event.as_str() {
                         "questComplete" => Some(GrantPoint::QuestComplete),
                         "questFailed" => Some(GrantPoint::QuestFailed),
@@ -1053,7 +1085,10 @@ impl<'a> Walk<'a> {
                         .unwrap_or_default();
                     self.remove_writes(&writes, &mut body);
                     if let Some(when) = &o.when {
-                        self.assume(when, &mut body);
+                        match lifecycle {
+                            Some(_) => self.assume_lasting(when, &mut body),
+                            None => self.assume(when, &mut body),
+                        }
                         self.remove_writes(&writes, &mut body);
                     }
                     self.walk(&o.body, &mut body);
