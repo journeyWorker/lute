@@ -1,0 +1,25 @@
+# The reward chain, end to end: BADGE asserts met(mira) (which starts
+# secondVisit), OFFER_QUEST accepts giftErrand, and REVOKE retracts the fact.
+# The engine reports what the player did; the script writes it with `engine:`.
+steps:
+  - label: the player talks to Mira
+    engine:
+      state: { run.talked: true }
+    expect:
+      quests: { firstVisit: complete }
+      facts: ["met(mira)"]
+  - label: the second visit completes
+    engine:
+      state: { run.chatted: true }
+    expect:
+      quests: { secondVisit: complete }
+      notFacts: ["met(mira)"]
+  - label: the gift is delivered
+    engine:
+      state: { run.delivered: true }
+    expect:
+      quests: { giftErrand: complete }
+expect:
+  end: complete
+  quests: { firstVisit: complete, secondVisit: complete, giftErrand: complete }
+  notFacts: ["met(mira)"]

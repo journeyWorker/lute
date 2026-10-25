@@ -1,0 +1,5 @@
+file: ../scenes/cafe.lute
+choose: { route: counter }
+expect:
+  transcriptContains: ["@mira: Closer to the coffee."]
+  transcriptLacks: ["@mira: Good light there."]
