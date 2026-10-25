@@ -1,4 +1,4 @@
-use crate::schema::{DirectiveDecl, Lowering, OpBy, WriteValue};
+use crate::schema::{DirectiveDecl, Lowering, OpBy, RewardKindDecl, WriteValue};
 use crate::types::{Literal, Type};
 
 /// plugin §8.1 closed vocabulary — owned by the core; a plugin MUST NOT invent flags.
@@ -200,6 +200,12 @@ pub enum ManifestError {
         list: &'static str,
         detail: String,
     },
+    /// 0.50.0 §5.1: a reward kind's `effects` reads an `@attr` other than
+    /// `@target`, asserts `_`, or reads `@target` on a kind that takes none.
+    RewardEffect {
+        kind: String,
+        detail: String,
+    },
     /// 0.49.0 §3.2 (#176): a directive attribute or a `stampAttrs` entry
     /// declared `list`, `map` or `record`. An attribute value is authored as
     /// one scalar, so no `.lute` value could satisfy the declaration.
@@ -231,9 +237,9 @@ impl ManifestError {
             | ManifestError::StructuredAttr { .. } => "E-PLUGIN-INVALID-DIRECTIVE",
             ManifestError::UnknownLowerRecord { .. } => "E-LOWER-RECORD-UNKNOWN",
             ManifestError::LowerRecordField { .. } => "E-LOWER-RECORD-FIELD",
-            ManifestError::EffectWrite { .. } | ManifestError::EffectFact { .. } => {
-                "E-PLUGIN-PARSE"
-            }
+            ManifestError::EffectWrite { .. }
+            | ManifestError::EffectFact { .. }
+            | ManifestError::RewardEffect { .. } => "E-PLUGIN-PARSE",
         }
     }
 
@@ -293,6 +299,9 @@ impl std::fmt::Display for ManifestError {
                 list,
                 detail,
             } => write!(f, "directive `::{directive}` effects.{list}: {detail}"),
+            ManifestError::RewardEffect { kind, detail } => {
+                write!(f, "reward kind `{kind}` {detail}")
+            }
             ManifestError::StructuredAttr { owner, attr, ty } => {
                 match owner {
                     AttrOwner::Directive(directive) => {
@@ -470,12 +479,10 @@ fn validate_effect_facts(d: &DirectiveDecl, errs: &mut Vec<ManifestError>) {
         ("retracts", &effects.retracts),
     ] {
         for fact in facts {
-            if list == "asserts"
-                && fact
-                    .args
-                    .iter()
-                    .any(|a| matches!(a, crate::schema::FactEffectArg::Wildcard))
-            {
+            let faults = fact_faults(fact, list == "asserts", |attr| {
+                d.attrs.iter().any(|a| a.name == attr)
+            });
+            if faults.asserts_wildcard {
                 errs.push(ManifestError::EffectFact {
                     directive: d.name.clone(),
                     list,
@@ -485,10 +492,7 @@ fn validate_effect_facts(d: &DirectiveDecl, errs: &mut Vec<ManifestError>) {
                     ),
                 });
             }
-            for attr in fact.attrs() {
-                if d.attrs.iter().any(|a| a.name == attr) {
-                    continue;
-                }
+            for attr in faults.foreign {
                 let hint =
                     crate::suggest::nearest(attr, d.attrs.iter().map(|a| a.name.as_str()), 2)
                         .map(|s| format!("; did you mean `@{s}`?"))
@@ -506,6 +510,85 @@ fn validate_effect_facts(d: &DirectiveDecl, errs: &mut Vec<ManifestError>) {
             }
         }
     }
+}
+
+/// What one declared fact effect gets wrong against its owner's attributes
+/// — a directive's own attrs, or a reward kind's `@target` alone.
+struct FactFaults<'f> {
+    /// An assert with a `_` argument (only a retract takes `_`).
+    asserts_wildcard: bool,
+    /// Each `@attr` the owner does not admit, in argument order.
+    foreign: Vec<&'f str>,
+}
+
+fn fact_faults<'f>(
+    fact: &'f crate::schema::FactEffect,
+    assert: bool,
+    admits: impl Fn(&str) -> bool,
+) -> FactFaults<'f> {
+    FactFaults {
+        asserts_wildcard: assert
+            && fact
+                .args
+                .iter()
+                .any(|a| matches!(a, crate::schema::FactEffectArg::Wildcard)),
+        foreign: fact.attrs().filter(|a| !admits(a)).collect(),
+    }
+}
+
+/// 0.50.0 §5.1: a reward kind's declared `effects` against what a
+/// `<reward>` can bind. A fact reads only `@target` (a `<reward>` takes no
+/// other attribute, so a kind's `attrs:` cannot bind one), an assert is
+/// ground once bound, and a kind whose `target:` is `forbidden` reads no
+/// `@target` (no reward of it could bind one). The shapes were checked when
+/// the file parsed ([`crate::schema::RewardEffects`]).
+pub fn validate_reward_effects(kind: &RewardKindDecl) -> Vec<ManifestError> {
+    use crate::schema::REWARD_TARGET_ATTR;
+    let mut errs = Vec::new();
+    let Some(effects) = &kind.effects else {
+        return errs;
+    };
+    let mut fault = |detail: String| {
+        errs.push(ManifestError::RewardEffect {
+            kind: kind.name.clone(),
+            detail,
+        });
+    };
+    for (fact, assert) in effects.facts() {
+        let faults = fact_faults(fact, assert, |attr| attr == REWARD_TARGET_ATTR);
+        if faults.asserts_wildcard {
+            fault(format!(
+                "effect `{fact}` asserts `_`; an asserted fact is ground — name a member or \
+                 `@{REWARD_TARGET_ATTR}` (only a retract takes `_`)"
+            ));
+        }
+        for attr in faults.foreign {
+            fault(format!(
+                "effect `{fact}` reads `@{attr}`; a reward kind's effects read only \
+                 `@{REWARD_TARGET_ATTR}` (a `<reward>` takes no other attribute)"
+            ));
+        }
+    }
+    if kind.target.as_ref().is_some_and(|t| t.forbidden) && effects.reads_target() {
+        let reads: Vec<String> = effects
+            .facts()
+            .filter(|(f, _)| f.attrs().any(|a| a == REWARD_TARGET_ATTR))
+            .map(|(f, _)| f.to_string())
+            .chain(
+                effects
+                    .accepts
+                    .iter()
+                    .filter(|a| **a == crate::schema::AcceptEffect::Target)
+                    .map(ToString::to_string),
+            )
+            .collect();
+        fault(format!(
+            "effect `{}` reads `@{REWARD_TARGET_ATTR}`, but the kind declares `target: {{ \
+             forbidden: true }}`, so no `<reward>` of it has a target to bind",
+            reads.first().map_or("", String::as_str)
+        ));
+    }
+    errs
 }
 
 /// Validate a declarative `lower: { record, fields }` against `LOWER_RECORDS`

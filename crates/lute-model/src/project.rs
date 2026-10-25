@@ -551,7 +551,14 @@ impl ProjectModel {
     pub fn project_docs(&self) -> Vec<lute_check::ProjectDoc<'_>> {
         self.documents
             .iter()
-            .map(|d| lute_check::ProjectDoc::new(&d.path, &d.doc, &d.folded.typed))
+            .map(|d| {
+                lute_check::ProjectDoc::new(
+                    &d.path,
+                    &d.doc,
+                    &d.folded.typed,
+                    &d.folded.snapshot.reward_kinds,
+                )
+            })
             .collect()
     }
     pub fn project_diagnostics(&self) -> &[(PathBuf, Diagnostic)] {

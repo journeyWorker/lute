@@ -117,6 +117,15 @@ pub fn check_project_usage(
                 _ => {}
             });
         }
+        // 0.50.0 §5.4: a reward kind's `effects.asserts`.
+        for quest in &d.doc.quests {
+            for grant in crate::reward_effects::quest_grants(quest, &d.folded.snapshot.reward_kinds)
+            {
+                if let Some((p, true)) = grant.fact() {
+                    written.insert(p.relation.clone());
+                }
+            }
+        }
     }
     for text in &texts {
         queried_relations(text, &mut read);

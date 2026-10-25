@@ -14,7 +14,8 @@
 //! (`holds('canEnter', [occasion.target])` for `room.office`). Readers are
 //! graph nodes; producers are any unit that asserts (a scene, a quest, a lore
 //! entry or a bundle beat — `::use` sites included, the host carrying the
-//! component's bound writes). A producer is necessary for no reader: a reader
+//! component's bound writes; a quest's reward effects, 0.50.0 §5.4, through
+//! [`crate::cast::fact_producers`]). A producer is necessary for no reader: a reader
 //! with several producers needs only one of them, as with a `||` in `after:`.
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -344,7 +345,12 @@ mod tests {
         let (doc, _) = lute_syntax::parse(text);
         let path = PathBuf::from("producer.lute");
         let meta = crate::meta::TypedMeta::default();
-        let docs = vec![ProjectDoc::new(path.as_path(), &doc, &meta)];
+        let docs = vec![ProjectDoc::new(
+            path.as_path(),
+            &doc,
+            &meta,
+            &crate::reward_effects::NO_REWARD_KINDS,
+        )];
         let producers = crate::cast::fact_producers(&docs, &EffectDirectives::default());
         let vocab = RelVocab::default();
         let ask = Ask {

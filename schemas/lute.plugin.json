@@ -827,7 +827,7 @@
       }
     },
     "rewardKindBody": {
-      "description": "schema.rs::RewardKindBody (closed, as the loader refuses unknown keys). `credits` (dsl 0.23.0 §8) is the state path a grant of the kind adds its amount to.",
+      "description": "schema.rs::RewardKindBody (closed, as the loader refuses unknown keys). `credits` (dsl 0.23.0 §8) is the state path a grant of the kind adds its amount to; `effects` (0.50.0 §5.1) the facts a grant asserts and retracts and the quests it accepts.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -842,6 +842,35 @@
         },
         "credits": {
           "type": "string"
+        },
+        "effects": {
+          "$ref": "#/definitions/rewardEffects"
+        }
+      }
+    },
+    "rewardEffects": {
+      "description": "schema.rs::RewardEffects (closed, at least one effect; 0.50.0 §5.1). `asserts`/`retracts` are fact patterns `relation(arg, …)` whose args are members, `true`/`false`, `@target` or (a retract only) `_`; `accepts` entries are `@target` or a quest id. A reward's state write is `credits:`, so there is no `writes`.",
+      "type": "object",
+      "additionalProperties": false,
+      "minProperties": 1,
+      "properties": {
+        "asserts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "retracts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "accepts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
         }
       }
     },

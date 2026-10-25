@@ -3,6 +3,7 @@ use super::{
     write_effects, Arm, ClipNode, Directive, Expr, FactPattern, Match, Node, Presence,
     EXPAND_DEPTH,
 };
+use crate::reward_effects::{GrantEffect, GrantPoint};
 
 impl Presence<'_> {
     /// Walk `body` under `conds` added to the guards pushed so far; they
@@ -123,12 +124,22 @@ impl Presence<'_> {
                     if o.event == "questComplete" {
                         self.assume_completion(o.span.byte_start);
                     }
+                    // 0.50.0 §5.4: the quest's grants run before the handler.
+                    match o.event.as_str() {
+                        "questComplete" => self.grant_writes(|g| {
+                            g.point == GrantPoint::QuestComplete || g.objective.is_some()
+                        }),
+                        "questFailed" => self.grant_writes(|g| g.point == GrantPoint::QuestFailed),
+                        _ => {}
+                    }
                     self.region(conds, &o.body);
                     self.guards.truncate(depth);
                     self.changed = before;
                 }
                 Node::Objective(o) => {
                     let cond = self.parse(&o.done.raw, None);
+                    // 0.50.0 §5.4: the objective's grants run at its `done`.
+                    self.grant_writes(|g| g.objective.is_some_and(|go| std::ptr::eq(go, o)));
                     // An `on=` objective completes when its occasion judges it.
                     let before = o.on.as_ref().map(|(on, _)| self.follow(on));
                     self.region(cond.into_iter().collect(), &o.body);
@@ -154,6 +165,24 @@ impl Presence<'_> {
             // dsl 0.27.0 §4: a call's declared fact effects.
             for (pattern, up) in facts.writes() {
                 self.kill_fact(pattern, up);
+            }
+        }
+    }
+
+    /// 0.50.0 §5.4: the reward effects `select` picks among the current
+    /// quest's grants, each a write like the `::assert` / `::retract` /
+    /// `::accept` it stands for.
+    fn grant_writes(&mut self, select: impl Fn(&GrantEffect<'_>) -> bool) {
+        let grants: Vec<GrantEffect<'_>> =
+            self.grants.iter().filter(|g| select(g)).cloned().collect();
+        for g in &grants {
+            match g.fact() {
+                Some((pattern, up)) => self.kill_fact(pattern, up),
+                None => {
+                    if let Some(q) = g.accepted() {
+                        self.kill_path(&format!("quest.{q}"));
+                    }
+                }
             }
         }
     }

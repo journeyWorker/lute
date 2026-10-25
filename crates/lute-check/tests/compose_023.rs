@@ -337,7 +337,9 @@ fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
     let views: Vec<_> = docs
         .iter()
         .zip(&foldeds)
-        .map(|((path, doc), folded)| lute_check::ProjectDoc::new(path, doc, &folded.typed))
+        .map(|((path, doc), folded)| {
+            lute_check::ProjectDoc::new(path, doc, &folded.typed, &folded.snapshot.reward_kinds)
+        })
         .collect();
     check_project_beats(
         &views,

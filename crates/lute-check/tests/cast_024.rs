@@ -351,7 +351,9 @@ fn project_in(
     let views: Vec<_> = docs
         .iter()
         .zip(&foldeds)
-        .map(|((path, doc), folded)| ProjectDoc::new(path, doc, &folded.typed))
+        .map(|((path, doc), folded)| {
+            ProjectDoc::new(path, doc, &folded.typed, &folded.snapshot.reward_kinds)
+        })
         .collect();
     let key_set = scene_key_set(&views);
     let quest_ids = quest_id_set(&views);

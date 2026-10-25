@@ -918,13 +918,19 @@ impl<'g> Producers<'g> {
 
     fn rewards(&mut self, rewards: &[Reward], origin: &Origin) {
         for r in rewards {
-            if let Some(path) = self
-                .snapshot
-                .reward_kinds
-                .get(&r.kind)
-                .and_then(|k| k.credits.clone())
-            {
+            let Some(kind) = self.snapshot.reward_kinds.get(&r.kind) else {
+                continue;
+            };
+            let credits = kind.credits.clone();
+            // 0.50.0 §5.4: the facts its kind's `effects` assert.
+            let asserts = kind.effects.as_ref().map_or_else(Vec::new, |effects| {
+                lute_check::reward_effects::reward_facts(effects, r).asserts
+            });
+            if let Some(path) = credits {
                 self.write(origin, How::Reward(r.kind.clone()), path);
+            }
+            for p in asserts {
+                self.asserted.push((origin.clone(), p.relation));
             }
         }
     }

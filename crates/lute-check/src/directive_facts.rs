@@ -126,7 +126,7 @@ fn bind(fact: &FactEffect, decl: &DirectiveDecl, attrs: &[Attr]) -> FactPattern 
     }
 }
 
-fn const_term(c: &str) -> FactTerm {
+pub(crate) fn const_term(c: &str) -> FactTerm {
     match c {
         "true" => FactTerm::Bool(true),
         "false" => FactTerm::Bool(false),

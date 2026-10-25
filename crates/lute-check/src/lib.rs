@@ -56,6 +56,7 @@ pub mod reachability;
 pub mod rel_schema;
 pub mod renames;
 pub(crate) mod reserved_names;
+pub mod reward_effects;
 pub mod rule_index;
 pub mod schema_import;
 pub mod season;

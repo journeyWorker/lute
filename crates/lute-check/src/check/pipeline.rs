@@ -480,6 +480,16 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
                         ));
                     }
                 }
+                // 0.50.0 §5.2: the facts each reward's kind declares it
+                // writes, judged like an `::assert` / `::retract` of them.
+                walker
+                    .diags
+                    .extend(crate::reward_effects::check_reward_facts(
+                        quest,
+                        &input.snapshot().reward_kinds,
+                        domains,
+                        &base_ctx,
+                    ));
             }
         }
         // dsl 0.19.0 §3–§4: a lore document walks each entry's `when`

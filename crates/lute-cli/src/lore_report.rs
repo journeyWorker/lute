@@ -231,16 +231,20 @@ fn ground_fact(p: &FactPattern) -> Option<String> {
 }
 
 /// Fold one parsed document into the running entry list and fact table;
-/// `components` are the project's component documents, by name.
+/// `folded` is its checked environment (its typed frontmatter and the reward
+/// vocabulary it was checked against), `components` the project's component
+/// documents, by name.
 fn fold_document(
     document: &str,
     doc: &Document,
-    typed_meta: &lute_check::TypedMeta,
+    folded: &lute_check::FoldedEnv,
     effects: &lute_check::directive_facts::EffectDirectives,
     components: &BTreeMap<&str, &Document>,
     entries: &mut Vec<EntryRow>,
     facts: &mut BTreeMap<String, BTreeMap<String, Sources>>,
 ) {
+    let typed_meta = &folded.typed;
+    let reward_kinds = &folded.snapshot.reward_kinds;
     let meta = typed_meta.yaml().and_then(yaml_serde::Value::as_mapping);
     let field = |k: &str| {
         meta.as_ref()?
@@ -265,6 +269,18 @@ fn fold_document(
             }),
         };
     };
+    // 0.50.0 §5.4: a quest's reward effects assert in its document.
+    for quest in &doc.quests {
+        for grant in lute_check::reward_effects::quest_grants(quest, reward_kinds) {
+            if let Some(fact) = grant
+                .fact()
+                .filter(|(_, assert)| *assert)
+                .and_then(|(p, _)| ground_fact(p))
+            {
+                record(fact, Source::Document);
+            }
+        }
+    }
     // Every fact `nodes` asserts, and the components it uses assert there.
     let mut reveal = |nodes: &[Node], source: Source<'_>, via: &str| {
         let mut own = Vec::new();
@@ -663,16 +679,16 @@ pub fn run_lore(dir: &Path, json: bool) -> ExitCode {
             continue;
         }
         let document = path.strip_prefix(dir).unwrap_or(path).display().to_string();
-        let typed_meta = by_root
+        let folded = by_root
             .values()
             .flat_map(|group| group.iter())
             .find(|(candidate, _, _)| candidate == path)
-            .map(|(_, _, folded)| &folded.typed)
+            .map(|(_, _, folded)| folded)
             .expect("collected lore document metadata");
         fold_document(
             &document,
             &doc,
-            typed_meta,
+            folded,
             &effects,
             &components,
             &mut entries,

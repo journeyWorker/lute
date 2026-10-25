@@ -493,7 +493,12 @@ fn display_name_dups(
         .iter()
         .zip(inputs)
         .map(|(built, input)| {
-            lute_check::ProjectDoc::new(input.path.as_path(), &input.doc, &built.meta)
+            lute_check::ProjectDoc::new(
+                input.path.as_path(),
+                &input.doc,
+                &built.meta,
+                &built.input.snapshot().reward_kinds,
+            )
         })
         .collect();
     let casts: Vec<_> = per_doc.iter().map(|(c, _, _)| c).collect();

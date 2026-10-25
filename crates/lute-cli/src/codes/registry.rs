@@ -3,8 +3,8 @@ use super::Code;
 pub(crate) const CODES: &[Code] = &[
     Code {
         code: "E-ACCEPT-TARGET",
-        summary: r#"An `::accept` directive names no quest, gives `quest` a value that is not a quoted quest id, gives `at` a value other than `"nextRun"`, or targets a quest declared `accept="external"` that already activates with its parent (making the acceptance a no-op)."#,
-        spec: &["dsl 0.21.0 §7a.3", "dsl 0.24.0 §2", "dsl 0.25.0 §5"],
+        summary: r#"An `::accept` directive names no quest, gives `quest` a value that is not a quoted quest id, gives `at` a value other than `"nextRun"`, or targets a quest declared `accept="external"` that already activates with its parent (making the acceptance a no-op). Whole-project `check` also judges each quest an `::accept` or a reward kind's `effects.accepts` names: it must be declared in the project (did-you-mean) and accept-driven — not a quest with `start`, nor a subquest child that activates with its parent; a reward's is reported at its `target=` (or `kind=`) and names the reward."#,
+        spec: &["dsl 0.21.0 §7a.3", "dsl 0.24.0 §2", "dsl 0.25.0 §5", "dsl 0.50.0 §5.2"],
     },
     Code {
         code: "E-ADVANCE-CASCADE",
@@ -973,8 +973,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-KEY",
-        summary: "A key in a plugin's `plugin.yaml` or one of its export files is not one that file takes (with the key meant, e.g. `dependencies` → `depends`), or `plugin.yaml` declares a `kind:` other than `capability`.",
-        spec: &["dsl 0.28.0 §1"],
+        summary: "A key in a plugin's `plugin.yaml` or one of its export files is not one that file takes (with the key meant, e.g. `dependencies` → `depends`), or `plugin.yaml` declares a `kind:` other than `capability`. A reward kind's `effects.writes` adds that a reward's state write is `credits:`.",
+        spec: &["dsl 0.28.0 §1", "dsl 0.50.0 §5.1"],
     },
     Code {
         code: "E-PLUGIN-MANIFEST",
@@ -1003,8 +1003,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-PARSE",
-        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`.",
-        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2"],
+        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect, a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, or a kind with `target: { forbidden: true }` reads `@target`.",
+        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §5.1"],
     },
     Code {
         code: "E-PLUGIN-RESERVED-NAME",
@@ -1873,8 +1873,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-QUEST-NEVER-ACCEPTED",
-        summary: r#"An accept-driven quest is never named by any `::accept{quest=…}` and is not `accept="external"`, so nothing in the project ever accepts it."#,
-        spec: &["dsl 0.24.0 §2", "dsl 0.25.0 §5"],
+        summary: r#"An accept-driven quest is never named by any `::accept{quest=…}` or reward kind `effects.accepts` and is not `accept="external"`, so nothing in the project ever accepts it."#,
+        spec: &["dsl 0.24.0 §2", "dsl 0.25.0 §5", "dsl 0.50.0 §5.4"],
     },
     Code {
         code: "W-QUEST-REARM-CONSTANT",

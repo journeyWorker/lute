@@ -8,6 +8,7 @@ pub enum SchemaError {
     Write(String),
     Lowering(String),
     RewardTarget(String),
+    RewardEffects(String),
     OccasionTarget(String),
 }
 impl fmt::Display for SchemaError {
@@ -18,6 +19,7 @@ impl fmt::Display for SchemaError {
             | Self::Write(message)
             | Self::Lowering(message)
             | Self::RewardTarget(message)
+            | Self::RewardEffects(message)
             | Self::OccasionTarget(message) => message,
         };
         f.write_str(message)
@@ -51,6 +53,7 @@ pub use occasions::{
     OccasionBody, OccasionDecl, OccasionJudge, OccasionSelect, OccasionTarget, OccasionsFile,
 };
 pub use vocabulary::{
-    BridgeCapability, CastBody, CastFile, CastMember, DefDecl, DefParam, EventDecl, ProviderDecl,
-    RewardKindBody, RewardKindDecl, RewardKindsFile, RewardTarget, StateShape, StateTemplate,
+    AcceptEffect, BridgeCapability, CastBody, CastFile, CastMember, DefDecl, DefParam, EventDecl,
+    ProviderDecl, RewardEffects, RewardKindBody, RewardKindDecl, RewardKindsFile, RewardTarget,
+    StateShape, StateTemplate, REWARD_TARGET_ATTR,
 };

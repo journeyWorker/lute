@@ -136,6 +136,7 @@ pub fn check_fact_guards(
     for quest in &doc.quests {
         g.quest(quest, &mut out);
         g.walk(&quest.body, &mut out);
+        g.exclusive_rewards(quest, &folded.snapshot.reward_kinds, &mut out);
     }
     for entry in &doc.entries {
         // dsl 0.28.0: over the entry's own environment.
@@ -1305,6 +1306,62 @@ impl<'a> Guards<'a> {
                 ),
                 d.span,
             ));
+        }
+    }
+
+    /// 0.50.0 §5.4: the same judgment for the facts a reward's kind asserts
+    /// (`effects.asserts`), against what holds at its grant point minus what
+    /// the reward's own `retracts` drop first.
+    fn exclusive_rewards(
+        &self,
+        quest: &lute_syntax::ast::Quest,
+        kinds: &crate::reward_effects::RewardKinds,
+        out: &mut Vec<Diagnostic>,
+    ) {
+        let objective_rewards = quest.body.iter().flat_map(|n| match n {
+            Node::Objective(o) => o.rewards.as_slice(),
+            _ => &[],
+        });
+        for reward in objective_rewards.chain(&quest.rewards) {
+            let Some(effects) = crate::reward_effects::kind_effects(kinds, reward) else {
+                continue;
+            };
+            let facts = crate::reward_effects::reward_facts(effects, reward);
+            let dropped: Vec<crate::fact_env::QueryPattern> = facts
+                .retracts
+                .iter()
+                .filter_map(crate::fact_env::QueryPattern::from_fact_pattern)
+                .collect();
+            let held = self.env.must.at(self.path, reward.kind_span);
+            for p in &facts.asserts {
+                let Some(fact) = GroundFact::from_pattern(p) else {
+                    continue;
+                };
+                let Some(m) = held.iter().find(|m| {
+                    !dropped.iter().any(|q| q.matches(&m.fact))
+                        && !exclusive_pairs(&[fact.clone(), m.fact.clone()], self.vocab).is_empty()
+                }) else {
+                    continue;
+                };
+                out.push(diag(
+                    E_FACT_EXCLUSIVE,
+                    Severity::Error,
+                    format!(
+                        "`<reward kind=\"{}\">` asserts `{fact}` (its kind's `effects.asserts`), \
+                         which would make `{fact}` and `{}` both hold: {}, and `{}` excludes `{}` \
+                         (dsl 0.25.0 §1, 0.50.0 §5.4) — declare `retracts: [\"{}\"]` on the \
+                         reward kind, or grant it only where `{}` does not hold",
+                        reward.kind.trim(),
+                        m.fact,
+                        guaranteed_reason(m),
+                        fact.relation,
+                        m.fact.relation,
+                        m.fact,
+                        m.fact
+                    ),
+                    reward.kind_span,
+                ));
+            }
         }
     }
 

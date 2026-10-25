@@ -75,13 +75,14 @@ use crate::fact_env::{
     GroundFact, MaySet, MustClosure, MustFact, MustMap, Provenance, QueryPattern, RootVocab,
 };
 use crate::rel_schema::RelVocab;
+use crate::reward_effects::{GrantEffect, GrantPoint};
 use crate::ProjectDoc;
 use cel_parser::ast::{operators as op, Expr};
 use lute_core_span::Span;
 use lute_manifest::fact::{FactPattern, FactTerm};
 use lute_manifest::semantics::prereq::PrereqFormula;
 use lute_syntax::ast::{
-    Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Hub, Match, Node, Retract,
+    Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Hub, Match, Node, Quest, Retract,
 };
 
 /// Guaranteed facts, each with where it is established.
@@ -181,6 +182,7 @@ pub fn compute_must(
 ) -> FactMust {
     let mut root = Root::new(docs, vocab, may);
     root.entry_reads = entry_outcomes(&root, docs, foldeds);
+    root.quest_outcomes = quest_outcomes(&root, docs, foldeds);
     // T2-1: the derived closure, prepared once for the root (its seed
     // closure included) and applied to a slot only when the slot is read.
     let closure = Arc::new(MustClosure::new(vocab, may, root.seeds.keys().cloned()));
@@ -212,7 +214,7 @@ pub fn compute_must(
         walked[idx] = true;
         let mut entry = root.start();
         if let PrereqState::Valid(f) = &info.prereq {
-            for (fact, provenance) in after_facts(f, &must_out) {
+            for (fact, provenance) in after_facts(f, &must_out, &root.quest_outcomes) {
                 entry.add(fact, provenance);
             }
         }
@@ -259,21 +261,28 @@ pub fn compute_must(
 }
 
 /// The non-seed facts an `after:` formula guarantees on arrival (§4 entry
-/// points; `must_out` holds each scene's non-seed crossing facts).
-fn after_facts(f: &PrereqFormula, must_out: &BTreeMap<String, FactMap>) -> FactMap {
+/// points; `must_out` holds each scene's non-seed crossing facts,
+/// `completed` each quest's completion facts — 0.50.0 §5.4, its reward
+/// grants).
+fn after_facts(
+    f: &PrereqFormula,
+    must_out: &BTreeMap<String, FactMap>,
+    completed: &BTreeMap<String, FactMap>,
+) -> FactMap {
     match f {
         PrereqFormula::Visited(key) => must_out.get(key).cloned().unwrap_or_default(),
-        PrereqFormula::Completed(_) | PrereqFormula::Active(_) => FactMap::new(),
+        PrereqFormula::Completed(id) => completed.get(id).cloned().unwrap_or_default(),
+        PrereqFormula::Active(_) => FactMap::new(),
         PrereqFormula::And(l, r) => {
-            let mut out = after_facts(l, must_out);
-            for (fact, provenance) in after_facts(r, must_out) {
+            let mut out = after_facts(l, must_out, completed);
+            for (fact, provenance) in after_facts(r, must_out, completed) {
                 out.entry(fact).or_insert(provenance);
             }
             out
         }
         PrereqFormula::Or(l, r) => {
-            let mut out = after_facts(l, must_out);
-            let right = after_facts(r, must_out);
+            let mut out = after_facts(l, must_out, completed);
+            let right = after_facts(r, must_out, completed);
             out.retain(|fact, _| right.contains_key(fact));
             out
         }
@@ -350,6 +359,11 @@ struct Root<'a> {
     /// Entry id → the non-seed crossing facts its body guarantees on every
     /// route (§6); empty until [`entry_outcomes`] fills it.
     entry_reads: BTreeMap<String, FactMap>,
+    /// Quest id → the non-seed crossing facts its completion guarantees
+    /// (0.50.0 §5.4: its reward grants); empty until [`quest_outcomes`]
+    /// fills it. What `completed("q")` and `quest.q.state == 'complete'`
+    /// assume.
+    quest_outcomes: BTreeMap<String, FactMap>,
 }
 
 /// dsl 0.24.0 §6: for every lore entry of the root, the crossing facts its
@@ -377,6 +391,36 @@ fn entry_outcomes(
             let mut end = end.map(Facts::beyond_seeds).unwrap_or_default();
             end.retain(|f, _| root.crosses(f));
             match out.entry(entry.id.clone()) {
+                Entry::Vacant(v) => {
+                    v.insert(end);
+                }
+                Entry::Occupied(mut o) => o.get_mut().retain(|f, _| end.contains_key(f)),
+            }
+        }
+    }
+    out
+}
+
+/// 0.50.0 §5.4: for every quest of the root, the crossing facts its
+/// completion guarantees — its reward grants at that instant
+/// ([`Walk::complete`]) — beyond the seeds. Crossing facts nothing removes
+/// hold from then on. A quest id declared twice keeps the facts both
+/// guarantee.
+fn quest_outcomes(
+    root: &Root<'_>,
+    docs: &[ProjectDoc<'_>],
+    foldeds: &[&FoldedEnv],
+) -> BTreeMap<String, FactMap> {
+    let mut out: BTreeMap<String, FactMap> = BTreeMap::new();
+    for (item, folded) in docs.iter().zip(foldeds) {
+        for quest in item.doc.quests.iter().filter(|q| !q.id.is_empty()) {
+            let mut w = Walk::new(root, item.path, folded);
+            w.grants = crate::reward_effects::quest_grants(quest, item.reward_kinds);
+            let mut flow = Some(root.start());
+            w.complete(quest, GrantPoint::QuestComplete, &mut flow);
+            let mut end = flow.map(Facts::beyond_seeds).unwrap_or_default();
+            end.retain(|f, _| root.crosses(f));
+            match out.entry(quest.id.clone()) {
                 Entry::Vacant(v) => {
                     v.insert(end);
                 }
@@ -477,6 +521,22 @@ impl<'a> Root<'a> {
                     }
                 });
             }
+            // 0.50.0 §5.4: a reward's effects write like an `::assert` /
+            // `::retract` in its grant point.
+            for quest in &doc.quests {
+                for grant in crate::reward_effects::quest_grants(quest, item.reward_kinds) {
+                    match grant.fact() {
+                        Some((p, true)) => {
+                            asserted.insert(p.relation.clone());
+                            for f in vocab.asserted_facts(p) {
+                                produced.entry(f.relation).or_default().insert(f.args);
+                            }
+                        }
+                        Some((p, false)) => retracts.extend(QueryPattern::from_fact_pattern(p)),
+                        None => {}
+                    }
+                }
+            }
         }
         let mut key_groups: BTreeMap<String, HashMap<Vec<String>, Vec<Vec<String>>>> =
             BTreeMap::new();
@@ -508,6 +568,7 @@ impl<'a> Root<'a> {
             param_asserted,
             seeds: Arc::default(),
             entry_reads: BTreeMap::new(),
+            quest_outcomes: BTreeMap::new(),
         };
         root.seeds = Arc::new(
             vocab
@@ -685,9 +746,13 @@ fn walk_doc(
             }
         }
         w.body_base = base.clone();
+        w.quest = Some(quest);
+        w.grants = crate::reward_effects::quest_grants(quest, item.reward_kinds);
         let mut flow = Some(base);
         w.walk(&quest.body, &mut flow);
     }
+    w.quest = None;
+    w.grants = Vec::new();
     for entry in &doc.entries {
         let mut base = Some(root.start());
         if let Some(when) = &entry.when {
@@ -731,6 +796,10 @@ struct Walk<'a> {
     exit: Flow,
     /// Where an `<on>` / `<objective>` body starts (engine-chosen time).
     body_base: Facts,
+    /// The quest whose body is walked, and (0.50.0 §5.4) the effects its
+    /// rewards apply at their grant points, in grant order.
+    quest: Option<&'a Quest>,
+    grants: Vec<GrantEffect<'a>>,
 }
 
 impl<'a> Walk<'a> {
@@ -748,6 +817,8 @@ impl<'a> Walk<'a> {
             pending: BTreeMap::new(),
             exit: None,
             body_base: root.start(),
+            quest: None,
+            grants: Vec::new(),
         }
     }
 
@@ -825,6 +896,17 @@ impl<'a> Walk<'a> {
                 facts.extend(
                     read.iter()
                         .filter(|(f, _)| (!ever || self.user_tier(f)) && self.trackable(f))
+                        .map(|(f, p)| (f.clone(), p.clone())),
+                );
+            } else if let Some(id) = quest_completed(c) {
+                // 0.50.0 §5.4: the crossing facts the quest's completion
+                // grants; they hold from then on.
+                let Some(done) = self.root.quest_outcomes.get(&id) else {
+                    continue;
+                };
+                facts.extend(
+                    done.iter()
+                        .filter(|(f, _)| self.trackable(f))
                         .map(|(f, p)| (f.clone(), p.clone())),
                 );
             }
@@ -938,6 +1020,16 @@ impl<'a> Walk<'a> {
                 Node::Match(m) => self.match_arms(m, flow),
                 Node::On(o) => {
                     let mut body = Some(self.body_base.clone());
+                    // 0.50.0 §5.4: the quest's grants run before its
+                    // `questComplete` / `questFailed` handlers.
+                    let point = match o.event.as_str() {
+                        "questComplete" => Some(GrantPoint::QuestComplete),
+                        "questFailed" => Some(GrantPoint::QuestFailed),
+                        _ => None,
+                    };
+                    if let (Some(point), Some(quest)) = (point, self.quest) {
+                        self.complete(quest, point, &mut body);
+                    }
                     if let Some(when) = &o.when {
                         self.assume(when, &mut body);
                     }
@@ -954,9 +1046,86 @@ impl<'a> Walk<'a> {
                     }
                     let mut body = base;
                     self.assume(&o.done, &mut body);
+                    // 0.50.0 §5.4: the objective's grants run at its `done`.
+                    let grants: Vec<GrantEffect<'a>> = self
+                        .grants
+                        .iter()
+                        .filter(|g| g.objective.is_some_and(|go| std::ptr::eq(go, o)))
+                        .cloned()
+                        .collect();
+                    for g in &grants {
+                        self.apply_grant(g, &mut body, false);
+                    }
                     self.walk(&o.body, &mut body);
                 }
                 Node::Set(_) | Node::Timeline(_) => {}
+            }
+        }
+    }
+
+    /// 0.50.0 §5.4: the reward grants of `quest` at its completion
+    /// (`QuestComplete`) or failure (`QuestFailed`), applied to `flow` in
+    /// grant order. At completion the objective grants of its required
+    /// objectives (every one, unless `complete="any"`) ran earlier, at each
+    /// objective's `done`: what they assert still holds only when it is a
+    /// crossing fact nothing removes, and what they retract stays removed.
+    fn complete(&mut self, quest: &Quest, point: GrantPoint, flow: &mut Flow) {
+        let grants = self.grants.clone();
+        if point == GrantPoint::QuestComplete && !quest.completes_on_any() {
+            for g in &grants {
+                if g.objective.is_some_and(|o| !o.optional) {
+                    self.apply_grant(g, flow, true);
+                }
+            }
+        }
+        for g in grants.iter().filter(|g| g.point == point) {
+            self.apply_grant(g, flow, false);
+        }
+    }
+
+    /// The Must transfer of one reward effect (0.50.0 §5.4): an unguarded
+    /// assert is an `::assert`; a guarded one forks like a guarded
+    /// `::assert` (Must only where its `when=` holds, so not after the
+    /// meet); a retract, guarded or not, removes what it matches. `carry`:
+    /// the grant ran earlier, so a fact it adds is kept only when it
+    /// crosses time ([`Root::crosses`]).
+    fn apply_grant(&mut self, g: &GrantEffect<'_>, flow: &mut Flow, carry: bool) {
+        // `E-FACT-EXCLUSIVE` reads the set the reward meets (at its
+        // `kind=`), before its first effect; an earlier objective grant
+        // (`carry`) is judged at its own objective.
+        if g.order.effect == 0 && !carry {
+            self.record_span(g.reward.kind_span, flow);
+        }
+        let Some((pattern, assert)) = g.fact() else {
+            return;
+        };
+        let line = g.reward.kind_span.line;
+        match (g.guard(), assert) {
+            (Some(when), true) => {
+                self.record(when, flow);
+                let mut taken = flow.clone();
+                self.assume(when, &mut taken);
+                self.grant_assert(pattern, line, &mut taken, carry);
+                meet(flow, taken);
+            }
+            (Some(when), false) => {
+                self.record(when, flow);
+                self.retract_pattern(pattern, flow);
+            }
+            (None, true) => self.grant_assert(pattern, line, flow, carry),
+            (None, false) => self.retract_pattern(pattern, flow),
+        }
+    }
+
+    fn grant_assert(&self, pattern: &FactPattern, line: u32, flow: &mut Flow, carry: bool) {
+        let fact = GroundFact::from_pattern(pattern);
+        let held = fact
+            .as_ref()
+            .is_some_and(|f| flow.as_ref().is_some_and(|s| s.contains_key(f)));
+        self.assert_pattern(pattern, line, flow);
+        if let (true, false, Some(f), Some(facts)) = (carry, held, fact, flow.as_mut()) {
+            if !self.root.crosses(&f) {
+                facts.retain(|g| *g != f);
             }
         }
     }
@@ -1208,4 +1377,29 @@ fn entry_read(e: &Expr) -> Option<(String, bool)> {
     let path = crate::cel_paths::select_path(e)?;
     let id = lute_manifest::semantics::cel_paths::reserved_entry_id(&path)?.to_string();
     Some((id, crate::cel_paths::is_entry_ever_read(&path)))
+}
+
+/// `quest.X.state == 'complete'` as a conjunct (either side), as `X`.
+fn quest_completed(e: &Expr) -> Option<String> {
+    let Expr::Call(c) = e else {
+        return None;
+    };
+    if c.func_name != op::EQUALS || c.target.is_some() || c.args.len() != 2 {
+        return None;
+    }
+    let read = |path: &Expr, state: &Expr| {
+        let Expr::Literal(cel_parser::reference::Val::String(state)) = state else {
+            return None;
+        };
+        if state.as_str() != "complete" {
+            return None;
+        }
+        let path = crate::cel_paths::select_path(path)?;
+        if !crate::cel_paths::is_reserved_quest_state(&path) {
+            return None;
+        }
+        path.split('.').nth(1).map(str::to_string)
+    };
+    let (a, b) = (&c.args[0].expr, &c.args[1].expr);
+    read(a, b).or_else(|| read(b, a))
 }

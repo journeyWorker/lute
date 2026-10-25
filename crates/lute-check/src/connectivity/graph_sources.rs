@@ -104,7 +104,9 @@ pub(crate) fn start_source(
 /// ([`crate::accept::accept_driven_quests`]), every graph node whose body
 /// `::accept`s it, in document order — the accepting scene, the accepting
 /// bundle beat, or the accepting quest (which must be active for its body
-/// to run). A lore entry's `::accept` anchors nothing (the entry is no
+/// to run). 0.50.0 §5.4: a quest whose reward's kind `accepts` it is a
+/// source too (the grant runs at its completion, failure or an objective's
+/// completion). A lore entry's `::accept` anchors nothing (the entry is no
 /// source until a `start` reads it); a quest never anchors itself.
 pub(crate) fn accept_sources<'a>(
     docs: &'a [ProjectDoc<'a>],
@@ -112,10 +114,7 @@ pub(crate) fn accept_sources<'a>(
 ) -> BTreeMap<&'a str, Vec<NodeId>> {
     let driven = crate::accept::accept_driven_quests(docs);
     let mut sites: BTreeMap<&str, Vec<NodeId>> = BTreeMap::new();
-    let mut record = |d: &lute_syntax::ast::Directive, source: &NodeId, own: Option<&str>| {
-        let Some((id, _)) = d.accept_quest() else {
-            return;
-        };
+    let mut record_id = |id: &str, source: &NodeId, own: Option<&str>| {
         let Some(id) = driven.get(id).copied() else {
             return;
         };
@@ -134,7 +133,11 @@ pub(crate) fn accept_sources<'a>(
             .filter(|s| nodes.contains_key(s))
         {
             for shot in &doc.sections {
-                crate::accept::walk(&shot.body, &mut |d| record(d, &source, None));
+                crate::accept::walk(&shot.body, &mut |d| {
+                    if let Some((id, _)) = d.accept_quest() {
+                        record_id(id, &source, None);
+                    }
+                });
             }
         }
         if resolve_doc_kind(&doc.meta).0 == Some(DocKind::Lore) {
@@ -146,16 +149,28 @@ pub(crate) fn accept_sources<'a>(
                 {
                     let source = NodeId::Beat(crate::bundles::bundle_beat_key(&doc_id, &beat.id));
                     if nodes.contains_key(&source) {
-                        crate::accept::walk(&beat.body, &mut |d| record(d, &source, None));
+                        crate::accept::walk(&beat.body, &mut |d| {
+                            if let Some((id, _)) = d.accept_quest() {
+                                record_id(id, &source, None);
+                            }
+                        });
                     }
                 }
             }
         }
         for quest in doc.quests.iter().filter(|q| !q.id.is_empty()) {
             let source = NodeId::Quest(quest.id.clone());
+            let own = Some(quest.id.as_str());
             crate::accept::walk(&quest.body, &mut |d| {
-                record(d, &source, Some(quest.id.as_str()));
+                if let Some((id, _)) = d.accept_quest() {
+                    record_id(id, &source, own);
+                }
             });
+            for grant in crate::reward_effects::quest_grants(quest, item.reward_kinds) {
+                if let Some(id) = grant.accepted() {
+                    record_id(id, &source, own);
+                }
+            }
         }
     }
     sites

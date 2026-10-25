@@ -11,7 +11,7 @@ use crate::{compute_conn_fixpoint, ByRoot, DocGroup};
 pub fn project_docs(group: &DocGroup) -> Vec<ProjectDoc<'_>> {
     group
         .iter()
-        .map(|(p, d, f)| ProjectDoc::new(p.as_path(), d, &f.typed))
+        .map(|(p, d, f)| ProjectDoc::new(p.as_path(), d, &f.typed, &f.snapshot.reward_kinds))
         .collect()
 }
 

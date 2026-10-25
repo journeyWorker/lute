@@ -15,9 +15,9 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-ACCEPT-TARGET
 
-`::accept` 지시어가 퀘스트를 지정하지 않았거나, `quest` 값이 인용된 퀘스트 id가 아니거나, `at` 값이 `"nextRun"`이 아니거나, 이미 부모와 함께 활성화되는 `accept="external"` 퀘스트를 대상으로 지정해 수락이 아무 효과가 없습니다.
+`::accept` 지시어가 퀘스트를 지정하지 않았거나, `quest` 값이 인용된 퀘스트 id가 아니거나, `at` 값이 `"nextRun"`이 아니거나, 이미 부모와 함께 활성화되는 `accept="external"` 퀘스트를 대상으로 지정해 수락이 아무 효과가 없습니다. 프로젝트 전체 `check`는 `::accept`나 보상 종류의 `effects.accepts`가 가리키는 퀘스트도 판정합니다. 그 퀘스트는 프로젝트에 선언되어 있어야 하고(비슷한 이름을 제안합니다) 수락 기반이어야 합니다. `start`가 있는 퀘스트나 부모와 함께 활성화되는 하위 퀘스트는 안 됩니다. 보상의 수락은 그 보상의 `target=`(또는 `kind=`)에서 보고하고 메시지에 보상을 밝힙니다.
 
-명세: [dsl 0.21.0 §7a.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
+명세: [dsl 0.21.0 §7a.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md), [dsl 0.50.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-ADVANCE-CASCADE
 
@@ -1114,9 +1114,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-KEY
 
-플러그인의 `plugin.yaml`이나 export 파일에 그 파일이 받지 않는 키가 있습니다(의도한 키를 함께 알려 줍니다. 예: `dependencies` → `depends`). 또는 `plugin.yaml`의 `kind:`가 `capability`가 아닙니다.
+플러그인의 `plugin.yaml`이나 export 파일에 그 파일이 받지 않는 키가 있습니다(의도한 키를 함께 알려 줍니다. 예: `dependencies` → `depends`). 또는 `plugin.yaml`의 `kind:`가 `capability`가 아닙니다. 보상 종류의 `effects.writes`에는 보상의 상태 쓰기가 `credits:`라고 덧붙입니다.
 
-명세: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+명세: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-MANIFEST
 
@@ -1148,9 +1148,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-PARSE
 
-플러그인 export 파일이 올바른 YAML이 아니거나 키의 값 모양이 틀렸습니다(줄과 그 키가 받는 모양을 알려 줍니다). 또는 디렉티브의 `effects.writes`/`effects.asserts`/`effects.retracts` 항목이 해당 디렉티브가 선언하지 않은 속성을 가리킵니다(또는 assert가 `_`를 사용합니다). 또는 `stampAttrs` 항목의 `on:`이 비었거나, 표면 이름 목록이 아니거나, 한 표면을 두 번 적었거나, `on:` 없이 `required: true`입니다.
+플러그인 export 파일이 올바른 YAML이 아니거나 키의 값 모양이 틀렸습니다(줄과 그 키가 받는 모양을 알려 줍니다). 또는 디렉티브의 `effects.writes`/`effects.asserts`/`effects.retracts` 항목이 해당 디렉티브가 선언하지 않은 속성을 가리킵니다(또는 assert가 `_`를 사용합니다). 또는 `stampAttrs` 항목의 `on:`이 비었거나, 표면 이름 목록이 아니거나, 한 표면을 두 번 적었거나, `on:` 없이 `required: true`입니다. 또는 보상 종류의 `effects:`가 효과를 하나도 선언하지 않았거나, 사실 효과가 `@target` 외의 `@속성`을 읽거나(`<reward>`는 다른 속성을 받지 않습니다) `_`를 assert하거나, `accepts` 항목이 `@target`도 퀘스트 id도 아니거나, `target: { forbidden: true }`인 종류가 `@target`을 읽습니다.
 
-명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-RESERVED-NAME
 
@@ -2145,9 +2145,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-QUEST-NEVER-ACCEPTED
 
-수락 기반(accept-driven) 퀘스트를 어떤 `::accept{quest=…}`도 지정하지 않고 `accept="external"`도 아니어서, 프로젝트 안에서 이 퀘스트를 수락하는 곳이 없습니다.
+수락 기반(accept-driven) 퀘스트를 어떤 `::accept{quest=…}`도, 보상 종류의 `effects.accepts`도 지정하지 않고 `accept="external"`도 아니어서, 프로젝트 안에서 이 퀘스트를 수락하는 곳이 없습니다.
 
-명세: [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
+명세: [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md), [dsl 0.50.0 §5.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### W-QUEST-REARM-CONSTANT
 

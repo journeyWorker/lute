@@ -636,6 +636,7 @@ fn asserters(root: &Path, group: &DocGroup) -> Asserters {
             out.push((format!("component `{component}` via {label}"), pattern));
         }
     };
+    let mut rewarded = Asserters::new();
     for (path, doc, folded) in group {
         // A component asserts where it is used, never on its own.
         if folded.typed.component.is_some() {
@@ -649,6 +650,19 @@ fn asserters(root: &Path, group: &DocGroup) -> Asserters {
         }
         for q in &doc.quests {
             record(&q.body, format!("quest `{}` ({document})", q.id));
+            // 0.50.0 §5.4: a reward kind's `effects.asserts`.
+            for grant in lute_check::reward_effects::quest_grants(q, &folded.snapshot.reward_kinds)
+            {
+                if let Some((p, true)) = grant.fact() {
+                    rewarded.push((
+                        reward_site(grant.kind(), &q.id),
+                        Pattern {
+                            rel: p.relation.clone(),
+                            args: fact_args(p),
+                        },
+                    ));
+                }
+            }
         }
         for e in &doc.entries {
             record(&e.body, format!("entry `{}` ({document})", e.id));
@@ -662,7 +676,17 @@ fn asserters(root: &Path, group: &DocGroup) -> Asserters {
             record(&b.body, format!("beat `{id}` ({document})"));
         }
     }
+    out.extend(rewarded);
     out
+}
+
+/// How a reward effect's producer site starts ([`reward_site`]).
+const REWARD_SITE: &str = "reward ";
+
+/// ``reward BADGE of quest `firstVisit` ``: a fact a reward of `kind`
+/// produces through its kind's `effects` (0.50.0 §5.4).
+fn reward_site(kind: &str, quest: &str) -> String {
+    format!("{REWARD_SITE}{kind} of quest `{quest}`")
 }
 
 /// The root's relational vocabulary: every document of one root folds the
@@ -695,8 +719,13 @@ fn producers(p: &Pattern, vocab: &RelVocab, sites: &[&str]) -> Vec<String> {
         return vec!["undeclared relation".to_string()];
     };
     let mut parts = Vec::new();
-    if !sites.is_empty() {
-        parts.push(format!("asserted by {}", sites.join(", ")));
+    let (rewards, asserts): (Vec<&str>, Vec<&str>) =
+        sites.iter().partition(|s| s.starts_with(REWARD_SITE));
+    if !asserts.is_empty() {
+        parts.push(format!("asserted by {}", asserts.join(", ")));
+    }
+    if !rewards.is_empty() {
+        parts.push(format!("produced by {}", rewards.join(", ")));
     }
     let seeds: Vec<&str> = vocab
         .facts

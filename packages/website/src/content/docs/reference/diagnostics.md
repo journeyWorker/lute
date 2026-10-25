@@ -16,9 +16,9 @@ A position `file:line:column` counts lines and columns from 1, and the column co
 
 ### E-ACCEPT-TARGET
 
-An `::accept` directive names no quest, gives `quest` a value that is not a quoted quest id, gives `at` a value other than `"nextRun"`, or targets a quest declared `accept="external"` that already activates with its parent (making the acceptance a no-op).
+An `::accept` directive names no quest, gives `quest` a value that is not a quoted quest id, gives `at` a value other than `"nextRun"`, or targets a quest declared `accept="external"` that already activates with its parent (making the acceptance a no-op). Whole-project `check` also judges each quest an `::accept` or a reward kind's `effects.accepts` names: it must be declared in the project (did-you-mean) and accept-driven — not a quest with `start`, nor a subquest child that activates with its parent; a reward's is reported at its `target=` (or `kind=`) and names the reward.
 
-Spec: [dsl 0.21.0 §7a.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
+Spec: [dsl 0.21.0 §7a.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.21.0.md), [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md), [dsl 0.50.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-ADVANCE-CASCADE
 
@@ -1112,9 +1112,9 @@ A plugin export file or directory could not be read due to an I/O or encoding fa
 
 ### E-PLUGIN-KEY
 
-A key in a plugin's `plugin.yaml` or one of its export files is not one that file takes (with the key meant, e.g. `dependencies` → `depends`), or `plugin.yaml` declares a `kind:` other than `capability`.
+A key in a plugin's `plugin.yaml` or one of its export files is not one that file takes (with the key meant, e.g. `dependencies` → `depends`), or `plugin.yaml` declares a `kind:` other than `capability`. A reward kind's `effects.writes` adds that a reward's state write is `credits:`.
 
-Spec: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+Spec: [dsl 0.28.0 §1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-MANIFEST
 
@@ -1146,9 +1146,9 @@ Spec: [plugin Appendix C1](/spec/)
 
 ### E-PLUGIN-PARSE
 
-A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`.
+A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect, a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, or a kind with `target: { forbidden: true }` reads `@target`.
 
-Spec: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+Spec: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-RESERVED-NAME
 
@@ -2148,9 +2148,9 @@ Spec: [dsl 0.22.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### W-QUEST-NEVER-ACCEPTED
 
-An accept-driven quest is never named by any `::accept{quest=…}` and is not `accept="external"`, so nothing in the project ever accepts it.
+An accept-driven quest is never named by any `::accept{quest=…}` or reward kind `effects.accepts` and is not `accept="external"`, so nothing in the project ever accepts it.
 
-Spec: [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md)
+Spec: [dsl 0.24.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md), [dsl 0.25.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.25.0.md), [dsl 0.50.0 §5.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### W-QUEST-REARM-CONSTANT
 

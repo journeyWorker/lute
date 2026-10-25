@@ -703,8 +703,20 @@ fn load_package(
                         target: body.target,
                         attrs: body.attrs,
                         credits: body.credits,
+                        effects: body.effects,
                     })
                     .collect();
+                // 0.50.0 §5.1: an effect a `<reward>` cannot bind is this
+                // file's fault, at the effect's line.
+                for rk in &decls {
+                    for me in crate::validate::validate_reward_effects(rk) {
+                        e.push(LoadError::Parse {
+                            file: src.file.display().to_string(),
+                            at: reward_effect_line(src.text, &rk.name, &me.message()),
+                            msg: me.message(),
+                        });
+                    }
+                }
                 let key = |r: &RewardKindDecl| r.name.clone();
                 let at = keyed("rewardKinds");
                 merge_named(
@@ -1232,6 +1244,21 @@ fn effect_error_line(text: &str, directive: &str, message: &str) -> Option<(usiz
     Some(crate::yaml_text::line_col(text, at))
 }
 
+/// `(line, column)` (1-based) of what a reward effect error names — the
+/// effect, its second backticked token after `reward kind `K``, e.g.
+/// `met(@rarity)` — inside kind `kind`'s entry of `text`; the kind's key
+/// when the effect is not found; `None` when neither is.
+fn reward_effect_line(text: &str, kind: &str, message: &str) -> Option<(usize, usize)> {
+    let from = key_offset(text, &["rewardKinds", kind])?;
+    let at = message
+        .split('`')
+        .nth(3)
+        .filter(|n| !n.is_empty())
+        .and_then(|needle| text[from..].find(needle))
+        .map_or(from, |i| from + i);
+    Some(crate::yaml_text::line_col(text, at))
+}
+
 /// Scan `dir` for plugin packages (each immediate subdirectory containing a
 /// `plugin.yaml`), in sorted order, and index by manifest id. A duplicate id
 /// across packages is a `LoadError::DuplicateId { kind: "plugin", .. }` (the
@@ -1567,6 +1594,9 @@ fn export_error(file: &str, src: &str, e: &yaml_serde::Error) -> LoadError {
         if !expected.is_empty() {
             msg.push_str(&format!(" (its keys: {})", expected.join(", ")));
         }
+        if key == "writes" && is_reward_effects_path(path.as_deref()) {
+            msg.push_str(" — a reward's state write is `credits:`");
+        }
         if let Some(hint) = null_key_hint(&doc, &key, &expected) {
             msg.push_str("; ");
             msg.push_str(&hint);
@@ -1578,6 +1608,14 @@ fn export_error(file: &str, src: &str, e: &yaml_serde::Error) -> LoadError {
         at,
         msg: plain_data_error(path.as_deref(), &detail),
     }
+}
+
+/// `rewardKinds.<kind>.effects`: a reward kind's `effects:` mapping
+/// (0.50.0 §5.1), whose state write is the kind's `credits:`.
+fn is_reward_effects_path(path: Option<&str>) -> bool {
+    path.and_then(|p| p.strip_prefix("rewardKinds."))
+        .and_then(|rest| rest.strip_suffix(".effects"))
+        .is_some_and(|kind| !kind.is_empty() && !kind.contains('.'))
 }
 
 /// A `yaml_serde` data error (the text parsed as YAML) of `src`, reworded:

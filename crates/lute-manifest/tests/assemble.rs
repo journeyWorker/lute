@@ -1218,6 +1218,7 @@ fn reward_kind(name: &str, target: Option<&str>) -> RewardKindDecl {
         }),
         attrs: vec![],
         credits: None,
+        effects: None,
     }
 }
 
