@@ -97,12 +97,11 @@ impl SeverityPolicy {
 
     /// `at` relative to the project root, `/`-separated; `None` for a path
     /// outside it or one that names no file (a manifest-less label). `at` is
-    /// read as given (current-directory-relative), else as root-relative
-    /// (`lute lint` reports paths relative to the project root).
+    /// a file path as given on this command (working-directory-relative or
+    /// absolute); a caller that prints another spelling (`lute lint`'s
+    /// root-relative paths) still passes the file here.
     fn rel_path(&self, at: &Path) -> Option<String> {
-        let canonical = std::fs::canonicalize(at)
-            .or_else(|_| std::fs::canonicalize(self.root.join(at)))
-            .ok()?;
+        let canonical = std::fs::canonicalize(at).ok()?;
         let rel = canonical.strip_prefix(&self.root).ok()?;
         Some(rel.to_string_lossy().replace('\\', "/"))
     }

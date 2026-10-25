@@ -316,6 +316,12 @@ fn a_checker_code_in_lint_rules_points_at_the_project_manifest() {
 /// the project-wide `W-DISPLAY-NAME-DUP`; `plays/p.play.yaml` plays `go`.
 fn plugin_project(tag: &str, diagnostics: &str) -> lute_scratch::ScratchDir {
     let dir = lute_scratch::ScratchDir::named(tag);
+    write_plugin_project(&dir, diagnostics);
+    dir
+}
+
+/// [`plugin_project`]'s files, written under `dir`.
+fn write_plugin_project(dir: &Path, diagnostics: &str) {
     let write = |rel: &str, text: &str| {
         let path = dir.join(rel);
         std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -357,7 +363,6 @@ fn plugin_project(tag: &str, diagnostics: &str) -> lute_scratch::ScratchDir {
         "plays/p.play.yaml",
         "steps:\n  - occasion: go\n    expect: { winner: a }\n",
     );
-    dir
 }
 
 /// §6.2: a simulation runs on native results — a project `error` level
@@ -446,4 +451,62 @@ fn lint_applies_the_project_level_to_the_checker_warning() {
         report["suppressed"],
         serde_json::json!({ "W-DISPLAY-NAME-DUP": 1 })
     );
+}
+
+/// The promoted `W-DISPLAY-NAME-DUP` of [`plugin_project`]: `lute lint`
+/// prints it at `scenes/b.lute` (relative to its own project root) as a
+/// configured error, and fails.
+fn assert_lint_promotes_the_dup(dir: &Path, target: &str) {
+    let out = lute(dir, &["lint", target]);
+    let text = stdout(&out);
+    assert_eq!(out.status.code(), Some(1), "{text}");
+    assert!(
+        text.contains("scenes/b.lute:8:1: error [W-DISPLAY-NAME-DUP] [project] display name"),
+        "{text}"
+    );
+    let report = json(&lute(dir, &["lint", target, "--json"]));
+    let diag = &report["diagnostics"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|d| d["code"] == "W-DISPLAY-NAME-DUP")
+        .unwrap_or_else(|| panic!("{report:#}"))
+        .clone();
+    assert_eq!(diag["path"], "scenes/b.lute", "{report:#}");
+    assert_eq!(diag["severity"], "error", "{report:#}");
+    assert_eq!(diag["configured"], "lute.project.yaml", "{report:#}");
+}
+
+/// A nested project's diagnostic is matched against the invoked project's
+/// `paths` by its real file (`nested/scenes/b.lute`), although lint prints
+/// it relative to the nested root.
+#[test]
+fn lint_levels_match_a_nested_project_file_by_its_real_path() {
+    let outer = lute_scratch::ScratchDir::named("dl-lint-nested");
+    std::fs::write(
+        outer.join("lute.project.yaml"),
+        format!(
+            "{MANIFEST}diagnostics:\n  W-DISPLAY-NAME-DUP: {{ level: error, paths: \
+             [\"nested/scenes/**\"] }}\n"
+        ),
+    )
+    .unwrap();
+    write_plugin_project(&outer.join("nested"), "");
+    assert_lint_promotes_the_dup(&outer, ".");
+}
+
+/// A same-named file in the working directory does not stand in for the
+/// project's: `lute lint project` matches `project/scenes/b.lute`.
+#[test]
+fn lint_levels_ignore_a_same_named_file_in_the_working_directory() {
+    let cwd = lute_scratch::ScratchDir::named("dl-lint-cwd");
+    write_plugin_project(
+        &cwd.join("project"),
+        "  W-DISPLAY-NAME-DUP: { level: error, paths: [\"scenes/**\"] }\n",
+    );
+    std::fs::create_dir_all(cwd.join("scenes")).unwrap();
+    for name in ["a", "b"] {
+        std::fs::write(cwd.join(format!("scenes/{name}.lute")), "unrelated\n").unwrap();
+    }
+    assert_lint_promotes_the_dup(&cwd, "project");
 }
