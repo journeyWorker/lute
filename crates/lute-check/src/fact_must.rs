@@ -1072,7 +1072,7 @@ impl<'a> Walk<'a> {
                     // 0.50.0 §5.4: the objective's grants run at its `done`.
                     let grants = std::mem::take(&mut self.grants);
                     for g in grants.objective(o) {
-                        self.apply_grant(g, &mut body, false);
+                        self.apply_grant(g, &mut body, true);
                     }
                     self.grants = grants;
                     self.walk(&o.body, &mut body);
@@ -1086,9 +1086,7 @@ impl<'a> Walk<'a> {
     /// (`QuestComplete`) or failure (`QuestFailed`), applied to `flow` in
     /// grant order. At completion the objective grants of its required
     /// objectives (every one, unless `complete="any"`) ran earlier, at each
-    /// objective's `done`: what they assert still holds only when it is a
-    /// crossing fact that outlives the quest's progress
-    /// ([`Self::outlives_quest`]), and what they retract stays removed.
+    /// objective's `done`: what they may remove stays removed.
     fn complete(&mut self, quest: &Quest, point: GrantPoint, flow: &mut Flow) {
         let grants = std::mem::take(&mut self.grants);
         if point == GrantPoint::QuestComplete && !quest.completes_on_any() {
@@ -1097,89 +1095,59 @@ impl<'a> Walk<'a> {
                     continue;
                 }
                 for g in owned {
-                    self.apply_grant(g, flow, true);
+                    self.apply_grant(g, flow, false);
                 }
             }
         }
         for g in grants.at(point) {
-            self.apply_grant(g, flow, false);
+            self.apply_grant(g, flow, true);
         }
         self.grants = grants;
     }
 
-    /// The Must transfer of one reward effect (0.50.0 §5.4): an unguarded
-    /// assert is an `::assert`; a guarded one forks like a guarded
-    /// `::assert` (Must only where its `when=` holds, so not after the
-    /// meet); a retract, guarded or not, removes what it matches. `carry`:
-    /// the grant ran earlier, so a fact it adds is kept only when it
-    /// outlives the quest's progress ([`Self::outlives_quest`]).
-    fn apply_grant(&mut self, g: &GrantEffect<'_>, flow: &mut Flow, carry: bool) {
-        // `E-FACT-EXCLUSIVE` reads the set the reward meets (at its
-        // `kind=`), before its first effect; an earlier objective grant
-        // (`carry`) is judged at its own objective.
-        if g.order.effect == 0 && !carry {
+    /// The Must transfer of one reward effect (0.50.0 §5.4): it may run, so
+    /// it removes what it may remove — a retract, guarded or not, what it
+    /// matches; an assert, what it displaces — and adds nothing. A reward's
+    /// assert is never Must: a `judge: before` occasion defers lifecycle
+    /// handlers, so other quests' rewards and beats may run between a grant
+    /// and any later read. `at_grant`: `flow` is the set at the grant point
+    /// itself, so the reward's slots (its `kind=`, for `E-FACT-EXCLUSIVE`,
+    /// and its `when=`) are recorded; an objective grant replayed at the
+    /// quest's completion is judged at its own objective.
+    fn apply_grant(&mut self, g: &GrantEffect<'_>, flow: &mut Flow, at_grant: bool) {
+        if g.order.effect == 0 && at_grant {
             self.record_span(g.reward.kind_span, flow);
         }
         let Some((pattern, assert)) = g.fact() else {
             return;
         };
-        let line = g.reward.kind_span.line;
-        match (g.guard(), assert) {
-            (Some(when), true) => {
-                self.record(when, flow);
-                let mut taken = flow.clone();
-                self.assume(when, &mut taken);
-                self.grant_assert(pattern, line, &mut taken, carry);
-                meet(flow, taken);
-            }
-            (Some(when), false) => {
-                self.record(when, flow);
-                self.retract_pattern(pattern, flow);
-            }
-            (None, true) => self.grant_assert(pattern, line, flow, carry),
-            (None, false) => self.retract_pattern(pattern, flow),
+        if let (Some(when), true) = (g.guard(), at_grant) {
+            self.record(when, flow);
         }
+        self.remove_write(pattern, assert, flow);
     }
 
-    fn grant_assert(&self, pattern: &FactPattern, line: u32, flow: &mut Flow, carry: bool) {
-        let fact = GroundFact::from_pattern(pattern);
-        let held = fact
-            .as_ref()
-            .is_some_and(|f| flow.as_ref().is_some_and(|s| s.contains_key(f)));
-        self.assert_pattern(pattern, line, flow);
-        if let (true, false, Some(f), Some(facts)) = (carry, held, fact, flow.as_mut()) {
-            if !self.outlives_quest(&f) {
-                facts.retain(|g| *g != f);
-            }
-        }
-    }
-
-    /// A fact an objective's grant asserted that still holds when the
-    /// walked quest completes: crossing ([`Root::crosses`]) and of a
-    /// `tier: user` / `app` relation. A run or season fact may be cleared
-    /// between the objective and the completion (a season can reopen within
-    /// a run without resetting a run-tier quest), so it is never carried
-    /// (S3 re-review).
-    fn outlives_quest(&self, f: &GroundFact) -> bool {
-        self.root.crosses(f) && self.user_tier(f)
-    }
-
-    /// Remove from `flow` every fact `writes` may remove: what each retract
-    /// matches, and what each assert displaces (it may run), keeping
-    /// nothing an assert would add.
+    /// Remove from `flow` every fact `writes` may remove ([`Self::remove_write`]).
     fn remove_writes(&self, writes: &[(FactPattern, bool)], flow: &mut Flow) {
         for (pattern, assert) in writes {
-            if *assert {
-                let Some(before) = flow.clone() else {
-                    return;
-                };
-                self.assert_pattern(pattern, 0, flow);
-                if let Some(after) = flow.as_mut() {
-                    after.retain(|g| before.contains_key(g));
-                }
-            } else {
-                self.retract_pattern(pattern, flow);
+            self.remove_write(pattern, *assert, flow);
+        }
+    }
+
+    /// Remove from `flow` every fact one write may remove: what a retract
+    /// matches, and what an assert displaces (it may run), keeping nothing
+    /// an assert would add.
+    fn remove_write(&self, pattern: &FactPattern, assert: bool, flow: &mut Flow) {
+        if assert {
+            let Some(before) = flow.clone() else {
+                return;
+            };
+            self.assert_pattern(pattern, 0, flow);
+            if let Some(after) = flow.as_mut() {
+                after.retain(|g| before.contains_key(g));
             }
+        } else {
+            self.retract_pattern(pattern, flow);
         }
     }
 

@@ -288,27 +288,37 @@ fn guaranteed(diags: &[String]) -> Vec<&str> {
         .collect()
 }
 
+/// Main's decision (S3 fix 2): a reward's assert never enters Must — a
+/// `judge: before` occasion defers lifecycle handlers, so other quests'
+/// rewards and beats may run between a grant and any read. No grant order,
+/// owner or kind makes it guaranteed, and its negation stays live.
 #[test]
-fn an_unconditional_reward_assert_is_guaranteed_after_the_grant() {
-    let dir = must_project(
-        "re-must-plain",
-        "",
-        "<reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>",
-    );
-    let got = check(&dir);
-    // The completion handler only: a quest gated by
-    // `quest.firstVisit.state == 'complete'` and the scene `after:
-    // completed("firstVisit")` see the assert as possible, never Must
-    // (S3 review R1: a reset or a host seed can complete the quest without
-    // the fact).
-    assert_eq!(guaranteed(&got), ["quests/q.lute:13"], "{got:?}");
-    assert!(
-        got[0].contains("is asserted on every route to here (./quests/q.lute:10)"),
-        "{got:?}"
-    );
-    // Its negation is a dead arm.
+fn a_reward_assert_is_possible_only_after_the_grant() {
+    for (tag, objective, rewards) in [
+        (
+            "re-must-plain",
+            "",
+            "<reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>",
+        ),
+        (
+            "re-must-order",
+            "",
+            "<reward kind=\"REVOKE\" amount=\"1\" target=\"mira\"/>\n  \
+             <reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>",
+        ),
+        ("re-must-swap", "", "<reward kind=\"SWAP\" amount=\"1\"/>"),
+        (
+            "re-must-objective",
+            &format!("<reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n    {GUARD}"),
+            "",
+        ),
+    ] {
+        let got = check(&must_project(tag, objective, rewards));
+        assert_eq!(got, Vec::<String>::new(), "{tag}: {got:?}");
+    }
+    // The negation of an unconditional grant is live in its handler.
     let dir = project(
-        "re-must-dead",
+        "re-must-live",
         &format!(
             "<quest id=\"firstVisit\" tier=\"user\" title=\"First visit\" start=\"true\">\n  \
              <objective id=\"c1\" title=\"Do it\" done=\"run.flag\"/>\n  \
@@ -318,8 +328,7 @@ fn an_unconditional_reward_assert_is_guaranteed_after_the_grant() {
         ),
         &[],
     );
-    let got = check(&dir);
-    assert_eq!(codes(&got), ["E-ARM-DEAD"], "{got:?}");
+    assert_eq!(check(&dir), Vec::<String>::new());
 }
 
 #[test]
@@ -332,61 +341,65 @@ fn a_guarded_reward_assert_is_possible_only() {
     assert_eq!(check(&dir), Vec::<String>::new());
 }
 
+/// A reward's retract still removes what it matches from Must: the
+/// objective's `done` puts `met(mira)` in Must for its body, and its
+/// `REVOKE` grant, which runs before the body, takes it out again
+/// (`meet`'s `BADGE` is the producer that makes `met(mira)` possible).
 #[test]
-fn a_retract_after_an_earlier_assert_removes_the_fact() {
-    // The objective's grant asserts; the quest's grant, later, retracts.
-    let dir = must_project(
-        "re-must-revoke",
-        &format!("<reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n    {GUARD}"),
-        "<reward kind=\"REVOKE\" amount=\"1\" target=\"mira\"/>",
-    );
-    let got = check(&dir);
-    // Guaranteed in the objective's body, right after its grant, and no
-    // longer at the quest's completion or after it.
+fn a_reward_retract_removes_the_fact() {
+    let objective = |tag: &str, reward: &str| {
+        project(
+            tag,
+            &format!(
+                "<quest id=\"firstVisit\" tier=\"user\" title=\"First visit\" start=\"true\">\n  \
+                 <objective id=\"c1\" title=\"Do it\" done=\"holds('met', ['mira'])\">\n    \
+                 {reward}\n    {GUARD}\n  </objective>\n</quest>\n\n\
+                 <quest id=\"meet\" tier=\"user\" title=\"Meet\" start=\"true\">\n  \
+                 <objective id=\"c1\" title=\"Do it\" done=\"run.flag\"/>\n  \
+                 <reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n</quest>\n"
+            ),
+            &[],
+        )
+    };
+    let got = check(&objective("re-must-kept", ""));
     assert_eq!(guaranteed(&got), ["quests/q.lute:10"], "{got:?}");
+    let got = check(&objective(
+        "re-must-revoke",
+        "<reward kind=\"REVOKE\" amount=\"1\" target=\"mira\"/>",
+    ));
+    assert_eq!(got, Vec::<String>::new());
 }
 
+/// S3 fix 2 (reviewer's counterexample): `chapterEnd` is judged before its
+/// beats, so the engine defers both quests' completion handlers. A grants
+/// `BADGE`, B grants `REVOKE`, then A's handler runs: its `!holds` arm is
+/// reachable and must stay live.
 #[test]
-fn grants_apply_in_order_across_and_within_rewards() {
-    // Assert, then retract: absent after the grant.
-    let dir = must_project(
-        "re-must-order",
-        "",
-        "<reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n  \
-         <reward kind=\"REVOKE\" amount=\"1\" target=\"mira\"/>",
+fn a_deferred_handler_sees_another_quest_s_retract() {
+    let negated = GUARD.replace("holds('met'", "!holds('met'");
+    let dir = project(
+        "re-deferred",
+        &format!(
+            "<quest id=\"a\" tier=\"user\" title=\"A\" start=\"true\">\n  \
+             <objective id=\"c1\" title=\"End\" on=\"chapterEnd\" done=\"true\"/>\n  \
+             <reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n  \
+             <on event=\"questComplete\">\n    {negated}\n  </on>\n</quest>\n\n\
+             <quest id=\"b\" tier=\"user\" title=\"B\" start=\"true\">\n  \
+             <objective id=\"c1\" title=\"End\" on=\"chapterEnd\" done=\"true\"/>\n  \
+             <reward kind=\"REVOKE\" amount=\"1\" target=\"mira\"/>\n</quest>\n"
+        ),
+        &[
+            (
+                "plugins/acme.stage/plugin.yaml",
+                &format!("{PLUGIN}  occasions: occasions/\n"),
+            ),
+            (
+                "plugins/acme.stage/occasions/o.yaml",
+                "occasions:\n  chapterEnd: { select: first, judge: before }\n",
+            ),
+        ],
     );
     assert_eq!(check(&dir), Vec::<String>::new());
-    // Retract, then assert: present after the grant. A fact some grant
-    // retracts is not monotone, so it does not cross into the dependent
-    // quest or the scene.
-    let dir = must_project(
-        "re-must-order-back",
-        "",
-        "<reward kind=\"REVOKE\" amount=\"1\" target=\"mira\"/>\n  \
-         <reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>",
-    );
-    assert_eq!(guaranteed(&check(&dir)), ["quests/q.lute:14"]);
-    // One kind retracting and asserting the same pattern: retracts first,
-    // so present.
-    let dir = must_project("re-must-swap", "", "<reward kind=\"SWAP\" amount=\"1\"/>");
-    assert_eq!(guaranteed(&check(&dir)), ["quests/q.lute:13"]);
-}
-
-#[test]
-fn an_objective_grant_holds_in_its_body_and_at_completion() {
-    let dir = must_project(
-        "re-must-objective",
-        &format!("<reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n    {GUARD}"),
-        "",
-    );
-    let got = check(&dir);
-    // In the objective's body and at the quest's completion; not in the
-    // dependent quest or the scene (S3 review R1).
-    assert_eq!(
-        guaranteed(&got),
-        ["quests/q.lute:10", "quests/q.lute:21"],
-        "{got:?}"
-    );
 }
 
 /// A quest and a scene gated on `firstVisit`'s completion, each testing
@@ -537,8 +550,9 @@ fn an_objective_s_season_assert_does_not_carry_to_completion() {
 }
 
 /// S3 review R3: a quest's completion grants are analysed whether or not
-/// a handler follows — two unconditional rewards asserting exclusive
-/// facts are `E-FACT-EXCLUSIVE` with no `questComplete` handler.
+/// a handler follows — an unconditional reward asserting a fact that
+/// excludes one Must at the grant (the quest's `start` reads it) is
+/// `E-FACT-EXCLUSIVE` with no `questComplete` handler.
 #[test]
 fn exclusive_grants_are_judged_without_a_handler() {
     let schema = SCHEMA.replace(
@@ -550,9 +564,9 @@ fn exclusive_grants_are_judged_without_a_handler() {
         "{KINDS}  SHUN: {{ target: {{ entity: person, required: true }}, effects: {{ asserts: \
          [\"avoids(@target)\"] }} }}\n"
     );
-    let quest = "<quest id=\"firstVisit\" tier=\"user\" title=\"First visit\" start=\"true\">\n  \
+    let quest = "<quest id=\"firstVisit\" tier=\"user\" title=\"First visit\" \
+                 start=\"holds('met', ['mira'])\">\n  \
                  <objective id=\"c1\" title=\"Do it\" done=\"run.flag\"/>\n  \
-                 <reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n  \
                  <reward kind=\"SHUN\" amount=\"1\" target=\"mira\"/>\n";
     let codes_of = |tag: &str, handler: &str| {
         let dir = project(
