@@ -575,11 +575,15 @@ fn semantic_field_coverage_walk(value: &serde_json::Value, path: &str) {
             field_is_registered(field),
             "E-SEMANTICS-FIELD: serialized field `{field}` at {path} has no registry field-table row"
         );
+        // Dynamic maps are checked at their own key only: their members are
+        // authored or plugin-defined (`FIELD_TABLE`'s doc), e.g. a command's
+        // or option's plugin `stamps` (dsl 0.49.0 §4, 0.50.0 §3.5).
         if matches!(
             field.as_str(),
             "extra"
                 | "plugin"
                 | "fields"
+                | "stamps"
                 | "texts"
                 | "promptTexts"
                 | "localeSegments"
