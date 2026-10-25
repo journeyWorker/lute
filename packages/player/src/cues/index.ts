@@ -454,15 +454,22 @@ const makeFactory = (options: CueFactoryOptions): CueFactoryShape => {
     const sourcePrompt = field(source, "prompt")
     const fallbackPrompt = string(sourcePrompt) ? sourcePrompt : await_.menu.prompt ?? undefined
     const prompt = fallbackPrompt === undefined ? undefined : localizedText(field(source, "promptTexts"), locale, fallbackPrompt)
+    // 0.50.0 §3.6: the element's and each option's plugin stamps, beside and
+    // never merged into the authored fields; omitted when none is authored.
+    const stampsOf = (value: JsonRecord | undefined) => {
+      const stamps = Option.getOrUndefined(decodeJsonRecord(field(value, "stamps")))
+      return stamps === undefined ? {} : { stamps }
+    }
     return {
       id: await_.menu.id,
       construct: await_.menu.construct === "hub" ? "hub" : "branch",
       prompt,
       timeout: await_.menu.timeout ?? undefined,
       default: await_.menu.default ?? undefined,
+      ...stampsOf(source),
       options: await_.menu.options.map((option) => {
         const authoredOption = authoredById[option.id]
-        return { id: option.id, text: textOf(authoredOption, option.id), verdict: option.verdict, once: option.once, exit: option.exit }
+        return { id: option.id, text: textOf(authoredOption, option.id), verdict: option.verdict, once: option.once, exit: option.exit, ...stampsOf(authoredOption) }
       })
     }
   }

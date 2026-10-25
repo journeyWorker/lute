@@ -59,19 +59,26 @@ export interface EffectSpec {
   readonly name?: string
 }
 
-/** Authored and runtime-resolved choice data for presenters. */
+/**
+ * Authored and runtime-resolved choice data for presenters. `stamps` are the
+ * plugin stamps authored on the `<branch>`/`<hub>` element and on each
+ * `<choice>` (0.50.0 §3.6), read from the IR command at the menu's address;
+ * each is absent when none is authored.
+ */
 export interface ChoiceView {
   readonly id: string
   readonly construct: "branch" | "hub"
   readonly prompt: string | undefined
   readonly timeout: number | undefined
   readonly default: string | undefined
+  readonly stamps?: Ir.stamps
   readonly options: ReadonlyArray<{
     readonly id: string
     readonly text: string
     readonly verdict: string
     readonly once: boolean
     readonly exit: boolean
+    readonly stamps?: Ir.stamps
   }>
 }
 
