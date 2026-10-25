@@ -10,6 +10,9 @@
 //! its relation is neither reserved, unbounded, nor derived. `tier: scene`
 //! facts never cross a document boundary at all, nor do `tier: quest` facts
 //! (the engine clears them with their quest, at a time no document controls).
+//! A quest's `start=` facts enter its body only when they also outlast the
+//! quest (#205, [`Root::outlasts_quest`]): no `newRun` or season opening
+//! resets them while the quest stays active.
 //!
 //! **Within a document** the walk is a forward must-dataflow over the node
 //! stream with the fork/join shape of definite assignment
@@ -631,6 +634,23 @@ impl<'a> Root<'a> {
                     .is_none()
             })
     }
+
+    /// Crossing and reset no earlier than `quest` (#205, 0.50.0 §5.4): a
+    /// `start=` fact holds throughout the quest's body only if every reset
+    /// that clears it also returns the quest to `unset` — `tier: user` /
+    /// `app` (never reset), `tier: run` in a `tier="run"` quest (`newRun`
+    /// resets both), `tier: season:<s>` in a `tier="season:<s>"` quest (the
+    /// season's opening resets both). A user-tier quest stays active across
+    /// both resets. An absent relation `tier:` is `run`.
+    fn outlasts_quest(&self, f: &GroundFact, quest: &Quest) -> bool {
+        self.crosses(f)
+            && self.vocab.relations.get(&f.relation).is_some_and(|d| {
+                match d.tier.as_deref().unwrap_or("run") {
+                    "user" | "app" => true,
+                    tier => quest.tier.as_ref().is_some_and(|(t, _)| t == tier),
+                }
+            })
+    }
 }
 
 /// The `key:` tuple (`key`, non-empty) of a fact with `args`; an
@@ -751,7 +771,7 @@ fn walk_doc(
         let mut base = root.start();
         if let Some(start) = &quest.start {
             for (fact, provenance) in w.assumptions(start) {
-                if root.crosses(&fact) {
+                if root.outlasts_quest(&fact, quest) {
                     base.add(fact, provenance);
                 }
             }
@@ -1066,9 +1086,11 @@ impl<'a> Walk<'a> {
                     // therefore not Must at its start. Under a `judge:
                     // before` occasion the bodies run only after the
                     // occasion's beats, other quests' grants and handlers
-                    // and the cadence's season openings (#203), so its
-                    // `when=` contributes only facts nothing may remove
-                    // ([`Root::outlasts_deferral`]).
+                    // and the cadence's season openings (#203), so neither
+                    // its `when=` nor its quest's `start=` (#205: a season
+                    // opening also resets a same-season quest, yet the
+                    // selected body still runs) contributes a fact that may
+                    // be removed meanwhile ([`Root::outlasts_deferral`]).
                     let point = match o.event.as_str() {
                         "questComplete" => Some(GrantPoint::QuestComplete),
                         "questFailed" => Some(GrantPoint::QuestFailed),
@@ -1076,7 +1098,11 @@ impl<'a> Walk<'a> {
                     };
                     let lifecycle = point.filter(|_| self.quest.is_some());
                     let mut body = match lifecycle {
-                        Some(p) => self.lifecycle.get(&p).cloned().flatten(),
+                        Some(p) => self.lifecycle.get(&p).cloned().flatten().map(|mut b| {
+                            let seeds = Arc::clone(&b.seeds);
+                            b.retain(|f| seeds.contains_key(f) || self.root.outlasts_deferral(f));
+                            b
+                        }),
                         None => Some(self.body_base.clone()),
                     };
                     let writes = lifecycle
