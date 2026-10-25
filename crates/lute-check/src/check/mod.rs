@@ -371,10 +371,15 @@ pub struct FoldedEnv {
     /// fold: `check()` reports its diagnostics, and every flow walk of this
     /// document reads its [`crate::next_labels::LoopTable`].
     pub labels: crate::next_labels::LabelPass,
+    /// The components this document imports (the [`CheckInput`]'s, shared):
+    /// what the project raise table (0.51.0 §4.3, [`crate::raises`]) walks at
+    /// each `::use`, with the use's arguments bound.
+    pub components: std::sync::Arc<crate::component_import::ComponentSet>,
 }
 
-/// Every field but [`FoldedEnv::snapshot`], which is the input's (and would
-/// print the whole capability vocabulary per document).
+/// Every field but [`FoldedEnv::snapshot`] and [`FoldedEnv::components`],
+/// which are the input's (and would print the whole capability vocabulary
+/// and every imported component body per document).
 impl std::fmt::Debug for FoldedEnv {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FoldedEnv")

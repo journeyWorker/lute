@@ -1,3 +1,4 @@
+use super::occasions::shown_yaml;
 use super::SchemaError;
 use crate::types::{Literal, PathSegment, Type};
 use serde::{Deserialize, Serialize};
@@ -50,10 +51,11 @@ pub struct SlotDecl {
     pub shape: String,
 }
 
-/// A directive's declared effects (plugin §7.4): the state it `writes`
-/// and — dsl 0.27.0 §4 — the facts it `asserts` / `retracts`. Every list is
-/// optional; the engine applies them after the call (writes, then retracts,
-/// then asserts).
+/// A directive's declared effects (plugin §7.4): the state it `writes`,
+/// — dsl 0.27.0 §4 — the facts it `asserts` / `retracts`, and — 0.51.0 §4.1
+/// — the occasions the host `raises` in answer to the call. Every list is
+/// optional; the engine applies the first three after the call (writes,
+/// then retracts, then asserts); a raise is the host's (0.51.0 §4.4).
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct DirectiveEffects {
@@ -66,22 +68,42 @@ pub struct DirectiveEffects {
     /// dsl 0.27.0 §4: fact patterns the call retracts (`_` = any).
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub retracts: Vec<FactEffect>,
+    /// 0.51.0 §4.1 (#170): the occasions the host raises after the
+    /// presentation that ran the call ends. Non-empty when written.
+    #[serde(
+        default,
+        skip_serializing_if = "Vec::is_empty",
+        deserialize_with = "raise_list"
+    )]
+    pub raises: Vec<RaiseDecl>,
 }
 
 impl DirectiveEffects {
     /// `true` when the block declares nothing at all.
     pub fn is_empty(&self) -> bool {
-        self.writes.is_empty() && self.asserts.is_empty() && self.retracts.is_empty()
+        self.writes.is_empty()
+            && self.asserts.is_empty()
+            && self.retracts.is_empty()
+            && self.raises.is_empty()
     }
 
     /// `true` when the block declares a fact effect.
     pub fn has_facts(&self) -> bool {
         !self.asserts.is_empty() || !self.retracts.is_empty()
     }
+
+    /// `true` when a call changes state or facts: a `writes`, `asserts` or
+    /// `retracts` entry. A declared raise changes neither (the host raises
+    /// the occasion afterwards, 0.51.0 §4.4), so a raises-only directive
+    /// stays presentational.
+    pub fn writes_state(&self) -> bool {
+        !self.writes.is_empty() || self.has_facts()
+    }
 }
 
-/// Hand-written so a block without `asserts`/`retracts` prints exactly as it
-/// did before they existed: `capabilitySnapshot` hashes this `Debug`.
+/// Hand-written so a block without `asserts`/`retracts`/`raises` prints
+/// exactly as it did before they existed: `capabilitySnapshot` hashes this
+/// `Debug`.
 impl std::fmt::Debug for DirectiveEffects {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = f.debug_struct("DirectiveEffects");
@@ -92,8 +114,148 @@ impl std::fmt::Debug for DirectiveEffects {
         if !self.retracts.is_empty() {
             s.field("retracts", &self.retracts);
         }
+        if !self.raises.is_empty() {
+            s.field("raises", &self.raises);
+        }
         s.finish()
     }
+}
+
+/// One `effects.raises` entry (0.51.0 §4.1): the occasion the host raises
+/// and, for a targeted occasion, what it is raised for. Parsed through
+/// [`RaiseDecl::try_from`] so a malformed entry names the shape it takes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "yaml_serde::Value")]
+pub struct RaiseDecl {
+    pub occasion: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub target: Option<RaiseTargetDecl>,
+}
+
+/// A [`RaiseDecl`]'s `target`: `@<attr>` (a directive's own attribute, or a
+/// reward kind's `@target`) or a literal target written whole
+/// (`scene.chapter2`), as a beat writes it. Written and serialized as that
+/// one string.
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "String", into = "String")]
+pub enum RaiseTargetDecl {
+    /// `@<attr>`: the call's value for the attribute (a reward's `target=`).
+    Attr(String),
+    /// A dotted target, as written.
+    Literal(String),
+}
+
+impl RaiseTargetDecl {
+    /// The attribute an `@<attr>` target reads.
+    pub fn attr(&self) -> Option<&str> {
+        match self {
+            RaiseTargetDecl::Attr(a) => Some(a),
+            RaiseTargetDecl::Literal(_) => None,
+        }
+    }
+}
+
+impl std::fmt::Display for RaiseTargetDecl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RaiseTargetDecl::Attr(a) => write!(f, "@{a}"),
+            RaiseTargetDecl::Literal(t) => f.write_str(t),
+        }
+    }
+}
+
+impl std::fmt::Debug for RaiseTargetDecl {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?}", self.to_string())
+    }
+}
+
+impl From<RaiseTargetDecl> for String {
+    fn from(t: RaiseTargetDecl) -> String {
+        t.to_string()
+    }
+}
+
+const RAISE_SHAPE: &str = "a raise is `{ occasion: <occasion>, target: \"@<attr>\" | \
+     <dotted target> }` (`target` only for an occasion raised for a target)";
+
+impl TryFrom<String> for RaiseTargetDecl {
+    type Error = SchemaError;
+    fn try_from(s: String) -> Result<Self, SchemaError> {
+        let t = s.trim();
+        if let Some(attr) = t.strip_prefix('@') {
+            if crate::ident::is_ident(attr) {
+                return Ok(RaiseTargetDecl::Attr(attr.to_string()));
+            }
+        } else if !t.is_empty() && crate::ident::is_dotted_name(t) {
+            return Ok(RaiseTargetDecl::Literal(t.to_string()));
+        }
+        Err(SchemaError::Raise(format!(
+            "effects.raises target `{s}` is neither `@<attr>` nor a dotted target \
+             (`scene.chapter2`); {RAISE_SHAPE}"
+        )))
+    }
+}
+
+impl TryFrom<yaml_serde::Value> for RaiseDecl {
+    type Error = SchemaError;
+    fn try_from(v: yaml_serde::Value) -> Result<Self, SchemaError> {
+        use yaml_serde::Value;
+        let bad = |what: String| {
+            Err(SchemaError::Raise(format!(
+                "effects.raises {what}; {RAISE_SHAPE}"
+            )))
+        };
+        let Value::Mapping(m) = &v else {
+            return bad(format!("entry `{}` is not a mapping", shown_yaml(&v)));
+        };
+        let mut occasion = None;
+        let mut target = None;
+        for (k, val) in m {
+            match (k.as_str(), val) {
+                (Some("occasion"), Value::String(o)) if crate::ident::is_name(o) => {
+                    occasion = Some(o.clone());
+                }
+                (Some("occasion"), other) => {
+                    return bad(format!(
+                        "`occasion: {}` is not an occasion name",
+                        shown_yaml(other)
+                    ));
+                }
+                (Some("target"), Value::String(t)) => {
+                    target = Some(RaiseTargetDecl::try_from(t.clone())?);
+                }
+                (Some("target"), other) => {
+                    return bad(format!("`target: {}` is not a string", shown_yaml(other)));
+                }
+                (key, _) => {
+                    let key = key.map_or_else(|| shown_yaml(k), str::to_string);
+                    let hint = crate::suggest::nearest(&key, ["occasion", "target"], 2)
+                        .map(|s| format!(" (did you mean `{s}`?)"))
+                        .unwrap_or_default();
+                    return bad(format!("entry has the unknown key `{key}`{hint}"));
+                }
+            }
+        }
+        let Some(occasion) = occasion else {
+            return bad("entry names no `occasion:`".to_string());
+        };
+        Ok(RaiseDecl { occasion, target })
+    }
+}
+
+/// `effects.raises`: a non-empty list (0.51.0 §4.2) — `raises: []` is
+/// refused, not read as absent.
+pub(crate) fn raise_list<'de, D: serde::Deserializer<'de>>(
+    d: D,
+) -> Result<Vec<RaiseDecl>, D::Error> {
+    let list = Vec::<RaiseDecl>::deserialize(d)?;
+    if list.is_empty() {
+        return Err(serde::de::Error::custom(SchemaError::Raise(format!(
+            "effects.raises is empty; list at least one raise, or remove `raises:` — {RAISE_SHAPE}"
+        ))));
+    }
+    Ok(list)
 }
 
 /// One `effects.asserts` / `effects.retracts` entry (dsl 0.27.0 §4): a fact

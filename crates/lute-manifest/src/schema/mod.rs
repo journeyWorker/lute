@@ -11,6 +11,8 @@ pub enum SchemaError {
     RewardEffects(String),
     OccasionTarget(String),
     HostToken(String),
+    /// 0.51.0 §4.1: a malformed `effects.raises` entry.
+    Raise(String),
 }
 impl fmt::Display for SchemaError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -22,7 +24,8 @@ impl fmt::Display for SchemaError {
             | Self::RewardTarget(message)
             | Self::RewardEffects(message)
             | Self::OccasionTarget(message)
-            | Self::HostToken(message) => message,
+            | Self::HostToken(message)
+            | Self::Raise(message) => message,
         };
         f.write_str(message)
     }
@@ -41,8 +44,8 @@ mod vocabulary;
 
 pub use directives::{
     AttrDecl, BridgeRef, DirectiveDecl, DirectiveEffects, DirectiveState, FactEffect,
-    FactEffectArg, Lowering, OpBy, SlotDecl, WriteDecl, WriteValue, BUILTIN_LOWERING_HOOKS,
-    WRITE_OPS,
+    FactEffectArg, Lowering, OpBy, RaiseDecl, RaiseTargetDecl, SlotDecl, WriteDecl, WriteValue,
+    BUILTIN_LOWERING_HOOKS, WRITE_OPS,
 };
 pub use files::{
     BridgeFile, DefsFile, DirectivesFile, EnumDecl, EnumsFile, EventsFile, FrontmatterDecl,
@@ -55,6 +58,7 @@ pub use manifest::{
 };
 pub use occasions::{
     OccasionBody, OccasionDecl, OccasionJudge, OccasionSelect, OccasionTarget, OccasionsFile,
+    RaisedBy,
 };
 pub use vocabulary::{
     AcceptEffect, BridgeCapability, CastBody, CastFile, CastMember, DefDecl, DefParam, EventDecl,

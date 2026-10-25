@@ -326,6 +326,9 @@ pub fn reconcile_collected(
             Box::new(|| lute_check::check_project_accepts(&group)),
             // dsl 0.24.0 §2: an accept-driven quest no `::accept`, mock, or test accepts.
             Box::new(|| lute_check::check_project_never_accepted(&group, &mocked)),
+            // 0.51.0 §4.3: every declared raise's resolved target lies in its
+            // occasion's domain and some scene or beat answers it.
+            Box::new(|| lute_check::raises::check_project_raise_targets(&group, &beat_foldeds)),
             // dsl 0.19.0 §3/§5: project-wide entry id / series-order uniqueness
             // and `entry.<id>.read` references (the quest passes' lore mirror).
             Box::new(|| lute_check::check_project_entry_ids(&group)),

@@ -753,6 +753,7 @@ mod tests {
             member_envs: vec![],
             snapshot: Default::default(),
             labels: Default::default(),
+            components: Default::default(),
         };
         assert_eq!(
             target_guard("meet", Some("kind:heroes"), None, &folded).as_deref(),

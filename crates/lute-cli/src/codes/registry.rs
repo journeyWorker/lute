@@ -988,8 +988,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-INVALID-DIRECTIVE",
-        summary: "A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one); or a directive attribute or `stampAttrs` entry is typed `list`, `map` or `record`, which no authored attribute value can satisfy.",
-        spec: &["dsl 0.49.0 §3.2"],
+        summary: "A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one); or a directive attribute or `stampAttrs` entry is typed `list`, `map` or `record`, which no authored attribute value can satisfy; or a directive whose `lower:` builds a staging record or runs a builtin hook declares `effects.raises`, which no such lowering carries to the host (only a `plugin` record does) — the raises are dropped.",
+        spec: &["dsl 0.49.0 §3.2", "dsl 0.51.0 §4.2"],
     },
     Code {
         code: "E-PLUGIN-IO",
@@ -1028,8 +1028,13 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-PARSE",
-        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect, a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, or a kind with `target: { forbidden: true }` reads `@target`, or a `hostTokens` name is not an identifier (letters, digits and `_`, not starting with a digit) or its `type` is not `string`, `int` or `{ enum: [...] }`.",
-        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1", "dsl 0.50.0 §5.1"],
+        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect (none of `asserts:`, `retracts:`, `accepts:` or `raises:`), a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, a raise targets an `@attr` other than `@target`, or a kind with `target: { forbidden: true }` reads `@target` (a raise for `@target` included), or an `effects.raises` list is empty, an entry is not a mapping of `occasion` and optional `target`, its `target` is neither `@<attr>` nor a dotted target, or (on a directive) its `@<attr>` names no attribute of the directive, or an occasion's `raisedBy` is not `declared`, or a `hostTokens` name is not an identifier (letters, digits and `_`, not starting with a digit) or its `type` is not `string`, `int` or `{ enum: [...] }`.",
+        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1", "dsl 0.50.0 §5.1", "dsl 0.51.0 §4.1", "dsl 0.51.0 §4.2"],
+    },
+    Code {
+        code: "E-PLUGIN-RAISES",
+        summary: "A directive's or reward kind's `effects.raises` entry names an occasion no active plugin declares (with a did-you-mean, or the installed but inactive plugin to declare in `depends:`), gives a `target` to an occasion raised for none or none to one raised for a target, targets an `@attr` of a domain occasion whose type is not `{ entity: <the domain's kind> }` (on a reward kind: whose `target:` contract is not), or names a literal target outside the occasion's `<prefix>.<member>` shape or `members:`. Judged at plugin assembly, where every active plugin's occasions are known; the entry is dropped and its siblings land.",
+        spec: &["dsl 0.51.0 §4.2"],
     },
     Code {
         code: "E-PLUGIN-RESERVED-NAME",
@@ -1135,6 +1140,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-QUEST-UNREACHABLE",
         summary: "A `<quest>` can provably never complete because its `start` guard always decides false or its `fail` guard always decides true.",
         spec: &["dsl 0.4.0 §5.3"],
+    },
+    Code {
+        code: "E-RAISES-TARGET",
+        summary: "A declared raise's resolved target — the call's attribute value (an `@def` folded to its constant) or its declared `default:`, a reward's `target=`, or a literal — lies outside its occasion's `members:` (a literal: outside its entity kind), or no scene or beat answers the occasion for it (with a did-you-mean). A target that reads `occasion.target` is bound by the runtime and not judged; an attribute with no value and no `default:` raises nothing. A call in a component body is judged at each `::use`. Whole-project `check` only.",
+        spec: &["dsl 0.51.0 §4.3"],
     },
     Code {
         code: "E-REF-ARG-TYPE",

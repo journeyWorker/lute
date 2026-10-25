@@ -588,7 +588,8 @@ pub(crate) fn bare_param_ref(raw: &str) -> Option<String> {
 /// D7 (dsl 0.4.0 §6.1/§6.2, the corrected non-`is_some()` form): `true` when
 /// `tag`'s RESOLVED directive decl declares ACTUAL writes — non-empty
 /// `state.declares` (engine-written result slots) or non-empty
-/// `effects.writes` (incl. `WriteValue::FromBridgeResult`). Tested for
+/// `effects.writes` (incl. `WriteValue::FromBridgeResult`) or fact effects
+/// — a declared raise (0.51.0 §4.1) writes nothing. Tested for
 /// NON-EMPTINESS, not merely `Option::is_some`: a decl that carries a
 /// `state`/`effects` block with nothing declared in it (or a bare `bridge:`
 /// ref with no declared landing site) stays presentational. An unknown tag
@@ -597,7 +598,10 @@ pub(crate) fn bare_param_ref(raw: &str) -> Option<String> {
 pub(crate) fn directive_writes_state(snapshot: &CapabilitySnapshot, tag: &str) -> bool {
     snapshot.directive(tag).is_some_and(|decl| {
         decl.state.as_ref().is_some_and(|s| !s.declares.is_empty())
-            || decl.effects.as_ref().is_some_and(|e| !e.is_empty())
+            || decl
+                .effects
+                .as_ref()
+                .is_some_and(lute_manifest::schema::DirectiveEffects::writes_state)
     })
 }
 

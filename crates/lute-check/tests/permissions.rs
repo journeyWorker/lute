@@ -215,6 +215,7 @@ episode: 1
                 }],
                 asserts: Vec::new(),
                 retracts: Vec::new(),
+                raises: Vec::new(),
             }),
             bridge: Some(BridgeRef {
                 service: "remote".into(),

@@ -1134,9 +1134,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-INVALID-DIRECTIVE
 
-플러그인 디렉티브 선언이 닫힌 어휘 밖의 `semantics:` 플래그를 사용했거나, 같은 속성 이름을 두 번 이상 선언했거나, 속성의 `type`에 속하지 않는 값을 `default:`로 선언했습니다(`double` 속성의 정수 기본값은 허용됩니다). 또한 속성 값은 스칼라 하나로 쓰므로(문자열, 숫자, bool, enum 또는 엔티티 멤버, provider 또는 asset id) 최상위 타입이 `list`, `map`, `record`인 디렉티브 속성이나 `stampAttrs` 항목은 어떤 `.lute` 값으로도 만족할 수 없어 플러그인 로드 시 거부됩니다. 메시지가 속성 이름을 알려 줍니다: `string`으로 선언해 호스트에서 파싱하거나, 필드마다 속성 하나로 나누세요.
+플러그인 디렉티브 선언이 닫힌 어휘 밖의 `semantics:` 플래그를 사용했거나, 같은 속성 이름을 두 번 이상 선언했거나, 속성의 `type`에 속하지 않는 값을 `default:`로 선언했습니다(`double` 속성의 정수 기본값은 허용됩니다). 또한 속성 값은 스칼라 하나로 쓰므로(문자열, 숫자, bool, enum 또는 엔티티 멤버, provider 또는 asset id) 최상위 타입이 `list`, `map`, `record`인 디렉티브 속성이나 `stampAttrs` 항목은 어떤 `.lute` 값으로도 만족할 수 없어 플러그인 로드 시 거부됩니다. 메시지가 속성 이름을 알려 줍니다: `string`으로 선언해 호스트에서 파싱하거나, 필드마다 속성 하나로 나누세요. 0.51.0부터는 `lower:`가 스테이징 레코드를 만들거나 builtin 훅을 실행하는 디렉티브가 `effects.raises`를 선언한 경우도 이 코드입니다. 그런 lowering은 효과를 호스트에 전달하지 못하므로(`plugin` 레코드만 전달합니다) 그 raise는 버려집니다: `lower:`를 지워 호출이 `plugin` 레코드로 남게 하거나, passthrough 디렉티브에서 occasion을 raise하세요.
 
-명세: [dsl 0.49.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+명세: [dsl 0.49.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.51.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-PLUGIN-IO
 
@@ -1178,9 +1178,15 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-PARSE
 
-플러그인 export 파일이 올바른 YAML이 아니거나 키의 값 모양이 틀렸습니다(줄과 그 키가 받는 모양을 알려 줍니다). 또는 디렉티브의 `effects.writes`/`effects.asserts`/`effects.retracts` 항목이 해당 디렉티브가 선언하지 않은 속성을 가리킵니다(또는 assert가 `_`를 사용합니다). 0.50.0부터는 다음 원인도 같은 코드입니다. `stampAttrs` 항목: `on:`이 문자열 목록이 아니거나 비어 있음(`` stamp attribute `X` has an empty `on:` — list the surfaces it applies to, or omit `on:` for every directive and content line ``), `on:`에 같은 표면이 두 번 나옴(`` stamp attribute `X` lists `bg` twice in `on:` ``), `on:` 없는 `required: true`(`` stamp attribute `X` is `required: true` but has no `on:`; a stamp required on every record is not a column — name its surfaces with `on: […]` ``). 호스트 토큰: 허용되지 않는 타입이나 키, 식별자가 아닌 토큰 이름(`` host token `player-name` is not an identifier (letters, digits and `_`, not starting with a digit) ``). 보상 kind `effects`: 빈 `effects: {}`("declares no effect"), `@target` 외의 `@name` 인자(`` reward kind `BADGE` effect `met(@rarity)` reads `@rarity`; a reward kind's effects read only `@target` (a `<reward>` takes no other attribute) ``), 인자가 `@target` 또는 리터럴 quest id(식별자)가 아닌 `accepts` 항목, `target: { forbidden: true }`인데 `@target`을 읽는 효과.
+플러그인 export 파일이 올바른 YAML이 아니거나 키의 값 모양이 틀렸습니다(줄과 그 키가 받는 모양을 알려 줍니다). 또는 디렉티브의 `effects.writes`/`effects.asserts`/`effects.retracts` 항목이 해당 디렉티브가 선언하지 않은 속성을 가리킵니다(또는 assert가 `_`를 사용합니다). 0.50.0부터는 다음 원인도 같은 코드입니다. `stampAttrs` 항목: `on:`이 문자열 목록이 아니거나 비어 있음(`` stamp attribute `X` has an empty `on:` — list the surfaces it applies to, or omit `on:` for every directive and content line ``), `on:`에 같은 표면이 두 번 나옴(`` stamp attribute `X` lists `bg` twice in `on:` ``), `on:` 없는 `required: true`(`` stamp attribute `X` is `required: true` but has no `on:`; a stamp required on every record is not a column — name its surfaces with `on: […]` ``). 호스트 토큰: 허용되지 않는 타입이나 키, 식별자가 아닌 토큰 이름(`` host token `player-name` is not an identifier (letters, digits and `_`, not starting with a digit) ``). 보상 kind `effects`: 빈 `effects: {}`("declares no effect"), `@target` 외의 `@name` 인자(`` reward kind `BADGE` effect `met(@rarity)` reads `@rarity`; a reward kind's effects read only `@target` (a `<reward>` takes no other attribute) ``), 인자가 `@target` 또는 리터럴 quest id(식별자)가 아닌 `accepts` 항목, `target: { forbidden: true }`인데 `@target`을 읽는 효과. 0.51.0부터는 `effects.raises` 목록이 비어 있거나, 항목이 `occasion`과 선택적 `target`의 매핑이 아니거나, `target`이 `@<attr>`도 점으로 이은 대상도 아니거나, 디렉티브에서 `@<attr>`이 그 디렉티브의 속성을 가리키지 않거나, 보상 종류의 raise가 `@target` 이외의 `@attr`을 대상으로 하거나(`target: { forbidden: true }`인 종류의 `@target` raise 포함), occasion의 `raisedBy`가 `declared`가 아닌 경우도 같은 코드입니다. 보상 종류의 "declares no effect" 메시지는 `raises:`도 나열합니다.
 
-명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.51.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+
+### E-PLUGIN-RAISES
+
+디렉티브나 보상 종류의 `effects.raises` 항목이 활성 플러그인 어디에도 선언되지 않은 occasion을 가리키거나(비슷한 이름을 제안하거나, 설치되었지만 비활성인 플러그인이면 `depends:`에 선언하라고 알려 줍니다), 대상 없이 raise되는 occasion에 `target`을 주거나 대상과 함께 raise되는 occasion에 `target`을 빠뜨렸거나, 도메인 occasion의 `@attr` 대상의 타입이 `{ entity: <도메인의 종류> }`가 아니거나(보상 종류에서는 `target:` 계약이 그렇지 않은 경우), 리터럴 대상이 occasion의 `<prefix>.<member>` 모양이나 `members:` 밖에 있습니다. 모든 활성 플러그인의 occasion을 아는 플러그인 조립 단계에서 판정합니다. 해당 항목은 버려지고 나머지 항목은 그대로 들어갑니다.
+
+명세: [dsl 0.51.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-PLUGIN-RESERVED-NAME
 
@@ -1300,6 +1306,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 `<quest>`의 `start` 조건이 항상 거짓으로 결정되거나 `fail` 조건이 항상 참으로 결정되어, 해당 퀘스트가 결코 완료될 수 없음이 증명됩니다.
 
 명세: [dsl 0.4.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md)
+
+### E-RAISES-TARGET
+
+선언된 raise의 확정된 대상 — 호출의 속성 값(`@def`는 상수로 접힙니다)이나 선언된 `default:`, 보상의 `target=`, 또는 리터럴 — 이 occasion의 `members:` 밖에 있거나(리터럴은 엔티티 종류 밖), 그 대상으로 occasion에 응답하는 장면이나 비트가 없습니다(비슷한 대상을 제안합니다). `occasion.target`을 읽는 대상은 런타임이 묶으므로 판정하지 않고, 값도 `default:`도 없는 속성은 아무것도 raise하지 않습니다. 컴포넌트 본문 안의 호출은 각 `::use`에서 판정합니다. 프로젝트 전체 `check`에서만 보고합니다.
+
+명세: [dsl 0.51.0 §4.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-REF-ARG-TYPE
 

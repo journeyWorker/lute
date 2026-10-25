@@ -757,6 +757,7 @@ fn load_package(
                         raised_when: body.raised_when,
                         payload: body.payload,
                         outside_run: body.outside_run,
+                        raised_by: body.raised_by,
                     })
                     .collect();
                 let key = |o: &OccasionDecl| o.name.clone();

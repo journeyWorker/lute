@@ -101,6 +101,10 @@ pub enum AssembleError {
         kind: String,
         provider: String,
     },
+    /// 0.51.0 §4.2 (#170): a directive's or reward kind's `effects.raises`
+    /// entry names an occasion no active plugin declares, or a target of the
+    /// wrong shape or type. The entry is dropped; its siblings land.
+    Raises(crate::raises::RaiseError),
 }
 
 impl AssembleError {
@@ -124,6 +128,7 @@ impl AssembleError {
             AssembleError::StampSurface { .. } => "E-PLUGIN-STAMP-SURFACE",
             AssembleError::DomainSemantics { issue, .. } => issue.code(),
             AssembleError::UnknownRewardKindTarget { .. } => "E-PLUGIN-UNKNOWN-REWARD-TARGET",
+            AssembleError::Raises(_) => "E-PLUGIN-RAISES",
         }
     }
 }
@@ -294,6 +299,7 @@ impl std::fmt::Display for AssembleError {
                 "plugin `{plugin}` reward kind `{kind}` pins `target: {{ provider: \
                  {provider} }}`, which no active plugin declares"
             ),
+            AssembleError::Raises(e) => write!(f, "{e}"),
         }
     }
 }
@@ -776,6 +782,23 @@ pub fn assemble_snapshot(
     for (merging, entry) in stamp_pending {
         merge_stamp_attr(&mut snap, &merging, entry, &mut errs);
     }
+    // 0.51.0 §4.2: every declared raise against every active occasion (a
+    // raise may name a later-merged plugin's occasion).
+    let mut inactive_occasions: BTreeMap<String, String> = BTreeMap::new();
+    for (id, inst) in &installed.by_id {
+        if !active_ids.contains(id.as_str()) {
+            for oc in &inst.loaded.occasions {
+                inactive_occasions
+                    .entry(oc.name.clone())
+                    .or_insert_with(|| id.clone());
+            }
+        }
+    }
+    errs.extend(
+        crate::raises::check_raises(&mut snap, &dir_owner, &rk_owner, &inactive_occasions)
+            .into_iter()
+            .map(AssembleError::Raises),
+    );
     snap.directive_owners = dir_owner;
 
     snap.version = capability_version(&snap);

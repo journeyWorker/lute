@@ -130,6 +130,22 @@ fn all_refs_have_bodies(raw: &str, defs: &DefTable<'_>) -> bool {
         .all(|r| defs.bodies.contains_key(&r.name))
 }
 
+/// The literal an attribute's `@ref` value `raw` folds to (§5.1, the text
+/// [`decided_literal`] gives the lowerer); `None` for a ref that is no def
+/// with a body, does not expand, or depends on state — each reported by
+/// [`check_def_inlining`], never here. 0.51.0 §4.3: how a raise target
+/// written `@def` resolves.
+pub fn constant_attr(raw: &str, defs: &DefTable<'_>, schema: &crate::StateView) -> Option<String> {
+    if !all_refs_have_bodies(raw, defs)
+        || expand_cel(raw, defs, Some("$"), &mut Vec::new()).is_err()
+    {
+        return None;
+    }
+    fold_attr_ref(raw, defs, schema)
+        .as_ref()
+        .map(decided_literal)
+}
+
 fn diag(code: &str, message: String, span: Span) -> Diagnostic {
     Diagnostic {
         code: code.to_string(),

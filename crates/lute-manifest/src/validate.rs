@@ -206,6 +206,19 @@ pub enum ManifestError {
         kind: String,
         detail: String,
     },
+    /// 0.51.0 §4.2: an `effects.raises` target `@a` names no attribute of
+    /// the directive.
+    EffectRaise {
+        directive: String,
+        detail: String,
+    },
+    /// 0.51.0 §4.2 (Review051b F4): `effects.raises` on a directive whose
+    /// `lower:` builds a staging record or runs a builtin hook — neither
+    /// carries effects, so the raise could never reach the host.
+    RaisesWithoutCarrier {
+        directive: String,
+        lowering: StagingLowering,
+    },
     /// 0.49.0 §3.2 (#176): a directive attribute or a `stampAttrs` entry
     /// declared `list`, `map` or `record`. An attribute value is authored as
     /// one scalar, so no `.lute` value could satisfy the declaration.
@@ -225,6 +238,16 @@ pub enum AttrOwner {
     Stamp(String),
 }
 
+/// A `lower:` that is not the `plugin` passthrough
+/// ([`ManifestError::RaisesWithoutCarrier`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum StagingLowering {
+    /// `{ record, fields }`: the staging record it builds.
+    Record(String),
+    /// `{ kind: builtin, name }`: the hook it runs.
+    Builtin(String),
+}
+
 impl ManifestError {
     /// Stable, machine-readable code per variant; the assembler stamps it onto
     /// the `AssembleError` wrapping this, so a consumer keys on the SPECIFIC
@@ -234,12 +257,14 @@ impl ManifestError {
             ManifestError::UnknownSemanticsFlag { .. }
             | ManifestError::DuplicateAttr { .. }
             | ManifestError::AttrDefaultType { .. }
-            | ManifestError::StructuredAttr { .. } => "E-PLUGIN-INVALID-DIRECTIVE",
+            | ManifestError::StructuredAttr { .. }
+            | ManifestError::RaisesWithoutCarrier { .. } => "E-PLUGIN-INVALID-DIRECTIVE",
             ManifestError::UnknownLowerRecord { .. } => "E-LOWER-RECORD-UNKNOWN",
             ManifestError::LowerRecordField { .. } => "E-LOWER-RECORD-FIELD",
             ManifestError::EffectWrite { .. }
             | ManifestError::EffectFact { .. }
-            | ManifestError::RewardEffect { .. } => "E-PLUGIN-PARSE",
+            | ManifestError::RewardEffect { .. }
+            | ManifestError::EffectRaise { .. } => "E-PLUGIN-PARSE",
         }
     }
 
@@ -302,6 +327,32 @@ impl std::fmt::Display for ManifestError {
             ManifestError::RewardEffect { kind, detail } => {
                 write!(f, "reward kind `{kind}` {detail}")
             }
+            ManifestError::EffectRaise { directive, detail } => {
+                write!(f, "directive `::{directive}` effects.raises: {detail}")
+            }
+            ManifestError::RaisesWithoutCarrier {
+                directive,
+                lowering,
+            } => {
+                match lowering {
+                    StagingLowering::Record(record) => {
+                        write!(
+                            f,
+                            "directive `::{directive}` lowers to the `{record}` record"
+                        )?;
+                    }
+                    StagingLowering::Builtin(hook) => write!(
+                        f,
+                        "directive `::{directive}` lowers through the builtin `{hook}` hook"
+                    )?,
+                }
+                write!(
+                    f,
+                    ", which carries no effects (only a `plugin` record does), so its \
+                     `effects.raises` could never reach the host — drop `lower:` so the call \
+                     stays a `plugin` record, or raise the occasion from a passthrough directive"
+                )
+            }
             ManifestError::StructuredAttr { owner, attr, ty } => {
                 match owner {
                     AttrOwner::Directive(directive) => {
@@ -362,8 +413,29 @@ pub fn validate_directive(d: &DirectiveDecl) -> Vec<ManifestError> {
     if let Lowering::Record { record, fields } = &d.lower {
         validate_record_lowering(d, record, fields, &mut errs);
     }
+    if let Some(lowering) = raises_without_carrier(d) {
+        errs.push(ManifestError::RaisesWithoutCarrier {
+            directive: d.name.clone(),
+            lowering,
+        });
+    }
     errs.extend(validate_effects(d));
     errs
+}
+
+/// 0.51.0 §4.2 (Review051b F4): the lowering of `d` when it declares
+/// `effects.raises` but lowers to a staging record or a builtin hook, which
+/// carry no effects ([`ManifestError::RaisesWithoutCarrier`]). Assembly
+/// drops such raises, so no consumer ever reads one.
+pub fn raises_without_carrier(d: &DirectiveDecl) -> Option<StagingLowering> {
+    if d.effects.as_ref().is_none_or(|e| e.raises.is_empty()) {
+        return None;
+    }
+    match &d.lower {
+        Lowering::Record { record, .. } => Some(StagingLowering::Record(record.clone())),
+        Lowering::Builtin { name, .. } => Some(StagingLowering::Builtin(name.clone())),
+        Lowering::Passthrough => None,
+    }
 }
 
 /// 0.49.0 §3.2: [`ManifestError::StructuredAttr`] when `a`'s top-level type is
@@ -416,15 +488,51 @@ pub fn bridge_without_result_write(d: &DirectiveDecl) -> Option<String> {
     })
 }
 
-/// dsl 0.27.0 §2, §4: the directive's declared `effects` against its own
-/// attrs. The loader runs this where it knows the file, so a fault names
-/// its line ([`crate::loader`]); assembly re-runs it for a declaration that
-/// never came from a file.
+/// dsl 0.27.0 §2, §4, 0.51.0 §4.2: the directive's declared `effects`
+/// against its own attrs. The loader runs this where it knows the file, so
+/// a fault names its line ([`crate::loader`]); assembly re-runs it for a
+/// declaration that never came from a file.
 pub fn validate_effects(d: &DirectiveDecl) -> Vec<ManifestError> {
     let mut errs = Vec::new();
     validate_effect_writes(d, &mut errs);
     validate_effect_facts(d, &mut errs);
+    validate_effect_raises(d, &mut errs);
     errs
+}
+
+/// 0.51.0 §4.2: every `@attr` a declared raise targets names one of the
+/// directive's own attrs. Whether the occasion exists and takes a target of
+/// that type is judged at assembly (`E-PLUGIN-RAISES`), where every active
+/// plugin's occasions are known.
+fn validate_effect_raises(d: &DirectiveDecl, errs: &mut Vec<ManifestError>) {
+    for r in d.effects.iter().flat_map(|e| &e.raises) {
+        let Some(attr) = r
+            .target
+            .as_ref()
+            .and_then(crate::schema::RaiseTargetDecl::attr)
+        else {
+            continue;
+        };
+        if d.attrs.iter().any(|a| a.name == attr) {
+            continue;
+        }
+        let hint = crate::suggest::nearest(attr, d.attrs.iter().map(|a| a.name.as_str()), 2)
+            .map(|s| format!("; did you mean `@{s}`?"))
+            .unwrap_or_default();
+        let declared: Vec<&str> = d.attrs.iter().map(|a| a.name.as_str()).collect();
+        errs.push(ManifestError::EffectRaise {
+            directive: d.name.clone(),
+            detail: format!(
+                "`@{attr}` names no attribute of the directive (declared: {}){hint}; a raise's \
+                 `target: \"@<attr>\"` reads one of the directive's own attributes",
+                if declared.is_empty() {
+                    "none".to_string()
+                } else {
+                    declared.join(", ")
+                }
+            ),
+        });
+    }
 }
 
 /// dsl 0.27.0 §2 (T1-4): every `fromAttr` a write's value reads names one of
@@ -540,8 +648,9 @@ fn fact_faults<'f>(
 /// `<reward>` can bind. A fact reads only `@target` (a `<reward>` takes no
 /// other attribute, so a kind's `attrs:` cannot bind one), an assert is
 /// ground once bound, and a kind whose `target:` is `forbidden` reads no
-/// `@target` (no reward of it could bind one). The shapes were checked when
-/// the file parsed ([`crate::schema::RewardEffects`]).
+/// `@target` (no reward of it could bind one). 0.51.0 §4.2: a raise targets
+/// `@target` or a literal, under the same `forbidden` rule. The shapes were
+/// checked when the file parsed ([`crate::schema::RewardEffects`]).
 pub fn validate_reward_effects(kind: &RewardKindDecl) -> Vec<ManifestError> {
     use crate::schema::REWARD_TARGET_ATTR;
     let mut errs = Vec::new();
@@ -569,6 +678,22 @@ pub fn validate_reward_effects(kind: &RewardKindDecl) -> Vec<ManifestError> {
             ));
         }
     }
+    for r in &effects.raises {
+        let Some(attr) = r
+            .target
+            .as_ref()
+            .and_then(crate::schema::RaiseTargetDecl::attr)
+            .filter(|a| *a != REWARD_TARGET_ATTR)
+        else {
+            continue;
+        };
+        fault(format!(
+            "raises `{}` for `@{attr}`; a reward kind's raise targets `@{REWARD_TARGET_ATTR}` \
+             (the `<reward>`'s `target=`) or a literal target — a `<reward>` takes no other \
+             attribute",
+            r.occasion
+        ));
+    }
     if kind.target.as_ref().is_some_and(|t| t.forbidden) && effects.reads_target() {
         let reads: Vec<String> = effects
             .facts()
@@ -582,11 +707,15 @@ pub fn validate_reward_effects(kind: &RewardKindDecl) -> Vec<ManifestError> {
                     .map(ToString::to_string),
             )
             .collect();
-        fault(format!(
-            "effect `{}` reads `@{REWARD_TARGET_ATTR}`, but the kind declares `target: {{ \
-             forbidden: true }}`, so no `<reward>` of it has a target to bind",
-            reads.first().map_or("", String::as_str)
-        ));
+        let forbidden = format!(
+            "`@{REWARD_TARGET_ATTR}`, but the kind declares `target: {{ forbidden: true }}`, so \
+             no `<reward>` of it has a target to bind"
+        );
+        match (reads.first(), effects.target_raises().next()) {
+            (Some(read), _) => fault(format!("effect `{read}` reads {forbidden}")),
+            (None, Some(r)) => fault(format!("raises `{}` for {forbidden}", r.occasion)),
+            (None, None) => {}
+        }
     }
     errs
 }

@@ -54,6 +54,7 @@ pub mod permissions;
 pub mod prereq;
 pub mod producible;
 pub mod project_check;
+pub mod raises;
 pub mod reachability;
 pub mod rel_schema;
 pub mod renames;
