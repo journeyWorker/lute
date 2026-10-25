@@ -719,6 +719,33 @@ describe("generated IR index schema", () => {
   });
 });
 
+// 0.50.0 §3.5: `<choice>` options carry the plugin stamps they author; the
+// option `$defs` are closed, so the schema must name `stamps`.
+describe("IR option stamps", () => {
+  test("a compiled document with element and option stamps validates", () => {
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.49.schema.json`, "utf8"));
+    const ajv = new (Ajv2020)({ allErrors: true, strict: false });
+    const validate = ajv.compile(ir);
+    const project = `${ROOT}/crates/lute-cli/tests/fixtures/plugin-stamps-050-logic`;
+    const run = Bun.spawnSync(
+      [luteBin(), "compile", "--project", project, `${project}/scenes/ok.lute`],
+      { cwd: ROOT },
+    );
+    expect(run.success, run.stderr.toString()).toBe(true);
+    const doc = JSON.parse(run.stdout.toString());
+    const menus = doc.commands.filter((c) => c.kind === "choice" || c.kind === "hub");
+    expect(menus.map((c) => c.kind)).toEqual(["choice", "hub"]);
+    for (const menu of menus) {
+      expect(menu.stamps).toBeDefined();
+      for (const option of menu.options) expect(option.stamps).toBeDefined();
+    }
+    expect(validate(doc), JSON.stringify(validate.errors)).toBe(true);
+    // The closed option shape still refuses an undocumented key.
+    menus[0].options[0].extra = true;
+    expect(validate(doc)).toBe(false);
+  });
+});
+
 // --- the `lute check --json` report (0.48.0 §3.1), both modes ---
 
 describe("lute check report schema", () => {

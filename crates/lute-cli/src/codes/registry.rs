@@ -803,7 +803,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-MISSING-ATTR",
-        summary: "A directive is missing an attribute its declared schema requires, or a directive or content line does not author a plugin stamp declared `required: true` on its surface (`on:`); a stamp is never injected, so its `default:` does not count.",
+        summary: "A directive is missing an attribute its declared schema requires, or a directive, content line, `<branch>`, `<hub>` or `<choice>` does not author a plugin stamp declared `required: true` on its surface (`on:`); a stamp is never injected, so its `default:` does not count.",
         spec: &["dsl 0.50.0 §3.4"],
     },
     Code {
@@ -1563,7 +1563,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-UNKNOWN-ATTR",
-        summary: "A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to.",
+        summary: "A content line, directive or logic element carries an attribute key that the content-line grammar, the directive's own declaration or the element's fixed attribute table does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to; on `<branch>`, `<hub>` and `<choice>` the message also lists the stamps scoped to that element.",
         spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1", "dsl 0.50.0 §3.4"],
     },
     Code {

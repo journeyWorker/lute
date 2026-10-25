@@ -613,7 +613,8 @@ export const choiceOption = Schema.Struct({
   "when": Schema.optionalKey(Schema.suspend(() => celSlot)),
   "target": Schema.suspend(() => position),
   "placeholders": Schema.optionalKey(Schema.Array(Schema.suspend(() => placeholder))),
-  "texts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String))
+  "texts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type choiceOption = typeof choiceOption.Type;
 
@@ -629,7 +630,8 @@ export const hubOption = Schema.Struct({
   "when": Schema.optionalKey(Schema.suspend(() => celSlot)),
   "target": Schema.suspend(() => position),
   "placeholders": Schema.optionalKey(Schema.Array(Schema.suspend(() => placeholder))),
-  "texts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String))
+  "texts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
 });
 export type hubOption = typeof hubOption.Type;
 

@@ -549,20 +549,42 @@ pub(crate) fn timing_ref_decl(tag: &str, key: &str) -> Option<AttrDecl> {
     universal_timing_decl(key)
 }
 
-/// The type a `@ref` value of attribute `key` on a known `::tag` is checked
-/// against (`E-REF-TYPE`): the directive's own declaration, else an
-/// undeclared timing key's universal type ([`timing_ref_decl`], #193).
-pub(crate) fn directive_ref_type(
+/// Where an attribute with a `@ref` value is written, for the type that
+/// value is checked against (`E-REF-TYPE`, dsl §8; 0.50.0 §3.4).
+#[derive(Clone, Debug)]
+pub(crate) enum AttrSite<'a> {
+    /// No declaration types it: a `::use` argument, `<objective>`, `<on>`.
+    Untyped,
+    /// A content line: its typed line attribute (`wait`, 0.49.0 §4.2).
+    Line,
+    /// A known directive, by tag: its own declaration, else an undeclared
+    /// timing key's universal type ([`timing_ref_decl`], #193).
+    Directive(&'a str),
+    /// `<branch>`, `<hub>` or `<choice>`: the plugin stamp its `on:` admits
+    /// there (0.50.0 §3.4).
+    Element(StampSurface),
+}
+
+/// The type a `@ref` value of attribute `key` written at `site` is checked
+/// against; `None` leaves the slot untyped.
+pub(crate) fn attr_ref_type(
     snapshot: &CapabilitySnapshot,
-    tag: &str,
+    site: &AttrSite<'_>,
     key: &str,
 ) -> Option<Type> {
-    let decl = snapshot.directive(tag)?;
-    decl.attrs
-        .iter()
-        .find(|a| a.name == key)
-        .map(|a| a.ty.clone())
-        .or_else(|| timing_ref_decl(tag, key).map(|a| a.ty))
+    match site {
+        AttrSite::Untyped => None,
+        AttrSite::Line => crate::content_line::typed_line_attr(key).map(|a| a.ty),
+        AttrSite::Directive(tag) => {
+            let decl = snapshot.directive(tag)?;
+            decl.attrs
+                .iter()
+                .find(|a| a.name == key)
+                .map(|a| a.ty.clone())
+                .or_else(|| timing_ref_decl(tag, key).map(|a| a.ty))
+        }
+        AttrSite::Element(surface) => snapshot.stamp_attrs.get(surface, key).map(|a| a.ty.clone()),
+    }
 }
 
 /// A declared attr `default` as the authored attribute value it stands in

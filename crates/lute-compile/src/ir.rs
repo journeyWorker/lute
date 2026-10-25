@@ -1293,6 +1293,12 @@ pub struct ChoiceOption {
     /// text, keyed on this option's `lineId`. See `LineCmd::texts`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub texts: BTreeMap<String, String>,
+    /// 0.50.0 §3.5: the plugin stamps the `<choice>` authors (`on:` naming
+    /// `choice`), typed by their declarations. Absent when it authors none,
+    /// so an option without stamps is byte-identical to 0.49. Serialized
+    /// last.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub stamps: BTreeMap<String, serde_json::Value>,
 }
 
 /// `<hub>` (§7.3.2, IR A2): structurally a `choice` plus revisit flags. The
@@ -1350,6 +1356,10 @@ pub struct HubOption {
     /// text, keyed on this option's `lineId`. See `LineCmd::texts`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub texts: BTreeMap<String, String>,
+    /// 0.50.0 §3.5: the `<choice>`'s plugin stamps, as on
+    /// [`ChoiceOption::stamps`].
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub stamps: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Clone, Debug, Serialize)]

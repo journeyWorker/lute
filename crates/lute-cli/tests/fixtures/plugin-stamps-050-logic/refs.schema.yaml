@@ -1,0 +1,5 @@
+# Constant defs a logic element's stamp reads through `@ref` (0.50.0 §3.4).
+defs:
+  m: { type: int, cel: "3" }
+  k: { type: string, cel: "'L1'" }
+  g: { type: string, cel: "'grid'" }

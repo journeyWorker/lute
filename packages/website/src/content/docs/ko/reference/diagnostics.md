@@ -934,7 +934,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-MISSING-ATTR
 
-디렉티브에 선언된 스키마가 요구하는 속성이 빠져 있습니다. 또는 디렉티브나 콘텐츠 줄이 자기 표면(`on:`)에 `required: true`로 선언된 플러그인 스탬프를 쓰지 않았습니다. 스탬프는 주입되지 않으므로 `default:`는 셈에 들지 않습니다.
+디렉티브에 선언된 스키마가 요구하는 속성이 빠져 있습니다. 또는 디렉티브, 콘텐츠 줄, `<branch>`, `<hub>`, `<choice>`가 자기 표면(`on:`)에 `required: true`로 선언된 플러그인 스탬프를 쓰지 않았습니다. 스탬프는 주입되지 않으므로 `default:`는 셈에 들지 않습니다.
 
 명세: [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
@@ -1790,7 +1790,7 @@ CEL 슬롯, `::set` 대상, 또는 규칙 가드가 어떤 스키마에도 선�
 
 ### E-UNKNOWN-ATTR
 
-콘텐츠 줄이나 디렉티브가 콘텐츠 줄 문법 또는 해당 디렉티브 선언이 인식하지 못하는 속성 키를 가지고 있습니다. 스탬프를 실을 레코드가 없는 디렉티브(`::jump`, `::label`, `::clear`)에 타이밍 키(`wait`/`duration`/`delay`)나 플러그인 스탬프를 쓴 경우도 포함합니다. 그 값은 버려지기 때문입니다. `on:`으로 다른 표면에 한정된 플러그인 스탬프는 그 스탬프가 적용되는 표면을 알려 줍니다.
+콘텐츠 줄, 디렉티브 또는 로직 요소가 콘텐츠 줄 문법, 해당 디렉티브 선언 또는 요소의 고정 속성 표가 인식하지 못하는 속성 키를 가지고 있습니다. 스탬프를 실을 레코드가 없는 디렉티브(`::jump`, `::label`, `::clear`)에 타이밍 키(`wait`/`duration`/`delay`)나 플러그인 스탬프를 쓴 경우도 포함합니다. 그 값은 버려지기 때문입니다. `on:`으로 다른 표면에 한정된 플러그인 스탬프는 그 스탬프가 적용되는 표면을 알려 줍니다. `<branch>`, `<hub>`, `<choice>`에서는 그 요소에 한정된 스탬프도 함께 나열합니다.
 
 명세: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 

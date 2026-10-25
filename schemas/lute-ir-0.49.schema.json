@@ -1697,6 +1697,10 @@
             "type": "string"
           },
           "description": "dsl 0.8.0 §7: merged locale texts, locale tag → translated option text, keyed on `lineId`. Absent when no locale bundle was merged. The source-language string stays in `text`."
+        },
+        "stamps": {
+          "$ref": "#/$defs/stamps",
+          "description": "0.50.0 §3.5: the plugin stamps the `<choice>` authors (a `stampAttrs` entry whose `on:` names `choice`). Absent when it authors none."
         }
       },
       "additionalProperties": false,
@@ -1749,6 +1753,10 @@
             "type": "string"
           },
           "description": "dsl 0.8.0 §7: merged locale texts, locale tag → translated option text, keyed on `lineId`. Absent when no locale bundle was merged. The source-language string stays in `text`."
+        },
+        "stamps": {
+          "$ref": "#/$defs/stamps",
+          "description": "0.50.0 §3.5: the plugin stamps the `<choice>` authors (a `stampAttrs` entry whose `on:` names `choice`). Absent when it authors none."
         }
       },
       "additionalProperties": false,

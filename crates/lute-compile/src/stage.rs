@@ -7,6 +7,7 @@ use lute_check::{
 };
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_manifest::stamps::StampSurface;
 use lute_syntax::ast::{
     Arm, AttrValue, Branch, BundleBeat, ClipNode, Directive, Entry, Hub, Match, Node, Quest,
     Timeline,
@@ -19,8 +20,8 @@ use crate::ir::{
     OnCmd, QuestCmd, RewardEntry, Source, Stamp, TargetKindExt,
 };
 use crate::lower::{
-    attr_bool, attr_string, fact_text, lower_assert, lower_directive, lower_line, lower_retract,
-    lower_set,
+    attr_bool, attr_string, element_stamps, fact_text, lower_assert, lower_directive, lower_line,
+    lower_retract, lower_set,
 };
 use crate::normalize::{component_scope, is_body_split, COMPONENT_BEGIN, COMPONENT_END};
 use crate::schedule::schedule_timeline;
@@ -436,6 +437,7 @@ fn walk_branch(
                 .map(placeholder_from_interp)
                 .collect(),
             texts: Default::default(),
+            stamps: element_stamps(&c.attrs, cx.snapshot, &StampSurface::Choice),
         })
         .collect();
     let timeout = attr_string(&b.attrs, "timeout").and_then(|s| s.parse::<u32>().ok());
@@ -451,7 +453,10 @@ fn walk_branch(
         prompt_texts: Default::default(),
         timeout,
         default: timeout.and_then(|_| attr_string(&b.attrs, "default")),
-        stamp: Stamp::default(),
+        stamp: Stamp {
+            stamps: element_stamps(&b.attrs, cx.snapshot, &StampSurface::Branch),
+            ..Stamp::default()
+        },
     });
     apply_source(&mut cmd, cx);
     em.push(cmd, || SourceInfo {
@@ -517,6 +522,7 @@ fn walk_hub(
                 .map(placeholder_from_interp)
                 .collect(),
             texts: Default::default(),
+            stamps: element_stamps(&c.attrs, cx.snapshot, &StampSurface::Choice),
         })
         .collect();
     let mut cmd = Command::Hub(HubCmd {
@@ -530,7 +536,10 @@ fn walk_hub(
         prompt_line_id: None,
         prompt_texts: Default::default(),
         on_return: back.map(super::cfg::Label::sym),
-        stamp: Stamp::default(),
+        stamp: Stamp {
+            stamps: element_stamps(&h.attrs, cx.snapshot, &StampSurface::Hub),
+            ..Stamp::default()
+        },
     });
     apply_source(&mut cmd, cx);
     em.push(cmd, || SourceInfo {

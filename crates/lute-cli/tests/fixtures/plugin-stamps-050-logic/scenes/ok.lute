@@ -1,0 +1,24 @@
+---
+kind: scene
+character: mira
+season: 1
+episode: 1
+---
+## Shot 1.
+
+<branch id="route" prompt="Which way?" menuType="plain" cue="b1">
+  <choice id="goLeft" text="Left" optionKey="L1" cue="c1">
+    @mira: Left it is.
+  </choice>
+  <choice id="goRight" text="Right" optionKey=@k>
+    @mira: Right it is.
+  </choice>
+</branch>
+<hub id="look" prompt="Look around?" menuType="timed" cue="h1">
+  <choice id="window" text="The window" optionKey="W1" cue="hc1">
+    @mira: Rain.
+  </choice>
+  <choice id="leave" text="Leave" optionKey="X1" exit>
+    @mira: Enough.
+  </choice>
+</hub>

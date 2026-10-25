@@ -752,6 +752,19 @@ fn declares_attr(decl: Option<&DirectiveDecl>, key: &str) -> bool {
     decl.is_some_and(|d| d.attrs.iter().any(|a| a.name == key))
 }
 
+/// 0.50.0 §3.5: the plugin stamps a `<branch>`, `<hub>` or `<choice>`
+/// (`surface`) authors, for its record or its option. No key of the
+/// element's own can resolve to a stamp: assembly refuses a scoped stamp
+/// that shadows one (§3.2 rule 3), and a cross-cutting stamp never applies
+/// to an element (§3.1).
+pub(crate) fn element_stamps(
+    attrs: &[Attr],
+    snapshot: &CapabilitySnapshot,
+    surface: &StampSurface,
+) -> BTreeMap<String, serde_json::Value> {
+    plugin_stamps(attrs, snapshot, Some(surface), |_| false)
+}
+
 /// Lift the plugin stamps (plugin §14.1 `stampAttrs`) admissible on
 /// `surface` — the record's surface, `None` when no plugin declares stamps —
 /// out of `attrs` into a record's `Stamp.stamps`, each value typed by the

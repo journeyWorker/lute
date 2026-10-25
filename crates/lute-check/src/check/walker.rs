@@ -8,6 +8,8 @@ use super::{
     Diagnostic, Domain, DomainInfo, ExpectedType, Layer, Node, ProviderSet, ResolvedTimeline,
     Severity, Span, E_COMPONENT_ARG,
 };
+use crate::directives::AttrSite;
+use lute_manifest::stamps::StampSurface;
 
 /// The per-node validator walk. Holds the read-only capability surface and the
 /// mutable diagnostic/table/suppression accumulators; `Ctx` is passed per level
@@ -56,7 +58,7 @@ pub(crate) struct Walker<'a> {
     pub(crate) targets: std::collections::BTreeSet<String>,
 }
 
-impl Walker<'_> {
+impl<'a> Walker<'a> {
     /// `when` as an assumption over `bodies` (dsl 0.24.0), judged over
     /// `schema` — the beat's own environment's.
     pub(crate) fn assumption(
@@ -90,7 +92,7 @@ impl Walker<'_> {
             }
             match node {
                 Node::Line(l) => {
-                    self.check_line_attr_refs(&l.attrs, ctx);
+                    self.check_attr_refs(&l.attrs, ctx, &AttrSite::Line);
                     crate::content_line::check_content_line_attrs(
                         l,
                         self.snapshot,
@@ -146,7 +148,7 @@ impl Walker<'_> {
                     check_use_interp_args(d, self.components, ctx, &mut self.diags);
                     // `@ref`-valued args still resolve in the current scope; there
                     // is no directive decl to type them against.
-                    self.check_attr_refs(&d.attrs, ctx, None);
+                    self.check_attr_refs(&d.attrs, ctx, &AttrSite::Untyped);
                     self.diags
                         .extend(check_directive_when(d, self.snapshot, self.arena, ctx));
                 }
@@ -180,7 +182,7 @@ impl Walker<'_> {
                         self.domains,
                         ctx,
                     ));
-                    self.check_attr_refs(&d.attrs, ctx, Some(&d.tag));
+                    self.check_attr_refs(&d.attrs, ctx, &AttrSite::Directive(&d.tag));
                     self.diags
                         .extend(check_directive_when(d, self.snapshot, self.arena, ctx));
                 }
@@ -206,13 +208,18 @@ impl Walker<'_> {
                 Node::Branch(b) => {
                     // `E-DUP-BRANCH` + decl folding happened in the pre-pass; here
                     // we only validate the branch's own attrs and recurse.
-                    self.check_attr_refs(&b.attrs, ctx, None);
-                    crate::logic_attrs::check_branch_attrs(b, &mut self.diags);
+                    self.check_attr_refs(&b.attrs, ctx, &AttrSite::Element(StampSurface::Branch));
+                    crate::logic_attrs::check_branch_attrs(b, self.stamp_cx(), &mut self.diags);
                     for choice in &b.choices {
-                        self.check_attr_refs(&choice.attrs, ctx, None);
+                        self.check_attr_refs(
+                            &choice.attrs,
+                            ctx,
+                            &AttrSite::Element(StampSurface::Choice),
+                        );
                         crate::logic_attrs::check_choice_attrs(
                             choice,
                             crate::logic_attrs::ChoicePos::Branch,
+                            self.stamp_cx(),
                             &mut self.diags,
                         );
                         check_choice_record(choice, ctx, self.src, &mut self.diags);
@@ -394,7 +401,7 @@ impl Walker<'_> {
                                         &mut self.diags,
                                     );
                                     check_use_interp_args(d, self.components, ctx, &mut self.diags);
-                                    self.check_attr_refs(&d.attrs, ctx, None);
+                                    self.check_attr_refs(&d.attrs, ctx, &AttrSite::Untyped);
                                 }
                                 // dsl 0.8.0: `::end` is a walk TERMINATOR, not
                                 // a staging leaf — a `<track>` clip may hold
@@ -453,7 +460,11 @@ impl Walker<'_> {
                                         self.domains,
                                         ctx,
                                     ));
-                                    self.check_attr_refs(&d.attrs, ctx, Some(&d.tag));
+                                    self.check_attr_refs(
+                                        &d.attrs,
+                                        ctx,
+                                        &AttrSite::Directive(&d.tag),
+                                    );
                                 }
                                 ClipNode::Set(s) => {
                                     self.check_set_write(s, ctx);
@@ -469,13 +480,18 @@ impl Walker<'_> {
                     // validate the hub's own attrs and recurse into each choice
                     // (attrs, record sugar, `when` guard, body) so the B1–B5
                     // node checks apply inside hub arms too (dsl §7.3.2).
-                    self.check_attr_refs(&h.attrs, ctx, None);
-                    crate::logic_attrs::check_hub_attrs(h, &mut self.diags);
+                    self.check_attr_refs(&h.attrs, ctx, &AttrSite::Element(StampSurface::Hub));
+                    crate::logic_attrs::check_hub_attrs(h, self.stamp_cx(), &mut self.diags);
                     for choice in &h.choices {
-                        self.check_attr_refs(&choice.attrs, ctx, None);
+                        self.check_attr_refs(
+                            &choice.attrs,
+                            ctx,
+                            &AttrSite::Element(StampSurface::Choice),
+                        );
                         crate::logic_attrs::check_choice_attrs(
                             choice,
                             crate::logic_attrs::ChoicePos::Hub,
+                            self.stamp_cx(),
                             &mut self.diags,
                         );
                         check_choice_record(choice, ctx, self.src, &mut self.diags);
@@ -584,7 +600,7 @@ impl Walker<'_> {
                     if let Some(title) = &o.title {
                         check_interps(&scan_label_interps(title, o.span), ctx, &mut self.diags);
                     }
-                    self.check_attr_refs(&o.attrs, ctx, None);
+                    self.check_attr_refs(&o.attrs, ctx, &AttrSite::Untyped);
                     crate::logic_attrs::check_objective_attrs(o, &mut self.diags);
                     self.walk(&o.body, ctx);
                     // dsl 0.16.0 §2: `reward.when` is a Bool CEL slot with
@@ -619,7 +635,7 @@ impl Walker<'_> {
                             Some(&ExpectedType::Bool),
                         ));
                     }
-                    self.check_attr_refs(&o.attrs, ctx, None);
+                    self.check_attr_refs(&o.attrs, ctx, &AttrSite::Untyped);
                     crate::logic_attrs::check_on_attrs(o, &mut self.diags);
                     self.walk(&o.body, ctx);
                 }
@@ -639,32 +655,26 @@ impl Walker<'_> {
         }
     }
 
-    /// Validate every `@ref`-valued attribute's CEL slot in the current scope.
-    /// `directive_tag` is `Some` only for directive attrs, letting a `@ref` attr
-    /// value be typed against the attr's declared type (`E-REF-TYPE`, dsl §8),
-    /// or an undeclared timing key's universal type (#193).
-    fn check_attr_refs(&mut self, attrs: &[Attr], ctx: &Ctx<'_>, directive_tag: Option<&str>) {
-        for attr in attrs {
-            if let AttrValue::Ref(slot) = &attr.value {
-                let expected = directive_tag
-                    .and_then(|tag| {
-                        crate::directives::directive_ref_type(self.snapshot, tag, &attr.key)
-                    })
-                    .map(ExpectedType::Ty);
-                self.diags
-                    .extend(check_cel_slot(slot, self.arena, ctx, expected.as_ref()));
-            }
+    /// The capability surface a logic element's stamps resolve against.
+    fn stamp_cx(&self) -> crate::logic_attrs::StampCx<'a> {
+        crate::logic_attrs::StampCx {
+            snapshot: self.snapshot,
+            providers: self.providers,
+            domains: self.domains,
         }
     }
 
-    /// A content line's `@ref`-valued attributes: a typed line attribute
-    /// (`wait`, 0.49.0 §4.2) is checked against its type (`E-REF-TYPE`), the
-    /// rest as untyped CEL slots.
-    fn check_line_attr_refs(&mut self, attrs: &[Attr], ctx: &Ctx<'_>) {
+    /// Validate every `@ref`-valued attribute's CEL slot in the current scope,
+    /// typed by what `site` declares for the attribute (`E-REF-TYPE`, dsl §8):
+    /// a directive's own declaration or an undeclared timing key's universal
+    /// type (#193), a content line's typed attribute (`wait`, 0.49.0 §4.2), or
+    /// the plugin stamp a logic element admits (0.50.0 §3.4). An untyped site
+    /// checks the slot alone.
+    fn check_attr_refs(&mut self, attrs: &[Attr], ctx: &Ctx<'_>, site: &AttrSite<'_>) {
         for attr in attrs {
             if let AttrValue::Ref(slot) = &attr.value {
-                let expected =
-                    crate::content_line::typed_line_attr(&attr.key).map(|a| ExpectedType::Ty(a.ty));
+                let expected = crate::directives::attr_ref_type(self.snapshot, site, &attr.key)
+                    .map(ExpectedType::Ty);
                 self.diags
                     .extend(check_cel_slot(slot, self.arena, ctx, expected.as_ref()));
             }
