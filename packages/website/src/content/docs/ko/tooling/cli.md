@@ -55,7 +55,7 @@ diagnostics:
 | 잘못된 level | `` level `silent` is not one of `off`, `info`, `warn`, `error` `` |
 | `paths: []`, 문자열이 아닌 값, 절대 경로 또는 `..` 세그먼트 | `` `paths` takes project-relative globs, e.g. `scenes/imported/**` `` |
 
-**적용 순서**는 진단을 직렬화하고 출력하는 단 한 곳에서 정해집니다(위 진단 게이트를 받는 모든 명령이 발견된 프로젝트의 `diagnostics:`를 읽습니다):
+**적용 순서**는 진단을 직렬화하고 출력하는 단 한 곳에서 정해집니다(`check`, `compile`, `lint`, `trace`, `expr`이 프로젝트의 `diagnostics:`를 읽습니다. 문서 명령은 각 문서의 프로젝트를, 디렉터리 명령은 호출한 루트의 프로젝트를 씁니다. 시뮬레이션 명령 `test`, `play`, `calendar`는 프로젝트 level을 적용하지 않고 기존 `--deny`/`--deny-warnings` 게이트만 유지하므로, 프로젝트의 `error` level이 테스트를 실패시키지는 않습니다):
 
 1. (코드, 경로)에 대한 프로젝트 level;
 2. 그 코드를 지명한 `--deny CODE`는 **프로젝트가 `off`로 설정했더라도** 오류로 승격합니다(명시적인 명령줄이 config보다 우선);
@@ -69,10 +69,11 @@ Level은 **보고되는 내용과 종료 상태만** 바꿉니다. 분석, 아�
 - 진단을 담는 모든 JSON 보고서(파일별·프로젝트 전체의 `0.48.0.check` 보고서와 compile, lint, trace, expr envelope)는 **비어 있지 않을 때만** `"suppressed": { "<code>": n, … }`를 가집니다. 추가 필드이므로 보고서 id는 바뀌지 않습니다.
 
 ```console
-$ lute check ./scenes/a.lute
-ok: ./scenes/a.lute (0 warning(s), 212 suppressed by lute.project.yaml)
+$ cd docs/examples/plugin-surfaces
+$ lute check ./scenes/imported/street.lute
+lute: note: using project . (nearest lute.project.yaml); pass --project to choose another
+ok: ./scenes/imported/street.lute (0 warning(s), 1 suppressed by lute.project.yaml)
 ```
-<!-- rerun-after-S8 -->
 
 **LSP.** 언어 서버는 발행 전에 문서의 루트 기준 경로로 같은 level을 적용합니다. `off` 진단은 발행하지 않고, level이 바뀐 진단은 새 심각도로 발행합니다.
 

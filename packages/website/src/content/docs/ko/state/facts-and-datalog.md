@@ -408,10 +408,11 @@ explain canMend(lamp): does not hold
 - **May** — 프로젝트 전체에 걸치며 흐름에 무관합니다. 모든 실행의 어느 시점에서든 살아 있을 수 있는 모든 그라운드 팩트입니다. `facts:` 시드, 프로젝트 루트 어디에서든 assert된 모든 `::assert`의 팩트(씬, 퀘스트 `<on>`/`<objective>` 본문, 로어 항목에 있으며 문서가 도달 불가능하다고 증명되지 않은 것), `reserved:` 관계의 모든 팩트(엔진이 어느 것이든 채울 수 있음), 그리고 그 집합 위에서 `rules:`가 파생하는 모든 것이 포함됩니다. May는 어떤 경로가 팩트를 생성할 수 *있다는 것*만 알 뿐, 언제 생성하는지는 알지 못합니다. 부정된 본문 원자를 성립 가능한 것으로 읽지만, 한 가지 예외가 있습니다(dsl 0.23.0). 프로젝트 어디에서도 retract하지 않고 `key:`를 통해 대체하지도 않는 시드 팩트에 대한 부정은 거짓입니다. `inParty(shadowheart)`를 시드한 경우 `suspect(P) :- character(P), not inParty(P)`는 `suspect(shadowheart)`를 결코 결론내릴 수 없으므로 `holds('suspect', ['shadowheart'])` 가드는 dead이며, `suspect(astarion)`은 여전히 따라옵니다. `::retract{inParty(shadowheart)}`가 하나라도 존재하면 부정은 다시 성립 가능합니다.
 - **Must** — 경로에 민감합니다. 한 프로그램 지점으로 가는 모든 경로에서 팩트가 살아 있습니다. 문서 안에서는 정방향으로 순회합니다. `::assert`는 팩트를 추가하고(`key:`가 대체하는 팩트는 제거), `::retract`는 일치하는 모든 것을 제거하며, `<branch>`/`<match>`의 arm은 다시 합쳐지는 지점에서 **교집합**을 취합니다(가드 없는 선택지가 없는 branch나 망라적이지 않은 match도 어떤 arm도 실행되지 않을 수 있으므로 블록 전 집합과 교집합을 취함). `<hub>` 본문은 0회 이상 실행될 수 있습니다. 씬 사이에서는 [스칼라 엔벨로프](/ko/connectivity/envelopes/)와 정확히 같이 `after:` 그래프를 따릅니다. 씬은 시드와 `after:` 수식이 보장하는 팩트에서 시작합니다. `visited(A)`는 `A`가 끝날 때 성립하는 것을 기여하고, `&&`는 합집합을 취하며, `||`는 교집합을 취하고, `completed(q)`/`active(q)`는 아무것도 기여하지 않습니다. 퀘스트 본문과 로어 항목 본문은 엔진이 정한 시점에 실행되므로 시드와 자체 가드에서 시작합니다.
 
-Must를 sound하게 유지하는 세 규칙이 있습니다.
+Must를 sound하게 유지하는 네 규칙이 있습니다.
 
 - **작성자가 제어하지 않는 시간을 넘어가는 것은 단조 팩트뿐입니다.** 어떤 팩트가 문서 경계를 넘어 살아남으려면 프로젝트 어디에도 그 팩트와 일치하는 `::retract`가 없고, 다른 assert가 다른 값으로 같은 `key:` 튜플을 공유하지 않으며, 그 관계가 `reserved:`가 아니고 `open: engine` 인자도 없어야 합니다. `tier: scene` 및 `tier: quest` 관계의 팩트는 문서 경계를 넘지 않습니다. 엔진이 해당 에피소드 또는 퀘스트와 함께 지우기 때문입니다.
 - **가드는 가정입니다.** `<when test="holds(F)">`, `<choice when="holds(F)">`, 가드가 있는 `::jump`, `<on when>`, objective `done`, 엔트리 `when`, 또는 씬 전체에 적용되는 비트 씬의 frontmatter `when:` 안에서, 그라운드 `F`를 가진 양의 최상위 `&&` 결합자 `holds(F)`는 각각 Must에 들어갑니다. 따라서 같은 팩트에 대한 중첩 가드는 redundant로 표시됩니다. 줄의 `when=`은 해당 줄만 가드합니다.
+- **가드는 그 팩트가 살아 있는 동안만 성립합니다(0.50).** 퀘스트의 `start=`는 퀘스트가 활성화될 때 한 번 판정되지만, 본문은 퀘스트가 활성인 동안 언제든, `newRun`이나 시즌 시작 뒤에도 실행될 수 있습니다. 그래서 `start=`의 `holds(F)`는 `F`가 경계를 넘고 퀘스트보다 오래 살아남을 때에만 퀘스트 본문에서 Must입니다. 관계가 `tier: user` / `app`이거나, `tier="run"` 퀘스트에서 `tier: run`(기본값)이거나, 같은 시즌의 `tier="season:<name>"` 퀘스트에서 `tier: season:<name>`인 경우입니다. 기본(`user` 티어) 퀘스트에서 기본 `run` 티어의 `start=` 팩트는 가능일 뿐입니다. 마찬가지로 `questComplete` / `questFailed` 핸들러의 가드는 퀘스트가 정산될 때 판정되지만, `judge: before` occasion에서는 본문이 occasion의 비트와 다른 퀘스트의 지급 뒤에 실행됩니다. 그래서 핸들러의 `when=`은 그 지연을 견디는 팩트, 즉 단조이고(프로젝트의 어떤 것도 retract하거나 밀어내지 않음) `tier: season:<name>` 관계가 아닌 팩트만 Must에 더합니다. 0.49.1은 이런 팩트를 본문에서 검사하면 거짓 `E-ARM-DEAD`(또는 `W-FACT-GUARANTEED`)를 보고했습니다(#203, #205).
 - **개수는 구간입니다.** `count(P)`는 `P`와 일치하는 Must 팩트 수와 May 팩트 수 사이에 있습니다. `n`과의 비교는 전체 구간이 한쪽에 놓일 때 결정됩니다.
 
 가드는 로어 항목이 읽혔다는 것도 전제로 삼을 수 있습니다(dsl 0.24.0 §6). `entry.X.read`(또는 `entry.X.read == true`) 아래에서 Must는 X 본문이 모든 경로에서 assert하고 프로젝트 어디에서도 retract하지 않는 팩트를 얻습니다. 플레이어가 해당 항목을 읽었으므로 assert가 실행된 것입니다. 의심을 기록하는 항목을 보겠습니다.
@@ -518,23 +519,32 @@ bridge는 `after: 'visited("demo.archive")'`로 순서가 정해지고 세 줄�
 
 ## 보상 효과가 만드는 사실
 
-플러그인 [보상 종류](/ko/language/quests-and-scenes/#보상-효과)는 `effects: { asserts, retracts }`(0.50)를 선언할 수 있습니다. 이런 보상이 쓰는 사실은 평범한 사실입니다. 프로젝트 전체 `lute check`는 각 효과를 **소유자의 지급 지점 맨 앞에 해당 `::assert` / `::retract`를 쓴 것처럼** 읽으므로 위의 모든 내용이 그대로 적용됩니다: May와 Must 집합, `E-QUEST-UNREACHABLE`, `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `W-FACT-GUARANTEED`, `W-RELATION-UNREAD`(보상의 assert는 생산자입니다), `E-FACT-EXCLUSIVE`. 캐스트 존재 분석도 효과를 읽습니다.
+플러그인 [보상 종류](/ko/language/quests-and-scenes/#보상-효과)는 `effects: { asserts, retracts }`(0.50)를 선언할 수 있습니다. 이런 보상이 쓰는 사실은 실행 시 평범한 사실입니다. 프로젝트 전체 `lute check`는 각 효과를 소유자의 **지급 지점**에서 읽습니다:
 
-| 보상 | 지급 지점 | 사실이 적용되는 곳 |
-|---|---|---|
-| 퀘스트 수준, `outcome` 없음 | 퀘스트 완료 | 퀘스트의 모든 `<on event="questComplete">` 본문, 그리고 `after:` / `completed(...)`를 따라 흐르는 완료 상태 |
-| 퀘스트 수준, `outcome="failed"` | 퀘스트 실패 | 모든 `<on event="questFailed">` 본문, 마찬가지 |
-| 목표 수준 | 목표 완료 | `done` 이후 목표 본문의 진입점, 그리고 목표 완료 상태 |
+| 보상 | 지급 지점 |
+|---|---|
+| 퀘스트 수준, `outcome` 없음 | 퀘스트 완료, `<on event="questComplete">` 핸들러 이전 |
+| 퀘스트 수준, `outcome="failed"` | 퀘스트 실패, `<on event="questFailed">` 핸들러 이전 |
+| 목표 수준 | 목표 완료: `done` 이후 목표 본문의 진입점 |
 
-- **가드 없는 assert**는 지급 지점부터 May와 Must 모두에 들어갑니다.
-- **가드 있는 assert**(`<reward when="…">`)는 가드 있는 `::assert`처럼 분기합니다. 항상 May에 들어가고, Must에는 가드가 성립하는 경로에서만 들어갑니다. `lute check`는 `when ⇒ fact` 함의를 유지하지 않으므로 지급 뒤 그 사실은 *가능*일 뿐이며, 이를 검사하는 가드는 `W-FACT-GUARANTEED`를 내지 않습니다.
-- **retract**는 가드 유무와 관계없이 일치하는 것을 Must에서 제거하며 `E-FACT-EXCLUSIVE`를 위해 May에 기록됩니다.
-- 한 보상 안의 순서: `retracts`, 이어서 `asserts`. 보상은 선언 순서이며 목표 보상이 퀘스트 보상보다 먼저입니다. 같은 사실을 assert한 뒤 retract하는 두 보상은 지급 뒤 사실이 없는 상태로 남깁니다. 같은 패턴의 `retracts`와 `asserts`를 모두 가진 한 종류는 사실이 있는 상태로 남깁니다.
+**보상의 assert는 가능일 뿐입니다.** 생산자이므로 May 집합에 들어가 `E-QUEST-UNREACHABLE`과 `E-OBJECTIVE-UNSATISFIABLE`에 답하고(그 사실에 걸린 퀘스트는 도달 가능합니다), `W-RELATION-UNREAD`와 시나리오 그래프에 반영되며, `E-FACT-EXCLUSIVE`를 위해 기록됩니다. 가드 유무와 관계없이 **어떤 Must 집합에도 들어가지 않습니다**. 지급한 퀘스트의 핸들러 본문, 목표 본문, 완료 상태, 그 퀘스트에 걸린 어떤 것에도 들어가지 않습니다. 따라서 지급 뒤 그 사실을 검사하는 가드는 `W-FACT-GUARANTEED`도 `E-ARM-DEAD`도 받지 않습니다. 이유는 검사기가 볼 수 없는 시점 차이입니다. `judge: before` occasion은 라이프사이클 핸들러를 다른 퀘스트의 지급·핸들러와 occasion의 비트 뒤로 미루고, `user` 티어 퀘스트는 사실을 지우는 run·season 리셋 뒤에도 완료로 남으며, 호스트는 지급을 재생하지 않고 퀘스트를 완료로 시드할 수 있습니다.
+
+- Must에서 assert는 자신이 밀어내는 것(배타 관계의 다른 값)만 제거하고 아무것도 더하지 않습니다.
+- **retract**는 가드 유무와 관계없이 가드 있는 `::retract`처럼 일치하는 것을 Must에서 제거하며 `E-FACT-EXCLUSIVE`를 위해 May에 기록됩니다. 어떤 지급이 retract하는 사실은 단조가 아니므로 이후 문서로 넘어가지 않습니다.
+- `E-FACT-EXCLUSIVE`는 보상의 `kind=`에서 Must 집합을 읽으므로, 다른 출처(가드, 시드, 작성된 `::assert`)로 Must인 사실에 대해서만 보고됩니다.
+- 한 보상 안의 순서: `retracts`, 이어서 `asserts`. 보상은 선언 순서이며 목표 보상이 퀘스트 보상보다 먼저입니다.
+- 각 `<on event="questComplete">` / `questFailed` 핸들러는 지급 지점의 상태에서 각자 독립적으로 시작하며, 그 이벤트의 어떤 핸들러든 제거할 수 있는 사실은 빠집니다. 핸들러의 `when=`은 지연을 견디는 사실(단조이고 `tier: season:<name>` 관계가 아닌 것)만 Must에 더합니다.
 - `accepts` 효과는 사실 효과가 없습니다. [도달 가능성](/ko/connectivity/reachability/#보상-효과가-그리는-엣지)과 `W-QUEST-NEVER-ACCEPTED`에만 반영됩니다.
 
-`@target`을 읽는데 `target=`이 없는 보상은 아무것도 적용하지 않으므로 사실을 만들지 않습니다. `lute scenario knowledge`와 `lute lore`는 보상을 생산자로 지목합니다:
+`@target`을 읽는데 `target=`이 없는 보상은 아무것도 적용하지 않으므로 사실을 만들지 않습니다. `lute scenario knowledge`와 `lute lore`는 보상을 생산자로 지목합니다. [plugin-surfaces 예제](https://github.com/journeyWorker/lute/tree/main/docs/examples/plugin-surfaces)에서:
 
-```text
-met(mira) — produced by reward BADGE of quest `firstVisit`
+```console
+$ lute scenario --project . knowledge
+project root: .
+  knowledge (every fact-guarded condition, by document -> relations read -> producers):
+
+  quests/visits.lute
+    quest `secondVisit`
+      start: holds('met', ['mira'])
+      met(mira) — produced by reward BADGE of quest `firstVisit`
 ```
-<!-- rerun-after-S8 -->

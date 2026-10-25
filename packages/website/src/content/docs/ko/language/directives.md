@@ -215,9 +215,9 @@ enums:
 
 `@marina: Fine. One more minute.`는 조용히 통과합니다 — `stay` 경로에서는 그녀가 떠난 적이 없기 때문입니다. 분기 뒤의 줄은 그렇지 않습니다. `leave` 경로가 마리나가 떠난 상태로 그 줄에 도달하기 때문입니다:
 
-<!-- lute-diagnostics -->
+<!-- lute-diagnostics unverified="real lute check output (0.50 build); the hint is spliced in from the ACTOR_LOWERING_HINT const, which the literal matcher cannot pin" -->
 ```
-platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` before this point, or remove the earlier exit
+platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` (or a plugin directive declared `lower: { record: actor, fields: { character: { fromAttr: character } } }`) before this point, or remove the earlier exit
 ```
 
 그 줄 전에 `::actor{character="marina" action="fadeInUp"}`를 두거나 `leave` 선택지 끝에 두면 모든 경로에서 마리나가 무대에 올라 경고가 사라집니다. `lute compile`은 같은 합류 지점에서 아티팩트를 연출합니다. 합류 뒤에는 그녀가 무대에 없으므로 그곳의 `::actor`는 새 등장이고 앵커도 다시 받습니다.
@@ -263,9 +263,9 @@ enums:
 
 지워진 캐릭터는 `::actor`로 다시 보여 줄 때까지 사라집니다. 따라서 위 마지막 줄은 경고되고, 경고는 `::clear`를 지목합니다:
 
-<!-- lute-diagnostics -->
+<!-- lute-diagnostics unverified="real lute check output (0.50 build); the hint is spliced in from the ACTOR_LOWERING_HINT const, which the literal matcher cannot pin" -->
 ```
-platform.lute:25:1: warning [W-STAGE-ABSENT] `marina` was taken off stage by an earlier `::clear` (line 23) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` after the `::clear`
+platform.lute:25:1: warning [W-STAGE-ABSENT] `marina` was taken off stage by an earlier `::clear` (line 23) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` (or a plugin directive declared `lower: { record: actor, fields: { character: { fromAttr: character } } }`) after the `::clear`
 ```
 
 [`lute play`](/ko/tooling/play/)는 실행된 곳에 `::clear`를 출력하고, `lute trace`는 이를 퇴장으로 기록합니다.

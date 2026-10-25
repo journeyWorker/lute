@@ -388,5 +388,9 @@ For a complete architecture contract, see [`docs/player/architecture.md`](https:
 
 `Presenter.showChoice` receives a `ChoiceView` with the authored prompt and
 localized option text, plus runtime verdict, timeout, default, once, and exit
-metadata. On load and rollback, the director ensures the restored stage's
-bound files before calling `Presenter.restore`.
+metadata. Since 0.50 it also carries the plugin stamps authored on the
+`<branch>`/`<hub>` element (`ChoiceView.stamps`) and on each `<choice>`
+(`options[i].stamps`), read from the IR command at the menu's address; each is
+absent when none is authored. A host without the reference player reads the
+same `stamps` from that IR record. On load and rollback, the director ensures
+the restored stage's bound files before calling `Presenter.restore`.

@@ -68,8 +68,8 @@ stampAttrs:
   그 표면의 자체 속성을 나열하는 대신 스탬프가 적용되는 곳을 알려 줍니다.
 - **`required: true`에는 `on:`이 필요합니다.** 횡단 스탬프는 필수로 지정할 수 없습니다. 모든 레코드에 필수인 스탬프는
   열이 아니기 때문입니다. 0.50 이전에는 이 플래그가 조용히 무시되었지만, 이제는 로드 시 `E-PLUGIN-PARSE`입니다. 범위가
-  지정된 스탬프에서는 강제됩니다. 스탬프를 쓰지 않은 표면은 그 머리(디렉티브, 줄, 요소의 여는 태그)에서
-  `E-MISSING-ATTR`입니다. 이 규칙은 표면이 작성되는 모든 곳에 적용되며 컴포넌트 본문도 포함합니다. `::use`가 끼워
+  지정된 스탬프에서는 강제됩니다. 스탬프를 쓰지 않은 표면은 디렉티브, 줄, 또는 `<branch>`/`<hub>`/`<choice>` 요소
+  전체에서 `E-MISSING-ATTR`입니다. 이 규칙은 표면이 작성되는 모든 곳에 적용되며 컴포넌트 본문도 포함합니다. `::use`가 끼워
   넣는 줄은 해당 컴포넌트 안에서 한 번만 검사됩니다. 스탬프는 주입되지 않으므로 선언된 `default:`는 이 조건을
   만족시키지 못합니다.
 - **한 이름이 두 타입을 가질 수 있습니다.** 항목들의 표면 집합이 서로소이기만 하면 됩니다. `assetName`은 `bg`에서는
@@ -91,12 +91,14 @@ stampAttrs:
 `<branch>`, `<hub>`, `<choice>`의 `@ref` 값도 마찬가지입니다. 타입이 잘못된 def는 `E-REF-TYPE`이고, 열거형 밖으로
 접히는 def는 `E-BAD-ENUM`입니다.
 
-<!-- lute-diagnostics unverified="0.50 messages written from the spec (§3.4); verified after S1-S8 land" -->
+[예제 프로젝트](https://github.com/journeyWorker/lute/tree/main/docs/examples/plugin-surfaces)에서 `::bg`에
+`voiceAssetId`를 쓰고(8행) `optionKey` 없는 `<choice id="goLeft">`를 둔(10행) 장면은 다음을 보고합니다.
+
+<!-- lute-diagnostics unverified="real lute check output (0.50 build); it matches both the scoped-stamp and the generic `has no attribute` format literals, so the matcher reports it ambiguous" -->
 ```
-./scenes/a.lute:4:6: error [E-UNKNOWN-ATTR] `::bg` has no attribute `voiceAssetId`: it is a stamp of `acme.stage` for content lines only
-./scenes/a.lute:9:3: error [E-MISSING-ATTR] `<choice id="goLeft">` requires attribute `optionKey` (a stamp of `acme.stage`)
+./scenes/a.lute:8:33: error [E-UNKNOWN-ATTR] `::bg` has no attribute `voiceAssetId`: it is a stamp of `acme.stage` for content lines only
+./scenes/a.lute:10:3: error [E-MISSING-ATTR] `<choice id="goLeft">` requires attribute `optionKey` (a stamp of `acme.stage`)
 ```
-<!-- rerun-after-S8 -->
 
 ### 아티팩트에 도달하는 것
 
@@ -158,17 +160,43 @@ rewardKinds:
   OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
 ```
 
-```lute
-<quest id="firstVisit" title="Say hello to Mira" start="true">
+예제 프로젝트의 퀘스트가 세 가지를 모두 씁니다(`quests/visits.lute`).
+
+```lute check-in-project="docs/examples/plugin-surfaces/quests/visits.lute"
+---
+kind: quest
+id: visits.quests
+title: Visits
+---
+/*
+Reward effects (0.50):
+  - firstVisit's BADGE asserts met(mira) at the grant; secondVisit starts on
+    that fact, so it is reachable only because the reward produces it. Its
+    `follows` places it in the scenario graph, where `lute scenario --facts`
+    draws the fact edge firstVisit -> secondVisit [met(mira)].
+  - firstVisit's OFFER_QUEST accepts giftErrand, an accept-driven quest no
+    `::accept` names.
+  - secondVisit's REVOKE retracts met(mira) when it completes.
+*/
+
+<quest id="firstVisit" tier="run" title="Say hello to Mira" start="true">
   <reward kind="BADGE" amount="1" target="mira"/>
-  <reward kind="OFFER_QUEST" target="secondVisit"/>
+  <reward kind="OFFER_QUEST" target="giftErrand"/>
   <objective id="talk" title="Talk to Mira" done="run.talked"/>
 </quest>
 
-<quest id="secondVisit" title="Visit Mira again" start="holds('met', ['mira'])">
+<quest id="secondVisit" tier="run" title="Visit Mira again" follows="completed('firstVisit')" start="holds('met', ['mira'])">
+  <reward kind="REVOKE" target="mira"/>
   <objective id="chat" title="Have a second chat" done="run.chatted"/>
 </quest>
+
+<quest id="giftErrand" tier="run" title="Carry Mira's gift to Tomas">
+  <objective id="deliver" title="Deliver the gift" done="run.delivered"/>
+</quest>
 ```
+
+`OFFER_QUEST`는 수락 주도 퀘스트(`start` 없음)인 `giftErrand`를 지목합니다. `start`가 있는 `secondVisit`을 지목하면
+그것을 `::accept`할 때와 같이 `E-ACCEPT-TARGET`입니다.
 
 ### 효과가 말할 수 있는 것
 
@@ -186,7 +214,7 @@ rewardKinds:
 
 `@target`은 보상의 따옴표 친 `target=`에 바인딩됩니다. 해석된 각 팩트 패턴은 그것의 `::assert`나 `::retract`가
 판정되는 것과 같이 판정되며(관계 선언, 인자 개수, 인자 종류와 멤버, 닫힌 종류의 멤버십), 같은 코드가 보상의 `kind=`에서
-보고되고, 메시지에는 ``<reward kind="BADGE"> asserts met(mira) (its kind's effects)`` 접두사가 붙습니다. `accepts`의
+보고되고, 메시지에는 `` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): `` 접두사가 붙습니다. `accepts`의
 해석된 각 퀘스트 id는 `::accept`가 판정하는 방식대로 프로젝트 전체에서 판정됩니다. 알 수 없는 id(did-you-mean 포함),
 `start`가 있는 퀘스트, 자동 활성화되는 자식은 `E-ACCEPT-TARGET`이며, id가 `@target`에서 왔으면 보상의 `target=`에,
 아니면 `kind=`에 보고됩니다.
@@ -205,24 +233,37 @@ rewardKinds:
    `unset`을 지난 퀘스트는 그대로 두며 레코드가 그 사실을 알려 줍니다.
 
 그다음 다음 보상으로 넘어갑니다. 목표 보상이 퀘스트 보상보다 먼저이고, 한 전환의 모든 부여는 그 라이프사이클 핸들러
-본문보다 먼저이므로 `questComplete` 핸들러는 보상이 단언한 팩트를 읽습니다. 효과는 부여당 정확히 한 번 일어납니다.
+본문보다 먼저이므로 실행 시 `questComplete` 핸들러는 보상이 단언한 팩트를 읽습니다. 효과는 부여당 정확히 한 번 일어납니다.
 
-각 효과 레코드는 `grant` 키로 자신이 뒤따르는 부여를 명시하며, `lute play`와 `lute test`가 이를 출력합니다.
+각 효과 레코드는 `grant` 키로 자신이 뒤따르는 부여를 명시하며, `lute play`, `lute run`, `lute trace`가 이를
+출력합니다. 예제의 플레이 스크립트(`lute play --project . --script plays/visits.play.yaml`):
 
-```
+```console
+── step 1 (the player talks to Mira) · engine ──────────────
+  set run.talked = true
+  firstVisit.talk done
+  quest firstVisit -> complete
+  grant[#1 i0] firstVisit BADGE 1 -> mira
   assert met(mira)  (effect of reward BADGE)
+  grant[#1 i1] firstVisit OFFER_QUEST 1 -> giftErrand
+  quest giftErrand accepted  (effect of reward OFFER_QUEST)
+  quest giftErrand -> active
+  quest secondVisit -> active
 ```
-<!-- rerun-after-S8 -->
 
 ### 모든 분석이 보는 것
 
-모든 분석은 보상 효과를, 대응하는 `::assert`, `::retract`, `::accept`가 소유자의 부여 지점 맨 앞에 쓰인 것처럼
-읽습니다. 그 지점은 퀘스트 완료(`questComplete` 핸들러 이전), `outcome="failed"`의 경우 실패(`questFailed` 이전),
-또는 목표 완료입니다. `when=`이 있는 보상은 조건부 생산자입니다. *할 수도 있는* 집합에는 기여하고, *반드시* 성립하는
-집합에는 가드가 성립하는 경로에서만 기여합니다. 따라서 다음과 같습니다.
+모든 분석은 보상 효과를 소유자의 부여 지점에서 읽습니다. 그 지점은 퀘스트 완료(`questComplete` 핸들러 이전),
+`outcome="failed"`의 경우 실패(`questFailed` 이전), 또는 목표 완료입니다. 보상의 **assert는 생산자일 뿐입니다**. 가드가
+있든 없든 *할 수도 있는* 집합에만 더해지고, 핸들러 본문, 목표 본문, 그 퀘스트에 걸린 어떤 것에서도 *반드시* 성립하는
+집합에는 들어가지 않습니다. 라이프사이클 핸들러는 다른 퀘스트의 부여와 occasion의 비트 뒤로 미뤄질 수 있고, `user`
+티어 퀘스트는 팩트를 지우는 리셋 뒤에도 완료로 남으며, 호스트는 부여 없이 퀘스트를 완료로 시드할 수 있으므로, 부여에서
+팩트로 가는 함의는 건전하지 않습니다. 보상의 **retract**는 가드 있는 `::retract`처럼 일치하는 것을 *반드시* 집합에서
+제거합니다. 따라서 다음과 같습니다.
 
-- 위의 `secondVisit`은 도달 가능하며 `E-QUEST-UNREACHABLE`은 사라집니다. `W-FACT-GUARANTEED`, `E-ARM-DEAD`,
-  `E-OBJECTIVE-UNSATISFIABLE`, `W-RELATION-UNREAD`, `E-FACT-EXCLUSIVE`가 이 효과를 봅니다.
+- 위의 `secondVisit`은 도달 가능합니다. 보상이 그 `start` 팩트의 생산자이므로 `E-QUEST-UNREACHABLE`이 없습니다.
+  `E-OBJECTIVE-UNSATISFIABLE`, `W-RELATION-UNREAD`, `E-FACT-EXCLUSIVE`도 이 효과를 봅니다. 부여 뒤에 `met(mira)`를
+  검사하는 가드는 `W-FACT-GUARANTEED`도 `E-ARM-DEAD`도 받지 않습니다. 그곳에서 그 팩트는 보장이 아니라 가능일 뿐입니다.
 - `lute scenario`는 팩트 엣지와 accept 엣지를 그리고, `lute lore` / `lute scenario knowledge`는 생산자를 이름으로
   보여 줍니다. `` met(mira) — produced by reward BADGE of quest `firstVisit` ``.
 - `W-QUEST-NEVER-ACCEPTED`는 이제 "no `::accept` or reward `accepts` in the project names it"라고 말하며, 보상의
@@ -256,11 +297,12 @@ diagnostics:
   또는 비어 있거나 절대 경로이거나 `..`를 포함하는 `paths`는 매니페스트당 한 번 보고되는 `E-DIAGNOSTICS-CONFIG`이며
   그 항목은 버려집니다.
 
-<!-- lute-diagnostics unverified="0.50 messages written from the spec (§6.1); verified after S1-S8 land" -->
+4행에 `W-STAGE-ABSNT: off`가 있는 매니페스트는 다음을 보고합니다.
+
+<!-- lute-diagnostics -->
 ```
-./lute.project.yaml:3:3: error [E-DIAGNOSTICS-CONFIG] `W-STAGE-ABSNT` is not a diagnostic code — did you mean `W-STAGE-ABSENT`?
+./lute.project.yaml:4:3: error [E-DIAGNOSTICS-CONFIG] `W-STAGE-ABSNT` is not a diagnostic code — did you mean `W-STAGE-ABSENT`?
 ```
-<!-- rerun-after-S8 -->
 
 수준은 진단을 출력하는 지점에서 다음 순서로 적용됩니다.
 
@@ -275,15 +317,22 @@ diagnostics:
 `[project]` 표지가 붙습니다. `info`나 `warn`으로 바뀐 코드는 새 심각도와 같은 표지를 가집니다.
 
 **수준은 보고되는 내용과 종료 상태만 바꿉니다.** 분석, 아티팩트, 제약 판정, 시나리오 그래프, `.test.yaml`이나
-`.play.yaml` 기대값이 관찰하는 내용은 절대 바꾸지 않습니다. LSP도 같은 수준을 적용하며 `off` 진단은 게시되지 않습니다.
+`.play.yaml` 기대값이 관찰하는 내용은 절대 바꾸지 않습니다. 수준은 `lute check`, `lute compile`, `lute lint`에
+적용됩니다. 시뮬레이션 명령(`lute test`, `lute play`, `lute calendar`)은 수준을 전혀 적용하지 않습니다. 원래 진단을
+출력하며, 프로젝트의 `error` 수준이 있어도 `lute test`의 결과와 종료 상태는 그것이 없을 때와 같습니다. LSP도 같은 수준을
+적용하며 `off` 진단은 게시되지 않습니다.
 
 아무것도 말없이 숨겨지지 않습니다. 진단을 세는 모든 요약 줄은 N이 0보다 클 때에만 `, N suppressed by
 lute.project.yaml`을 덧붙이고, 모든 JSON 보고서는 비어 있지 않을 때에만 `"suppressed": { "<code>": n }` 맵을 가집니다.
 
+예제 프로젝트에서 `lute check --project .`는 다음을 출력합니다.
+
+```console
+ok: ./quests/visits.lute (0 warning(s))
+ok: ./scenes/cafe.lute (0 warning(s))
+ok: ./scenes/imported/street.lute (0 warning(s), 1 suppressed by lute.project.yaml)
+ok: . (3 file(s), 0 project-wide warning(s))
 ```
-ok: ./scenes/imported/street.lute (0 warning(s), 212 suppressed by lute.project.yaml)
-```
-<!-- rerun-after-S8 -->
 
 `lute.lint.yaml`의 `rules:` 항목이 검사기 코드를 지목하면 `E-LINT-CONFIG`이며, 메시지가 이 페이지의 방법을 가리킵니다.
 `` `W-STAGE-ABSENT` is a checker code, not a lint rule — set its level in `lute.project.yaml` `diagnostics:` ``.
@@ -319,7 +368,8 @@ directives:
 리터럴에 바인딩되어야 합니다. actor 레코드에는 스프라이트 전용 필드가 없으므로 이 예제는 임포터의 스프라이트 id를
 `costume`에 담았습니다. 플러그인은 `on: [showSpeaker]`로 범위를 지정한 스탬프에 담을 수도 있습니다.
 `W-STAGE-ABSENT` 힌트는 이제 "Show them again with an `::actor` (or a plugin directive declared `lower: { record:
-actor }`)"라고 말합니다.
+actor, fields: { character: { fromAttr: character } } }`)"라고 말합니다. `lower: { record: actor }`만으로는 로드에서
+거부되고(`fields:`가 필요합니다) 빈 `fields: {}`는 `E-LOWER-RECORD-FIELD`이므로 전체 형태를 적습니다.
 
 이식을 검토하는 동안에는 위의 [수준](#임포트된-하위-트리의-수준)에서처럼 임포트된 하위 트리에 대해 이 코드를 `off`로
 설정하고, 임포터가 무대 행을 내보내면 그 항목을 지웁니다.

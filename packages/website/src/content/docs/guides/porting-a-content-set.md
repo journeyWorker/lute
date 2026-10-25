@@ -72,7 +72,7 @@ order inside `on:` does not matter.
 - **`required: true` needs `on:`.** A cross-cutting stamp cannot be required: a stamp required on every
   record is not a column. Before 0.50 the flag was silently ignored; it is now `E-PLUGIN-PARSE` at
   load. On a scoped stamp it is enforced: a surface that does not write the stamp is `E-MISSING-ATTR`
-  at its head (the directive, the line, the element's opening tag). The rule applies wherever the
+  on the directive, on the line, or on the whole `<branch>`/`<hub>`/`<choice>` element. The rule applies wherever the
   surface is written, component bodies included, and a line that `::use` splices in is checked once,
   in its component. A declared `default:` does not satisfy it, because a stamp is never injected.
 - **One name may have two types**, as long as the entries' surface sets are disjoint: `assetName` can
@@ -98,12 +98,15 @@ ordinary `E-ATTR-TYPE` or `E-BAD-ENUM`. That holds for an `@ref` value on `<bran
 `<choice>` too: a def of the wrong type is `E-REF-TYPE`, and a def that folds outside an enum is
 `E-BAD-ENUM`.
 
-<!-- lute-diagnostics unverified="0.50 messages written from the spec (§3.4); verified after S1-S8 land" -->
+In the [example project](https://github.com/journeyWorker/lute/tree/main/docs/examples/plugin-surfaces),
+a scene that writes `voiceAssetId` on `::bg` (line 8) and a `<choice id="goLeft">` without `optionKey`
+(line 10) gives:
+
+<!-- lute-diagnostics unverified="real lute check output (0.50 build); it matches both the scoped-stamp and the generic `has no attribute` format literals, so the matcher reports it ambiguous" -->
 ```
-./scenes/a.lute:4:6: error [E-UNKNOWN-ATTR] `::bg` has no attribute `voiceAssetId`: it is a stamp of `acme.stage` for content lines only
-./scenes/a.lute:9:3: error [E-MISSING-ATTR] `<choice id="goLeft">` requires attribute `optionKey` (a stamp of `acme.stage`)
+./scenes/a.lute:8:33: error [E-UNKNOWN-ATTR] `::bg` has no attribute `voiceAssetId`: it is a stamp of `acme.stage` for content lines only
+./scenes/a.lute:10:3: error [E-MISSING-ATTR] `<choice id="goLeft">` requires attribute `optionKey` (a stamp of `acme.stage`)
 ```
-<!-- rerun-after-S8 -->
 
 ### What reaches the artifact
 
@@ -168,17 +171,43 @@ rewardKinds:
   OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
 ```
 
-```lute
-<quest id="firstVisit" title="Say hello to Mira" start="true">
+The example project's quests use all three (`quests/visits.lute`):
+
+```lute check-in-project="docs/examples/plugin-surfaces/quests/visits.lute"
+---
+kind: quest
+id: visits.quests
+title: Visits
+---
+/*
+Reward effects (0.50):
+  - firstVisit's BADGE asserts met(mira) at the grant; secondVisit starts on
+    that fact, so it is reachable only because the reward produces it. Its
+    `follows` places it in the scenario graph, where `lute scenario --facts`
+    draws the fact edge firstVisit -> secondVisit [met(mira)].
+  - firstVisit's OFFER_QUEST accepts giftErrand, an accept-driven quest no
+    `::accept` names.
+  - secondVisit's REVOKE retracts met(mira) when it completes.
+*/
+
+<quest id="firstVisit" tier="run" title="Say hello to Mira" start="true">
   <reward kind="BADGE" amount="1" target="mira"/>
-  <reward kind="OFFER_QUEST" target="secondVisit"/>
+  <reward kind="OFFER_QUEST" target="giftErrand"/>
   <objective id="talk" title="Talk to Mira" done="run.talked"/>
 </quest>
 
-<quest id="secondVisit" title="Visit Mira again" start="holds('met', ['mira'])">
+<quest id="secondVisit" tier="run" title="Visit Mira again" follows="completed('firstVisit')" start="holds('met', ['mira'])">
+  <reward kind="REVOKE" target="mira"/>
   <objective id="chat" title="Have a second chat" done="run.chatted"/>
 </quest>
+
+<quest id="giftErrand" tier="run" title="Carry Mira's gift to Tomas">
+  <objective id="deliver" title="Deliver the gift" done="run.delivered"/>
+</quest>
 ```
+
+`OFFER_QUEST` names `giftErrand`, an accept-driven quest (no `start`). Naming `secondVisit`, which has a
+`start`, would be `E-ACCEPT-TARGET`, as an `::accept` of it is.
 
 ### What an effect may say
 
@@ -197,7 +226,7 @@ rewardKinds:
 `@target` is bound to the reward's quoted `target=`. Each resolved fact pattern is judged as the
 `::assert` or `::retract` of it would be (relation declared, arity, argument kinds and members,
 closed-kind membership), with the same codes at the reward's `kind=`, and the message is prefixed with
-``<reward kind="BADGE"> asserts met(mira) (its kind's effects)``. Each resolved quest id in `accepts` is
+`` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): ``. Each resolved quest id in `accepts` is
 judged as `::accept` judges it, project-wide: an unknown id (with a did-you-mean), a quest that has a
 `start`, and a child that auto-activates are `E-ACCEPT-TARGET`, at the reward's `target=` when the id came
 from `@target`, otherwise at `kind=`.
@@ -217,27 +246,40 @@ holds), in declaration order and **per reward**:
    round, and a quest already past `unset` is left alone, with the record saying so.
 
 Then the next reward. Objective grants precede quest grants, and all grants of a transition precede
-its lifecycle handler body, so a `questComplete` handler reads the fact the reward asserted. An effect
-fires exactly once per grant.
+its lifecycle handler body, so at run time a `questComplete` handler reads the fact the reward
+asserted. An effect fires exactly once per grant.
 
-Each effect record names the grant it follows with a `grant` key, and `lute play` and `lute test`
-print it:
+Each effect record names the grant it follows with a `grant` key, and `lute play`, `lute run` and
+`lute trace` print it. The example's play script (`lute play --project . --script plays/visits.play.yaml`):
 
-```
+```console
+── step 1 (the player talks to Mira) · engine ──────────────
+  set run.talked = true
+  firstVisit.talk done
+  quest firstVisit -> complete
+  grant[#1 i0] firstVisit BADGE 1 -> mira
   assert met(mira)  (effect of reward BADGE)
+  grant[#1 i1] firstVisit OFFER_QUEST 1 -> giftErrand
+  quest giftErrand accepted  (effect of reward OFFER_QUEST)
+  quest giftErrand -> active
+  quest secondVisit -> active
 ```
-<!-- rerun-after-S8 -->
 
 ### What every analysis sees
 
-Every analysis reads a reward effect as if the matching `::assert`, `::retract` or `::accept` were
-written first at the owner's grant point: the quest's completion (before its `questComplete`
-handlers), its failure for `outcome="failed"` (before `questFailed`), or the objective's completion.
-A reward with `when=` is a conditional producer: it contributes to what *may* hold, and to what
-*must* hold only on the route where its guard holds. So:
+Every analysis reads a reward effect at the owner's grant point: the quest's completion (before its
+`questComplete` handlers), its failure for `outcome="failed"` (before `questFailed`), or the
+objective's completion. A reward's **assert is a producer only**: it adds to what *may* hold and
+never to what *must* hold, guarded or not, in the handler bodies, the objective body, or anything
+gated on the quest. Lifecycle handlers can be deferred past other quests' grants and the occasion's
+beats, a `user`-tier quest stays complete across a reset that clears its facts, and a host may seed
+a quest complete without its grants, so no grant-to-fact implication is sound. A reward's
+**retract** removes what it matches from what must hold, as a guarded `::retract` does. So:
 
-- `secondVisit` above is reachable, and the `E-QUEST-UNREACHABLE` is gone. `W-FACT-GUARANTEED`,
-  `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `W-RELATION-UNREAD` and `E-FACT-EXCLUSIVE` see the effect.
+- `secondVisit` above is reachable: the reward is a producer of its `start` fact, so there is no
+  `E-QUEST-UNREACHABLE`. `E-OBJECTIVE-UNSATISFIABLE`, `W-RELATION-UNREAD` and `E-FACT-EXCLUSIVE` see the
+  effect too. A guard that tests `met(mira)` after the grant draws neither `W-FACT-GUARANTEED` nor
+  `E-ARM-DEAD`: the fact is possible there, not guaranteed.
 - `lute scenario` draws the fact edge and the accept edge, and `lute lore` / `lute scenario knowledge`
   name the producer: `` met(mira) — produced by reward BADGE of quest `firstVisit` ``.
 - `W-QUEST-NEVER-ACCEPTED` now says "no `::accept` or reward `accepts` in the project names it", and a
@@ -274,11 +316,12 @@ diagnostics:
   the toolchain does not define (with a did-you-mean), or `paths` that are empty, absolute or contain
   `..` is `E-DIAGNOSTICS-CONFIG`, reported once per manifest, and that entry is dropped.
 
-<!-- lute-diagnostics unverified="0.50 messages written from the spec (§6.1); verified after S1-S8 land" -->
+A manifest with `W-STAGE-ABSNT: off` on its line 4 gives:
+
+<!-- lute-diagnostics -->
 ```
-./lute.project.yaml:3:3: error [E-DIAGNOSTICS-CONFIG] `W-STAGE-ABSNT` is not a diagnostic code — did you mean `W-STAGE-ABSENT`?
+./lute.project.yaml:4:3: error [E-DIAGNOSTICS-CONFIG] `W-STAGE-ABSNT` is not a diagnostic code — did you mean `W-STAGE-ABSENT`?
 ```
-<!-- rerun-after-S8 -->
 
 How a level is applied, in this order, at the point that prints a diagnostic:
 
@@ -295,16 +338,23 @@ the new severity and the same marker.
 
 **Levels change only what is reported and the exit status.** They never change an analysis, an artifact,
 a constraint verdict, the scenario graph, or what a `.test.yaml` or `.play.yaml` expectation observes.
-The LSP applies the same levels: an `off` diagnostic is not published.
+They gate `lute check`, `lute compile` and `lute lint`. The simulating commands (`lute test`,
+`lute play`, `lute calendar`) do not apply them at all: they print native diagnostics, and a project
+`error` level leaves `lute test`'s results and exit status as they are without it. The LSP applies the
+same levels: an `off` diagnostic is not published.
 
 Nothing is hidden without saying so. Every summary line that counts diagnostics appends
 `, N suppressed by lute.project.yaml` only when N is above zero, and every JSON report carries a
 `"suppressed": { "<code>": n }` map only when it is not empty:
 
+In the example project, `lute check --project .` prints:
+
+```console
+ok: ./quests/visits.lute (0 warning(s))
+ok: ./scenes/cafe.lute (0 warning(s))
+ok: ./scenes/imported/street.lute (0 warning(s), 1 suppressed by lute.project.yaml)
+ok: . (3 file(s), 0 project-wide warning(s))
 ```
-ok: ./scenes/imported/street.lute (0 warning(s), 212 suppressed by lute.project.yaml)
-```
-<!-- rerun-after-S8 -->
 
 A `rules:` entry in `lute.lint.yaml` that names a checker code is `E-LINT-CONFIG`, and the message points
 here: `` `W-STAGE-ABSENT` is a checker code, not a lint rule — set its level in `lute.project.yaml` `diagnostics:` ``.
@@ -340,7 +390,9 @@ A directive lowered to `actor` stages its `character` like `::actor` (since 0.45
 bind to a required attribute or a literal. The actor record has no field named for a sprite, so the
 example carries the importer's sprite id in `costume`; a plugin can also keep it in a stamp scoped
 `on: [showSpeaker]`. The `W-STAGE-ABSENT` hint now reads "Show them again with an `::actor` (or a plugin
-directive declared `lower: { record: actor }`)".
+directive declared `lower: { record: actor, fields: { character: { fromAttr: character } } }`)". It
+names the full form because `lower: { record: actor }` alone is refused at load (`fields:` is
+required) and an empty `fields: {}` is `E-LOWER-RECORD-FIELD`.
 
 While the port is under review, set the code `off` for the imported subtree, as in the
 [levels](#levels-for-an-imported-subtree) above, and delete the entry when the importer emits the

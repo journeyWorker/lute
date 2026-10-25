@@ -533,7 +533,7 @@ context 대상 키가 프로젝트 그래프에서 없거나 모호합니다.
 
 ### E-DIAGNOSTICS-CONFIG
 
-`lute.project.yaml`의 `diagnostics:` 항목이 잘못되었거나 허용되지 않습니다. 매니페스트 진단이며 매니페스트당 한 번 보고하고(CLI 매니페스트 패스와 LSP), 해당 항목은 버려지고 나머지는 로드되지만 매니페스트는 유효하지 않게 됩니다. 원인과 메시지(메시지 앞에 `` `<code>`: ``가 붙습니다): `E-*` 코드(`` `E-UNKNOWN-ATTR` is an error: an error is a contract violation and cannot be re-levelled; fix the reported source instead ``), `L-*` 코드(`` `L-…` is a lint rule; set its level in `lute.lint.yaml` `rules:` ``), 툴체인이 정의하지 않은 코드(`` `W-STAGE-ABSNT` is not a diagnostic code — did you mean `W-STAGE-ABSENT`? ``), 잘못된 level(`` level `silent` is not one of `off`, `info`, `warn`, `error` ``), 잘못된 `paths` — `[]`, 문자열이 아닌 값, 절대 경로 또는 `..` 세그먼트(`` `paths` takes project-relative globs, e.g. `scenes/imported/**` ``). `level:`이 없는 매핑 항목이나 `level`/`paths` 외의 키도 이 코드입니다. 설정 가능한 것은 `W-*` 코드뿐입니다.
+`lute.project.yaml`의 `diagnostics:` 항목이 잘못되었거나 허용되지 않습니다. 매니페스트 진단이며 매니페스트당 한 번 보고하고(CLI 매니페스트 패스와 LSP), 해당 항목은 버려지고 나머지는 로드되지만 매니페스트는 유효하지 않게 됩니다. 원인과 메시지(level·`paths` 등 항목 모양의 오류에는 메시지 앞에 `` `<code>`: ``가 붙습니다): `E-*` 코드(`` `E-UNKNOWN-ATTR` is an error: an error is a contract violation and cannot be re-levelled; fix the reported source instead ``), `L-*` 코드(`` `L-…` is a lint rule; set its level in `lute.lint.yaml` `rules:` ``), 툴체인이 정의하지 않은 코드(`` `W-STAGE-ABSNT` is not a diagnostic code — did you mean `W-STAGE-ABSENT`? ``), 잘못된 level(`` level `silent` is not one of `off`, `info`, `warn`, `error` ``), 잘못된 `paths` — `[]`, 문자열이 아닌 값, 절대 경로 또는 `..` 세그먼트(`` `paths` takes project-relative globs, e.g. `scenes/imported/**` ``). `level:`이 없는 매핑 항목이나 `level`/`paths` 외의 키도 이 코드입니다. 설정 가능한 것은 `W-*` 코드뿐입니다.
 
 명세: [dsl 0.50.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 

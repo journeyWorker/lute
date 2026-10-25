@@ -54,7 +54,7 @@ A malformed entry is **`E-DIAGNOSTICS-CONFIG`** (error, a manifest diagnostic). 
 | a bad level | `` level `silent` is not one of `off`, `info`, `warn`, `error` `` |
 | `paths: []`, a non-string, an absolute path or a `..` segment | `` `paths` takes project-relative globs, e.g. `scenes/imported/**` `` |
 
-**Order of application**, at the one place that serializes and prints diagnostics (every command that takes the diagnostic gate above reads the discovered project's `diagnostics:`):
+**Order of application**, at the one place that serializes and prints diagnostics (`check`, `compile`, `lint`, `trace` and `expr` read the project's `diagnostics:`: a document command each document's own project, a directory command the invoked root's; the simulating commands `test`, `play` and `calendar` apply no project levels and keep the plain `--deny`/`--deny-warnings` gate, so a project `error` level never fails a test):
 
 1. the project level for the (code, path);
 2. `--deny CODE` naming the code promotes it to error, **even when the project set it `off`** (an explicit command line beats the config);
@@ -68,10 +68,11 @@ Levels change **only what is reported and the exit status**. They never change a
 - every JSON report that carries diagnostics (the `0.48.0.check` report per file and for the project, and the compile, lint, trace and expr envelopes) gains `"suppressed": { "<code>": n, … }` **only when non-empty**. It is additive, so report ids are unchanged.
 
 ```console
-$ lute check ./scenes/a.lute
-ok: ./scenes/a.lute (0 warning(s), 212 suppressed by lute.project.yaml)
+$ cd docs/examples/plugin-surfaces
+$ lute check ./scenes/imported/street.lute
+lute: note: using project . (nearest lute.project.yaml); pass --project to choose another
+ok: ./scenes/imported/street.lute (0 warning(s), 1 suppressed by lute.project.yaml)
 ```
-<!-- rerun-after-S8 -->
 
 **LSP.** The language server applies the same levels with the document's root-relative path before publishing: an `off` diagnostic is not published, and a relevelled one is published at its new severity.
 

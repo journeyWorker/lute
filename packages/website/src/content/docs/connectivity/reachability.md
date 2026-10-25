@@ -111,11 +111,10 @@ An unanchored quest is `reachable holds [proven]` with the reason `unanchored: a
 
 A plugin reward kind can declare [effects](/language/quests-and-scenes/#reward-effects) (0.50), and the graph reads them at the grant point of the reward's owner (the quest's completion or failure, or the objective's completion):
 
-- A reward that **asserts** a fact draws the fact edge `quest(first) -> quest(second) [asserted fact]` to a quest whose `start` or `after` reads that fact, as an `::assert` in a handler would. A quest gated on `holds('met', ['mira'])` is therefore reachable when a reward of `firstVisit` asserts `met(mira)`: no `E-QUEST-UNREACHABLE`. A conditional reward (`when=`) is a conditional producer.
+- A reward that **asserts** a fact draws the fact edge to a quest whose `start` reads that fact, as an `::assert` in a handler would. `lute scenario --facts` prints it for a quest that is in the graph (one with `follows`), as in the plugin-surfaces example: `quest(firstVisit) -> quest(secondVisit) [met(mira)]`. A quest gated on `holds('met', ['mira'])` is therefore reachable when a reward of `firstVisit` asserts `met(mira)`: no `E-QUEST-UNREACHABLE`. A conditional reward (`when=`) is a conditional producer.
 - A reward that **accepts** a quest draws `quest(first) -> quest(second) [accept]`, the edge a scene's `::accept` draws. An accept-driven quest named only by a reward `accepts` is reachable, and draws no `W-QUEST-NEVER-ACCEPTED`. That warning's message now reads "… but no `::accept` or reward `accepts` in the project names it …".
 - **Start cycles are unchanged.** `[accept]` anchors, a reward accept's included, do not gate a quest's start: the engine may accept a quest outside any `::accept`, and accept deadlocks are out of scope. A cycle of accept-driven quests that accept each other only through rewards never draws `E-QUEST-START-CYCLE` or `E-QUEST-START-SELF`.
 - `lute scenario knowledge` and `lute lore` name the producer of a reward-asserted fact: `` met(mira) — produced by reward BADGE of quest `firstVisit` ``.
-<!-- rerun-after-S8 -->
 
 ## Evidence in 0.34.0
 

@@ -411,10 +411,11 @@ The verdicts come from two sets:
 - **May** — project-wide and flow-insensitive: every ground fact that can be live at any point of any run. The `facts:` seeds, the fact of every `::assert` anywhere in the project root (scenes, quest `<on>`/`<objective>` bodies, lore entries) whose document is not proven unreachable, every fact of a `reserved:` relation (the engine may populate any of them), and whatever the `rules:` derive over that set. May only knows *that* some route can produce a fact, not when. It reads a negated body atom as satisfiable, with one exception (dsl 0.23.0): a negation over a seed fact that nothing in the project retracts or displaces through its `key:` is false. With the seed `inParty(shadowheart)`, `suspect(P) :- character(P), not inParty(P)` can never conclude `suspect(shadowheart)`, so a guard `holds('suspect', ['shadowheart'])` is dead, while `suspect(astarion)` still follows. Once any `::retract{inParty(shadowheart)}` exists, the negation is satisfiable again.
 - **Must** — path-sensitive: the facts live on every route to one program point. Within a document it is a forward walk: `::assert` adds a fact (and drops the one its `key:` supersedes), `::retract` removes every match, `<branch>`/`<match>` arms **intersect** where they rejoin (a branch with no unguarded choice, or a non-exhaustive match, also intersects with the set before the block, because no arm may run), and a `<hub>` body may run zero or more times. Across scenes it follows the `after:` graph, exactly like the [scalar envelope](/connectivity/envelopes/): a scene starts from the seeds plus the facts its `after:` formula guarantees — `visited(A)` contributes what holds when `A` ends, `&&` unions, `||` intersects, and `completed(q)`/`active(q)` contribute nothing. Quest bodies and lore entry bodies run at engine-chosen times, so they start from the seeds plus their own guards.
 
-Three rules keep Must sound:
+Four rules keep Must sound:
 
 - **Only monotone facts cross time the author does not control.** A fact survives a document boundary only if no `::retract` anywhere in the project matches it, no other assert shares its `key:` tuple with a different value, and its relation is neither `reserved:` nor has an `open: engine` argument. Facts of `tier: scene` and `tier: quest` relations never cross a document boundary — the engine clears them with their episode or quest.
 - **Guards are assumptions.** Inside `<when test="holds(F)">`, a `<choice when="holds(F)">`, a guarded `::jump`, an `<on when>`, an objective `done`, an entry `when`, or — for the whole scene — a beat scene's frontmatter `when:`, each positive top-level `&&` conjunct `holds(F)` with a ground `F` is in Must — so a nested guard on the same fact is shown redundant. A line `when=` guards only its own line.
+- **A guard holds only as long as its fact can (0.50).** A quest's `start=` is judged once, when the quest activates, but its body runs while the quest stays active, possibly after a `newRun` or a season opening. So a `holds(F)` of `start=` is in Must in the quest's body only when `F` crosses and outlasts the quest: its relation is `tier: user` / `app`, `tier: run` (the default) in a `tier="run"` quest, or `tier: season:<name>` in a `tier="season:<name>"` quest of the same season. In a default (`user`-tier) quest a `start=` fact of the default `run` tier is possible only. Likewise a `questComplete` / `questFailed` handler's guard is judged when the quest settles, but under a `judge: before` occasion its body runs after the occasion's beats and other quests' grants: its `when=` adds to Must only facts that outlast that deferral — monotone (nothing in the project may retract or displace them) and not of a `tier: season:<name>` relation. 0.49.1 reported a false `E-ARM-DEAD` (or `W-FACT-GUARANTEED`) on a body test of such a fact (#203, #205).
 - **Counts are intervals.** `count(P)` lies between the number of Must facts matching `P` and the number of May facts matching it; a comparison against `n` is decided when the whole interval falls on one side.
 
 A guard may also assume that a lore entry was read (dsl 0.24.0 §6). Under `entry.X.read` (or `entry.X.read == true`), Must gains the facts that X's body asserts on every route through it and that nothing in the project retracts. The player has read the entry, so its asserts have run. Take an entry that records a suspicion:
@@ -521,23 +522,32 @@ While a story is being written, a guard is often dead only because the scene tha
 
 ## Facts produced by reward effects
 
-A plugin [reward kind](/language/quests-and-scenes/#reward-effects) can declare `effects: { asserts, retracts }` (0.50). A fact such a reward writes is an ordinary fact. Whole-project `lute check` reads each effect **as if the matching `::assert` / `::retract` were written first at the owner's grant point**, so everything above applies to it: the May and Must sets, `E-QUEST-UNREACHABLE`, `E-ARM-DEAD`, `E-OBJECTIVE-UNSATISFIABLE`, `W-FACT-GUARANTEED`, `W-RELATION-UNREAD` (a reward's assert is a producer) and `E-FACT-EXCLUSIVE`. Cast presence reads the effects too.
+A plugin [reward kind](/language/quests-and-scenes/#reward-effects) can declare `effects: { asserts, retracts }` (0.50). A fact such a reward writes is an ordinary fact at run time. Whole-project `lute check` reads each effect at the owner's **grant point**:
 
-| Reward | Grant point | Facts apply to |
-|---|---|---|
-| quest-level, no `outcome` | the quest's completion | every `<on event="questComplete">` body of the quest, and the completion state that flows along `after:` / `completed(...)` |
-| quest-level, `outcome="failed"` | the quest's failure | every `<on event="questFailed">` body, likewise |
-| objective-level | the objective's completion | the objective body's entry after `done`, and the objective-completion state |
+| Reward | Grant point |
+|---|---|
+| quest-level, no `outcome` | the quest's completion, before its `<on event="questComplete">` handlers |
+| quest-level, `outcome="failed"` | the quest's failure, before its `<on event="questFailed">` handlers |
+| objective-level | the objective's completion: the objective body's entry after `done` |
 
-- An **unguarded assert** is in May and in Must from the grant point on.
-- A **guarded assert** (`<reward when="…">`) forks the way a guarded `::assert` does: it is in May always, and in Must only on the route where its guard holds. `lute check` keeps no `when ⇒ fact` implication, so after the grant the fact is *possible* only, and a guard testing it draws no `W-FACT-GUARANTEED`.
-- A **retract**, guarded or not, removes what it matches from Must, and is recorded in May for `E-FACT-EXCLUSIVE`.
-- Order within a reward: its `retracts`, then its `asserts`. Rewards go in declaration order, and objective rewards before quest rewards. Two rewards that assert and then retract the same fact leave it absent after the grant. One kind with both `retracts` and `asserts` of the same pattern leaves it present.
+**A reward's assert is possible only.** It is a producer: it is in the May set, so it answers `E-QUEST-UNREACHABLE` and `E-OBJECTIVE-UNSATISFIABLE` (a quest gated on the fact is reachable), feeds `W-RELATION-UNREAD` and the scenario graph, and is recorded for `E-FACT-EXCLUSIVE`. It is in **no Must set**, guarded or not: not in the granting quest's handler bodies, its objective bodies, its completion state, or anything gated on the quest. So a guard that tests the fact after the grant draws neither `W-FACT-GUARANTEED` nor `E-ARM-DEAD`. The reason is timing the checker cannot see: a `judge: before` occasion defers lifecycle handlers past other quests' grants and handlers and the occasion's beats, a `user`-tier quest stays complete across a run or season reset that clears its facts, and a host may seed a quest complete without replaying its grants.
+
+- In Must an assert removes only what it displaces (an exclusive relation's other value) and adds nothing.
+- A **retract**, guarded or not, removes what it matches from Must, as a guarded `::retract` does, and is recorded in May for `E-FACT-EXCLUSIVE`. A fact some grant retracts is not monotone and crosses into no later document.
+- `E-FACT-EXCLUSIVE` reads the Must set at the reward's `kind=`, so it fires only against a fact that is Must from another source (a guard, a seed, an authored `::assert`).
+- Order within a reward: its `retracts`, then its `asserts`. Rewards go in declaration order, and objective rewards before quest rewards.
+- Each `<on event="questComplete">` / `questFailed` handler starts from the grant point's state independently, less every fact any handler of the event may remove; its `when=` adds to Must only facts that outlast a deferral (monotone, and not of a `tier: season:<name>` relation).
 - An `accepts` effect has no fact effect. It feeds [reachability](/connectivity/reachability/#edges-that-reward-effects-draw) and `W-QUEST-NEVER-ACCEPTED`.
 
-A reward with no `target=` that reads `@target` applies nothing, so it contributes no fact. `lute scenario knowledge` and `lute lore` name the reward as the producer:
+A reward with no `target=` that reads `@target` applies nothing, so it contributes no fact. `lute scenario knowledge` and `lute lore` name the reward as the producer. In the [plugin-surfaces example](https://github.com/journeyWorker/lute/tree/main/docs/examples/plugin-surfaces):
 
-```text
-met(mira) — produced by reward BADGE of quest `firstVisit`
+```console
+$ lute scenario --project . knowledge
+project root: .
+  knowledge (every fact-guarded condition, by document -> relations read -> producers):
+
+  quests/visits.lute
+    quest `secondVisit`
+      start: holds('met', ['mira'])
+      met(mira) — produced by reward BADGE of quest `firstVisit`
 ```
-<!-- rerun-after-S8 -->

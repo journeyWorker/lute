@@ -4050,6 +4050,8 @@ A `target: { entity: <kind> }` or `{ provider: <name> }` contract validates each
 (did-you-mean for an entity; a stale provider snapshot only warns), and `required: true` rejects a
 reward with none: `E-REWARD-TARGET` (0.26.0). A contract naming both fails the plugin load.
 
+Since 0.50 a reward kind can also declare `effects` (`asserts`, `retracts`, `accepts`) that apply at the grant; see [Scoped stamps, host tokens, reward effects & project levels](#scoped-stamps-host-tokens-reward-effects--project-levels-050).
+
 → [Quests & scenes](/language/quests-and-scenes/)
 
 ## Lore entries
@@ -4270,6 +4272,68 @@ timeline at its `duration`.
 
 → [Timeline & property tracks](/language/timeline-and-property-tracks/)
 
+## Scoped stamps, host tokens, reward effects & project levels (0.50)
+
+A plugin `stampAttrs` entry can scope itself with `on:` (surfaces: `line`, `branch`, `hub`, `choice`, or a directive tag). `required: true` is allowed only with `on:`. Without `on:` it is cross-cutting: every stamp-carrying directive and content line, never `<branch>`/`<hub>`/`<choice>`.
+
+```yaml
+# plugins/acme.stage/stampattrs/columns.yaml
+stampAttrs:
+  - { name: voiceAssetId, type: { providerRef: voice }, required: true, on: [line] }
+  - { name: assetName,    type: string, on: [bg, actor] }
+  - { name: menuType,     type: { enum: [plain, timed, minigame] }, on: [branch, hub] }
+  - { name: optionKey,    type: string, required: true, on: [choice] }
+  - { name: cue,          type: string }          # cross-cutting, as in 0.49
+```
+
+```lute
+<branch id="route" prompt="Which way?" menuType="plain">
+  <choice id="goLeft" text="Left" optionKey="L1">
+    @mira{voiceAssetId="VO.mira.0010"}: Left it is.
+  </choice>
+</branch>
+```
+
+A plugin declares a **host token** with a `hostTokens` export (`hosttokens/*.yaml`); `{{playerName}}` then compiles to a `reserved` placeholder that the host substitutes at render time (`lute.core` declares `userName`). An undeclared bare `{{name}}` is `E-CEL-PROFILE`.
+
+```yaml
+# plugins/acme.stage/hosttokens/tokens.yaml
+hostTokens:
+  playerName: { type: string }
+  rank:       { type: int }          # {{rank:ordinal}} ok, {{rank:capitalize}} is E-REF-TYPE
+  platform:   { type: { enum: [ios, android, web] } }
+```
+
+A reward kind can apply facts and accepts at the grant (`@target` is the reward's `target=`; `writes` is not admitted, `credits:` is the state write). Per reward: `grant` + `credits`, then `retracts`, `asserts`, `accepts`:
+
+```yaml
+rewardKinds:
+  BADGE:       { target: { entity: person, required: true }, effects: { asserts: ["met(@target)"] } }
+  REVOKE:      { target: { entity: person, required: true }, effects: { retracts: ["met(@target)"] } }
+  OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
+```
+
+`lute.project.yaml` sets the level of a checker `W-*` code (`off`, `info`, `warn`, `error`), optionally only under `paths` globs. `--deny CODE` beats `off`; errors are never demoted.
+
+```yaml
+diagnostics:
+  W-DISPLAY-NAME-DUP: error
+  W-STAGE-ABSENT: { level: off, paths: ["scenes/imported/**"] }
+```
+
+A `node` lint (`lute.lint.yaml` `custom:` or a plugin `lints:` export) runs once per node; guard every index:
+
+```yaml
+custom:
+  - id: beat-label-prefix
+    target: node
+    when: 'node.tag == "label" && scene.kind == "beat" && "name" in node.attrs && !node.attrs["name"].startsWith("b_")'
+    level: error
+    message: "a beat's labels start with b_"
+```
+
+→ [Plugin manifests](/plugins/manifests/) · [CLI](/tooling/cli/) · [Linting](/tooling/linting/)
+
 ## Compiled artifact
 
 `lute compile` writes the execution IR. The envelope carries `kind`, `lute`, `irVersion`,
@@ -4320,7 +4384,7 @@ command by its `kind` and `position`.
 | `lute calendar --project <DIR> [--axis run.day=1..7] [--axis quest.q.state=unset,active] [--axis 'holds('awake', ['toma'])=true,false'] [--axis "visited('cafe.counter')=true,false"] [--axis run.aff.*=6,7] [--axis 'run.aff[run.route]=6,7'] [--axis clock=1..3] [--occasion <O>] [--occasion-axes <O>=<axis>[=<value>],…] [--target <T>] [--relation <relation>] [--script p.play.yaml [--until <step \| label>]] [--where <cel>] [--format text\|csv \| --json]` | 0.23.0. For every cell of the axes' product (first axis slowest), play's own eligibility per occasion: the winner or the presented list, `+N` shadowed eligible beats, `?` for an undecided cell, then the beats never eligible in any cell and (0.24.0) those eligible somewhere but never presented. It starts from the script's save with its steps replayed (up to `--until`), or the declared defaults. `--where` drops cells where the condition does not hold. A targeted occasion gets one column per target its beats name; `--target mon.inchlet` names one instead (`--occasion-axes` takes axes, not targets). 0.24.0: `clock[=d1..d2]` expands to day × slot in clock order; a `visited()` axis puts an id in or out of the save; `--occasion-axes dusk=clock.day` (or `--occasion-axes dusk=run.day,run.slot=night`, any varied path) evaluates that occasion once per value of that axis, blank elsewhere; `--relation at` prints who is where per cell. 0.27.0: `--axis run.aff.*=6,7` sets every member of a `per:` family, `--axis 'run.aff[run.route]=6,7'` only the member the `run.route` axis names in each cell (the others keep their seed or default); a bare `--axis run.aff` is a usage error naming both forms. |
 | `lute lore --project <DIR>` | Entries and beats by target and series, and which facts they reveal. |
 | `lute context <file> [--project <DIR>] [--node <kind:key> \| --at <file>:<line>:<column>] [--script <file>]… [--all-scripts] [--json]` | Everything legal to write here: directives (built-ins included) with their attributes, vocabulary, delivery flags, text modifiers, state (marking `owner: engine`), defs, relations with their tier and `reserved`, occasions with target domains, the cast, component signatures, and every scene, quest, and entry id. `--json` carries the `capabilitySnapshot` hash and `textModifiers` (the core `pause` / `speed` forms). Without `--project`, of the nearest `lute.project.yaml` above the file (0.27.0). |
-| `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | Advisory editorial lints (`L-*`), configured per project. The linear-VN metrics skip beats, components, quests, and lore. Since 0.26.0 it also reports `W-DISPLAY-NAME-DUP` (`--deny W-DISPLAY-NAME-DUP` accepts the code). |
+| `lute lint [<path>] [--config lute.lint.yaml] [--deny <CODE>]` | Advisory editorial lints (`L-*`), configured per project. The linear-VN metrics skip beats, components, quests, and lore. Since 0.26.0 it also reports `W-DISPLAY-NAME-DUP` (`--deny W-DISPLAY-NAME-DUP` accepts the code). Since 0.50 a `custom:` or plugin rule can use `target: node`, and the CEL fragment has `startsWith`/`endsWith`/`contains`. |
 | `lute doctor [--project <DIR>] [--strict]` | Toolchain and project setup: versions, active plugins, occasions with the number of beats answering each, play scripts and tests, whether the `lute-lsp` on `PATH` is this version, whether (0.24.0) it is the build beside the running `lute` (`lute-lsp beside lute`), and whether a running `lute-lsp` is stale (restart the editor). `--strict` (0.26.0) exits `1` when any check fails (`✗`). Since 0.26.0 `lute-lsp` itself notices that its binary was replaced and publishes one `lute-lsp-stale` "restart" diagnostic instead of an older build's results. |
 | `lute new scene\|quest\|lore\|schema <name> [--project <DIR>]` · `lute init [<DIR>] [--template minimal\|investigation\|beats]` | Scaffold a document or a project. New documents get an `id:` and omit what `defaults:` supplies. The file is named after the id, which keeps the case you type. `lute new scene <name> --occasion <OCCASION> [--target <prefix>.<member>]` writes a beat, checking both against the project; a targeted occasion needs `--target`. |
 
@@ -4587,6 +4651,8 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-REWARD-TARGET` | 0.26.0. A reward's `target=` breaks its kind's `target:` contract: not a member of the `{ entity: K }` kind, unknown to the `{ provider: … }`, or missing where `required: true`. |
 | `E-RULE-AGGREGATE-CYCLE` | 0.26.0. A rule's `count(…)` / `countDistinct(…)` reads a relation that depends on the rule's own head. Count only relations the head does not feed. |
 | `W-DISPLAY-NAME-DUP` | 0.26.0, whole-project `check` and `lute lint`. Two speakers are shown with the same display name: two cast `name:`s, a cast name and a `::use{… name="…"}` string, or two such strings. Rename one, or mark an intended role name `sharedName: true` on the cast entries. |
+| `E-PLUGIN-STAMP-SURFACE` | 0.50. A `stampAttrs` `on:` names something that is not `line`, `branch`, `hub`, `choice` or a stampable directive of the resolved profile (a typo, `jump`/`label`/`clear`, or a directive of an inactive plugin). Fix the name, or `depends:` on the plugin that declares the directive. |
+| `E-DIAGNOSTICS-CONFIG` | 0.50. A `diagnostics:` entry in `lute.project.yaml` is malformed or illegal: an `E-*` or `L-*` code, an unknown code, a bad level, or bad `paths`. Only `W-*` codes can be re-levelled. |
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. An entry that can be read again in a run (a lookup entry, no `once`, a `once` shorter than the run, `spentBy`, `for`) `::set`s, `::retract`s or calls an effect-only directive that writes: its writes apply on the first read in a run only. Use `<beat … once="false">` for a repeating write, `once="run"`, or a `when="!entry.<id>.read"` guard. `::assert` is exempt. |
 | `E-COMPONENT-ARG` | A `::use` argument does not fit its param, or names none. Since 0.26.0 also `@@x:` for a param that is not a `speaker` param, or outside a component. |
 | `E-UNKNOWN-ATTR` | An attribute the directive does not declare. Since 0.26.0 also `when=` on a directive that lowers to a built-in record (the core staging directives such as `::bg` and `::sfx`, `::end`, `::label`, a plugin `lower:` record), and a plugin attribute named `when`. |
@@ -4943,6 +5009,7 @@ names already mean, and the code that reports them.
 <!-- reserved-names:begin -->
 | Names | Refused as | Because it is | Code |
 | --- | --- | --- | --- |
+| `scene` `run` `user` `app` `quest` `entry` `prev` `clock` `occasion` `season` `true` `false` `null` | plugin host token | a state root or a CEL literal: `{{run}}` would read as a state root and `{{true}}` as the literal, never as a host token | E-PLUGIN-RESERVED-NAME |
 | `unset` | entity member; enum member; scene, beat, entry or choice id | the no-value word: `is="unset"` and `== 'unset'` test for a path that holds nothing, so a value named `unset` can never be matched | E-RESERVED-NAME |
 | `true` `false` `null` | entity member; enum member; scene, beat, entry or choice id; relation; season; state path segment (and quest, objective, entry, branch or hub id) | a CEL literal: in a condition and in `is=` it is read as the value, never as a name | E-RESERVED-NAME |
 | `_` | entity member; enum member | the wildcard of fact patterns (`holds('knows', ['_'])` in a condition, `knows(_)` in a rule) and the fallback key of `per:` defaults | E-RESERVED-NAME |
@@ -4974,6 +5041,13 @@ names already mean, and the code that reports them.
   because `once="season:week"` would sit beside `once="week"`.
 - A kind beat names its kind with a prefix (`target="kind:guest"`). The kind
   itself is declared without it (`entities: { guest: … }`).
+- A plugin **host token** (`hostTokens:`, since 0.50) is refused the names of
+  the state roots and CEL literals: `scene`, `run`, `user`, `app`, `quest`,
+  `entry`, `prev`, `clock`, `occasion`, `season`, `true`, `false`, `null`. A
+  token is written bare in `{{…}}`, so `{{run}}` would read as a state root.
+  The error is `E-PLUGIN-RESERVED-NAME` at assembly. A token name must also
+  be an identifier (letters, digits and `_`, not starting with a digit), or
+  the plugin fails to load with `E-PLUGIN-PARSE`.
 # Many authors, one project
 
 A game of any size is not written by one person. This guide is for a **lead** who owns the world
@@ -5849,6 +5923,572 @@ first.lute:11:7: error [E-ARM-DEAD] arm can never fire: its pattern `false` neve
 Every code is in the [diagnostics reference](/reference/diagnostics/), and `lute --explain <CODE>`
 prints its entry.
 
+# Porting a content set
+
+This guide is for a team that already has a content set in another shape (spreadsheet rows, an
+engine's export, an older script format) and writes an **importer** that emits `.lute` documents. The
+importer is the author. Lute is not asked to accept what the sheet looked like; the plugin declares
+what the sheet's columns, tokens and rewards mean, and `lute check` holds every imported row to it.
+
+Everything here is available since 0.50. The recipes answer the seven problems a large real port
+ran into (issues #162, #163, #164, #166, #169, #172 and #177), and each section ends with what the
+toolchain catches. A runnable project that uses all of them is
+[`docs/examples/plugin-surfaces/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/plugin-surfaces):
+
+```sh
+lute check --project docs/examples/plugin-surfaces
+lute test  --project docs/examples/plugin-surfaces
+lute lint  --project docs/examples/plugin-surfaces
+```
+
+The plugin manifest vocabulary is on [Plugin manifests](/plugins/manifests/). This page collects the
+port recipes around it.
+
+## Columns become stamps on the surface they belong to
+
+A sheet has different columns for different rows: a voice asset for a dialogue row, an asset name for
+a background row, a menu type for a choice row, an option key for each option. A **stamp** is a plugin
+attribute that is not part of a directive's own declaration. Since 0.49 a stamp is admissible on every
+directive and every content line, which is too wide for a column that belongs to one kind of row.
+Since 0.50 a `stampAttrs` entry names its surfaces with `on:`:
+
+```yaml
+# plugins/acme.stage/stampattrs/columns.yaml
+stampAttrs:
+  - { name: voiceAssetId, type: { providerRef: voice }, required: true, on: [line] }
+  - { name: assetName,    type: string, on: [bg, actor] }
+  - { name: menuType,     type: { enum: [plain, timed, minigame] }, on: [branch, hub] }
+  - { name: optionKey,    type: string, required: true, on: [choice] }
+  - { name: cue,          type: string }                          # cross-cutting, as in 0.49
+```
+
+```lute
+<branch id="route" prompt="Which way?" menuType="plain">
+  <choice id="goLeft" text="Left" optionKey="L1">
+    @mira{voiceAssetId="VO.mira.0010"}: Left it is.
+  </choice>
+</branch>
+```
+
+`on:` takes a non-empty list of **surface names**. The vocabulary is closed:
+
+| Surface name | Where the stamp may be written |
+|---|---|
+| `line` | every content line (`@speaker{…}: text`), including lines in component, quest, objective, `<on>`, entry and beat bodies |
+| `branch`, `hub` | the element of that name |
+| `choice` | every `<choice>`, in a `<branch>` or a `<hub>` |
+| a directive tag | that directive, if it is a directive of the active profile with a stamp carrier: `bg`, `actor`, a plugin directive. Not `jump`, `label` or `clear`, which emit no stamped record |
+
+The four names `line`, `branch`, `hub` and `choice` always mean the core surface, and they are already
+reserved as plugin directive names, so a plugin directive tagged `line` cannot be named in `on:`. The
+order inside `on:` does not matter.
+
+### What a column can and cannot do
+
+- **Without `on:`** a stamp keeps its 0.49 meaning exactly: every directive that has a stamp carrier
+  and every content line. It is **not** admissible on `<branch>`, `<hub>` or `<choice>`. The logic
+  tags stay closed unless a stamp names them, so `branch`, `hub` and `choice` are never admissible
+  for a cross-cutting stamp.
+- **A scoped stamp is refused elsewhere.** Writing `voiceAssetId` on `::bg` is `E-UNKNOWN-ATTR`, and
+  the message says where the stamp does apply instead of listing the surface's own attributes.
+- **`required: true` needs `on:`.** A cross-cutting stamp cannot be required: a stamp required on every
+  record is not a column. Before 0.50 the flag was silently ignored; it is now `E-PLUGIN-PARSE` at
+  load. On a scoped stamp it is enforced: a surface that does not write the stamp is `E-MISSING-ATTR`
+  on the directive, on the line, or on the whole `<branch>`/`<hub>`/`<choice>` element. The rule applies wherever the
+  surface is written, component bodies included, and a line that `::use` splices in is checked once,
+  in its component. A declared `default:` does not satisfy it, because a stamp is never injected.
+- **One name may have two types**, as long as the entries' surface sets are disjoint: `assetName` can
+  be a `string` on `bg` and an `int` on `actor`. Each surface serializes the value with its own type.
+  Any overlap is the existing duplicate code: `E-PLUGIN-DUP-ID` within one plugin package, and
+  `E-PLUGIN-DUP-ACROSS` between two plugins, each naming the shared surfaces. An entry without `on:`
+  overlaps every other entry of its name.
+- **A scoped stamp cannot shadow its surface's own attribute.** `prompt` on `branch`, `text` on
+  `choice` or `code` on `line` could never be read, so the declaration is
+  `E-PLUGIN-RESERVED-STAMP-ATTR`. The surface's own attributes are the directive's declared
+  attributes; the line's known attributes and `when`; `id`, `prompt`, `timeout` and `default` on
+  `<branch>`; `id` and `prompt` on `<hub>`; and `id`, `text`, `when`, `into`, `value`, `once` and `exit`
+  on `<choice>`, plus its retired `label`, `as` and `persist`.
+- **An `on:` name that is no surface** is `E-PLUGIN-STAMP-SURFACE` at assembly, with a did-you-mean
+  (`bgg` for `bg`). A directive of another plugin is a surface only when that plugin is in your
+  `depends:`, so that it is in every profile that activates yours.
+
+Load-time faults are all `E-PLUGIN-PARSE` at the entry: an `on:` that is not a list of strings or is
+empty, a surface repeated in `on:`, and `required: true` without `on:`.
+
+The value is typed by the declaration of the surface it is written on, so a mistyped one is the
+ordinary `E-ATTR-TYPE` or `E-BAD-ENUM`. That holds for an `@ref` value on `<branch>`, `<hub>` and
+`<choice>` too: a def of the wrong type is `E-REF-TYPE`, and a def that folds outside an enum is
+`E-BAD-ENUM`.
+
+In the [example project](https://github.com/journeyWorker/lute/tree/main/docs/examples/plugin-surfaces),
+a scene that writes `voiceAssetId` on `::bg` (line 8) and a `<choice id="goLeft">` without `optionKey`
+(line 10) gives:
+
+<!-- lute-diagnostics unverified="real lute check output (0.50 build); it matches both the scoped-stamp and the generic `has no attribute` format literals, so the matcher reports it ambiguous" -->
+```
+./scenes/a.lute:8:33: error [E-UNKNOWN-ATTR] `::bg` has no attribute `voiceAssetId`: it is a stamp of `acme.stage` for content lines only
+./scenes/a.lute:10:3: error [E-MISSING-ATTR] `<choice id="goLeft">` requires attribute `optionKey` (a stamp of `acme.stage`)
+```
+
+### What reaches the artifact
+
+The runtime never reads stamps. A stamp on a record is in that record's `stamps` object, as in 0.49. A
+stamp on `<branch>` or `<hub>` is in the `stamps` of the `choice` or `hub` record, and each option
+gains its own `stamps` object from its `<choice>` element (omitted when it has none). An unauthored
+stamp is never injected. The menu the runtime awaits carries only the address and the verdicts, so a
+host that does not use the reference player reads stamps from the IR record at the menu's address, as
+it already reads option text. The reference player's `ChoiceView` carries the element's and each
+option's `stamps`. See [Runtime contract](/tooling/runtime-contract/).
+
+## `{{playerName}}`: tokens the host substitutes
+
+An importer meets names the engine fills in at render time: the player's name, a rank, a platform.
+Declare each one with a `hostTokens` export (`exports: { hostTokens: hosttokens/ }`):
+
+```yaml
+# plugins/acme.stage/hosttokens/tokens.yaml
+hostTokens:
+  playerName: { type: string }
+  rank:       { type: int }
+  platform:   { type: { enum: [ios, android, web] } }
+```
+
+```lute
+@mira: Welcome, {{playerName}}. You are our {{rank:ordinal}} guest, and {{platform:capitalize}} is fine.
+```
+
+- A token name is an **identifier** (an ASCII letter or `_`, then letters, digits or `_`). `player-name`
+  and `2ndName` are `E-PLUGIN-PARSE` at load, because a token is written bare inside `{{…}}`. The value is
+  `{ type }` with `string`, `int` or `{ enum: [...] }`.
+- A name that reads as a state root or a CEL literal (`scene`, `run`, `user`, `app`, `quest`, `entry`,
+  `prev`, `clock`, `occasion`, `season`, `true`, `false`, `null`) is `E-PLUGIN-RESERVED-NAME`:
+  `{{run}}` would read as a state root.
+- `lute.core` declares `userName: { type: string }`. Redeclaring a token that another plugin, or
+  `lute.core`, declares is `E-PLUGIN-DUP-ACROSS`.
+- A format hint is checked against the token's type. A `string` or `enum` token takes the text hints
+  (`{{platform:capitalize}}`), and a number hint on it is `E-REF-TYPE`. An `int` token takes the
+  number hints (`{{rank:ordinal}}`), and a text hint on it is `E-REF-TYPE`.
+- An **undeclared** bare name is `E-CEL-PROFILE`, and the message now says to declare the name in a
+  plugin's `hostTokens:` export. `{{player-name}}` and `{{2nd}}` are not identifiers, so they keep the
+  `E-CEL-PROFILE` they always had.
+- The escape `\{{name}}` is unchanged: it is never a placeholder.
+
+A host token is never a state read, and the runtime does not substitute it: every token marker stays
+verbatim in the rendered text, and the host or presenter replaces it. That holds for every token, not
+only `userName`. The IR placeholder is `{ "kind": "reserved", "token": "playerName" }`, and an
+interpolation counts as one word in the lints, as before. `lute context` lists the declared tokens.
+
+## Rewards that assert, retract and accept
+
+A port often carries rows like "this quest hands out a badge" or "finishing it offers the next one".
+Before 0.50 a reward kind could only credit a state path, so the fact the badge stood for was invisible to
+the checker and the quest it unlocked drew a false `E-QUEST-UNREACHABLE`. A reward kind now declares
+`effects:`, in the directive vocabulary:
+
+```yaml
+# plugins/acme.stage/rewardkinds/rewards.yaml
+rewardKinds:
+  BADGE:       { target: { entity: person, required: true }, effects: { asserts: ["met(@target)"] } }
+  REVOKE:      { target: { entity: person, required: true }, effects: { retracts: ["met(@target)"] } }
+  OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
+```
+
+The example project's quests use all three (`quests/visits.lute`):
+
+```lute check-in-project="docs/examples/plugin-surfaces/quests/visits.lute"
+---
+kind: quest
+id: visits.quests
+title: Visits
+---
+/*
+Reward effects (0.50):
+  - firstVisit's BADGE asserts met(mira) at the grant; secondVisit starts on
+    that fact, so it is reachable only because the reward produces it. Its
+    `follows` places it in the scenario graph, where `lute scenario --facts`
+    draws the fact edge firstVisit -> secondVisit [met(mira)].
+  - firstVisit's OFFER_QUEST accepts giftErrand, an accept-driven quest no
+    `::accept` names.
+  - secondVisit's REVOKE retracts met(mira) when it completes.
+*/
+
+<quest id="firstVisit" tier="run" title="Say hello to Mira" start="true">
+  <reward kind="BADGE" amount="1" target="mira"/>
+  <reward kind="OFFER_QUEST" target="giftErrand"/>
+  <objective id="talk" title="Talk to Mira" done="run.talked"/>
+</quest>
+
+<quest id="secondVisit" tier="run" title="Visit Mira again" follows="completed('firstVisit')" start="holds('met', ['mira'])">
+  <reward kind="REVOKE" target="mira"/>
+  <objective id="chat" title="Have a second chat" done="run.chatted"/>
+</quest>
+
+<quest id="giftErrand" tier="run" title="Carry Mira's gift to Tomas">
+  <objective id="deliver" title="Deliver the gift" done="run.delivered"/>
+</quest>
+```
+
+`OFFER_QUEST` names `giftErrand`, an accept-driven quest (no `start`). Naming `secondVisit`, which has a
+`start`, would be `E-ACCEPT-TARGET`, as an `::accept` of it is.
+
+### What an effect may say
+
+- `effects` has `asserts`, `retracts` and `accepts`, each optional. An empty `effects: {}` is
+  `E-PLUGIN-PARSE` ("declares no effect").
+- **`writes` is not admitted.** A reward's state write is `credits:`, and `effects.writes` is
+  `E-PLUGIN-KEY` saying so.
+- Pattern arguments of `asserts` and `retracts` are members, `true` / `false`, `@target` and, in
+  `retracts` only, `_`. Any other `@name` is `E-PLUGIN-PARSE`: a `<reward>` takes no attribute but its
+  own, so a kind's effects read only `@target`.
+- `accepts` entries are `@target` or a literal quest id. A kind with `target: { forbidden: true }` whose
+  effects read `@target` is `E-PLUGIN-PARSE`, because the effect could never bind.
+
+### How each `<reward>` is judged
+
+`@target` is bound to the reward's quoted `target=`. Each resolved fact pattern is judged as the
+`::assert` or `::retract` of it would be (relation declared, arity, argument kinds and members,
+closed-kind membership), with the same codes at the reward's `kind=`, and the message is prefixed with
+`` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): ``. Each resolved quest id in `accepts` is
+judged as `::accept` judges it, project-wide: an unknown id (with a did-you-mean), a quest that has a
+`start`, and a child that auto-activates are `E-ACCEPT-TARGET`, at the reward's `target=` when the id came
+from `@target`, otherwise at `kind=`.
+
+A reward with **no `target=`** applies no effect that reads `@target`, with no extra diagnostic (the
+directive rule). A kind with `target: { required: true }` already reports `E-REWARD-TARGET` for it.
+
+### When it happens
+
+At the grant instant, for a reward that is granted (its `outcome` filter matches and its `when=`
+holds), in declaration order and **per reward**:
+
+1. the `grant` record and its `credits` write, as before;
+2. the reward's `retracts`, then its `asserts`, through the one runtime assert/retract path (the
+   `E-FACT-EXCLUSIVE` check included);
+3. its `accepts`, through `::accept`'s path. An accept-driven quest activates on the next lifecycle
+   round, and a quest already past `unset` is left alone, with the record saying so.
+
+Then the next reward. Objective grants precede quest grants, and all grants of a transition precede
+its lifecycle handler body, so at run time a `questComplete` handler reads the fact the reward
+asserted. An effect fires exactly once per grant.
+
+Each effect record names the grant it follows with a `grant` key, and `lute play`, `lute run` and
+`lute trace` print it. The example's play script (`lute play --project . --script plays/visits.play.yaml`):
+
+```console
+── step 1 (the player talks to Mira) · engine ──────────────
+  set run.talked = true
+  firstVisit.talk done
+  quest firstVisit -> complete
+  grant[#1 i0] firstVisit BADGE 1 -> mira
+  assert met(mira)  (effect of reward BADGE)
+  grant[#1 i1] firstVisit OFFER_QUEST 1 -> giftErrand
+  quest giftErrand accepted  (effect of reward OFFER_QUEST)
+  quest giftErrand -> active
+  quest secondVisit -> active
+```
+
+### What every analysis sees
+
+Every analysis reads a reward effect at the owner's grant point: the quest's completion (before its
+`questComplete` handlers), its failure for `outcome="failed"` (before `questFailed`), or the
+objective's completion. A reward's **assert is a producer only**: it adds to what *may* hold and
+never to what *must* hold, guarded or not, in the handler bodies, the objective body, or anything
+gated on the quest. Lifecycle handlers can be deferred past other quests' grants and the occasion's
+beats, a `user`-tier quest stays complete across a reset that clears its facts, and a host may seed
+a quest complete without its grants, so no grant-to-fact implication is sound. A reward's
+**retract** removes what it matches from what must hold, as a guarded `::retract` does. So:
+
+- `secondVisit` above is reachable: the reward is a producer of its `start` fact, so there is no
+  `E-QUEST-UNREACHABLE`. `E-OBJECTIVE-UNSATISFIABLE`, `W-RELATION-UNREAD` and `E-FACT-EXCLUSIVE` see the
+  effect too. A guard that tests `met(mira)` after the grant draws neither `W-FACT-GUARANTEED` nor
+  `E-ARM-DEAD`: the fact is possible there, not guaranteed.
+- `lute scenario` draws the fact edge and the accept edge, and `lute lore` / `lute scenario knowledge`
+  name the producer: `` met(mira) — produced by reward BADGE of quest `firstVisit` ``.
+- `W-QUEST-NEVER-ACCEPTED` now says "no `::accept` or reward `accepts` in the project names it", and a
+  reward accept silences it.
+- **Start-cycle detection is unchanged.** A reward accept anchors an edge for reachability and
+  connectivity only; it does not gate a quest's start, so it never draws `E-QUEST-START-CYCLE` or
+  `E-QUEST-START-SELF`.
+
+An artifact that has a reward effect carries the semantic id `lute.quest.rewardEffects/1`. An engine
+that ignores the fields would lose facts and quest activations, so one that does not implement the id
+refuses the artifact. See [Runtime contract](/tooling/runtime-contract/).
+
+## Levels for an imported subtree
+
+A first import is noisy. A staging warning on 212 rows is true and not worth fixing on day one, and
+`--deny-warnings` in CI means you cannot have a warning you have not decided about. The project
+manifest sets a level per diagnostic code, optionally for a path:
+
+```yaml
+# lute.project.yaml
+diagnostics:
+  W-DISPLAY-NAME-DUP: error
+  W-STAGE-ABSENT: { level: off, paths: ["scenes/imported/**"] }
+```
+
+- `diagnostics:` maps a code to a level (`off`, `info`, `warn`, `error`) or to `{ level, paths }`. One
+  entry per code.
+- `paths` are project-root-relative globs with the `lute.lint.yaml` `ignore:` syntax (`*` within a
+  segment, `**` across segments). With `paths`, the level applies only to diagnostics of documents that
+  match; elsewhere the code keeps its native severity. A diagnostic with no document path (a manifest
+  diagnostic) matches only an entry without `paths`.
+- **Only `W-*` codes are configurable.** An `E-*` code is a contract violation and is never re-levelled,
+  and an `L-*` lint rule is set in `lute.lint.yaml` `rules:`. A level that is not one of the four, a code
+  the toolchain does not define (with a did-you-mean), or `paths` that are empty, absolute or contain
+  `..` is `E-DIAGNOSTICS-CONFIG`, reported once per manifest, and that entry is dropped.
+
+A manifest with `W-STAGE-ABSNT: off` on its line 4 gives:
+
+<!-- lute-diagnostics -->
+```
+./lute.project.yaml:4:3: error [E-DIAGNOSTICS-CONFIG] `W-STAGE-ABSNT` is not a diagnostic code — did you mean `W-STAGE-ABSENT`?
+```
+
+How a level is applied, in this order, at the point that prints a diagnostic:
+
+1. the project level for the code and the document's path;
+2. `--deny CODE` names the code: it is promoted to an error **even when the project set it `off`**,
+   because an explicit command line beats the config;
+3. `--deny-warnings` promotes what is still a warning after step 1. An `off` code stays off, and an
+   `info` code stays info.
+
+Errors are never demoted. A code relevelled to `error` fails the verdict and the exit status, as
+`--deny` does; in JSON it carries `"severity": "error"` and `"configured": "lute.project.yaml"`, and the
+human line carries a `[project]` marker beside `[denied]`. A code relevelled to `info` or `warn` carries
+the new severity and the same marker.
+
+**Levels change only what is reported and the exit status.** They never change an analysis, an artifact,
+a constraint verdict, the scenario graph, or what a `.test.yaml` or `.play.yaml` expectation observes.
+They gate `lute check`, `lute compile` and `lute lint`. The simulating commands (`lute test`,
+`lute play`, `lute calendar`) do not apply them at all: they print native diagnostics, and a project
+`error` level leaves `lute test`'s results and exit status as they are without it. The LSP applies the
+same levels: an `off` diagnostic is not published.
+
+Nothing is hidden without saying so. Every summary line that counts diagnostics appends
+`, N suppressed by lute.project.yaml` only when N is above zero, and every JSON report carries a
+`"suppressed": { "<code>": n }` map only when it is not empty:
+
+In the example project, `lute check --project .` prints:
+
+```console
+ok: ./quests/visits.lute (0 warning(s))
+ok: ./scenes/cafe.lute (0 warning(s))
+ok: ./scenes/imported/street.lute (0 warning(s), 1 suppressed by lute.project.yaml)
+ok: . (3 file(s), 0 project-wide warning(s))
+```
+
+A `rules:` entry in `lute.lint.yaml` that names a checker code is `E-LINT-CONFIG`, and the message points
+here: `` `W-STAGE-ABSENT` is a checker code, not a lint rule — set its level in `lute.project.yaml` `diagnostics:` ``.
+
+## A line that stages its speaker
+
+`W-STAGE-ABSENT` warns when a character speaks after they left the stage (a declared exit, a `::bg`
+scene change, a `::clear`) and nothing showed them again. An importer that knows a row shows an
+off-stage speaker emits the staging row first. No new construct is needed, because a record that stages
+a character is the `actor` record, from `::actor` or from a plugin directive lowered to it:
+
+```yaml
+# plugins/acme.stage/directives/stage.yaml
+directives:
+  - name: showSpeaker
+    attrs:
+      - { name: character, required: true, type: string }
+      - { name: spriteId, type: string }
+    lower:
+      record: actor
+      fields:
+        character: { fromAttr: character }
+        costume: { fromAttr: spriteId }
+```
+
+```lute
+::bg{location="street" time="night"}
+::showSpeaker{character="tomas" spriteId="SPR_tomas_02"}
+@tomas: Still here?
+```
+
+A directive lowered to `actor` stages its `character` like `::actor` (since 0.45), and `character` must
+bind to a required attribute or a literal. The actor record has no field named for a sprite, so the
+example carries the importer's sprite id in `costume`; a plugin can also keep it in a stamp scoped
+`on: [showSpeaker]`. The `W-STAGE-ABSENT` hint now reads "Show them again with an `::actor` (or a plugin
+directive declared `lower: { record: actor, fields: { character: { fromAttr: character } } }`)". It
+names the full form because `lower: { record: actor }` alone is refused at load (`fields:` is
+required) and an empty `fields: {}` is `E-LOWER-RECORD-FIELD`.
+
+While the port is under review, set the code `off` for the imported subtree, as in the
+[levels](#levels-for-an-imported-subtree) above, and delete the entry when the importer emits the
+staging rows:
+
+```yaml
+diagnostics:
+  W-STAGE-ABSENT: { level: off, paths: ["scenes/imported/**"] }
+```
+
+## Lints for structure and dependent values
+
+Some rules are about where a node sits, not what it contains: every section opens with a `::bg`; a
+`::signal` of a kind must be followed by a `<branch>`; a label in a beat starts with `b_`. Others
+are about one attribute depending on another: the legal `speed` depends on the `mode`; the legal
+option key depends on the menu type of the enclosing `<branch>`. Both are `target: node` lints, which
+run over the AST in `lute.lint.yaml` `custom:` rules, in a plugin's `lints:` export, and in the LSP.
+
+A `node` rule gets one row per node, in document order, over every body the checker walks: sections;
+`<quest>` declarations with their objectives and `<on>` handlers; `<reward>` children; top-level
+`<entry>` and `<beat>`; `<branch>` and `<hub>` choices, choice bodies and a hub's `<return>`;
+`<match>` arms and their bodies; and `<timeline>` (one row; clips are not rows). The bindings are
+`node`, `scene` (the document row) and `options`:
+
+| Field | Meaning |
+|---|---|
+| `node.kind` | `line`, `directive` (every `::tag{…}`, core or plugin, `::set` and `::end` included), or the element name (`branch`, `hub`, `choice`, `return`, `match`, `when`, `otherwise`, `timeline`, `quest`, `objective`, `on`, `reward`, `entry`, `beat`) |
+| `node.tag` | the directive tag or element name; `""` for a line |
+| `node.speaker` | a line's speaker; `""` otherwise |
+| `node.attrs` | map string → string of every attribute **as authored**: a key is present only if the author wrote it, and its value is the authored text, unquoted. Lifted attributes (`<branch id>`, `<reward kind target amount>`, `::jump{to}`) and stamps are in it. A bare flag is `"true"`, an `@ref` is its source text, and `::set`, `::assert` and `::retract` have `{}` |
+| `node.index`, `node.first`, `node.last` | 0-based position in its body; first and last in that body |
+| `node.depth` | 0 for a top-level node of a section or document, plus 1 per enclosing element |
+| `node.prev`, `node.next` | `{ kind, tag, attrs }` of the sibling in the same body; every field empty at a body edge |
+| `node.parent` | `{ kind, tag, attrs }` of the enclosing element; `kind` is `"section"` at a section's top level and `"document"` at a quest or lore document's top level |
+| `node.preceding` | map tag → `{ attrs }`: for each tag, the nearest node with that tag among the earlier siblings of this node and of each ancestor, and the ancestors themselves. It does **not** enter the bodies of earlier siblings (another arm is not on this path), is reset at each section and declaration, and does not key lines |
+| `node.section` | `{ index, title, id }` of the enclosing section; `{ 0, "", "" }` outside sections |
+
+`node.attrs` is read from the source, so `<reward kind="COINS" amount="+005"/>` gives `"+005"`, not
+`"5"`, and a reward written without `amount` has no `amount` key. The findings span the node, and
+`{node.attrs.value}` interpolates into the message.
+
+Two rules keep a lint honest:
+
+- **Guard every index.** A missing key keeps CEL semantics: `node.attrs["x"]` on an absent key is an
+  evaluation error (`E-LINT-EXPR`). `&&` short-circuits, so write `"x" in node.attrs && node.attrs["x"] …`,
+  `"t" in node.preceding && "k" in node.preceding["t"].attrs && …`, and `key in options.cases && …`
+  before indexing an options map.
+- **An unknown discriminator is someone else's finding.** A dependent-value rule excludes a
+  discriminator it has no case for, and a separate `*-known` rule reports the discriminator itself. Each
+  violation is then reported once, by the rule that names it.
+
+The lint expression language also has the CEL string members `s.startsWith(t)`, `s.endsWith(t)` and
+`s.contains(t)`, in member-call form, with both operands strings (a non-string operand is an
+evaluation error). There are no regexes and no macros.
+
+The recipes below are plugin `lints:` entries. In `lute.lint.yaml` the same entries go under `custom:`
+with bare ids; a plugin rule's id is `<plugin-id>/<rule-id>`.
+
+```yaml
+lints:
+  - id: signal-needs-menu
+    target: node
+    when: 'node.tag == "signal" && "value" in node.attrs && node.attrs["value"] == "puzzle" && node.next.kind != "branch"'
+    level: warn
+    message: "a puzzle ::signal must be followed by a <branch>"
+  - id: section-opens-with-bg
+    target: node
+    when: 'node.first && node.parent.kind == "section" && node.tag != "bg"'
+    level: warn
+    message: "section {node.section.title} opens with {node.tag}"
+  - id: beat-label-prefix
+    target: node
+    when: 'node.tag == "label" && scene.kind == "beat" && "name" in node.attrs && !node.attrs["name"].startsWith("b_")'
+    level: error
+    message: "a beat's labels start with b_"
+```
+
+**One attribute decides another's values** (the `mode` of a move selects its legal `speed`s). The
+first rule reports an unknown mode, and the second skips it:
+
+```yaml
+lints:
+  - id: move-mode-known
+    target: node
+    when: 'node.tag == "move" && "mode" in node.attrs && !(node.attrs["mode"] in options.speeds)'
+    level: error
+    message: "unknown move mode {node.attrs.mode}"
+    options: { speeds: { walk: [slow, normal], run: [normal, fast] } }
+  - id: speed-fits-mode
+    target: node
+    when: >-
+      node.tag == "move" && "speed" in node.attrs && "mode" in node.attrs &&
+      node.attrs["mode"] in options.speeds &&
+      !(node.attrs["speed"] in options.speeds[node.attrs["mode"]])
+    level: error
+    message: "speed {node.attrs.speed} is not legal in mode {node.attrs.mode}"
+    options: { speeds: { walk: [slow, normal], run: [normal, fast] } }
+```
+
+**A marker directive before the branch decides the legal option values.** `node.preceding` finds the
+nearest `::interaction` on the path to each `::option`:
+
+```yaml
+lints:
+  - id: interaction-kind-known
+    target: node
+    when: 'node.tag == "interaction" && (!("kind" in node.attrs) || !(node.attrs["kind"] in options.cases))'
+    level: error
+    message: "::interaction needs a known kind"
+    options: { cases: { greet: [wave, bow], gift: [accept, decline] } }
+  - id: option-fits-interaction
+    target: node
+    when: >-
+      node.tag == "option" && "value" in node.attrs &&
+      "interaction" in node.preceding && "kind" in node.preceding["interaction"].attrs &&
+      node.preceding["interaction"].attrs["kind"] in options.cases &&
+      !(node.attrs["value"] in options.cases[node.preceding["interaction"].attrs["kind"]])
+    level: error
+    message: "option {node.attrs.value} does not belong to this interaction"
+    options: { cases: { greet: [wave, bow], gift: [accept, decline] } }
+```
+
+**The parent `<branch>` carries the discriminator**, as a scoped stamp from the first section of this
+guide:
+
+```yaml
+lints:
+  - id: menu-type-known
+    target: node
+    when: 'node.kind == "branch" && "menuType" in node.attrs && !(node.attrs["menuType"] in options.keys)'
+    level: error
+    message: "unknown menu type {node.attrs.menuType}"
+    options: { keys: { plain: [L1, R1], timed: [T1] } }
+  - id: choice-fits-menu
+    target: node
+    when: >-
+      node.kind == "choice" && "optionKey" in node.attrs &&
+      "menuType" in node.parent.attrs && node.parent.attrs["menuType"] in options.keys &&
+      !(node.attrs["optionKey"] in options.keys[node.parent.attrs["menuType"]])
+    level: error
+    message: "option key {node.attrs.optionKey} is not a {node.parent.attrs.menuType} key"
+    options: { keys: { plain: [L1, R1], timed: [T1] } }
+```
+
+Balance rules (an opener that must be closed) are not `node` lints; a `pair` target is planned for a
+later release. See [Linting](/tooling/linting/) for the rest of `lute.lint.yaml`.
+
+## What the tool catches, and what it does not
+
+| Problem in the port | Caught by |
+|---|---|
+| A column written on a row it does not belong to | `E-UNKNOWN-ATTR`, naming the surfaces of the stamp |
+| A row missing a required column | `E-MISSING-ATTR` for a scoped `required: true` stamp |
+| A stamp declared required on every record | `E-PLUGIN-PARSE` at load |
+| A stamp named after an attribute its surface already has | `E-PLUGIN-RESERVED-STAMP-ATTR` |
+| A misspelled surface in `on:` | `E-PLUGIN-STAMP-SURFACE`, with a did-you-mean |
+| Two declarations of one column on overlapping surfaces | `E-PLUGIN-DUP-ID`, `E-PLUGIN-DUP-ACROSS` |
+| `{{playerName}}` the plugin does not declare | `E-CEL-PROFILE`, naming the declared tokens |
+| A number hint on a text token, or the reverse | `E-REF-TYPE` |
+| A badge fact no quest can see | gone: `E-QUEST-UNREACHABLE` reads the reward effect |
+| A reward that accepts a quest that does not exist | `E-ACCEPT-TARGET`, with a did-you-mean |
+| A warning flood in an imported subtree | `diagnostics:` with `paths:`, counted in the summary |
+| A speaker shown off stage | `W-STAGE-ABSENT`, unless the importer emits the staging row |
+| A structural or dependent-value rule | a `node` lint |
+
+What Lute does **not** know:
+
+- **Whether a stamp's value means anything to your engine.** `voiceAssetId="VO.mira.0010"` is a string
+  (or a `providerRef`, when you pin a catalog). The engine's asset table is yours.
+- **What your engine does with a token.** A host token is a promise that the host substitutes it. If the
+  host forgets, the marker stays in the text.
+- **Whether a quiet subtree is correct.** `off` hides a warning; it does not fix the row. Keep the
+  `paths:` globs narrow, and delete the entry when the review is done.
+
 # Frontmatter & profiles
 
 Every `.lute` document opens with a **YAML frontmatter block** delimited by two `---` lines. It
@@ -6640,7 +7280,7 @@ render time:
 
 *(From [`docs/examples/showcase/hub-demo.lute`](https://github.com/journeyWorker/lute/blob/main/docs/examples/showcase/hub-demo.lute).)*
 
-`{{userName}}` is the always-available reserved token. Any other interpolation must name a
+`{{userName}}` is the always-available reserved token. Any other bare name is a [host token](#host-tokens) a plugin declares; otherwise an interpolation must name a
 **declared** state path; an interpolation is a *read* for definite-assignment analysis, so a
 maybe-unset path interpolated without a guard is `E-MAYBE-UNSET`. Apart from interpolations and
 [inline modifiers](#inline-text-modifiers), the text after the second colon is opaque to end of
@@ -6654,6 +7294,22 @@ single-brace `{run.oil}` or `{run.oil > 0: …}` (`W-TEXT-SINGLE-BRACE`; interpo
 A path typed against an enum whose members carry display `labels:` renders the label, not the
 member id: `Today is {{run.weekday}}.` reads `Today is Sunday.` (see
 [Paths typed by a named enum](/state/state-model/#paths-typed-by-a-named-enum)).
+
+### Host tokens
+
+A line may name a value only the engine knows, such as the player's name, with a bare identifier: `{{playerName}}`. Since 0.50 a plugin declares such names in its [`hostTokens`](/plugins/manifests/#host-interpolation-tokens-hosttokens) export, and `lute.core` declares `userName: { type: string }`. With `hostTokens: { playerName: { type: string } }`:
+
+```lute
+@narrator: Welcome, {{playerName}}.
+```
+
+compiles to a `reserved` placeholder, `{ "kind": "reserved", "token": "playerName", "format"? }`. A token is a bare **identifier** (an ASCII letter or `_`, then letters, digits or `_`). `{{player-name}}` and `{{2nd}}` are not tokens: they stay state-path-shaped and keep their `E-CEL-PROFILE`. A state path always has a tier root and a `.`, so no spelling that was a state path changes meaning; the names that are state roots or CEL literals cannot be declared as tokens (see [Reserved names](/reference/reserved-names/)).
+
+- **Declared.** The token's type decides which [format hints](#ordinals-x-ordinal) it takes. A `string` or `enum` token takes the text hints (`{{platform:capitalize}}` is clean), and a number hint on it is `E-REF-TYPE`. An `int` token takes the number hints (`{{rank:ordinal}}` is clean), and a text hint on it (`{{rank:capitalize}}`) is `E-REF-TYPE`. `{{userName}}` behaves exactly as before.
+- **Undeclared.** A bare name no plugin declares is `E-CEL-PROFILE`. The message names "a declared host token" and lists the declared tokens: `` interpolation `playerName` is not a valid `{{…}}` form — only a state path, …, a def `@ref` / `@ref(args)`, or a declared host token (`userName`) are permitted; declare `playerName` in a plugin's `hostTokens:` export if the engine substitutes it … ``. The rest of the message is unchanged.
+- **Escape.** `\{{name}}` is unchanged: it is never a placeholder.
+- **Never a state read.** A host token takes no part in definite-assignment, dependency or quest-reference analysis, and counts as one word for lint.
+- **At runtime.** The runtime leaves every host-token marker verbatim in the rendered text, and the host or presenter substitutes it. This holds for every token, not only `userName` (see the [runtime contract](/tooling/runtime-contract/)). The editor's hover reads `` host token `playerName` — `string`, declared by `acme.stage`; the engine substitutes it at render time ``.
 
 ### Ordinals: `{{x:ordinal}}`
 
@@ -6719,7 +7375,7 @@ That line reads `Eleven wagons wait at the ford, eleven in all.` Plural forms ar
 
 ### Text hints and label forms: `{{x:capitalize}}`, `{{x:start}}`, `{{x:indefinite}}`
 
-Three hints format text — a string, an enum or kind label, a cast name, `{{occasion.target}}`, `{{userName}}`. `:capitalize` upper-cases the first letter. `:start` and `:indefinite` read the forms a kind's `labels:` entry may declare beside its text:
+Three hints format text — a string, an enum or kind label, a cast name, `{{occasion.target}}`, a `string` or `enum` [host token](#host-tokens) such as `{{userName}}`. `:capitalize` upper-cases the first letter. `:start` and `:indefinite` read the forms a kind's `labels:` entry may declare beside its text:
 
 ```yaml
 entities:
@@ -6732,7 +7388,7 @@ entities:
 
 `{{occasion.target:start}} is quiet.` reads `The smugglers' cut is quiet.` for `cut`. When a form is absent the hint falls back: `:start` capitalizes the text (`Ashwraith den`), and `:indefinite` puts `an` before a text whose first letter is a vowel and `a` before any other (`an ashwraith den`). Declare `indefinite:` for the words that rule gets wrong (`an hour`, `a unicorn`). A label entry is a string or `{ text, start, indefinite }` with `text:` required; any other key is `E-ENTITY-KIND-SHAPE`. The IR carries the hint as the placeholder's `format` and the forms as `labelForms` on the kind's `entities[]` entry and on a state path typed by the kind, so an engine can localize them. A component param spliced as a literal takes the fallbacks.
 
-The hints are `ordinal`, `ordinalWord`, `cardinalWord` and `plural` for an `int` or `double`, and `capitalize`, `start` and `indefinite` for text. Any other — `{{run.floor:roman}}`, a misspelt `{{run.day:ordinalword}}` — is `E-CEL-PROFILE`. A numeric hint on a string, enum or bool path or def, or on `{{userName}}`, is `E-REF-TYPE`, and so is a text hint on an `int`, `double`, or bool.
+The hints are `ordinal`, `ordinalWord`, `cardinalWord` and `plural` for an `int` or `double` (or an `int` host token), and `capitalize`, `start` and `indefinite` for text. Any other — `{{run.floor:roman}}`, a misspelt `{{run.day:ordinalword}}` — is `E-CEL-PROFILE`. A numeric hint on a string, enum or bool path or def, or on a `string` or `enum` host token such as `{{userName}}`, is `E-REF-TYPE`, and so is a text hint on an `int`, `double`, or bool, or on an `int` host token.
 
 ## Inline text modifiers
 
@@ -7080,9 +7736,9 @@ enums:
 `@marina: Fine. One more minute.` is silent — on the `stay` path she never left. The line after
 the branch is not, because the `leave` path reaches it with her gone:
 
-<!-- lute-diagnostics -->
+<!-- lute-diagnostics unverified="real lute check output (0.50 build); the hint is spliced in from the ACTOR_LOWERING_HINT const, which the literal matcher cannot pin" -->
 ```
-platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` before this point, or remove the earlier exit
+platform.lute:27:1: warning [W-STAGE-ABSENT] `marina` left the stage on an earlier declared exit (line 20) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` (or a plugin directive declared `lower: { record: actor, fields: { character: { fromAttr: character } } }`) before this point, or remove the earlier exit
 ```
 
 An `::actor{character="marina" action="fadeInUp"}` before that line, or at the end of the `leave`
@@ -7137,9 +7793,9 @@ per character, with no record of its own and no new IR kind, so an engine needs 
 A cleared character is gone until an `::actor` shows them again, so the last line above warns, and
 the warning names the `::clear`:
 
-<!-- lute-diagnostics -->
+<!-- lute-diagnostics unverified="real lute check output (0.50 build); the hint is spliced in from the ACTOR_LOWERING_HINT const, which the literal matcher cannot pin" -->
 ```
-platform.lute:25:1: warning [W-STAGE-ABSENT] `marina` was taken off stage by an earlier `::clear` (line 23) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` after the `::clear`
+platform.lute:25:1: warning [W-STAGE-ABSENT] `marina` was taken off stage by an earlier `::clear` (line 23) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` (or a plugin directive declared `lower: { record: actor, fields: { character: { fromAttr: character } } }`) after the `::clear`
 ```
 
 [`lute play`](/tooling/play/) prints `::clear` where it ran, and `lute trace` records it as an
@@ -8053,6 +8709,51 @@ its choices must be `once` (so the eligible set provably empties and auto-exit f
 satisfies neither is `E-HUB-NO-EXIT`. Because a hub reduces at build time to one finite option
 table plus its arms, its runtime re-presentation adds no unbounded computation — totality is
 preserved.
+
+## Plugin stamps on `<branch>`, `<hub>` and `<choice>`
+
+Since 0.50 a plugin can attach its own attributes to these three elements. A [`stampAttrs`](/plugins/manifests/#scoping-a-stamp-to-surfaces-on) entry whose `on:` names `branch`, `hub` or `choice` is admissible there, and nowhere else on them: a cross-cutting stamp (no `on:`) is still `E-UNKNOWN-ATTR` on `<branch>`, `<hub>` and `<choice>`. With this manifest:
+
+```yaml
+stampAttrs:
+  - { name: menuType, type: { enum: [plain, timed, minigame] }, on: [branch, hub] }
+  - { name: optionKey, type: string, required: true, on: [choice] }
+```
+
+a menu is written
+
+```lute
+<branch id="route" prompt="Which way?" menuType="plain">
+  <choice id="goLeft" text="Left" optionKey="L1">
+    @mira: Left it is.
+  </choice>
+  <choice id="goRight" text="Right" optionKey="R1">
+    @mira: Right, then.
+  </choice>
+</branch>
+```
+
+The same attribute may be scoped to several of the three (`on: [branch, choice]`), and a hub's choices are `choice` too. Resolution is the usual strict order: the element's own attributes win (`id`, `text`, `when`, `into`, `value`, `once`, `exit` on a choice; `id`, `prompt`, `timeout`, `default` on a branch; `id`, `prompt` on a hub), then the stamp declared for that surface, then `E-UNKNOWN-ATTR`.
+
+- **Unknown here.** A name that is a stamp for other surfaces only is `E-UNKNOWN-ATTR` that says where it applies, instead of listing the element's attributes: `` `<branch>` has no attribute `optionKey`: it is a stamp of `acme.stage` for `<choice>` only ``. When the name is no stamp at all, the message lists the element's attributes and the stamps it admits: `` `<choice>` has no attribute `cue`; its attributes are `id`, `text`, `when`, `into`, `value` and the stamps `optionKey` (`acme.stage`) ``.
+- **Required.** A stamp declared `required: true` for the surface and missing from it is `E-MISSING-ATTR` at the element's opening tag: `` `<choice id="goLeft">` requires attribute `optionKey` (a stamp of `acme.stage`) ``. A declared `default:` does not fill it in.
+- **Typing.** The value is typed by the surface's declaration. A folded value outside an enum is `E-BAD-ENUM` (`<hub menuType=@m>` where `@m` folds to `"grid"`, not in the enum), and a wrong scalar is `E-ATTR-TYPE`. A `@ref` value is typed by the same declaration: `<branch menuType=@m>` with `@m` an `int` def is `E-REF-TYPE`, and `<choice optionKey=@k>` with `@k` a string def is clean.
+
+**In the artifact.** The `choice` or `hub` record carries the `<branch>` / `<hub>` element's stamps in its `stamps` object, and each option carries the `<choice>` element's stamps in its own `stamps`, serialized last. Each value is typed by the declaration of its surface. An option without stamps is byte-identical to before, and a stamp that was not authored is never injected:
+
+```json
+{
+  "kind": "choice",
+  "branchId": "route",
+  "options": [
+    {"id": "goLeft", "text": "Left", "lineId": "…", "target": "001-0200", "stamps": {"optionKey": "L1"}},
+    {"id": "goRight", "text": "Right", "lineId": "…", "target": "001-0400", "stamps": {"optionKey": "R1"}}
+  ],
+  "stamps": {"menuType": "plain"}
+}
+```
+
+Stamps are descriptive: the runtime never reads them, and the `awaitChoice` menu is unchanged. The reference player's `ChoiceView` carries the element's `stamps` and each option's `stamps`, read from the IR record at the menu's address; each is omitted when absent, and a presenter receives them through `showChoice`. A host that does not use the reference player reads the same fields from the IR record, as it reads option text (see the [runtime contract](/tooling/runtime-contract/)).
 
 # Timeline & property tracks
 
@@ -9174,6 +9875,100 @@ state:
 ]
 ```
 
+### Reward effects
+
+A plugin's reward kind may declare **effects** (`effects:` in the plugin manifest, since 0.50): facts
+the kind asserts or retracts, and quests it accepts, whenever a `<reward>` of that kind is granted.
+A host that used to read a `BADGE` reward and write `met(mira)` itself now has the checker and the
+runtime do it, so the fact is visible to reachability and to guards. The manifest side is on the
+[manifests](/plugins/manifests/) page:
+
+```yaml
+rewardKinds:
+  BADGE:       { target: { entity: person, required: true }, effects: { asserts: ["met(@target)"] } }
+  REVOKE:      { target: { entity: person, required: true }, effects: { retracts: ["met(@target)"] } }
+  OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
+```
+
+`@target` is the reward's quoted `target=`. It is the only name an effect can read, because a
+`<reward>` takes no other attribute. `writes` is not an effect: a reward's state write is `credits:`.
+
+The [plugin-surfaces example](https://github.com/journeyWorker/lute/tree/main/docs/examples/plugin-surfaces) declares those three kinds and grants them:
+
+```lute check-in-project="docs/examples/plugin-surfaces/quests/visits.lute"
+---
+kind: quest
+id: visits.quests
+title: Visits
+---
+/*
+Reward effects (0.50):
+  - firstVisit's BADGE asserts met(mira) at the grant; secondVisit starts on
+    that fact, so it is reachable only because the reward produces it. Its
+    `follows` places it in the scenario graph, where `lute scenario --facts`
+    draws the fact edge firstVisit -> secondVisit [met(mira)].
+  - firstVisit's OFFER_QUEST accepts giftErrand, an accept-driven quest no
+    `::accept` names.
+  - secondVisit's REVOKE retracts met(mira) when it completes.
+*/
+
+<quest id="firstVisit" tier="run" title="Say hello to Mira" start="true">
+  <reward kind="BADGE" amount="1" target="mira"/>
+  <reward kind="OFFER_QUEST" target="giftErrand"/>
+  <objective id="talk" title="Talk to Mira" done="run.talked"/>
+</quest>
+
+<quest id="secondVisit" tier="run" title="Visit Mira again" follows="completed('firstVisit')" start="holds('met', ['mira'])">
+  <reward kind="REVOKE" target="mira"/>
+  <objective id="chat" title="Have a second chat" done="run.chatted"/>
+</quest>
+
+<quest id="giftErrand" tier="run" title="Carry Mira's gift to Tomas">
+  <objective id="deliver" title="Deliver the gift" done="run.delivered"/>
+</quest>
+```
+
+**Checks, per `<reward>`.** Each reward whose kind declares effects is judged as if its resolved
+effects were written as `::assert`, `::retract` and `::accept`:
+
+- **Facts.** Each resolved pattern gets the checks of `::assert` / `::retract`: the relation is
+  declared, the arity and argument kinds and members fit, and closed-kind membership holds. The
+  codes are the ones those directives draw, reported at the reward's `kind=`, and the message is
+  prefixed `` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): ``.
+- **Accepts.** Each resolved quest id gets `::accept`'s rule, project-wide:
+  **`E-ACCEPT-TARGET`** for an unknown id (with a did-you-mean), for a quest that has a `start`, and for an
+  auto-activating child. The anchor is the reward's `target=` value when the id came from `@target`,
+  otherwise `kind=`. The message names the reward: `` `<reward kind="OFFER_QUEST" target="secnd">` accepts quest `secnd` (its kind's `effects.accepts`), but no quest in the project declares that id — did you mean `second`? ``
+- **No `target=`.** An effect that reads `@target` is not applied, with no extra diagnostic. A kind
+  whose `target` is `required: true` already reports `E-REWARD-TARGET`.
+- **`W-QUEST-NEVER-ACCEPTED`.** A reward `accepts` that names a quest counts like a scene's `::accept`. The
+  message now reads ``… but no `::accept` or reward `accepts` in the project names it …``.
+- `W-REWARD-DOUBLE-CREDIT` is unchanged.
+
+**Order at the grant.** When a reward is granted (its `outcome` matches the transition and its
+`when=` holds), in declaration order and per reward:
+
+1. the `grant` record and its `credits` write, as before;
+2. the kind's `retracts`, then its `asserts`, through the same path as `::retract` / `::assert`
+   (including the runtime `E-FACT-EXCLUSIVE` check);
+3. its `accepts`, through `::accept`'s path: an accept-driven quest activates on the next lifecycle
+   round, and a quest already past `unset` is left alone, with the record saying so.
+
+Then the next reward. As before, objective rewards are granted before quest rewards, and every grant
+of a transition precedes that transition's lifecycle handler bodies, so a `questComplete` handler
+reads the fact the reward asserted. An effect fires exactly once per grant; replay and restore follow
+the grant's own instance identity. A `<reward when="…">` whose guard is false grants nothing, effects included.
+
+The analyses read each effect at the owner's grant point: a quest reward without `outcome` at the
+quest's completion (before its `questComplete` handlers), `outcome="failed"` at its failure (before
+`questFailed`), and an objective reward at the objective's completion. A reward's assert is a
+producer only: it makes a quest gated on the fact reachable, but it is never *guaranteed* to hold
+afterwards (handlers may be deferred past other grants, and a host may seed a quest complete), so a
+guard testing it draws no `W-FACT-GUARANTEED` or `E-ARM-DEAD`. A reward's retract removes the fact
+from what is guaranteed. The consequences are on
+[facts and Datalog](/state/facts-and-datalog/#facts-produced-by-reward-effects) and
+[reachability](/connectivity/reachability/#edges-that-reward-effects-draw).
+
 ### Quests meet scenes and occasions
 
 Three small additions (dsl 0.21.0 §7a) let a scene drive a quest directly, instead of relaying a
@@ -9282,8 +10077,8 @@ Accepting while the quest is already active, complete, or failed does nothing. A
 carry a guard, `::accept{quest="calmTheShed" when="run.shedPressure > 2"}` (dsl 0.26.0 §4, see
 [Guarding a directive](/language/directives/#guarding-a-directive-when)), and is then skipped when
 the guard is false. Whole-project `lute check`
-warns **`W-QUEST-NEVER-ACCEPTED`** (dsl 0.24.0 §2) at an accept-driven quest that no `::accept` in
-the project names: nothing can ever activate it. Since dsl 0.25.0 §5 an `accepts:` mock
+warns **`W-QUEST-NEVER-ACCEPTED`** (dsl 0.24.0 §2) at an accept-driven quest that no `::accept` or
+[reward `accepts`](#reward-effects) in the project names: nothing can ever activate it. Since dsl 0.25.0 §5 an `accepts:` mock
 (`mocks/*.yaml`, `*.test.yaml`) no longer counts. A mock proves a test, not the game, so a quest
 only a mock accepts still warns, and the message names the mock file. A quest the engine accepts
 outside any document declares [`accept="external"`](#accepted-outside-the-script-acceptexternal)
@@ -9291,7 +10086,7 @@ instead. `--deny W-QUEST-NEVER-ACCEPTED` makes the warning an error.
 
 <!-- lute-diagnostics -->
 ```
-./quests/lamp.lute:24:12: warning [W-QUEST-NEVER-ACCEPTED] quest `lostDog` is accept-driven (no `start`), but no `::accept` in the project names it (only the `accepts:` mock of `tests/dog.test.yaml` does, and a test mock is no acceptance in the game), so it never activates; accept it from a scene with `::accept{quest="lostDog"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or give it a `start` condition
+./quests/lamp.lute:24:12: warning [W-QUEST-NEVER-ACCEPTED] quest `lostDog` is accept-driven (no `start`), but no `::accept` or reward `accepts` in the project names it (only the `accepts:` mock of `tests/dog.test.yaml` does, and a test mock is no acceptance in the game), so it never activates; accept it from a scene with `::accept{quest="lostDog"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or give it a `start` condition
 ```
 
 **Accepting for the next run.** A run-tier quest accepted between runs, at a hub or a bounty board
@@ -9639,7 +10434,7 @@ state:
 <!-- lute-diagnostics unverified="verbatim whole-project lute check output shape (names from this example); the W-QUEST-NEVER-ACCEPTED message is assembled from several pieces in crates/lute-check/src/accept.rs, so no single format! literal matches" -->
 ```
 scenes/ferry.lute:17:21: error [E-ACCEPT-TARGET] `::accept` targets quest `force`, which activates with its parent `crossing`; declare `activate="accept"` on it to accept it from a scene
-quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for an acceptance (`activate="accept"`), but no `::accept` in the project names it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or remove `activate="accept"` so it activates with its parent `crossing`
+quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for an acceptance (`activate="accept"`), but no `::accept` or reward `accepts` in the project names it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or remove `activate="accept"` so it activates with its parent `crossing`
 ```
 
 ### Lifecycle reactions with `<on>`
@@ -12860,10 +13655,11 @@ The verdicts come from two sets:
 - **May** — project-wide and flow-insensitive: every ground fact that can be live at any point of any run. The `facts:` seeds, the fact of every `::assert` anywhere in the project root (scenes, quest `<on>`/`<objective>` bodies, lore entries) whose document is not proven unreachable, every fact of a `reserved:` relation (the engine may populate any of them), and whatever the `rules:` derive over that set. May only knows *that* some route can produce a fact, not when. It reads a negated body atom as satisfiable, with one exception (dsl 0.23.0): a negation over a seed fact that nothing in the project retracts or displaces through its `key:` is false. With the seed `inParty(shadowheart)`, `suspect(P) :- character(P), not inParty(P)` can never conclude `suspect(shadowheart)`, so a guard `holds('suspect', ['shadowheart'])` is dead, while `suspect(astarion)` still follows. Once any `::retract{inParty(shadowheart)}` exists, the negation is satisfiable again.
 - **Must** — path-sensitive: the facts live on every route to one program point. Within a document it is a forward walk: `::assert` adds a fact (and drops the one its `key:` supersedes), `::retract` removes every match, `<branch>`/`<match>` arms **intersect** where they rejoin (a branch with no unguarded choice, or a non-exhaustive match, also intersects with the set before the block, because no arm may run), and a `<hub>` body may run zero or more times. Across scenes it follows the `after:` graph, exactly like the [scalar envelope](/connectivity/envelopes/): a scene starts from the seeds plus the facts its `after:` formula guarantees — `visited(A)` contributes what holds when `A` ends, `&&` unions, `||` intersects, and `completed(q)`/`active(q)` contribute nothing. Quest bodies and lore entry bodies run at engine-chosen times, so they start from the seeds plus their own guards.
 
-Three rules keep Must sound:
+Four rules keep Must sound:
 
 - **Only monotone facts cross time the author does not control.** A fact survives a document boundary only if no `::retract` anywhere in the project matches it, no other assert shares its `key:` tuple with a different value, and its relation is neither `reserved:` nor has an `open: engine` argument. Facts of `tier: scene` and `tier: quest` relations never cross a document boundary — the engine clears them with their episode or quest.
 - **Guards are assumptions.** Inside `<when test="holds(F)">`, a `<choice when="holds(F)">`, a guarded `::jump`, an `<on when>`, an objective `done`, an entry `when`, or — for the whole scene — a beat scene's frontmatter `when:`, each positive top-level `&&` conjunct `holds(F)` with a ground `F` is in Must — so a nested guard on the same fact is shown redundant. A line `when=` guards only its own line.
+- **A guard holds only as long as its fact can (0.50).** A quest's `start=` is judged once, when the quest activates, but its body runs while the quest stays active, possibly after a `newRun` or a season opening. So a `holds(F)` of `start=` is in Must in the quest's body only when `F` crosses and outlasts the quest: its relation is `tier: user` / `app`, `tier: run` (the default) in a `tier="run"` quest, or `tier: season:<name>` in a `tier="season:<name>"` quest of the same season. In a default (`user`-tier) quest a `start=` fact of the default `run` tier is possible only. Likewise a `questComplete` / `questFailed` handler's guard is judged when the quest settles, but under a `judge: before` occasion its body runs after the occasion's beats and other quests' grants: its `when=` adds to Must only facts that outlast that deferral — monotone (nothing in the project may retract or displace them) and not of a `tier: season:<name>` relation. 0.49.1 reported a false `E-ARM-DEAD` (or `W-FACT-GUARANTEED`) on a body test of such a fact (#203, #205).
 - **Counts are intervals.** `count(P)` lies between the number of Must facts matching `P` and the number of May facts matching it; a comparison against `n` is decided when the whole interval falls on one side.
 
 A guard may also assume that a lore entry was read (dsl 0.24.0 §6). Under `entry.X.read` (or `entry.X.read == true`), Must gains the facts that X's body asserts on every route through it and that nothing in the project retracts. The player has read the entry, so its asserts have run. Take an entry that records a suspicion:
@@ -12967,6 +13763,38 @@ It is reported once per project, at the declaration: the schema file's line, or 
 ### Guards over facts not written yet
 
 While a story is being written, a guard is often dead only because the scene that asserts its fact does not exist yet. `lute check --project <DIR> --wip` (dsl 0.23.0) reports `E-ENTRY-UNREACHABLE`, `E-BEAT-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` as warnings when the guard is dead only because a relation has **no producer at all**: no seed, no `::assert` anywhere, no rule, and not `reserved:`. The warning's note says so. A relation that has producers but can never match the query stays an error, as does anything the dead content causes downstream, such as an `E-CONN-UNREACHABLE`. See [Work in progress](/language/beats/#work-in-progress).
+
+## Facts produced by reward effects
+
+A plugin [reward kind](/language/quests-and-scenes/#reward-effects) can declare `effects: { asserts, retracts }` (0.50). A fact such a reward writes is an ordinary fact at run time. Whole-project `lute check` reads each effect at the owner's **grant point**:
+
+| Reward | Grant point |
+|---|---|
+| quest-level, no `outcome` | the quest's completion, before its `<on event="questComplete">` handlers |
+| quest-level, `outcome="failed"` | the quest's failure, before its `<on event="questFailed">` handlers |
+| objective-level | the objective's completion: the objective body's entry after `done` |
+
+**A reward's assert is possible only.** It is a producer: it is in the May set, so it answers `E-QUEST-UNREACHABLE` and `E-OBJECTIVE-UNSATISFIABLE` (a quest gated on the fact is reachable), feeds `W-RELATION-UNREAD` and the scenario graph, and is recorded for `E-FACT-EXCLUSIVE`. It is in **no Must set**, guarded or not: not in the granting quest's handler bodies, its objective bodies, its completion state, or anything gated on the quest. So a guard that tests the fact after the grant draws neither `W-FACT-GUARANTEED` nor `E-ARM-DEAD`. The reason is timing the checker cannot see: a `judge: before` occasion defers lifecycle handlers past other quests' grants and handlers and the occasion's beats, a `user`-tier quest stays complete across a run or season reset that clears its facts, and a host may seed a quest complete without replaying its grants.
+
+- In Must an assert removes only what it displaces (an exclusive relation's other value) and adds nothing.
+- A **retract**, guarded or not, removes what it matches from Must, as a guarded `::retract` does, and is recorded in May for `E-FACT-EXCLUSIVE`. A fact some grant retracts is not monotone and crosses into no later document.
+- `E-FACT-EXCLUSIVE` reads the Must set at the reward's `kind=`, so it fires only against a fact that is Must from another source (a guard, a seed, an authored `::assert`).
+- Order within a reward: its `retracts`, then its `asserts`. Rewards go in declaration order, and objective rewards before quest rewards.
+- Each `<on event="questComplete">` / `questFailed` handler starts from the grant point's state independently, less every fact any handler of the event may remove; its `when=` adds to Must only facts that outlast a deferral (monotone, and not of a `tier: season:<name>` relation).
+- An `accepts` effect has no fact effect. It feeds [reachability](/connectivity/reachability/#edges-that-reward-effects-draw) and `W-QUEST-NEVER-ACCEPTED`.
+
+A reward with no `target=` that reads `@target` applies nothing, so it contributes no fact. `lute scenario knowledge` and `lute lore` name the reward as the producer. In the [plugin-surfaces example](https://github.com/journeyWorker/lute/tree/main/docs/examples/plugin-surfaces):
+
+```console
+$ lute scenario --project . knowledge
+project root: .
+  knowledge (every fact-guarded condition, by document -> relations read -> producers):
+
+  quests/visits.lute
+    quest `secondVisit`
+      start: holds('met', ['mira'])
+      met(mira) — produced by reward BADGE of quest `firstVisit`
+```
 
 # CEL expressions
 
@@ -13584,6 +14412,15 @@ An anchoring self-read counts as a source that never helps, so a quest whose anc
 
 An unanchored quest is `reachable holds [proven]` with the reason `unanchored: available from the start of play`. `lute scenario reach` and `lute constraints` read the same single reachability claim, so they cannot disagree.
 
+## Edges that reward effects draw
+
+A plugin reward kind can declare [effects](/language/quests-and-scenes/#reward-effects) (0.50), and the graph reads them at the grant point of the reward's owner (the quest's completion or failure, or the objective's completion):
+
+- A reward that **asserts** a fact draws the fact edge to a quest whose `start` reads that fact, as an `::assert` in a handler would. `lute scenario --facts` prints it for a quest that is in the graph (one with `follows`), as in the plugin-surfaces example: `quest(firstVisit) -> quest(secondVisit) [met(mira)]`. A quest gated on `holds('met', ['mira'])` is therefore reachable when a reward of `firstVisit` asserts `met(mira)`: no `E-QUEST-UNREACHABLE`. A conditional reward (`when=`) is a conditional producer.
+- A reward that **accepts** a quest draws `quest(first) -> quest(second) [accept]`, the edge a scene's `::accept` draws. An accept-driven quest named only by a reward `accepts` is reachable, and draws no `W-QUEST-NEVER-ACCEPTED`. That warning's message now reads "… but no `::accept` or reward `accepts` in the project names it …".
+- **Start cycles are unchanged.** `[accept]` anchors, a reward accept's included, do not gate a quest's start: the engine may accept a quest outside any `::accept`, and accept deadlocks are out of scope. A cycle of accept-driven quests that accept each other only through rewards never draws `E-QUEST-START-CYCLE` or `E-QUEST-START-SELF`.
+- `lute scenario knowledge` and `lute lore` name the producer of a reward-asserted fact: `` met(mira) — produced by reward BADGE of quest `firstVisit` ``.
+
 ## Evidence in 0.34.0
 
 Scenario reach results include `evidence` in JSON. A structural reachability
@@ -13699,6 +14536,54 @@ Options for one concept are declared once and mean the same on every command tha
 | JSON | `--json` | every command that reports a result, except `schema` (always JSON) and `loc export` (an artifact writer) |
 
 `--deny*` promotes diagnostics of the verdict the command exits on: `trace` its check gate (refusal, exit **1**), `expr` the lowering diagnostics, `play` and `calendar` the project compile gate, `test` every check verdict a test consults (each traced document's check and each play's compile gate), so a denied warning fails that test. The one short alias is `-o` for `--output`.
+
+### Project diagnostic levels (since 0.50)
+
+A project can set the level of a checker warning in `lute.project.yaml`:
+
+```yaml
+diagnostics:
+  W-DISPLAY-NAME-DUP: error
+  W-STAGE-ABSENT: { level: off, paths: ["scenes/imported/**"] }
+```
+
+`diagnostics:` is a map from diagnostic code to either a level or `{ level, paths }`; one entry per code.
+
+- **Levels:** `off`, `info`, `warn`, `error`.
+- **`paths`** (optional): project-root-relative globs, with the lint `ignore:` syntax (`*` within a segment, `**` across segments). When `paths` is given the level applies only to diagnostics of documents whose root-relative path matches a glob; elsewhere the code keeps its native severity. A diagnostic without a document path (a manifest diagnostic) matches only an entry without `paths`.
+- **Only `W-*` codes are configurable.** Errors are never demoted: an error is a contract violation. `L-*` lint rules keep their level in `lute.lint.yaml` `rules:`.
+
+A malformed entry is **`E-DIAGNOSTICS-CONFIG`** (error, a manifest diagnostic). It is reported once per manifest by the CLI manifest pass and by the LSP; the entry is dropped, the rest loads, and the manifest is invalid:
+
+| Fault | Message shape |
+| --- | --- |
+| an `E-*` code | `` `E-UNKNOWN-ATTR` is an error: an error is a contract violation and cannot be re-levelled; fix the reported source instead `` |
+| an `L-*` code | `` `L-…` is a lint rule; set its level in `lute.lint.yaml` `rules:` `` |
+| a code the toolchain does not define | `` `W-STAGE-ABSNT` is not a diagnostic code — did you mean `W-STAGE-ABSENT`? `` |
+| a bad level | `` level `silent` is not one of `off`, `info`, `warn`, `error` `` |
+| `paths: []`, a non-string, an absolute path or a `..` segment | `` `paths` takes project-relative globs, e.g. `scenes/imported/**` `` |
+
+**Order of application**, at the one place that serializes and prints diagnostics (`check`, `compile`, `lint`, `trace` and `expr` read the project's `diagnostics:`: a document command each document's own project, a directory command the invoked root's; the simulating commands `test`, `play` and `calendar` apply no project levels and keep the plain `--deny`/`--deny-warnings` gate, so a project `error` level never fails a test):
+
+1. the project level for the (code, path);
+2. `--deny CODE` naming the code promotes it to error, **even when the project set it `off`** (an explicit command line beats the config);
+3. `--deny-warnings` promotes what is still a warning after step 1. An `off` code stays off, and an `info` code stays info.
+
+Levels change **only what is reported and the exit status**. They never change analyses, artifacts, constraint verdicts, the scenario graph, or what a `.play.yaml`/`.test.yaml` expectation observes. A project without `diagnostics:` produces byte-identical output.
+
+**Markers and counts.** A code relevelled to `error` fails the verdict as `--deny` does; in JSON it carries `"severity": "error"` and the additive `"configured": "lute.project.yaml"`, and the human line gets the marker `[project]` beside the existing `[denied]`. A code relevelled to `info` or `warn` carries its new severity and the same `configured` marker. Suppressed (`off`) findings are counted:
+
+- every human summary line that counts diagnostics appends `, N suppressed by lute.project.yaml` **only when N > 0**: `ok: ./scenes/a.lute (0 warning(s), 212 suppressed by lute.project.yaml)`;
+- every JSON report that carries diagnostics (the `0.48.0.check` report per file and for the project, and the compile, lint, trace and expr envelopes) gains `"suppressed": { "<code>": n, … }` **only when non-empty**. It is additive, so report ids are unchanged.
+
+```console
+$ cd docs/examples/plugin-surfaces
+$ lute check ./scenes/imported/street.lute
+lute: note: using project . (nearest lute.project.yaml); pass --project to choose another
+ok: ./scenes/imported/street.lute (0 warning(s), 1 suppressed by lute.project.yaml)
+```
+
+**LSP.** The language server applies the same levels with the document's root-relative path before publishing: an `off` diagnostic is not published, and a relevelled one is published at its new severity.
 
 ## Machine-readable output (0.43)
 
@@ -18415,6 +19300,30 @@ const hud = Effect.gen(function* () {
 Keep the numeric position for ordering, and use `ClockView.slot` and
 `ClockView.weekdayLabel` for display text.
  
+## 0.50 additions
+
+Every 0.50 IR change is additive: a project that uses none of the new keys compiles to byte-identical artifacts (`capabilitySnapshot` included). The contract schemas are renamed to the `-0.50` line.
+
+**Stamps on branch, hub and choice.** A plugin `stampAttrs` entry whose `on:` names `branch`, `hub` or `choice` can be authored on that element. The `choice`/`hub` command record's existing `stamps` object now holds the `<branch>`/`<hub>` element's stamps. Each `choice`/`hub` **option** gains an optional `stamps` object (`{ "<attr>": <value> }`, filled from the `<choice>` element's stamps, serialized last, omitted when empty), so an option without stamps is byte-identical to 0.49. An unauthored stamp is never injected, and a stamp is typed by its surface's declaration (one name can serialize with a different type on two surfaces). Stamps are descriptive: the runtime never reads them, the `awaitChoice` menu is unchanged (it carries the address `document`/`position`, verdicts and `once`/`exit`), and there is no semantic id. A host that does not use the reference player reads element and option stamps from the IR record at the menu's address, as it reads option text. The reference player's `ChoiceView` and each option carry an optional `stamps` read from that record, omitted when absent.
+
+**Host tokens stay verbatim.** A bare `{{token}}` that a plugin declares in its `hostTokens` export is a `reserved` placeholder, `{ "kind": "reserved", "token": "<name>", "format"? }`, exactly as `userName` always was (`lute.core` declares `userName`). There is no new environment entry. The runtime renders **every** host-token marker verbatim in the output text, and the host or presenter substitutes it at render time; this holds for every declared token, not only `userName`. Player behaviour is unchanged.
+
+**Reward effects.** `RewardEntry` gains optional resolved `retracts` and `asserts` (each a list of `{ relation, args }` fact records, the shape a `plugin` command's facts carry) and `accepts` (a list of quest ids), each omitted when empty and written after `credits`. `@target` is already bound; a pattern left with an unbound `@target` is not written. A reward kind declares these with `rewardKinds.<K>.effects`; a kind without `effects` produces byte-identical entries.
+
+At the grant instant, for a reward that is granted (its `outcome` filter matches the transition and its `when=` holds), in declaration order and **per reward**: the `grant` record and its `credits` write, as before; then the reward's `retracts`, then `asserts`, through the runtime's ordinary assert/retract path (including the `E-FACT-EXCLUSIVE` runtime check); then its `accepts`, through `::accept`'s path. An accept-driven quest of the artifact activates on the next lifecycle round, and a quest already past `unset` is left alone, with the record saying so. Objective grants precede quest grants, and all grants of a transition precede its lifecycle handler body, so a `questComplete` handler reads the asserted fact. An effect fires exactly once per grant, and replay and restore follow the grant's existing instance identity.
+
+**The `grant` key on effect records.** Each effect emits the record its command would, plus `"grant": { "quest", "instance", "index", "objective"?, "kind" }`, the identity of the grant record it follows. It has no `position` and no `effectOf`. A host lists the `grant` key on `assert`, `retract` and `accept` records:
+
+```json
+{"kind":"grant","quest":"first","instance":1,"index":0,"reward":{"kind":"BADGE","target":"mira","amount":1}}
+{"kind":"assert","fact":"met(mira)","grant":{"quest":"first","instance":1,"index":0,"kind":"BADGE"}}
+{"kind":"accept","quest":"second","grant":{"quest":"first","instance":1,"index":1,"kind":"OFFER_QUEST"}}
+```
+
+The event and snapshot shapes do not change: the `record` payload is untyped in the event schema, so only the record catalogue grows, and facts and accepted quests are already saved in snapshots. The player treats `assert`/`retract`/`accept` as bookkeeping cues.
+
+**New semantic id `lute.quest.rewardEffects/1`** (module `quest`, behaviour "reward fact and accept effects"). An artifact lists it in `requiredSemantics` (provenance `reward effects`) **only** when some `RewardEntry` has a non-empty `retracts`, `asserts` or `accepts`. An engine that ignores these fields would lose facts and quest activations, so the id is meaning-changing: an engine that does not list it in `supportedIds` refuses such an artifact at semantic negotiation, before playback. The registry goes from 15 to 16 ids, and an artifact that uses no reward effect negotiates exactly as before.
+
 ## 0.49 runtime additions
 
 **Plugin stamps are one nested `stamps` object.** A cross-cutting plugin
@@ -18657,7 +19566,7 @@ Every command record has three required fields and four optional siblings:
 | `timing` | optional `{ wait?, duration?, delay?, at?, timeline? }`; omitted when every member is absent. A `line` may carry `wait` (see [0.49](#049-runtime-additions)). |
 | `provenance` | optional `{ by, explanation }` on a record the compiler synthesized. |
 | `source` | optional source location. |
-| `stamps` | optional object of plugin `stampAttrs` values (`{ "<attr>": <value> }`), on every stamped command; omitted when empty. A `jump` and a `barrier` carry none. |
+| `stamps` | optional object of plugin `stampAttrs` values (`{ "<attr>": <value> }`), on every stamped command; omitted when empty. A `jump` and a `barrier` carry none. Since 0.50 a `choice` or `hub` record's `stamps` holds the `<branch>`/`<hub>` element's stamps, and each of its options carries its own (see [0.50](#050-additions)). |
 
 | `family` | kinds |
 | -------- | ----- |
@@ -20472,7 +21381,7 @@ custom:
 
 | key | type | default | meaning |
 | --- | --- | --- | --- |
-| `lsp` | boolean | `false` | Publishes lint findings for open documents in the LSP only when this config file exists and sets it to `true`. Linting is otherwise absent from the LSP, even if rules are configured. LSP evaluates `line`, `section`, `scene`, `speaker`, and `group` targets; `project` rules are CLI-only in v1. |
+| `lsp` | boolean | `false` | Publishes lint findings for open documents in the LSP only when this config file exists and sets it to `true`. Linting is otherwise absent from the LSP, even if rules are configured. LSP evaluates `line`, `section`, `scene`, `speaker`, `group`, and (since 0.50) `node` targets; `project` rules are CLI-only in v1. |
 | `ignore` | list of project-root-relative globs | `[]` | Documents excluded from linting. |
 | `rules` | map | `{}` | Per-rule level and option overrides for core and active plugin rules. |
 | `custom` | list of rules | `[]` | Project-local declarative CEL rules. |
@@ -20487,8 +21396,10 @@ override.
 Core rule ids are bare kebab-case. Plugin rule ids are
 `<plugin-id>/<rule-id>`. A custom rule id is bare and MUST NOT collide with a
 core rule id. Malformed YAML is an exit-code-2 error. Unknown rules or option
-keys, wrong option types, and colliding custom ids are `E-LINT-CONFIG` findings;
-the bad entry is skipped, remaining rules run, and the command exits 1.
+keys, wrong option types, and colliding custom ids are `E-LINT-CONFIG` findings.
+Naming a **checker** code in `rules:` is `E-LINT-CONFIG` too, with a hint to the
+right file (since 0.50): `` `W-STAGE-ABSENT` is a checker code, not a lint rule — set its level in `lute.project.yaml` `diagnostics:` ``; for an `E-*` id the hint ends `an error cannot be re-levelled`. Lint rule levels (`L-*`) are set here, and only here.
+The bad entry is skipped, remaining rules run, and the command exits 1.
 
 ### Custom rule shape
 
@@ -20497,7 +21408,7 @@ Every custom entry has the same shape as a plugin rule:
 | key | required | meaning |
 | --- | --- | --- |
 | `id` | yes | Project-local bare rule id. |
-| `target` | yes | `line`, `section`, `scene`, `speaker`, `group`, or `project`. |
+| `target` | yes | `line`, `section`, `scene`, `speaker`, `group`, `project`, or `node` (since 0.50). |
 | `when` | yes | A CEL assertion over the target row and `options`; it fires when `true`. |
 | `level` | no | `off`, `hint`, `info`, `warn`, or `error`. |
 | `message` | yes | Finding text. `{path.to.field}` interpolates a metric or option path; a number renders trimmed (no trailing `.0`) and rounded to at most two decimals, so a ratio of `3.3333…` reads `3.33`. `{expr:%}` renders shares as rounded percentages. |
@@ -20509,6 +21420,127 @@ semantics, metric-path selection and map indexing, and `size()` for strings,
 lists, and maps. An unresolved field, type mismatch, or non-boolean `when` result
 is `E-LINT-EXPR`, reported once at the rule declaration, and skips that rule—it is
 never a silent pass.
+
+Since 0.50 the fragment also has the standard CEL string members
+`s.startsWith(t)`, `s.endsWith(t)` and `s.contains(t)`, in member-call form only,
+with both operands strings; a non-string operand is an evaluation error
+(`E-LINT-EXPR`). There are no regexes and no macros.
+
+## `node` lints (since 0.50)
+
+`target: node` (valid in plugin `lints:` exports and `lute.lint.yaml` `custom:` rules) evaluates a rule once per **node** of a document. Rows come in document order over every body the checker walks:
+
+- section bodies;
+- `<quest>` declarations and their bodies (objectives, `<on>` handlers);
+- `<reward>` children of a quest or objective, at their source position among the owner's children;
+- top-level `<entry>` and `<beat>` declarations and their bodies;
+- `<branch>` choices and choice bodies;
+- `<hub>` choices, choice bodies and its `<return>` body;
+- `<match>` arms (`<when>`, `<otherwise>`) and their bodies;
+- `<timeline>` (one row; track clips are not rows).
+
+| `node.kind` | for |
+| --- | --- |
+| `line` | a content line |
+| `directive` | every `::tag{…}`: plugin and core directives, `::set`, `::assert`, `::retract`, `::accept`, `::use`, `::label`, `::jump`, `::clear`, `::end` |
+| the element name | `branch`, `hub`, `choice`, `return`, `match`, `when`, `otherwise`, `timeline`, `quest`, `objective`, `on`, `reward`, `entry`, `beat` |
+
+A `node` rule reads three bindings: `node`, `scene` (the existing document row) and `options`.
+
+| field | meaning |
+| --- | --- |
+| `node.kind` | as in the table above |
+| `node.tag` | the directive tag or element name; `""` for a line |
+| `node.speaker` | a line's speaker; `""` otherwise |
+| `node.attrs` | map string → string of every attribute **as authored** (see below) |
+| `node.index`, `node.first`, `node.last` | 0-based position in its body; first/last in that body |
+| `node.depth` | 0 for a section's (or document's) top-level node, +1 per enclosing element |
+| `node.prev`, `node.next` | `{ kind, tag, attrs }` of the sibling in the same body; all fields empty at a body edge |
+| `node.parent` | `{ kind, tag, attrs }` of the enclosing element. At a section's top level `kind` is `"section"`; at a quest or lore document's top level `kind` is `"document"`. |
+| `node.preceding` | map tag → `{ attrs }`: for each tag, the nearest node with that tag among the earlier siblings of this node and of each of its ancestors, together with the ancestors themselves. It does **not** enter the bodies of earlier siblings (another arm is not on this path). It resets at each section and declaration. Lines are not keyed. |
+| `node.section` | `{ index, title, id }` of the enclosing section; `{ 0, "", "" }` outside sections |
+
+**Anchoring and messages** work as for `line` rows: the diagnostic spans the node (the line, directive or element), and `{node.attrs.value}` interpolates.
+
+**Authored attributes.** `node.attrs` has a key iff the author wrote it, and its value is the authored value text, unquoted. This includes attributes the parser lifts into fields (`<branch id>`, `<reward kind target amount>`, `::jump{to}`) and plugin stamps. A bare flag is `"true"`, and an `@ref` value is its source text (`@name`). An unauthored attribute is absent even when the IR carries a default, so `<reward>` without `amount` has no `amount` key. `::set`, `::assert` and `::retract` have `{}`. The text is re-read from the source by the parser's own attribute scanner, not rebuilt from parsed fields: `<reward kind="COINS" amount="+005"/>` gives `node.attrs["amount"] == "+005"`, not `"5"`. The same values result for CRLF line ends and multi-byte text.
+
+**Guard every index.** A missing key keeps CEL semantics: `node.attrs["x"]` on an absent key is an evaluation error (`E-LINT-EXPR`). `&&` short-circuits, so a rule guards **every** index it takes: `"x" in node.attrs && node.attrs["x"] …`, `"t" in node.preceding && "k" in node.preceding["t"].attrs && …`, and `key in options.cases && …` before indexing an options map.
+
+`node.preceding` is read through a borrowed view of one running map, not copied per row, so a `node` rule that reads it stays near-linear in document size. The LSP evaluates `node` rules like the other in-document targets. `node` rules change no IR, event, snapshot or `capabilitySnapshot`, and carry no semantic id.
+
+### Recipes
+
+Every index is guarded. **Policy for an unknown discriminator:** a dependent-value rule excludes a discriminator it has no case for, and a separate `*-known` rule reports the discriminator itself, so each violation is reported once, by the rule that names it.
+
+```yaml
+lints:
+  - id: signal-needs-menu
+    target: node
+    when: 'node.tag == "signal" && "value" in node.attrs && node.attrs["value"] == "puzzle" && node.next.kind != "branch"'
+    level: warn
+    message: "a puzzle ::signal must be followed by a <branch>"
+  - id: section-opens-with-bg
+    target: node
+    when: 'node.first && node.parent.kind == "section" && node.tag != "bg"'
+    level: warn
+    message: "section {node.section.title} opens with {node.tag}"
+  - id: beat-label-prefix
+    target: node
+    when: 'node.tag == "label" && scene.kind == "beat" && "name" in node.attrs && !node.attrs["name"].startsWith("b_")'
+    level: error
+    message: "a beat's labels start with b_"
+  # #177, same element: `mode` selects the legal `speed`s.
+  - id: move-mode-known
+    target: node
+    when: 'node.tag == "move" && "mode" in node.attrs && !(node.attrs["mode"] in options.speeds)'
+    level: error
+    message: "unknown move mode {node.attrs.mode}"
+    options: { speeds: { walk: [slow, normal], run: [normal, fast] } }
+  - id: speed-fits-mode
+    target: node
+    when: >-
+      node.tag == "move" && "speed" in node.attrs && "mode" in node.attrs &&
+      node.attrs["mode"] in options.speeds &&
+      !(node.attrs["speed"] in options.speeds[node.attrs["mode"]])
+    level: error
+    message: "speed {node.attrs.speed} is not legal in mode {node.attrs.mode}"
+    options: { speeds: { walk: [slow, normal], run: [normal, fast] } }
+  # #177, a marker directive before the branch decides the legal option values.
+  - id: interaction-kind-known
+    target: node
+    when: 'node.tag == "interaction" && (!("kind" in node.attrs) || !(node.attrs["kind"] in options.cases))'
+    level: error
+    message: "::interaction needs a known kind"
+    options: { cases: { greet: [wave, bow], gift: [accept, decline] } }
+  - id: option-fits-interaction
+    target: node
+    when: >-
+      node.tag == "option" && "value" in node.attrs &&
+      "interaction" in node.preceding && "kind" in node.preceding["interaction"].attrs &&
+      node.preceding["interaction"].attrs["kind"] in options.cases &&
+      !(node.attrs["value"] in options.cases[node.preceding["interaction"].attrs["kind"]])
+    level: error
+    message: "option {node.attrs.value} does not belong to this interaction"
+    options: { cases: { greet: [wave, bow], gift: [accept, decline] } }
+  # #177 with #164 stamps: the parent <branch> carries the discriminator.
+  - id: menu-type-known
+    target: node
+    when: 'node.kind == "branch" && "menuType" in node.attrs && !(node.attrs["menuType"] in options.keys)'
+    level: error
+    message: "unknown menu type {node.attrs.menuType}"
+    options: { keys: { plain: [L1, R1], timed: [T1] } }
+  - id: choice-fits-menu
+    target: node
+    when: >-
+      node.kind == "choice" && "optionKey" in node.attrs &&
+      "menuType" in node.parent.attrs && node.parent.attrs["menuType"] in options.keys &&
+      !(node.attrs["optionKey"] in options.keys[node.parent.attrs["menuType"]])
+    level: error
+    message: "option key {node.attrs.optionKey} is not a {node.parent.attrs.menuType} key"
+    options: { keys: { plain: [L1, R1], timed: [T1] } }
+```
+
+For a rule whose dependent attribute, discriminator or marker is missing (`preceding` without `interaction`, a marker without `kind`, a parent without `menuType`) there is no finding and no `E-LINT-EXPR`. An unguarded variant (`node.attrs["mode"]` without the membership test) on a node without `mode` reports `E-LINT-EXPR`, which is why the guard is there.
 
 ## Metric tables
 
@@ -20630,8 +21662,10 @@ cast:
   grunt2: { name: Eclipse Grunt, sharedName: true }
 ```
 
-The code is not a `lute.lint.yaml` rule, so it has no level to set there (a
-`rules:` entry naming it is an unknown rule id, `E-LINT-CONFIG`). `--deny
+The code is not a `lute.lint.yaml` rule, so it has no level to set there. A
+`rules:` entry naming it is `E-LINT-CONFIG` with a hint that points to the right
+place: `` `W-DISPLAY-NAME-DUP` is a checker code, not a lint rule — set its level in `lute.project.yaml` `diagnostics:` `` (since 0.50; for an `E-*` id the text ends `… an error cannot be re-levelled`).
+The project-level `diagnostics:` key (see [the CLI page](/tooling/cli/)) sets a checker `W-*` code to `off`, `info`, `warn` or `error`. `--deny
 W-DISPLAY-NAME-DUP`, or `--deny-warnings`, makes it an error and fails the run:
 
 <!-- lute-diagnostics -->
@@ -20669,7 +21703,9 @@ activation — one rule set per project root, applied to every document
 
 A plugin rule is data only when it asserts over these fixed, core-computed metric
 tables. If the rule needs another metric, traversal, ordering rule, or evaluation
-primitive, that is a core change—not a YAML extension. Plugin lint declarations
+primitive, that is a core change—not a YAML extension. Structural predicates
+(what a node is, what surrounds it, which attributes the author wrote) are the
+[`node` target](#node-lints-since-050), and balance checks (`pair`) are 0.51. Plugin lint declarations
 are advisory and are excluded from both the capability snapshot and
 `capabilitySnapshot`.
 
@@ -21116,7 +22152,7 @@ Plugins add vocabulary; the core owns grammar and behavior. Control flow, loweri
 - **State shapes** — reusable typed records and structured path templates that open typed slots.
 - **Providers** — snapshot-first id registries (character ids, asset ids, minigame ids) resolved against a pinned catalog, never a live network call.
 - **Bridge signatures** — typed runtime calls whose declared result fields are the only values a directive may write back into story state (see [Bridge](/plugins/bridge/)).
-- **Enums, defs, frontmatter keys, asset kinds, world events, and cross-cutting attributes** — closed value sets, shared typed-CEL `@refs`, plugin-owned `---` meta keys, structured asset-id templates, `<on event>` triggers, and [`stampAttrs`](/plugins/manifests/) admissible on every directive and content line.
+- **Enums, defs, frontmatter keys, asset kinds, world events, host tokens, and stamp attributes** — closed value sets, shared typed-CEL `@refs`, plugin-owned `---` meta keys, structured asset-id templates, `<on event>` triggers, names the engine substitutes into `{{…}}` text, and [`stampAttrs`](/plugins/manifests/). A stamp is either **cross-cutting** (no `on:`: admissible on every directive that has a stamp carrier and on every content line) or **scoped** (`on:` names the surfaces it applies to: content lines, specific directives, `<branch>`, `<hub>`, `<choice>`; since 0.50).
 - **Diagnostics** — per-attribute messages, deprecations, aliases, and fix-its.
 
 ## What a plugin MUST NOT add
@@ -21129,7 +22165,7 @@ The [character/cast](https://github.com/journeyWorker/lute/blob/main/docs/propos
 
 ## A declaration is checked, not trusted
 
-Declaring a surface in a manifest does not make the toolchain believe it. Every plugin-owned surface is validated before an author can reach it: [option values at activation](/plugins/profiles/) (`E-PLUGIN-OPTION-UNKNOWN`, `E-PLUGIN-OPTION-TYPE`), [attribute names against the core stamp](/plugins/manifests/) (`E-PLUGIN-RESERVED-STAMP-ATTR`), and [declarative lowering against the target record's real field table](/plugins/manifests/) (`E-LOWER-RECORD-UNKNOWN`, `E-LOWER-RECORD-FIELD`). All of them fail at load, assembly, or activation — before a broken manifest can mislead a writer.
+Declaring a surface in a manifest does not make the toolchain believe it. Every plugin-owned surface is validated before an author can reach it: [option values at activation](/plugins/profiles/) (`E-PLUGIN-OPTION-UNKNOWN`, `E-PLUGIN-OPTION-TYPE`), [attribute names against the core stamp](/plugins/manifests/) (`E-PLUGIN-RESERVED-STAMP-ATTR`), [the surfaces a stamp's `on:` names](/plugins/manifests/#scoping-a-stamp-to-surfaces-on) (`E-PLUGIN-STAMP-SURFACE`), and [declarative lowering against the target record's real field table](/plugins/manifests/) (`E-LOWER-RECORD-UNKNOWN`, `E-LOWER-RECORD-FIELD`). All of them fail at load, assembly, or activation — before a broken manifest can mislead a writer.
 
 Plugin-owned **frontmatter keys** are the same story. A `frontmatter/*.yaml` export declares `{ key, schema }` pairs; the checker admits those keys past `E-META-UNKNOWN-KEY` *and* validates their values against the declared `schema`. A violation is **`E-FRONTMATTER-SCHEMA`**, reported at the key's own span:
 
@@ -21168,6 +22204,7 @@ exports:                   # REQUIRED — which sub-directories the loader reads
   occasions: occasions/
   rewardKinds: rewardkinds/
   cast: cast/
+  hostTokens: hosttokens/
   lints: lints/
   docs: docs/
 options:                   # OPTIONAL — typed activation options
@@ -21189,12 +22226,13 @@ Each export kind has a normative schema. All are typed by one small manifest typ
 - `bridge/*.yaml` — typed runtime bridge capabilities.
 - `defs/*.yaml` — shared typed-CEL `@refs`.
 - `assetKinds` (`assetkinds/*.yaml`) — asset-id segment templates (compose / query modes) with ordered `fallback` hooks.
-- `stampAttrs` (`stampattrs/*.yaml`) — cross-cutting attributes admissible on every directive and content line (below).
+- `stampAttrs` (`stampattrs/*.yaml`) — extra attributes on content lines, directives and (since 0.50) `<branch>` / `<hub>` / `<choice>`, cross-cutting or scoped to named surfaces with `on:` (below).
 - `enums/*.yaml`, `frontmatter/*.yaml`, `docs/*.md` — named enum domains, plugin-owned meta keys, and hover docs.
 - `events/*.yaml` — world events a quest's `<on event>` may name and `lute trace --event` fires.
 - `occasions/*.yaml` — the engine moments [beats](/language/beats/) answer (dsl 0.21.0), each optionally raised for a target drawn from a project entity kind (dsl 0.22.0), presented as one winner, an offered list, or a sequence (dsl 0.23.0), and optionally gated by a [`raisedWhen`](#occasion-gates-raisedwhen) condition (dsl 0.27.0).
-- `rewardKinds` (`rewardkinds/*.yaml`) — the closed set of `<reward kind>` values, with an optional [target contract](#reward-target-contracts), extra attributes, and the state path a grant credits (dsl 0.23.0).
+- `rewardKinds` (`rewardkinds/*.yaml`) — the closed set of `<reward kind>` values, with an optional [target contract](#reward-target-contracts), extra attributes, the state path a grant credits (dsl 0.23.0), and (since 0.50) the facts and quest accepts a grant applies ([Reward effects](#reward-effects)).
 - `cast/*.yaml` — the speakers content lines may use, with display names (dsl 0.23.0).
+- `hostTokens` (`hosttokens/*.yaml`) — names the engine substitutes into `{{name}}` interpolations at render time (since 0.50; [below](#host-interpolation-tokens-hosttokens)).
 - `lints/*.yaml` — advisory [lint rules](/tooling/linting/), namespaced `<plugin-id>/<rule-id>`; excluded from the capability snapshot.
 
 An export name outside this list is a load error. Every export file is also read strictly (0.24.0): a key the declaration does not know is `E-PLUGIN-KEY` at its line, with a did-you-mean, instead of being ignored (0.28.0 also reads `plugin.yaml` itself this way). This covers directives and their attrs, state, effects and bridge, state shapes and templates, providers, bridge capabilities, defs, enums, events, frontmatter, asset kinds, stamp attributes, reward kinds, occasions, cast entries and lints. Before, `{ selct: all }` loaded as `select: first` without a word:
@@ -21488,6 +22526,28 @@ Only a quoted `target="…"` reaches the artifact: a reward's target is static d
 
 Which form to use for ids the engine owns: an **entity kind** when the ids can be listed in the repository and reviewed there (one lead-owned schema such as `schema/items.schema.yaml` above), a **provider** when the engine's catalog is the source of truth and the project checks against a pinned snapshot of it (see [Providers & catalog](/tooling/providers-and-catalog/)). Either way, type the directive attribute and the reward kind by the **same** kind or provider, so `::give{item}` and `<reward kind="ITEM" target>` share one id space, and `lute refs --project <DIR> --attr give.item --reward ITEM` lists both (a reward without a target as `(no target)`).
 
+### Reward effects
+
+Since 0.50 a reward kind may declare **`effects:`**: the facts its grant asserts or retracts and the quests it accepts. Every list is optional:
+
+```yaml
+# rewardkinds/league.yaml
+rewardKinds:
+  BADGE:       { target: { entity: person, required: true }, effects: { asserts: ["met(@target)"] } }
+  REVOKE:      { target: { entity: person, required: true }, effects: { retracts: ["met(@target)"] } }
+  OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
+```
+
+`effects` takes `asserts`, `retracts` and `accepts`, and no other key. An empty `effects: {}` is `E-PLUGIN-PARSE` ("declares no effect"). Each `asserts` / `retracts` entry is the same fact pattern a [directive's effects](#facts-a-directive-asserts-or-retracts) use, `relation(arg, …)`.
+
+- **`writes` is not admitted.** A reward's state write is `credits:`, so `effects.writes` is `E-PLUGIN-KEY`, and its message adds `` — a reward's state write is `credits:` ``.
+- **Pattern arguments** are members, `true` / `false`, `@target`, and `_` (in `retracts` only). Any other `@name` is `E-PLUGIN-PARSE`: `` reward kind `BADGE` effect `met(@rarity)` reads `@rarity`; a reward kind's effects read only `@target` (a `<reward>` takes no other attribute) ``. A reward kind's own `attrs:` cannot be authored on `<reward>`, so there is nothing else to read.
+- **`accepts`** entries are `@target` or a literal quest id (an identifier). Anything else is `E-PLUGIN-PARSE`.
+- A kind with `target: { forbidden: true }` whose effects read `@target` is `E-PLUGIN-PARSE`: the effect could never bind.
+- `@target` is bound to the reward's quoted `target=`. A `<reward>` with no `target=` applies no effect for a pattern that reads it, with no extra diagnostic; a kind with `target: { required: true }` already reports `E-REWARD-TARGET` there.
+
+The checker judges each `<reward>` of such a kind with its `@target` bound. A fact pattern is held to exactly what an `::assert` / `::retract` of it is (relation declared, arity, argument kinds and members), with the same codes, at the reward's `kind=`; each message is prefixed `` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): ``. An `accepts` id is judged by `::accept`'s rule: `E-ACCEPT-TARGET` for an unknown id (with a did-you-mean), for a quest that has `start`, and for an auto-activating child. It is reported at the reward's `target=` value when the id came from `@target`, otherwise at `kind=`: `` `<reward kind="OFFER_QUEST" target="secnd">` accepts quest `secnd` (its kind's `effects.accepts`), but no quest in the project declares that id — did you mean `second`? ``. What the effects mean at the grant, and how analyses read them, is in [Quests & scenes](/language/quests-and-scenes/). A kind without `effects:` hashes as it did before.
+
 ### Cast
 
 ```yaml
@@ -21512,7 +22572,7 @@ stampAttrs:
   - { name: bonusScore, type: int }
 ```
 
-Entries are ordinary `AttrDecl`s — the same `{ name, required?, type, default? }` shape a directive attr uses — but they are admissible on **every** directive *and* on content lines (`@speaker{…}: text`), on top of that surface's own attributes. Resolution is strict: the surface's own declarations win, then `stampAttrs`, then `E-UNKNOWN-ATTR`. Value typing rides the existing attribute path, so a mistyped one is a plain `E-ATTR-TYPE` / `E-BAD-ENUM` — no new rules.
+Entries are ordinary `AttrDecl`s — the same `{ name, required?, type, default? }` shape a directive attr uses. An entry without `on:` is **cross-cutting**: admissible on **every** directive that has a stamp carrier *and* on content lines (`@speaker{…}: text`), on top of that surface's own attributes, and never on `<branch>`, `<hub>` or `<choice>`. An entry with `on:` is **scoped** to the surfaces it names (since 0.50, [below](#scoping-a-stamp-to-surfaces-on)). Resolution is strict: the surface's own declarations win, then `stampAttrs`, then `E-UNKNOWN-ATTR`. Value typing rides the existing attribute path, so a mistyped one is a plain `E-ATTR-TYPE` / `E-BAD-ENUM` — no new rules.
 
 `::sfx{sound="chime" bonusId="b-02"}` followed by `@marina{code="0010" bonusId="b-01" bonusScore="7"}: Welcome back.` compiles to two records that each carry the attribute in **one nested `stamps` object** (since 0.49), after the core keys (`kind`, `family`, `position`, `timing`) — never flattened beside the record's own keys and never in its `fields`:
 
@@ -21527,6 +22587,75 @@ Each entry's JSON value is typed by the declaring plugin's attribute declaration
 
 An **unauthored** stamp attribute is not injected — not even when its declaration carries a `default`. Absent means absent, so declaring a cross-cutting vocabulary and authoring none of it leaves the artifact byte-identical. The declaration is not free, though: `stampAttrs` participates in `capabilitySnapshot`, because a changed cross-cutting vocabulary is a changed capability surface and an engine must be able to refuse the mismatch.
 
+### Scoping a stamp to surfaces: `on:`
+
+Since 0.50 an entry may carry one more key, **`on:`**, a non-empty list of surface names. A scoped stamp is admissible only on the surfaces it names, and may be `required`:
+
+```yaml
+# plugins/acme.stage/stampattrs/columns.yaml
+stampAttrs:
+  - { name: voiceAssetId, type: { providerRef: voice }, required: true, on: [line] }
+  - { name: assetName,    type: string, on: [bg, actor] }
+  - { name: menuType,     type: { enum: [plain, timed, minigame] }, on: [branch, hub] }
+  - { name: optionKey,    type: string, required: true, on: [choice] }
+  - { name: cue,          type: string }                          # cross-cutting, as before
+```
+
+```lute
+<branch id="route" prompt="Which way?" menuType="plain">
+  <choice id="goLeft" text="Left" optionKey="L1">
+    @mira{voiceAssetId="VO.mira.0010"}: Left it is.
+  </choice>
+</branch>
+```
+
+The surface vocabulary is closed:
+
+| Surface name | Names |
+|---|---|
+| `line` | every content line (`@speaker{…}: text`), including lines in component, quest, objective, `<on>`, entry and beat bodies |
+| `branch`, `hub` | the element of that name |
+| `choice` | every `<choice>`, in a `<branch>` or a `<hub>` |
+| a directive tag | a directive of the resolved snapshot that has a stamp carrier, that is, not `jump`, `label` or `clear` |
+
+`line`, `branch`, `hub` and `choice` always mean the core surface (`branch`, `hub` and `choice` are already reserved plugin directive names, `E-PLUGIN-RESERVED-NAME`), so a plugin directive tagged `line` cannot be named in `on:`. The order of `on:` is not significant.
+
+**Without `on:`** the entry keeps its meaning exactly: it is admissible on every directive that has a stamp carrier and on every content line, and it is **not** admissible on `<branch>`, `<hub>` or `<choice>`. Those three stay closed to a cross-cutting stamp; only a stamp whose `on:` names them is admissible there.
+
+**Load faults** (per package, `E-PLUGIN-PARSE` at the entry):
+
+| Fault | Message |
+|---|---|
+| `on:` is not a list of strings, or is empty | `` stamp attribute `X` has an empty `on:` — list the surfaces it applies to, or omit `on:` for every directive and content line `` |
+| a surface repeated in `on:` | `` stamp attribute `X` lists `bg` twice in `on:` `` |
+| `required: true` without `on:` | `` stamp attribute `X` is `required: true` but has no `on:`; a stamp required on every record is not a column — name its surfaces with `on: […]` `` |
+
+A cross-cutting stamp cannot be `required`: there is no single place to report it missing. Before 0.50 such a `required: true` was a silent no-op. A directive attribute with `on:` stays `E-PLUGIN-KEY`; `on:` belongs to `stampAttrs` entries only.
+
+**Uniqueness within a package.** Two entries may share a name only if both have `on:` and their surface sets are disjoint, so one name may be typed differently per surface (`assetName: string` on `bg`, `assetName: int` on `actor`), and the IR serializes each with its own type. Any overlap (an entry without `on:` overlaps every entry) is `E-PLUGIN-DUP-ID`, naming the shared surfaces: `` stampAttr `assetName` is declared twice on the surface `bg` — give each entry disjoint `on:` surfaces ``.
+
+**Assembly.** Once the active snapshot's directives are known, each entry is checked in this order. A refused entry is dropped and its siblings still land:
+
+1. The core stamp reservation ([below](#reserved-stamp-keys)): `E-PLUGIN-RESERVED-STAMP-ATTR`.
+2. Each `on:` name resolves to a surface. A name that is none of the four core surfaces and no directive of the snapshot is **`E-PLUGIN-STAMP-SURFACE`**: `` stamp attribute `assetName` (`acme.stage`) names `bgg` in `on:`, which is not `line`, `branch`, `hub`, `choice` or a directive of the resolved profile — did you mean `bg`? ``. A directive without a stamp carrier draws the same code: `` … names `jump` in `on:`, but `::jump` emits no stamped record `` (it is one of `jump`, `label`, `clear`). A plugin that scopes a stamp to another plugin's directive declares that plugin in `depends:`, so that the directive is in every profile that activates it; the message says so when the tag exists in an installed but inactive plugin.
+3. **Shadowing.** A scoped entry whose name is an attribute the named surface already owns is `E-PLUGIN-RESERVED-STAMP-ATTR`: `` stamp attribute `prompt` (`acme.stage`) is scoped to `branch`, but `prompt` is an attribute of `<branch>` itself, so the stamp could never be read ``. A surface's own attributes are: for a directive, its declaration's `attrs` (plus `when` on `::jump`); for `line`, the content line's known attributes (including `wait`) and the guard `when`; for `branch`, `id`, `prompt`, `timeout`, `default`; for `hub`, `id`, `prompt`; for `choice`, `id`, `text`, `when`, `into`, `value`, `once`, `exit`, and the renamed or removed `label`, `as`, `persist`. A cross-cutting entry keeps its earlier rule: the surface's own declaration wins and the entry is not refused.
+4. **Uniqueness across plugins.** Two plugins' entries with the same name and overlapping surfaces are `E-PLUGIN-DUP-ACROSS`, naming both plugins and the shared surfaces. Disjoint entries from two plugins are legal.
+
+**Checking.** An attribute `k` on a surface resolves strictly, first match wins: the surface's own attributes; for a directive, the unstamped refusal and the universal timing keys; the stamp declared for that surface (typed by its declaration: `E-ATTR-TYPE`, `E-BAD-ENUM`, `@ref` typing); renamed or removed attribute diagnostics; then `E-UNKNOWN-ATTR`. When the name is declared for other surfaces only, `E-UNKNOWN-ATTR` says where the stamp applies instead of listing the surface's attributes:
+
+- `` `::bg` has no attribute `voiceAssetId`: it is a stamp of `acme.stage` for content lines only ``
+- `` `<branch>` has no attribute `optionKey`: it is a stamp of `acme.stage` for `<choice>` only ``
+
+A **required** stamp that its surface does not author is `E-MISSING-ATTR`, at the surface's head (the directive or element's opening tag, or the line):
+
+- `` `::bg` requires attribute `assetName` (a stamp of `acme.stage`) ``
+- `` this content line requires attribute `voiceAssetId` (a stamp of `acme.stage` for content lines) ``
+- `` `<choice id="goLeft">` requires attribute `optionKey` (a stamp of `acme.stage`) ``
+
+The rule applies wherever the surface is authored, component bodies included; a line that `::use` splices in is checked once, in its component. It does not look at a declared `default:`, because a stamp is never injected. For the logic-tag surfaces see [Choices & hubs](/language/choices-and-hubs/#plugin-stamps-on-branch-hub-and-choice).
+
+**Snapshot.** A scoped entry folds into `capabilitySnapshot` with its sorted surface list; an entry without `on:` hashes exactly as before, so a manifest that uses no `on:` keeps its snapshot. `lute context` prints each scoped stamp's surfaces (`"on": "::bg, ::actor (stampAttrs)"`).
+
 ### Reserved stamp keys
 
 The core stamp owns eight names — `at`, `duration`, `delay`, `wait`, `timeline`, `timing`, `provenance`, `source`. `at`, `duration`, `delay`, `wait` and `timeline` are authoring keys that compile into `timing`; `timing`, `provenance` and `source` stay flattened record keys. The nested `stamps` object removes the *JSON* collision for every other name, but these eight stay reserved, since a plugin stamp named like one would still be ambiguous to the author. A plugin declaring an attribute under any of them is rejected at assembly with **`E-PLUGIN-RESERVED-STAMP-ATTR`**:
@@ -21538,6 +22667,26 @@ lute: E-PLUGIN-RESERVED-STAMP-ATTR: plugin `arcia.bonus` declares reserved stamp
 ```
 
 Both surfaces are covered — the `stampAttrs` export *and* an ordinary per-directive `attrs` entry — so a plugin cannot reach a reserved key through either door. The offending declaration is dropped rather than merged; its non-reserved siblings still land. This is why a blocking plugin directive names its own flag `sync` and not `wait` (see [Bridge](/plugins/bridge/)).
+
+## Host interpolation tokens (`hostTokens`)
+
+A line may carry a bare `{{playerName}}` for a value only the engine knows. The plugin export `hostTokens` (`hosttokens/*.yaml`, since 0.50) declares such names:
+
+```yaml
+# hosttokens/tokens.yaml
+hostTokens:
+  playerName: { type: string }
+  rank:       { type: int }
+  platform:   { type: { enum: [ios, android, web] } }
+```
+
+- The key is the token name and the value is `{ type }`, where `type` is `string`, `int` or `{ enum: [members…] }`. Any other type is `E-PLUGIN-PARSE`, and any other key is `E-PLUGIN-KEY`.
+- A token name is an **identifier**: an ASCII letter or `_`, then letters, digits or `_` (not merely a name; a host token is written bare inside `{{…}}`). A non-identifier key is `E-PLUGIN-PARSE`: `` host token `player-name` is not an identifier (letters, digits and `_`, not starting with a digit) `` (`player-name`, `2ndName`, `-x` and the empty key are all refused).
+- A name that is a state root or CEL literal (`scene`, `run`, `user`, `app`, `quest`, `entry`, `prev`, `clock`, `occasion`, `season`, `true`, `false`, `null`) is `E-PLUGIN-RESERVED-NAME` at assembly, with the reason in the message: `` `{{run}}` would read as a state root `` (see [Reserved names](/reference/reserved-names/)).
+- **`lute.core` declares `userName: { type: string }`.** Redeclaring a token that another plugin or `lute.core` declares is `E-PLUGIN-DUP-ACROSS`.
+- `hostTokens` folds into `capabilitySnapshot` only when a token not owned by `lute.core` exists, and only those tokens fold in, so a project that declares none keeps its snapshot. `lute context` lists the declared non-core tokens (name, type, plugin).
+
+How a token is checked in text, and that the runtime leaves it verbatim, is in [Dialogue & cast](/language/dialogue-and-cast/#host-tokens).
 
 ## Declarative lowering
 
@@ -22107,6 +23256,7 @@ this index does not rewrite those citations.
 
 ## Notes on the boundaries
 
+- **`0.50.0` is a Draft proposal, not yet current.** It is listed here because it will extend the areas above; nothing on this page describes it as enforced. It adds authoring surface with no new keyword or element: plugin `stampAttrs` entries scoped to `line`, `branch`, `hub`, `choice` or a directive with `on:` (a scoped stamp may be `required`), host interpolation tokens from a plugin's `hostTokens` export, reward-kind `effects` (`asserts`, `retracts`, `accepts`) applied at the grant and read by every analysis, project `diagnostics:` levels for checker `W-*` codes, and `target: node` lints with string members. New codes: `E-PLUGIN-STAMP-SURFACE`, `E-DIAGNOSTICS-CONFIG`. The IR change is additive, with the new semantic id `lute.quest.rewardEffects/1`. See the [0.50.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md).
 - **`0.49.0` fixes correctness and diagnostics and makes the project model cheap; it adds no syntax.** Plugin stamps move under one nested `stamps` object in the IR and on plugin event records and the bridge await; a `<choice into=…>` arm records first; a content line may carry `wait`. The checker refuses what it used to drop silently (stamps on `::jump` / `::label` / `::clear`, `list` / `map` / `record` plugin attribute types, unchecked reference-typed frontmatter values, unquoted reward targets, start cycles and self-reads) and accepts bridge results and `'m' in family` guards it used to reject. `constraints` prints the `0.49.0.constraints` report (a `reason` per verdict, counterexamples only on `violated`, exit 1 on an invalid manifest); a single-file `check` names the quest references only the whole project can judge (`W-PROJECT-CHECK-SKIPPED`); `W-BRANCH-ID-SHARED` fires only where a play or test names the id; `asset-exists` reads line and named attributes; `lint <DIR>` uses the project. The project vocabulary is built once per project. See the [0.49.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md) and the [changelog](https://github.com/journeyWorker/lute/blob/main/CHANGELOG.md).
 - **`0.37.0` is a breaking surface cleanup with no compatibility mode.** Every renamed spelling is an error naming its replacement, never an alias: `::auto` → `::actor`, `::cut` → `::cg`, `::next` → `::jump`, `::mark{id}` and a line's `id=` → `::label{name}`, choice `label=` → `text=`, `<match on=>` → `<match subject=>`, music `action=` → `playback=` (domain `musicPlayback`), cg / video `action=` → `display=`. `lute fix <path>…` rewrites those losslessly; camera numbers (`zoom`, `moveX`, `moveY`, `shake`, `reset`, `easing`), cg `full`, music `track`, sfx `name`, the manifest's `sequence:`, the `<scene>` tag and a body `# Title` have no lossless rewrite and are migrated by hand, as is a `pov:` for every document with `{mono}` lines. The IR renames `addr` → `position`, `capabilityVersion` → `capabilitySnapshot`, `shots` → `sections`, `recordKey` → `selectionKey`, the kinds `background` / `sprite` / `cut` → `bg` / `actor` / `cg` and the roles `monologue` / `offscreen` / `voiceover` → `mono` / `os` / `vo`; it adds `family` and a nested `timing` object to every command and a `voiceKey` to every line, and drops `provenance.injected`. An engine gated on the `0.36` IR minor must move to `0.37` and migrate each field it reads. See the [0.37.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md) (§2.2 is the complete rename table, §7 the `lute fix` contract).
 - **`0.33.0` makes engine capability explicit.** The execution IR and project index carry compiler-derived, sorted `requiredSemantics`; the semantic-id registry names the engine-visible obligations. A `lute.engine.yaml` matrix is checked only after the pre-1.0 exact-major.minor IR gate: `run`/`play` refuse unsupported ids before playback with `E-ENGINE-SEMANTICS`, while author-time `check --engine`/`check-project --engine` report `E-CHECK-ENGINE-SEMANTICS`. The reference matrix supports every current id; plugin meaning remains gated by the exact capability snapshot. See the [0.33.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md) and the [changelog](https://github.com/journeyWorker/lute/blob/main/CHANGELOG.md).

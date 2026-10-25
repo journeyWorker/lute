@@ -371,5 +371,9 @@ locale은 마운트 옵션이 아니라 설정(`settings.locale`)입니다. 불�
 
 `Presenter.showChoice`는 작성된 prompt와 locale별 option text, runtime
 verdict, timeout, default, once, exit 정보를 담은 `ChoiceView`를 받습니다.
-load와 rollback에서는 director가 `Presenter.restore`를 호출하기 전에 복원된
-stage의 바인딩 파일을 먼저 보장합니다.
+0.50부터는 `<branch>`/`<hub>` 요소에 작성된 플러그인 스탬프(`ChoiceView.stamps`)와
+각 `<choice>`의 스탬프(`options[i].stamps`)도 담으며, 메뉴 주소의 IR 명령에서
+읽습니다. 작성된 스탬프가 없으면 각각 생략됩니다. 레퍼런스 플레이어를 쓰지 않는
+호스트는 같은 `stamps`를 그 IR 레코드에서 읽습니다. load와 rollback에서는
+director가 `Presenter.restore`를 호출하기 전에 복원된 stage의 바인딩 파일을
+먼저 보장합니다.

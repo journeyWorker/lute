@@ -293,11 +293,38 @@ rewardKinds:
 `@target` is the reward's quoted `target=`. It is the only name an effect can read, because a
 `<reward>` takes no other attribute. `writes` is not an effect: a reward's state write is `credits:`.
 
-```lute unverified="0.50 feature; verified after S1-S8 land"
-<quest id="firstVisit" title="Meet Mira" start="true">
-  <objective id="talk" title="Talk to Mira" done="visited('town.mira')"/>
-  <reward kind="BADGE" target="mira"/>
-  <reward kind="OFFER_QUEST" target="secondVisit"/>
+The [plugin-surfaces example](https://github.com/journeyWorker/lute/tree/main/docs/examples/plugin-surfaces) declares those three kinds and grants them:
+
+```lute check-in-project="docs/examples/plugin-surfaces/quests/visits.lute"
+---
+kind: quest
+id: visits.quests
+title: Visits
+---
+/*
+Reward effects (0.50):
+  - firstVisit's BADGE asserts met(mira) at the grant; secondVisit starts on
+    that fact, so it is reachable only because the reward produces it. Its
+    `follows` places it in the scenario graph, where `lute scenario --facts`
+    draws the fact edge firstVisit -> secondVisit [met(mira)].
+  - firstVisit's OFFER_QUEST accepts giftErrand, an accept-driven quest no
+    `::accept` names.
+  - secondVisit's REVOKE retracts met(mira) when it completes.
+*/
+
+<quest id="firstVisit" tier="run" title="Say hello to Mira" start="true">
+  <reward kind="BADGE" amount="1" target="mira"/>
+  <reward kind="OFFER_QUEST" target="giftErrand"/>
+  <objective id="talk" title="Talk to Mira" done="run.talked"/>
+</quest>
+
+<quest id="secondVisit" tier="run" title="Visit Mira again" follows="completed('firstVisit')" start="holds('met', ['mira'])">
+  <reward kind="REVOKE" target="mira"/>
+  <objective id="chat" title="Have a second chat" done="run.chatted"/>
+</quest>
+
+<quest id="giftErrand" tier="run" title="Carry Mira's gift to Tomas">
+  <objective id="deliver" title="Deliver the gift" done="run.delivered"/>
 </quest>
 ```
 
@@ -332,10 +359,13 @@ of a transition precedes that transition's lifecycle handler bodies, so a `quest
 reads the fact the reward asserted. An effect fires exactly once per grant; replay and restore follow
 the grant's own instance identity. A `<reward when="…">` whose guard is false grants nothing, effects included.
 
-The analyses read each effect as if it were the matching `::assert` / `::retract` / `::accept`
-written first at the owner's grant point: a quest reward without `outcome` at the quest's completion
-(before its `questComplete` handlers), `outcome="failed"` at its failure (before `questFailed`), and an
-objective reward at the objective's completion. The consequences are on
+The analyses read each effect at the owner's grant point: a quest reward without `outcome` at the
+quest's completion (before its `questComplete` handlers), `outcome="failed"` at its failure (before
+`questFailed`), and an objective reward at the objective's completion. A reward's assert is a
+producer only: it makes a quest gated on the fact reachable, but it is never *guaranteed* to hold
+afterwards (handlers may be deferred past other grants, and a host may seed a quest complete), so a
+guard testing it draws no `W-FACT-GUARANTEED` or `E-ARM-DEAD`. A reward's retract removes the fact
+from what is guaranteed. The consequences are on
 [facts and Datalog](/state/facts-and-datalog/#facts-produced-by-reward-effects) and
 [reachability](/connectivity/reachability/#edges-that-reward-effects-draw).
 
@@ -456,7 +486,7 @@ instead. `--deny W-QUEST-NEVER-ACCEPTED` makes the warning an error.
 
 <!-- lute-diagnostics -->
 ```
-./quests/lamp.lute:24:12: warning [W-QUEST-NEVER-ACCEPTED] quest `lostDog` is accept-driven (no `start`), but no `::accept` in the project names it (only the `accepts:` mock of `tests/dog.test.yaml` does, and a test mock is no acceptance in the game), so it never activates; accept it from a scene with `::accept{quest="lostDog"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or give it a `start` condition
+./quests/lamp.lute:24:12: warning [W-QUEST-NEVER-ACCEPTED] quest `lostDog` is accept-driven (no `start`), but no `::accept` or reward `accepts` in the project names it (only the `accepts:` mock of `tests/dog.test.yaml` does, and a test mock is no acceptance in the game), so it never activates; accept it from a scene with `::accept{quest="lostDog"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or give it a `start` condition
 ```
 
 **Accepting for the next run.** A run-tier quest accepted between runs, at a hub or a bounty board
@@ -804,7 +834,7 @@ state:
 <!-- lute-diagnostics unverified="verbatim whole-project lute check output shape (names from this example); the W-QUEST-NEVER-ACCEPTED message is assembled from several pieces in crates/lute-check/src/accept.rs, so no single format! literal matches" -->
 ```
 scenes/ferry.lute:17:21: error [E-ACCEPT-TARGET] `::accept` targets quest `force`, which activates with its parent `crossing`; declare `activate="accept"` on it to accept it from a scene
-quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for an acceptance (`activate="accept"`), but no `::accept` in the project names it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or remove `activate="accept"` so it activates with its parent `crossing`
+quests/crossing.lute:20:12: warning [W-QUEST-NEVER-ACCEPTED] quest `toll` waits for an acceptance (`activate="accept"`), but no `::accept` or reward `accepts` in the project names it, so it never activates; accept it from a scene with `::accept{quest="toll"}`, declare `accept="external"` if the engine accepts it outside the script (a quest board, a menu), or remove `activate="accept"` so it activates with its parent `crossing`
 ```
 
 ### Lifecycle reactions with `<on>`
