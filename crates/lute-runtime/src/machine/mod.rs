@@ -258,10 +258,22 @@ pub(crate) struct Code {
     pub(crate) addr_order: Vec<(String, usize)>,
     /// Every CEL slot of `commands`, decoded once ([`Code::slot`]).
     slots: HashMap<usize, Arc<Slot>>,
-    /// dsl 0.51.0 §3.7: loop head index → the index of every bounded
-    /// backward jump to it. A bounded jump at *j* to head *t* < *j* owns the
-    /// region [*t*, *j*] of the flat stream.
-    loops: BTreeMap<usize, Vec<usize>>,
+    /// dsl 0.51.0 §3.7: the stream's bounded loops ([`Code::loop_table`]).
+    loops: Loops,
+    /// Why the loop topology of `commands` is refused at load
+    /// ([`Code::loop_table`]); a walk over this Code does not start.
+    pub(crate) fault: Option<String>,
+}
+
+/// dsl 0.51.0 §3.7: the bounded jumps of a command stream.
+#[derive(Debug, Default)]
+struct Loops {
+    /// Loop head index → the index of every bounded jump to it. A bounded
+    /// jump at *j* to head *t* ≤ *j* owns the region [*t*, *j*] of the flat
+    /// stream (*t* = *j*: an empty loop, a label right before its jump).
+    heads: BTreeMap<usize, Vec<usize>>,
+    /// Every `jump` with `max`, by index: its bound.
+    bounds: BTreeMap<usize, u8>,
 }
 
 impl std::fmt::Debug for Code {
@@ -303,9 +315,13 @@ impl Code {
             addr_index,
             addr_order,
             slots,
-            loops: BTreeMap::new(),
+            loops: Loops::default(),
+            fault: None,
         };
-        code.loops = code.bounded_loops();
+        match code.loop_table() {
+            Ok(loops) => code.loops = loops,
+            Err(fault) => code.fault = Some(fault),
+        }
         code
     }
 
@@ -325,19 +341,73 @@ impl Code {
         self.commands.len()
     }
 
-    /// The `jump` records with `max` whose target lies before them, by head.
-    fn bounded_loops(&self) -> BTreeMap<usize, Vec<usize>> {
-        let mut loops: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+    /// dsl 0.51.0 §3.7: the loops of the stream, validated as the checker's
+    /// loop rules leave them (§3.2), so every walk terminates within the
+    /// product of the enclosing `max`es: a `max` is an integer in 1..=99, a
+    /// jump back to its own or an earlier record carries `max`, and two
+    /// regions nest or are disjoint. `Err` names the malformed record.
+    fn loop_table(&self) -> Result<Loops, String> {
+        let mut loops = Loops::default();
+        let mut regions = Vec::new();
         for (j, cmd) in self.commands.iter().enumerate() {
-            if cmd.get("kind").and_then(Json::as_str) != Some("jump") || jump_max(cmd).is_none() {
+            if cmd.get("kind").and_then(Json::as_str) != Some("jump") {
                 continue;
             }
-            let head = self.resolve(cmd.get("target").and_then(Json::as_str).unwrap_or(""));
-            if head < j {
-                loops.entry(head).or_default().push(j);
+            let position = cmd.get("position").and_then(Json::as_str).unwrap_or("?");
+            let target = cmd.get("target").and_then(Json::as_str).unwrap_or("");
+            let head = self.resolve(target);
+            let Some(max) = cmd.get("max") else {
+                if head <= j {
+                    return Err(format!(
+                        "malformed `jump` record at {position}: it jumps back to {target} \
+                         without `max`, a cycle that never ends"
+                    ));
+                }
+                continue;
+            };
+            let Some(max) = max
+                .as_u64()
+                .and_then(|m| u8::try_from(m).ok())
+                .filter(|m| (1..=JUMP_MAX_LIMIT).contains(m))
+            else {
+                return Err(format!(
+                    "malformed `jump` record at {position}: `max` must be an integer from 1 to \
+                     {JUMP_MAX_LIMIT}, got {max}"
+                ));
+            };
+            loops.bounds.insert(j, max);
+            if head <= j {
+                loops.heads.entry(head).or_default().push(j);
+                regions.push((head, j));
             }
         }
-        loops
+        // Nest, never cross: in (head ascending, end descending) order an
+        // open region must contain every region that starts inside it.
+        regions.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+        let mut open: Vec<(usize, usize)> = Vec::new();
+        for &(head, end) in &regions {
+            while open.last().is_some_and(|&(_, e)| e < head) {
+                open.pop();
+            }
+            if let Some(&(_, outer_end)) = open.last() {
+                if end > outer_end {
+                    let at = |i: usize| {
+                        self.commands[i]
+                            .get("position")
+                            .and_then(Json::as_str)
+                            .unwrap_or("?")
+                    };
+                    return Err(format!(
+                        "malformed `jump` records at {} and {}: their loops overlap without \
+                         nesting",
+                        at(outer_end),
+                        at(end)
+                    ));
+                }
+            }
+            open.push((head, end));
+        }
+        Ok(loops)
     }
 
     /// The decoded slot of a `{cel, expr}` pair (`None` when absent or its
@@ -352,11 +422,6 @@ impl Code {
             None => Slot::of(pair),
         }
     }
-}
-
-/// A `jump` record's `max` (dsl 0.51.0 §3.6), when it carries one.
-fn jump_max(cmd: &Json) -> Option<u64> {
-    cmd.get("max").and_then(Json::as_u64)
 }
 
 /// dsl 0.51.0 §3.1: the largest `max` a bounded jump may carry.
@@ -650,6 +715,10 @@ impl<D: Driver> Machine<D> {
     /// Drive the whole walk: `lute run` once per artifact; `lute play` (dsl
     /// 0.21.0 §6) once per presented beat, then [`Machine::into_carry`].
     pub fn run(&mut self) -> Result<(), WalkError> {
+        // A Code refused at load ([`Code::loop_table`]) runs nothing.
+        if self.fatal.is_some() {
+            return self.take_fatal();
+        }
         if self.code.kind == "quest" {
             self.run_quest();
         } else if self.code.kind == "lore" {
@@ -798,7 +867,7 @@ impl<D: Driver> Machine<D> {
     /// whose region [`to`, jump] does not contain `from` starts counting
     /// again; a take from inside the region keeps its count.
     fn arrive(&mut self, from: Option<usize>, to: usize) {
-        let Some(jumps) = self.code.loops.get(&to) else {
+        let Some(jumps) = self.code.loops.heads.get(&to) else {
             return;
         };
         for &jump in jumps {
@@ -810,27 +879,17 @@ impl<D: Driver> Machine<D> {
 
     /// A `jump` record at `pc`. Not a transcript record: `lute trace` reports
     /// an authored `::jump` and the source-only steps that ride on the jump.
-    /// dsl 0.51.0 §3.7: a jump with `max` is taken while its counter is below
-    /// `max` ([`Step::Loop`], observed with the take number), then falls
-    /// through (observed as exhausted).
+    /// dsl 0.51.0 §3.7: a jump with `max` (validated at load,
+    /// [`Code::loop_table`]) is taken while its counter is below `max`
+    /// ([`Step::Loop`], observed with the take number), then falls through
+    /// (observed as exhausted).
     fn do_jump(&mut self, cmd: &Json, pc: usize) -> Step {
         let position = cmd.get("position");
         let target = self.resolve(cmd.get("target").and_then(Json::as_str).unwrap_or(""));
-        let Some(max) = cmd.get("max") else {
+        let Some(&max) = self.code.loops.bounds.get(&pc) else {
             self.driver
                 .observe(json!({ "kind": "jump", "position": position }));
             return Step::Next(target);
-        };
-        let Some(max) = max
-            .as_u64()
-            .and_then(|m| u8::try_from(m).ok())
-            .filter(|m| (1..=JUMP_MAX_LIMIT).contains(m))
-        else {
-            self.fatal = Some(format!(
-                "malformed `jump` record: `max` must be an integer from 1 to {JUMP_MAX_LIMIT}, \
-                 got {max}"
-            ));
-            return Step::Halt;
         };
         let taken = self.loop_counts.get(&pc).copied().unwrap_or(0);
         if taken >= max {

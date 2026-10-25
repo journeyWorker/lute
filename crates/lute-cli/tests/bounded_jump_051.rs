@@ -79,3 +79,45 @@ fn trace_json_carries_the_bound() {
         ]
     );
 }
+
+/// S3 review P2: an empty loop (its label right before its jump, which the
+/// IR compiles to a jump that targets itself) inside an outer loop starts
+/// over on each outer iteration.
+#[test]
+fn an_empty_loop_starts_over_on_each_outer_iteration() {
+    let dir = lute_scratch::ScratchDir::named("empty-loop");
+    let source = dir.join("scene.lute");
+    std::fs::write(
+        &source,
+        "---\nkind: scene\nluteVersion: \"0.50.0\"\nid: empty\ntitle: T\n---\n\n## Shot 1.\n\n\
+         ::label{name=\"outer\"}\n@narrator: Round.\n::label{name=\"inner\"}\n\
+         ::jump{to=\"inner\" max=\"1\"}\n::jump{to=\"outer\" max=\"1\"}\n@narrator: Done.\n",
+    )
+    .unwrap();
+    let out = Command::new(env!("CARGO_BIN_EXE_lute"))
+        .arg("trace")
+        .arg(&source)
+        .output()
+        .unwrap();
+    let text = String::from_utf8(out.stdout).unwrap();
+    assert!(
+        out.status.success(),
+        "{text}{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let inner: Vec<&str> = text
+        .lines()
+        .map(str::trim)
+        .filter(|l| l.starts_with("<jump -> inner"))
+        .collect();
+    assert_eq!(
+        inner,
+        [
+            "<jump -> inner (again 1/1)>",
+            "<jump -> inner not taken (1/1 used)>",
+            "<jump -> inner (again 1/1)>",
+            "<jump -> inner not taken (1/1 used)>",
+        ],
+        "{text}"
+    );
+}

@@ -401,10 +401,19 @@ impl ExecProject {
             Store::schema_for_project(&eval_json, false, &rules, &state_table),
             Store::schema_for_project(&eval_json, true, &rules, &state_table),
         ];
-        let codes = artifacts
+        let codes: BTreeMap<String, Arc<crate::machine::Code>> = artifacts
             .iter()
             .map(|(d, a)| (d.clone(), Arc::new(crate::machine::Code::of(a))))
             .collect();
+        // dsl 0.51.0 §3.7: a document whose loops are malformed (a backward
+        // jump without `max`, crossing loops, a bad `max`) is refused at load.
+        let faults: Vec<String> = codes
+            .iter()
+            .filter_map(|(d, c)| c.fault.as_ref().map(|f| format!("{d}: {f}")))
+            .collect();
+        if !faults.is_empty() {
+            return Err((2, faults));
+        }
         let bridge_reads = Arc::new(BridgeReads {
             result_types: index.bridge_results.clone(),
             ..BridgeReads::of(artifacts.values())

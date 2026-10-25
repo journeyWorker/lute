@@ -136,36 +136,99 @@ fn a_99_by_99_loop_completes() {
     assert_eq!(rec.lines.last().map(String::as_str), Some("end"));
 }
 
-/// A backward jump without `max` in a hand-built artifact still trips the
-/// guard.
-#[test]
-fn a_cycle_without_max_trips_the_guard() {
-    let (_, out) = run(vec![line(0, "a"), jump(1, 0, None)]);
+/// A refused stream: nothing runs, and the refusal is `Code`'s load fault
+/// (`ExecProject` refuses the same document at load).
+fn refused(commands: Vec<Json>) -> String {
+    let art = json!({ "kind": "scene", "commands": commands.clone() });
+    let fault = crate::machine::Code::of(&art).fault;
+    let (rec, out) = run(commands);
     let err = out.unwrap_err();
-    assert!(err.contains("did not terminate"), "{err}");
+    assert_eq!(Some(&err), fault.as_ref());
+    assert!(rec.lines.is_empty(), "a refused stream runs nothing: {err}");
+    err
 }
 
-/// A cycle that a bounded take does not close still trips the guard: the
-/// guard restarts at a take, and between takes the walk must stay acyclic.
+/// A backward jump without `max` in a hand-built artifact is refused at
+/// load: a cycle that never ends.
 #[test]
-fn an_unbounded_cycle_inside_a_loop_trips_the_guard() {
-    let (_, out) = run(vec![
+fn a_cycle_without_max_is_refused_at_load() {
+    let err = refused(vec![line(0, "a"), jump(1, 0, None)]);
+    assert!(
+        err.contains("jumps back to 001-0100 without `max`"),
+        "{err}"
+    );
+    let err = refused(vec![line(0, "a"), jump(1, 1, None)]);
+    assert!(err.contains("without `max`"), "a jump to itself: {err}");
+}
+
+/// An unbounded backward jump around a bounded loop would re-enter the loop
+/// from outside forever, each take restarting the guard: refused at load.
+#[test]
+fn an_unbounded_cycle_around_a_loop_is_refused_at_load() {
+    let err = refused(vec![
+        line(0, "a"),
+        line(1, "b"),
+        jump(2, 1, Some(1)),
+        jump(3, 0, None),
+    ]);
+    assert!(err.contains("at 001-0400"), "{err}");
+    refused(vec![
         line(0, "a"),
         line(1, "b"),
         jump(2, 1, None),
         jump(3, 0, Some(3)),
     ]);
-    assert!(out.unwrap_err().contains("did not terminate"));
 }
 
-/// `max` outside 1..=99 is a malformed record.
+/// Two loops that overlap without nesting are refused at load.
+#[test]
+fn crossing_loops_are_refused_at_load() {
+    // [0, 2] and [1, 3] cross.
+    let err = refused(vec![
+        line(0, "a"),
+        line(1, "b"),
+        jump(2, 0, Some(1)),
+        jump(3, 1, Some(1)),
+    ]);
+    assert!(
+        err.contains("001-0300 and 001-0400: their loops overlap without nesting"),
+        "{err}"
+    );
+}
+
+/// An empty loop (its label right before its jump, so the jump targets
+/// itself) inside an outer loop starts over on each outer iteration.
+#[test]
+fn a_self_targeting_loop_resets_on_outside_arrival() {
+    let (rec, out) = run(vec![
+        line(0, "o"),
+        jump(1, 1, Some(2)),
+        jump(2, 0, Some(1)),
+        line(3, "end"),
+    ]);
+    out.unwrap();
+    assert_eq!(texts(&rec.lines), "o o end");
+    let inner: Vec<String> = rec
+        .jumps
+        .iter()
+        .filter(|j| j["position"] == pos(1))
+        .map(Json::to_string)
+        .collect();
+    let taken = |n: u8| json!({ "kind": "jump", "position": pos(1), "taken": n, "max": 2 });
+    let spent = json!({ "kind": "jump", "position": pos(1), "exhausted": true, "max": 2 });
+    assert_eq!(
+        inner,
+        [taken(1), taken(2), spent.clone(), taken(1), taken(2), spent].map(|j| j.to_string())
+    );
+}
+
+/// `max` outside 1..=99 is a malformed record, refused at load.
 #[test]
 fn a_malformed_max_is_refused() {
     for bad in [json!(0), json!(100), json!("2"), json!(-1)] {
         let mut j = jump(1, 0, None);
         j["max"] = bad.clone();
-        let (_, out) = run(vec![line(0, "a"), j]);
-        let err = out.unwrap_err();
+        let err = refused(vec![line(0, "a"), j]);
         assert!(
             err.contains("`max` must be an integer from 1 to 99"),
             "{bad}: {err}"
