@@ -25,6 +25,7 @@ use lute_core_span::{Diagnostic, Fixit, Layer, Severity, Span, TextEdit, TextInd
 use lute_manifest::fact::{parse_fact, DatalogError, FactPattern};
 
 mod attrs;
+pub use attrs::{authored_attrs, AuthoredAttr};
 mod blocks;
 mod foreign;
 mod framing;

@@ -773,7 +773,7 @@
       }
     },
     "lintRuleDecl": {
-      "description": "lint.rs::LintRuleDecl. `target` is one of `line | shot | scene | speaker | group | project`; `level` (optional) is one of `off | hint | info | warn | error`; `when` is a lint-CEL expression parsed by lute-lint at load time; `message` is a `{path.to.field}` template; `options` is an opaque YAML mapping the rule's own logic interprets. Consumers namespace the raw `id` as `<plugin-id>/<id>`.",
+      "description": "lint.rs::LintRuleDecl. `target` is one of `line | section | scene | speaker | group | project | node`; `level` (optional) is one of `off | hint | info | warn | error`; `when` is a lint-CEL expression parsed by lute-lint at load time; `message` is a `{path.to.field}` template; `options` is an opaque YAML mapping the rule's own logic interprets. Consumers namespace the raw `id` as `<plugin-id>/<id>`.",
       "type": "object",
       "required": [
         "id",
@@ -792,7 +792,8 @@
             "scene",
             "speaker",
             "group",
-            "project"
+            "project",
+            "node"
           ]
         },
         "when": {

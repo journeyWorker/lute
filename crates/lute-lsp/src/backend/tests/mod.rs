@@ -572,3 +572,48 @@ async fn analyze_publishes_with_the_project_diagnostic_levels() {
     let got = published_on_open(&mut service, &mut socket, &manifest, manifest_text).await;
     assert_eq!(got, [("E-DIAGNOSTICS-CONFIG".to_string(), 1)], "{got:?}");
 }
+
+/// dsl 0.50.0 §8.1: the LSP evaluates `node` rules on the open buffer —
+/// `node.attrs` is read from the buffer text, not from the file on disk.
+#[tokio::test(flavor = "current_thread")]
+async fn analyze_runs_node_lints_over_the_buffer_text() {
+    use std::fs;
+    use tower::{Service, ServiceExt};
+    use tower_lsp_server::jsonrpc::Request as RpcRequest;
+    use tower_lsp_server::LspService;
+
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lsp_node_lints");
+    fs::create_dir_all(root.join("scenes")).unwrap();
+    fs::write(
+        root.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("lute.lint.yaml"),
+        "lsp: true\ncustom:\n  - id: move-mode-known\n    target: node\n    \
+         when: 'node.tag == \"move\" && \"mode\" in node.attrs && \
+         !(node.attrs[\"mode\"] in options.modes)'\n    level: error\n    \
+         message: \"unknown move mode {node.attrs.mode}\"\n    \
+         options: { modes: [walk, run] }\n",
+    )
+    .unwrap();
+    let scene = root.join("scenes/a.lute");
+    let on_disk = "---\nkind: scene\nid: a\n---\n\n## Shot 1.\n\n::move{mode=\"walk\"}\n";
+    fs::write(&scene, on_disk).unwrap();
+    let buffer = on_disk.replace("walk", "swim");
+
+    let (mut service, mut socket) = LspService::new(Backend::new);
+    let init = RpcRequest::build("initialize")
+        .params(serde_json::json!({ "capabilities": {} }))
+        .id(1)
+        .finish();
+    service.ready().await.unwrap().call(init).await.unwrap();
+
+    let got = published_on_open(&mut service, &mut socket, &scene, &buffer).await;
+    assert!(
+        got.contains(&("L-MOVE-MODE-KNOWN".to_string(), 1)),
+        "the buffer's `swim` is unknown: {got:?}"
+    );
+}

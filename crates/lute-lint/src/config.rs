@@ -320,6 +320,30 @@ custom:
         assert_eq!(diags[0].code, "E-LINT-CONFIG");
     }
 
+    // dsl 0.50.0 §8.1: `target: node` is accepted, and a bad target names
+    // every target, `node` included.
+    #[test]
+    fn node_target_is_accepted_and_listed() {
+        let rule = |target: &str| {
+            format!(
+                "custom:\n  - id: r\n    target: {target}\n    when: \"true\"\n    message: m\n"
+            )
+        };
+        let (cfg, diags) = parse_config(&rule("node"), zero_span()).unwrap();
+        assert!(diags.is_empty(), "{diags:?}");
+        assert_eq!(cfg.custom[0].target, crate::model::LintTarget::Node);
+        let (_, diags) = parse_config(&rule("nodes"), zero_span()).unwrap();
+        assert_eq!(diags.len(), 1);
+        assert!(
+            diags[0].message.contains(
+                "unknown variant `nodes`, expected one of `line`, `section`, `scene`, \
+                 `speaker`, `group`, `project`, `node`"
+            ),
+            "{}",
+            diags[0].message
+        );
+    }
+
     #[test]
     fn malformed_yaml_hard_errors() {
         let src = "not: valid: yaml: ][";

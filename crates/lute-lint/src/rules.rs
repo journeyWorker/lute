@@ -16,7 +16,9 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use cel_parser::ast::IdedExpr;
 use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
+use lute_syntax::ast::Document;
 
 use crate::config::{deep_merge, LintConfig, RuleOverride};
 use crate::eval::{eval, render_message, Env, Value};
@@ -28,6 +30,7 @@ use crate::model::{
     diagnostic_code, level_severity, LintLevel, LintRuleDecl, LintTarget, E_LINT_CONFIG,
     E_LINT_EXPR,
 };
+use crate::nodes::{walk_nodes, NodeWalkStats};
 
 /// Embedded core data-rule YAML (spec §7). Kept as one const per rule so a
 /// grep for a rule id reaches the definition, not just the loader.
@@ -477,6 +480,10 @@ fn unknown_rule_message(id: &str) -> String {
 /// plugin/custom `when` and every core rule read the SAME bindings.
 #[derive(Debug)]
 pub struct DocContext<'a> {
+    /// The parsed document, for `node` rows.
+    pub doc: &'a Document,
+    /// The text `doc` was parsed from: `node.attrs` reads the authored heads.
+    pub source: &'a str,
     pub tables: &'a DocTables,
     pub attrs: &'a [AttrRow],
     pub providers: &'a lute_manifest::provider::ProviderSet,
@@ -487,6 +494,8 @@ pub struct DocContext<'a> {
 ///
 /// `E-LINT-EXPR` is returned as ONE `Finding` per rule when evaluation
 /// fails (spec §5); the engine then skips further rows for that rule.
+/// A `node` rule walks the document's nodes; the engine evaluates every
+/// `node` rule in one walk instead ([`evaluate_node_rules`]).
 pub fn evaluate_rule(
     rule: &ResolvedRule,
     ctx: &DocContext<'_>,
@@ -496,6 +505,9 @@ pub fn evaluate_rule(
     let Some(severity) = level_severity(rule.level) else {
         return Vec::new(); // level: off
     };
+    if rule.target == LintTarget::Node {
+        return evaluate_node_rules(&[rule], ctx, rule_decl_span).0;
+    }
     match &rule.kind {
         RuleKind::Data { when, message } => {
             evaluate_data(rule, when, message, severity, ctx, project, rule_decl_span)
@@ -510,6 +522,101 @@ pub fn evaluate_rule(
     }
 }
 
+/// Parse a rule's `when`, or the `E-LINT-EXPR` finding that it does not
+/// parse (spec §5).
+fn parse_when(rule_id: &str, when: &str, rule_decl_span: Span) -> Result<IdedExpr, Finding> {
+    let mut arena = lute_cel::CelArena::default();
+    match lute_cel::parse_slot(&mut arena, when, 0) {
+        Ok(handle) => Ok(arena
+            .get(handle)
+            .expect("parse_slot returned this handle for this arena")
+            .clone()),
+        Err(e) => Err(expr_error(
+            rule_id,
+            format!("`when` failed to parse: {}", e.message),
+            rule_decl_span,
+        )),
+    }
+}
+
+/// Evaluate every `node` rule over one document in ONE walk of its nodes
+/// (dsl 0.50.0 §8.1). Each row binds `node` (the row, read by reference),
+/// `scene` (the document row) and the rule's `options`, and every rule is
+/// evaluated while the row's `preceding` view is valid. A rule's first
+/// `E-LINT-EXPR` stops that rule for this document. Rules at level `off`
+/// and rules that are not data rules are skipped. Returns the findings and
+/// the walk's work counters.
+pub fn evaluate_node_rules(
+    rules: &[&ResolvedRule],
+    ctx: &DocContext<'_>,
+    rule_decl_span: Span,
+) -> (Vec<Finding>, NodeWalkStats) {
+    struct Active<'r> {
+        id: &'r str,
+        code: String,
+        severity: Severity,
+        when: IdedExpr,
+        message: &'r str,
+        options: Value,
+        failed: bool,
+    }
+    let mut out = Vec::new();
+    let mut active = Vec::with_capacity(rules.len());
+    for rule in rules {
+        let Some(severity) = level_severity(rule.level) else {
+            continue;
+        };
+        let RuleKind::Data { when, message } = &rule.kind else {
+            continue;
+        };
+        match parse_when(&rule.id, when, rule_decl_span) {
+            Ok(when) => active.push(Active {
+                id: &rule.id,
+                code: diagnostic_code(&rule.id),
+                severity,
+                when,
+                message,
+                options: mapping_to_value(&rule.options),
+                failed: false,
+            }),
+            Err(f) => out.push(f),
+        }
+    }
+    if active.is_empty() {
+        return (out, NodeWalkStats::default());
+    }
+    let scene = ctx.tables.scene.as_ref().map(scene_value);
+    let stats = walk_nodes(ctx.doc, ctx.source, &mut |row| {
+        for a in active.iter_mut().filter(|a| !a.failed) {
+            let mut env = Env::new()
+                .with_record("node", row)
+                .with_ref("options", &a.options);
+            if let Some(scene) = &scene {
+                env = env.with_ref("scene", scene);
+            }
+            let failure = match eval(&a.when.expr, &env) {
+                Ok(Value::Bool(true)) => {
+                    out.push(Finding {
+                        code: a.code.clone(),
+                        severity: a.severity,
+                        message: render_message(a.message, &env),
+                        span: row.span(),
+                        related: Vec::new(),
+                        layer: None,
+                    });
+                    continue;
+                }
+                Ok(Value::Bool(false)) => continue,
+                Ok(other) => format!("`when` returned non-bool: {other:?}"),
+                Err(e) => e.message,
+            };
+            a.failed = true;
+            out.push(expr_error(a.id, failure, rule_decl_span));
+        }
+    });
+    (out, stats)
+}
+
 fn evaluate_data(
     rule: &ResolvedRule,
     when: &str,
@@ -521,21 +628,10 @@ fn evaluate_data(
 ) -> Vec<Finding> {
     // Parse `when` once per rule per document. Parse failures produce
     // E-LINT-EXPR, rule skipped for this doc (spec §5).
-    let mut arena = lute_cel::CelArena::default();
-    let handle = match lute_cel::parse_slot(&mut arena, when, 0) {
-        Ok(h) => h,
-        Err(e) => {
-            return vec![expr_error(
-                &rule.id,
-                format!("`when` failed to parse: {}", e.message),
-                rule_decl_span,
-            )];
-        }
+    let ided = match parse_when(&rule.id, when, rule_decl_span) {
+        Ok(ided) => ided,
+        Err(f) => return vec![f],
     };
-    let ided = arena
-        .get(handle)
-        .expect("parse_slot returned this handle for this arena")
-        .clone();
 
     // Iterate the rows that match the target.
     let mut out = Vec::new();
@@ -543,7 +639,7 @@ fn evaluate_data(
     let code = diagnostic_code(&rule.id);
 
     let evaluate_env =
-        |env: Env, span: Span, related: Vec<RelatedDiagnostic>| match eval(&ided.expr, &env) {
+        |env: Env<'_>, span: Span, related: Vec<RelatedDiagnostic>| match eval(&ided.expr, &env) {
             Ok(Value::Bool(true)) => Some(Finding {
                 code: code.clone(),
                 severity,
@@ -566,7 +662,7 @@ fn evaluate_data(
             for l in &ctx.tables.lines {
                 let env = Env::new()
                     .with("line", line_value(l))
-                    .with("options", options.clone());
+                    .with_ref("options", &options);
                 let mut first_err = false;
                 if let Some(f) = evaluate_env(env, l.span, Vec::new()) {
                     if f.code == E_LINT_EXPR {
@@ -587,7 +683,7 @@ fn evaluate_data(
             for s in &ctx.tables.sections {
                 let env = Env::new()
                     .with("section", section_value(s))
-                    .with("options", options.clone());
+                    .with_ref("options", &options);
                 if let Some(f) = evaluate_env(env, s.span, Vec::new()) {
                     out.push(f);
                     if out.last().is_some_and(|f| f.code == E_LINT_EXPR) {
@@ -602,7 +698,7 @@ fn evaluate_data(
             };
             let env = Env::new()
                 .with("scene", scene_value(scene))
-                .with("options", options.clone());
+                .with_ref("options", &options);
             if let Some(f) = evaluate_env(env, scene.span, Vec::new()) {
                 out.push(f);
             }
@@ -611,7 +707,7 @@ fn evaluate_data(
             for sp in ctx.tables.speakers.values() {
                 let env = Env::new()
                     .with("speaker", speaker_value(sp))
-                    .with("options", options.clone());
+                    .with_ref("options", &options);
                 if let Some(f) = evaluate_env(env, sp.first_line_span, Vec::new()) {
                     out.push(f);
                     if out.last().is_some_and(|f| f.code == E_LINT_EXPR) {
@@ -625,7 +721,7 @@ fn evaluate_data(
                 for g in rows {
                     let env = Env::new()
                         .with("group", group_value(g))
-                        .with("options", options.clone());
+                        .with_ref("options", &options);
                     if let Some(f) = evaluate_env(env, g.first_line_span, Vec::new()) {
                         out.push(f);
                         if out.last().is_some_and(|f| f.code == E_LINT_EXPR) {
@@ -639,11 +735,14 @@ fn evaluate_data(
         LintTarget::Project => {
             let env = Env::new()
                 .with("project", project_value(project))
-                .with("options", options.clone());
+                .with_ref("options", &options);
             let anchor = ctx.tables.scene.as_ref().map_or(rule_decl_span, |s| s.span);
             if let Some(f) = evaluate_env(env, anchor, Vec::new()) {
                 out.push(f);
             }
+        }
+        LintTarget::Node => {
+            unreachable!("evaluate_rule hands a `node` rule to evaluate_node_rules")
         }
     }
 

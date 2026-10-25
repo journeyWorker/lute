@@ -11,9 +11,13 @@ name = "lute-bench"
 [dependencies]
 lute-check = { path = "../lute-check" }
 lute-cli = { path = "../lute-cli" }
+lute-core-span = { path = "../lute-core-span" }
+lute-lint = { path = "../lute-lint" }
+lute-manifest = { path = "../lute-manifest" }
 lute-model = { path = "../lute-model" }
 lute-runtime = { path = "../lute-runtime" }
 lute-semantic = { path = "../lute-semantic" }
+lute-syntax = { path = "../lute-syntax" }
 lute-trace = { path = "../lute-trace" }
 serde = { workspace = true }
 serde_json = { workspace = true }

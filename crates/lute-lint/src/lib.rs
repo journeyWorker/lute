@@ -14,6 +14,7 @@
 //! - [`engine::lint`] — orchestrator: takes parsed documents, resolved config,
 //!   plugin rules, and provider snapshots; returns [`engine::LintOutcome`]
 //!   (a deterministic `Vec<(PathBuf, Diagnostic)>`).
+//! - [`nodes::walk_nodes`] — the `node` target's rows (dsl 0.50.0 §8.1).
 //! - [`config::LintConfig`] / [`config::parse_config`] — YAML config loader.
 //! - [`model::LintRuleDecl`] and friends — declarative rule shape shared with
 //!   plugin YAML and `custom:`; re-exported from `lute_manifest::lint` (the
@@ -35,6 +36,7 @@ pub mod engine;
 pub mod eval;
 pub mod metrics;
 pub mod model;
+pub mod nodes;
 pub mod rules;
 
 pub use config::{parse_config, LintConfig, RuleOverride};

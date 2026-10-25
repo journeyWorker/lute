@@ -15,9 +15,12 @@ use lute_manifest::provider::ProviderSet;
 use lute_syntax::ast::Document;
 
 use crate::config::LintConfig;
-use crate::metrics::{compute_doc_tables, compute_project_row};
-use crate::model::LintRuleDecl;
-use crate::rules::{active_group_bys, evaluate_rule, resolve_rules, DocContext};
+use crate::metrics::{compute_doc_tables, compute_project_row, AttrRow, DocTables};
+use crate::model::{LintRuleDecl, LintTarget};
+use crate::nodes::NodeWalkStats;
+use crate::rules::{
+    active_group_bys, evaluate_node_rules, evaluate_rule, resolve_rules, DocContext, ResolvedRule,
+};
 
 /// One parsed input document + the source text that produced it.
 ///
@@ -32,10 +35,9 @@ use crate::rules::{active_group_bys, evaluate_rule, resolve_rules, DocContext};
 pub struct LintDocInput {
     pub path: PathBuf,
     pub doc: Document,
-    /// The source text that produced `doc`. Retained so future rules that
-    /// need line context (word regex/quotation checks) do not require a
-    /// re-read; not consulted by any v1 rule but stored to future-proof
-    /// the input shape.
+    /// The source text that produced `doc`: `node` rows read each node's
+    /// authored attributes from it (dsl 0.50.0 §8.1), so it MUST be the
+    /// exact text `doc` was parsed from (the LSP passes its buffer).
     pub text: String,
 }
 
@@ -47,10 +49,13 @@ pub struct LintDocInput {
 ///   `config_path` when provided (else to the first input document).
 ///   Kept separate so a caller may treat them differently (they never
 ///   originate from a document text).
+/// - `node_stats`: the work of the `node` walks, summed over documents
+///   (all zero when no `node` rule ran).
 #[derive(Default, Debug)]
 pub struct LintOutcome {
     pub diagnostics: Vec<(PathBuf, Diagnostic)>,
     pub config_diagnostics: Vec<(PathBuf, Diagnostic)>,
+    pub node_stats: NodeWalkStats,
 }
 
 /// Which rule targets a run evaluates (spec §2).
@@ -119,15 +124,17 @@ pub fn lint(
     let group_bys = active_group_bys(&rules);
 
     // Compute per-doc tables and attribute rows.
-    let mut per_doc: Vec<(
-        PathBuf,
-        crate::metrics::DocTables,
-        Vec<crate::metrics::AttrRow>,
-    )> = Vec::with_capacity(active.len());
-    for input in &active {
-        let (tables, attrs) = compute_doc_tables(&input.doc, &group_bys);
-        per_doc.push((input.path.clone(), tables, attrs));
-    }
+    let per_doc: Vec<DocEntry<'_>> = active
+        .iter()
+        .map(|&input| {
+            let (tables, attrs) = compute_doc_tables(&input.doc, &group_bys);
+            DocEntry {
+                input,
+                tables,
+                attrs,
+            }
+        })
+        .collect();
     // Project row: aggregate over per-doc SceneRow.words — LINEAR scene
     // documents only (`SceneRow.kind == "scene"`, [`crate::metrics::doc_kind`]).
     // A component, quest, or lore document is not a scene, and a beat (a
@@ -136,43 +143,49 @@ pub fn lint(
     // full episode (dsl 0.22.0 §13).
     let scene_mask: Vec<bool> = per_doc
         .iter()
-        .map(|(_, t, _)| t.scene.as_ref().is_some_and(|s| s.kind == "scene"))
+        .map(|d| d.tables.scene.as_ref().is_some_and(|s| s.kind == "scene"))
         .collect();
     let scene_words: Vec<u32> = per_doc
         .iter()
         .zip(scene_mask.iter())
         .filter(|(_, &is_scene)| is_scene)
-        .map(|((_, t, _), _)| t.scene.as_ref().map_or(0, |s| s.words))
+        .map(|(d, _)| d.tables.scene.as_ref().map_or(0, |s| s.words))
         .collect();
     let project = compute_project_row(&scene_words);
+
+    // `node` rules: every one in a single walk of each document's nodes
+    // (dsl 0.50.0 §8.1), below.
+    let node_rules: Vec<&ResolvedRule> = rules
+        .iter()
+        .filter(|r| r.target == LintTarget::Node)
+        .collect();
 
     // Track project-target rules: a finding is emitted on the FIRST
     // contributing SCENE document (a component/quest never anchors a
     // scene-aggregate finding), with RelatedDiagnostic entries pointing at
     // each subsequent contributing scene (spec §8).
     for rule in &rules {
-        if rule.target == crate::model::LintTarget::Project {
+        if rule.target == LintTarget::Node {
+            continue;
+        }
+        if rule.target == LintTarget::Project {
             if scope == LintScope::Document {
                 continue;
             }
             let anchor_idx = scene_mask.iter().position(|&s| s).unwrap_or(0);
             let first = &per_doc[anchor_idx];
-            let ctx = DocContext {
-                tables: &first.1,
-                attrs: &first.2,
-                providers,
-            };
+            let ctx = first.context(providers);
             let decl_span = decl_span(rule, config_path.unwrap_or(&cfg_anchor), config_span);
             let findings = evaluate_rule(rule, &ctx, &project, decl_span);
             for mut f in findings {
                 // Attach related for every subsequent document.
-                for (idx, (path, tables, _)) in per_doc.iter().enumerate() {
+                for (idx, entry) in per_doc.iter().enumerate() {
                     if idx == anchor_idx || !scene_mask[idx] {
                         continue;
                     }
-                    if let Some(scene) = &tables.scene {
+                    if let Some(scene) = &entry.tables.scene {
                         f.related.push(RelatedDiagnostic {
-                            file: path.display().to_string(),
+                            file: entry.input.path.display().to_string(),
                             diagnostic: Diagnostic {
                                 code: f.code.clone(),
                                 severity: f.severity,
@@ -190,22 +203,30 @@ pub fn lint(
                 }
                 outcome
                     .diagnostics
-                    .push((first.0.clone(), finding_to_diagnostic(f)));
+                    .push((first.input.path.clone(), finding_to_diagnostic(f)));
             }
         } else {
-            for (path, tables, attrs) in &per_doc {
-                let ctx = DocContext {
-                    tables,
-                    attrs,
-                    providers,
-                };
+            for doc in &per_doc {
+                let ctx = doc.context(providers);
                 let decl_span = decl_span(rule, config_path.unwrap_or(&cfg_anchor), config_span);
                 let findings = evaluate_rule(rule, &ctx, &project, decl_span);
                 for f in findings {
                     outcome
                         .diagnostics
-                        .push((path.clone(), finding_to_diagnostic(f)));
+                        .push((doc.input.path.clone(), finding_to_diagnostic(f)));
                 }
+            }
+        }
+    }
+    if !node_rules.is_empty() {
+        for doc in &per_doc {
+            let (findings, stats) =
+                evaluate_node_rules(&node_rules, &doc.context(providers), config_span);
+            outcome.node_stats.add(&stats);
+            for f in findings {
+                outcome
+                    .diagnostics
+                    .push((doc.input.path.clone(), finding_to_diagnostic(f)));
             }
         }
     }
@@ -213,6 +234,25 @@ pub fn lint(
     outcome.diagnostics.sort_by(diag_order);
     outcome.config_diagnostics.sort_by(diag_order);
     outcome
+}
+
+/// One linted document with its tables.
+struct DocEntry<'i> {
+    input: &'i LintDocInput,
+    tables: DocTables,
+    attrs: Vec<AttrRow>,
+}
+
+impl DocEntry<'_> {
+    fn context<'a>(&'a self, providers: &'a ProviderSet) -> DocContext<'a> {
+        DocContext {
+            doc: &self.input.doc,
+            source: &self.input.text,
+            tables: &self.tables,
+            attrs: &self.attrs,
+            providers,
+        }
+    }
 }
 
 fn finding_to_diagnostic(f: crate::rules::Finding) -> Diagnostic {
