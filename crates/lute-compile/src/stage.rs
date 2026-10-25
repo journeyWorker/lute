@@ -50,12 +50,14 @@ pub struct WalkCx<'a> {
 }
 
 impl<'a> WalkCx<'a> {
-    /// A walk over one document whose loops are `loops`; `components` names
-    /// the component table its inlined bodies come from.
+    /// A walk over one document whose loops are `loops` and whose `<match>`
+    /// subjects resolve against `subjects`; `components` names the
+    /// component table its inlined bodies come from.
     pub fn new(
         snapshot: &'a CapabilitySnapshot,
         env: &'a Env,
         loops: &'a lute_check::next_labels::LoopTable,
+        subjects: lute_check::SubjectScope<'a>,
         components: Option<&'a lute_check::ComponentSet>,
     ) -> Self {
         WalkCx {
@@ -67,6 +69,7 @@ impl<'a> WalkCx<'a> {
                 loops,
                 &env.domains,
                 snapshot,
+                subjects,
                 components,
                 lute_check::WalkKind::StageCompile,
             ),

@@ -762,6 +762,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
         &folded.labels.loops,
         domains,
         input.snapshot(),
+        crate::match_check::SubjectScope::of(&folded),
         Some(&input.components),
         crate::loop_walk::WalkKind::Stage,
     );

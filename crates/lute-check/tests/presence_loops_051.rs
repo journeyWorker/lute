@@ -72,3 +72,20 @@ fn a_write_inside_the_loop_kills_the_guard_at_the_head() {
     // A write the guard does not read leaves it live.
     assert_eq!(absent(&beat("::set{run.x = 1}")), Vec::new());
 }
+
+/// S2 re-review (S2FixReview051): a write in a `<timeline>` clip inside the
+/// loop kills the guard at the head too. (A clip directive's declared fact
+/// effects are dispatched to the same kills, but are not observable here:
+/// the project fact pass, which settles a `holds` guard, does not read
+/// timeline effects, before and after 0.51; `::accept` is not admitted in a
+/// clip.)
+#[test]
+fn a_timeline_write_inside_the_loop_kills_the_guard_at_the_head() {
+    let clip = |set: &str| {
+        format!("<timeline>\n  <track channel=\"fx\">\n  {set}\n  </track>\n  </timeline>")
+    };
+    let ds = absent(&beat(&clip("::set{run.withUs = false}")));
+    assert_eq!(ds.len(), 1, "{ds:?}");
+    assert_eq!(ds[0].span.line, 11, "the `@corvin: Onward.` line: {ds:?}");
+    assert_eq!(absent(&beat(&clip("::set{run.x = 1}"))), Vec::new());
+}

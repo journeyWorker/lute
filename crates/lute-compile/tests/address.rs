@@ -27,7 +27,13 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
         ..Default::default()
     };
     let loops = lute_check::next_labels::LoopTable::default();
-    let mut cx = WalkCx::new(&snapshot, &env, &loops, None);
+    let mut cx = WalkCx::new(
+        &snapshot,
+        &env,
+        &loops,
+        lute_check::SubjectScope::bare(&env.state),
+        None,
+    );
     let mut state = StageState::default();
     let mut shots = Vec::new();
     for (i, shot) in doc.sections.iter().enumerate() {

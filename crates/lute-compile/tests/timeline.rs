@@ -27,7 +27,13 @@ fn walk(body: &str) -> (Vec<Rec>, StageState) {
         ..Default::default()
     };
     let loops = lute_check::next_labels::LoopTable::default();
-    let mut cx = WalkCx::new(&snapshot, &env, &loops, None);
+    let mut cx = WalkCx::new(
+        &snapshot,
+        &env,
+        &loops,
+        lute_check::SubjectScope::bare(&env.state),
+        None,
+    );
     let mut em = Emitter::default();
     let state = walk_seq(
         &mut em,

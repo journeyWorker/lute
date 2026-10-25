@@ -198,6 +198,26 @@ fn the_no_pick_route_past_choices_that_all_jump_away_keeps_staging() {
     );
 }
 
+/// S2 re-review (S2FixReview051): a match without `<otherwise>` whose arms
+/// cover its subject's domain (`true` and `false` of a defaulted bool) is
+/// exhaustive — it has no no-match route. When both arms jump away, nothing
+/// reaches the line after it, so no stage warning is reported there.
+#[test]
+fn an_exhaustive_match_whose_arms_all_jump_away_has_no_no_match_route() {
+    let text = scene(
+        "@mira: Hi.\n::actor{character=\"mira\" action=\"hide\"}\n<match subject=\"run.f\">\n\
+         <when is=\"true\">\n::jump{to=\"a\"}\n</when>\n<when is=\"false\">\n::jump{to=\"b\"}\n\
+         </when>\n</match>\n@mira: Never.\n::label{name=\"a\"}\n::label{name=\"b\"}\n\
+         @narrator: Out.",
+    );
+    let ds = diags(&text);
+    assert!(
+        !ds.iter().any(|d| d.code == "W-STAGE-ABSENT"),
+        "{:?}",
+        at(&ds)
+    );
+}
+
 // --- definite assignment: one-pass stability and soundness at a head ------
 
 /// A loop with an exit jump at its head (so the head's own flow reaches the

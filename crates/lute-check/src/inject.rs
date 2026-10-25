@@ -435,6 +435,9 @@ pub struct StageFlow<'a> {
     pub(crate) snapshot: &'a CapabilitySnapshot,
     pub(crate) components: Option<&'a crate::component_import::ComponentSet>,
     kind: crate::loop_walk::WalkKind,
+    /// What a `<match>` subject resolves against: decides whether a match
+    /// may take no arm ([`Self::may_take_no_arm`]).
+    subjects: crate::match_check::SubjectScope<'a>,
     /// Label → the join of the states jumping to it.
     pending: BTreeMap<String, StageState>,
     /// The head whose probe pass is walking (nested heads' passes included).
@@ -468,13 +471,15 @@ impl std::fmt::Debug for StageFlow<'_> {
 }
 
 impl<'a> StageFlow<'a> {
-    /// The routing of one document's walk: its loops, vocabulary, snapshot
-    /// and (for a walk that enters `::use` bodies or inlined components)
-    /// its component table. `kind` names the walk in the loop counters.
+    /// The routing of one document's walk: its loops, vocabulary, snapshot,
+    /// match subjects and (for a walk that enters `::use` bodies or inlined
+    /// components) its component table. `kind` names the walk in the loop
+    /// counters.
     pub fn new(
         loops: &'a crate::next_labels::LoopTable,
         domains: &'a BTreeMap<String, Domain>,
         snapshot: &'a CapabilitySnapshot,
+        subjects: crate::match_check::SubjectScope<'a>,
         components: Option<&'a crate::component_import::ComponentSet>,
         kind: crate::loop_walk::WalkKind,
     ) -> Self {
@@ -484,6 +489,7 @@ impl<'a> StageFlow<'a> {
             snapshot,
             components,
             kind,
+            subjects,
             pending: BTreeMap::new(),
             probing: None,
             scopes: Vec::new(),
@@ -496,6 +502,25 @@ impl<'a> StageFlow<'a> {
 
     fn loops(&self) -> &crate::next_labels::LoopTable {
         self.scopes.last().unwrap_or(self.loops)
+    }
+
+    /// `true` when control may pass `node` without taking any of its arms:
+    /// a `<branch>` whose choices are all guarded (`E-BRANCH-ALL-GUARDED`),
+    /// a `<match>` that is not exhaustive (`E-NONEXHAUSTIVE`, by its own
+    /// rule: a domain-covering match without `<otherwise>` takes an arm).
+    /// When every arm of such a node jumps away, the stage after it is
+    /// still the stage before it (dsl 0.51.0 §3.4). Only a document with
+    /// that error has such a route (a `timeout` runs its `default=` choice),
+    /// so it never decides what `lute compile` emits; the fold keeps
+    /// reporting past the error. A component's param subject resolves to no
+    /// domain here, so such a match is taken as possibly armless — keeping
+    /// the entry stage, the conservative side.
+    pub(crate) fn may_take_no_arm(&self, node: &Node) -> bool {
+        match node {
+            Node::Branch(b) => b.choices.iter().all(|c| c.when.is_some()),
+            Node::Match(m) => !self.subjects.is_exhaustive(m),
+            _ => false,
+        }
     }
 
     /// `true` inside a probe pass: nothing the walk emits there is kept.
@@ -757,25 +782,6 @@ fn characters_of(entry: &StageState, region: &[Node]) -> BTreeSet<String> {
         _ => {}
     });
     out
-}
-
-/// `true` when control may pass `node` without taking any of its arms: a
-/// `<branch>` whose choices are all guarded (`E-BRANCH-ALL-GUARDED`), a
-/// `<match>` without `<otherwise>` that is not exhaustive
-/// (`E-NONEXHAUSTIVE`). When every arm of such a node jumps away, the stage
-/// after it is still the stage before it (dsl 0.51.0 §3.4). Only a document
-/// with that error has such a route (a `timeout` runs its `default=`
-/// choice), so `lute compile`, which never compiles one, needs no such rule:
-/// the fold keeps reporting past the error.
-pub(crate) fn may_take_no_arm(node: &Node) -> bool {
-    match node {
-        Node::Branch(b) => b.choices.iter().all(|c| c.when.is_some()),
-        Node::Match(m) => !m
-            .arms
-            .iter()
-            .any(|a| matches!(a, lute_syntax::ast::Arm::Otherwise { .. })),
-        _ => false,
-    }
 }
 
 /// `true` when `doc` holds a `::jump` with `max` (a loop to iterate).

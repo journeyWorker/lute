@@ -83,7 +83,7 @@ pub(crate) fn fold_injections(
         // stage it entered with (0.50 joins only the arms otherwise).
         if !exits.is_empty() {
             *state = Some(StageState::join(&StageState::default(), exits));
-        } else if !crate::inject::may_take_no_arm(node) {
+        } else if !flow.may_take_no_arm(node) {
             *state = None;
         }
     }

@@ -221,7 +221,7 @@ pub use lore::{
 pub use match_check::{
     check_branch, check_hub, check_line_codes, check_match, check_quest, check_quest_rewards,
     is_exhaustive, is_pattern_literals, BranchRecord, DomainInfo, HubRecord, QuestRecord,
-    E_REWARD_ATTR, E_REWARD_DUP, E_REWARD_KIND, E_WHEN_RANGE,
+    SubjectScope, E_REWARD_ATTR, E_REWARD_DUP, E_REWARD_KIND, E_WHEN_RANGE,
 };
 pub use meta::{
     ident_from_name, parse_meta, parse_meta_kind, resolve_doc_kind, DocKind, MetaKind, Namespace,

@@ -538,6 +538,7 @@ fn compile_inner(
         input.snapshot(),
         &folded.env,
         &folded.labels.loops,
+        lute_check::SubjectScope::of(&folded),
         Some(&input.components),
     );
     let (meta, mut commands, addr_diags) = match folded.doc_kind {
