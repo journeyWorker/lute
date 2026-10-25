@@ -86,6 +86,70 @@ pub struct ClipStamp {
     pub duration: f64,
 }
 
+/// A component sentinel, `::label` or `::jump`: the directives that scope
+/// and route control, walked by [`walk_flow_directive`] in every body walker
+/// ([`walk_seq`], [`walk_quest`]).
+fn is_flow_directive(d: &lute_syntax::ast::Directive) -> bool {
+    [
+        COMPONENT_BEGIN,
+        COMPONENT_END,
+        lute_manifest::core::LABEL_DIRECTIVE,
+        lute_manifest::core::JUMP_DIRECTIVE,
+    ]
+    .contains(&d.tag.as_str())
+}
+
+/// Walk one [`is_flow_directive`] node `d`; `rest` is what follows it in its
+/// body. The one place a label is bound and a jump target is named, so every
+/// body (scene shots, arms, handler/objective/entry/beat bodies, a quest's
+/// top level) scopes component labels the same way (#207).
+fn walk_flow_directive(
+    em: &mut Emitter,
+    node: &Node,
+    d: &lute_syntax::ast::Directive,
+    rest: &[Node],
+    mut state: StageState,
+    cx: &mut WalkCx<'_>,
+) -> StageState {
+    match d.tag.as_str() {
+        COMPONENT_BEGIN => {
+            let name = component_attr(d);
+            em.marker(|| boundary_marker(d, &name));
+            cx.stage.enter_component(&name);
+            cx.components.push((
+                name,
+                component_scope(d).to_string(),
+                crate::normalize::component_stable(d),
+            ));
+        }
+        COMPONENT_END => {
+            let name = cx.components.pop().map(|(name, _, _)| name);
+            cx.stage.leave_component();
+            em.marker(|| boundary_marker(d, name.as_deref().unwrap_or_default()));
+        }
+        // dsl 0.12.0: `::label{name}` emits NO record — bind the author's
+        // NAMED label to whatever gets pushed NEXT (or, nothing left in this
+        // body, `Emitter::finish`'s `trailing_named` — mirrors a branch/match
+        // converge's `em.bind`, keyed by the author's string instead of a
+        // fresh anonymous `Label`). dsl 0.51.0 §3.4: the stage state there is
+        // the checker's. Inside a component expansion the name is the
+        // instance's own ([`label_key`], #207).
+        lute_manifest::core::LABEL_DIRECTIVE => {
+            em.marker(|| directive_marker(d));
+            if let Some(id) = attr_string(&d.attrs, lute_manifest::core::LABEL_NAME_ATTR) {
+                bind_label(cx, &id, rest, &mut state);
+                em.bind_named(label_key(cx, &id));
+            }
+        }
+        _ => {
+            state = emit_primitive(em, node, state, &[], cx, None);
+            scope_jump_target(em, cx);
+            route_jump(cx, d, &mut state);
+        }
+    }
+    state
+}
+
 /// Walk one node sequence in document order, emitting records into `em` and
 /// threading `StageState` through `lower_node` (injection) + branch/match
 /// fork/join (D9). Timeline nodes are handled inline in Task 10.
@@ -99,39 +163,8 @@ pub fn walk_seq(
 ) -> StageState {
     for (i, node) in nodes.iter().enumerate() {
         match node {
-            Node::Directive(d) if d.tag == COMPONENT_BEGIN => {
-                let name = component_attr(d);
-                em.marker(|| boundary_marker(d, &name));
-                cx.stage.enter_component(&name);
-                cx.components.push((
-                    name,
-                    component_scope(d).to_string(),
-                    crate::normalize::component_stable(d),
-                ));
-            }
-            Node::Directive(d) if d.tag == COMPONENT_END => {
-                let name = cx.components.pop().map(|(name, _, _)| name);
-                cx.stage.leave_component();
-                em.marker(|| boundary_marker(d, name.as_deref().unwrap_or_default()));
-            }
-            // dsl 0.12.0: `::label{name}` emits NO record — bind the author's
-            // NAMED label to whatever gets pushed NEXT (or, nothing left
-            // in this body, `Emitter::finish`'s `trailing_named` — mirrors
-            // a branch/match converge's `em.bind`, keyed by the author's
-            // string instead of a fresh anonymous `Label`). dsl 0.51.0 §3.4:
-            // the stage state there is the checker's. Inside a component
-            // expansion the name is the instance's own ([`label_key`], #207).
-            Node::Directive(d) if d.tag == lute_manifest::core::LABEL_DIRECTIVE => {
-                em.marker(|| directive_marker(d));
-                if let Some(id) = attr_string(&d.attrs, lute_manifest::core::LABEL_NAME_ATTR) {
-                    bind_label(cx, &id, &nodes[i + 1..], &mut state);
-                    em.bind_named(label_key(cx, &id));
-                }
-            }
-            Node::Directive(d) if d.tag == lute_manifest::core::JUMP_DIRECTIVE => {
-                state = emit_primitive(em, node, state, &[], cx, None);
-                scope_jump_target(em, cx);
-                route_jump(cx, d, &mut state);
+            Node::Directive(d) if is_flow_directive(d) => {
+                state = walk_flow_directive(em, node, d, &nodes[i + 1..], state, cx);
             }
             // Fact args are ground — nothing authored, `lower_node`'s
             // wildcard skips them; lowering to `Command::Assert`/`Retract`
@@ -1141,18 +1174,10 @@ pub fn walk_quest(
                     walk_body(em, &on.body, cx, diags);
                 }
             }
-            // dsl 0.12.0: mirrors `walk_seq`'s `mark` interception exactly
-            // — see its own comment.
-            Node::Directive(d) if d.tag == lute_manifest::core::LABEL_DIRECTIVE => {
-                em.marker(|| directive_marker(d));
-                if let Some(id) = attr_string(&d.attrs, lute_manifest::core::LABEL_NAME_ATTR) {
-                    bind_label(cx, &id, &quest.body[i + 1..], &mut state);
-                    em.bind_named(id);
-                }
-            }
-            Node::Directive(d) if d.tag == lute_manifest::core::JUMP_DIRECTIVE => {
-                state = emit_primitive(em, node, state, &[], cx, None);
-                route_jump(cx, d, &mut state);
+            // Component sentinels, labels and jumps: the one path `walk_seq`
+            // takes too (#207: component labels scoped per instance).
+            Node::Directive(d) if is_flow_directive(d) => {
+                state = walk_flow_directive(em, node, d, &quest.body[i + 1..], state, cx);
             }
             // Fact args are ground — nothing authored, `lower_node`'s
             // wildcard skips them; lowering to `Command::Assert`/`Retract`

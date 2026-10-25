@@ -164,6 +164,32 @@ fn a_cycle_without_max_is_refused_at_load() {
     );
 }
 
+/// A required target that is missing or not a position string is refused
+/// at load (S3 re-review 2): the executor never falls back to another
+/// record. The reviewer's stream — a bounded loop, then a `jump` without
+/// `target` — would otherwise go back to the first record forever.
+#[test]
+fn a_missing_or_malformed_target_is_refused_at_load() {
+    let mut no_target = jump(2, 0, None);
+    no_target.as_object_mut().unwrap().remove("target");
+    let err = refused(vec![line(0, "a"), jump(1, 0, Some(1)), no_target]);
+    assert!(
+        err.contains("`jump` record at 001-0300: `target` is missing or not a position"),
+        "{err}"
+    );
+    let mut numeric = jump(1, 0, None);
+    numeric["target"] = json!(100);
+    refused(vec![line(0, "a"), numeric]);
+    let no_converge = json!({ "kind": "match", "family": "control", "position": pos(1),
+                              "arms": [] });
+    let err = refused(vec![line(0, "a"), no_converge, line(2, "b")]);
+    assert!(err.contains("`converge` is missing"), "{err}");
+    let bad_option = json!({ "kind": "choice", "family": "control", "position": pos(1),
+                             "branchId": "b", "options": [{ "id": "x" }], "converge": pos(2) });
+    let err = refused(vec![line(0, "a"), bad_option, line(2, "b")]);
+    assert!(err.contains("`options[].target` is missing"), "{err}");
+}
+
 /// Every control transfer is checked, not only `jump`: an empty-arm `match`
 /// whose `otherwise` goes back around a bounded loop would re-enter it from
 /// outside forever (S3 re-review), and is refused at load.

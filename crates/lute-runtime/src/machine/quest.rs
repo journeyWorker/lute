@@ -9,7 +9,7 @@ use std::sync::Arc;
 use serde_json::{json, Value as Json};
 
 use super::format::value_to_json;
-use super::{addr, fold_op, Code, Machine, Site, WalkError};
+use super::{addr, fold_op, required_target, Code, Machine, Site, WalkError};
 use crate::driver::{Driver, SiteKind};
 use crate::eval::Read;
 use crate::expr::{Expr, Slot};
@@ -137,11 +137,7 @@ impl<D: Driver> Machine<D> {
                             .unwrap_or("")
                             .to_string(),
                         when: self.code.slot(cmd.get("when")),
-                        body: cmd
-                            .get("body")
-                            .and_then(Json::as_str)
-                            .unwrap_or("")
-                            .to_string(),
+                        body: required_target(cmd, "body").to_string(),
                         // Stream order recovers the enclosing quest: the `on`
                         // record is emitted inside its quest's walk, after the
                         // quest declaration head (stage.rs `walk_quest`).
@@ -174,6 +170,7 @@ impl<D: Driver> Machine<D> {
     /// the occasion's beats, in the order they fired. Their `when` was
     /// decided when they fired; a `::end` in one ends the rest.
     pub fn run_deferred_handlers(&mut self, bodies: &[String]) -> Result<(), WalkError> {
+        self.code_fault()?;
         self.quest_resume = true;
         let (_, _, seg_starts) = self.quest_program();
         for body in bodies {
@@ -409,6 +406,7 @@ impl<D: Driver> Machine<D> {
     /// done transitions again. Called once per quest artifact after every
     /// presentation, so later beat conditions see real quest progress.
     pub fn advance_quests(&mut self) -> Result<(), WalkError> {
+        self.code_fault()?;
         self.quest_resume = true;
         self.run_quest();
         self.store.derive();

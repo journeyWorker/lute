@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde_json::{json, Value as Json};
 
-use super::{addr, Machine, Site};
+use super::{addr, required_target, Machine, Site};
 use crate::driver::{Driver, SiteKind};
 use crate::eval::Read;
 use crate::Value;
@@ -74,7 +74,7 @@ impl<D: Driver> Machine<D> {
             "firstRead": first_read,
             "eligible": eligible,
         }));
-        let body = cmd.get("body").and_then(Json::as_str).unwrap_or("");
+        let body = required_target(cmd, "body");
         let start = self.resolve(body);
         let stop = self.segment_stop(at);
         self.apply_effects = first_read;
@@ -161,7 +161,7 @@ impl<D: Driver> Machine<D> {
             "id": cmd.get("id").cloned().unwrap_or(Json::Null),
             "eligible": eligible,
         }));
-        let body = cmd.get("body").and_then(Json::as_str).unwrap_or("");
+        let body = required_target(cmd, "body");
         let start = self.resolve(body);
         let stop = self.segment_stop(at);
         self.run_range(start, stop);
