@@ -1835,6 +1835,27 @@
         "credits": {
           "type": "string",
           "description": "dsl 0.23.0 §8: the state path the reward kind's `rewardKinds.credits` declares, stamped at compile from the capability snapshot. A grant adds its `amount` to this path (a range amount is the engine's roll; the reference runner credits scalar amounts only). Omitted when the kind credits nothing."
+        },
+        "retracts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/factRecord"
+          },
+          "description": "0.50.0 §5.5: the facts the reward kind's `effects.retracts` declares, `@target` bound to `target` (\"_\" a wildcard), stamped at compile. Applied at the grant, after the `grant` record and before `asserts`, through the `::retract` path; absent when none."
+        },
+        "asserts": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/factRecord"
+          },
+          "description": "0.50.0 §5.5: the facts the reward kind's `effects.asserts` declares, `@target` bound, applied at the grant after `retracts` through the `::assert` path; absent when none."
+        },
+        "accepts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "0.50.0 §5.5: the quest ids the reward kind's `effects.accepts` resolves to, applied at the grant after the facts through the `::accept` path; absent when none."
         }
       },
       "additionalProperties": true,
@@ -1842,6 +1863,26 @@
         "kind"
       ],
       "description": "One `<reward id= kind= target= amount= when= outcome=/>` declaration (dsl 0.16.0 §2/§3). Pure data — the compiler NEVER synthesizes handler bodies or `Command::Set` records for a reward; the reference engine (`crates/lute-cli/src/runner.rs` `Runner::emit_grants`) emits deterministic `grant` transcript events at each fresh lifecycle transition, and `lute trace` mirrors those events (`crates/lute-trace/src/walk.rs`)."
+    },
+    "factRecord": {
+      "type": "object",
+      "properties": {
+        "relation": {
+          "type": "string"
+        },
+        "args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "relation",
+        "args"
+      ],
+      "additionalProperties": false,
+      "description": "0.50.0 §5.5: one fact a reward's effects write — the `relation` + `args` shape of an `assert` / `retract` record (\"_\" a retract wildcard)."
     },
     "objectiveEntry": {
       "type": "object",

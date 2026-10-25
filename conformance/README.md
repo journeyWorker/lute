@@ -141,6 +141,7 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 | `cel-errors` | condition-error-as-not-satisfied and `::set` evaluation errors that halt without a partial write |
 | `grant-instance` | a single-walk `lute run` fixture pinning `instance` and `index` field presence on objective and quest rewards; multi-run identity is pinned by `crates/lute-cli/tests/grant_identity.rs` |
 | `grant-replay` | a single-walk `lute run` fixture pinning stable grant identity fields and objective/index coordinates; replay and multi-run identity are pinned by `crates/lute-cli/tests/grant_identity.rs` |
+| `reward-effects` | 0.50.0 §5.6 reward kind `effects` (a local plugin's `rewardKinds`): each effect record follows its `grant` record and carries the grant's identity (`grant: { quest, instance, index, objective?, kind }`, no `position`) — an objective-level assert (`BADGE` on `first.greet`), then on completion a retract (`REVOKE`), an assert (`BADGE`), a `when=` false reward with no grant and no effect (`SCAR`), an accept of the already-active `helper` (`ignored`), and an accept of the accept-driven `second`, which activates on the next lifecycle round; the `questComplete` handler reads `met(mira)` true and `met(theo)` false (grants precede the handler); `doomed`'s `outcome="failed"` reward asserts `rival(mira)` before its `questFailed` handler reads it |
 | `identity/explicit-component` | explicit `instance="use-001"`/`use-002` component scopes; nested component joins remain stable under insertion |
 | `identity/insertion-before-repeat` | inserting before a repeated component preserves authored instance identities |
 | `identity/rename-ledger` | a project manifest's quest rename expands to objective/state pairs in `identityRenames`; `requiredSemantics` includes `lute.identity.renames/1` |
@@ -277,6 +278,7 @@ done
 | knowledge-negation-aggregate-recursion | `lute.core/1`, `lute.knowledge.facts/1`, `lute.knowledge.rules/1` |
 | knowledge-validity-half-open; knowledge-validAt-now | `lute.core/1`, `lute.knowledge.facts/1`, `lute.knowledge.temporal/1` |
 | lore-first-read-disclosure; lore-reread-state; lore-bundle-beat | `lute.core/1`, `lute.knowledge.facts/1`, `lute.lore/1` |
+| reward-effects | `lute.core/1`, `lute.knowledge.facts/1`, `lute.quest.lifecycle/1`, `lute.quest.rewardEffects/1`, `lute.quest.rewards/1` |
 
 Invalid engine fixtures use `engine.yaml`, an artifact, and `expected-stderr`; they must exit 2 with `E-ENGINE-SEMANTICS`, `E-ENGINE-IR-VERSION`, and `E-ENGINE-MATRIX` respectively.
 

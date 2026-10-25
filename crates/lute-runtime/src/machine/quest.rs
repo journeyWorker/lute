@@ -81,6 +81,11 @@ struct RewardRec {
     /// dsl 0.23.0 §8: `RewardEntry.credits` — the state path a grant adds
     /// its (scalar) amount to.
     credits: Option<String>,
+    /// 0.50.0 §5.5: the kind's resolved `effects` — `RewardEntry.retracts`
+    /// / `asserts` (`(relation, args)`) and `accepts` (quest ids).
+    retracts: Vec<(String, Vec<String>)>,
+    asserts: Vec<(String, Vec<String>)>,
+    accepts: Vec<String>,
 }
 
 /// dsl 0.16.0 §3 D-D: which lifecycle transition is firing declarative
@@ -1032,6 +1037,37 @@ impl<D: Driver> Machine<D> {
                 rec.insert("onFailed".into(), Json::Bool(true));
             }
             self.driver.emit(Json::Object(rec));
+            // 0.50.0 §5.3: then this reward's effects — retracts, asserts,
+            // accepts — through the one assert/retract and accept paths,
+            // each record naming the grant it follows.
+            let mut grant = serde_json::Map::new();
+            grant.insert("quest".into(), Json::String(quest_id.to_string()));
+            grant.insert("instance".into(), json!(instance));
+            grant.insert("index".into(), json!(index));
+            if let Some(oid) = objective_id {
+                grant.insert("objective".into(), Json::String(oid.to_string()));
+            }
+            grant.insert("kind".into(), Json::String(r.kind.clone()));
+            let grant = Json::Object(grant);
+            let effect_rec = || {
+                let mut rec = serde_json::Map::new();
+                rec.insert("grant".into(), grant.clone());
+                rec
+            };
+            let facts = r
+                .retracts
+                .iter()
+                .map(|f| (f, false))
+                .chain(r.asserts.iter().map(|f| (f, true)));
+            for ((rel, args), assert) in facts {
+                self.write_fact(rel, args, assert, effect_rec());
+                if self.stopped() {
+                    return;
+                }
+            }
+            for quest in &r.accepts {
+                self.accept_quest(quest.clone(), effect_rec());
+            }
         }
     }
 
@@ -1198,5 +1234,34 @@ fn parse_reward(code: &Code, r: &Json) -> RewardRec {
         when: code.slot(r.get("when")),
         outcome: r.get("outcome").and_then(Json::as_str).map(str::to_string),
         credits: r.get("credits").and_then(Json::as_str).map(str::to_string),
+        retracts: fact_records(r.get("retracts")),
+        asserts: fact_records(r.get("asserts")),
+        accepts: r
+            .get("accepts")
+            .and_then(Json::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(Json::as_str)
+            .map(str::to_string)
+            .collect(),
     }
+}
+
+/// A `RewardEntry.retracts` / `asserts` array as `(relation, args)` pairs;
+/// absent (no effect) is empty.
+fn fact_records(records: Option<&Json>) -> Vec<(String, Vec<String>)> {
+    records
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .map(|f| {
+            let rel = f.get("relation").and_then(Json::as_str).unwrap_or("");
+            let args = f
+                .get("args")
+                .and_then(Json::as_array)
+                .map(|a| a.iter().map(crate::store::json_arg_to_string).collect())
+                .unwrap_or_default();
+            (rel.to_string(), args)
+        })
+        .collect()
 }

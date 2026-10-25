@@ -392,3 +392,51 @@ fn an_objective_grant_holds_in_its_body_and_at_completion() {
         "{got:?}"
     );
 }
+
+/// 0.50.0 §5.6: at the grant the engine applies the reward's effects, and
+/// `lute play`, `lute run` and `lute trace` name the reward each effect
+/// came from. On 0.49.1 the plugin fails to load, so nothing grants.
+#[test]
+fn granted_effects_apply_and_name_their_reward() {
+    let dir = project(
+        "re-play",
+        "<quest id=\"first\" tier=\"run\" title=\"First\" start=\"true\">\n  \
+         <objective id=\"c1\" title=\"Do it\" done=\"run.flag\"/>\n  \
+         <reward kind=\"BADGE\" target=\"mira\"/>\n  \
+         <reward kind=\"OFFER_QUEST\" target=\"second\"/>\n</quest>\n\n\
+         <quest id=\"second\" tier=\"run\" title=\"Second\">\n  \
+         <objective id=\"c1\" title=\"Do it\" done=\"holds('met', ['mira'])\"/>\n</quest>\n",
+        &[(
+            "script.play.yaml",
+            "steps:\n  - engine: { state: { run.flag: true } }\n    expect: { quests: { first: \
+             complete, second: complete } }\n",
+        )],
+    );
+    let out = lute(
+        &dir,
+        &["play", "--project", ".", "--script", "script.play.yaml"],
+    );
+    let play = text(&out);
+    assert!(out.status.success(), "{play}");
+    assert!(
+        play.contains("assert met(mira)  (effect of reward BADGE)"),
+        "{play}"
+    );
+    assert!(
+        play.contains("quest second accepted  (effect of reward OFFER_QUEST)"),
+        "{play}"
+    );
+
+    let trace = text(&lute(
+        &dir,
+        &["trace", "quests/q.lute", "--state", "run.flag=true"],
+    ));
+    assert!(
+        trace.contains("::assert  met(mira)  (effect of reward BADGE)"),
+        "{trace}"
+    );
+    assert!(
+        trace.contains("quest second accepted  (effect of reward OFFER_QUEST)"),
+        "{trace}"
+    );
+}

@@ -1,0 +1,13 @@
+entities:
+  person: { members: [mira, theo] }
+relations:
+  met: { args: [person], tier: run }
+  rival: { args: [person], tier: run }
+state:
+  run.go: { type: bool, default: false }
+  run.flag: { type: bool, default: false }
+  run.fail: { type: bool, default: false }
+  run.never: { type: bool, default: false }
+  run.sawMet: { type: bool, default: false }
+  run.sawTheo: { type: bool, default: false }
+  run.scarred: { type: bool, default: false }

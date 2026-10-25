@@ -138,6 +138,10 @@ impl<'a> TraceDriver<'a> {
             self.grant(&rec);
             return;
         }
+        if let Some(grant) = rec.get("grant") {
+            self.grant_effect(&rec, &kind, grant);
+            return;
+        }
         if addr.is_empty() {
             // `quest` / `objective` / `occasion` records: the observations
             // carry what trace reports of them.
@@ -188,6 +192,7 @@ impl<'a> TraceDriver<'a> {
                 self.steps.push(Step::Assert {
                     text: str_of("fact"),
                     effect_of,
+                    grant: None,
                 });
             }
             "retract" => {
@@ -196,6 +201,7 @@ impl<'a> TraceDriver<'a> {
                 self.steps.push(Step::Retract {
                     text: str_of("pattern"),
                     effect_of,
+                    grant: None,
                 });
             }
             "skipped" => {
@@ -255,6 +261,7 @@ impl<'a> TraceDriver<'a> {
             "accept" => self.steps.push(Step::Accept {
                 quest: str_of("quest"),
                 next_run: rec.get("at").and_then(Json::as_str) == Some("nextRun"),
+                grant: None,
             }),
             "entry" => {
                 let (eligible, spent) = match self.head.take() {
@@ -517,5 +524,47 @@ impl<'a> TraceDriver<'a> {
                 value: json_text(c.get("value")),
             }),
         });
+    }
+
+    /// 0.50.0 §5.6: an `assert` / `retract` / `accept` a granted reward's
+    /// effects wrote — no `position`, its grant's identity in `grant`. A
+    /// write a later exclusivity refusal names has no authored span.
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a reward index from a runtime record, as `grant`'s"
+    )]
+    pub(crate) fn grant_effect(&mut self, rec: &Json, kind: &str, grant: &Json) {
+        let str_of = |v: &Json, k: &str| v.get(k).and_then(Json::as_str).map(str::to_string);
+        let grant = Some(report::GrantRef {
+            quest: str_of(grant, "quest").unwrap_or_default(),
+            instance: grant.get("instance").and_then(Json::as_u64).unwrap_or(0),
+            index: grant.get("index").and_then(Json::as_u64).unwrap_or(0) as usize,
+            objective: str_of(grant, "objective"),
+            kind: str_of(grant, "kind").unwrap_or_default(),
+        });
+        let text = |k: &str| str_of(rec, k).unwrap_or_default();
+        let step = match kind {
+            "assert" => Step::Assert {
+                text: text("fact"),
+                effect_of: None,
+                grant,
+            },
+            "retract" => Step::Retract {
+                text: text("pattern"),
+                effect_of: None,
+                grant,
+            },
+            "accept" => Step::Accept {
+                quest: text("quest"),
+                next_run: false,
+                grant,
+            },
+            _ => return,
+        };
+        if kind != "accept" {
+            self.last_write = None;
+            self.exclusive.clear();
+        }
+        self.steps.push(step);
     }
 }

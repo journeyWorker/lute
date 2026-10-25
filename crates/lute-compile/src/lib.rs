@@ -720,7 +720,7 @@ fn compile_inner(
         _ => None,
     };
     expand::type_occasion_target_placeholders(&mut commands, scene_kind);
-    stamp_reward_credits(&mut commands, input.snapshot());
+    stamp_reward_kinds(&mut commands, input.snapshot());
 
     if diags.iter().any(|d| d.severity == Severity::Error) {
         return Err(diags);
@@ -1439,11 +1439,18 @@ fn lore_meta(doc: &Document, folded: &FoldedEnv, snapshot: &CapabilitySnapshot) 
     }
 }
 
-/// dsl 0.23.0 §8: stamp each quest/objective reward with the `credits:`
-/// path its kind declares, so `lute run` / `lute play` (and an engine) know
-/// where a grant lands without the capability snapshot at hand.
-fn stamp_reward_credits(commands: &mut [Command], snapshot: &CapabilitySnapshot) {
-    if snapshot.reward_kinds.values().all(|k| k.credits.is_none()) {
+/// dsl 0.23.0 §8 + 0.50.0 §5.5: stamp each quest/objective reward with
+/// what its kind declares — the `credits:` path a grant adds its amount to,
+/// and the `effects` it applies (`retracts` / `asserts` with `@target`
+/// bound, the quests it `accepts`) — so `lute run` / `lute play` (and an
+/// engine) apply a grant without the capability snapshot at hand. A kind
+/// that declares neither leaves the entry as authored.
+fn stamp_reward_kinds(commands: &mut [Command], snapshot: &CapabilitySnapshot) {
+    if snapshot
+        .reward_kinds
+        .values()
+        .all(|k| k.credits.is_none() && k.effects.is_none())
+    {
         return;
     }
     for cmd in commands {
@@ -1453,10 +1460,21 @@ fn stamp_reward_credits(commands: &mut [Command], snapshot: &CapabilitySnapshot)
                 .iter_mut()
                 .chain(q.objectives.iter_mut().flat_map(|o| o.rewards.iter_mut()));
             for r in rewards {
-                r.credits = snapshot
-                    .reward_kinds
-                    .get(r.kind.trim())
-                    .and_then(|k| k.credits.clone());
+                let Some(kind) = snapshot.reward_kinds.get(r.kind.trim()) else {
+                    continue;
+                };
+                r.credits.clone_from(&kind.credits);
+                let Some(effects) = &kind.effects else {
+                    continue;
+                };
+                let target = r.target.as_deref();
+                let facts = lute_check::reward_effects::target_facts(effects, target);
+                r.retracts = lower::fact_records(&facts.retracts);
+                r.asserts = lower::fact_records(&facts.asserts);
+                r.accepts = lute_check::reward_effects::target_accepts(effects, target)
+                    .into_iter()
+                    .map(|(quest, _)| quest)
+                    .collect();
             }
         }
     }

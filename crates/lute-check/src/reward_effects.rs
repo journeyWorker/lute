@@ -161,12 +161,13 @@ pub fn kind_effects<'k>(kinds: &'k RewardKinds, reward: &Reward) -> Option<&'k R
 /// ([`crate::directive_facts::call_facts`]). A pattern reading `@target`
 /// on a reward without a quoted `target=` is not applied, so not listed.
 pub fn reward_facts(effects: &RewardEffects, reward: &Reward) -> CallFacts {
-    let resolve = |facts: &[FactEffect]| {
-        facts
-            .iter()
-            .filter_map(|f| bind(f, reward.target.as_deref()))
-            .collect()
-    };
+    target_facts(effects, reward.target.as_deref())
+}
+
+/// [`reward_facts`] for a reward whose quoted `target=` is `target` — the
+/// one resolution the compiler stamps into the IR's `RewardEntry`.
+pub fn target_facts(effects: &RewardEffects, target: Option<&str>) -> CallFacts {
+    let resolve = |facts: &[FactEffect]| facts.iter().filter_map(|f| bind(f, target)).collect();
     CallFacts {
         retracts: resolve(&effects.retracts),
         asserts: resolve(&effects.asserts),
@@ -176,11 +177,16 @@ pub fn reward_facts(effects: &RewardEffects, reward: &Reward) -> CallFacts {
 /// The quests one reward accepts, each with whether it is the reward's
 /// `target=`; an `@target` accept of a reward without one is not applied.
 pub fn reward_accepts(effects: &RewardEffects, reward: &Reward) -> Vec<(String, bool)> {
+    target_accepts(effects, reward.target.as_deref())
+}
+
+/// [`reward_accepts`] for a reward whose quoted `target=` is `target`.
+pub fn target_accepts(effects: &RewardEffects, target: Option<&str>) -> Vec<(String, bool)> {
     effects
         .accepts
         .iter()
         .filter_map(|a| match a {
-            AcceptEffect::Target => reward.target.clone().map(|t| (t, true)),
+            AcceptEffect::Target => target.map(|t| (t.to_string(), true)),
             AcceptEffect::Quest(id) => Some((id.clone(), false)),
         })
         .collect()

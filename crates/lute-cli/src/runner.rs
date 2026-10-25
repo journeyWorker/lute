@@ -1537,12 +1537,14 @@ fn print_human(m: &Machine<RunDriver>, art: &Json, artifact: &Path) {
                 json_scalar_str(e.get("value"))
             ),
             "assert" => format!(
-                "  {a}  assert {}",
-                e.get("fact").and_then(Json::as_str).unwrap_or("")
+                "  {a}  assert {}{}",
+                e.get("fact").and_then(Json::as_str).unwrap_or(""),
+                grant_note(e)
             ),
             "retract" => format!(
-                "  {a}  retract {}",
-                e.get("pattern").and_then(Json::as_str).unwrap_or("")
+                "  {a}  retract {}{}",
+                e.get("pattern").and_then(Json::as_str).unwrap_or(""),
+                grant_note(e)
             ),
             "choice" => format!(
                 "  {a}  choice [{}] -> {}",
@@ -1628,8 +1630,9 @@ fn print_human(m: &Machine<RunDriver>, art: &Json, artifact: &Path) {
                     .map(|s| format!(" ({s} — ignored)"))
                     .unwrap_or_default();
                 format!(
-                    "  {a}  quest {} accepted{ignored}",
-                    e.get("quest").and_then(Json::as_str).unwrap_or("")
+                    "  {a}  quest {} accepted{ignored}{}",
+                    e.get("quest").and_then(Json::as_str).unwrap_or(""),
+                    grant_note(e)
                 )
             }
             "occasion" => {
@@ -1727,6 +1730,17 @@ fn print_human(m: &Machine<RunDriver>, art: &Json, artifact: &Path) {
             "complete"
         }
     );
+}
+
+/// `"  (effect of reward BADGE)"` for an `assert` / `retract` / `accept`
+/// record a reward's effects wrote (0.50.0 §5.6: it carries its grant's
+/// identity, `grant`); empty for any other record.
+pub(crate) fn grant_note(rec: &Json) -> String {
+    rec.get("grant")
+        .and_then(|g| g.get("kind"))
+        .and_then(Json::as_str)
+        .map(|kind| format!("  (effect of reward {kind})"))
+        .unwrap_or_default()
 }
 
 /// The human annotation of a `plugin` transcript record (dsl 0.24.0 §5):

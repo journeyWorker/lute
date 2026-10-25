@@ -242,18 +242,17 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
             authored().unwrap_or_else(|| lowered(kind, orig))
         }
         // T1-3 / dsl 0.27.0 §4: a directive's declared effect names the call
-        // it came from.
+        // it came from; 0.50.0 §5.6: a reward's effect names its kind.
         "set" | "assert" | "retract" => {
             // ML-F8: `--quiet` drops a `set` that only restates the bridge
             // answer its call's line already shows.
             if cmds.quiet && rec.get("bridgeResult").is_some() {
                 return None;
             }
-            let effect = rec
-                .get("effectOf")
-                .and_then(Json::as_str)
-                .map(|tag| format!("  (effect of ::{tag})"))
-                .unwrap_or_default();
+            let effect = rec.get("effectOf").and_then(Json::as_str).map_or_else(
+                || crate::runner::grant_note(rec),
+                |tag| format!("  (effect of ::{tag})"),
+            );
             match kind {
                 "set" => format!(
                     "  set {} = {}{effect}",
@@ -376,8 +375,9 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
                 ""
             };
             format!(
-                "  quest {} accepted{engine}{ignored}{queued}",
-                str_of(rec, "quest")
+                "  quest {} accepted{engine}{ignored}{queued}{}",
+                str_of(rec, "quest"),
+                crate::runner::grant_note(rec)
             )
         }
         // dsl 0.23.0 §2 / 0.24.0 §2.1: the objective's `by` (or `until`)

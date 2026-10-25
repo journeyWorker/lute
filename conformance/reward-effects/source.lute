@@ -1,0 +1,37 @@
+---
+kind: quest
+id: rewardEffects
+luteVersion: "0.49.1"
+title: Reward Effects
+uses: ./schema.yaml
+---
+<quest id="first" title="First" tier="run" start="true">
+  <objective id="greet" title="Greet" done="run.go">
+    <reward kind="BADGE" target="theo"/>
+  </objective>
+  <reward kind="REVOKE" target="theo"/>
+  <reward kind="BADGE" target="mira"/>
+  <reward kind="SCAR" target="theo" when="run.flag"/>
+  <reward kind="OFFER" target="helper"/>
+  <reward kind="OFFER" target="second"/>
+  <on event="questComplete">
+    ::set{run.sawMet=holds('met', ['mira'])}
+    ::set{run.sawTheo=holds('met', ['theo'])}
+  </on>
+</quest>
+
+<quest id="second" title="Second" tier="run">
+  <objective id="finish" title="Finish" done="run.go"/>
+</quest>
+
+<quest id="helper" title="Helper" tier="run">
+  <objective id="wait" title="Wait" done="run.never"/>
+</quest>
+
+<quest id="doomed" title="Doomed" tier="run" start="true" fail="run.fail">
+  <objective id="hold" title="Hold" done="run.never"/>
+  <reward kind="SCAR" target="mira" outcome="failed"/>
+  <on event="questFailed">
+    ::set{run.scarred=holds('rival', ['mira'])}
+  </on>
+</quest>

@@ -472,7 +472,9 @@ state:
         .steps
         .iter()
         .filter_map(|s| match s {
-            Step::Accept { quest, next_run } => Some((quest.as_str(), *next_run)),
+            Step::Accept {
+                quest, next_run, ..
+            } => Some((quest.as_str(), *next_run)),
             _ => None,
         })
         .collect();

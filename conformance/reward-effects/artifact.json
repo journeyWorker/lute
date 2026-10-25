@@ -1,0 +1,494 @@
+{
+  "kind": "quest",
+  "lute": "0.49.1",
+  "irVersion": "0.49.1",
+  "capabilitySnapshot": "5bc59d5ea06aca468994b8342b3b62c63338852a081cbb97cb1befd0cf73f5a8",
+  "requiredSemantics": [
+    "lute.core/1",
+    "lute.knowledge.facts/1",
+    "lute.quest.lifecycle/1",
+    "lute.quest.rewardEffects/1",
+    "lute.quest.rewards/1"
+  ],
+  "meta": {
+    "id": "rewardEffects",
+    "title": "Reward Effects"
+  },
+  "state": [
+    {
+      "path": "quest.doomed.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:doomed"
+    },
+    {
+      "path": "quest.doomed.objectives.hold.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:doomed"
+    },
+    {
+      "path": "quest.doomed.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:doomed"
+    },
+    {
+      "path": "quest.first.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:first"
+    },
+    {
+      "path": "quest.first.objectives.greet.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:first"
+    },
+    {
+      "path": "quest.first.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:first"
+    },
+    {
+      "path": "quest.helper.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:helper"
+    },
+    {
+      "path": "quest.helper.objectives.wait.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:helper"
+    },
+    {
+      "path": "quest.helper.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:helper"
+    },
+    {
+      "path": "quest.second.activatedAt",
+      "type": "narrativeTime",
+      "provenance": "quest:second"
+    },
+    {
+      "path": "quest.second.objectives.finish.done",
+      "type": "bool",
+      "default": false,
+      "provenance": "quest:second"
+    },
+    {
+      "path": "quest.second.state",
+      "type": "enum",
+      "domain": [
+        "active",
+        "complete",
+        "failed",
+        "unset"
+      ],
+      "provenance": "quest:second"
+    },
+    {
+      "path": "run.fail",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.flag",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.go",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.never",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.sawMet",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.sawTheo",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "run.scarred",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "entities": [
+    {
+      "name": "person",
+      "members": [
+        "mira",
+        "theo"
+      ],
+      "open": false
+    }
+  ],
+  "relations": [
+    {
+      "name": "met",
+      "args": [
+        "person"
+      ],
+      "tier": "run",
+      "derive": false,
+      "reserved": false
+    },
+    {
+      "name": "rival",
+      "args": [
+        "person"
+      ],
+      "tier": "run",
+      "derive": false,
+      "reserved": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "quest",
+      "family": "declaration",
+      "position": "001-0100",
+      "id": "first",
+      "title": "First",
+      "titleLineId": "first.title",
+      "start": {
+        "cel": "true",
+        "expr": {
+          "bool": true
+        }
+      },
+      "objectives": [
+        {
+          "id": "greet",
+          "title": "Greet",
+          "titleLineId": "first.greet",
+          "done": {
+            "cel": "run.go",
+            "expr": {
+              "path": "run.go"
+            }
+          },
+          "optional": false,
+          "body": null,
+          "rewards": [
+            {
+              "kind": "BADGE",
+              "target": "theo",
+              "amount": 1,
+              "asserts": [
+                {
+                  "relation": "met",
+                  "args": [
+                    "theo"
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "rewards": [
+        {
+          "kind": "REVOKE",
+          "target": "theo",
+          "amount": 1,
+          "retracts": [
+            {
+              "relation": "met",
+              "args": [
+                "theo"
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "BADGE",
+          "target": "mira",
+          "amount": 1,
+          "asserts": [
+            {
+              "relation": "met",
+              "args": [
+                "mira"
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "SCAR",
+          "target": "theo",
+          "amount": 1,
+          "when": {
+            "cel": "run.flag",
+            "expr": {
+              "path": "run.flag"
+            }
+          },
+          "asserts": [
+            {
+              "relation": "rival",
+              "args": [
+                "theo"
+              ]
+            }
+          ]
+        },
+        {
+          "kind": "OFFER",
+          "target": "helper",
+          "amount": 1,
+          "accepts": [
+            "helper"
+          ]
+        },
+        {
+          "kind": "OFFER",
+          "target": "second",
+          "amount": 1,
+          "accepts": [
+            "second"
+          ]
+        }
+      ],
+      "tier": "run"
+    },
+    {
+      "kind": "on",
+      "family": "declaration",
+      "position": "001-0200",
+      "event": "questComplete",
+      "body": "001-0300"
+    },
+    {
+      "kind": "set",
+      "family": "state",
+      "position": "001-0300",
+      "path": "run.sawMet",
+      "op": "=",
+      "value": {
+        "cel": "holds('met', ['mira'])",
+        "expr": {
+          "call": "holds",
+          "args": [
+            {
+              "string": "met"
+            },
+            {
+              "list": [
+                {
+                  "string": "mira"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "kind": "set",
+      "family": "state",
+      "position": "001-0400",
+      "path": "run.sawTheo",
+      "op": "=",
+      "value": {
+        "cel": "holds('met', ['theo'])",
+        "expr": {
+          "call": "holds",
+          "args": [
+            {
+              "string": "met"
+            },
+            {
+              "list": [
+                {
+                  "string": "theo"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    {
+      "kind": "quest",
+      "family": "declaration",
+      "position": "002-0100",
+      "id": "second",
+      "title": "Second",
+      "titleLineId": "second.title",
+      "objectives": [
+        {
+          "id": "finish",
+          "title": "Finish",
+          "titleLineId": "second.finish",
+          "done": {
+            "cel": "run.go",
+            "expr": {
+              "path": "run.go"
+            }
+          },
+          "optional": false,
+          "body": null
+        }
+      ],
+      "tier": "run"
+    },
+    {
+      "kind": "quest",
+      "family": "declaration",
+      "position": "003-0100",
+      "id": "helper",
+      "title": "Helper",
+      "titleLineId": "helper.title",
+      "objectives": [
+        {
+          "id": "wait",
+          "title": "Wait",
+          "titleLineId": "helper.wait",
+          "done": {
+            "cel": "run.never",
+            "expr": {
+              "path": "run.never"
+            }
+          },
+          "optional": false,
+          "body": null
+        }
+      ],
+      "tier": "run"
+    },
+    {
+      "kind": "quest",
+      "family": "declaration",
+      "position": "004-0100",
+      "id": "doomed",
+      "title": "Doomed",
+      "titleLineId": "doomed.title",
+      "start": {
+        "cel": "true",
+        "expr": {
+          "bool": true
+        }
+      },
+      "fail": {
+        "cel": "run.fail",
+        "expr": {
+          "path": "run.fail"
+        }
+      },
+      "objectives": [
+        {
+          "id": "hold",
+          "title": "Hold",
+          "titleLineId": "doomed.hold",
+          "done": {
+            "cel": "run.never",
+            "expr": {
+              "path": "run.never"
+            }
+          },
+          "optional": false,
+          "body": null
+        }
+      ],
+      "rewards": [
+        {
+          "kind": "SCAR",
+          "target": "mira",
+          "amount": 1,
+          "outcome": "failed",
+          "asserts": [
+            {
+              "relation": "rival",
+              "args": [
+                "mira"
+              ]
+            }
+          ]
+        }
+      ],
+      "tier": "run"
+    },
+    {
+      "kind": "on",
+      "family": "declaration",
+      "position": "004-0200",
+      "event": "questFailed",
+      "body": "004-0300"
+    },
+    {
+      "kind": "set",
+      "family": "state",
+      "position": "004-0300",
+      "path": "run.scarred",
+      "op": "=",
+      "value": {
+        "cel": "holds('rival', ['mira'])",
+        "expr": {
+          "call": "holds",
+          "args": [
+            {
+              "string": "rival"
+            },
+            {
+              "list": [
+                {
+                  "string": "mira"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": [
+      {
+        "name": "holds",
+        "overloads": [
+          {
+            "params": [
+              "string",
+              "list(dyn)"
+            ],
+            "result": "bool"
+          }
+        ]
+      }
+    ]
+  }
+}

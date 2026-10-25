@@ -386,6 +386,68 @@ fn grant_identity_fields_are_recorded() {
     }
 }
 
+/// 0.50.0 §5.6: the `reward-effects` fixture's eight cases. Every effect
+/// record names the grant record right before it (its own
+/// `(quest, instance, index, objective?)` plus the reward's kind) and has
+/// no `position`; the `when=` false reward grants nothing.
+#[test]
+fn reward_effect_records_follow_their_grant() {
+    let transcript = json_at(&corpus_dir().join("reward-effects").join("expected.json"));
+    let commands = transcript["commands"].as_array().unwrap();
+    let mut last_grant: Option<&serde_json::Value> = None;
+    let mut effects = Vec::new();
+    for c in commands {
+        if c["kind"] == "grant" {
+            last_grant = Some(c);
+            continue;
+        }
+        let Some(id) = c.get("grant") else {
+            continue;
+        };
+        let grant = last_grant.expect("an effect record follows a grant");
+        assert!(c.get("position").is_none(), "{c}");
+        for key in ["quest", "instance", "index", "objective"] {
+            assert_eq!(id.get(key), grant.get(key), "{key}: {c}");
+        }
+        assert_eq!(id["kind"], grant["reward"]["kind"], "{c}");
+        let what = c
+            .get("fact")
+            .or_else(|| c.get("pattern"))
+            .or_else(|| c.get("quest"))
+            .and_then(serde_json::Value::as_str)
+            .unwrap();
+        let ignored = c.get("ignored").and_then(serde_json::Value::as_str);
+        effects.push((
+            c["kind"].as_str().unwrap().to_string(),
+            what.to_string(),
+            ignored,
+        ));
+    }
+    let want: Vec<(String, String, Option<&str>)> = [
+        ("assert", "met(theo)", None),
+        ("retract", "met(theo)", None),
+        ("assert", "met(mira)", None),
+        ("accept", "helper", Some("already active")),
+        ("accept", "second", None),
+        ("assert", "rival(mira)", None),
+    ]
+    .into_iter()
+    .map(|(k, w, i)| (k.to_string(), w.to_string(), i))
+    .collect();
+    assert_eq!(effects, want);
+    assert!(
+        !commands.iter().any(|c| c["kind"] == "grant"
+            && c["reward"]["kind"] == "SCAR"
+            && c["quest"] == "first"),
+        "the `when=` false reward grants nothing"
+    );
+    let state = &transcript["state"];
+    assert_eq!(state["run.sawMet"], true, "{state}");
+    assert_eq!(state["run.sawTheo"], false, "{state}");
+    assert_eq!(state["run.scarred"], true, "{state}");
+    assert_eq!(state["quest.second.state"], "complete", "{state}");
+}
+
 /// Engine-matrix invalid fixtures are intentionally not replay fixtures: they
 /// exercise the loader gate before a transcript can be produced.
 #[test]

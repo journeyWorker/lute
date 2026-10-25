@@ -2221,9 +2221,9 @@ impl ForeignQuestStart {
             .get(id)
             .map(|s| s.trim_matches(['\'', '"']).to_string());
         let accepted = self.accepted.iter().any(|a| a == id)
-            || report.steps.iter().any(
-                |s| matches!(s, lute_trace::Step::Accept { quest, next_run: false } if quest == id),
-            );
+            || report.steps.iter().any(|s| {
+                matches!(s, lute_trace::Step::Accept { quest, next_run: false, .. } if quest == id)
+            });
         let state = match seeded {
             Some(s) if s != "unset" => s,
             _ if accepted => "active".to_string(),

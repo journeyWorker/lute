@@ -620,6 +620,9 @@ fn reward_entry_scalar_serializes_per_spec() {
         when: None,
         outcome: None,
         credits: None,
+        retracts: vec![],
+        asserts: vec![],
+        accepts: vec![],
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
@@ -639,6 +642,9 @@ fn reward_entry_range_serializes_amount_min_and_max() {
         when: Some(CelPair::from_raw("run.freed")),
         outcome: None,
         credits: None,
+        retracts: vec![],
+        asserts: vec![],
+        accepts: vec![],
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
@@ -661,10 +667,41 @@ fn reward_entry_on_failed_serializes_only_when_quest_level() {
         when: None,
         outcome: Some("failed".into()),
         credits: None,
+        retracts: vec![],
+        asserts: vec![],
+        accepts: vec![],
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
         r#"{"kind":"TROPHY","target":"halsin","amount":1,"outcome":"failed"}"#
+    );
+}
+
+/// 0.50.0 §5.5: a reward kind's resolved effects follow `credits`, in
+/// `retracts`, `asserts`, `accepts` order, each omitted when empty.
+#[test]
+fn reward_entry_effects_follow_credits() {
+    let fact = |relation: &str, arg: &str| lute_compile::ir::FactRecord {
+        relation: relation.into(),
+        args: vec![arg.into()],
+    };
+    let r = RewardEntry {
+        id: None,
+        kind: "BADGE".into(),
+        target: Some("mira".into()),
+        amount: Some(1),
+        amount_min: None,
+        amount_max: None,
+        when: None,
+        outcome: None,
+        credits: Some("run.badges".into()),
+        retracts: vec![fact("rival", "mira")],
+        asserts: vec![fact("met", "mira")],
+        accepts: vec!["second".into()],
+    };
+    assert_eq!(
+        serde_json::to_string(&r).unwrap(),
+        r#"{"kind":"BADGE","target":"mira","amount":1,"credits":"run.badges","retracts":[{"relation":"rival","args":["mira"]}],"asserts":[{"relation":"met","args":["mira"]}],"accepts":["second"]}"#
     );
 }
 

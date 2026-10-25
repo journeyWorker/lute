@@ -188,6 +188,24 @@ fn fact_term_string(t: &lute_manifest::fact::FactTerm) -> String {
     }
 }
 
+/// Resolved fact patterns as the IR's `{ relation, args }` records (a
+/// plugin call's or a reward's declared `retracts` / `asserts`). A pattern
+/// whose `@attr` stayed unbound is not written.
+pub(crate) fn fact_records(patterns: &[lute_manifest::fact::FactPattern]) -> Vec<FactRecord> {
+    patterns
+        .iter()
+        .filter(|p| {
+            !p.args
+                .iter()
+                .any(|a| matches!(a.term, lute_manifest::fact::FactTerm::Param(_)))
+        })
+        .map(|p| FactRecord {
+            relation: p.relation.clone(),
+            args: p.args.iter().map(|a| fact_term_string(&a.term)).collect(),
+        })
+        .collect()
+}
+
 /// A fact pattern as authored text: `rel(a, b)` (`lute trace`'s form).
 pub(crate) fn fact_text(pattern: &lute_manifest::fact::FactPattern) -> String {
     let args: Vec<String> = pattern
@@ -502,19 +520,6 @@ pub fn lower_directive(
             let facts = decl
                 .map(|d| lute_check::directive_facts::call_facts(d, dir))
                 .unwrap_or_default();
-            let records = |ps: &[lute_manifest::fact::FactPattern]| -> Vec<FactRecord> {
-                ps.iter()
-                    .filter(|p| {
-                        !p.args
-                            .iter()
-                            .any(|a| matches!(a.term, lute_manifest::fact::FactTerm::Param(_)))
-                    })
-                    .map(|p| FactRecord {
-                        relation: p.relation.clone(),
-                        args: p.args.iter().map(|a| fact_term_string(&a.term)).collect(),
-                    })
-                    .collect()
-            };
             Command::Plugin(PluginCmd {
                 position: String::new(),
                 tag: dir.tag.clone(),
@@ -524,8 +529,8 @@ pub fn lower_directive(
                     .map(str::to_owned),
                 fields,
                 effects,
-                retracts: records(&facts.retracts),
-                asserts: records(&facts.asserts),
+                retracts: fact_records(&facts.retracts),
+                asserts: fact_records(&facts.asserts),
                 stamp,
             })
         }

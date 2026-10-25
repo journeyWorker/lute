@@ -1940,6 +1940,19 @@ pub struct RewardEntry {
     /// at compile; omitted when the kind credits nothing.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub credits: Option<String>,
+    /// 0.50.0 §5.5: the facts the reward kind's `effects.retracts` names,
+    /// `@target` bound to `target` (a pattern left unbound is not written).
+    /// Stamped at compile; applied at the grant, before `asserts`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub retracts: Vec<FactRecord>,
+    /// 0.50.0 §5.5: the facts the kind's `effects.asserts` names, applied
+    /// after `retracts`.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub asserts: Vec<FactRecord>,
+    /// 0.50.0 §5.5: the quest ids the kind's `effects.accepts` resolves to,
+    /// applied after the facts through `::accept`'s path.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub accepts: Vec<String>,
 }
 
 impl RewardEntry {
@@ -1976,6 +1989,9 @@ impl RewardEntry {
             when: reward.when.as_ref().map(CelPair::from_slot),
             outcome,
             credits: None,
+            retracts: Vec::new(),
+            asserts: Vec::new(),
+            accepts: Vec::new(),
         }
     }
 }

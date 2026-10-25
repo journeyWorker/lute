@@ -29,14 +29,25 @@ impl<D: Driver> Machine<D> {
             .to_string();
         let mut rec = serde_json::Map::new();
         rec.insert("position".into(), Json::String(addr(cmd).to_string()));
-        rec.insert("kind".into(), Json::String("accept".into()));
-        rec.insert("quest".into(), Json::String(quest.clone()));
         if cmd.get("applies").and_then(Json::as_str) == Some("nextRun") {
+            rec.insert("kind".into(), Json::String("accept".into()));
+            rec.insert("quest".into(), Json::String(quest.clone()));
             rec.insert("at".into(), Json::String("nextRun".into()));
             self.driver.emit(Json::Object(rec));
             self.accepted_next_run.push(quest);
             return;
         }
+        self.accept_quest(quest, rec);
+    }
+
+    /// The one accept path (`::accept`, a host answer's `accept`, a reward
+    /// effect): `rec` — the caller's identifying keys — gains `kind`,
+    /// `quest` and, for a quest this walk already knows past `unset`,
+    /// `ignored`; it is emitted and the id is accepted (an accept-driven
+    /// quest of this artifact activates on the next lifecycle round).
+    pub(crate) fn accept_quest(&mut self, quest: String, mut rec: serde_json::Map<String, Json>) {
+        rec.insert("kind".into(), Json::String("accept".into()));
+        rec.insert("quest".into(), Json::String(quest.clone()));
         if let Some(state) = self
             .quest_status
             .get(&quest)
@@ -46,6 +57,33 @@ impl<D: Driver> Machine<D> {
         }
         self.driver.emit(Json::Object(rec));
         self.accepted.push(quest);
+    }
+
+    /// The one assert/retract path (`::assert` / `::retract`, a plugin
+    /// call's declared or host fact effects, a reward effect): the store
+    /// write, then `rec` — the caller's identifying keys, gaining `kind` and
+    /// `fact` / `pattern` — then the exclusivity check (dsl 0.25.0 §1). A
+    /// retract's `_` positions are a bulk wildcard over the ground positions.
+    pub(crate) fn write_fact(
+        &mut self,
+        rel: &str,
+        args: &[String],
+        assert: bool,
+        mut rec: serde_json::Map<String, Json>,
+    ) {
+        let before = self.store.exclusive_now();
+        let text = render_fact(rel, args);
+        if assert {
+            self.store.assert((rel.to_string(), args.to_vec()));
+            rec.insert("kind".into(), json!("assert"));
+            rec.insert("fact".into(), json!(text));
+        } else {
+            self.store.retract(rel, args);
+            rec.insert("kind".into(), json!("retract"));
+            rec.insert("pattern".into(), json!(text));
+        }
+        self.driver.emit(Json::Object(rec));
+        self.exclusive_check(&before);
     }
 
     /// An accept-driven quest's activation signal: a mock `accepts:` entry
@@ -348,32 +386,20 @@ impl<D: Driver> Machine<D> {
     }
 
     pub(crate) fn exec_assert(&mut self, cmd: &Json) {
-        let Some((rel, args)) = self.fact_of(cmd) else {
-            return;
-        };
-        let before = self.store.exclusive_now();
-        self.store.assert((rel.clone(), args.clone()));
-        self.driver.emit(json!({
-            "position": addr(cmd),
-            "kind": "assert",
-            "fact": render_fact(&rel, &args),
-        }));
-        self.exclusive_check(&before);
+        self.exec_fact(cmd, true);
     }
 
     pub(crate) fn exec_retract(&mut self, cmd: &Json) {
+        self.exec_fact(cmd, false);
+    }
+
+    fn exec_fact(&mut self, cmd: &Json, assert: bool) {
         let Some((rel, args)) = self.fact_of(cmd) else {
             return;
         };
-        let before = self.store.exclusive_now();
-        // `_` positions are a bulk wildcard over the ground positions.
-        self.store.retract(&rel, &args);
-        self.driver.emit(json!({
-            "position": addr(cmd),
-            "kind": "retract",
-            "pattern": render_fact(&rel, &args),
-        }));
-        self.exclusive_check(&before);
+        let mut rec = serde_json::Map::new();
+        rec.insert("position".into(), Json::String(addr(cmd).to_string()));
+        self.write_fact(&rel, &args, assert, rec);
     }
 
     /// dsl 0.25.0 §1: a write that made exclusive relations hold together —
