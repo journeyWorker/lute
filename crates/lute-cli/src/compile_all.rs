@@ -195,8 +195,42 @@ pub fn run(
         })
         .collect();
     if !project_errors.is_empty() {
-        for (_, diagnostic) in project_errors {
-            eprintln!("lute compile: {}", diagnostic.text());
+        // A promoted project diagnostic (dsl 0.50.0 §6.3) is reported as the
+        // policy shows it — code, severity and marker, and in `--json` the
+        // COMPILE envelope; a native project error keeps its line.
+        let promoted = project_errors
+            .iter()
+            .any(|(path, d)| policy.promoted(d, path));
+        if json && promoted {
+            let mut diagnostics = Vec::new();
+            for (path, d) in &project_errors {
+                match diagnostics_json(std::slice::from_ref(d), path, policy) {
+                    Ok((values, _)) => diagnostics.extend(values),
+                    Err(e) => {
+                        eprintln!("lute: failed to serialize diagnostics: {e}");
+                        return ExitCode::from(2);
+                    }
+                }
+            }
+            let payload = json!({ "diagnostics": diagnostics });
+            let wrapped = envelope::report(envelope::version::COMPILE, 1, payload);
+            match serde_json::to_string_pretty(&wrapped) {
+                Ok(s) => println!("{s}"),
+                Err(e) => {
+                    eprintln!("lute: failed to serialize diagnostics: {e}");
+                    return ExitCode::from(2);
+                }
+            }
+        }
+        for (path, diagnostic) in &project_errors {
+            if policy.promoted(diagnostic, path) {
+                eprint!(
+                    "{}",
+                    render_diagnostics(path, std::slice::from_ref(diagnostic), policy)
+                );
+            } else {
+                eprintln!("lute compile: {}", diagnostic.text());
+            }
         }
         eprintln!("lute compile: project diagnostics prevent output");
         return ExitCode::FAILURE;

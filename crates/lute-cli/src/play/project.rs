@@ -26,10 +26,10 @@ fn project_rel(path: &Path, root: &Path) -> Option<String> {
 }
 
 /// What a command that compiles the project passes the build: the provider
-/// directory, the permission profile and the severity policy — the
-/// `--deny`/`--deny-warnings` options (0.48.0 §2.2) plus the project's
-/// `diagnostics:` levels (0.50.0 §6). The default is the manifest's own
-/// catalog, no profile, no promotion.
+/// directory, the permission profile and the `--deny`/`--deny-warnings`
+/// policy (0.48.0 §2.2). It carries no project `diagnostics:` levels: `play`,
+/// `test` and `calendar` simulate on native results (0.50.0 §6.2). The
+/// default is the manifest's own catalog, no profile, no promotion.
 #[derive(Clone, Default)]
 pub(crate) struct Build<'a> {
     pub providers: Option<&'a Path>,

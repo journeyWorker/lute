@@ -363,6 +363,14 @@ fn a_reward_retract_removes_the_fact() {
     };
     let got = check(&objective("re-must-kept", ""));
     assert_eq!(guaranteed(&got), ["quests/q.lute:10"], "{got:?}");
+    // A reward asserting a fact already Must leaves it Must with its own
+    // provenance: the `done` guard at line 7, never the grant (`:0`).
+    let regranted = check(&objective(
+        "re-must-regrant",
+        "<reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>",
+    ));
+    assert_eq!(regranted, got, "{regranted:?}");
+    assert!(got[0].contains("q.lute:7"), "{got:?}");
     let got = check(&objective(
         "re-must-revoke",
         "<reward kind=\"REVOKE\" amount=\"1\" target=\"mira\"/>",

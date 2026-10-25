@@ -1136,15 +1136,14 @@ impl<'a> Walk<'a> {
 
     /// Remove from `flow` every fact one write may remove: what a retract
     /// matches, and what an assert displaces (it may run), keeping nothing
-    /// an assert would add.
+    /// an assert would add. What stays keeps its own provenance: the assert
+    /// is applied to a copy, which only decides membership.
     fn remove_write(&self, pattern: &FactPattern, assert: bool, flow: &mut Flow) {
         if assert {
-            let Some(before) = flow.clone() else {
-                return;
-            };
-            self.assert_pattern(pattern, 0, flow);
-            if let Some(after) = flow.as_mut() {
-                after.retain(|g| before.contains_key(g));
+            let mut after = flow.clone();
+            self.assert_pattern(pattern, 0, &mut after);
+            if let (Some(facts), Some(after)) = (flow.as_mut(), after) {
+                facts.retain(|g| after.contains_key(g));
             }
         } else {
             self.retract_pattern(pattern, flow);

@@ -202,6 +202,27 @@ fn deny_and_deny_warnings_against_the_config() {
     );
 }
 
+/// §6.2: levels never change what a `.test.yaml` expectation observes — a
+/// project `error` level does not refuse the test's trace.
+#[test]
+fn an_error_level_does_not_refuse_a_test_trace() {
+    let dir = project("dl-test", "  W-STAGE-ABSENT: error\n");
+    std::fs::create_dir_all(dir.join("tests")).unwrap();
+    std::fs::write(
+        dir.join("tests/a.test.yaml"),
+        "file: ../scenes/a.lute\nexpect:\n  transcriptContains: [\"@vesna: Gone.\"]\n",
+    )
+    .unwrap();
+    let out = lute(&dir, &["test"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
 /// #204: `compile` gates on a `--deny`/`--deny-warnings`-promoted check
 /// warning, as its help says. 0.49.1 emitted the IR with exit 0.
 #[test]
@@ -287,5 +308,142 @@ fn a_checker_code_in_lint_rules_points_at_the_project_manifest() {
             "`E-UNKNOWN-ATTR` is a checker code, not a lint rule — an error cannot be re-levelled"
         ),
         "{text}"
+    );
+}
+
+/// A plugin project (occasion `go`, two cast members both named `Old Ned`)
+/// whose scene `a` answers `go` with a `W-STAGE-ABSENT` and, with `b`, raises
+/// the project-wide `W-DISPLAY-NAME-DUP`; `plays/p.play.yaml` plays `go`.
+fn plugin_project(tag: &str, diagnostics: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
+    let write = |rel: &str, text: &str| {
+        let path = dir.join(rel);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    };
+    write(
+        "plugins/p/plugin.yaml",
+        "id: p\nversion: 0.1.0\nkind: capability\ndepends: [ { id: lute.core, range: \"^0.0.1\" } \
+         ]\nexports:\n  occasions: occasions/\n  cast: cast/\n",
+    );
+    write(
+        "plugins/p/occasions/o.yaml",
+        "occasions:\n  go: { select: first }\n",
+    );
+    write(
+        "plugins/p/cast/c.yaml",
+        "cast:\n  oldNed: { name: Old Ned }\n  fisherNed: { name: Old Ned }\n  vesna: { name: \
+         Vesna }\n",
+    );
+    write(
+        "lute.project.yaml",
+        &format!(
+            "pluginsDir: plugins/\ndefaultProfile: base\nprofiles:\n  base: {{ plugins: {{ p: \
+             true }} }}\ndiagnostics:\n{diagnostics}"
+        ),
+    );
+    write(
+        "scenes/a.lute",
+        "---\nkind: scene\nid: a\non: go\nenums:\n  action:\n    members: [show, hide]\n    \
+         exits: [hide]\n  anchor:\n    members: [left, center, right]\n    default: center\n\
+         ---\n\n## Shot 1.\n\n@oldNed: Hi.\n::actor{character=\"vesna\" action=\"show\"}\n\
+         ::actor{character=\"vesna\" action=\"hide\"}\n@vesna: Gone.\n",
+    );
+    write(
+        "scenes/b.lute",
+        "---\nkind: scene\nid: b\n---\n\n## Shot 1.\n\n@fisherNed: Hello.\n",
+    );
+    write(
+        "plays/p.play.yaml",
+        "steps:\n  - occasion: go\n    expect: { winner: a }\n",
+    );
+    dir
+}
+
+/// §6.2: a simulation runs on native results — a project `error` level
+/// fails neither `lute play` nor a `.play.yaml` under `lute test`.
+#[test]
+fn an_error_level_does_not_refuse_a_play() {
+    let dir = plugin_project(
+        "dl-play",
+        "  W-STAGE-ABSENT: error\n  W-DISPLAY-NAME-DUP: error\n",
+    );
+    let out = lute(&dir, &["play", "--script", "plays/p.play.yaml"]);
+    let text = stdout(&out);
+    assert_eq!(out.status.code(), Some(0), "{text}");
+    assert!(text.contains("@vesna: Gone."), "{text}");
+    // `lute test` (the `.play.yaml` plus a trace of the promoted document):
+    // results and exit code identical to the same project without levels —
+    // project levels gate `check`/`compile`; tests are not a second gate.
+    std::fs::create_dir_all(dir.join("tests")).unwrap();
+    let trace = "file: ../scenes/a.lute\nexpect:\n  transcriptContains: [\"@vesna: Gone.\"]\n";
+    std::fs::write(dir.join("tests/a.test.yaml"), trace).unwrap();
+    let plain = plugin_project("dl-play-plain", "");
+    std::fs::create_dir_all(plain.join("tests")).unwrap();
+    std::fs::write(plain.join("tests/a.test.yaml"), trace).unwrap();
+    let out = lute(&dir, &["test"]);
+    let baseline = lute(&plain, &["test"]);
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "{}{}",
+        stdout(&out),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert_eq!(out.status.code(), baseline.status.code());
+    assert_eq!(stdout(&out), stdout(&baseline));
+    // `--deny` still refuses before the simulation, as in 0.49.1.
+    let out = lute(
+        &dir,
+        &[
+            "play",
+            "--script",
+            "plays/p.play.yaml",
+            "--deny",
+            "W-STAGE-ABSENT",
+        ],
+    );
+    assert_eq!(out.status.code(), Some(1), "{}", stdout(&out));
+}
+
+/// §6.3: a project-wide diagnostic a project level promotes fails
+/// `compile -o` and is reported as the policy shows it: `[project]` in the
+/// human line, the COMPILE envelope with `configured` under `--json`.
+#[test]
+fn a_promoted_project_wide_diagnostic_fails_compile_with_its_report() {
+    let dir = plugin_project("dl-project-wide", "  W-DISPLAY-NAME-DUP: error\n");
+    let out = lute(&dir, &["compile", "-o", "out"]);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(1), "{err}");
+    assert!(
+        err.contains("error [W-DISPLAY-NAME-DUP] [project] display name `Old Ned`"),
+        "{err}"
+    );
+    let out = lute(&dir, &["compile", "-o", "out", "--json"]);
+    assert_eq!(out.status.code(), Some(1));
+    let report = json(&out);
+    assert_eq!(report["command"], "compile");
+    let diag = &report["diagnostics"][0];
+    assert_eq!(diag["code"], "W-DISPLAY-NAME-DUP");
+    assert_eq!(diag["severity"], "error");
+    assert_eq!(diag["configured"], "lute.project.yaml");
+}
+
+/// `lute lint` reports the checker's `W-DISPLAY-NAME-DUP`; the project's
+/// level applies there too, and the summary counts what it suppressed.
+#[test]
+fn lint_applies_the_project_level_to_the_checker_warning() {
+    let dir = plugin_project("dl-lint-level", "  W-DISPLAY-NAME-DUP: off\n");
+    let out = lute(&dir, &["lint", "."]);
+    let text = stdout(&out);
+    assert!(!text.contains("[W-DISPLAY-NAME-DUP]"), "{text}");
+    assert!(
+        text.contains(", 1 suppressed by lute.project.yaml)"),
+        "{text}"
+    );
+    let report = json(&lute(&dir, &["lint", ".", "--json"]));
+    assert_eq!(
+        report["suppressed"],
+        serde_json::json!({ "W-DISPLAY-NAME-DUP": 1 })
     );
 }

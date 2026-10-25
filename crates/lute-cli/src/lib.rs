@@ -521,11 +521,12 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                 ir,
                 quiet,
                 conditions_output: conditions_output.as_deref(),
+                // dsl 0.50.0 §6.2: a simulation runs on native results, so
+                // `play` gates on `--deny`/`--deny-warnings` only.
                 build: play::Build {
                     providers: providers.providers.as_deref(),
                     permission_profile: permission_profile.permission_profile.as_deref(),
-                    policy: SeverityPolicy::new(&gate.deny, gate.deny_warnings)
-                        .for_project(Some(dir.as_path())),
+                    policy: SeverityPolicy::new(&gate.deny, gate.deny_warnings),
                 },
             }),
             Err(code) => code,
@@ -546,11 +547,13 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                 json: json.json,
                 coverage,
                 no_derive,
+                // dsl 0.50.0 §6.2: project levels never change what a
+                // `.test.yaml` expectation observes, so `lute test` gates
+                // on `--deny`/`--deny-warnings` only.
                 build: play::Build {
                     providers: providers.providers.as_deref(),
                     permission_profile: permission_profile.permission_profile.as_deref(),
-                    policy: SeverityPolicy::new(&gate.deny, gate.deny_warnings)
-                        .for_project(Some(dir.as_path())),
+                    policy: SeverityPolicy::new(&gate.deny, gate.deny_warnings),
                 },
             }),
             Err(code) => code,
@@ -671,8 +674,7 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                         build: play::Build {
                             providers: providers.providers.as_deref(),
                             permission_profile: permission_profile.permission_profile.as_deref(),
-                            policy: SeverityPolicy::new(&gate.deny, gate.deny_warnings)
-                                .for_project(Some(dir.as_path())),
+                            policy: SeverityPolicy::new(&gate.deny, gate.deny_warnings),
                         },
                     },
                 ),

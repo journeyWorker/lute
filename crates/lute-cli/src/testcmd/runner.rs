@@ -1197,9 +1197,9 @@ fn run_one_test(
         Some(check) => check,
         None => model_doc.map_or_else(|| lute_check::check(input), |d| d.analysis_check().clone()),
     };
-    // `--deny` / `--deny-warnings` (and a project `error` level, 0.50.0 §6)
-    // promote the check verdict this test consults: a promoted warning
-    // refuses the trace, failing the test (0.48.0 §2.2).
+    // `--deny` / `--deny-warnings` promote the check verdict this test
+    // consults: a denied warning refuses the trace, failing the test
+    // (0.48.0 §2.2). `lute test` carries no project levels (0.50.0 §6.2).
     if build.policy.any_promoted(&lute_path, &checked.diagnostics) {
         checked.ok = false;
     }

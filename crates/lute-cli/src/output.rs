@@ -96,9 +96,13 @@ impl SeverityPolicy {
     }
 
     /// `at` relative to the project root, `/`-separated; `None` for a path
-    /// outside it or one that names no file (a manifest-less label).
+    /// outside it or one that names no file (a manifest-less label). `at` is
+    /// read as given (current-directory-relative), else as root-relative
+    /// (`lute lint` reports paths relative to the project root).
     fn rel_path(&self, at: &Path) -> Option<String> {
-        let canonical = std::fs::canonicalize(at).ok()?;
+        let canonical = std::fs::canonicalize(at)
+            .or_else(|_| std::fs::canonicalize(self.root.join(at)))
+            .ok()?;
         let rel = canonical.strip_prefix(&self.root).ok()?;
         Some(rel.to_string_lossy().replace('\\', "/"))
     }
@@ -173,7 +177,7 @@ impl SeverityPolicy {
 /// `severity` when it differs, and the additive `"denied": true` or
 /// `"configured": "lute.project.yaml"` marker. lute-check's `Diagnostic` is
 /// untouched; the CLI owns `--json` serialization.
-fn apply_reported_json(d: &Diagnostic, reported: Reported, value: &mut Value) {
+pub(crate) fn apply_reported_json(d: &Diagnostic, reported: Reported, value: &mut Value) {
     let Value::Object(map) = value else {
         return;
     };

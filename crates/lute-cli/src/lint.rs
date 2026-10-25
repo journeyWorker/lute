@@ -18,7 +18,9 @@
 //! usage.
 
 use crate::envelope::{self, CliError};
-use std::collections::{BTreeMap, BTreeSet};
+use crate::output::{count_reported, suppressed_tail, Reported};
+use crate::SeverityPolicy;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -61,33 +63,6 @@ fn is_lint_deniable(code: &str) -> bool {
             .chars()
             .all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '-'),
         _ => false,
-    }
-}
-
-/// Lint-scoped promotion policy — a private mirror of the `--deny` half of
-/// [`crate::SeverityPolicy`] with the same semantics (spec §5) over the lint
-/// code universe. Kept separate so `lute check`'s registry-backed `--deny`
-/// is not perturbed by dynamic `L-*` ids; `lute.project.yaml` levels apply
-/// only to `W-*` checker codes, never to lint findings.
-#[derive(Default, Clone)]
-pub struct LintDenyPolicy {
-    codes: BTreeSet<String>,
-    warnings: bool,
-}
-
-impl LintDenyPolicy {
-    pub fn new(codes: &[String], warnings: bool) -> Self {
-        Self {
-            codes: codes.iter().cloned().collect(),
-            warnings,
-        }
-    }
-
-    /// Same semantics as `check`'s: promote iff not already an error AND
-    /// the code is named OR `--deny-warnings` is on and severity is Warning.
-    pub fn denied(&self, d: &Diagnostic) -> bool {
-        d.severity != Severity::Error
-            && (self.codes.contains(&d.code) || (self.warnings && d.severity == Severity::Warning))
     }
 }
 
@@ -560,25 +535,21 @@ fn severity_str(s: Severity) -> &'static str {
     }
 }
 
-fn diag_to_json(path: &Path, d: &Diagnostic, denied: bool) -> serde_json::Value {
+/// One diagnostic's JSON under the policy: `path`, then the reported
+/// severity and marker (`--deny`: `denied`; `lute.project.yaml`:
+/// `configured`).
+fn diag_to_json(path: &Path, d: &Diagnostic, reported: Reported) -> serde_json::Value {
     let mut v = serde_json::to_value(d).unwrap_or_else(|_| serde_json::json!({}));
     if let serde_json::Value::Object(map) = &mut v {
         map.insert("path".into(), path.display().to_string().into());
-        if denied {
-            map.insert("severity".into(), serde_json::json!("error"));
-            map.insert("denied".into(), serde_json::json!(true));
-        }
     }
+    crate::output::apply_reported_json(d, reported, &mut v);
     v
 }
 
-fn print_human_line(path: &Path, d: &Diagnostic, denied: bool) {
-    let marker = if denied { " [denied]" } else { "" };
-    let severity = if denied {
-        "error"
-    } else {
-        severity_str(d.severity)
-    };
+fn print_human_line(path: &Path, d: &Diagnostic, reported: Reported) {
+    let marker = crate::output::marker_str(reported.marker);
+    let severity = severity_str(reported.severity);
     if d.span.line == 0 && d.span.column == 0 {
         // A config-file diagnostic anchored at the file head via a zero
         // span still prints with a real 1:1 position (config-file parse
@@ -627,8 +598,14 @@ pub fn run_lint(opts: &LintOptions<'_>) -> ExitCode {
         deny_warnings,
         config,
     } = *opts;
-    let policy = LintDenyPolicy::new(deny, deny_warnings);
     let path = path.or(project).unwrap_or_else(|| Path::new("."));
+    // `--deny`/`--deny-warnings` plus the project's `diagnostics:` levels
+    // (0.50.0 §6): lint reports the checker's `W-DISPLAY-NAME-DUP`, which a
+    // project may re-level; `L-*` findings keep the lint config's levels.
+    let root = project
+        .map(Path::to_path_buf)
+        .or_else(|| nearest_manifest_dir(path));
+    let policy = SeverityPolicy::new(deny, deny_warnings).for_project(root.as_deref());
     let outcome = match lint_target(path, project, providers, config) {
         Ok(v) => v,
         Err(code) => return code,
@@ -640,26 +617,31 @@ pub fn run_lint(opts: &LintOptions<'_>) -> ExitCode {
     let any_error = |diags: &[(PathBuf, Diagnostic)]| -> bool {
         diags
             .iter()
-            .any(|(_, d)| d.severity == Severity::Error || policy.denied(d))
+            .any(|(p, d)| d.severity == Severity::Error || policy.promoted(d, p))
     };
     let ok = !any_error(&outcome.diagnostics) && !any_error(&outcome.config_diagnostics);
-
-    if json {
-        let diagnostics: Vec<serde_json::Value> = outcome
+    let all = || {
+        outcome
             .diagnostics
             .iter()
-            .map(|(p, d)| diag_to_json(p, d, policy.denied(d)))
-            .collect();
-        let config_diagnostics: Vec<serde_json::Value> = outcome
-            .config_diagnostics
-            .iter()
-            .map(|(p, d)| diag_to_json(p, d, policy.denied(d)))
-            .collect();
-        let payload = serde_json::json!({
+            .chain(outcome.config_diagnostics.iter())
+            .map(|(p, d)| (p.as_path(), d))
+    };
+    let suppressed = policy.suppressed(all());
+
+    if json {
+        let reported = |diags: &[(PathBuf, Diagnostic)]| -> Vec<serde_json::Value> {
+            diags
+                .iter()
+                .filter_map(|(p, d)| policy.report(d, p).map(|r| diag_to_json(p, d, r)))
+                .collect()
+        };
+        let mut payload = serde_json::json!({
             "ok": ok,
-            "diagnostics": diagnostics,
-            "configDiagnostics": config_diagnostics,
+            "diagnostics": reported(&outcome.diagnostics),
+            "configDiagnostics": reported(&outcome.config_diagnostics),
         });
+        crate::output::insert_suppressed(&mut payload, &suppressed);
         let exit = if ok { 0 } else { 1 };
         let report = envelope::report(crate::envelope::version::LINT, exit, payload);
         match serde_json::to_string_pretty(&report) {
@@ -671,21 +653,22 @@ pub fn run_lint(opts: &LintOptions<'_>) -> ExitCode {
             }
         }
     } else {
-        for (p, d) in &outcome.diagnostics {
-            print_human_line(p, d, policy.denied(d));
+        for (p, d) in all() {
+            if let Some(reported) = policy.report(d, p) {
+                print_human_line(p, d, reported);
+            }
         }
-        for (p, d) in &outcome.config_diagnostics {
-            print_human_line(p, d, policy.denied(d));
-        }
-        let (errors, warnings) = count(&outcome, &policy);
+        let errors = count_reported(all(), Severity::Error, &policy);
+        let warnings = count_reported(all(), Severity::Warning, &policy);
+        let suppressed = suppressed_tail(&suppressed);
         if ok {
             println!(
-                "ok: {} ({errors} error(s), {warnings} warning(s))",
+                "ok: {} ({errors} error(s), {warnings} warning(s){suppressed})",
                 path.display()
             );
         } else {
             println!(
-                "failed: {} ({errors} error(s), {warnings} warning(s))",
+                "failed: {} ({errors} error(s), {warnings} warning(s){suppressed})",
                 path.display(),
             );
         }
@@ -696,23 +679,6 @@ pub fn run_lint(opts: &LintOptions<'_>) -> ExitCode {
     } else {
         ExitCode::FAILURE
     }
-}
-
-fn count(outcome: &LintOutcome, policy: &LintDenyPolicy) -> (usize, usize) {
-    let all = outcome
-        .diagnostics
-        .iter()
-        .chain(outcome.config_diagnostics.iter());
-    let mut errors = 0;
-    let mut warnings = 0;
-    for (_, d) in all {
-        if d.severity == Severity::Error || policy.denied(d) {
-            errors += 1;
-        } else if d.severity == Severity::Warning {
-            warnings += 1;
-        }
-    }
-    (errors, warnings)
 }
 
 #[cfg(test)]
