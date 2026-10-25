@@ -237,15 +237,12 @@ fn is_content(body: &str) -> bool {
 /// The length of the key `key` at the start of `body` — bare, `"key"` or
 /// `'key'` — when it is followed by `:` and then a space or the line end.
 fn key_len_at(body: &str, key: &str) -> Option<usize> {
-    // Each spelling is tried in full: the bare spelling of the empty key is
-    // a prefix of every line, so the first prefix match is not the key.
-    [key.to_string(), format!("\"{key}\""), format!("'{key}'")]
+    let written = [key.to_string(), format!("\"{key}\""), format!("'{key}'")]
         .into_iter()
-        .find_map(|written| {
-            let rest = body.strip_prefix(written.as_str())?.trim_start_matches(' ');
-            let after = rest.strip_prefix(':')?;
-            (after.is_empty() || after.starts_with([' ', '\t'])).then_some(written.len())
-        })
+        .find(|w| body.starts_with(w.as_str()))?;
+    let rest = body[written.len()..].trim_start_matches(' ');
+    let after = rest.strip_prefix(':')?;
+    (after.is_empty() || after.starts_with([' ', '\t'])).then_some(written.len())
 }
 
 /// The offset of the second `key:` of the block mapping whose first line

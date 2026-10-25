@@ -229,6 +229,31 @@ fn a_host_token_name_must_be_an_identifier() {
     }
 }
 
+/// The empty host-token key is located by the host-token lookup alone:
+/// another export's empty name keeps its 0.49 report, with no position.
+#[test]
+fn the_empty_key_locator_is_host_token_only() {
+    let dir = project("ht-occ-empty", "hostTokens: {}\n", "hi");
+    write(
+        &dir,
+        "plugins/acme.stage/plugin.yaml",
+        &PLUGIN.replace("hostTokens: hosttokens/", "occasions: occasions/"),
+    );
+    write(
+        &dir,
+        "plugins/acme.stage/occasions/o.yaml",
+        "occasions:\n  \"\": {}\n",
+    );
+    let out = text(&lute(&dir, &["check", "--project", "."]));
+    assert!(
+        out.contains(
+            "lute: E-PLUGIN-PARSE: ./plugins/acme.stage/occasions/o.yaml: occasion `` is not a \
+             name"
+        ),
+        "{out}"
+    );
+}
+
 /// §4.1: only `string`, `int` and `{ enum: [...] }` are token types, and
 /// a token takes only `type:`.
 #[test]

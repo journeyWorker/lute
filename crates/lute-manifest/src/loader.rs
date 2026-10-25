@@ -805,7 +805,14 @@ fn load_package(
             }),
             "hostTokens" => read_kind::<HostTokensFile, _>(dir, &path, &mut errs, |f, src, e| {
                 for name in f.host_tokens.keys() {
-                    let at = key_offset(src.text, &["hostTokens", name]);
+                    // The empty key is written quoted; its quoted spelling
+                    // is looked up as the key itself.
+                    let at = if name.is_empty() {
+                        key_offset(src.text, &["hostTokens", "\"\""])
+                            .or_else(|| key_offset(src.text, &["hostTokens", "''"]))
+                    } else {
+                        key_offset(src.text, &["hostTokens", name])
+                    };
                     check_name(host_token_fault(name), at, src, e);
                 }
                 let items = f
