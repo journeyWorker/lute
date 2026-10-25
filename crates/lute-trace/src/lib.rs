@@ -57,7 +57,7 @@ pub use mock::{
 pub use quest_refs::collect_referenced_reserved_quest_paths;
 pub use report::{
     ComponentBoundary, ComponentSite, Coverage, CoverageCount, Decision, GrantCredit, GrantRef,
-    GrantReward, NotRaised, Seeds, Step, TraceExit, TraceReport, UnresolvedEntry,
+    GrantReward, JumpBound, NotRaised, Seeds, Step, TraceExit, TraceReport, UnresolvedEntry,
 };
 pub use trace::{
     lowered, trace_beat, trace_beat_with_check, trace_document, trace_entries_with_check,

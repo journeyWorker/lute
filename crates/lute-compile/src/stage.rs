@@ -553,6 +553,7 @@ fn walk_branch(
             Command::Jump(JumpCmd {
                 position: String::new(),
                 target: conv.sym(),
+                max: None,
             }),
             || SourceInfo::at(b.span),
         );
@@ -647,6 +648,7 @@ fn walk_hub(
                 Command::Jump(JumpCmd {
                     position: String::new(),
                     target: conv.sym(),
+                    max: None,
                 }),
                 || SourceInfo::at(h.span),
             );
@@ -833,6 +835,7 @@ fn walk_match(
             Command::Jump(JumpCmd {
                 position: String::new(),
                 target: conv.sym(),
+                max: None,
             }),
             || SourceInfo::at(m.span),
         );

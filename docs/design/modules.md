@@ -14,7 +14,7 @@ normative sources and implementation citations in this document win.
 
 | module | owns | semantic ids (all version 1) |
 |---|---|---|
-| `core` | execution-IR envelope, baseline state ownership, CEL profile, capability gate, identity/addressing | `lute.core/1` |
+| `core` | execution-IR envelope, baseline state ownership, CEL profile, capability gate, identity/addressing, bounded backward jumps | `lute.core/1`, `lute.core.boundedJump/1` |
 | `narrative` | documents, lines, choices, match, hubs, control flow and components | `lute.core/1` |
 | `staging` | background/music/sfx/vfx, sprites, camera, cuts and video | `lute.staging/1` |
 | `timeline` | timing stamps and barriers | `lute.timeline/1` |
@@ -116,6 +116,7 @@ are static guarantees only; **obligation** is what a conforming engine must do.
 | line/speaker and lineId/voiceKey | `@speaker{code}: text`; identity templates | `kind: line` fields | state/defs/interpolation | none at runtime | PC presentation | speaker, uniqueness and placeholder checks | present opaque stable IDs and text | `lute.core/1` |
 | branch/choice and hub | `<branch>`, `<choice>`, `<hub>`, `<return>` | `kind: choice`/`hub` | option guards, selection, visits | `scene.choices`, `scene.visited` | record admission and each hub revisit | IDs, guards, target/convergence checks | offer eligible options; route and persist visits | `lute.core/1` |
 | match/when/otherwise | `<match>`, `<when>`, `<otherwise>` | `kind: match` | subject and arm tests | selected body effects | PC, top-to-bottom first match | CEL, exhaustiveness and unset semantics | choose one arm and route converge | `lute.core/1` |
+| bounded backward jump | `::jump{to max}` back to an earlier `::label` | `kind: jump` with `max` | the jump's per-walk counter | none | at the jump: taken while takes remain, else fall through; the counter resets when control reaches the head from outside the loop | `E-JUMP-MAX`, loop scope, entry and nesting rules (dsl 0.51.0 §3.2) | count takes per jump index, reset by position, rebuild on replay (no snapshot field) | `lute.core.boundedJump/1` |
 | interpolation/localization | `{{...}}`, locale bundles | placeholders; `texts`, option labels | live state/target and stable IDs | locale maps only | locale selection then interpolation at render | ref/type/locale key checks | deterministic fallback policy and current-value rendering | `lute.core/1` |
 
 ### `staging`

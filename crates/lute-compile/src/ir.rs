@@ -1388,10 +1388,17 @@ pub struct MatchArm {
     pub target: String,
 }
 
+/// A `jump` record: an authored `::jump{to [max]}` or the converge jump of a
+/// branch, match or hub arm.
 #[derive(Clone, Debug, Serialize)]
 pub struct JumpCmd {
     pub position: String,
     pub target: String,
+    /// dsl 0.51.0 §3.6: a bounded backward jump's `max` — how many times it
+    /// may be taken before control falls through (`lute.core.boundedJump/1`).
+    /// Absent on every other jump, which stays byte-identical to 0.50.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<u8>,
 }
 
 /// `::end{reason?}` (dsl 0.8.0 §5): terminate the walk at this record.

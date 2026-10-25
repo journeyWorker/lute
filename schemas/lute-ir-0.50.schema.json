@@ -2845,6 +2845,12 @@
         },
         "target": {
           "$ref": "#/$defs/position"
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 99,
+          "description": "dsl 0.51.0 §3.6: a bounded backward jump is taken at most `max` times, then control falls through; its counter resets when control reaches `target` from outside the loop. Requires `lute.core.boundedJump/1`."
         }
       },
       "additionalProperties": true,
@@ -2854,7 +2860,7 @@
         "position",
         "target"
       ],
-      "description": "Unconditional control-flow jump. Carries no `timing`, `provenance`, or `source`."
+      "description": "Unconditional control-flow jump (backward only with `max`). Carries no `timing`, `provenance`, or `source`."
     },
     "cmdEnd": {
       "type": "object",

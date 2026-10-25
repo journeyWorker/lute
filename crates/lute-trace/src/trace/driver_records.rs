@@ -226,8 +226,22 @@ impl<'a> TraceDriver<'a> {
                         .as_ref()
                         .and_then(|i| self.cx.ast.next_to.get(&key(&i.span)).cloned())
                         .unwrap_or_default();
-                    self.steps.push(Step::Jump { to });
-                    self.jumped = true;
+                    // dsl 0.51.0 §3.7: the runtime's observation of a
+                    // bounded jump carries its take (`taken`) or that it
+                    // fell through (`exhausted`), with `max`.
+                    let count = |k: &str| {
+                        rec.get(k)
+                            .and_then(Json::as_u64)
+                            .and_then(|n| u8::try_from(n).ok())
+                    };
+                    let exhausted = rec.get("exhausted").and_then(Json::as_bool) == Some(true);
+                    let bounded = match (count("taken"), count("max")) {
+                        (_, Some(max)) if exhausted => Some(report::JumpBound::NotTaken { max }),
+                        (Some(take), Some(max)) => Some(report::JumpBound::Again { take, max }),
+                        _ => None,
+                    };
+                    self.steps.push(Step::Jump { to, bounded });
+                    self.jumped = !exhausted;
                 }
             }
             "choice" | "hub" => self.menu_record(&rec, &kind, &addr),

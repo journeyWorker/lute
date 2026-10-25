@@ -1,0 +1,7 @@
+# dsl 0.51.0 §3.7: a branch reached again in a later iteration consumes the
+# next scripted decision (three presentations: yes, yes, no); a hub inside a
+# loop starts each visit at presentation 0 and replays its list per visit.
+choose:
+  retry: [yes, yes, no]
+  desk: [look, leave]
+  bench: [train, train, rest]

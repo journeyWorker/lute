@@ -1,0 +1,655 @@
+{
+  "kind": "scene",
+  "lute": "0.50.0",
+  "irVersion": "0.50.0",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
+  "requiredSemantics": [
+    "lute.core.boundedJump/1",
+    "lute.core/1"
+  ],
+  "meta": {
+    "id": "hero.s01ep01",
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Bounded jump"
+  },
+  "state": [
+    {
+      "path": "run.asks",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "path": "run.guarded",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "path": "run.inner",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "path": "run.outer",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "path": "run.rounds",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "path": "run.shared",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "path": "run.tries",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "path": "run.visits",
+      "type": "int",
+      "default": 0
+    },
+    {
+      "path": "scene.choices.bench",
+      "type": "enum",
+      "domain": [
+        "train",
+        "rest",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:bench"
+    },
+    {
+      "path": "scene.choices.desk",
+      "type": "enum",
+      "domain": [
+        "look",
+        "leave",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:desk"
+    },
+    {
+      "path": "scene.choices.retry",
+      "type": "enum",
+      "domain": [
+        "yes",
+        "no",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:retry"
+    },
+    {
+      "path": "scene.visited.bench.rest",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.bench.train",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.desk.leave",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.desk.look",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "set",
+      "family": "state",
+      "position": "001-0100",
+      "path": "run.tries",
+      "op": "+=",
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
+      }
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0200",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Attempt {{run.tries}}.",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero.s01ep01.hero-0010",
+      "placeholders": [
+        {
+          "kind": "path",
+          "path": "run.tries"
+        }
+      ]
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-0300",
+      "target": "001-0100",
+      "max": 2
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0400",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Out of attempts.",
+      "lineId": "hero.s01ep01.narrator_0010",
+      "voiceKey": "hero.s01ep01.narrator-0010"
+    },
+    {
+      "kind": "set",
+      "family": "state",
+      "position": "002-0100",
+      "path": "run.guarded",
+      "op": "+=",
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
+      }
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "002-0200",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Round {{run.guarded}}.",
+      "lineId": "hero.s01ep01.hero_0020",
+      "voiceKey": "hero.s01ep01.hero-0020",
+      "placeholders": [
+        {
+          "kind": "path",
+          "path": "run.guarded"
+        }
+      ]
+    },
+    {
+      "kind": "match",
+      "family": "control",
+      "position": "002-0300",
+      "subject": {
+        "cel": "run.guarded < 2",
+        "expr": {
+          "op": "<",
+          "l": {
+            "path": "run.guarded"
+          },
+          "r": {
+            "int": 2
+          }
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "(run.guarded < 2)",
+            "expr": {
+              "op": "<",
+              "l": {
+                "path": "run.guarded"
+              },
+              "r": {
+                "int": 2
+              }
+            },
+            "authored": "$"
+          },
+          "target": "002-0400"
+        }
+      ],
+      "otherwise": "002-0600",
+      "converge": "002-0700"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "002-0400",
+      "target": "002-0100",
+      "max": 5
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "002-0500",
+      "target": "002-0700"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "002-0600",
+      "target": "002-0700"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "002-0700",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The guard let go.",
+      "lineId": "hero.s01ep01.narrator_0020",
+      "voiceKey": "hero.s01ep01.narrator-0020"
+    },
+    {
+      "kind": "set",
+      "family": "state",
+      "position": "003-0100",
+      "path": "run.outer",
+      "op": "+=",
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
+      }
+    },
+    {
+      "kind": "set",
+      "family": "state",
+      "position": "003-0200",
+      "path": "run.inner",
+      "op": "+=",
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
+      }
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "003-0300",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Outer {{run.outer}}, inner {{run.inner}}.",
+      "lineId": "hero.s01ep01.hero_0030",
+      "voiceKey": "hero.s01ep01.hero-0030",
+      "placeholders": [
+        {
+          "kind": "path",
+          "path": "run.outer"
+        },
+        {
+          "kind": "path",
+          "path": "run.inner"
+        }
+      ]
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "003-0400",
+      "target": "003-0200",
+      "max": 1
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "003-0500",
+      "target": "003-0100",
+      "max": 1
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "003-0600",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Both loops are done.",
+      "lineId": "hero.s01ep01.narrator_0030",
+      "voiceKey": "hero.s01ep01.narrator-0030"
+    },
+    {
+      "kind": "set",
+      "family": "state",
+      "position": "004-0100",
+      "path": "run.shared",
+      "op": "+=",
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
+      }
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "004-0200",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Shared {{run.shared}}.",
+      "lineId": "hero.s01ep01.hero_0040",
+      "voiceKey": "hero.s01ep01.hero-0040",
+      "placeholders": [
+        {
+          "kind": "path",
+          "path": "run.shared"
+        }
+      ]
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "004-0300",
+      "target": "004-0100",
+      "max": 1
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "004-0400",
+      "target": "004-0100",
+      "max": 1
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "004-0500",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Both jumps are spent.",
+      "lineId": "hero.s01ep01.narrator_0040",
+      "voiceKey": "hero.s01ep01.narrator-0040"
+    },
+    {
+      "kind": "set",
+      "family": "state",
+      "position": "005-0100",
+      "path": "run.asks",
+      "op": "+=",
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
+      }
+    },
+    {
+      "kind": "choice",
+      "family": "control",
+      "position": "005-0200",
+      "branchId": "retry",
+      "selectionKey": "scene.choices.retry",
+      "options": [
+        {
+          "id": "yes",
+          "text": "Yes",
+          "lineId": "hero.s01ep01.retry.yes",
+          "target": "005-0300"
+        },
+        {
+          "id": "no",
+          "text": "No",
+          "lineId": "hero.s01ep01.retry.no",
+          "target": "005-0600"
+        }
+      ],
+      "converge": "005-0800",
+      "prompt": "Try again?",
+      "promptLineId": "hero.s01ep01.retry.prompt"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "005-0300",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Once more.",
+      "lineId": "hero.s01ep01.hero_0050",
+      "voiceKey": "hero.s01ep01.hero-0050"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "005-0400",
+      "target": "005-0100",
+      "max": 5
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "005-0500",
+      "target": "005-0800"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "005-0600",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Enough.",
+      "lineId": "hero.s01ep01.hero_0060",
+      "voiceKey": "hero.s01ep01.hero-0060"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "005-0700",
+      "target": "005-0800"
+    },
+    {
+      "kind": "set",
+      "family": "state",
+      "position": "006-0100",
+      "path": "run.visits",
+      "op": "+=",
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
+      }
+    },
+    {
+      "kind": "hub",
+      "family": "control",
+      "position": "006-0200",
+      "id": "desk",
+      "selectionKey": "scene.choices.desk",
+      "options": [
+        {
+          "id": "look",
+          "text": "Look",
+          "lineId": "hero.s01ep01.desk.look",
+          "once": false,
+          "exit": false,
+          "target": "006-0300"
+        },
+        {
+          "id": "leave",
+          "text": "Leave",
+          "lineId": "hero.s01ep01.desk.leave",
+          "once": false,
+          "exit": true,
+          "target": "006-0400"
+        }
+      ],
+      "converge": "006-0600"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "006-0300",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Papers.",
+      "lineId": "hero.s01ep01.hero_0070",
+      "voiceKey": "hero.s01ep01.hero-0070"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "006-0400",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Leaving.",
+      "lineId": "hero.s01ep01.hero_0080",
+      "voiceKey": "hero.s01ep01.hero-0080"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "006-0500",
+      "target": "006-0600"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "006-0600",
+      "target": "006-0100",
+      "max": 1
+    },
+    {
+      "kind": "hub",
+      "family": "control",
+      "position": "007-0100",
+      "id": "bench",
+      "selectionKey": "scene.choices.bench",
+      "options": [
+        {
+          "id": "train",
+          "text": "Train",
+          "lineId": "hero.s01ep01.bench.train",
+          "once": false,
+          "exit": false,
+          "target": "007-0200"
+        },
+        {
+          "id": "rest",
+          "text": "Rest",
+          "lineId": "hero.s01ep01.bench.rest",
+          "once": false,
+          "exit": true,
+          "target": "007-0500"
+        }
+      ],
+      "converge": "007-0700"
+    },
+    {
+      "kind": "set",
+      "family": "state",
+      "position": "007-0200",
+      "path": "run.rounds",
+      "op": "+=",
+      "value": {
+        "cel": "1",
+        "expr": {
+          "int": 1
+        }
+      }
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "007-0300",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Rep {{run.rounds}}.",
+      "lineId": "hero.s01ep01.hero_0090",
+      "voiceKey": "hero.s01ep01.hero-0090",
+      "placeholders": [
+        {
+          "kind": "path",
+          "path": "run.rounds"
+        }
+      ]
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "007-0400",
+      "target": "007-0200",
+      "max": 1
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "007-0500",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Resting.",
+      "lineId": "hero.s01ep01.hero_0100",
+      "voiceKey": "hero.s01ep01.hero-0100"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "007-0600",
+      "target": "007-0700"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "007-0700",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The end.",
+      "lineId": "hero.s01ep01.narrator_0050",
+      "voiceKey": "hero.s01ep01.narrator-0050"
+    }
+  ],
+  "sections": [
+    {
+      "section": 1,
+      "heading": "Retry exhausted"
+    },
+    {
+      "section": 2,
+      "heading": "Left early by its guard"
+    },
+    {
+      "section": 3,
+      "heading": "Nested loops"
+    },
+    {
+      "section": 4,
+      "heading": "Shared head"
+    },
+    {
+      "section": 5,
+      "heading": "Branch in a loop"
+    },
+    {
+      "section": 6,
+      "heading": "Hub in a loop"
+    },
+    {
+      "section": 7,
+      "heading": "Loop in a hub option"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
+}

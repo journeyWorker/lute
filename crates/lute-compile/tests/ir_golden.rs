@@ -212,10 +212,21 @@ fn match_jump_barrier_serialize() {
     let jm = Command::Jump(JumpCmd {
         position: "004-0700".into(),
         target: "004-1100".into(),
+        max: None,
     });
     assert_eq!(
         j(&jm),
         r#"{"kind":"jump","family":"control","position":"004-0700","target":"004-1100"}"#
+    );
+    // dsl 0.51.0 §3.6: a bounded backward jump carries `max` after `target`.
+    let bounded = Command::Jump(JumpCmd {
+        position: "004-0900".into(),
+        target: "004-0200".into(),
+        max: Some(3),
+    });
+    assert_eq!(
+        j(&bounded),
+        r#"{"kind":"jump","family":"control","position":"004-0900","target":"004-0200","max":3}"#
     );
     let b = Command::Barrier(BarrierCmd {
         position: "003-0800".into(),
@@ -443,6 +454,7 @@ fn retarget_and_position_helpers_visit_every_flow_field() {
     let mut jm = Command::Jump(JumpCmd {
         position: String::new(),
         target: "@3".into(),
+        max: None,
     });
     assert!(jm.stamp_mut().is_none());
     let mut n = 0;
@@ -1077,6 +1089,7 @@ fn every_kind_has_its_spec_family() {
             Command::Jump(JumpCmd {
                 position: p(),
                 target: p(),
+                max: None,
             }),
             "jump",
             "control",

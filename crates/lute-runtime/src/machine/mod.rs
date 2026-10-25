@@ -62,6 +62,8 @@ mod build;
 mod commands;
 mod entry;
 mod format;
+#[cfg(test)]
+mod loop_tests;
 mod menu;
 mod plugin;
 mod quest;
@@ -85,6 +87,9 @@ pub use plugin::BridgeReads;
 pub(crate) enum Step {
     /// Continue at this command index (`>= commands.len()` ⇒ end).
     Next(usize),
+    /// dsl 0.51.0 §3.7: a taken bounded backward jump — continue at this
+    /// index (its head); the range's runaway guard counts from here.
+    Loop(usize),
     /// Halt the walk (incomplete decision or a hard error already recorded).
     Halt,
 }
@@ -253,6 +258,10 @@ pub(crate) struct Code {
     pub(crate) addr_order: Vec<(String, usize)>,
     /// Every CEL slot of `commands`, decoded once ([`Code::slot`]).
     slots: HashMap<usize, Arc<Slot>>,
+    /// dsl 0.51.0 §3.7: loop head index → the index of every bounded
+    /// backward jump to it. A bounded jump at *j* to head *t* < *j* owns the
+    /// region [*t*, *j*] of the flat stream.
+    loops: BTreeMap<usize, Vec<usize>>,
 }
 
 impl std::fmt::Debug for Code {
@@ -288,13 +297,47 @@ impl Code {
             collect_slots(c, &mut slots);
         }
         addr_order.sort();
-        Code {
+        let mut code = Code {
             kind,
             commands,
             addr_index,
             addr_order,
             slots,
+            loops: BTreeMap::new(),
+        };
+        code.loops = code.bounded_loops();
+        code
+    }
+
+    /// Resolve a control-flow target `addr` to a command index. A `converge`
+    /// that points "one past the last record" (execution-model.md) is not in
+    /// the map → fall through to the first command whose addr sorts after
+    /// it, or the end of the stream.
+    pub(crate) fn resolve(&self, addr: &str) -> usize {
+        if let Some(&i) = self.addr_index.get(addr) {
+            return i;
         }
+        for (a, i) in &self.addr_order {
+            if a.as_str() > addr {
+                return *i;
+            }
+        }
+        self.commands.len()
+    }
+
+    /// The `jump` records with `max` whose target lies before them, by head.
+    fn bounded_loops(&self) -> BTreeMap<usize, Vec<usize>> {
+        let mut loops: BTreeMap<usize, Vec<usize>> = BTreeMap::new();
+        for (j, cmd) in self.commands.iter().enumerate() {
+            if cmd.get("kind").and_then(Json::as_str) != Some("jump") || jump_max(cmd).is_none() {
+                continue;
+            }
+            let head = self.resolve(cmd.get("target").and_then(Json::as_str).unwrap_or(""));
+            if head < j {
+                loops.entry(head).or_default().push(j);
+            }
+        }
+        loops
     }
 
     /// The decoded slot of a `{cel, expr}` pair (`None` when absent or its
@@ -310,6 +353,14 @@ impl Code {
         }
     }
 }
+
+/// A `jump` record's `max` (dsl 0.51.0 §3.6), when it carries one.
+fn jump_max(cmd: &Json) -> Option<u64> {
+    cmd.get("max").and_then(Json::as_u64)
+}
+
+/// dsl 0.51.0 §3.1: the largest `max` a bounded jump may carry.
+const JUMP_MAX_LIMIT: u8 = 99;
 
 /// [`Code::slots`]' key: the pair's address. `commands` is never mutated
 /// after [`Code::of`], so the address of every value inside it is stable
@@ -463,6 +514,11 @@ pub struct Machine<D: Driver> {
     /// occasion's beats ([`Machine::run_deferred_handlers`]). `None`: bodies
     /// run where they fire.
     deferred_handlers: Option<Vec<String>>,
+    /// dsl 0.51.0 §3.7: how many times each bounded backward jump (by
+    /// command index) was taken since its head was last entered from outside
+    /// its region. Walk-local: a resumed input replays the walk and rebuilds
+    /// it, so no snapshot carries it.
+    loop_counts: BTreeMap<usize, u8>,
 }
 
 impl<D: Driver> std::fmt::Debug for Machine<D> {
@@ -588,15 +644,7 @@ impl<D: Driver> Machine<D> {
     /// the map → fall through to the first command whose addr sorts after it,
     /// or the end of the stream.
     fn resolve(&self, addr: &str) -> usize {
-        if let Some(&i) = self.code.addr_index.get(addr) {
-            return i;
-        }
-        for (a, i) in &self.code.addr_order {
-            if a.as_str() > addr {
-                return *i;
-            }
-        }
-        self.code.commands.len()
+        self.code.resolve(addr)
     }
 
     /// Drive the whole walk: `lute run` once per artifact; `lute play` (dsl
@@ -714,6 +762,7 @@ impl<D: Driver> Machine<D> {
             return;
         }
         let mut pc = start;
+        self.arrive(None, start);
         let mut guard = 0usize;
         let limit = self.code.commands.len() * 64 + 1024;
         while pc >= start && pc < stop && pc < self.code.commands.len() {
@@ -722,19 +771,79 @@ impl<D: Driver> Machine<D> {
                 self.fatal = Some("execution did not terminate (control-flow cycle?)".into());
                 return;
             }
-            match self.step(pc) {
-                Step::Next(n) => {
-                    if self.fatal.is_some() || self.incomplete || self.terminated {
-                        return;
-                    }
-                    if n < start || n >= stop {
-                        return;
-                    }
-                    pc = n;
-                }
+            let (n, took_loop) = match self.step(pc) {
+                Step::Next(n) => (n, false),
+                Step::Loop(n) => (n, true),
                 Step::Halt => return,
+            };
+            if self.fatal.is_some() || self.incomplete || self.terminated {
+                return;
+            }
+            if n < start || n >= stop {
+                return;
+            }
+            // dsl 0.51.0 §3.7: between two bounded takes the walk only moves
+            // forward, so the guard counts from the last take; a cycle without
+            // `max` still trips it.
+            if took_loop {
+                guard = 0;
+            }
+            self.arrive(Some(pc), n);
+            pc = n;
+        }
+    }
+
+    /// dsl 0.51.0 §3.7, reset by position: control moves from `from` (`None`:
+    /// the range starts) to `to`. Every bounded jump whose head is `to` and
+    /// whose region [`to`, jump] does not contain `from` starts counting
+    /// again; a take from inside the region keeps its count.
+    fn arrive(&mut self, from: Option<usize>, to: usize) {
+        let Some(jumps) = self.code.loops.get(&to) else {
+            return;
+        };
+        for &jump in jumps {
+            if from.is_none_or(|p| !(to..=jump).contains(&p)) {
+                self.loop_counts.remove(&jump);
             }
         }
+    }
+
+    /// A `jump` record at `pc`. Not a transcript record: `lute trace` reports
+    /// an authored `::jump` and the source-only steps that ride on the jump.
+    /// dsl 0.51.0 §3.7: a jump with `max` is taken while its counter is below
+    /// `max` ([`Step::Loop`], observed with the take number), then falls
+    /// through (observed as exhausted).
+    fn do_jump(&mut self, cmd: &Json, pc: usize) -> Step {
+        let position = cmd.get("position");
+        let target = self.resolve(cmd.get("target").and_then(Json::as_str).unwrap_or(""));
+        let Some(max) = cmd.get("max") else {
+            self.driver
+                .observe(json!({ "kind": "jump", "position": position }));
+            return Step::Next(target);
+        };
+        let Some(max) = max
+            .as_u64()
+            .and_then(|m| u8::try_from(m).ok())
+            .filter(|m| (1..=JUMP_MAX_LIMIT).contains(m))
+        else {
+            self.fatal = Some(format!(
+                "malformed `jump` record: `max` must be an integer from 1 to {JUMP_MAX_LIMIT}, \
+                 got {max}"
+            ));
+            return Step::Halt;
+        };
+        let taken = self.loop_counts.get(&pc).copied().unwrap_or(0);
+        if taken >= max {
+            self.driver.observe(
+                json!({ "kind": "jump", "position": position, "exhausted": true, "max": max }),
+            );
+            return Step::Next(pc + 1);
+        }
+        self.loop_counts.insert(pc, taken + 1);
+        self.driver.observe(
+            json!({ "kind": "jump", "position": position, "taken": taken + 1, "max": max }),
+        );
+        Step::Loop(target)
     }
 
     /// Dispatch one command; returns the next index (or `Halt`).
@@ -773,14 +882,7 @@ impl<D: Driver> Machine<D> {
                 self.exec_retract(cmd);
                 Step::Next(pc + 1)
             }
-            "jump" => {
-                // Not a transcript record: `lute trace` reports an authored
-                // `::jump` and the source-only steps that ride on the jump.
-                self.driver
-                    .observe(json!({ "kind": "jump", "position": cmd.get("position") }));
-                let t = cmd.get("target").and_then(Json::as_str).unwrap_or("");
-                Step::Next(self.resolve(t))
-            }
+            "jump" => self.do_jump(cmd, pc),
             "choice" => self.do_choice(cmd),
             "hub" => self.do_hub(cmd),
             "match" => self.do_match(cmd),

@@ -90,6 +90,7 @@ impl<D: Driver> Machine<D> {
             defer_by: Vec::new(),
             deferred_handlers: None,
             bridge_reads: Arc::default(),
+            loop_counts: BTreeMap::new(),
         }
     }
 

@@ -24,6 +24,9 @@ inputs through the public runtime API.
 - `stage-snapshot` — runtime stage across bg/music stop/actor emotion/CG and snapshot/restore.
 - `clock-writes` — an `advance:` step's `engine:` writes land before the clock moves: the
   `dayStart` beat reads them, its presentation precedes the closing `clock` event.
+- `bounded-jump` — a `<branch>` in a bounded loop presented again in the loop's second
+  iteration (a new request); a snapshot at that await restores and resumes to the same
+  outputs (dsl 0.51.0 §3.7: the loop counters are rebuilt by replay, not saved).
 
 The `E-RUNTIME-BUSY` rejection cannot be expressed by a play script and is
 intentionally omitted. A gate refusal (`E-OCCASION-GATE`) is not a session case

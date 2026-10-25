@@ -1,0 +1,22 @@
+---
+kind: scene
+id: retry
+luteVersion: "0.50.0"
+title: retry
+on: visit
+priority: 0
+---
+## Retry
+@narrator{code="0010"}: Before the loop.
+::label{name="ask"}
+::set{run.asks += 1}
+<branch id="again" prompt="Try again?">
+  <choice id="yes" text="Yes">
+    @narrator{code="0020"}: Once more.
+    ::jump{to="ask" max="2"}
+  </choice>
+  <choice id="no" text="No">
+    @narrator{code="0030"}: Enough.
+  </choice>
+</branch>
+@narrator{code="0040"}: After the loop.

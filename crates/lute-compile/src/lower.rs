@@ -424,7 +424,8 @@ pub fn lower_directive(
         // `stage-clear` rule) injects one `sprite` exit per character, and
         // `stage::emit_primitive` emits those in its place.
         lute_manifest::core::CLEAR_DIRECTIVE => return None,
-        // dsl 0.12.0: `::jump{to [when]}` — an unconditional forward jump.
+        // dsl 0.12.0: `::jump{to [when]}` — an unconditional jump (forward,
+        // or back to an earlier label with `max`, dsl 0.51.0).
         // A GUARDED `::jump` is desugared by
         // `normalize::synth_when_next_match` into a canonical one-arm
         // `<match>` BEFORE this ever runs (mirrors the gated-line desugar),
@@ -434,9 +435,17 @@ pub fn lower_directive(
         // placeholder (`"#<id>"`), resolved to a real `addr` by
         // `address::assign_addresses`'s document-wide named-label pass,
         // exactly like a numeric `"@<n>"` resolves the anonymous ones.
+        // dsl 0.51.0 §3.6: a bounded backward jump carries its `max` (the
+        // checker has proven it a literal in 1..=99, `E-JUMP-MAX`).
         lute_manifest::core::JUMP_DIRECTIVE => Command::Jump(JumpCmd {
             position: String::new(),
             target: format!("#{}", get("to").unwrap_or_default()),
+            max: dir
+                .attrs
+                .iter()
+                .find(|a| a.key == lute_manifest::core::JUMP_MAX_ATTR)
+                .and_then(|a| lute_check::next_labels::JumpMax::parse(&a.value))
+                .map(lute_check::next_labels::JumpMax::get),
         }),
         // `COMPONENT_BEGIN`/`END`: normalization sentinels → no record. `use`:
         // DEFENSIVE/unreachable — normalize.rs fail-louds a timeline-clip `::use`

@@ -1015,13 +1015,17 @@ export const cmdHub = Schema.Struct({
 export type cmdHub = typeof cmdHub.Type;
 
 /**
- * Unconditional control-flow jump. Carries no `timing`, `provenance`, or `source`.
+ * Unconditional control-flow jump (backward only with `max`). Carries no `timing`, `provenance`, or `source`.
  */
 export const cmdJump = Schema.Struct({
   "kind": Schema.Literal("jump"),
   "family": Schema.Literal("control"),
   "position": Schema.suspend(() => position),
-  "target": Schema.suspend(() => position)
+  "target": Schema.suspend(() => position),
+  "max": Schema.optionalKey(Schema.Int
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(1))
+  ))
 });
 export type cmdJump = typeof cmdJump.Type;
 

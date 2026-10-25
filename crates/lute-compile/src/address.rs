@@ -443,6 +443,7 @@ mod tests {
                 last.cmd = Command::Jump(JumpCmd {
                     position: String::new(),
                     target: Label(0).sym(),
+                    max: None,
                 });
             }
         }
