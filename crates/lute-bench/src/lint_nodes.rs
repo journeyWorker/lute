@@ -16,8 +16,11 @@
 //!
 //! Two costs are measured per point: `work`, the units of input the walk
 //! processed ([`lute_lint::nodes::NodeWalkStats::work`]: rows, head bytes,
-//! attributes, ordered-map comparison steps, copied values; deterministic),
-//! and the best of `--samples` wall times of one `lute_lint::lint` call.
+//! attributes, modeled ordered-map steps (⌈log₂(entries + 1)⌉ per
+//! operation, not observed comparisons), copied values; deterministic), and
+//! the best of `--samples` wall times of one `lute_lint::lint` call in the
+//! profile the binary was built with (the dev profile in RG: growth ratios,
+//! not optimized performance).
 //! `--check work` gates on the work only (stable in CI); `--check both` (the
 //! default) also gates on the times. Whole-map builds of `preceding` must be
 //! zero at every point.

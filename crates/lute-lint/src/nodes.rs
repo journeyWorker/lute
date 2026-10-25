@@ -38,7 +38,7 @@ use crate::eval::{Record, Ref, Value};
 /// Work counters of [`walk_nodes`], for the cost acceptance (dsl 0.50.0
 /// §8.1): every count is per document walked and adds up across documents.
 /// [`NodeWalkStats::work`] sums the units of processed input — rows, head
-/// bytes scanned, attributes read, ordered-map comparison steps and entries
+/// bytes scanned, attributes read, modeled ordered-map steps and entries
 /// copied — so a cost that grows with the scope's size shows in it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct NodeWalkStats {
@@ -55,9 +55,10 @@ pub struct NodeWalkStats {
     /// `preceding` lookups by tag (`"t" in node.preceding`,
     /// `node.preceding["t"]`).
     pub preceding_lookups: u64,
-    /// Comparison steps of every `preceding` write, restore, lookup and
-    /// size read: each costs at most ⌈log₂(entries + 1)⌉ comparisons in
-    /// the ordered map, the bound counted here.
+    /// Modeled ordered-map steps of every `preceding` write, restore,
+    /// lookup and size read: ⌈log₂(entries + 1)⌉ each, the depth of a
+    /// balanced search over the entries. A model of the lookup cost, not
+    /// the comparisons `BTreeMap` performs (which are not observable).
     pub preceding_steps: u64,
     /// Whole `preceding` maps built for a rule that read the map whole
     /// (rendering or comparing it): zero unless a rule does.
@@ -69,7 +70,7 @@ pub struct NodeWalkStats {
 
 impl NodeWalkStats {
     /// The units of input the walk processed: rows, head bytes scanned,
-    /// attributes read, map comparison steps and copied values. The event
+    /// attributes read, modeled map steps and copied values. The event
     /// counts (writes, restores, lookups, maps built) are not added again:
     /// their cost is in `preceding_steps` and `preceding_copied`.
     pub fn work(&self) -> u64 {
@@ -90,7 +91,8 @@ impl NodeWalkStats {
     }
 }
 
-/// The comparison bound of one operation on an ordered map of `entries`.
+/// The modeled step count of one operation on an ordered map of `entries`
+/// (see [`NodeWalkStats::preceding_steps`]).
 fn steps(entries: usize) -> u64 {
     u64::from(usize::BITS - (entries + 1).leading_zeros())
 }
