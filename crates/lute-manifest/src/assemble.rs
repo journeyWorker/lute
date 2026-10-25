@@ -850,7 +850,7 @@ fn merge_stamp_attr(
                             name: name.clone(),
                             surface: surface.clone(),
                             error,
-                            site: merging.pkg.site(KIND, name).map(str::to_string),
+                            site: entry.site.clone(),
                         });
                     }
                 }
@@ -878,11 +878,31 @@ fn merge_stamp_attr(
         plugin: merging.plugin.to_string(),
     };
     if let Err(overlap) = snap.stamp_attrs.insert(decl) {
-        let mut err = merging.duplicate(KIND, KIND, name, &overlap.first);
-        if let AssembleError::DuplicateAcrossPlugins { shared, .. } = &mut err {
-            *shared = overlap.shared;
-        }
-        errs.push(err);
+        // The held entry of `first` that this one overlaps: the one whose
+        // `on:` names a shared surface, or the cross-cutting one.
+        let first_site = merging
+            .installed
+            .get(&overlap.first)
+            .and_then(|p| {
+                p.loaded.stamp_attrs.iter().find(|d| {
+                    d.decl.name == *name
+                        && d.on.as_ref().is_none_or(|on| {
+                            overlap.shared.is_empty()
+                                || overlap.shared.iter().any(|s| on.contains(s.name()))
+                        })
+                })
+            })
+            .and_then(|d| d.site.as_deref())
+            .map(|s| s.rsplit_once(':').map_or(s, |(at, _)| at).to_string());
+        errs.push(AssembleError::DuplicateAcrossPlugins {
+            kind: KIND.into(),
+            id: name.clone(),
+            first: overlap.first,
+            second: merging.plugin.into(),
+            site: entry.site.clone(),
+            first_site,
+            shared: overlap.shared,
+        });
     }
 }
 

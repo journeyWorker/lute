@@ -107,32 +107,52 @@ impl Source<'_> {
             self.record(sites, kind, name, at);
             return true;
         }
-        errs.push(self.duplicate(sites, kind, name, at, Vec::new()));
+        errs.push(self.duplicate(sites, kind, name, at));
         false
     }
 
     /// Record the site of the `kind` declaration `name` at byte `at`.
     fn record(&self, sites: &mut Sites, kind: &'static str, name: String, at: Option<usize>) {
-        if let Some((line, col)) = at.map(|o| crate::yaml_text::line_col(self.text, o)) {
-            let site = format!("{}:{line}:{col}", self.file.display());
+        if let Some(site) = self.site_at(at) {
             sites.entry(kind).or_default().insert(name, site);
         }
     }
 
+    /// `path:line:column` of byte `at` of this file.
+    fn site_at(&self, at: Option<usize>) -> Option<String> {
+        let (line, col) = crate::yaml_text::line_col(self.text, at?);
+        Some(format!("{}:{line}:{col}", self.file.display()))
+    }
+
     /// [`LoadError::DuplicateId`] for the `kind` declaration `name` at byte
-    /// `at`, naming the first declaration as `file:line` relative to the
-    /// package. `shared` names the surfaces two stamp entries share.
+    /// `at`, naming the first declaration of `name` as `file:line` relative
+    /// to the package.
     fn duplicate(
         &self,
         sites: &Sites,
         kind: &'static str,
         name: String,
         at: Option<usize>,
+    ) -> LoadError {
+        let first = sites.get(kind).and_then(|m| m.get(&name)).cloned();
+        self.duplicate_of(kind, name, at, first.as_deref(), Vec::new())
+    }
+
+    /// [`LoadError::DuplicateId`] for the `kind` declaration `name` at byte
+    /// `at`, naming the declaration it repeats (at `first`, a
+    /// `path:line:column`) as `file:line` relative to the package. `shared`
+    /// names the surfaces two stamp entries share.
+    fn duplicate_of(
+        &self,
+        kind: &'static str,
+        name: String,
+        at: Option<usize>,
+        first: Option<&str>,
         shared: Vec<String>,
     ) -> LoadError {
         let at = at.map(|o| crate::yaml_text::line_col(self.text, o));
-        let first = sites.get(kind).and_then(|m| m.get(&name)).map(|site| {
-            let site = site.rsplit_once(':').map_or(site.as_str(), |(s, _)| s);
+        let first = first.map(|site| {
+            let site = site.rsplit_once(':').map_or(site, |(s, _)| s);
             let (path, line) = site.rsplit_once(':').unwrap_or((site, ""));
             let rel = Path::new(path).strip_prefix(self.pkg).map_or_else(
                 |_| path.to_string(),
@@ -672,7 +692,7 @@ fn load_package(
                 );
             }),
             "stampAttrs" => read_kind::<StampAttrsFile, _>(dir, &path, &mut errs, |f, src, e| {
-                merge_stamp_attrs(&mut out.stamp_attrs, sites, f.stamp_attrs, src, e);
+                merge_stamp_attrs(&mut out.stamp_attrs, f.stamp_attrs, src, e);
             }),
             "rewardKinds" => read_kind::<RewardKindsFile, _>(dir, &path, &mut errs, |f, src, e| {
                 let decls: Vec<RewardKindDecl> = f
@@ -857,7 +877,10 @@ fn drop_invalid(dir: &Path, out: &mut LoadedPlugin, errs: &[LoadError]) {
         .retain(|b| !gone("bridge", &format!("{}.{}", b.service, b.operation)));
     out.defs.retain(|d| !gone("def", &d.name));
     out.occasions.retain(|o| !gone("occasion", &o.name));
-    out.stamp_attrs.retain(|a| !gone("stampAttr", &a.decl.name));
+    // One name may have several (disjoint) stamp entries: each is dropped by
+    // its own identity, so a sibling entry of the name still loads.
+    out.stamp_attrs
+        .retain(|a| !gone("stampAttr", &a.identity()));
     out.reward_kinds.retain(|r| !gone("rewardKind", &r.name));
     out.asset_kinds.retain(|a| !gone("assetKind", &a.kind));
     out.frontmatter.retain(|key, _| !gone("frontmatter", key));
@@ -924,6 +947,21 @@ fn export_entry(
                 "bridge" => format!("{}.{}", field("service")?, field("operation")?),
                 "assetKind" => field("kind")?.to_string(),
                 "frontmatter" => field("key")?.to_string(),
+                // A stamp entry by name and `on:` names, as
+                // `DeclaredStampAttr::identity` spells it.
+                "stampAttr" => {
+                    let on = e
+                        .get("on")
+                        .and_then(yaml_serde::Value::as_sequence)
+                        .map(|items| {
+                            items
+                                .iter()
+                                .filter_map(yaml_serde::Value::as_str)
+                                .map(str::to_string)
+                                .collect::<BTreeSet<String>>()
+                        });
+                    crate::stamps::entry_identity(field("name")?, on.as_ref())
+                }
                 _ => field("name")?.to_string(),
             }
         }
@@ -1809,12 +1847,12 @@ fn yaml_files(path: &Path, errs: &mut Vec<LoadError>) -> Vec<std::path::PathBuf>
 /// Merge a `stampAttrs` file's entries into its package (0.50.0 §3.2): each
 /// entry's `on:` shape is checked (`E-PLUGIN-PARSE` at the entry), then it
 /// is admitted unless it overlaps an entry of its name already declared in
-/// the package (`E-PLUGIN-DUP-ID` naming the shared surfaces). Two entries
-/// may share a name only when both have `on:` and their surfaces are
-/// disjoint.
+/// the package (`E-PLUGIN-DUP-ID` naming the shared surfaces and the entry
+/// it overlaps). Two entries may share a name only when both have `on:` and
+/// their surfaces are disjoint. Each admitted entry keeps its own site,
+/// where assembly reports a fault of that entry.
 fn merge_stamp_attrs(
     dst: &mut Vec<crate::stamps::DeclaredStampAttr>,
-    sites: &mut Sites,
     items: Vec<crate::schema::StampAttrEntry>,
     src: &Source,
     errs: &mut Vec<LoadError>,
@@ -1837,18 +1875,20 @@ fn merge_stamp_attrs(
                 continue;
             }
         };
-        let mut same_name = dst.iter().filter(|d| d.decl.name == decl.name).peekable();
-        let first_of_name = same_name.peek().is_none();
-        if let Some(shared) =
-            same_name.find_map(|d| crate::stamps::overlap(d.on.as_ref(), on.as_ref()))
+        if let Some((held, shared)) = dst
+            .iter()
+            .filter(|d| d.decl.name == decl.name)
+            .find_map(|d| Some((d, crate::stamps::overlap(d.on.as_ref(), on.as_ref())?)))
         {
-            errs.push(src.duplicate(sites, KIND, decl.name, offset, shared));
+            let first = held.site.as_deref();
+            errs.push(src.duplicate_of(KIND, decl.name, offset, first, shared));
             continue;
         }
-        if first_of_name {
-            src.record(sites, KIND, decl.name.clone(), offset);
-        }
-        dst.push(crate::stamps::DeclaredStampAttr { decl, on });
+        dst.push(crate::stamps::DeclaredStampAttr {
+            decl,
+            on,
+            site: src.site_at(offset),
+        });
     }
 }
 

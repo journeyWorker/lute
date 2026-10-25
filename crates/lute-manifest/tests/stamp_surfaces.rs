@@ -54,10 +54,23 @@ fn assemble(
     pkgs: &[Pkg],
     active: &[&str],
 ) -> (CapabilitySnapshot, Vec<LoadError>, Vec<AssembleError>) {
+    assemble_with(pkgs, active, &[])
+}
+
+/// [`assemble`], with `extra` files written into the packages first:
+/// `(package id, path in the package, text)`.
+fn assemble_with(
+    pkgs: &[Pkg],
+    active: &[&str],
+    extra: &[(&str, &str, &str)],
+) -> (CapabilitySnapshot, Vec<LoadError>, Vec<AssembleError>) {
     let scratch = lute_scratch::ScratchDir::new();
     let root = scratch.join("plugins");
     for pkg in pkgs {
         write_pkg(&root, pkg);
+    }
+    for (id, path, text) in extra {
+        fs::write(root.join(id).join(path), text).unwrap();
     }
     let (installed, load_errs) = load_plugins_dir(&root);
     let mut plugins = vec![ActivePlugin {
@@ -458,4 +471,112 @@ fn capability_snapshot_folds_on_only_when_written() {
     );
     assert!(errs.is_empty(), "{errs:?}");
     assert_ne!(scoped.version, snap.version, "`on:` is a changed surface");
+}
+
+/// S1 review R1: an invalid entry (`type: number`) is dropped by its own
+/// identity, so a sibling entry of its name on other surfaces still loads.
+#[test]
+fn an_invalid_entry_drops_only_itself() {
+    let (snap, load, errs) = one(
+        "acme.stage",
+        "stampAttrs:\n  - { name: assetName, type: number, on: [bg] }\n  - { name: assetName, \
+         type: string, on: [actor] }\n",
+    );
+    assert_eq!(
+        load.iter().map(LoadError::code).collect::<Vec<_>>(),
+        ["E-TYPE-NUMBER"],
+        "{load:?}"
+    );
+    assert!(errs.is_empty(), "{errs:?}");
+    assert!(snap.stamp_attrs.get(&bg(), "assetName").is_none());
+    assert_eq!(
+        snap.stamp_attrs
+            .get(&StampSurface::Directive("actor".into()), "assetName")
+            .map(|d| d.ty.clone()),
+        Some(Type::Str)
+    );
+}
+
+/// S1 review R2: a fault of one entry is reported at that entry, not at the
+/// first entry of its name.
+#[test]
+fn a_surface_fault_points_at_its_own_entry() {
+    let (_, load, errs) = one(
+        "acme.stage",
+        "stampAttrs:\n  - { name: assetName, type: string, on: [bg] }\n  - { name: assetName, \
+         type: string, on: [bgg] }\n",
+    );
+    assert!(load.is_empty(), "{load:?}");
+    assert_eq!(errs.len(), 1, "{errs:?}");
+    let shown = errs[0].to_string();
+    assert!(shown.contains("stampattrs/s.yaml:3:"), "{shown}");
+    // Across two export files of one package: the second file's entry.
+    let (_, load, errs) = assemble_with(
+        &[Pkg {
+            id: "acme.stage",
+            depends: &[],
+            stamps: "stampAttrs:\n  - { name: assetName, type: string, on: [bg] }\n",
+            directives: None,
+        }],
+        &["acme.stage"],
+        &[(
+            "acme.stage",
+            "stampattrs/t.yaml",
+            "stampAttrs:\n  - { name: assetName, type: string, on: [bgg] }\n",
+        )],
+    );
+    assert!(load.is_empty(), "{load:?}");
+    assert_eq!(errs.len(), 1, "{errs:?}");
+    let shown = errs[0].to_string();
+    assert!(shown.contains("stampattrs/t.yaml:2:"), "{shown}");
+}
+
+/// S1 review R2: an overlap names the entry it overlaps, within a package
+/// and across plugins.
+#[test]
+fn an_overlap_names_the_entry_it_overlaps() {
+    let (_, load, _) = one(
+        "acme.stage",
+        "stampAttrs:\n  - { name: x, type: string, on: [bg] }\n  - { name: x, type: string, on: \
+         [actor] }\n  - { name: x, type: string, on: [actor, sfx] }\n",
+    );
+    assert_eq!(
+        load_fault(&load).1,
+        "stampAttr `x` is declared twice on the surface `actor` (first at stampattrs/s.yaml:3) \
+         — give each entry disjoint `on:` surfaces"
+    );
+    let (_, load, errs) = assemble(
+        &[
+            Pkg {
+                id: "a.one",
+                depends: &[],
+                stamps: "stampAttrs:\n  - { name: tag, type: string, on: [bg] }\n  - { name: \
+                         tag, type: string, on: [sfx] }\n",
+                directives: None,
+            },
+            Pkg {
+                id: "b.two",
+                depends: &[],
+                stamps: "stampAttrs:\n  - { name: other, type: string, on: [bg] }\n  - { name: \
+                         tag, type: int, on: [sfx] }\n",
+                directives: None,
+            },
+        ],
+        &["a.one", "b.two"],
+    );
+    assert!(load.is_empty(), "{load:?}");
+    assert_eq!(errs.len(), 1, "{errs:?}");
+    let AssembleError::DuplicateAcrossPlugins {
+        site, first_site, ..
+    } = &errs[0]
+    else {
+        panic!("{errs:?}")
+    };
+    let site = site.as_deref().unwrap_or_default();
+    let first_site = first_site.as_deref().unwrap_or_default();
+    assert!(site.contains("b.two/stampattrs/s.yaml:3:"), "{site}");
+    assert!(
+        first_site.ends_with("a.one/stampattrs/s.yaml:3"),
+        "{first_site}"
+    );
 }

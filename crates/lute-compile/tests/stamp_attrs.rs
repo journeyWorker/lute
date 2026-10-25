@@ -220,6 +220,7 @@ fn assembled_snapshot(directives: Vec<DirectiveDecl>, stamps: &[&str]) -> Capabi
                     default: None,
                 },
                 on: None,
+                site: None,
             })
             .collect(),
         reward_kinds: Vec::new(),

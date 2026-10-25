@@ -174,6 +174,30 @@ impl fmt::Display for StampSurface {
 pub struct DeclaredStampAttr {
     pub decl: AttrDecl,
     pub on: Option<BTreeSet<String>>,
+    /// `path:line:column` of this entry, when known: one name may have
+    /// several entries, and a fault of one is reported at that one.
+    pub site: Option<String>,
+}
+
+impl DeclaredStampAttr {
+    /// The entry's identity within its package ([`entry_identity`]).
+    pub fn identity(&self) -> String {
+        entry_identity(&self.decl.name, self.on.as_ref())
+    }
+}
+
+/// One `stampAttrs` entry's identity within its package: its name, plus its
+/// `on:` names (sorted) when scoped — `assetName@on=[actor, bg]`. Entries of
+/// one name that load are disjoint, so the identity tells them apart where
+/// the name alone cannot (an invalid entry drops that entry only).
+pub fn entry_identity(name: &str, on: Option<&BTreeSet<String>>) -> String {
+    match on {
+        None => name.to_string(),
+        Some(on) => {
+            let names: Vec<&str> = on.iter().map(String::as_str).collect();
+            format!("{name}@on=[{}]", names.join(", "))
+        }
+    }
 }
 
 /// One assembled stamp declaration of [`StampAttrs`].

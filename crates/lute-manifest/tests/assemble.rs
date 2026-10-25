@@ -1560,6 +1560,10 @@ fn assemble_rejects_cross_plugin_occasion_dup() {
 fn cross_cutting(decls: Vec<AttrDecl>) -> Vec<DeclaredStampAttr> {
     decls
         .into_iter()
-        .map(|decl| DeclaredStampAttr { decl, on: None })
+        .map(|decl| DeclaredStampAttr {
+            decl,
+            on: None,
+            site: None,
+        })
         .collect()
 }
