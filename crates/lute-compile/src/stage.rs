@@ -119,16 +119,18 @@ pub fn walk_seq(
             // in this body, `Emitter::finish`'s `trailing_named` — mirrors
             // a branch/match converge's `em.bind`, keyed by the author's
             // string instead of a fresh anonymous `Label`). dsl 0.51.0 §3.4:
-            // the stage state there is the checker's.
+            // the stage state there is the checker's. Inside a component
+            // expansion the name is the instance's own ([`label_key`], #207).
             Node::Directive(d) if d.tag == lute_manifest::core::LABEL_DIRECTIVE => {
                 em.marker(|| directive_marker(d));
                 if let Some(id) = attr_string(&d.attrs, lute_manifest::core::LABEL_NAME_ATTR) {
                     bind_label(cx, &id, &nodes[i + 1..], &mut state);
-                    em.bind_named(id);
+                    em.bind_named(label_key(cx, &id));
                 }
             }
             Node::Directive(d) if d.tag == lute_manifest::core::JUMP_DIRECTIVE => {
                 state = emit_primitive(em, node, state, &[], cx, None);
+                scope_jump_target(em, cx);
                 route_jump(cx, d, &mut state);
             }
             // Fact args are ground — nothing authored, `lower_node`'s
@@ -924,6 +926,30 @@ fn component_use(cx: &WalkCx<'_>) -> Option<ComponentUse> {
         scope,
         stable,
     })
+}
+
+/// The document-wide name of label `id` (#207): inside a component
+/// expansion, qualified by the instance's scope path, so each `::use`
+/// instance's jumps reach its own labels (the checker resolves a component's
+/// labels in its own document). Outside a component, the authored name.
+fn label_key(cx: &WalkCx<'_>, id: &str) -> String {
+    match component_use(cx) {
+        Some(ComponentUse { scope, .. }) => format!("{scope}::{id}"),
+        None => id.to_string(),
+    }
+}
+
+/// Qualify the `#<label>` target of the `jump` record just emitted the way
+/// [`label_key`] names its label.
+fn scope_jump_target(em: &mut Emitter, cx: &WalkCx<'_>) {
+    if cx.components.is_empty() {
+        return;
+    }
+    if let Some(Command::Jump(jump)) = em.recs.last_mut().map(|r| &mut r.cmd) {
+        if let Some(id) = jump.target.strip_prefix('#') {
+            jump.target = format!("#{}", label_key(cx, id));
+        }
+    }
 }
 
 /// `timing.timeline`/`at`/`duration` on timeline-clip records (dsl 0.37.0 §5.2).

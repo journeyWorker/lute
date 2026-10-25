@@ -183,7 +183,7 @@ fn load_refuses_malformed_loops() {
         cmds[jump].as_object_mut().unwrap().remove("max");
     });
     assert_eq!(r.code, "E-RUNTIME-IR-VERSION", "{}", r.message);
-    assert!(r.message.contains("without `max`"), "{}", r.message);
+    assert!(r.message.contains("goes back to"), "{}", r.message);
     // A bounded jump appended at the end back to the record after the head:
     // its loop starts inside the case's loop and ends after it — they cross.
     let r = with_jumps(&|cmds| {

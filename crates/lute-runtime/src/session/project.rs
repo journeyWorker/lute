@@ -405,8 +405,9 @@ impl ExecProject {
             .iter()
             .map(|(d, a)| (d.clone(), Arc::new(crate::machine::Code::of(a))))
             .collect();
-        // dsl 0.51.0 §3.7: a document whose loops are malformed (a backward
-        // jump without `max`, crossing loops, a bad `max`) is refused at load.
+        // dsl 0.51.0 §3.7: a document whose control flow can cycle (a
+        // backward transfer that is not a bounded jump, crossing loops, a bad
+        // `max`) is refused at load.
         let faults: Vec<String> = codes
             .iter()
             .filter_map(|(d, c)| c.fault.as_ref().map(|f| format!("{d}: {f}")))

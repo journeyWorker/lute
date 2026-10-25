@@ -343,42 +343,47 @@ impl Code {
 
     /// dsl 0.51.0 §3.7: the loops of the stream, validated as the checker's
     /// loop rules leave them (§3.2), so every walk terminates within the
-    /// product of the enclosing `max`es: a `max` is an integer in 1..=99, a
-    /// jump back to its own or an earlier record carries `max`, and two
-    /// regions nest or are disjoint. `Err` names the malformed record.
+    /// product of the enclosing `max`es. Every control transfer of every
+    /// record ([`transfers`]) goes forward, except a `jump` with `max` (a
+    /// bounded loop); a `max` is an integer in 1..=99; and two loops nest or
+    /// are disjoint. `Err` names the malformed record.
     fn loop_table(&self) -> Result<Loops, String> {
         let mut loops = Loops::default();
         let mut regions = Vec::new();
         for (j, cmd) in self.commands.iter().enumerate() {
-            if cmd.get("kind").and_then(Json::as_str) != Some("jump") {
-                continue;
-            }
+            let kind = cmd.get("kind").and_then(Json::as_str).unwrap_or("");
             let position = cmd.get("position").and_then(Json::as_str).unwrap_or("?");
-            let target = cmd.get("target").and_then(Json::as_str).unwrap_or("");
-            let head = self.resolve(target);
-            let Some(max) = cmd.get("max") else {
-                if head <= j {
+            if kind == "jump" {
+                if let Some(max) = cmd.get("max") {
+                    let Some(max) = max
+                        .as_u64()
+                        .and_then(|m| u8::try_from(m).ok())
+                        .filter(|m| (1..=JUMP_MAX_LIMIT).contains(m))
+                    else {
+                        return Err(format!(
+                            "malformed `jump` record at {position}: `max` must be an integer \
+                             from 1 to {JUMP_MAX_LIMIT}, got {max}"
+                        ));
+                    };
+                    loops.bounds.insert(j, max);
+                    let head = self.resolve(cmd.get("target").and_then(Json::as_str).unwrap_or(""));
+                    if head <= j {
+                        loops.heads.entry(head).or_default().push(j);
+                        regions.push((head, j));
+                    }
+                    continue;
+                }
+            }
+            // An unknown kind has no transfers to check; it is refused as
+            // unknown (`Runtime::load`, or when the walk reaches it).
+            for (field, target) in transfers(cmd).unwrap_or_default() {
+                if self.resolve(target) <= j {
                     return Err(format!(
-                        "malformed `jump` record at {position}: it jumps back to {target} \
-                         without `max`, a cycle that never ends"
+                        "malformed `{kind}` record at {position}: its `{field}` goes back to \
+                         {target}, a cycle that never ends (only a `jump` with `max` may go \
+                         back)"
                     ));
                 }
-                continue;
-            };
-            let Some(max) = max
-                .as_u64()
-                .and_then(|m| u8::try_from(m).ok())
-                .filter(|m| (1..=JUMP_MAX_LIMIT).contains(m))
-            else {
-                return Err(format!(
-                    "malformed `jump` record at {position}: `max` must be an integer from 1 to \
-                     {JUMP_MAX_LIMIT}, got {max}"
-                ));
-            };
-            loops.bounds.insert(j, max);
-            if head <= j {
-                loops.heads.entry(head).or_default().push(j);
-                regions.push((head, j));
             }
         }
         // Nest, never cross: in (head ascending, end descending) order an
@@ -426,6 +431,57 @@ impl Code {
 
 /// dsl 0.51.0 §3.1: the largest `max` a bounded jump may carry.
 const JUMP_MAX_LIMIT: u8 = 99;
+
+/// Every control transfer `cmd` makes: `(field, target addr)` — the one list
+/// the load check walks ([`Code::loop_table`]). `None` for a kind the
+/// runtime does not execute; every kind of [`COMMAND_KINDS`] is named here,
+/// so a new kind has to be classified. The only structural back-transfer
+/// the compiler emits by design has no target field: a `<hub>` presents
+/// itself again inside [`Machine::do_hub`]'s loop (its options, `return` and
+/// `converge` all point forward).
+fn transfers(cmd: &Json) -> Option<Vec<(&'static str, &str)>> {
+    let each = |key: &str| {
+        cmd.get(key)
+            .and_then(Json::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    };
+    let mut fields: Vec<(&'static str, Option<&Json>)> = Vec::new();
+    match cmd.get("kind").and_then(Json::as_str).unwrap_or("") {
+        "jump" => fields.push(("target", cmd.get("target"))),
+        "choice" | "hub" => {
+            for option in each("options") {
+                fields.push(("options[].target", option.get("target")));
+            }
+            fields.push(("return", cmd.get("return")));
+            fields.push(("converge", cmd.get("converge")));
+        }
+        "match" => {
+            for arm in each("arms") {
+                fields.push(("arms[].target", arm.get("target")));
+            }
+            fields.push(("otherwise", cmd.get("otherwise")));
+            fields.push(("converge", cmd.get("converge")));
+        }
+        // Segment starts: the body a quest objective, handler, entry or
+        // beat runs, after its declaration.
+        "quest" => {
+            for objective in each("objectives") {
+                fields.push(("objectives[].body", objective.get("body")));
+            }
+        }
+        "on" | "entry" | "beat" => fields.push(("body", cmd.get("body"))),
+        "accept" | "actor" | "assert" | "barrier" | "bg" | "camera" | "cg" | "end" | "line"
+        | "music" | "plugin" | "retract" | "sequence" | "set" | "sfx" | "vfx" | "video" => {}
+        _ => return None,
+    }
+    Some(
+        fields
+            .into_iter()
+            .filter_map(|(field, target)| Some((field, target?.as_str()?)))
+            .collect(),
+    )
+}
 
 /// [`Code::slots`]' key: the pair's address. `commands` is never mutated
 /// after [`Code::of`], so the address of every value inside it is stable

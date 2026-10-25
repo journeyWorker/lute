@@ -154,11 +154,41 @@ fn refused(commands: Vec<Json>) -> String {
 fn a_cycle_without_max_is_refused_at_load() {
     let err = refused(vec![line(0, "a"), jump(1, 0, None)]);
     assert!(
-        err.contains("jumps back to 001-0100 without `max`"),
+        err.contains("`jump` record at 001-0200: its `target` goes back to 001-0100"),
         "{err}"
     );
     let err = refused(vec![line(0, "a"), jump(1, 1, None)]);
-    assert!(err.contains("without `max`"), "a jump to itself: {err}");
+    assert!(
+        err.contains("goes back to 001-0200"),
+        "a jump to itself: {err}"
+    );
+}
+
+/// Every control transfer is checked, not only `jump`: an empty-arm `match`
+/// whose `otherwise` goes back around a bounded loop would re-enter it from
+/// outside forever (S3 re-review), and is refused at load.
+#[test]
+fn a_backward_match_transfer_is_refused_at_load() {
+    let back = json!({ "kind": "match", "family": "control", "position": pos(3),
+                       "arms": [], "otherwise": pos(0), "converge": pos(4) });
+    let err = refused(vec![line(0, "a"), line(1, "b"), jump(2, 1, Some(1)), back]);
+    assert!(
+        err.contains("`match` record at 001-0400: its `otherwise` goes back to 001-0100"),
+        "{err}"
+    );
+}
+
+/// [`super::transfers`] classifies every kind the runtime executes, so a new
+/// kind cannot skip the load check.
+#[test]
+fn every_command_kind_lists_its_transfers() {
+    for kind in super::COMMAND_KINDS {
+        assert!(
+            super::transfers(&json!({ "kind": kind })).is_some(),
+            "`{kind}` is not classified"
+        );
+    }
+    assert!(super::transfers(&json!({ "kind": "hologram" })).is_none());
 }
 
 /// An unbounded backward jump around a bounded loop would re-enter the loop
