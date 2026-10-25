@@ -530,6 +530,12 @@ Content asserts or retracts a relation declared `derive: true`, though a derived
 
 Spec: [dsl 0.3.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
 
+### E-DIAGNOSTICS-CONFIG
+
+A `lute.project.yaml` `diagnostics:` entry cannot apply: its key is an error code (an error is never re-levelled), a lint rule (set in `lute.lint.yaml` `rules:`) or no diagnostic code at all, its level is not one of `off`, `info`, `warn`, `error`, or its `paths` is not a non-empty list of project-relative globs. The entry is dropped and the manifest is invalid.
+
+Spec: [dsl 0.50.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+
 ### E-DIFF-INPUT
 
 A diff side cannot be read, safely materialized, or built into a complete project model.
@@ -842,9 +848,9 @@ Spec: [dsl §7.1](/spec/)
 
 ### E-LINT-CONFIG
 
-`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id. Since 0.49.0 it also covers an `asset-exists` `options.providers` key that is none of the selector shapes (`<tag>`, `<tag>.<attr>`, `@<attr>`).
+`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id. Since 0.49.0 it also covers an `asset-exists` `options.providers` key that is none of the selector shapes (`<tag>`, `<tag>.<attr>`, `@<attr>`). A `rules:` id that is a checker code is named as one: a warning's level is set in `lute.project.yaml` `diagnostics:`, and an error cannot be re-levelled.
 
-Spec: [dsl 0.49.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+Spec: [dsl 0.49.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §6.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-LINT-EXPR
 

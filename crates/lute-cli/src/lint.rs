@@ -64,10 +64,11 @@ fn is_lint_deniable(code: &str) -> bool {
     }
 }
 
-/// Lint-scoped promotion policy — a private mirror of [`crate::DenyPolicy`]
-/// with the same semantics (spec §5) over the lint code universe. Kept
-/// separate so `lute check`'s registry-backed `--deny` is not perturbed by
-/// dynamic `L-*` ids.
+/// Lint-scoped promotion policy — a private mirror of the `--deny` half of
+/// [`crate::SeverityPolicy`] with the same semantics (spec §5) over the lint
+/// code universe. Kept separate so `lute check`'s registry-backed `--deny`
+/// is not perturbed by dynamic `L-*` ids; `lute.project.yaml` levels apply
+/// only to `W-*` checker codes, never to lint findings.
 #[derive(Default, Clone)]
 pub struct LintDenyPolicy {
     codes: BTreeSet<String>,

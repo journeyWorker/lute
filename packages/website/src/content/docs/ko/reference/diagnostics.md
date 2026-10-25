@@ -531,6 +531,12 @@ context 대상 키가 프로젝트 그래프에서 없거나 모호합니다.
 
 명세: [dsl 0.3.0 §5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
 
+### E-DIAGNOSTICS-CONFIG
+
+`lute.project.yaml`의 `diagnostics:` 항목을 적용할 수 없습니다. 키가 에러 코드(에러는 레벨을 바꿀 수 없음)이거나 린트 규칙(`lute.lint.yaml` `rules:`에서 설정)이거나 진단 코드가 아니거나, 레벨이 `off`, `info`, `warn`, `error` 중 하나가 아니거나, `paths`가 프로젝트 상대 glob의 비어 있지 않은 목록이 아닌 경우입니다. 해당 항목은 버려지고 매니페스트는 유효하지 않습니다.
+
+명세: [dsl 0.50.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+
 ### E-DIFF-INPUT
 
 diff 한쪽을 읽거나 안전하게 임시 materialize하거나 완전한 프로젝트 모델로 만들 수 없습니다.
@@ -842,9 +848,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-LINT-CONFIG
 
-`lute.lint.yaml`가 잘못되었습니다 — 타입이 틀렸거나 알 수 없는 최상위 키, 잘못된 규칙 오버라이드, 또는 코어 규칙 id와 충돌하는 커스텀 규칙 id입니다. 0.49.0부터는 `options.providers`의 `asset-exists` 키가 셀렉터 형태(`<tag>`, `<tag>.<attr>`, `@<attr>`) 중 어느 것도 아닌 경우도 포함합니다.
+`lute.lint.yaml`가 잘못되었습니다 — 타입이 틀렸거나 알 수 없는 최상위 키, 잘못된 규칙 오버라이드, 또는 코어 규칙 id와 충돌하는 커스텀 규칙 id입니다. 0.49.0부터는 `options.providers`의 `asset-exists` 키가 셀렉터 형태(`<tag>`, `<tag>.<attr>`, `@<attr>`) 중 어느 것도 아닌 경우도 포함합니다. `rules:`의 id가 체커 코드이면 그렇다고 알려 줍니다. 경고의 레벨은 `lute.project.yaml` `diagnostics:`에서 정하고, 에러는 레벨을 바꿀 수 없습니다.
 
-명세: [dsl 0.49.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+명세: [dsl 0.49.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §6.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-LINT-EXPR
 

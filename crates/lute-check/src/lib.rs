@@ -28,6 +28,7 @@ pub mod defassign;
 pub(crate) mod defaults_note;
 pub mod depends;
 pub mod deps;
+pub mod diagnostics_config;
 pub mod directive_facts;
 pub mod directives;
 pub mod display_names;

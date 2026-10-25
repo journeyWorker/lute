@@ -10,7 +10,7 @@ use lute_core_span::{Diagnostic, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
 
 use crate::envelope::{self, CliError};
-use crate::output::{check_report_json, pretty_json, print_human, DenyPolicy};
+use crate::output::{check_report_json, pretty_json, print_human, SeverityPolicy};
 use crate::project::{canonical_path, find_lute_files, resolve_project};
 use lute_load::{
     build_input, manifest_context, nearest_manifest_dir, normalize_span_from_text, BuiltInput,
@@ -589,12 +589,14 @@ fn resolve_failure(lines: &[String]) -> lute_check::CheckResult {
 }
 
 /// Check one document (or one `.yaml` state schema) against its project and
-/// return its result. `Err` is a failure already reported (exit `2`).
+/// return its result and the policy it is reported under (the gate options
+/// plus its project's `diagnostics:`). `Err` is a failure already reported
+/// (exit `2`).
 fn check_document(
     file: &Path,
     opts: &CheckOptions<'_>,
     matrix: &crate::EngineMatrix,
-) -> Result<Checked, ExitCode> {
+) -> Result<(Checked, SeverityPolicy), ExitCode> {
     let (providers, permission_profile, engine) =
         (opts.providers, opts.permission_profile, opts.engine);
     // #21 / T3.9: `lute check world.schema.yaml` is the obvious next command
@@ -608,13 +610,15 @@ fn check_document(
         file.extension().and_then(|e| e.to_str()),
         Some("yaml" | "yml")
     ) {
-        return run_check_schema_yaml(file).map(Checked::Done);
+        return run_check_schema_yaml(file)
+            .map(|r| (Checked::Done(r), opts.policy.for_project(None)));
     }
     // 0.21.1 T3-9 (ashen F2): a file inside a project is checked against that
     // project. Without the manifest there is no `uses:` schema, no `defaults:`
     // and no profile, so the check reported `E-UNDECLARED`/`E-DOMAIN-UNKNOWN`
     // for paths the project declares, and advice that would have broken it.
     let project = resolve_project(file, opts.project);
+    let policy = opts.policy.for_project(project.as_deref());
     let Some(built) = build_input(file, providers, project.as_deref(), permission_profile) else {
         return Err(envelope::fail_quietly(CliError::unreadable_document(file)));
     };
@@ -632,7 +636,10 @@ fn check_document(
     // option, missing active plugin, bad identity template) is a build-failing
     // error; it printed above, and it MUST gate here or it would pass silently.
     if resolve_error {
-        return Ok(Checked::ResolveFailed(resolve_failure(&resolve_lines)));
+        return Ok((
+            Checked::ResolveFailed(resolve_failure(&resolve_lines)),
+            policy,
+        ));
     }
     let mut result = check(&input);
     // dsl 0.49.0 §7.1 (#175): name the quest references this single-file
@@ -736,7 +743,7 @@ fn check_document(
             .iter()
             .any(|d| d.severity == Severity::Error);
     }
-    Ok(Checked::Done(result))
+    Ok((Checked::Done(result), policy))
 }
 
 /// What `lute check` was asked (everything after the operands).
@@ -747,7 +754,8 @@ pub(crate) struct CheckOptions<'a> {
     pub(crate) permission_profile: Option<&'a str>,
     pub(crate) engine: Option<&'a Path>,
     pub(crate) wip: bool,
-    pub(crate) policy: &'a DenyPolicy,
+    /// The gate options; each document adds its project's levels.
+    pub(crate) policy: &'a SeverityPolicy,
 }
 
 /// `lute check [<FILE>]…` (0.48.0 §3.1): the named documents each on their
@@ -799,23 +807,26 @@ pub(crate) fn run(files: &[PathBuf], opts: &CheckOptions<'_>) -> ExitCode {
         }
     };
     let mut results: Vec<(PathBuf, lute_check::CheckResult)> = Vec::new();
+    let mut policies: Vec<SeverityPolicy> = Vec::new();
     for file in files {
-        let checked = match check_document(file, opts, &matrix) {
+        let (checked, policy) = match check_document(file, opts, &matrix) {
             Ok(checked) => checked,
             Err(code) => return code,
         };
         if let Checked::Done(result) = &checked {
             if !opts.json {
-                print_human(file, result, opts.policy);
+                print_human(file, result, &policy);
             }
         }
         results.push((file.clone(), checked.into_result()));
+        policies.push(policy);
     }
     let ok = results
         .iter()
-        .all(|(_, r)| r.ok && !opts.policy.any_denied(&r.diagnostics));
+        .zip(&policies)
+        .all(|((file, r), policy)| r.ok && !policy.any_promoted(file, &r.diagnostics));
     if opts.json {
-        return print_check_report(&results, None, ok, opts.policy);
+        return print_check_report(&results, None, ok, |i| &policies[i], opts.policy);
     }
     if ok {
         ExitCode::SUCCESS
@@ -824,14 +835,16 @@ pub(crate) fn run(files: &[PathBuf], opts: &CheckOptions<'_>) -> ExitCode {
     }
 }
 
-/// Print the `0.48.0.check` report (both modes) and return its exit code.
-pub(crate) fn print_check_report(
+/// Print the `0.48.0.check` report (both modes) and return its exit code;
+/// `policy_of(i)` reports the i-th file, `project_policy` the project rows.
+pub(crate) fn print_check_report<'p>(
     files: &[(PathBuf, lute_check::CheckResult)],
     project_diags: Option<&[(PathBuf, Diagnostic)]>,
     ok: bool,
-    policy: &DenyPolicy,
+    policy_of: impl Fn(usize) -> &'p SeverityPolicy,
+    project_policy: &SeverityPolicy,
 ) -> ExitCode {
-    let payload = match check_report_json(files, project_diags, ok, policy) {
+    let payload = match check_report_json(files, project_diags, ok, policy_of, project_policy) {
         Ok(payload) => payload,
         Err(error) => {
             return envelope::fail(CliError::io_without_path(format!(

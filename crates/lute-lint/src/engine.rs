@@ -250,10 +250,10 @@ fn ignored(path: &Path, patterns: &[String]) -> bool {
     if patterns.is_empty() {
         return false;
     }
-    // Normalize to forward slashes for glob matching (the writer inside
-    // `crate::glob` treats `/` as the segment separator).
+    // Normalize to forward slashes for glob matching (the matcher in
+    // `lute_manifest::glob` treats `/` as the segment separator).
     let s = path.to_string_lossy().replace('\\', "/");
-    crate::glob::matches_any(patterns, &s)
+    lute_manifest::glob::matches_any(patterns, &s)
 }
 
 #[cfg(test)]

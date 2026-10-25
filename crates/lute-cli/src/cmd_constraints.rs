@@ -25,7 +25,7 @@ impl ScriptSelection<'_> {
         crate::play::Build {
             providers: self.providers,
             permission_profile: self.permission_profile,
-            policy: crate::DenyPolicy::default(),
+            policy: crate::SeverityPolicy::default(),
         }
     }
 

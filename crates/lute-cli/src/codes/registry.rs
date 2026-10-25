@@ -447,6 +447,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.3.0 §5"],
     },
     Code {
+        code: "E-DIAGNOSTICS-CONFIG",
+        summary: "A `lute.project.yaml` `diagnostics:` entry cannot apply: its key is an error code (an error is never re-levelled), a lint rule (set in `lute.lint.yaml` `rules:`) or no diagnostic code at all, its level is not one of `off`, `info`, `warn`, `error`, or its `paths` is not a non-empty list of project-relative globs. The entry is dropped and the manifest is invalid.",
+        spec: &["dsl 0.50.0 §6.1"],
+    },
+    Code {
         code: "E-DIFF-INPUT",
         summary: "A diff side cannot be read, safely materialized, or built into a complete project model.",
         spec: &["dsl 0.36.0 §4", "dsl 0.36.0 §8"],
@@ -713,8 +718,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-LINT-CONFIG",
-        summary: "`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id. Since 0.49.0 it also covers an `asset-exists` `options.providers` key that is none of the selector shapes (`<tag>`, `<tag>.<attr>`, `@<attr>`).",
-        spec: &["dsl 0.49.0 §7.3"],
+        summary: "`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id. Since 0.49.0 it also covers an `asset-exists` `options.providers` key that is none of the selector shapes (`<tag>`, `<tag>.<attr>`, `@<attr>`). A `rules:` id that is a checker code is named as one: a warning's level is set in `lute.project.yaml` `diagnostics:`, and an error cannot be re-levelled.",
+        spec: &["dsl 0.49.0 §7.3", "dsl 0.50.0 §6.4"],
     },
     Code {
         code: "E-LINT-EXPR",

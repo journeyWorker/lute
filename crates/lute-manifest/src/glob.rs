@@ -1,5 +1,5 @@
-//! Minimal project-root-relative glob matcher for `lute.lint.yaml`'s
-//! `ignore:` list.
+//! Minimal project-root-relative glob matcher: `lute.lint.yaml`'s `ignore:`
+//! list and `lute.project.yaml`'s `diagnostics:` `paths` (dsl 0.50.0 §6).
 //!
 //! Supports two wildcards, sufficient for the "drafts/**", "**/*.lute",
 //! "chapters/prologue/*.lute" style patterns real projects use:

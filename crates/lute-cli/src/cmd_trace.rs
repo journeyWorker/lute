@@ -10,8 +10,9 @@ use lute_trace::{merge, parse_mock_yaml, TraceExit, TraceReport};
 
 use crate::cmd_check::{component_name_of, component_root_diag};
 use crate::envelope::{self, CliError};
-use crate::output::{print_diagnostics, write_stdout, DenyPolicy};
+use crate::output::{diagnostics_json, insert_suppressed, print_diagnostics, write_stdout};
 use crate::project::{discover_project, project_assert_relations_in, project_quest_ids_in};
+use crate::SeverityPolicy;
 use lute_load::{build_input, BuiltInput};
 use lute_model::project_gate_result_in;
 
@@ -29,7 +30,7 @@ pub(crate) struct TraceOptions<'a> {
     pub(crate) providers: Option<&'a Path>,
     pub(crate) project: Option<&'a Path>,
     pub(crate) permission_profile: Option<&'a str>,
-    pub(crate) policy: &'a DenyPolicy,
+    pub(crate) policy: &'a SeverityPolicy,
     pub(crate) entry: Option<&'a str>,
     pub(crate) beat: Option<&'a str>,
     pub(crate) no_derive: bool,
@@ -69,7 +70,7 @@ pub(crate) fn run_trace(opts: &TraceOptions<'_>) -> ExitCode {
         providers,
         project,
         permission_profile,
-        policy,
+        policy: gate_policy,
         entry,
         beat,
         no_derive,
@@ -80,6 +81,7 @@ pub(crate) fn run_trace(opts: &TraceOptions<'_>) -> ExitCode {
     // gate to the reconciled project verdict below (0.48.0 §2.1).
     let discovered = discover_project(file, project);
     let resolved = project.or(discovered.as_deref());
+    let policy = &gate_policy.for_project(resolved);
     let Some(built) = build_input(file, providers, resolved, permission_profile) else {
         return envelope::fail_quietly(CliError::unreadable_document(file));
     };
@@ -251,7 +253,7 @@ pub(crate) fn run_trace(opts: &TraceOptions<'_>) -> ExitCode {
         }
         None => check(&input),
     };
-    if policy.any_denied(&gate.diagnostics) {
+    if policy.any_promoted(file, &gate.diagnostics) {
         gate.ok = false;
     }
 
@@ -274,7 +276,11 @@ pub(crate) fn run_trace(opts: &TraceOptions<'_>) -> ExitCode {
                     }
                 }
             } else {
-                print_diagnostics(file, std::slice::from_ref(&diag), &DenyPolicy::default());
+                print_diagnostics(
+                    file,
+                    std::slice::from_ref(&diag),
+                    &SeverityPolicy::default(),
+                );
                 println!(
                     "trace refused: {} is a component — trace a document that `::use`s it",
                     file.display()
@@ -322,13 +328,16 @@ pub(crate) fn run_trace(opts: &TraceOptions<'_>) -> ExitCode {
         TraceExit::Incomplete => print_trace_report(&report, json, expand, ExitCode::from(3)),
         TraceExit::Refused(diags) => {
             if json {
-                let mut diagnostics = serde_json::to_value(&diags).unwrap_or_default();
-                if let Some(items) = diagnostics.as_array_mut() {
-                    for (diag, item) in diags.iter().zip(items) {
-                        crate::output::apply_deny_json(diag, policy, item);
+                let (diagnostics, suppressed) = match diagnostics_json(&diags, file, policy) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return envelope::fail(CliError::io_without_path(format!(
+                            "lute: failed to serialize diagnostics: {e}"
+                        )));
                     }
-                }
-                let payload = serde_json::json!({ "diagnostics": diagnostics });
+                };
+                let mut payload = serde_json::json!({ "diagnostics": diagnostics });
+                insert_suppressed(&mut payload, &suppressed);
                 let wrapped = crate::envelope::report(crate::envelope::version::TRACE, 1, payload);
                 match serde_json::to_string_pretty(&wrapped) {
                     Ok(s) => println!("{s}"),

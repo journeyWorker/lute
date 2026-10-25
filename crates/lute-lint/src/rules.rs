@@ -231,10 +231,7 @@ pub fn resolve_rules(
     }
     for id in config.rules.keys() {
         if !all_ids.contains(id) {
-            config_diags.push(config_diag(
-                format!("unknown rule id `{id}` in config `rules:`"),
-                config_span,
-            ));
+            config_diags.push(config_diag(unknown_rule_message(id), config_span));
         }
     }
 
@@ -452,6 +449,23 @@ fn config_diag(message: String, span: Span) -> Diagnostic {
         provenance: None,
         covered: Vec::new(),
         related: Vec::new(),
+    }
+}
+
+/// The `E-LINT-CONFIG` message for a `rules:` id no rule declares. A
+/// checker code is not a lint rule (dsl 0.50.0 §6.4): a warning's level is
+/// set in `lute.project.yaml` `diagnostics:`, and an error has none.
+fn unknown_rule_message(id: &str) -> String {
+    if lute_check::evidence::classification(id).is_none() {
+        return format!("unknown rule id `{id}` in config `rules:`");
+    }
+    if id.starts_with("E-") {
+        format!("`{id}` is a checker code, not a lint rule — an error cannot be re-levelled")
+    } else {
+        format!(
+            "`{id}` is a checker code, not a lint rule — set its level in `lute.project.yaml` \
+             `diagnostics:`"
+        )
     }
 }
 

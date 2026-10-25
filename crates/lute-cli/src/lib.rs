@@ -134,7 +134,9 @@ pub(crate) use cmd_scenario::{
 pub(crate) use lute_load::BuiltInput;
 pub(crate) use lute_model::{assemble_root_scenario, node_cycle_degraded, RootScenario};
 pub(crate) use lute_model::{reconcile_collected, ReconciledProject};
-pub(crate) use output::{cwd_relative, render_diagnostics, severity_str, write_stdout, DenyPolicy};
+pub(crate) use output::{
+    cwd_relative, render_diagnostics, severity_str, write_stdout, SeverityPolicy,
+};
 pub(crate) use project::{
     collect_project_docs, find_lute_files, parse_project_docs, project_assert_relations,
     project_quest_ids, ByRoot, DocGroup,
@@ -213,7 +215,7 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                 permission_profile: permission_profile.permission_profile.as_deref(),
                 engine: engine.as_deref(),
                 wip,
-                policy: &DenyPolicy::new(&gate.deny, gate.deny_warnings),
+                policy: &SeverityPolicy::new(&gate.deny, gate.deny_warnings),
             },
         ),
         Command::Impact {
@@ -290,7 +292,7 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
             cel: &cel,
             project: project.project.as_deref(),
             permission_profile: permission_profile.permission_profile.as_deref(),
-            policy: &DenyPolicy::new(&gate.deny, gate.deny_warnings),
+            policy: &SeverityPolicy::new(&gate.deny, gate.deny_warnings),
             json: json.json,
         }),
         Command::Fmt { paths, check, json } => cmd_fmt::run(&paths, check, json.json),
@@ -378,7 +380,7 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
             providers: providers.providers.as_deref(),
             project: project.project.as_deref(),
             permission_profile: permission_profile.permission_profile.as_deref(),
-            policy: &DenyPolicy::new(&gate.deny, gate.deny_warnings),
+            policy: &SeverityPolicy::new(&gate.deny, gate.deny_warnings),
             entry: entry.as_deref(),
             beat: beat.as_deref(),
             no_derive,
@@ -522,7 +524,8 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                 build: play::Build {
                     providers: providers.providers.as_deref(),
                     permission_profile: permission_profile.permission_profile.as_deref(),
-                    policy: DenyPolicy::new(&gate.deny, gate.deny_warnings),
+                    policy: SeverityPolicy::new(&gate.deny, gate.deny_warnings)
+                        .for_project(Some(dir.as_path())),
                 },
             }),
             Err(code) => code,
@@ -546,7 +549,8 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                 build: play::Build {
                     providers: providers.providers.as_deref(),
                     permission_profile: permission_profile.permission_profile.as_deref(),
-                    policy: DenyPolicy::new(&gate.deny, gate.deny_warnings),
+                    policy: SeverityPolicy::new(&gate.deny, gate.deny_warnings)
+                        .for_project(Some(dir.as_path())),
                 },
             }),
             Err(code) => code,
@@ -667,7 +671,8 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                         build: play::Build {
                             providers: providers.providers.as_deref(),
                             permission_profile: permission_profile.permission_profile.as_deref(),
-                            policy: DenyPolicy::new(&gate.deny, gate.deny_warnings),
+                            policy: SeverityPolicy::new(&gate.deny, gate.deny_warnings)
+                                .for_project(Some(dir.as_path())),
                         },
                     },
                 ),

@@ -169,8 +169,34 @@ constraints:
       expect(ok).toBe(false);
     });
   }
-});
 
+  test("accepts `diagnostics:` levels, scoped and unscoped (dsl 0.50.0 §6.1)", () => {
+    const { ajv, projectSchema } = loadAjv();
+    const doc = Bun.YAML.parse(`
+defaultProfile: core
+diagnostics:
+  W-DISPLAY-NAME-DUP: error
+  W-STAGE-ABSENT: { level: off, paths: ["scenes/imported/**"] }
+`);
+    const { ok, errors } = validateAgainst(ajv, projectSchema.$id, doc);
+    expect(ok, JSON.stringify(errors)).toBe(true);
+  });
+
+  for (const [name, yaml] of [
+    ["an error code", "diagnostics: { E-UNKNOWN-ATTR: off }\n"],
+    ["a bad level", "diagnostics: { W-WIP: silent }\n"],
+    ["empty paths", "diagnostics: { W-WIP: { level: off, paths: [] } }\n"],
+    ["an absolute path", "diagnostics: { W-WIP: { level: off, paths: [\"/a/**\"] } }\n"],
+    ["a `..` segment", "diagnostics: { W-WIP: { level: off, paths: [\"../a/**\"] } }\n"],
+    ["a missing level", "diagnostics: { W-WIP: { paths: [\"a/**\"] } }\n"],
+  ]) {
+    test(`rejects diagnostics with ${name}`, () => {
+      const { ajv, projectSchema } = loadAjv();
+      const { ok } = validateAgainst(ajv, projectSchema.$id, Bun.YAML.parse(yaml));
+      expect(ok).toBe(false);
+    });
+  }
+});
 
 // --- schemas/lute.schema.json: state/defs/enums/entities declaration doc ---
 
@@ -814,6 +840,25 @@ describe("lute check report schema", () => {
     expect(json.files).toEqual([]);
     expect(json.project_diagnostics.length).toBeGreaterThan(0);
     expect(json.project_diagnostics[0].path.endsWith("lute.project.yaml")).toBe(true);
+    expect(validate(json), JSON.stringify(validate.errors)).toBe(true);
+  });
+
+  test("`suppressed` counts and `configured` markers validate (dsl 0.50.0 §6.3-§6.4)", () => {
+    const validate = reportValidator();
+    const dir = `${tmpdir()}/lute-check-levels-${process.pid}-${Math.random().toString(36).slice(2)}`;
+    mkdirSync(`${dir}/scenes`, { recursive: true });
+    writeFileSync(
+      `${dir}/lute.project.yaml`,
+      "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\ndiagnostics:\n  W-TEXT-GLUE: info\n  W-STAGE-ABSENT: off\n",
+    );
+    writeFileSync(
+      `${dir}/scenes/a.lute`,
+      "---\nkind: scene\nid: a\nenums:\n  action:\n    members: [show, hide]\n    exits: [hide]\n  anchor:\n    members: [left, center, right]\n    default: center\n---\n\n## Shot 1.\n\n::actor{character=\"vesna\" action=\"show\"}\n::actor{character=\"vesna\" action=\"hide\"}\n@vesna: Gone <> now.\n",
+    );
+    const { code, json } = checkJson(["--project", dir]);
+    expect(code).toBe(0);
+    expect(json.files[0].suppressed).toEqual({ "W-STAGE-ABSENT": 1 });
+    expect(json.files[0].diagnostics[0].configured).toBe("lute.project.yaml");
     expect(validate(json), JSON.stringify(validate.errors)).toBe(true);
   });
 

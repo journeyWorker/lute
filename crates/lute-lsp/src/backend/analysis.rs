@@ -33,7 +33,8 @@ impl Backend {
                 return;
             }
             if is_yaml(&path) {
-                self.publish(uri, Some((Vec::new(), Some(snapshot.version))), Vec::new())
+                let own = manifest_diagnostics(&path);
+                self.publish(uri, Some((own, Some(snapshot.version))), Vec::new())
                     .await;
                 return;
             }
@@ -92,6 +93,13 @@ impl Backend {
                 &doc_ast,
                 &snapshot.text,
             ));
+            // dsl 0.50.0 §6.2: the project's levels, at the publish boundary.
+            super::diagnostics::apply_project_levels(
+                &mut all_diags,
+                project,
+                project_root,
+                &file_path,
+            );
         }
         // Task 15: retain the ORIGINAL diagnostics (fixits/covered intact)
         // beside the published LSP form for `code_action` to read back later.
@@ -119,4 +127,22 @@ impl Backend {
         self.publish(uri, Some((diags, Some(snapshot.version))), foreign)
             .await;
     }
+}
+
+/// What an open `.yaml` that is no declaration file publishes itself: for a
+/// `lute.project.yaml`, its `diagnostics:` faults (dsl 0.50.0 §6.1), read
+/// from the saved manifest the project loads; nothing for any other file.
+fn manifest_diagnostics(path: &std::path::Path) -> Vec<LspDiagnostic> {
+    let (Some("lute.project.yaml"), Some(dir)) =
+        (path.file_name().and_then(|n| n.to_str()), path.parent())
+    else {
+        return Vec::new();
+    };
+    let (Ok(Some(project)), Ok(text)) = (
+        lute_manifest::project::load_project(dir),
+        std::fs::read_to_string(path),
+    ) else {
+        return Vec::new();
+    };
+    super::diagnostics::diagnostics_config_lsp(&project, &text)
 }

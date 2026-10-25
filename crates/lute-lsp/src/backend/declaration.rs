@@ -209,6 +209,10 @@ impl Backend {
             diags.extend(check_cel_slot(&slot, &arena, &ctx, expected.as_ref()));
         }
 
+        // dsl 0.50.0 §6.2: the project's levels, at the publish boundary.
+        let loaded = request_cache.project(project_root);
+        let project = loaded.as_ref().as_ref().ok().and_then(Option::as_ref);
+        super::diagnostics::apply_project_levels(&mut diags, project, project_root, file_path);
         self.diagnostics.insert(uri.clone(), diags.clone());
         let mut lsp_diags: Vec<LspDiagnostic> = diags
             .iter()
