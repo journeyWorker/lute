@@ -423,10 +423,12 @@ pub fn authored_attrs(source: &str, head: Span) -> Vec<AuthoredAttr<'_>> {
     let view = if line.contains("/*") {
         // Close a comment left open at the line end, so it is blanked to
         // the end of the line as the whole-body pass blanks it, then drop
-        // the closer again (blanking keeps byte length).
-        let mut closed = String::with_capacity(line.len() + 2);
+        // the closer again (blanking keeps byte length). The closer is
+        // spaced off so it cannot join the line's last byte into a new
+        // delimiter (a terminal `/` would make `/*/`).
+        let mut closed = String::with_capacity(line.len() + 3);
         closed.push_str(line);
-        closed.push_str("*/");
+        closed.push_str(" */");
         match crate::lex::strip_comments_checked(&closed) {
             Ok(mut text) => {
                 text.truncate(line.len());
@@ -963,12 +965,16 @@ mod tests {
 
     // S7 review: a comment opened at the end of the head line and closed on
     // the next one still blanks the head's earlier closed comments, as the
-    // whole-body pass does.
+    // whole-body pass does; and (S7 re-review) a terminal `/` does not join
+    // the closer added for that into a new comment opener.
     #[test]
     fn a_comment_left_open_at_the_line_end_keeps_earlier_comments_blanked() {
         for src in [
             "## A\n::sfx{/* loop */ sound=\"bell\"} /*\ncontinued */\n",
             "## A\n::sfx{/* } */ sound=\"bell\"} /*\ncontinued */\n",
+            "## A\n::sfx{/* loop */ sound=\"bell\"} /\n",
+            "## A\n::sfx{/* } */ sound=\"bell\"} /\n",
+            "## A\r\n::sfx{/* loop */ sound=\"bell\"} /\r\n",
         ] {
             let (doc, _) = parse(src);
             let crate::ast::Node::Directive(d) = &doc.sections[0].body[0] else {
