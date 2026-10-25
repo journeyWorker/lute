@@ -74,6 +74,55 @@ pub const CLEAR_DIRECTIVE: &str = "clear";
 /// directive lowers to a stamped record.
 pub const UNSTAMPED_DIRECTIVES: [&str; 3] = [JUMP_DIRECTIVE, LABEL_DIRECTIVE, CLEAR_DIRECTIVE];
 
+/// The attributes a content line owns (dsl 0.2.2 §7.1, §D7). `lute-compile`'s
+/// `lower_line` reads exactly these and consumes this slice directly, so the
+/// checker and the compiler cannot drift: a key here is a record field
+/// (`wait`: the record's `timing.wait`, 0.49.0 §4.2), a key NOT here may be a
+/// plugin stamp, which lowers into the record's stamp instead (plugin §14.1).
+/// `duration`/`delay` are not line keys. One of the per-surface lists that
+/// plugin assembly (stamp shadowing, 0.50.0 §3.2) and the checker share.
+pub const LINE_ATTRS: &[&str] = &[
+    "code",
+    "emotion",
+    "variant",
+    "action",
+    "dialogMotion",
+    "mono",
+    "os",
+    "vo",
+    "as",
+    "wait",
+];
+
+/// A content line's guard, `when=`: the parser takes it off the attribute
+/// list, so it is not in [`LINE_ATTRS`], but the line owns it.
+pub const LINE_GUARD_ATTR: &str = "when";
+
+/// A content line's removed attributes: `id=` is `E-RENAMED-ATTR` (dsl
+/// 0.37.0 §3.5, write `::label{name}` instead), reported before any stamp
+/// lookup, so a stamp of that name could never be read on a line.
+pub const LINE_RETIRED_ATTRS: &[&str] = &["id"];
+
+/// `<branch>`'s attributes (dsl 0.10.0 §4, + `prompt`/`timeout`/`default`,
+/// dsl 0.11.0).
+pub const BRANCH_ATTRS: &[&str] = &["id", "prompt", "timeout", "default"];
+
+/// `<hub>`'s attributes (dsl 0.10.0 §4, + `prompt`, dsl 0.23.0 §4).
+pub const HUB_ATTRS: &[&str] = &["id", "prompt"];
+
+/// A `<choice>`'s attributes inside a `<branch>` (dsl 0.10.0 D-L).
+pub const BRANCH_CHOICE_ATTRS: &[&str] = &["id", "text", "when", "into", "value"];
+
+/// A `<choice>`'s attributes inside a `<hub>`: the branch set plus the
+/// hub-choice flags `once` and `exit` (dsl 0.10.0 D-L).
+pub const HUB_CHOICE_ATTRS: &[&str] = &["id", "text", "when", "into", "value", "once", "exit"];
+
+/// A `<choice>`'s renamed or removed attributes, each reported by its own
+/// code: `label` (`E-RENAMED-TAG-ATTR`, now `text`), `as`
+/// (`E-AS-REMOVED`) and `persist` (`E-PERSIST-REMOVED`). Not permitted, but
+/// never reported as unknown, and never a stamp name on `<choice>`.
+pub const CHOICE_RETIRED_ATTRS: &[&str] = &["label", "as", "persist"];
+
 /// Failure loading one of the embedded `lute.core` assets.
 #[derive(Clone, Debug)]
 pub enum CoreLoadError {

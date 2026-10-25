@@ -1,0 +1,5 @@
+pluginsDir: plugins/
+defaultProfile: stage
+profiles:
+  stage:
+    plugins: { acme.stage: true }

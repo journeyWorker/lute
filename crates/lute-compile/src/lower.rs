@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 
 use lute_manifest::schema::{DirectiveDecl, Lowering, OpBy, WriteDecl, WriteValue};
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
+use lute_manifest::stamps::StampSurface;
 use lute_manifest::types::{Literal, PathSegment, Type};
 use lute_syntax::ast::{Assert, Attr, AttrValue, Directive, InlineNode, Line, Retract, Set};
 
@@ -69,12 +70,12 @@ pub fn lower_line(line: &Line, snapshot: &CapabilitySnapshot) -> Command {
                 wait: attr_bool(&line.attrs, "wait"),
                 ..Timing::default()
             },
-            // plugin §14.1: a content line carries cross-cutting stamp attrs
-            // like any other record. The built-in content-line keys win (they
-            // ARE the record's own fields above) — the same precedence the
-            // checker applies in `content_line::check_content_line_attrs`.
-            stamps: plugin_stamps(&line.attrs, snapshot, |k| {
-                lute_check::content_line::KNOWN_ATTRS.contains(&k)
+            // plugin §14.1: a content line carries the stamps admissible on
+            // it like any other record. The built-in content-line keys win
+            // (they ARE the record's own fields above) — the same precedence
+            // the checker applies in `content_line::check_content_line_attrs`.
+            stamps: plugin_stamps(&line.attrs, snapshot, Some(&StampSurface::Line), |k| {
+                lute_manifest::core::LINE_ATTRS.contains(&k)
             }),
             ..Stamp::default()
         },
@@ -250,6 +251,10 @@ pub fn lower_directive(
 ) -> Option<Command> {
     let get = |k: &str| attr_string(&dir.attrs, k);
     let decl = snapshot.directive(&dir.tag);
+    // The directive as a stamp surface (0.50.0 §3.5); built only when a
+    // plugin declares stamps.
+    let surface =
+        (!snapshot.stamp_attrs.is_empty()).then(|| StampSurface::Directive(dir.tag.clone()));
     let stamp = Stamp {
         timing: Timing {
             wait: effective_wait(dir, snapshot),
@@ -260,12 +265,14 @@ pub fn lower_directive(
             delay: time_attr_seconds(&dir.attrs, "delay"),
             ..Timing::default()
         },
-        // plugin §14.1: cross-cutting `stampAttrs` ride the stamp on EVERY
-        // directive, core and plugin alike. A key the directive DECLARES
-        // itself stays the record's own field — the same precedence the
-        // checker applies in `directives::check_directive` — so this only
-        // lifts the genuinely cross-cutting ones.
-        stamps: plugin_stamps(&dir.attrs, snapshot, |k| declares_attr(decl, k)),
+        // plugin §14.1: the stamps admissible on this directive ride its
+        // stamp, core and plugin directives alike. A key the directive
+        // DECLARES itself stays the record's own field — the same precedence
+        // the checker applies in `directives::check_directive` — so this only
+        // lifts the stamps.
+        stamps: plugin_stamps(&dir.attrs, snapshot, surface.as_ref(), |k| {
+            declares_attr(decl, k)
+        }),
         authored: Some(authored_directive(dir, decl)),
         ..Stamp::default()
     };
@@ -451,10 +458,14 @@ pub fn lower_directive(
                 if is_stamp_timing_attr(&a.key) {
                     continue; // already resolved into the stamp
                 }
-                // A cross-cutting stamp attr this directive does not declare
-                // itself already rode into `stamp.stamps` above; it must not be
-                // duplicated as one of the record's own `fields`.
-                if !declares_attr(decl, &a.key) && snapshot.stamp_attrs.contains_key(&a.key) {
+                // A stamp this directive does not declare itself already rode
+                // into `stamp.stamps` above; it must not be duplicated as one
+                // of the record's own `fields`.
+                if !declares_attr(decl, &a.key)
+                    && surface
+                        .as_ref()
+                        .is_some_and(|s| snapshot.stamp_attrs.get(s, &a.key).is_some())
+                {
                     continue;
                 }
                 fields.insert(a.key.clone(), attr_json(a, decl));
@@ -741,12 +752,15 @@ fn declares_attr(decl: Option<&DirectiveDecl>, key: &str) -> bool {
     decl.is_some_and(|d| d.attrs.iter().any(|a| a.name == key))
 }
 
-/// Lift the plugin-declared CROSS-CUTTING attrs (plugin §14.1 `stampAttrs`)
-/// out of `attrs` into a record's `Stamp.stamps`, each value typed by its
-/// declaring `AttrDecl` through the SAME [`attr_json_typed`] path a directive
-/// field uses. `own` reports the keys the record itself consumes: those WIN
-/// and stay put, mirroring the checker's admission order (the record's own
-/// decls, then `stampAttrs`, then `E-UNKNOWN-ATTR`).
+/// Lift the plugin stamps (plugin §14.1 `stampAttrs`) admissible on
+/// `surface` — the record's surface, `None` when no plugin declares stamps —
+/// out of `attrs` into a record's `Stamp.stamps`, each value typed by the
+/// declaration that applies on `surface` (0.50.0 §3.5) through the SAME
+/// [`attr_json_typed`] path a directive field uses, so a stamp typed
+/// differently on two surfaces serializes with each one's type. `own`
+/// reports the keys the record itself consumes: those WIN and stay put,
+/// mirroring the checker's admission order (the record's own decls, then
+/// `stampAttrs`, then `E-UNKNOWN-ATTR`).
 ///
 /// Byte-stability: an UNAUTHORED stamp attr is never injected, not even when
 /// its decl carries a `default` — absent means absent, so a document that
@@ -759,19 +773,20 @@ fn declares_attr(decl: Option<&DirectiveDecl>, key: &str) -> bool {
 fn plugin_stamps(
     attrs: &[Attr],
     snapshot: &CapabilitySnapshot,
+    surface: Option<&StampSurface>,
     own: impl Fn(&str) -> bool,
 ) -> BTreeMap<String, serde_json::Value> {
     let mut stamps = BTreeMap::new();
-    // Overwhelmingly the common case: no plugin declares a cross-cutting
-    // vocabulary, so skip the per-attr map lookups entirely.
-    if snapshot.stamp_attrs.is_empty() {
+    // Overwhelmingly the common case: no plugin declares a stamp vocabulary,
+    // so skip the per-attr map lookups entirely.
+    let Some(surface) = surface.filter(|_| !snapshot.stamp_attrs.is_empty()) else {
         return stamps;
-    }
+    };
     for a in attrs {
         if own(&a.key) {
             continue;
         }
-        if let Some(sdecl) = snapshot.stamp_attrs.get(&a.key) {
+        if let Some(sdecl) = snapshot.stamp_attrs.get(surface, &a.key) {
             stamps.insert(a.key.clone(), attr_json_typed(a, Some(&sdecl.ty)));
         }
     }

@@ -41,7 +41,7 @@ pub use directives::{
 };
 pub use files::{
     BridgeFile, DefsFile, DirectivesFile, EnumDecl, EnumsFile, EventsFile, FrontmatterDecl,
-    FrontmatterFile, LintsFile, ProvidersFile, StampAttrsFile, StateFile,
+    FrontmatterFile, LintsFile, ProvidersFile, StampAttrEntry, StampAttrsFile, StateFile,
 };
 pub use manifest::{
     AssetKindDecl, AssetKindsFile, AssetMatch, AssetResolve, AssetSegment, Depends, OptionDecl,

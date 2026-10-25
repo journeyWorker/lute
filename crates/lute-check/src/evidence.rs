@@ -308,6 +308,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-PLUGIN-PARSE", DiagnosticClass::SourceError),
         ("E-PLUGIN-RESERVED-NAME", DiagnosticClass::SourceError),
         ("E-PLUGIN-RESERVED-STAMP-ATTR", DiagnosticClass::SourceError),
+        ("E-PLUGIN-STAMP-SURFACE", DiagnosticClass::SourceError),
         ("E-PLUGIN-UNKNOWN-ASSETKIND", DiagnosticClass::SourceError),
         ("E-PLUGIN-UNKNOWN-EXPORT", DiagnosticClass::SourceError),
         (

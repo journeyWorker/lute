@@ -296,10 +296,22 @@ pub(crate) fn extend_surface(
     every.push(
         json!({ "name": "at", "type": "time", "on": "a directive inside a <track> clip only" }),
     );
-    for (name, a) in &input.snapshot().stamp_attrs {
+    // A cross-cutting stamp keeps its 0.49 text; a scoped one names its
+    // surfaces (0.50.0 §3.7), one row per declaration.
+    for stamp in input.snapshot().stamp_attrs.iter() {
+        let on = match &stamp.on {
+            None => format!("{but_unstamped} (stampAttrs)"),
+            Some(surfaces) => format!(
+                "{} (stampAttrs)",
+                surfaces
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        };
         every.push(json!({
-            "name": name, "type": crate::attr_type_str(&a.ty).0,
-            "on": format!("{but_unstamped} (stampAttrs)")
+            "name": stamp.decl.name, "type": crate::attr_type_str(&stamp.decl.ty).0, "on": on
         }));
     }
     root.insert("directiveAttrs".into(), every.into());

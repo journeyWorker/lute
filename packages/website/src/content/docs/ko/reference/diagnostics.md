@@ -934,7 +934,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-MISSING-ATTR
 
-디렉티브에 선언된 스키마가 요구하는 속성이 빠져 있습니다.
+디렉티브에 선언된 스키마가 요구하는 속성이 빠져 있습니다. 또는 디렉티브나 콘텐츠 줄이 자기 표면(`on:`)에 `required: true`로 선언된 플러그인 스탬프를 쓰지 않았습니다. 스탬프는 주입되지 않으므로 `default:`는 셈에 들지 않습니다.
+
+명세: [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-MOCK-SUBJECT
 
@@ -1090,11 +1092,15 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-DUP-ACROSS
 
-두 개의 활성 플러그인이 같은 디렉티브, 이벤트, 보상 종류, occasion, cast id, 또는 브리지 오퍼레이션을 선언했습니다. 먼저 선언한 플러그인의 것을 씁니다.
+두 개의 활성 플러그인이 같은 디렉티브, 이벤트, 보상 종류, occasion, cast id, 또는 브리지 오퍼레이션을 선언했습니다. 또는 같은 이름의 `stampAttrs` 항목들이 겹치는 표면을 가집니다(`on:` 없는 항목은 모든 항목과 겹치며, 메시지가 겹치는 표면을 알려 줍니다). 먼저 선언한 플러그인의 것을 씁니다.
+
+명세: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-DUP-ID
 
-플러그인 패키지가 하나의 익스포트 종류 안에서 같은 id를 두 번 이상 선언했습니다. 먼저 선언한 것을 쓰고, 프로젝트의 나머지 검사는 계속합니다.
+플러그인 패키지가 하나의 익스포트 종류 안에서 같은 id를 두 번 이상 선언했거나, 같은 이름의 `stampAttrs` 항목 둘의 `on:` 표면이 겹칩니다(`on:` 없는 항목은 모든 항목과 겹치며, 메시지가 겹치는 표면을 알려 줍니다). 먼저 선언한 것을 쓰고, 프로젝트의 나머지 검사는 계속합니다.
+
+명세: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-INVALID-DIRECTIVE
 
@@ -1142,9 +1148,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-PARSE
 
-플러그인 export 파일이 올바른 YAML이 아니거나 키의 값 모양이 틀렸습니다(줄과 그 키가 받는 모양을 알려 줍니다). 또는 디렉티브의 `effects.writes`/`effects.asserts`/`effects.retracts` 항목이 해당 디렉티브가 선언하지 않은 속성을 가리킵니다(또는 assert가 `_`를 사용합니다).
+플러그인 export 파일이 올바른 YAML이 아니거나 키의 값 모양이 틀렸습니다(줄과 그 키가 받는 모양을 알려 줍니다). 또는 디렉티브의 `effects.writes`/`effects.asserts`/`effects.retracts` 항목이 해당 디렉티브가 선언하지 않은 속성을 가리킵니다(또는 assert가 `_`를 사용합니다). 또는 `stampAttrs` 항목의 `on:`이 비었거나, 표면 이름 목록이 아니거나, 한 표면을 두 번 적었거나, `on:` 없이 `required: true`입니다.
 
-명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-RESERVED-NAME
 
@@ -1156,9 +1162,15 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-RESERVED-STAMP-ATTR
 
-코어가 아닌 플러그인의 `stampAttrs` export 또는 디렉티브의 `attrs`가 코어 stamp가 이미 소유한 속성 이름(`at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`)을 선언했습니다.
+코어가 아닌 플러그인의 `stampAttrs` export 또는 디렉티브의 `attrs`가 코어 stamp가 이미 소유한 속성 이름(`at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`)을 선언했습니다. 또는 `on:`으로 한정한 `stampAttrs` 항목의 이름이 그 표면이 이미 소유한 속성(`branch`의 `prompt`, `choice`의 `text`, `line`의 `code`, 디렉티브 자신의 속성)이라 그 스탬프를 결코 읽을 수 없습니다.
 
-명세: [plugin §14](/ko/spec/)
+명세: [plugin §14](/ko/spec/), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+
+### E-PLUGIN-STAMP-SURFACE
+
+`stampAttrs` 항목의 `on:`이 `line`, `branch`, `hub`, `choice`도 아니고 해석된 프로필의 디렉티브도 아닌 표면을 가리킵니다(비슷한 이름을 제안하거나, `depends:`에 선언할 설치됐지만 비활성인 플러그인을 알려 줍니다). 또는 스탬프를 실을 레코드가 없는 디렉티브(`jump`, `label`, `clear`)를 가리킵니다. 그 항목은 버려지고 형제 항목은 그대로 로드됩니다.
+
+명세: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-UNKNOWN-ASSETKIND
 
@@ -1778,9 +1790,9 @@ CEL 슬롯, `::set` 대상, 또는 규칙 가드가 어떤 스키마에도 선�
 
 ### E-UNKNOWN-ATTR
 
-콘텐츠 줄이나 디렉티브가 콘텐츠 줄 문법 또는 해당 디렉티브 선언이 인식하지 못하는 속성 키를 가지고 있습니다. 스탬프를 실을 레코드가 없는 디렉티브(`::jump`, `::label`, `::clear`)에 타이밍 키(`wait`/`duration`/`delay`)나 플러그인 스탬프를 쓴 경우도 포함합니다. 그 값은 버려지기 때문입니다.
+콘텐츠 줄이나 디렉티브가 콘텐츠 줄 문법 또는 해당 디렉티브 선언이 인식하지 못하는 속성 키를 가지고 있습니다. 스탬프를 실을 레코드가 없는 디렉티브(`::jump`, `::label`, `::clear`)에 타이밍 키(`wait`/`duration`/`delay`)나 플러그인 스탬프를 쓴 경우도 포함합니다. 그 값은 버려지기 때문입니다. `on:`으로 다른 표면에 한정된 플러그인 스탬프는 그 스탬프가 적용되는 표면을 알려 줍니다.
 
-명세: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+명세: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-UNKNOWN-DIRECTIVE
 

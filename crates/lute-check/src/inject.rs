@@ -1228,8 +1228,8 @@ mod tests {
         assert_eq!(st2.on_stage["marina"].emotion.as_deref(), Some("delighted"));
     }
 
-    /// `pose` is not a content-line attribute (`content_line.rs`'s
-    /// KNOWN_ATTRS), so `@x{pose="…"}` is E-UNKNOWN-ATTR and the reducer could
+    /// `pose` is not a content-line attribute (`lute_manifest::core::
+    /// LINE_ATTRS`), so `@x{pose="…"}` is E-UNKNOWN-ATTR and the reducer could
     /// never observe one. The reads were unreachable; this pins that the
     /// stateful set is exactly the four real sprite-affecting slots.
     #[test]

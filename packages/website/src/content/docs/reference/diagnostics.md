@@ -934,7 +934,9 @@ Spec: [dsl 0.15.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/prop
 
 ### E-MISSING-ATTR
 
-A directive is missing an attribute its declared schema requires.
+A directive is missing an attribute its declared schema requires, or a directive or content line does not author a plugin stamp declared `required: true` on its surface (`on:`); a stamp is never injected, so its `default:` does not count.
+
+Spec: [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-MOCK-SUBJECT
 
@@ -1088,11 +1090,15 @@ A plugin's `assetKinds` export declares a segment type outside the four a segmen
 
 ### E-PLUGIN-DUP-ACROSS
 
-Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation; the first plugin's declaration is used.
+Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation, or `stampAttrs` entries of one name on overlapping surfaces (an entry without `on:` overlaps every entry; the message names the shared surfaces); the first plugin's declaration is used.
+
+Spec: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-DUP-ID
 
-A plugin package declares the same id more than once within one export kind; the first declaration is used and the rest of the project is still checked.
+A plugin package declares the same id more than once within one export kind, or two `stampAttrs` entries of one name whose `on:` surfaces overlap (an entry without `on:` overlaps every entry; the message names the shared surfaces); the first declaration is used and the rest of the project is still checked.
+
+Spec: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-INVALID-DIRECTIVE
 
@@ -1140,9 +1146,9 @@ Spec: [plugin Appendix C1](/spec/)
 
 ### E-PLUGIN-PARSE
 
-A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`).
+A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`.
 
-Spec: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+Spec: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-RESERVED-NAME
 
@@ -1154,9 +1160,15 @@ Spec: [dsl §10](/spec/), [dsl 0.28.0 §1](https://github.com/journeyWorker/lute
 
 ### E-PLUGIN-RESERVED-STAMP-ATTR
 
-A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp.
+A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp. Also a `stampAttrs` entry scoped with `on:` to a surface that owns an attribute of the same name (`prompt` on `branch`, `text` on `choice`, `code` on `line`, a directive's own attribute), so the stamp could never be read there.
 
-Spec: [plugin §14](/spec/)
+Spec: [plugin §14](/spec/), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+
+### E-PLUGIN-STAMP-SURFACE
+
+A `stampAttrs` entry's `on:` names a surface that is not `line`, `branch`, `hub`, `choice` or a directive of the resolved profile (with a did-you-mean, or the installed but inactive plugin to declare in `depends:`), or a directive with no stamp carrier (`jump`, `label`, `clear`). The entry is dropped; its siblings still load.
+
+Spec: [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-PLUGIN-UNKNOWN-ASSETKIND
 
@@ -1780,9 +1792,9 @@ Spec: [dsl §8.1](/spec/)
 
 ### E-UNKNOWN-ATTR
 
-A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it.
+A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to.
 
-Spec: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+Spec: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
 
 ### E-UNKNOWN-DIRECTIVE
 

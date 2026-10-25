@@ -261,15 +261,17 @@ fn nested_match_arm_line_is_checked() {
 #[test]
 fn stamp_attr_is_admitted_in_component_body() {
     let mut snap = vocab_snapshot();
-    snap.stamp_attrs.insert(
-        "beat".to_string(),
-        lute_manifest::schema::AttrDecl {
-            name: "beat".to_string(),
-            ty: lute_manifest::types::Type::Str,
-            required: false,
-            default: None,
-        },
-    );
+    snap.stamp_attrs
+        .insert(lute_manifest::stamps::StampAttrDecl::cross_cutting(
+            "test",
+            lute_manifest::schema::AttrDecl {
+                name: "beat".to_string(),
+                ty: lute_manifest::types::Type::Str,
+                required: false,
+                default: None,
+            },
+        ))
+        .unwrap();
     let cs = component_codes("@marina{beat=\"b1\"}: hi", snap.clone());
     assert!(
         !cs.contains(&"E-UNKNOWN-ATTR".to_string()),

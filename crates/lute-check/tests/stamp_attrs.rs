@@ -40,15 +40,17 @@ fn snap() -> CapabilitySnapshot {
         },
     );
     for (name, ty) in [("bonusId", Type::Str), ("bonusScore", Type::Int)] {
-        snap.stamp_attrs.insert(
-            name.to_string(),
-            AttrDecl {
-                name: name.to_string(),
-                required: false,
-                ty,
-                default: None,
-            },
-        );
+        snap.stamp_attrs
+            .insert(lute_manifest::stamps::StampAttrDecl::cross_cutting(
+                "test",
+                AttrDecl {
+                    name: name.to_string(),
+                    required: false,
+                    ty,
+                    default: None,
+                },
+            ))
+            .unwrap();
     }
     snap
 }
@@ -191,15 +193,17 @@ fn a_directives_own_attr_wins_over_a_same_named_stamp_attr() {
     // attr typed `int`. The directive's own decl must win, so a string value
     // is clean rather than E-ATTR-TYPE against the int stamp decl.
     let mut s = snap();
-    s.stamp_attrs.insert(
-        "label".to_string(),
-        AttrDecl {
-            name: "label".to_string(),
-            required: false,
-            ty: Type::Int,
-            default: None,
-        },
-    );
+    s.stamp_attrs
+        .insert(lute_manifest::stamps::StampAttrDecl::cross_cutting(
+            "test",
+            AttrDecl {
+                name: "label".to_string(),
+                required: false,
+                ty: Type::Int,
+                default: None,
+            },
+        ))
+        .unwrap();
     let t = format!("{HDR}::p{{label=\"x\"}}\n@narrator: hi\n");
     assert!(
         !codes_against(&t, s).contains(&"E-ATTR-TYPE".to_string()),
@@ -212,15 +216,17 @@ fn a_content_lines_own_attr_wins_over_a_same_named_stamp_attr() {
     // `variant` is a built-in content-line key; declaring it as a stamp attr
     // typed `bool` must not retype it — the content-line surface owns it.
     let mut s = snap();
-    s.stamp_attrs.insert(
-        "variant".to_string(),
-        AttrDecl {
-            name: "variant".to_string(),
-            required: false,
-            ty: Type::Bool,
-            default: None,
-        },
-    );
+    s.stamp_attrs
+        .insert(lute_manifest::stamps::StampAttrDecl::cross_cutting(
+            "test",
+            AttrDecl {
+                name: "variant".to_string(),
+                required: false,
+                ty: Type::Bool,
+                default: None,
+            },
+        ))
+        .unwrap();
     let t = format!("{HDR}@elena{{variant=\"2\"}}: text\n");
     let got = codes_against(&t, s);
     assert!(
@@ -250,5 +256,111 @@ fn attr_type_names_the_owning_construct_with_its_real_sigil() {
     assert!(
         dir.contains("of `::bg`"),
         "a directive's owner keeps the `::` sigil: {dir}"
+    );
+}
+
+/// Core snapshot + `acme.stage`'s scoped stamps (0.50.0 §3.1): `assetName`
+/// required on `::bg`, `voiceAssetId` on content lines, `menuType` on
+/// `<branch>`, and the cross-cutting `bonusId` of [`snap`].
+fn scoped_snap() -> CapabilitySnapshot {
+    use lute_manifest::stamps::{StampAttrDecl, StampSurface};
+    let mut s = snap();
+    let decl = |name: &str, required: bool| AttrDecl {
+        name: name.to_string(),
+        required,
+        ty: Type::Str,
+        default: Some(lute_manifest::types::Literal::Str("x".into())),
+    };
+    for (d, on) in [
+        (
+            decl("assetName", true),
+            StampSurface::Directive("bg".into()),
+        ),
+        (decl("voiceAssetId", false), StampSurface::Line),
+        (decl("menuType", false), StampSurface::Branch),
+    ] {
+        s.stamp_attrs
+            .insert(StampAttrDecl::scoped("acme.stage", d, [on]))
+            .unwrap();
+    }
+    s
+}
+
+fn messages_against(text: &str, snapshot: CapabilitySnapshot) -> Vec<(String, String)> {
+    let input = CheckInput::new(
+        text.to_string(),
+        "stamp_attrs".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            snapshot,
+            ProviderSet::default(),
+            SchemaImports::default(),
+            Default::default(),
+            Default::default(),
+        ),
+    );
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| (d.code, d.message))
+        .collect()
+}
+
+/// 0.50.0 §3.4: a stamp required on a directive must be authored there; a
+/// declared `default:` does not count, since a stamp is never injected.
+#[test]
+fn a_required_directive_stamp_must_be_authored() {
+    let missing = messages_against(
+        &format!("{HDR}::bg{{location=\"cafe\"}}\n@narrator{{voiceAssetId=\"v\"}}: hi\n"),
+        scoped_snap(),
+    );
+    assert_eq!(
+        missing,
+        [(
+            "E-MISSING-ATTR".to_string(),
+            "`::bg` requires attribute `assetName` (a stamp of `acme.stage`)".to_string()
+        )]
+    );
+    let authored = messages_against(
+        &format!("{HDR}::bg{{location=\"cafe\" assetName=\"room\"}}\n@narrator: hi\n"),
+        scoped_snap(),
+    );
+    assert!(authored.is_empty(), "{authored:?}");
+}
+
+/// 0.50.0 §3.4: a stamp scoped elsewhere names where it applies — on a
+/// directive and on a content line; a cross-cutting stamp keeps its 0.49
+/// surfaces.
+#[test]
+fn a_stamp_scoped_elsewhere_names_its_surfaces() {
+    let got = messages_against(
+        &format!(
+            "{HDR}::sfx{{assetId=\"s\" voiceAssetId=\"v\" bonusId=\"b\"}}\n@narrator{{assetName=\"a\" \
+             menuType=\"m\" bonusId=\"b\"}}: hi\n"
+        ),
+        scoped_snap(),
+    );
+    assert_eq!(
+        got,
+        [
+            (
+                "E-UNKNOWN-ATTR".to_string(),
+                "`::sfx` has no attribute `voiceAssetId`: it is a stamp of `acme.stage` for \
+                 content lines only"
+                    .to_string()
+            ),
+            (
+                "E-UNKNOWN-ATTR".to_string(),
+                "a content line has no attribute `assetName`: it is a stamp of `acme.stage` for \
+                 `::bg` only"
+                    .to_string()
+            ),
+            (
+                "E-UNKNOWN-ATTR".to_string(),
+                "a content line has no attribute `menuType`: it is a stamp of `acme.stage` for \
+                 `<branch>` only"
+                    .to_string()
+            ),
+        ]
     );
 }

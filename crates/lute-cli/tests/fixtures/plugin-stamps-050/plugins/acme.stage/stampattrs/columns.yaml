@@ -1,0 +1,6 @@
+# 0.50.0 §3.1 (#163): stamps scoped to named surfaces.
+stampAttrs:
+  - { name: voiceAssetId, type: string, required: true, on: [line] }
+  - { name: assetName, type: string, on: [bg] }
+  - { name: assetName, type: int, on: [sfx] }
+  - { name: cue, type: string }

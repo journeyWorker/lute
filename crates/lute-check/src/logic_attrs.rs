@@ -10,12 +10,14 @@
 //! emission sites are body-shape rules about children.
 //!
 //! Per **D-J** this is a CHECKER rule with a fixed per-tag table, modelled on
-//! the content-line surface: logic tags are core grammar and, unlike
-//! directives, are NOT plugin-extensible, so the table is a constant and not a
-//! capability lookup. It emits [`E_UNKNOWN_ATTR`] — the code the other two
-//! surfaces already raise — at the offending attribute's own span, once per
-//! attribute. A bespoke code would defeat the point: the surface becomes
-//! uniform, or #6 was not worth doing.
+//! the content-line surface: logic tags are core grammar, so the tables are
+//! constants and not a capability lookup. The only plugin extension point is
+//! a stamp whose `on:` names the tag (0.50.0 §3.4). The per-surface lists a
+//! stamp may not shadow (`<branch>`, `<hub>`, `<choice>`) live in
+//! `lute_manifest::core`, which plugin assembly reads too. It emits
+//! [`E_UNKNOWN_ATTR`] — the code the other two surfaces already raise — at the
+//! offending attribute's own span, once per attribute. A bespoke code would
+//! defeat the point: the surface becomes uniform, or #6 was not worth doing.
 //!
 //! ## What the tables are enumerated FROM
 //!
@@ -49,20 +51,21 @@ use lute_syntax::ast::{
     Reward,
 };
 
+use lute_manifest::core::{
+    BRANCH_ATTRS, BRANCH_CHOICE_ATTRS, CHOICE_RETIRED_ATTRS, HUB_ATTRS, HUB_CHOICE_ATTRS,
+};
+
 use crate::content_line::E_UNKNOWN_ATTR;
 
-/// dsl 0.11.0 (branch prompt/timeout): `<branch>`'s two engine-wire fields
-/// for the countdown UI, joining `id` in the permitted set. `close` only
-/// enforces that no OTHER key appears; their own VALUES are checked below
-/// by [`check_branch_value_attrs`], because the parser accepts any `Str`.
-const BRANCH_ATTRS: &[&str] = &["id", "prompt", "timeout", "default"];
+// The `<branch>` and `<hub>` tables are `lute_manifest::core`'s
+// `BRANCH_ATTRS` (dsl 0.11.0: `prompt`/`timeout`/`default`, the engine-wire
+// fields for the countdown UI) and `HUB_ATTRS` (dsl 0.23.0 §4: `prompt`).
+// `close` only enforces that no OTHER key appears; their own VALUES are
+// checked below ([`check_branch_value_attrs`], [`check_prompt_attr`]),
+// because the parser accepts any `Str`.
 const MATCH_ATTRS: &[&str] = &["subject"];
 const WHEN_ATTRS: &[&str] = &["is", "test"];
 const OTHERWISE_ATTRS: &[&str] = &[];
-/// dsl 0.23.0 §4: `<hub prompt>` attaches the prompt line shown with the
-/// hub's options — the same non-empty-string rule as `<branch prompt>`
-/// ([`check_prompt_attr`], `E-BRANCH-PROMPT`).
-pub const HUB_ATTRS: &[&str] = &["id", "prompt"];
 /// dsl 0.16.0 §2: `<reward>` closes over the five wire-contract keys.
 /// Every OTHER attribute is `E-UNKNOWN-ATTR` at its own span; a malformed
 /// `amount=` survives here as a residual so [`check_reward_attrs`] can
@@ -243,23 +246,23 @@ pub(crate) fn names_occasion_misspelt(attrs: &[Attr], own: &str) -> bool {
 /// (`E-BEAT-ATTR`), so it is permitted here rather than double-reported.
 pub const ON_ATTRS: &[&str] = &["event", "when", "target"];
 
-/// D-L: the two `<choice>` positions have DIFFERENT permitted sets. `once` and
-/// `exit` attach to `HubChoice` in `0.1.0 §7.3`'s grammar and to nothing else,
-/// and the hub reducer is their only reader (`stage.rs:342-343,377`;
-/// `match_check.rs:488-490`); `walk_branch` never reads them. Enforcing one
-/// merged set would leave a branch choice carrying `exit` silent, which is the
-/// defect §4 closes wearing a smaller hat.
-const BRANCH_CHOICE_ATTRS: &[&str] = &["id", "text", "when", "into", "value"];
-const HUB_CHOICE_ATTRS: &[&str] = &["id", "text", "when", "into", "value", "once", "exit"];
-
-/// §4's fourth column: keys a DEDICATED removal code already reports. It is
-/// NOT a permitted set — `as` and `persist` on a `<choice>` are errors, and
-/// that is the whole point of §4 — but each is reported ONCE, by its own code.
-/// The checker already holds this invariant for `persist` deliberately: the
-/// attribute is recognised at its own site so it is *"never reported as
-/// unknown/extra"* and `E-PERSIST-REMOVED` stays *"the sole report for it"*
-/// (`check.rs:2564-2565`, `:2571-2572`). `as` joins it in `E-AS-REMOVED`.
-const CHOICE_REMOVED_ATTRS: &[&str] = &["as", "persist"];
+// D-L: the two `<choice>` positions have DIFFERENT permitted sets
+// (`lute_manifest::core::BRANCH_CHOICE_ATTRS` / `HUB_CHOICE_ATTRS`). `once`
+// and `exit` attach to `HubChoice` in `0.1.0 §7.3`'s grammar and to nothing
+// else, and the hub reducer is their only reader (`stage.rs:342-343,377`;
+// `match_check.rs:488-490`); `walk_branch` never reads them. Enforcing one
+// merged set would leave a branch choice carrying `exit` silent, which is
+// the defect §4 closes wearing a smaller hat.
+//
+// §4's fourth column (`lute_manifest::core::CHOICE_RETIRED_ATTRS`): keys a
+// DEDICATED code already reports. It is NOT a permitted set — `as` and
+// `persist` on a `<choice>` are errors, and that is the whole point of §4 —
+// but each is reported ONCE, by its own code (`label` by its rename in
+// `RENAMED_ATTRS`). The checker already holds this invariant for `persist`
+// deliberately: the attribute is recognised at its own site so it is
+// *"never reported as unknown/extra"* and `E-PERSIST-REMOVED` stays *"the
+// sole report for it"* (`check.rs:2564-2565`, `:2571-2572`). `as` joins it
+// in `E-AS-REMOVED`.
 
 /// The remedy a hub-choice flag on a BRANCH choice carries: the key is not
 /// unknown to the language, it is in the wrong position.
@@ -602,7 +605,7 @@ pub(crate) fn check_choice_attrs(c: &Choice, pos: ChoicePos, diags: &mut Vec<Dia
         &c.attrs,
         "choice",
         permitted,
-        CHOICE_REMOVED_ATTRS,
+        CHOICE_RETIRED_ATTRS,
         hint,
         diags,
     );
@@ -651,8 +654,10 @@ pub(crate) fn check_flags(attrs: &[Attr], tag: &str, flags: &[&str], diags: &mut
     }
 }
 
-/// One construct's closure: every attr whose key is outside `permitted` and not
-/// in `told_elsewhere` draws one [`E_UNKNOWN_ATTR`] at its own span.
+/// One construct's closure: every attr whose key is outside `permitted` draws
+/// one [`E_UNKNOWN_ATTR`] at its own span — or its rename's code, when the key
+/// was renamed — unless it is in `told_elsewhere`, which a dedicated code
+/// reports.
 fn close(
     attrs: &[Attr],
     tag: &str,
@@ -663,12 +668,15 @@ fn close(
 ) {
     for attr in attrs {
         let key = attr.key.as_str();
-        if permitted.contains(&key) || told_elsewhere.contains(&key) {
+        if permitted.contains(&key) {
             continue;
         }
         let renamed = RENAMED_ATTRS
             .iter()
             .find(|(t, old, _, _)| *t == tag && *old == key);
+        if renamed.is_none() && told_elsewhere.contains(&key) {
+            continue;
+        }
         let meant = MEANT_ATTRS
             .iter()
             .find(|(t, keys, _)| *t == tag && keys.contains(&key));

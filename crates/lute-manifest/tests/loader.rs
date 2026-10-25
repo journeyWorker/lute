@@ -211,13 +211,13 @@ fn loads_stamp_attrs_export() {
     write_stamp_attrs_pkg(&tmp, false);
     let loaded = load_plugin_dir(&tmp).expect("loads");
     assert_eq!(loaded.stamp_attrs.len(), 2);
-    assert_eq!(loaded.stamp_attrs[0].name, "bonusId");
+    assert_eq!(loaded.stamp_attrs[0].decl.name, "bonusId");
     assert!(matches!(
-        loaded.stamp_attrs[0].ty,
+        loaded.stamp_attrs[0].decl.ty,
         lute_manifest::types::Type::Str
     ));
     assert!(matches!(
-        loaded.stamp_attrs[1].ty,
+        loaded.stamp_attrs[1].decl.ty,
         lute_manifest::types::Type::Int
     ));
 }

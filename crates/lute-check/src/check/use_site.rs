@@ -984,11 +984,10 @@ fn typed_param_sinks(
                 return;
             };
             for a in d.attrs.iter().filter(|a| passes(a)) {
-                let adecl = decl
-                    .attrs
-                    .iter()
-                    .find(|x| x.name == a.key)
-                    .or_else(|| snapshot.stamp_attrs.get(&a.key));
+                let adecl = decl.attrs.iter().find(|x| x.name == a.key).or_else(|| {
+                    let surface = lute_manifest::stamps::StampSurface::Directive(d.tag.clone());
+                    snapshot.stamp_attrs.get(&surface, &a.key)
+                });
                 if let Some(adecl) = adecl.filter(|x| is_member_typed(&x.ty)) {
                     out.push((owner(&format!("::{}", d.tag), &a.key), adecl.clone()));
                 }

@@ -1,0 +1,12 @@
+---
+kind: scene
+character: mira
+season: 1
+episode: 2
+---
+## Shot 1.
+
+::bg{assetId="bg.room" voiceAssetId="VO.1"}
+::sfx{assetId="sfx.door" voiceAssetId="VO.2"}
+@mira: No voice here.
+::end{voiceAssetId="VO.3"}

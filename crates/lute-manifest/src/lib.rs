@@ -19,6 +19,7 @@ pub mod schema;
 pub mod season;
 pub mod semantics;
 pub mod snapshot;
+pub mod stamps;
 pub mod suggest;
 pub mod text;
 pub mod types;

@@ -709,7 +709,7 @@
       }
     },
     "stampAttrsFile": {
-      "description": "schema.rs::StampAttrsFile (export `stampAttrs`, plugin §14.1). CROSS-CUTTING attribute vocabulary: each entry is an ordinary attrDecl, but admissible on EVERY directive AND on content lines, and lowered into the IR record's nested `stamps` object (0.49.0 §3.1) rather than its own fields. A name colliding with a key the core stamp owns (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) is an assembly-time E-PLUGIN-RESERVED-STAMP-ATTR; a `list`/`map`/`record` type, which no authored attribute value can satisfy, is E-PLUGIN-INVALID-DIRECTIVE (0.49.0 §3.2). `required` and `default` are inert on this surface: a cross-cutting attr is optional on every record, and an unauthored one is never default-injected.",
+      "description": "schema.rs::StampAttrsFile (export `stampAttrs`, plugin §14.1, 0.50.0 §3.1). Each entry is a stampAttrEntry: an attrDecl plus an optional `on:` surface list. Without `on:` the entry is CROSS-CUTTING, admissible on every directive with a stamp carrier AND on content lines; with `on:` exactly on the named surfaces. A stamp lowers into the IR record's nested `stamps` object (0.49.0 §3.1) rather than its own fields. A name colliding with a key the core stamp owns (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) is an assembly-time E-PLUGIN-RESERVED-STAMP-ATTR; a `list`/`map`/`record` type, which no authored attribute value can satisfy, is E-PLUGIN-INVALID-DIRECTIVE (0.49.0 §3.2). An unauthored stamp is never default-injected; `required: true` needs `on:` (E-PLUGIN-PARSE).",
       "type": "object",
       "required": [
         "stampAttrs"
@@ -718,8 +718,38 @@
         "stampAttrs": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/attrDecl"
+            "$ref": "#/definitions/stampAttrEntry"
           }
+        }
+      }
+    },
+    "stampAttrEntry": {
+      "description": "schema.rs::StampAttrEntry: the attrDecl fields plus `on:` (0.50.0 §3.1), a non-empty list of surface names: `line`, `branch`, `hub`, `choice`, or a directive of the resolved profile with a stamp carrier (not `jump`/`label`/`clear`). An unknown or unstamped surface is E-PLUGIN-STAMP-SURFACE at assembly; a scoped name its surface already owns is E-PLUGIN-RESERVED-STAMP-ATTR. Two entries of one name need disjoint `on:` surfaces (E-PLUGIN-DUP-ID / E-PLUGIN-DUP-ACROSS).",
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/definitions/type"
+        },
+        "default": {
+          "$ref": "#/definitions/literal"
+        },
+        "on": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "uniqueItems": true
         }
       }
     },

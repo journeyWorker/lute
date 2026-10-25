@@ -803,8 +803,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-MISSING-ATTR",
-        summary: "A directive is missing an attribute its declared schema requires.",
-        spec: &[],
+        summary: "A directive is missing an attribute its declared schema requires, or a directive or content line does not author a plugin stamp declared `required: true` on its surface (`on:`); a stamp is never injected, so its `default:` does not count.",
+        spec: &["dsl 0.50.0 §3.4"],
     },
     Code {
         code: "E-MOCK-SUBJECT",
@@ -953,13 +953,13 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-DUP-ACROSS",
-        summary: "Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation; the first plugin's declaration is used.",
-        spec: &[],
+        summary: "Two active plugins declare the same directive, event, reward kind, occasion, cast id, or bridge operation, or `stampAttrs` entries of one name on overlapping surfaces (an entry without `on:` overlaps every entry; the message names the shared surfaces); the first plugin's declaration is used.",
+        spec: &["dsl 0.50.0 §3.2"],
     },
     Code {
         code: "E-PLUGIN-DUP-ID",
-        summary: "A plugin package declares the same id more than once within one export kind; the first declaration is used and the rest of the project is still checked.",
-        spec: &[],
+        summary: "A plugin package declares the same id more than once within one export kind, or two `stampAttrs` entries of one name whose `on:` surfaces overlap (an entry without `on:` overlaps every entry; the message names the shared surfaces); the first declaration is used and the rest of the project is still checked.",
+        spec: &["dsl 0.50.0 §3.2"],
     },
     Code {
         code: "E-PLUGIN-INVALID-DIRECTIVE",
@@ -1003,8 +1003,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-PARSE",
-        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`).",
-        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7"],
+        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`.",
+        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2"],
     },
     Code {
         code: "E-PLUGIN-RESERVED-NAME",
@@ -1013,8 +1013,13 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-RESERVED-STAMP-ATTR",
-        summary: "A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp.",
-        spec: &["plugin §14"],
+        summary: "A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp. Also a `stampAttrs` entry scoped with `on:` to a surface that owns an attribute of the same name (`prompt` on `branch`, `text` on `choice`, `code` on `line`, a directive's own attribute), so the stamp could never be read there.",
+        spec: &["plugin §14", "dsl 0.50.0 §3.2"],
+    },
+    Code {
+        code: "E-PLUGIN-STAMP-SURFACE",
+        summary: "A `stampAttrs` entry's `on:` names a surface that is not `line`, `branch`, `hub`, `choice` or a directive of the resolved profile (with a did-you-mean, or the installed but inactive plugin to declare in `depends:`), or a directive with no stamp carrier (`jump`, `label`, `clear`). The entry is dropped; its siblings still load.",
+        spec: &["dsl 0.50.0 §3.2"],
     },
     Code {
         code: "E-PLUGIN-UNKNOWN-ASSETKIND",
@@ -1558,8 +1563,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-UNKNOWN-ATTR",
-        summary: "A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it.",
-        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1"],
+        summary: "A content line or directive carries an attribute key that the content-line grammar or the directive's own declaration does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to.",
+        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1", "dsl 0.50.0 §3.4"],
     },
     Code {
         code: "E-UNKNOWN-DIRECTIVE",

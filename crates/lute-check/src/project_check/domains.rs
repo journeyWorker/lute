@@ -15,8 +15,8 @@ pub const W_DOMAIN_UNREAD: &str = "W-DOMAIN-UNREAD";
 /// declaring `{ domain: reason }` makes `reason` read, and the warning stops.
 /// Three sources, and they are the whole closed rule:
 ///  1. every directive's own `AttrDecl`s;
-///  2. every cross-cutting `stampAttrs` decl, which is admissible on EVERY
-///     directive (plugin §14.1);
+///  2. every `stampAttrs` decl, on whichever surfaces it applies to
+///     (plugin §14.1, 0.50.0 §3.3);
 ///  3. the content line's two domain slots
 ///     ([`crate::content_line::CONTENT_LINE_DOMAIN_SLOTS`]), which are not
 ///     `AttrDecl`s because a content line is not a directive.
@@ -27,8 +27,8 @@ pub fn domain_reading_set(snapshot: &CapabilitySnapshot) -> BTreeSet<String> {
             collect_domain_names(&attr.ty, &mut out);
         }
     }
-    for decl in snapshot.stamp_attrs.values() {
-        collect_domain_names(&decl.ty, &mut out);
+    for stamp in snapshot.stamp_attrs.iter() {
+        collect_domain_names(&stamp.decl.ty, &mut out);
     }
     for name in crate::content_line::CONTENT_LINE_DOMAIN_SLOTS {
         out.insert((*name).to_string());

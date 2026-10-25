@@ -15,15 +15,17 @@ use lute_manifest::types::{Literal, Type};
 /// providerRef `items`) and `tone` (domain `mood`).
 fn snapshot() -> CapabilitySnapshot {
     let mut snap = lute_test_vocab::vocab_snapshot();
-    snap.stamp_attrs.insert(
-        "cue".into(),
-        AttrDecl {
-            name: "cue".into(),
-            required: false,
-            ty: Type::Str,
-            default: None,
-        },
-    );
+    snap.stamp_attrs
+        .insert(lute_manifest::stamps::StampAttrDecl::cross_cutting(
+            "test",
+            AttrDecl {
+                name: "cue".into(),
+                required: false,
+                ty: Type::Str,
+                default: None,
+            },
+        ))
+        .unwrap();
     for (key, ty) in [
         ("lead", Type::Entity("person".into())),
         ("party", Type::List(Box::new(Type::Entity("person".into())))),

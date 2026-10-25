@@ -11,8 +11,8 @@ pub fn sha256_hex(bytes: &[u8]) -> String {
 
 use crate::permissions::Permissions;
 use crate::schema::{
-    AssetKindDecl, AttrDecl, BridgeCapability, CastMember, DefDecl, DirectiveDecl, EventDecl,
-    OccasionDecl, ProviderDecl, RewardKindDecl, StateShape, StateTemplate,
+    AssetKindDecl, BridgeCapability, CastMember, DefDecl, DirectiveDecl, EventDecl, OccasionDecl,
+    ProviderDecl, RewardKindDecl, StateShape, StateTemplate,
 };
 use crate::types::Literal;
 
@@ -51,15 +51,17 @@ pub struct CapabilitySnapshot {
     /// part of the resolved capability surface, so NOT folded into the version.
     pub inactive: BTreeMap<String, String>,
     pub events: BTreeMap<String, EventDecl>,
-    /// Plugin-declared CROSS-CUTTING attrs (plugin §14.1 `stampAttrs:`),
-    /// folded from every active plugin's `stampattrs` export. Admissible on
-    /// EVERY directive and content line — the checker resolves an attr key
-    /// against the record's own decls FIRST and falls back here — and lowered
-    /// into the IR record's nested `stamps` object (`Stamp.stamps`, 0.49.0
-    /// §3.1), never its own fields. A name colliding with a reserved stamp
-    /// key is rejected at assembly (`E-PLUGIN-RESERVED-STAMP-ATTR`), so a
-    /// plugin stamp never reads as the core stamp.
-    pub stamp_attrs: BTreeMap<String, AttrDecl>,
+    /// Plugin-declared stamp attributes (plugin §14.1 `stampAttrs:`, 0.50.0
+    /// §3), folded from every active plugin's `stampattrs` export and
+    /// indexed by surface. A cross-cutting entry (no `on:`) is admissible on
+    /// every directive with a stamp carrier and on every content line; a
+    /// scoped entry only on the surfaces its `on:` names. Each surface's own
+    /// attributes win; a stamp lowers into the IR record's nested `stamps`
+    /// object (`Stamp.stamps`, 0.49.0 §3.1), never its own fields. A name
+    /// colliding with a reserved stamp key is rejected at assembly
+    /// (`E-PLUGIN-RESERVED-STAMP-ATTR`), so a plugin stamp never reads as
+    /// the core stamp.
+    pub stamp_attrs: crate::stamps::StampAttrs,
     /// Plugin-declared reward kinds (dsl 0.16.0 §4 `rewardKinds:`) folded
     /// from every active plugin's `rewardKinds` export. Consumed by the
     /// checker's `E-REWARD-KIND` closure; the empty map means "shape-only"
@@ -357,18 +359,14 @@ pub fn capability_version(snap: &CapabilitySnapshot) -> String {
         }
     }
     // GUARDED for the same reason as `events` above: a snapshot with no
-    // plugin-declared cross-cutting vocabulary hashes byte-identically to a
-    // pre-`stampAttrs` snapshot. A CHANGED cross-cutting vocabulary IS a
-    // changed capability surface (plugin §14.1), so once populated it folds
-    // in unconditionally.
+    // plugin-declared stamp vocabulary hashes byte-identically to a
+    // pre-`stampAttrs` snapshot. A CHANGED stamp vocabulary IS a changed
+    // capability surface (plugin §14.1), so once populated it folds in
+    // unconditionally; an entry's `on:` folds in only when written
+    // (0.50.0 §3.3), so a manifest without `on:` hashes as in 0.49.
     if !snap.stamp_attrs.is_empty() {
         h.update(b"\nstampAttrs\n");
-        for (name, a) in &snap.stamp_attrs {
-            h.update(name.as_bytes());
-            h.update(b"=");
-            h.update(format!("{a:?}").as_bytes());
-            h.update(b";");
-        }
+        snap.stamp_attrs.fold_into(&mut h);
     }
     // GUARDED for the same reason as `events`/`stampAttrs`/`domains` above:
     // a snapshot with no declared reward vocabulary hashes byte-identically

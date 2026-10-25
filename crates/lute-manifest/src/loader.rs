@@ -28,10 +28,10 @@ pub struct LoadedPlugin {
     pub frontmatter: BTreeMap<String, Type>,
     pub asset_kinds: Vec<AssetKindDecl>,
     pub events: Vec<EventDecl>,
-    /// plugin §14.1 `stampAttrs` export: CROSS-CUTTING attrs admissible on
-    /// every directive and content line, lowered into the record's stamp
-    /// rather than its own fields.
-    pub stamp_attrs: Vec<AttrDecl>,
+    /// plugin §14.1 `stampAttrs` export: stamp attributes, lowered into the
+    /// record's stamp rather than its own fields. Each keeps its raw `on:`
+    /// names; assembly resolves them (0.50.0 §3.2).
+    pub stamp_attrs: Vec<crate::stamps::DeclaredStampAttr>,
     /// dsl 0.16.0 §4 `rewardKinds` export: capability-declared reward
     /// vocabulary. Each entry carries the id (map key), optional `target`
     /// (`providerRef` pattern — assembly rejects a kind whose provider is
@@ -103,14 +103,34 @@ impl Source<'_> {
         new: bool,
         errs: &mut Vec<LoadError>,
     ) -> bool {
-        let at = at.map(|o| crate::yaml_text::line_col(self.text, o));
         if new {
-            if let Some((line, col)) = at {
-                let site = format!("{}:{line}:{col}", self.file.display());
-                sites.entry(kind).or_default().insert(name, site);
-            }
+            self.record(sites, kind, name, at);
             return true;
         }
+        errs.push(self.duplicate(sites, kind, name, at, Vec::new()));
+        false
+    }
+
+    /// Record the site of the `kind` declaration `name` at byte `at`.
+    fn record(&self, sites: &mut Sites, kind: &'static str, name: String, at: Option<usize>) {
+        if let Some((line, col)) = at.map(|o| crate::yaml_text::line_col(self.text, o)) {
+            let site = format!("{}:{line}:{col}", self.file.display());
+            sites.entry(kind).or_default().insert(name, site);
+        }
+    }
+
+    /// [`LoadError::DuplicateId`] for the `kind` declaration `name` at byte
+    /// `at`, naming the first declaration as `file:line` relative to the
+    /// package. `shared` names the surfaces two stamp entries share.
+    fn duplicate(
+        &self,
+        sites: &Sites,
+        kind: &'static str,
+        name: String,
+        at: Option<usize>,
+        shared: Vec<String>,
+    ) -> LoadError {
+        let at = at.map(|o| crate::yaml_text::line_col(self.text, o));
         let first = sites.get(kind).and_then(|m| m.get(&name)).map(|site| {
             let site = site.rsplit_once(':').map_or(site.as_str(), |(s, _)| s);
             let (path, line) = site.rsplit_once(':').unwrap_or((site, ""));
@@ -125,14 +145,14 @@ impl Source<'_> {
             );
             format!("{rel}:{line}")
         });
-        errs.push(LoadError::DuplicateId {
+        LoadError::DuplicateId {
             kind: kind.into(),
             id: name,
             file: self.file.display().to_string(),
             at,
             first,
-        });
-        false
+            shared,
+        }
     }
 }
 
@@ -195,13 +215,16 @@ pub enum LoadError {
     /// id. The first declaration is kept and the later one ignored, so the
     /// package still loads. `file`/`at` locate the later declaration;
     /// `first` names the earlier one as `file:line`, relative to the package
-    /// (for a package id, to the plugins directory).
+    /// (for a package id, to the plugins directory). `shared` names the
+    /// `on:` surfaces two `stampAttrs` entries of one name share (0.50.0
+    /// §3.2); it is empty when the whole name is declared twice.
     DuplicateId {
         kind: String,
         id: String,
         file: String,
         at: At,
         first: Option<String>,
+        shared: Vec<String>,
     },
     /// 0.41.0 §3.2: a declaration typed `number`. The package still loads;
     /// `entry` — the export entry the type sits in, as `(kind, name)` — is
@@ -312,8 +335,23 @@ impl std::fmt::Display for LoadError {
                 file,
                 at,
                 first,
+                shared,
             } => {
                 place(f, file, *at)?;
+                if !shared.is_empty() {
+                    let names: Vec<String> = shared.iter().map(|s| format!("`{s}`")).collect();
+                    let (noun, names) = match names.split_last() {
+                        Some((last, rest)) if !rest.is_empty() => {
+                            ("surfaces", format!("{} and {last}", rest.join(", ")))
+                        }
+                        _ => ("surface", names.join("")),
+                    };
+                    write!(f, "{kind} `{id}` is declared twice on the {noun} {names}")?;
+                    if let Some(first) = first {
+                        write!(f, " (first at {first})")?;
+                    }
+                    return f.write_str(" — give each entry disjoint `on:` surfaces");
+                }
                 match first {
                     Some(first) => write!(f, "{kind} `{id}` is already declared at {first}")?,
                     None => write!(f, "{kind} `{id}` is declared more than once")?,
@@ -634,18 +672,7 @@ fn load_package(
                 );
             }),
             "stampAttrs" => read_kind::<StampAttrsFile, _>(dir, &path, &mut errs, |f, src, e| {
-                let key = |a: &AttrDecl| a.name.clone();
-                let dst = &mut out.stamp_attrs;
-                merge_named(
-                    dst,
-                    sites,
-                    f.stamp_attrs,
-                    "stampAttr",
-                    key,
-                    field("name"),
-                    src,
-                    e,
-                );
+                merge_stamp_attrs(&mut out.stamp_attrs, sites, f.stamp_attrs, src, e);
             }),
             "rewardKinds" => read_kind::<RewardKindsFile, _>(dir, &path, &mut errs, |f, src, e| {
                 let decls: Vec<RewardKindDecl> = f
@@ -830,7 +857,7 @@ fn drop_invalid(dir: &Path, out: &mut LoadedPlugin, errs: &[LoadError]) {
         .retain(|b| !gone("bridge", &format!("{}.{}", b.service, b.operation)));
     out.defs.retain(|d| !gone("def", &d.name));
     out.occasions.retain(|o| !gone("occasion", &o.name));
-    out.stamp_attrs.retain(|a| !gone("stampAttr", &a.name));
+    out.stamp_attrs.retain(|a| !gone("stampAttr", &a.decl.name));
     out.reward_kinds.retain(|r| !gone("rewardKind", &r.name));
     out.asset_kinds.retain(|a| !gone("assetKind", &a.kind));
     out.frontmatter.retain(|key, _| !gone("frontmatter", key));
@@ -1216,6 +1243,7 @@ pub fn load_plugins_dir(dir: &Path) -> (crate::resolve::InstalledPlugins, Vec<Lo
                             at: id_at(&manifest),
                             file: manifest.display().to_string(),
                             first,
+                            shared: Vec::new(),
                         });
                     }
                     std::collections::btree_map::Entry::Vacant(e) => {
@@ -1776,6 +1804,108 @@ fn yaml_files(path: &Path, errs: &mut Vec<LoadError>) -> Vec<std::path::PathBuf>
     }
     v.sort();
     v
+}
+
+/// Merge a `stampAttrs` file's entries into its package (0.50.0 §3.2): each
+/// entry's `on:` shape is checked (`E-PLUGIN-PARSE` at the entry), then it
+/// is admitted unless it overlaps an entry of its name already declared in
+/// the package (`E-PLUGIN-DUP-ID` naming the shared surfaces). Two entries
+/// may share a name only when both have `on:` and their surfaces are
+/// disjoint.
+fn merge_stamp_attrs(
+    dst: &mut Vec<crate::stamps::DeclaredStampAttr>,
+    sites: &mut Sites,
+    items: Vec<crate::schema::StampAttrEntry>,
+    src: &Source,
+    errs: &mut Vec<LoadError>,
+) {
+    const KIND: &str = "stampAttr";
+    let mut nth: BTreeMap<String, usize> = BTreeMap::new();
+    for item in items {
+        let (decl, on) = item.into_parts();
+        let n = nth.entry(decl.name.clone()).or_default();
+        let offset = field_value_at(src.text, "name", &decl.name, *n);
+        *n += 1;
+        let on = match stamp_surface_names(&decl, on) {
+            Ok(on) => on,
+            Err(msg) => {
+                errs.push(LoadError::Parse {
+                    file: src.file.display().to_string(),
+                    at: offset.map(|o| crate::yaml_text::line_col(src.text, o)),
+                    msg,
+                });
+                continue;
+            }
+        };
+        let mut same_name = dst.iter().filter(|d| d.decl.name == decl.name).peekable();
+        let first_of_name = same_name.peek().is_none();
+        if let Some(shared) =
+            same_name.find_map(|d| crate::stamps::overlap(d.on.as_ref(), on.as_ref()))
+        {
+            errs.push(src.duplicate(sites, KIND, decl.name, offset, shared));
+            continue;
+        }
+        if first_of_name {
+            src.record(sites, KIND, decl.name.clone(), offset);
+        }
+        dst.push(crate::stamps::DeclaredStampAttr { decl, on });
+    }
+}
+
+/// The surface names of a `stampAttrs` entry's `on:` (`None` without one),
+/// or the message of its shape fault (0.50.0 §3.2).
+fn stamp_surface_names(
+    decl: &AttrDecl,
+    on: Option<yaml_serde::Value>,
+) -> Result<Option<BTreeSet<String>>, String> {
+    use yaml_serde::Value;
+    let name = &decl.name;
+    let Some(on) = on else {
+        if decl.required {
+            return Err(format!(
+                "stamp attribute `{name}` is `required: true` but has no `on:`; a stamp required \
+                 on every record is not a column — name its surfaces with `on: […]`"
+            ));
+        }
+        return Ok(None);
+    };
+    let items = match on {
+        Value::Sequence(items) if !items.is_empty() => items,
+        Value::Sequence(_) | Value::Null => {
+            return Err(format!(
+                "stamp attribute `{name}` has an empty `on:` — list the surfaces it applies to, \
+                 or omit `on:` for every directive and content line"
+            ))
+        }
+        Value::String(one) => {
+            return Err(format!(
+                "stamp attribute `{name}` has `on: {one}`, which is not a list — write \
+                 `on: [{one}]`"
+            ))
+        }
+        _ => return Err(not_surface_names(name)),
+    };
+    let mut names = BTreeSet::new();
+    for item in items {
+        let Value::String(surface) = item else {
+            return Err(not_surface_names(name));
+        };
+        if names.contains(&surface) {
+            return Err(format!(
+                "stamp attribute `{name}` lists `{surface}` twice in `on:`"
+            ));
+        }
+        names.insert(surface);
+    }
+    Ok(Some(names))
+}
+
+/// The fault of an `on:` that is neither a list nor a list of names.
+fn not_surface_names(name: &str) -> String {
+    format!(
+        "stamp attribute `{name}` has an `on:` that is not a list of surface names — write \
+         `on: [line, bg]`, naming `line`, `branch`, `hub`, `choice` or a directive"
+    )
 }
 
 /// Merge `items` — `kind` declarations from `src`, named by `key` — into

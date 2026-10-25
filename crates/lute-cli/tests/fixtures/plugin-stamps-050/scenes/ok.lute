@@ -1,0 +1,11 @@
+---
+kind: scene
+character: mira
+season: 1
+episode: 1
+---
+## Shot 1.
+
+::bg{assetId="bg.room" assetName="room" cue="open"}
+::sfx{assetId="sfx.door" assetName="7"}
+@mira{voiceAssetId="VO.mira.0010" cue="soft"}: Left it is.

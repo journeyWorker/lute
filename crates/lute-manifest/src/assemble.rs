@@ -7,15 +7,18 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::core::load_core_snapshot;
 use crate::resolve::{ActivePlugin, InstalledPlugins};
-use crate::schema::{AttrDecl, StateShape};
+use crate::schema::StateShape;
 use crate::snapshot::{capability_version, CapabilitySnapshot, ResolvedPlugin};
+use crate::stamps::{DeclaredStampAttr, StampAttrDecl, StampSurface, SurfaceError};
 use crate::types::Type;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum AssembleError {
     /// Two active plugins declare one name; the first plugin's declaration
     /// is kept. `site` is the later declaration's `path:line:column`,
-    /// `first_site` the earlier one's `path:line`, when known.
+    /// `first_site` the earlier one's `path:line`, when known. `shared` names
+    /// the surfaces two `stampAttrs` declarations share (0.50.0 §3.2); it is
+    /// empty when the whole name collides.
     DuplicateAcrossPlugins {
         kind: String,
         id: String,
@@ -23,6 +26,7 @@ pub enum AssembleError {
         second: String,
         site: Option<String>,
         first_site: Option<String>,
+        shared: Vec<StampSurface>,
     },
     /// A plugin declares a name the core language owns (a core statement,
     /// block tag or `lute.core` directive; a lifecycle event; …). `why` is
@@ -65,9 +69,22 @@ pub enum AssembleError {
     /// `stampAttrs` export or on one of its directives — whose name collides
     /// with a key the CORE stamp owns. Both surfaces share the one code —
     /// the message names the offending attr, which identifies it either way.
+    /// `shadows` (0.50.0 §3.2): a scoped stamp named like an attribute its
+    /// surface already owns, so it could never be read there.
     ReservedStampAttr {
         plugin: String,
         name: String,
+        shadows: Option<StampSurface>,
+    },
+    /// 0.50.0 §3.2: a `stampAttrs` entry's `on:` names a surface that is no
+    /// core surface and no directive with a stamp carrier of the resolved
+    /// snapshot. The entry is dropped. `site` is its `path:line:column`.
+    StampSurface {
+        plugin: String,
+        name: String,
+        surface: String,
+        error: SurfaceError,
+        site: Option<String>,
     },
     /// dsl 0.9.0 D-D: a plugin-declared domain's member semantics are invalid.
     DomainSemantics {
@@ -104,6 +121,7 @@ impl AssembleError {
             AssembleError::CyclicStateShape { .. } => "E-STATE-SHAPE-CYCLE",
             AssembleError::UnknownAssetKind { .. } => "E-PLUGIN-UNKNOWN-ASSETKIND",
             AssembleError::ReservedStampAttr { .. } => "E-PLUGIN-RESERVED-STAMP-ATTR",
+            AssembleError::StampSurface { .. } => "E-PLUGIN-STAMP-SURFACE",
             AssembleError::DomainSemantics { issue, .. } => issue.code(),
             AssembleError::UnknownRewardKindTarget { .. } => "E-PLUGIN-UNKNOWN-REWARD-TARGET",
         }
@@ -118,12 +136,76 @@ impl std::fmt::Display for AssembleError {
     /// `Debug` form leaking Rust struct syntax is not an acceptable answer.
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AssembleError::ReservedStampAttr { plugin, name } => write!(
+            AssembleError::ReservedStampAttr {
+                plugin,
+                name,
+                shadows: None,
+            } => write!(
                 f,
                 "plugin `{plugin}` declares reserved stamp attribute `{name}`; \
                  `at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source` \
                  are owned by the core stamp (plugin §14)"
             ),
+            AssembleError::ReservedStampAttr {
+                plugin,
+                name,
+                shadows: Some(surface),
+            } => {
+                let owner = match surface {
+                    StampSurface::Line => "a content line".to_string(),
+                    _ => surface.quoted(),
+                };
+                write!(
+                    f,
+                    "stamp attribute `{name}` (`{plugin}`) is scoped to `{}`, but `{name}` is an \
+                     attribute of {owner} itself, so the stamp could never be read",
+                    surface.name()
+                )
+            }
+            AssembleError::StampSurface {
+                plugin,
+                name,
+                surface,
+                error,
+                site,
+            } => {
+                if let Some(site) = site {
+                    write!(f, "{site}: ")?;
+                }
+                write!(
+                    f,
+                    "stamp attribute `{name}` (`{plugin}`) names `{surface}` in `on:`"
+                )?;
+                match error {
+                    SurfaceError::Unstamped => write!(
+                        f,
+                        ", but `::{surface}` emits no stamped record (0.49.0 §4.1)"
+                    ),
+                    SurfaceError::Unknown {
+                        inactive_owner: Some(owner),
+                        ..
+                    } => write!(
+                        f,
+                        ", which is a directive of `{owner}`, installed but not active in this \
+                         profile — declare `{owner}` in the `depends:` of `{plugin}`, so that the \
+                         directive is in every profile that activates `{plugin}`"
+                    ),
+                    SurfaceError::Unknown {
+                        near,
+                        inactive_owner: None,
+                    } => {
+                        write!(
+                            f,
+                            ", which is not `line`, `branch`, `hub`, `choice` or a directive of \
+                             the resolved profile"
+                        )?;
+                        match near {
+                            Some(near) => write!(f, " — did you mean `{near}`?"),
+                            None => Ok(()),
+                        }
+                    }
+                }
+            }
             // `InvalidDirective.msg` is already prose (the per-directive
             // validator's own message text); wrapping it would mangle it.
             AssembleError::InvalidDirective { msg, .. } => write!(f, "{msg}"),
@@ -134,6 +216,7 @@ impl std::fmt::Display for AssembleError {
                 second,
                 site,
                 first_site,
+                shared,
             } => {
                 if let Some(site) = site {
                     write!(f, "{site}: ")?;
@@ -142,11 +225,26 @@ impl std::fmt::Display for AssembleError {
                 if let Some(at) = first_site {
                     write!(f, " (at {at})")?;
                 }
-                write!(
-                    f,
-                    " and `{second}`; two active plugins cannot own the same name — \
-                     `{first}`'s is used"
-                )
+                if shared.is_empty() {
+                    write!(
+                        f,
+                        " and `{second}`; two active plugins cannot own the same name — \
+                         `{first}`'s is used"
+                    )
+                } else {
+                    let surfaces: Vec<String> = shared.iter().map(StampSurface::quoted).collect();
+                    let surfaces = match surfaces.split_last() {
+                        Some((last, rest)) if !rest.is_empty() => {
+                            format!("{} and {last}", rest.join(", "))
+                        }
+                        _ => surfaces.concat(),
+                    };
+                    write!(
+                        f,
+                        " and `{second}` on {surfaces}; two active plugins cannot own one stamp on \
+                         the same surface — `{first}`'s is used"
+                    )
+                }
             }
             AssembleError::ReservedName {
                 plugin, why, site, ..
@@ -280,6 +378,9 @@ pub fn assemble_snapshot(
     // resolves (parallels `validate_asset_kind_refs`'s post-loop stance).
     let mut rk_owner: BTreeMap<String, String> = BTreeMap::new();
     let mut rk_pending: Vec<(String, crate::schema::RewardKindDecl)> = Vec::new();
+    // `stampAttrs` entries that passed the per-entry checks, resolved after
+    // the loop (0.50.0 §3.2).
+    let mut stamp_pending: Vec<(Merging, &DeclaredStampAttr)> = Vec::new();
     // Occasion owners (dsl 0.21.0 §2), for precise cross-plugin dup errors.
     let mut oc_owner: BTreeMap<String, String> = BTreeMap::new();
     // Cast owners (dsl 0.23.0 §7), same treatment.
@@ -354,6 +455,7 @@ pub fn assemble_snapshot(
                     errs.push(AssembleError::ReservedStampAttr {
                         plugin: ap.id.clone(),
                         name: name.to_string(),
+                        shadows: None,
                     });
                 }
                 continue;
@@ -460,43 +562,35 @@ pub fn assemble_snapshot(
             &mut owners,
             &mut errs,
         );
-        // plugin §14.1 `stampAttrs`: the CROSS-CUTTING attr vocabulary. A name
-        // the core stamp owns is rejected here (never merged) — the same
-        // reservation the per-directive `attrs` loop above enforces, so a
-        // plugin cannot reach a reserved key through either door — and so is
-        // a `list`/`map`/`record` type no authored value can satisfy (0.49.0
-        // §3.2). Surviving entries go through the SAME `merge_map` as the
-        // sibling maps, so a cross-plugin duplicate is dropped (first owner
-        // wins) and reported.
-        let mut stamp_attrs: Vec<(String, AttrDecl)> = Vec::new();
+        // plugin §14.1 `stampAttrs`. A name the core stamp owns is rejected
+        // here (never merged) — the same reservation the per-directive
+        // `attrs` loop above enforces, so a plugin cannot reach a reserved key
+        // through either door — and so is a `list`/`map`/`record` type no
+        // authored value can satisfy (0.49.0 §3.2). Surviving entries wait
+        // for the post-loop pass: their `on:` may name a directive of a
+        // plugin merged later (a `depends:` is activated after its
+        // dependant), so surfaces resolve against every active directive.
         for a in &pkg.stamp_attrs {
-            if RESERVED_STAMP_ATTR_NAMES.contains(&a.name.as_str()) {
+            if RESERVED_STAMP_ATTR_NAMES.contains(&a.decl.name.as_str()) {
                 errs.push(AssembleError::ReservedStampAttr {
                     plugin: ap.id.clone(),
-                    name: a.name.clone(),
+                    name: a.decl.name.clone(),
+                    shadows: None,
                 });
                 continue;
             }
             let owner = crate::validate::AttrOwner::Stamp(ap.id.clone());
-            if let Some(me) = crate::validate::structured_attr(owner, a) {
+            if let Some(me) = crate::validate::structured_attr(owner, &a.decl) {
                 errs.push(AssembleError::InvalidDirective {
                     plugin: ap.id.clone(),
-                    directive: a.name.clone(),
+                    directive: a.decl.name.clone(),
                     code: me.code(),
                     msg: me.message(),
                 });
                 continue;
             }
-            stamp_attrs.push((a.name.clone(), a.clone()));
+            stamp_pending.push((merging, a));
         }
-        merge_map(
-            &mut snap.stamp_attrs,
-            stamp_attrs.into_iter(),
-            ("stampAttr", "stampAttr"),
-            &merging,
-            &mut owners,
-            &mut errs,
-        );
         for e in &pkg.events {
             if let Some(why) = reserved_why(
                 crate::reserved::Slot::Event,
@@ -645,6 +739,12 @@ pub fn assemble_snapshot(
         }
         snap.reward_kinds.insert(rk.name.clone(), rk);
     }
+    // 0.50.0 §3.2 rules 2–4, against every active directive and the
+    // inactive index: resolve each entry's `on:`, refuse a shadowed scoped
+    // entry, then a cross-plugin overlap. Each refusal drops its entry only.
+    for (merging, entry) in stamp_pending {
+        merge_stamp_attr(&mut snap, &merging, entry, &mut errs);
+    }
     snap.directive_owners = dir_owner;
 
     snap.version = capability_version(&snap);
@@ -690,6 +790,7 @@ type Owners = BTreeMap<(&'static str, String), String>;
 
 /// The plugin being merged: its id and package, and every installed
 /// package, to locate a duplicate in both.
+#[derive(Clone, Copy)]
 struct Merging<'a> {
     plugin: &'a str,
     pkg: &'a crate::loader::LoadedPlugin,
@@ -713,7 +814,75 @@ impl Merging<'_> {
             second: self.plugin.into(),
             site: self.pkg.site(site_kind, id).map(str::to_string),
             first_site,
+            shared: Vec::new(),
         }
+    }
+}
+
+/// Merge one `stampAttrs` entry of `merging`'s plugin into `snap` (0.50.0
+/// §3.2 rules 2–4): every `on:` name resolves to a stamp surface
+/// (`E-PLUGIN-STAMP-SURFACE`), no scoped surface owns an attribute of the
+/// entry's name (`E-PLUGIN-RESERVED-STAMP-ATTR`), and no other plugin's
+/// declaration of the name shares a surface (`E-PLUGIN-DUP-ACROSS`). Any
+/// refusal drops the entry; every fault of the entry is reported.
+fn merge_stamp_attr(
+    snap: &mut CapabilitySnapshot,
+    merging: &Merging,
+    entry: &DeclaredStampAttr,
+    errs: &mut Vec<AssembleError>,
+) {
+    const KIND: &str = "stampAttr";
+    let name = &entry.decl.name;
+    let on = match &entry.on {
+        None => None,
+        Some(names) => {
+            let mut surfaces = BTreeSet::new();
+            let mut refused = false;
+            for surface in names {
+                match StampSurface::parse(surface, snap) {
+                    Ok(s) => {
+                        surfaces.insert(s);
+                    }
+                    Err(error) => {
+                        refused = true;
+                        errs.push(AssembleError::StampSurface {
+                            plugin: merging.plugin.to_string(),
+                            name: name.clone(),
+                            surface: surface.clone(),
+                            error,
+                            site: merging.pkg.site(KIND, name).map(str::to_string),
+                        });
+                    }
+                }
+            }
+            for surface in &surfaces {
+                let own = surface.own_attrs(snap).unwrap_or_default();
+                if own.contains(&name.as_str()) {
+                    refused = true;
+                    errs.push(AssembleError::ReservedStampAttr {
+                        plugin: merging.plugin.to_string(),
+                        name: name.clone(),
+                        shadows: Some(surface.clone()),
+                    });
+                }
+            }
+            if refused {
+                return;
+            }
+            Some(surfaces)
+        }
+    };
+    let decl = StampAttrDecl {
+        decl: entry.decl.clone(),
+        on,
+        plugin: merging.plugin.to_string(),
+    };
+    if let Err(overlap) = snap.stamp_attrs.insert(decl) {
+        let mut err = merging.duplicate(KIND, KIND, name, &overlap.first);
+        if let AssembleError::DuplicateAcrossPlugins { shared, .. } = &mut err {
+            *shared = overlap.shared;
+        }
+        errs.push(err);
     }
 }
 

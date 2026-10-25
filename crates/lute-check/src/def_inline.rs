@@ -303,7 +303,10 @@ impl Cx<'_> {
         let decl = snapshot
             .directive(&dir.tag)
             .and_then(|d| d.attrs.iter().find(|ad| ad.name == a.key))
-            .or_else(|| snapshot.stamp_attrs.get(&a.key))
+            .or_else(|| {
+                let surface = lute_manifest::stamps::StampSurface::Directive(dir.tag.clone());
+                snapshot.stamp_attrs.get(&surface, &a.key)
+            })
             .map(std::borrow::Cow::Borrowed)
             .or_else(|| {
                 snapshot.directive(&dir.tag)?;

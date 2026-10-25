@@ -86,7 +86,7 @@ fn delivery_flag_on_narrator_errors() {
 #[test]
 fn delivery_string_attr_is_unknown_not_a_value_domain() {
     // 0.2.2 retires the `delivery="…"` enum-valued form entirely — the key
-    // itself is no longer in `KNOWN_ATTRS`, so it falls through to
+    // itself is no longer in `LINE_ATTRS`, so it falls through to
     // `E-UNKNOWN-ATTR` (retiring 0.2.1's `E-DELIVERY-VALUE`).
     let cs = codes(&format!("{HDR}@x{{delivery=\"thought\"}}: hi\n"));
     assert!(cs.contains(&"E-UNKNOWN-ATTR".to_string()), "{cs:?}");

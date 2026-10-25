@@ -4,6 +4,7 @@ use lute_manifest::resolve::{ActivePlugin, InstalledPlugin, InstalledPlugins};
 use lute_manifest::schema::{
     AssetKindDecl, AssetResolve, AttrDecl, DirectiveDecl, EventDecl, Lowering, PluginManifest,
 };
+use lute_manifest::stamps::{DeclaredStampAttr, StampSurface};
 use lute_manifest::types::Type;
 use std::collections::BTreeMap;
 
@@ -882,7 +883,7 @@ fn assemble_rejects_reserved_stamp_attr_names_on_plugin_directives() {
             .iter()
             .find(|e| matches!(
                 e,
-                lute_manifest::assemble::AssembleError::ReservedStampAttr { plugin, name }
+                lute_manifest::assemble::AssembleError::ReservedStampAttr { plugin, name, shadows: None }
                     if name == reserved && plugin == "arcia.minigame"
             ))
             .unwrap_or_else(|| {
@@ -920,7 +921,7 @@ fn assemble_rejects_reserved_names_in_stamp_attrs_export() {
         "source",
     ] {
         let mut p = plugin_with_directive("arcia.minigame", "minigame");
-        p.stamp_attrs = vec![
+        p.stamp_attrs = cross_cutting(vec![
             AttrDecl {
                 name: reserved.into(),
                 required: false,
@@ -933,7 +934,7 @@ fn assemble_rejects_reserved_names_in_stamp_attrs_export() {
                 ty: Type::Str,
                 default: None,
             },
-        ];
+        ]);
         let reg = InstalledPlugins {
             by_id: BTreeMap::from([("arcia.minigame".to_string(), InstalledPlugin { loaded: p })]),
             ..Default::default()
@@ -955,11 +956,11 @@ fn assemble_rejects_reserved_names_in_stamp_attrs_export() {
             "reserved `stampAttrs` name `{reserved}` must be rejected, got {errs:?}"
         );
         assert!(
-            !snap.stamp_attrs.contains_key(reserved),
+            !snap.stamp_attrs.contains(reserved),
             "reserved `stampAttrs` name `{reserved}` must NOT be merged"
         );
         assert!(
-            snap.stamp_attrs.contains_key("bonusId"),
+            snap.stamp_attrs.contains("bonusId"),
             "a non-reserved sibling in the same export must still merge"
         );
     }
@@ -1042,7 +1043,7 @@ fn a_structured_directive_attr_type_is_refused() {
 fn a_structured_stamp_attr_type_is_refused() {
     for ty in structured_types() {
         let mut p = plugin_with_directive("arcia.minigame", "minigame");
-        p.stamp_attrs = vec![
+        p.stamp_attrs = cross_cutting(vec![
             AttrDecl {
                 name: "tags".into(),
                 required: false,
@@ -1055,7 +1056,7 @@ fn a_structured_stamp_attr_type_is_refused() {
                 ty: Type::Str,
                 default: None,
             },
-        ];
+        ]);
         let (snap, errs) = assemble_one(p);
         assert_eq!(errs.len(), 1, "{errs:?}");
         assert_eq!(errs[0].code(), "E-PLUGIN-INVALID-DIRECTIVE");
@@ -1068,8 +1069,8 @@ fn a_structured_stamp_attr_type_is_refused() {
             )),
             "{msg}"
         );
-        assert!(!snap.stamp_attrs.contains_key("tags"));
-        assert!(snap.stamp_attrs.contains_key("bonusId"));
+        assert!(!snap.stamp_attrs.contains("tags"));
+        assert!(snap.stamp_attrs.contains("bonusId"));
     }
 }
 
@@ -1081,7 +1082,7 @@ fn a_structured_stamp_attr_type_is_refused() {
 fn stamp_attrs_merge_and_participate_in_capability_version() {
     let base = plugin_with_directive("arcia.minigame", "minigame");
     let mut with_attrs = base.clone();
-    with_attrs.stamp_attrs = vec![
+    with_attrs.stamp_attrs = cross_cutting(vec![
         AttrDecl {
             name: "bonusId".into(),
             required: false,
@@ -1094,7 +1095,7 @@ fn stamp_attrs_merge_and_participate_in_capability_version() {
             ty: Type::Int,
             default: None,
         },
-    ];
+    ]);
     let active = vec![
         ActivePlugin {
             id: "lute.core".into(),
@@ -1120,7 +1121,10 @@ fn stamp_attrs_merge_and_participate_in_capability_version() {
     let (stamped, errs) = assemble(with_attrs);
     assert!(errs.is_empty(), "{errs:?}");
     assert!(matches!(
-        stamped.stamp_attrs.get("bonusScore").map(|a| &a.ty),
+        stamped
+            .stamp_attrs
+            .get(&StampSurface::Line, "bonusScore")
+            .map(|a| &a.ty),
         Some(Type::Int)
     ));
     assert_ne!(
@@ -1136,7 +1140,7 @@ fn stamp_attrs_merge_and_participate_in_capability_version() {
 fn empty_stamp_attrs_leaves_capability_version_untouched() {
     let core = lute_manifest::core::load_core_snapshot();
     let mut probe = core.clone();
-    probe.stamp_attrs.clear();
+    probe.stamp_attrs = lute_manifest::stamps::StampAttrs::default();
     assert_eq!(
         core.version,
         lute_manifest::snapshot::capability_version(&probe),
@@ -1550,4 +1554,12 @@ fn assemble_rejects_cross_plugin_occasion_dup() {
         snap.occasions["talk"].target.takes_target(),
         "first owner wins"
     );
+}
+
+/// Cross-cutting `stampAttrs` entries (no `on:`), as a package loads them.
+fn cross_cutting(decls: Vec<AttrDecl>) -> Vec<DeclaredStampAttr> {
+    decls
+        .into_iter()
+        .map(|decl| DeclaredStampAttr { decl, on: None })
+        .collect()
 }
