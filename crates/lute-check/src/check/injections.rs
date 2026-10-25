@@ -78,8 +78,14 @@ pub(crate) fn fold_injections(
                 arm
             })
             .collect();
-        // No arm left by its end: the walk resumes only at a label.
-        *state = (!exits.is_empty()).then(|| StageState::join(&StageState::default(), exits));
+        // No arm left by its end: the walk resumes only at a label — unless
+        // control may pass the node without taking an arm, which keeps the
+        // stage it entered with (0.50 joins only the arms otherwise).
+        if !exits.is_empty() {
+            *state = Some(StageState::join(&StageState::default(), exits));
+        } else if !crate::inject::may_take_no_arm(node) {
+            *state = None;
+        }
     }
 }
 

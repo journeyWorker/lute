@@ -354,25 +354,31 @@ impl Presence<'_> {
         let mut facts = Vec::new();
         let mut quests = Vec::new();
         let mut calls = Vec::new();
+        let folded = self.folded;
+        let vocab = &folded.env.rel_vocab;
+        let mut directive = |d: &Directive| {
+            if let Some((q, _)) = d.accept_quest() {
+                quests.push(format!("quest.{q}"));
+            }
+            if let Some(facts) = vocab.call_facts(d) {
+                calls.push(facts);
+            }
+        };
         visit(nodes, &mut |node| match node {
             Node::Set(s) => paths.push(s.path.clone()),
+            // A clip writes as its node does in a body (the walk's own
+            // timeline arm): a `::set` its path, a directive its effects.
             Node::Timeline(t) => {
                 for clip in t.tracks.iter().flat_map(|tr| &tr.clips) {
-                    if let ClipNode::Set(s) = &clip.node {
-                        paths.push(s.path.clone());
+                    match &clip.node {
+                        ClipNode::Set(s) => paths.push(s.path.clone()),
+                        ClipNode::Directive(d) => directive(d),
                     }
                 }
             }
             Node::Assert(a) => facts.push((&a.pattern, true)),
             Node::Retract(r) => facts.push((&r.pattern, false)),
-            Node::Directive(d) => {
-                if let Some((q, _)) = d.accept_quest() {
-                    quests.push(format!("quest.{q}"));
-                }
-                if let Some(facts) = self.folded.env.rel_vocab.call_facts(d) {
-                    calls.push(facts);
-                }
-            }
+            Node::Directive(d) => directive(d),
             _ => {}
         });
         for p in paths.iter().chain(&quests) {

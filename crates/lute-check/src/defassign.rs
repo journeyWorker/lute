@@ -249,26 +249,38 @@ pub fn check_definite_assignment(
     cx: &Scope<'_>,
     assume: Option<&CelSlot>,
 ) -> (Vec<Diagnostic>, Assigned, Vec<(String, Span)>) {
+    let entry = Flow {
+        available: assumed_present(assume, cx),
+        writes: Assigned::new(),
+    };
     let mut walk = Walk {
         cx,
         diags: Vec::new(),
         reads: Vec::new(),
         pending: BTreeMap::new(),
         probing: None,
+        entry: entry.clone(),
     };
-    let mut flow = Some(Flow {
-        available: assumed_present(assume, cx),
-        writes: Assigned::new(),
-    });
+    let mut flow = Some(entry);
     walk.nodes(nodes, &mut flow);
     let Walk {
-        mut diags, reads, ..
+        mut diags,
+        reads,
+        pending,
+        ..
     } = walk;
     hint_choice_records(nodes, &reads, &mut diags);
     if cx.preceded {
         hint_other_scenes(nodes, &reads, &mut diags);
     }
-    (diags, flow.map(|f| f.writes).unwrap_or_default(), reads)
+    // A jump to a label outside `nodes` (a handler jumping to its quest's
+    // label) leaves the body too: what it wrote is written on that route.
+    let left = join_flows(
+        std::iter::once(flow)
+            .chain(pending.into_values().map(Some))
+            .collect(),
+    );
+    (diags, left.map(|f| f.writes).unwrap_or_default(), reads)
 }
 
 /// One definite-assignment walk over a node stream (dsl 0.51.0 §3.4): the
@@ -285,6 +297,10 @@ struct Walk<'s, 'a> {
     /// The head whose probe pass is walking (`Some` in every probe pass,
     /// nested heads' included): nothing is reported then.
     probing: Option<String>,
+    /// The walk's starting flow: what an `<on>` handler or `<objective>`
+    /// body (run by the engine on its own, not reached through the body's
+    /// flow) starts from at a point no route of the body reaches.
+    entry: Flow,
 }
 
 /// The join of `flows`, `None` being the identity.
@@ -581,11 +597,12 @@ impl Walk<'_, '_> {
         self.pending.insert(to.to_string(), joined);
     }
 
-    /// A label: join the flows jumping to it into the fall-through flow; at
-    /// a loop head, iterate the region `rest` starts.
+    /// A label: join the flows jumping to it into the fall-through flow
+    /// (consumed: what is left pending at the end jumped out of the walked
+    /// nodes); at a loop head, iterate the region `rest` starts.
     fn label(&mut self, id: &str, rest: &[Node], flow: &mut Option<Flow>) {
-        if let Some(jumped) = self.pending.get(id) {
-            *flow = join_flows(vec![flow.take(), Some(jumped.clone())]);
+        if let Some(jumped) = self.pending.remove(id) {
+            *flow = join_flows(vec![flow.take(), Some(jumped)]);
         }
         if !self.cx.loops.is_some_and(|loops| loops.is_head(id)) {
             return;
@@ -1067,9 +1084,10 @@ impl Walk<'_, '_> {
     /// only, the body walks on a forked, DISCARDED set — nothing folds back
     /// into the surviving set (a path first written only inside `<on>` arms
     /// stays maybe-unset unless every arm writes it or it carries a schema
-    /// `default`).
+    /// `default`). The engine runs the handler on its own, so at a point no
+    /// route of the body reaches it starts from the walk's entry flow.
     fn on(&mut self, on: &On, flow: Option<&Flow>) {
-        let mut arm = flow.cloned();
+        let mut arm = Some(flow.unwrap_or(&self.entry).clone());
         if let (Some(a), Some(cond)) = (arm.as_mut(), &on.when) {
             apply_condition(
                 cond,
@@ -1089,9 +1107,12 @@ impl Walk<'_, '_> {
     /// [`Self::match_arms`]) — it does not gate the body, so it is checked
     /// via [`check_reads`], not [`apply_condition`]. `when` DOES gate
     /// visibility (mirrors a hub/branch choice guard) and proves paths for
-    /// this arm only.
+    /// this arm only. Like a handler, it starts from the walk's entry flow
+    /// at a point no route of the body reaches.
     fn objective(&mut self, o: &Objective, flow: Option<&Flow>) {
         let cx = self.cx;
+        let entry = flow.is_none().then(|| self.entry.clone());
+        let flow = flow.or(entry.as_ref());
         let mut arm = flow.cloned();
         if let Some(a) = arm.as_mut() {
             let (diags, reads) = (&mut self.diags, &mut self.reads);

@@ -759,6 +759,25 @@ fn characters_of(entry: &StageState, region: &[Node]) -> BTreeSet<String> {
     out
 }
 
+/// `true` when control may pass `node` without taking any of its arms: a
+/// `<branch>` whose choices are all guarded (`E-BRANCH-ALL-GUARDED`), a
+/// `<match>` without `<otherwise>` that is not exhaustive
+/// (`E-NONEXHAUSTIVE`). When every arm of such a node jumps away, the stage
+/// after it is still the stage before it (dsl 0.51.0 §3.4). Only a document
+/// with that error has such a route (a `timeout` runs its `default=`
+/// choice), so `lute compile`, which never compiles one, needs no such rule:
+/// the fold keeps reporting past the error.
+pub(crate) fn may_take_no_arm(node: &Node) -> bool {
+    match node {
+        Node::Branch(b) => b.choices.iter().all(|c| c.when.is_some()),
+        Node::Match(m) => !m
+            .arms
+            .iter()
+            .any(|a| matches!(a, lute_syntax::ast::Arm::Otherwise { .. })),
+        _ => false,
+    }
+}
+
 /// `true` when `doc` holds a `::jump` with `max` (a loop to iterate).
 fn has_bounded_jump(doc: &lute_syntax::ast::Document) -> bool {
     let mut found = false;

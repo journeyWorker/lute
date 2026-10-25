@@ -126,6 +126,78 @@ fn an_unguarded_jump_skips_its_writes_and_reports_nothing_it_skips() {
     assert_eq!(maybe, [line_of(&text, "@narrator: x is")], "{ds:?}");
 }
 
+/// A quest of `body` (its objective `o` done on `run.f`).
+fn quest(body: &str) -> String {
+    format!(
+        "---\nkind: quest\n{FRONT}---\n<quest id=\"q\" tier=\"run\" title=\"Q\" start=\"true\">\n\
+         {body}\n</quest>\n"
+    )
+}
+
+/// S2 review (S2Review051 P1): the engine runs an `<on>` handler and an
+/// objective body on their own, so one placed after an unguarded jump
+/// still has its reads checked (from the body's entry).
+#[test]
+fn a_handler_after_an_unguarded_jump_still_checks_its_reads() {
+    let text = quest(
+        "::jump{to=\"later\"}\n<on event=\"questActive\">\n@narrator: {{run.x}}.\n</on>\n\
+         <objective id=\"o\" title=\"O\" done=\"run.f\">\n@narrator: Done {{run.x}}.\n\
+         </objective>\n::label{name=\"later\"}",
+    );
+    let maybe: Vec<u32> = diags(&text)
+        .iter()
+        .filter(|d| d.code == "E-MAYBE-UNSET")
+        .map(|d| d.span.line)
+        .collect();
+    assert_eq!(
+        maybe,
+        [
+            line_of(&text, "@narrator: {{"),
+            line_of(&text, "@narrator: Done")
+        ]
+    );
+}
+
+/// S2 review (S2Review051 P2): a handler that writes and then jumps to a
+/// quest-level label leaves its body on that route: the write is in its
+/// completion envelope.
+#[test]
+fn a_handler_jumping_out_keeps_its_writes_in_the_completion_envelope() {
+    let text = quest(
+        "<objective id=\"o\" title=\"O\" done=\"run.f\"/>\n<on event=\"questComplete\">\n\
+         ::set{run.x = 1}\n::jump{to=\"after\"}\n</on>\n::label{name=\"after\"}",
+    );
+    assert!(check(&input_for(&text)).ok, "{:?}", diags(&text));
+    let input = input_for(&text);
+    let (doc, _) = lute_syntax::parse(&input.text);
+    let (folded, _, _) = fold_env(&doc, &input);
+    let on_complete: Vec<String> = envelope::writes_on_complete(&doc.quests[0], &folded.env.state)
+        .into_iter()
+        .collect();
+    assert_eq!(on_complete, ["run.x"]);
+}
+
+/// S2 review (S2Review051, stage): a branch whose choices are all guarded
+/// (`E-BRANCH-ALL-GUARDED`) may end without a pick; when every choice jumps
+/// away, the fold keeps staging past it on that route, so it still reports
+/// past the error: `mira` left before the branch, so her line after it is
+/// absent on the no-pick route.
+#[test]
+fn the_no_pick_route_past_choices_that_all_jump_away_keeps_staging() {
+    let text = scene(
+        "@mira: Hi.\n::actor{character=\"mira\" action=\"hide\"}\n<branch id=\"g\">\n\
+         <choice id=\"c\" text=\"Go\" when=\"run.f\">\n::jump{to=\"out\"}\n</choice>\n\
+         </branch>\n@mira: Still.\n::label{name=\"out\"}\n@narrator: Out.",
+    );
+    assert_eq!(
+        at(&diags(&text)),
+        [
+            ("E-BRANCH-ALL-GUARDED", line_of(&text, "<branch")),
+            ("W-STAGE-ABSENT", line_of(&text, "@mira: Still.")),
+        ]
+    );
+}
+
 // --- definite assignment: one-pass stability and soundness at a head ------
 
 /// A loop with an exit jump at its head (so the head's own flow reaches the
