@@ -18,7 +18,7 @@
 //! §3.3: the only form that reaches the IR); a reward without one does not
 //! apply that effect, the directive rule for an unbound `@attr`.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
 use lute_core_span::{Diagnostic, Span};
@@ -282,6 +282,64 @@ pub fn quest_grants<'d>(quest: &'d Quest, kinds: &RewardKinds) -> Vec<GrantEffec
     out
 }
 
+/// One quest's [`quest_grants`] grouped once by owner (0.50.0 §5.4 grant
+/// points), each group in grant order: per objective (in declaration
+/// order), the quest's completion, its failure. A consumer reads an
+/// owner's slice directly, never rescanning the quest's effects.
+#[derive(Clone, Debug, Default)]
+pub struct QuestGrants<'d> {
+    objectives: Vec<(&'d Objective, Vec<GrantEffect<'d>>)>,
+    by_objective: HashMap<*const Objective, usize>,
+    complete: Vec<GrantEffect<'d>>,
+    failed: Vec<GrantEffect<'d>>,
+}
+
+impl<'d> QuestGrants<'d> {
+    pub fn new(quest: &'d Quest, kinds: &RewardKinds) -> Self {
+        let mut out = QuestGrants::default();
+        for g in quest_grants(quest, kinds) {
+            match (g.point, g.objective) {
+                (GrantPoint::Objective, Some(o)) => {
+                    let ix = *out
+                        .by_objective
+                        .entry(o as *const Objective)
+                        .or_insert_with(|| {
+                            out.objectives.push((o, Vec::new()));
+                            out.objectives.len() - 1
+                        });
+                    out.objectives[ix].1.push(g);
+                }
+                (GrantPoint::QuestComplete, _) => out.complete.push(g),
+                (GrantPoint::QuestFailed, _) => out.failed.push(g),
+                (GrantPoint::Objective, None) => {}
+            }
+        }
+        out
+    }
+
+    /// The effects `objective`'s rewards apply at its `done`.
+    pub fn objective(&self, objective: &Objective) -> &[GrantEffect<'d>] {
+        self.by_objective
+            .get(&(objective as *const Objective))
+            .map_or(&[], |&ix| &self.objectives[ix].1)
+    }
+
+    /// Every objective with effects, in declaration order, with them.
+    pub fn objectives(&self) -> impl Iterator<Item = (&'d Objective, &[GrantEffect<'d>])> {
+        self.objectives.iter().map(|(o, g)| (*o, g.as_slice()))
+    }
+
+    /// The quest-level effects of `point` (`QuestComplete` / `QuestFailed`);
+    /// none for `Objective`.
+    pub fn at(&self, point: GrantPoint) -> &[GrantEffect<'d>] {
+        match point {
+            GrantPoint::QuestComplete => &self.complete,
+            GrantPoint::QuestFailed => &self.failed,
+            GrantPoint::Objective => &[],
+        }
+    }
+}
+
 /// Every reward effect of one resolved project root, with its document, in
 /// document then grant order. Built once per pass, as
 /// [`crate::directive_facts::root_table`] is.
@@ -366,4 +424,71 @@ pub fn check_reward_facts(
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// S3 review R5: [`QuestGrants`] groups a quest's effects once by
+    /// owner, each owner's slice in grant order, so no consumer rescans
+    /// the quest's effects per objective.
+    #[test]
+    fn quest_grants_group_by_owner_in_grant_order() {
+        let effects: RewardEffects =
+            yaml_serde::from_str("{ retracts: [\"met(@target)\"], asserts: [\"met(@target)\"] }")
+                .expect("effects");
+        let kinds: RewardKinds = [(
+            "SWAP".to_string(),
+            RewardKindDecl {
+                name: "SWAP".into(),
+                target: None,
+                attrs: Vec::new(),
+                credits: None,
+                effects: Some(effects),
+            },
+        )]
+        .into_iter()
+        .collect();
+        let (doc, _) = lute_syntax::parse(
+            "---\nkind: quest\nid: q\n---\n\n<quest id=\"q\" title=\"Q\" start=\"true\">\n  \
+             <objective id=\"a\" title=\"A\" done=\"true\">\n    \
+             <reward kind=\"SWAP\" target=\"mira\"/>\n  </objective>\n  \
+             <objective id=\"b\" title=\"B\" done=\"true\"/>\n  \
+             <objective id=\"c\" title=\"C\" done=\"true\">\n    \
+             <reward kind=\"SWAP\" target=\"theo\"/>\n  </objective>\n  \
+             <reward kind=\"SWAP\" target=\"ana\"/>\n  \
+             <reward kind=\"SWAP\" target=\"bo\" outcome=\"failed\"/>\n</quest>\n",
+        );
+        let quest = &doc.quests[0];
+        let grants = QuestGrants::new(quest, &kinds);
+        let objective = |id: &str| {
+            quest
+                .body
+                .iter()
+                .find_map(|n| match n {
+                    Node::Objective(o) if o.id == id => Some(o),
+                    _ => None,
+                })
+                .expect("objective")
+        };
+        let facts = |gs: &[GrantEffect<'_>]| -> Vec<(String, bool)> {
+            gs.iter()
+                .filter_map(|g| g.fact())
+                .map(|(p, assert)| match &p.args[0].term {
+                    FactTerm::Ident(who) => (who.clone(), assert),
+                    other => (format!("{other:?}"), assert),
+                })
+                .collect()
+        };
+        let pair = |who: &str| vec![(who.to_string(), false), (who.to_string(), true)];
+        assert_eq!(facts(grants.objective(objective("a"))), pair("mira"));
+        assert!(grants.objective(objective("b")).is_empty());
+        assert_eq!(facts(grants.objective(objective("c"))), pair("theo"));
+        let owners: Vec<&str> = grants.objectives().map(|(o, _)| o.id.as_str()).collect();
+        assert_eq!(owners, ["a", "c"]);
+        assert_eq!(facts(grants.at(GrantPoint::QuestComplete)), pair("ana"));
+        assert_eq!(facts(grants.at(GrantPoint::QuestFailed)), pair("bo"));
+        assert!(grants.at(GrantPoint::Objective).is_empty());
+    }
 }

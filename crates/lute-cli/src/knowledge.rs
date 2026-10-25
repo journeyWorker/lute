@@ -685,7 +685,7 @@ const REWARD_SITE: &str = "reward ";
 
 /// ``reward BADGE of quest `firstVisit` ``: a fact a reward of `kind`
 /// produces through its kind's `effects` (0.50.0 §5.4).
-fn reward_site(kind: &str, quest: &str) -> String {
+pub(crate) fn reward_site(kind: &str, quest: &str) -> String {
     format!("{REWARD_SITE}{kind} of quest `{quest}`")
 }
 

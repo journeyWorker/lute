@@ -10,6 +10,19 @@ impl Presence<'_> {
     /// are popped when it ends. A write inside still reaches the outer
     /// guards: the region runs before what follows it.
     fn region(&mut self, conds: Vec<(Expr, String)>, body: &[Node]) {
+        self.region_after(conds, None, body);
+    }
+
+    /// [`Self::region`] in which `objective`'s reward effects (0.50.0 §5.4)
+    /// write once `conds` — its `done` — are pushed, before `body`: the
+    /// engine grants after judging `done`, so a retract there can kill the
+    /// guard the region opened.
+    fn region_after(
+        &mut self,
+        conds: Vec<(Expr, String)>,
+        objective: Option<&lute_syntax::ast::Objective>,
+        body: &[Node],
+    ) {
         let depth = self.guards.len();
         let before = self.changed.clone();
         for c in conds {
@@ -17,9 +30,27 @@ impl Presence<'_> {
             self.changed.extend(required);
             self.push(Some(c));
         }
+        if let Some(o) = objective {
+            let owned = std::mem::take(&mut self.grants);
+            self.grant_writes(owned.objective(o));
+            self.grants = owned;
+        }
         self.walk(body);
         self.guards.truncate(depth);
         self.changed = before;
+    }
+
+    /// 0.50.0 §5.4: the quest's reward effects at lifecycle `point`, before
+    /// its handlers are judged — at completion, its objectives' first.
+    fn lifecycle_writes(&mut self, point: GrantPoint) {
+        let owned = std::mem::take(&mut self.grants);
+        if point == GrantPoint::QuestComplete {
+            for (_, g) in owned.objectives() {
+                self.grant_writes(g);
+            }
+        }
+        self.grant_writes(owned.at(point));
+        self.grants = owned;
     }
 
     /// Alternative paths (a branch's choices, a match's arms): each starts
@@ -126,10 +157,8 @@ impl Presence<'_> {
                     }
                     // 0.50.0 §5.4: the quest's grants run before the handler.
                     match o.event.as_str() {
-                        "questComplete" => self.grant_writes(|g| {
-                            g.point == GrantPoint::QuestComplete || g.objective.is_some()
-                        }),
-                        "questFailed" => self.grant_writes(|g| g.point == GrantPoint::QuestFailed),
+                        "questComplete" => self.lifecycle_writes(GrantPoint::QuestComplete),
+                        "questFailed" => self.lifecycle_writes(GrantPoint::QuestFailed),
                         _ => {}
                     }
                     self.region(conds, &o.body);
@@ -138,11 +167,11 @@ impl Presence<'_> {
                 }
                 Node::Objective(o) => {
                     let cond = self.parse(&o.done.raw, None);
-                    // 0.50.0 §5.4: the objective's grants run at its `done`.
-                    self.grant_writes(|g| g.objective.is_some_and(|go| std::ptr::eq(go, o)));
                     // An `on=` objective completes when its occasion judges it.
                     let before = o.on.as_ref().map(|(on, _)| self.follow(on));
-                    self.region(cond.into_iter().collect(), &o.body);
+                    // 0.50.0 §5.4: the objective's grants run at its `done`,
+                    // after it is judged.
+                    self.region_after(cond.into_iter().collect(), Some(o), &o.body);
                     if let Some(before) = before {
                         self.changed = before;
                     }
@@ -169,13 +198,10 @@ impl Presence<'_> {
         }
     }
 
-    /// 0.50.0 §5.4: the reward effects `select` picks among the current
-    /// quest's grants, each a write like the `::assert` / `::retract` /
-    /// `::accept` it stands for.
-    fn grant_writes(&mut self, select: impl Fn(&GrantEffect<'_>) -> bool) {
-        let grants: Vec<GrantEffect<'_>> =
-            self.grants.iter().filter(|g| select(g)).cloned().collect();
-        for g in &grants {
+    /// 0.50.0 §5.4: reward effects, each a write like the `::assert` /
+    /// `::retract` / `::accept` it stands for.
+    fn grant_writes(&mut self, grants: &[GrantEffect<'_>]) {
+        for g in grants {
             match g.fact() {
                 Some((pattern, up)) => self.kill_fact(pattern, up),
                 None => {

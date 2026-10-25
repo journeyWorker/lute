@@ -296,13 +296,12 @@ fn an_unconditional_reward_assert_is_guaranteed_after_the_grant() {
         "<reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>",
     );
     let got = check(&dir);
-    // The completion handler, the dependent quest's handler, and the scene
-    // `after: completed("firstVisit")`.
-    assert_eq!(
-        guaranteed(&got),
-        ["quests/q.lute:13", "quests/q.lute:27", "scenes/s.lute:9"],
-        "{got:?}"
-    );
+    // The completion handler only: a quest gated by
+    // `quest.firstVisit.state == 'complete'` and the scene `after:
+    // completed("firstVisit")` see the assert as possible, never Must
+    // (S3 review R1: a reset or a host seed can complete the quest without
+    // the fact).
+    assert_eq!(guaranteed(&got), ["quests/q.lute:13"], "{got:?}");
     assert!(
         got[0].contains("is asserted on every route to here (./quests/q.lute:10)"),
         "{got:?}"
@@ -381,15 +380,170 @@ fn an_objective_grant_holds_in_its_body_and_at_completion() {
         "",
     );
     let got = check(&dir);
+    // In the objective's body and at the quest's completion; not in the
+    // dependent quest or the scene (S3 review R1).
     assert_eq!(
         guaranteed(&got),
-        [
-            "quests/q.lute:10",
-            "quests/q.lute:21",
-            "quests/q.lute:35",
-            "scenes/s.lute:9"
-        ],
+        ["quests/q.lute:10", "quests/q.lute:21"],
         "{got:?}"
+    );
+}
+
+/// A quest and a scene gated on `firstVisit`'s completion, each testing
+/// `!holds('met', ['mira'])` (the guard [`GUARD`] negated) — and, with
+/// `run_tier`, a `met` relation a new run clears.
+fn dependents_project(tag: &str, run_tier: bool) -> lute_scratch::ScratchDir {
+    let negated = GUARD.replace("holds('met'", "!holds('met'");
+    let schema = if run_tier {
+        SCHEMA.replace(
+            "met: { args: [person], tier: user }",
+            "met: { args: [person], tier: run }",
+        )
+    } else {
+        SCHEMA.to_string()
+    };
+    project(
+        tag,
+        &format!(
+            "<quest id=\"firstVisit\" tier=\"user\" title=\"First visit\" start=\"true\">\n  \
+             <objective id=\"c1\" title=\"Do it\" done=\"run.flag\"/>\n  \
+             <reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n</quest>\n\n\
+             <quest id=\"later\" tier=\"user\" title=\"Later\" \
+             start=\"quest.firstVisit.state == 'complete'\">\n  \
+             <objective id=\"c1\" title=\"Do it\" done=\"run.flag\"/>\n  \
+             <on event=\"questComplete\">\n    {negated}\n  </on>\n</quest>\n"
+        ),
+        &[
+            ("schema/world.schema.yaml", &schema),
+            (
+                "scenes/s.lute",
+                &format!(
+                    "---\nkind: scene\nid: afterFirst\nafter: completed(\"firstVisit\")\n---\n\n\
+                     ## Shot 1.\n\n{GUARD}\n\n{negated}\n"
+                ),
+            ),
+        ],
+    )
+}
+
+/// S3 review R1 (decision: possible only): a quest's completion
+/// guarantees nothing to what is gated on it, so the negation of its
+/// reward's assert stays live there and the assert is never guaranteed.
+#[test]
+fn a_completed_quest_s_reward_assert_is_possible_only_downstream() {
+    for (tag, run_tier) in [("re-r1-user", false), ("re-r1-run", true)] {
+        let got = check(&dependents_project(tag, run_tier));
+        assert_eq!(got, Vec::<String>::new(), "{tag}: {got:?}");
+    }
+}
+
+/// S3 review R2: the grant transfers once; the first `questComplete`
+/// handler retracts the granted fact, so the second handler's nested
+/// `!holds` arm is live (the engine runs the handlers in order).
+#[test]
+fn a_handler_s_retract_reaches_the_next_handler() {
+    let negated = GUARD.replace("holds('met'", "!holds('met'");
+    let dir = project(
+        "re-r2",
+        &format!(
+            "<quest id=\"firstVisit\" tier=\"user\" title=\"First visit\" start=\"true\">\n  \
+             <objective id=\"c1\" title=\"Do it\" done=\"run.flag\"/>\n  \
+             <reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n  \
+             <on event=\"questComplete\">\n    ::retract{{met(mira)}}\n  </on>\n  \
+             <on event=\"questComplete\">\n    {negated}\n  </on>\n</quest>\n"
+        ),
+        &[],
+    );
+    assert_eq!(check(&dir), Vec::<String>::new());
+}
+
+/// S3 review R3: a quest's completion grants are analysed whether or not
+/// a handler follows — two unconditional rewards asserting exclusive
+/// facts are `E-FACT-EXCLUSIVE` with no `questComplete` handler.
+#[test]
+fn exclusive_grants_are_judged_without_a_handler() {
+    let schema = SCHEMA.replace(
+        "met: { args: [person], tier: user }",
+        "met: { args: [person], tier: user }\n  avoids: { args: [person], tier: user, excludes: \
+         [met] }",
+    );
+    let kinds = format!(
+        "{KINDS}  SHUN: {{ target: {{ entity: person, required: true }}, effects: {{ asserts: \
+         [\"avoids(@target)\"] }} }}\n"
+    );
+    let quest = "<quest id=\"firstVisit\" tier=\"user\" title=\"First visit\" start=\"true\">\n  \
+                 <objective id=\"c1\" title=\"Do it\" done=\"run.flag\"/>\n  \
+                 <reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n  \
+                 <reward kind=\"SHUN\" amount=\"1\" target=\"mira\"/>\n";
+    let codes_of = |tag: &str, handler: &str| {
+        let dir = project(
+            tag,
+            &format!("{quest}{handler}</quest>\n"),
+            &[
+                ("schema/world.schema.yaml", &schema),
+                ("plugins/acme.stage/rewardkinds/r.yaml", &kinds),
+            ],
+        );
+        let got = check(&dir);
+        codes(&got)
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    let with = codes_of("re-r3-handler", "  <on event=\"questComplete\">\n  </on>\n");
+    assert!(with.contains(&"E-FACT-EXCLUSIVE".to_string()), "{with:?}");
+    assert_eq!(codes_of("re-r3", ""), with);
+}
+
+/// S3 review R4: an objective's `done` is judged, then its grants run,
+/// then its body — a `REVOKE` there retracts the fact Mira's presence and
+/// the `done` both read, so her line in the body is `W-CAST-ABSENT`.
+#[test]
+fn an_objective_grant_s_retract_kills_the_done_presence() {
+    let schema = SCHEMA.replace(
+        "mira: { name: Mira }",
+        "mira: { name: Mira, present: \"holds('met', ['mira'])\" }",
+    );
+    let dir = project(
+        "re-r4",
+        "<quest id=\"firstVisit\" tier=\"user\" title=\"First visit\" start=\"true\">\n  \
+         <objective id=\"c1\" title=\"Do it\" done=\"holds('met', ['mira'])\">\n    \
+         <reward kind=\"REVOKE\" amount=\"1\" target=\"mira\"/>\n    \
+         @mira: Bye.\n  </objective>\n</quest>\n\n\
+         <quest id=\"meet\" tier=\"user\" title=\"Meet\" start=\"true\">\n  \
+         <objective id=\"c1\" title=\"Do it\" done=\"run.flag\"/>\n  \
+         <reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n</quest>\n",
+        &[("schema/world.schema.yaml", &schema)],
+    );
+    let got = check(&dir);
+    assert_eq!(codes(&got), ["W-CAST-ABSENT"], "{got:?}");
+}
+
+/// S3 review R6: `lute lore` names a reward producer as `lute scenario
+/// knowledge` does, in both renderers.
+#[test]
+fn lore_names_the_reward_that_produces_a_fact() {
+    let dir = project(
+        "re-r6",
+        "<quest id=\"firstVisit\" tier=\"user\" title=\"First visit\" start=\"true\">\n  \
+         <objective id=\"c1\" title=\"Do it\" done=\"run.flag\"/>\n  \
+         <reward kind=\"BADGE\" amount=\"1\" target=\"mira\"/>\n</quest>\n",
+        &[],
+    );
+    let human = text(&lute(&dir, &["lore", "--project", "."]));
+    assert!(
+        human.contains("met(mira)  rewards")
+            && human.contains("produced by reward BADGE of quest `firstVisit` (quests/q.lute)"),
+        "{human}"
+    );
+    let json: serde_json::Value =
+        serde_json::from_slice(&lute(&dir, &["lore", "--project", ".", "--json"]).stdout).unwrap();
+    let row = &json["relations"][0]["facts"][0];
+    assert_eq!(row["revealedBy"], "rewards", "{json}");
+    assert_eq!(
+        row["rewards"],
+        serde_json::json!([{ "kind": "BADGE", "quest": "firstVisit", "document": "quests/q.lute" }]),
+        "{json}"
     );
 }
 
