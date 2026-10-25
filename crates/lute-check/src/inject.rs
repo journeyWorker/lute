@@ -386,6 +386,401 @@ impl StageState {
         };
         joined
     }
+
+    /// This state without its diagnostics: a copy one route carries to a
+    /// label (the diagnostics stay with the walk that raised them).
+    fn bare(&self) -> StageState {
+        StageState {
+            on_stage: self.on_stage.clone(),
+            dirty: self.dirty.clone(),
+            exited: self.exited.clone(),
+            maybe_on_stage: self.maybe_on_stage.clone(),
+            bg: self.bg.clone(),
+            music: self.music.clone(),
+            diags: Vec::new(),
+        }
+    }
+
+    /// The same stage (diagnostics ignored): the head iteration's
+    /// convergence test.
+    fn same_stage(&self, other: &StageState) -> bool {
+        self.on_stage == other.on_stage
+            && self.dirty == other.dirty
+            && self.exited == other.exited
+            && self.maybe_on_stage == other.maybe_on_stage
+            && self.bg == other.bg
+            && self.music == other.music
+    }
+}
+
+/// The stage-state routing of `::jump`s and `::label`s for one walk (dsl
+/// 0.51.0 §3.4), shared by `check()`'s injection fold and `lute compile`'s
+/// stage walk, so both bind the same state at every label and loop head:
+///
+/// - [`StageFlow::jump`] sends a jump's state to its label (an unguarded
+///   jump without `max` leaves no fall-through, a guarded one falls through,
+///   a bounded one is a back edge);
+/// - [`StageFlow::label`] joins the pending states into the fall-through
+///   state with [`StageState::join`], and at a loop head iterates the
+///   region with the checker's fold run without emission until the head is
+///   stable — the one head-state function both walks call.
+///
+/// A walk's diagnostics collect in [`StageFlow::diags`] as it goes, so the
+/// states the routing copies and joins carry none. A `::use` body (the
+/// checker's fold) or an inlined component (the compiler's sentinels) is
+/// routed in its own scope: its own document's loops and labels.
+pub struct StageFlow<'a> {
+    loops: &'a crate::next_labels::LoopTable,
+    pub(crate) domains: &'a BTreeMap<String, Domain>,
+    pub(crate) snapshot: &'a CapabilitySnapshot,
+    pub(crate) components: Option<&'a crate::component_import::ComponentSet>,
+    kind: crate::loop_walk::WalkKind,
+    /// Label → the join of the states jumping to it.
+    pending: BTreeMap<String, StageState>,
+    /// The head whose probe pass is walking (nested heads' passes included).
+    probing: Option<String>,
+    /// The component scopes entered, innermost last: each one's loops.
+    scopes: Vec<crate::next_labels::LoopTable>,
+    /// The pending maps of the enclosing scopes.
+    outer: Vec<BTreeMap<String, StageState>>,
+    /// Each component's loops, computed once.
+    component_loops: BTreeMap<String, crate::next_labels::LoopTable>,
+    /// The components on the current `::use` expansion path (a cycle stops).
+    pub(crate) using: Vec<String>,
+    /// The diagnostics the walk raised, in walk order.
+    pub diags: Vec<Diagnostic>,
+}
+
+/// The routing state; not the vocabulary, snapshot or component table it
+/// reads (they would print the whole capability surface).
+impl std::fmt::Debug for StageFlow<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("StageFlow")
+            .field("loops", &self.loops)
+            .field("kind", &self.kind)
+            .field("pending", &self.pending)
+            .field("probing", &self.probing)
+            .field("scopes", &self.scopes)
+            .field("using", &self.using)
+            .field("diags", &self.diags)
+            .finish_non_exhaustive()
+    }
+}
+
+impl<'a> StageFlow<'a> {
+    /// The routing of one document's walk: its loops, vocabulary, snapshot
+    /// and (for a walk that enters `::use` bodies or inlined components)
+    /// its component table. `kind` names the walk in the loop counters.
+    pub fn new(
+        loops: &'a crate::next_labels::LoopTable,
+        domains: &'a BTreeMap<String, Domain>,
+        snapshot: &'a CapabilitySnapshot,
+        components: Option<&'a crate::component_import::ComponentSet>,
+        kind: crate::loop_walk::WalkKind,
+    ) -> Self {
+        StageFlow {
+            loops,
+            domains,
+            snapshot,
+            components,
+            kind,
+            pending: BTreeMap::new(),
+            probing: None,
+            scopes: Vec::new(),
+            outer: Vec::new(),
+            component_loops: BTreeMap::new(),
+            using: Vec::new(),
+            diags: Vec::new(),
+        }
+    }
+
+    fn loops(&self) -> &crate::next_labels::LoopTable {
+        self.scopes.last().unwrap_or(self.loops)
+    }
+
+    /// `true` inside a probe pass: nothing the walk emits there is kept.
+    pub fn probing(&self) -> bool {
+        self.probing.is_some()
+    }
+
+    /// Count one node a walk visits (a probe node inside a probe pass).
+    pub fn visit(&self) {
+        if self.probing.is_some() {
+            crate::loop_walk::probe_node(self.kind);
+        }
+    }
+
+    /// Enter component `name`'s body: its labels and loops are its own
+    /// document's ([`Self::leave_component`] returns to the enclosing ones).
+    pub fn enter_component(&mut self, name: &str) {
+        let loops = match self.component_loops.get(name) {
+            Some(loops) => loops.clone(),
+            None => {
+                let loops = self
+                    .components
+                    .and_then(|set| set.table.get(name))
+                    .filter(|def| has_bounded_jump(&def.body))
+                    .map(|def| crate::next_labels::check_next_labels(&def.body).loops)
+                    .unwrap_or_default();
+                self.component_loops.insert(name.to_string(), loops.clone());
+                loops
+            }
+        };
+        self.scopes.push(loops);
+        self.outer.push(std::mem::take(&mut self.pending));
+    }
+
+    /// Leave the component scope [`Self::enter_component`] entered.
+    pub fn leave_component(&mut self) {
+        self.scopes.pop();
+        self.pending = self.outer.pop().unwrap_or_default();
+    }
+
+    /// Route `::jump` `d` from `state` (dsl 0.51.0 §3.4): an unguarded jump
+    /// without `max` takes the state (nothing falls through); a guarded one
+    /// sends a copy; a bounded one sends a copy only in a probe pass of its
+    /// own head.
+    pub fn jump(&mut self, d: &Directive, state: &mut Option<StageState>) {
+        use crate::loop_walk::JumpRoute;
+        let Some(to) = crate::loop_walk::jump_target(d) else {
+            return;
+        };
+        let sent = match JumpRoute::of(d) {
+            JumpRoute::Away => state.take().map(|mut s| {
+                self.diags.append(&mut s.diags);
+                s
+            }),
+            JumpRoute::Guarded(_) => state.as_ref().map(StageState::bare),
+            JumpRoute::Bounded(_) if self.probing.as_deref() == Some(to) => {
+                state.as_ref().map(StageState::bare)
+            }
+            JumpRoute::Bounded(_) => None,
+        };
+        let Some(sent) = sent else {
+            return;
+        };
+        let joined = match self.pending.remove(to) {
+            Some(earlier) => StageState::join(&earlier, vec![earlier.bare(), sent]),
+            None => sent,
+        };
+        self.pending.insert(to.to_string(), joined);
+    }
+
+    /// The state at label `id`, whose following nodes in its body are
+    /// `rest`: the fall-through `state` joined with the states jumping to
+    /// it, and at a loop head the stable state of its region. `None`: no
+    /// route reaches the label.
+    pub fn label(
+        &mut self,
+        id: &str,
+        rest: &[Node],
+        state: Option<StageState>,
+    ) -> Option<StageState> {
+        let state = match (state, self.pending.get(id)) {
+            (Some(mut fall), Some(jumped)) => {
+                let diags = std::mem::take(&mut fall.diags);
+                let mut joined = StageState::join(&fall, vec![fall.bare(), jumped.bare()]);
+                joined.diags = diags;
+                Some(joined)
+            }
+            (None, Some(jumped)) => Some(jumped.bare()),
+            (state, None) => state,
+        };
+        let state = if self.loops().is_head(id) {
+            state.map(|mut entry| {
+                let diags = std::mem::take(&mut entry.diags);
+                let region = &rest[..crate::loop_walk::region_len(rest, id)];
+                let mut head = self.head(id, entry, region);
+                head.diags = diags;
+                head
+            })
+        } else {
+            state
+        };
+        if self.probing.is_none() {
+            LABEL_LOG.with(|log| {
+                if let Some(log) = log.borrow_mut().as_mut() {
+                    log.push(StageLabel {
+                        kind: self.kind,
+                        label: id.to_string(),
+                        state: state.as_ref().map(StageState::bare),
+                    });
+                }
+            });
+        }
+        state
+    }
+
+    /// The stable stage at loop head `id`: `join(entry, back edges)`,
+    /// iterated. Each probe pass folds `region` with the checker's fold,
+    /// emission off and a fresh pending map. Bound: 3 × the characters the
+    /// entry state and the region name, + 2 (each character moves at most
+    /// once between `on_stage`, `maybe_on_stage` and `exited`, plus
+    /// `bg`/`music`; a character neither names cannot reach the head). Top:
+    /// nobody on stage, every such character maybe on stage, `exited` as
+    /// reached, no `bg`/`music`.
+    fn head(&mut self, id: &str, entry: StageState, region: &[Node]) -> StageState {
+        use crate::loop_walk::head_fixpoint;
+        let characters = characters_of(&entry, region);
+        let bound = 3 * characters.len() + 2;
+        let kind = self.kind;
+        head_fixpoint(
+            kind,
+            entry,
+            bound,
+            |h| {
+                let pending = std::mem::take(&mut self.pending);
+                let probing = self.probing.replace(id.to_string());
+                let diags = std::mem::take(&mut self.diags);
+                let mut state = Some(h.bare());
+                let mut emitted = Vec::new();
+                crate::check::injections::fold_injections(region, &mut state, &mut emitted, self);
+                let back = self.pending.remove(id);
+                self.pending = pending;
+                self.probing = probing;
+                self.diags = diags;
+                back
+            },
+            &StageHead::new(characters),
+        )
+    }
+}
+
+/// The stage state's operations at a loop head (dsl 0.51.0 §3.4): the next
+/// head joins the entry with the back edges; the same stage, diagnostics
+/// ignored; top: nobody on stage, every one of `characters` maybe on stage,
+/// `exited` the union of every state the iteration reached, no `bg`/`music`.
+struct StageHead {
+    characters: BTreeSet<String>,
+    /// The `exited` of every head reached (each is `join(entry, back)`, so
+    /// its `exited` is the union of both), collected as the meets run.
+    seen: std::cell::RefCell<BTreeMap<String, Departure>>,
+}
+
+impl StageHead {
+    fn new(characters: BTreeSet<String>) -> Self {
+        StageHead {
+            characters,
+            seen: std::cell::RefCell::new(BTreeMap::new()),
+        }
+    }
+}
+
+impl crate::loop_walk::HeadLattice<StageState> for StageHead {
+    fn meet(&self, entry: &StageState, back: StageState) -> StageState {
+        let head = StageState::join(entry, vec![entry.bare(), back]);
+        let mut seen = self.seen.borrow_mut();
+        for (ch, how) in &head.exited {
+            seen.entry(ch.clone()).or_insert_with(|| how.clone());
+        }
+        head
+    }
+
+    fn same(&self, a: &StageState, b: &StageState) -> bool {
+        a.same_stage(b)
+    }
+
+    fn top(&self, last: &StageState) -> StageState {
+        let mut exited = self.seen.take();
+        for (ch, how) in &last.exited {
+            exited.entry(ch.clone()).or_insert_with(|| how.clone());
+        }
+        StageState {
+            maybe_on_stage: self.characters.clone(),
+            exited,
+            ..StageState::default()
+        }
+    }
+}
+
+/// One label's bound stage state, as a walk recorded it
+/// ([`record_stage_labels`]).
+#[derive(Clone, Debug)]
+pub struct StageLabel {
+    pub kind: crate::loop_walk::WalkKind,
+    pub label: String,
+    /// `None`: no route reaches the label.
+    pub state: Option<StageState>,
+}
+
+impl StageLabel {
+    /// The same label bound to the same stage (diagnostics ignored).
+    pub fn same_state(&self, other: &StageLabel) -> bool {
+        match (&self.state, &other.state) {
+            (Some(a), Some(b)) => a.same_stage(b),
+            (None, None) => true,
+            _ => false,
+        }
+    }
+}
+
+thread_local! {
+    /// The label states this thread's walks bound since
+    /// [`record_stage_labels`], when recording.
+    static LABEL_LOG: std::cell::RefCell<Option<Vec<StageLabel>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// Start recording the stage state every walk on this thread binds at a
+/// label (outside probe passes): the checker/compiler agreement test reads
+/// it with [`take_stage_labels`].
+#[doc(hidden)]
+pub fn record_stage_labels() {
+    LABEL_LOG.with(|log| *log.borrow_mut() = Some(Vec::new()));
+}
+
+/// Stop recording and return what [`record_stage_labels`] recorded.
+#[doc(hidden)]
+pub fn take_stage_labels() -> Vec<StageLabel> {
+    LABEL_LOG.with(|log| log.borrow_mut().take().unwrap_or_default())
+}
+
+/// The characters `entry` holds and `region` names (a line's speaker, an
+/// `::actor`'s `character`).
+fn characters_of(entry: &StageState, region: &[Node]) -> BTreeSet<String> {
+    let mut out: BTreeSet<String> = entry
+        .on_stage
+        .keys()
+        .chain(&entry.maybe_on_stage)
+        .chain(entry.exited.keys())
+        .cloned()
+        .collect();
+    crate::cast::visit(region, &mut |node| match node {
+        Node::Line(l) => {
+            out.insert(l.speaker.clone());
+        }
+        Node::Directive(d) => {
+            if let Some(c) = attr_str(&d.attrs, "character") {
+                out.insert(c);
+            }
+        }
+        _ => {}
+    });
+    out
+}
+
+/// `true` when `doc` holds a `::jump` with `max` (a loop to iterate).
+fn has_bounded_jump(doc: &lute_syntax::ast::Document) -> bool {
+    let mut found = false;
+    for body in doc
+        .sections
+        .iter()
+        .map(|s| &s.body)
+        .chain(doc.quests.iter().map(|q| &q.body))
+        .chain(doc.entries.iter().map(|e| &e.body))
+        .chain(doc.beats.iter().map(|b| &b.body))
+    {
+        crate::cast::visit(body, &mut |node| {
+            if let Node::Directive(d) = node {
+                found |= d.tag == lute_manifest::core::JUMP_DIRECTIVE
+                    && matches!(
+                        crate::loop_walk::JumpRoute::of(d),
+                        crate::loop_walk::JumpRoute::Bounded(_)
+                    );
+            }
+        });
+    }
+    found
 }
 
 /// Provenance stamp on every injected command (arch doc §5): *which* named rule
@@ -1600,6 +1995,44 @@ mod tests {
         st.on_stage
             .insert(character.to_string(), SpriteState::default());
         st
+    }
+
+    /// dsl 0.51.0 §3.8 widening: a stage head that never stabilizes within
+    /// `3 × characters + 2` passes takes the top — nobody on stage, every
+    /// character maybe on stage, `exited` as reached.
+    #[test]
+    fn a_stage_head_that_never_stabilizes_takes_the_top() {
+        use crate::loop_walk::{head_fixpoint, loop_walk_stats, reset_loop_walk_stats, WalkKind};
+        reset_loop_walk_stats();
+        let entry = staged("mira");
+        let characters: BTreeSet<String> = ["mira".to_string(), "theo".to_string()].into();
+        let bound = 3 * characters.len() + 2;
+        // A back edge takes `mira` off stage while she is on it at the head
+        // and returns the entry otherwise: a head that never stabilizes.
+        let gone = {
+            let mut s = StageState::default();
+            s.exited.insert("mira".into(), Departure::Exit { line: 3 });
+            s
+        };
+        let head = head_fixpoint(
+            WalkKind::Stage,
+            entry.clone(),
+            bound,
+            |h| {
+                Some(if h.on_stage.contains_key("mira") {
+                    gone.clone()
+                } else {
+                    entry.bare()
+                })
+            },
+            &StageHead::new(characters.clone()),
+        );
+        assert!(head.on_stage.is_empty());
+        assert_eq!(head.maybe_on_stage, characters);
+        assert!(head.exited.contains_key("mira"));
+        assert_eq!((head.bg.clone(), head.music.clone()), (None, None));
+        let stats = loop_walk_stats(WalkKind::Stage);
+        assert_eq!((stats.probe_passes, stats.widened), (8, 1));
     }
 
     /// The attribute is honoured as an action and does NOT remove the character

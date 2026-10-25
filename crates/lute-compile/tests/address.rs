@@ -26,12 +26,8 @@ fn addressed(src: &str) -> (Vec<Command>, Vec<lute_core_span::Diagnostic>) {
         domains: std::sync::Arc::new(lute_test_vocab::test_domains()),
         ..Default::default()
     };
-    let mut cx = WalkCx {
-        snapshot: &snapshot,
-        env: &env,
-        components: Vec::new(),
-        timelines: 0,
-    };
+    let loops = lute_check::next_labels::LoopTable::default();
+    let mut cx = WalkCx::new(&snapshot, &env, &loops, None);
     let mut state = StageState::default();
     let mut shots = Vec::new();
     for (i, shot) in doc.sections.iter().enumerate() {

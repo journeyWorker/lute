@@ -505,7 +505,7 @@ impl LoopTable {
 }
 
 /// What the label pass finds in one document: its diagnostics and its loops.
-#[derive(Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct LabelPass {
     pub diagnostics: Vec<Diagnostic>,
     pub loops: LoopTable,

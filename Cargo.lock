@@ -586,6 +586,7 @@ version = "0.50.0"
 dependencies = [
  "lute-check",
  "lute-cli",
+ "lute-compile",
  "lute-core-span",
  "lute-lint",
  "lute-load",

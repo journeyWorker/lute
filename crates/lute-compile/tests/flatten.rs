@@ -26,12 +26,8 @@ fn flatten(body: &str) -> (Vec<Rec>, Vec<Label>) {
         domains: std::sync::Arc::new(lute_test_vocab::test_domains()),
         ..Default::default()
     };
-    let mut cx = WalkCx {
-        snapshot: &snapshot,
-        env: &env,
-        components: Vec::new(),
-        timelines: 0,
-    };
+    let loops = lute_check::next_labels::LoopTable::default();
+    let mut cx = WalkCx::new(&snapshot, &env, &loops, None);
     let mut em = Emitter::default();
     let _ = walk_seq(
         &mut em,

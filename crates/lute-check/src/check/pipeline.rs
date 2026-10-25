@@ -351,10 +351,6 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let mut scope = crate::defassign::Scope::of(&folded);
     // dsl 0.27.0 §2 (T1-10): a `::use` reads its omitted params' `@def` defaults.
     scope.components = Some(&input.components);
-    // dsl 0.12.0 / 0.51.0 §3.2: the whole-document label pass, once: its
-    // diagnostics are reported with the other whole-document passes below,
-    // and its `LoopTable` is handed to the flow walks of this document.
-    let labels = crate::next_labels::check_next_labels(&doc);
     let mut walker = Walker {
         snapshot: input.snapshot(),
         providers: input.providers(),
@@ -760,36 +756,27 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     //    `fold_use`). That position dependence is why the body is folded here
     //    rather than isolated in `validate_components` like the line-code and
     //    reachability passes.
-    let mut inject_state = StageState::default();
+    //    dsl 0.51.0 §3.4: `StageFlow` joins the states of the jumps reaching
+    //    each label and iterates each loop head.
+    let mut stage = crate::inject::StageFlow::new(
+        &folded.labels.loops,
+        domains,
+        input.snapshot(),
+        Some(&input.components),
+        crate::loop_walk::WalkKind::Stage,
+    );
+    let mut inject_state = Some(StageState::default());
     let mut injections = Vec::new();
-    let mut using = Vec::new();
     for shot in &doc.sections {
-        fold_injections(
-            &shot.body,
-            &mut inject_state,
-            &mut injections,
-            domains,
-            input.snapshot(),
-            &input.components,
-            &mut using,
-        );
+        fold_injections(&shot.body, &mut inject_state, &mut injections, &mut stage);
     }
     // dsl 0.23.0 §4: each bundle beat is staged on its own, from an empty
     // stage, exactly as a scene is.
     for beat in &doc.beats {
-        let mut beat_state = StageState::default();
-        fold_injections(
-            &beat.body,
-            &mut beat_state,
-            &mut injections,
-            domains,
-            input.snapshot(),
-            &input.components,
-            &mut using,
-        );
-        inject_state.diags.append(&mut beat_state.diags);
+        let mut beat_state = Some(StageState::default());
+        fold_injections(&beat.body, &mut beat_state, &mut injections, &mut stage);
     }
-    let inject_diags = std::mem::take(&mut inject_state.diags);
+    let inject_diags = stage.diags;
     // `node_summary` already covers `Node::On`/`Node::Objective` (Plan A), so
     // the quest arm reuses it verbatim — no wildcard, both surfaces summarized
     // identically.
@@ -950,9 +937,9 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     diags.extend(crate::def_inline::check_def_inlining(&doc, &folded, input));
     // dsl 0.12.0 / 0.51.0: jump labels and loops — E-LABEL-DUP /
     // E-JUMP-UNDEFINED / E-JUMP-BACKWARD and the bounded-jump rules, a
-    // whole-document pass (the label namespace spans every shot/quest, unlike
-    // reachability's per-body scope above).
-    diags.extend(labels.diagnostics);
+    // whole-document pass run once by the fold (the label namespace spans
+    // every shot/quest, unlike reachability's per-body scope above).
+    diags.extend(folded.labels.diagnostics.iter().cloned());
     // dsl 0.18.0 §3: W-WHEN-TEST-LITERAL — a `<when test>` that only compares
     // `$` to literals, with its `is=` rewrite as a `migrate` fixit (the same
     // edit `lute fix` applies). Whole-document, every doc kind (components

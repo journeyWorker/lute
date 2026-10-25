@@ -43,6 +43,7 @@ pub mod fix;
 pub mod gates;
 pub mod inject;
 pub mod logic_attrs;
+pub mod loop_walk;
 pub mod lore;
 pub mod match_check;
 pub mod meta;
@@ -206,10 +207,12 @@ pub use fact_must::{compute_must, stable_seeds, unproduced_relations, FactMust};
 pub use fact_write::{check_assert, check_retract, E_DERIVED_WRITE, E_FACT_TIER_WRITE};
 pub use fix::{fix_document, FixResult};
 pub use inject::{
-    classify_node, is_declared_exit, lower_node, lower_node_with_snapshot, resolve_record_fields,
-    Departure, InjectKind, InjectedCommand, Provenance, ResolvedRecordField, ResolvedRecordFields,
-    SpriteState, StageKind, StageState,
+    classify_node, is_declared_exit, lower_node, lower_node_with_snapshot, record_stage_labels,
+    resolve_record_fields, take_stage_labels, Departure, InjectKind, InjectedCommand, Provenance,
+    ResolvedRecordField, ResolvedRecordFields, SpriteState, StageFlow, StageKind, StageLabel,
+    StageState,
 };
+pub use loop_walk::{loop_walk_stats, reset_loop_walk_stats, LoopWalkStats, WalkKind};
 pub use lore::{
     check_entries, document_series, entry_read_decl, entry_read_path, is_beat_target,
     is_entry_target, kind_target, parse_entry_order, resolve_entry_series, EntryRecord,

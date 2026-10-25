@@ -1470,6 +1470,7 @@ fn fold_env_in(
             use_lines,
             member_envs,
             snapshot: Arc::clone(&input.base.snapshot),
+            labels: crate::next_labels::check_next_labels(doc),
         },
         fold_diags,
         state_merge_diags,

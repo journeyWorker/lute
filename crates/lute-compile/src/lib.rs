@@ -534,12 +534,12 @@ fn compile_inner(
     // kind-dispatched (IR addendum §6): scene = the existing shot loop
     // (byte-identical aside from `kind`/version); quest = a parallel loop
     // over `doc.quests`, one addressing unit per `<quest>` declaration.
-    let mut cx = stage::WalkCx {
-        snapshot: input.snapshot(),
-        env: &folded.env,
-        components: Vec::new(),
-        timelines: 0,
-    };
+    let mut cx = stage::WalkCx::new(
+        input.snapshot(),
+        &folded.env,
+        &folded.labels.loops,
+        Some(&input.components),
+    );
     let (meta, mut commands, addr_diags) = match folded.doc_kind {
         lute_check::DocKind::Scene => {
             let mut state = StageState::default();

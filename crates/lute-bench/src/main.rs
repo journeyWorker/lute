@@ -1,3 +1,4 @@
+mod flow_loops;
 mod lint_nodes;
 mod vocab;
 
@@ -29,7 +30,7 @@ const VOCAB_PHASES: [Phase; 5] = [
     Phase::Serialization,
     Phase::PlayAssembly,
 ];
-const USAGE: &str = "usage: lute-bench --root <checkout> --tier tiny|medium|large|vocab|all --phase <name>|all --samples <n> --json <path>|-\n       lute-bench generate-vocab <outdir> [-S scenes] [-N quests] [-M per-paths] [-K kinds] [-P members]\n       lute-bench lint-nodes [--samples <n>] [--check work|both] [--json <path>|-]";
+const USAGE: &str = "usage: lute-bench --root <checkout> --tier tiny|medium|large|vocab|all --phase <name>|all --samples <n> --json <path>|-\n       lute-bench generate-vocab <outdir> [-S scenes] [-N quests] [-M per-paths] [-K kinds] [-P members]\n       lute-bench lint-nodes [--samples <n>] [--check work|both] [--json <path>|-]\n       lute-bench flow-loops [--samples <n>] [--check work|both] [--json <path>|-]";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {
@@ -151,6 +152,7 @@ fn main() {
     match args.first().map(String::as_str) {
         Some("generate-vocab") => std::process::exit(generate_vocab(&args[1..])),
         Some("lint-nodes") => std::process::exit(lint_nodes::main(&args[1..])),
+        Some("flow-loops") => std::process::exit(flow_loops::main(&args[1..])),
         _ => {}
     }
     let config = match parse_args(args) {

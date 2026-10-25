@@ -99,7 +99,7 @@ mod component_body;
 mod fold;
 mod guard;
 mod host;
-mod injections;
+pub(crate) mod injections;
 mod interp;
 mod literal_text;
 mod mono;
@@ -367,6 +367,10 @@ pub struct FoldedEnv {
     /// the project recomputation alike. Shared with the [`CheckInput`]'s
     /// base, never copied.
     pub snapshot: std::sync::Arc<lute_manifest::snapshot::CapabilitySnapshot>,
+    /// dsl 0.12.0 / 0.51.0 §3.2: the whole-document label pass, run once per
+    /// fold: `check()` reports its diagnostics, and every flow walk of this
+    /// document reads its [`crate::next_labels::LoopTable`].
+    pub labels: crate::next_labels::LabelPass,
 }
 
 /// Every field but [`FoldedEnv::snapshot`], which is the input's (and would
@@ -384,6 +388,7 @@ impl std::fmt::Debug for FoldedEnv {
             .field("cast", &self.cast)
             .field("use_lines", &self.use_lines)
             .field("member_envs", &self.member_envs)
+            .field("labels", &self.labels)
             .finish_non_exhaustive()
     }
 }

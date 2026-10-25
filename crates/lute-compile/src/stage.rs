@@ -3,7 +3,8 @@
 
 use lute_check::ctx::Env;
 use lute_check::{
-    classify_node, lower_node_with_snapshot, Ctx, InjectKind, InjectedCommand, StageState,
+    classify_node, lower_node_with_snapshot, Ctx, InjectKind, InjectedCommand, StageFlow,
+    StageState,
 };
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::snapshot::CapabilitySnapshot;
@@ -31,13 +32,47 @@ use lute_ir::{CelPair, ForKind, TargetKind};
 /// Walk context: the read-only capability surface + the component-source
 /// stack (sentinel-driven: each open expansion's name and its
 /// `{component}#{n}` identity segment) + the document-order timeline counter
-/// (Task 10).
+/// (Task 10) + the label routing of the stage state (dsl 0.51.0 §3.4).
 #[derive(Debug)]
 pub struct WalkCx<'a> {
     pub snapshot: &'a CapabilitySnapshot,
     pub env: &'a Env,
     pub components: Vec<(String, String, bool)>,
     pub timelines: u32,
+    /// The checker's label and loop-head state function
+    /// ([`lute_check::StageFlow`]): this walk binds the stage state at every
+    /// `::label` from it, so it and `check()` agree.
+    pub stage: StageFlow<'a>,
+    /// `false` after an unguarded `::jump` without `max`, until a label a
+    /// jump reaches: no route reaches the nodes between, so they inject
+    /// nothing.
+    pub reached: bool,
+}
+
+impl<'a> WalkCx<'a> {
+    /// A walk over one document whose loops are `loops`; `components` names
+    /// the component table its inlined bodies come from.
+    pub fn new(
+        snapshot: &'a CapabilitySnapshot,
+        env: &'a Env,
+        loops: &'a lute_check::next_labels::LoopTable,
+        components: Option<&'a lute_check::ComponentSet>,
+    ) -> Self {
+        WalkCx {
+            snapshot,
+            env,
+            components: Vec::new(),
+            timelines: 0,
+            stage: StageFlow::new(
+                loops,
+                &env.domains,
+                snapshot,
+                components,
+                lute_check::WalkKind::StageCompile,
+            ),
+            reached: true,
+        }
+    }
 }
 
 /// Timeline-clip stamp for records emitted inside a `<timeline>` (Task 10).
@@ -64,6 +99,7 @@ pub fn walk_seq(
             Node::Directive(d) if d.tag == COMPONENT_BEGIN => {
                 let name = component_attr(d);
                 em.marker(|| boundary_marker(d, &name));
+                cx.stage.enter_component(&name);
                 cx.components.push((
                     name,
                     component_scope(d).to_string(),
@@ -72,18 +108,25 @@ pub fn walk_seq(
             }
             Node::Directive(d) if d.tag == COMPONENT_END => {
                 let name = cx.components.pop().map(|(name, _, _)| name);
+                cx.stage.leave_component();
                 em.marker(|| boundary_marker(d, name.as_deref().unwrap_or_default()));
             }
             // dsl 0.12.0: `::label{name}` emits NO record — bind the author's
             // NAMED label to whatever gets pushed NEXT (or, nothing left
             // in this body, `Emitter::finish`'s `trailing_named` — mirrors
             // a branch/match converge's `em.bind`, keyed by the author's
-            // string instead of a fresh anonymous `Label`).
+            // string instead of a fresh anonymous `Label`). dsl 0.51.0 §3.4:
+            // the stage state there is the checker's.
             Node::Directive(d) if d.tag == lute_manifest::core::LABEL_DIRECTIVE => {
                 em.marker(|| directive_marker(d));
                 if let Some(id) = attr_string(&d.attrs, lute_manifest::core::LABEL_NAME_ATTR) {
+                    bind_label(cx, &id, &nodes[i + 1..], &mut state);
                     em.bind_named(id);
                 }
+            }
+            Node::Directive(d) if d.tag == lute_manifest::core::JUMP_DIRECTIVE => {
+                state = emit_primitive(em, node, state, &[], cx, None);
+                route_jump(cx, d, &mut state);
             }
             // Fact args are ground — nothing authored, `lower_node`'s
             // wildcard skips them; lowering to `Command::Assert`/`Retract`
@@ -134,6 +177,31 @@ pub fn walk_seq(
         }
     }
     state
+}
+
+/// dsl 0.51.0 §3.4: the stage state at label `id` (`rest` follows it in its
+/// body), from the checker's label and loop-head function: the walk's own
+/// state joined with the jumps that reach the label, iterated at a loop head.
+fn bind_label(cx: &mut WalkCx<'_>, id: &str, rest: &[Node], state: &mut StageState) {
+    let fall = cx.reached.then(|| std::mem::take(state));
+    if let Some(bound) = cx.stage.label(id, rest, fall) {
+        *state = bound;
+        cx.reached = true;
+    }
+}
+
+/// dsl 0.51.0 §3.4: route `::jump` `d`'s state to its label; after an
+/// unguarded jump without `max` nothing is reached.
+fn route_jump(cx: &mut WalkCx<'_>, d: &Directive, state: &mut StageState) {
+    if !cx.reached {
+        return;
+    }
+    let mut routed = Some(std::mem::take(state));
+    cx.stage.jump(d, &mut routed);
+    match routed {
+        Some(kept) => *state = kept,
+        None => cx.reached = false,
+    }
 }
 
 /// §5 pass 5, inline: schedule via `lute-check::timeline` math, thread every
@@ -213,7 +281,9 @@ fn reachable_after(rest: &[Node], tail: &[Node]) -> Vec<Node> {
 
 /// Lower one primitive node into records, threading the injection reducer:
 /// `lower_node` computes the next stage state + this node's injected commands,
-/// each emitted as a SEPARATE `sprite` record with provenance (§7.4).
+/// each emitted as a SEPARATE `sprite` record with provenance (§7.4). A node
+/// no route reaches (dsl 0.51.0 §3.4) is emitted as authored, with no
+/// injection and no state change, as `check()` stages nothing there.
 fn emit_primitive(
     em: &mut Emitter,
     node: &Node,
@@ -223,8 +293,11 @@ fn emit_primitive(
     clip: Option<ClipStamp>,
 ) -> StageState {
     // Pure reducer step (arch #2): next stage state + this node's injections.
-    let (next, injected) =
-        lower_node_with_snapshot(state, node, lookahead, &cx.env.domains, cx.snapshot);
+    let (next, injected) = if cx.reached {
+        lower_node_with_snapshot(state, node, lookahead, &cx.env.domains, cx.snapshot)
+    } else {
+        (state, Vec::new())
+    };
     let authored = match node {
         Node::Line(l) => Some(lower_line(l, cx.snapshot)),
         Node::Directive(d) => lower_directive(d, cx.snapshot, &cx.env.domains),
@@ -467,11 +540,13 @@ fn walk_branch(
     // drained first so per-arm clones don't duplicate them.
     let mut state = state;
     let base_diags = std::mem::take(&mut state.diags);
+    let reached = cx.reached;
     let mut exits = Vec::with_capacity(b.choices.len());
     for (c, l) in b.choices.iter().zip(&arms) {
         em.bind(*l);
         let into = into_attr(c);
         em.enter_into(into.clone());
+        cx.reached = reached;
         let exit = walk_seq(em, &c.body, state.clone(), cx, tail, diags);
         em.leave_into(into.as_ref());
         em.push(
@@ -481,9 +556,12 @@ fn walk_branch(
             }),
             || SourceInfo::at(b.span),
         );
-        exits.push(exit);
+        if cx.reached {
+            exits.push(exit);
+        }
     }
     em.bind(conv);
+    cx.reached = !exits.is_empty() || (reached && b.choices.is_empty());
     let mut joined = StageState::join(&state, exits);
     let mut diags = base_diags;
     diags.append(&mut joined.diags);
@@ -550,11 +628,13 @@ fn walk_hub(
     // drained first so per-arm clones don't duplicate them (as in `walk_branch`).
     let mut state = state;
     let base_diags = std::mem::take(&mut state.diags);
-    let mut exits = Vec::with_capacity(h.choices.len());
+    let reached = cx.reached;
+    let mut exits: Vec<Option<StageState>> = Vec::with_capacity(h.choices.len());
     for (c, l) in h.choices.iter().zip(&arms) {
         em.bind(*l);
         let into = into_attr(c);
         em.enter_into(into.clone());
+        cx.reached = reached;
         let exit = walk_seq(em, &c.body, state.clone(), cx, tail, diags);
         em.leave_into(into.as_ref());
         // Flat-VM contract (A2 §7): an EXIT arm ends in a forward Jump→converge,
@@ -571,7 +651,7 @@ fn walk_hub(
                 || SourceInfo::at(h.span),
             );
         }
-        exits.push(exit);
+        exits.push(cx.reached.then_some(exit));
     }
     // dsl 0.28.0 §5: the `<return>` segment, bounded like an option body and
     // likewise ending in NO jump — the runtime runs it after a non-`exit`
@@ -584,17 +664,21 @@ fn walk_hub(
             .iter()
             .zip(&exits)
             .filter(|(c, _)| !attr_bool(&c.attrs, "exit").unwrap_or(false))
-            .map(|(_, s)| StageState {
+            .filter_map(|(_, s)| s.as_ref())
+            .map(|s| StageState {
                 diags: Vec::new(),
                 ..s.clone()
             })
             .collect();
         let entry = StageState::join(&state, returning);
         em.bind(l);
+        cx.reached = reached;
         let exit = walk_seq(em, &r.body, entry, cx, tail, diags);
-        exits.push(exit);
+        exits.push(cx.reached.then_some(exit));
     }
     em.bind(conv);
+    let exits: Vec<StageState> = exits.into_iter().flatten().collect();
+    cx.reached = !exits.is_empty() || (reached && h.choices.is_empty() && h.on_return.is_none());
     // Hub arms have no dominance relation (like `<match>` arms) — arm writes are
     // may-writes at hub exit; `StageState::join` applies the conservative join.
     let mut joined = StageState::join(&state, exits);
@@ -736,12 +820,14 @@ fn walk_match(
     });
     let mut state = state;
     let base_diags = std::mem::take(&mut state.diags);
+    let reached = cx.reached;
     let mut exits = Vec::with_capacity(m.arms.len());
     for (arm, l) in m.arms.iter().zip(&labels) {
         let body = match arm {
             Arm::When { body, .. } | Arm::Otherwise { body, .. } => body,
         };
         em.bind(*l);
+        cx.reached = reached;
         let exit = walk_seq(em, body, state.clone(), cx, tail, diags);
         em.push(
             Command::Jump(JumpCmd {
@@ -750,9 +836,12 @@ fn walk_match(
             }),
             || SourceInfo::at(m.span),
         );
-        exits.push(exit);
+        if cx.reached {
+            exits.push(exit);
+        }
     }
     em.bind(conv);
+    cx.reached = !exits.is_empty() || (reached && m.arms.is_empty());
     let mut joined = StageState::join(&state, exits);
     let mut diags = base_diags;
     diags.append(&mut joined.diags);
@@ -978,6 +1067,7 @@ pub fn walk_quest(
     // the top-level thread). Direct top-level content threads `state`
     // sequentially with its top-level siblings, exactly like a scene body.
     let mut state = StageState::default();
+    cx.reached = true;
     let mut obj_idx = 0usize;
     // Empty-`<on>`-body labels (F5, final review P1): `OnCmd.body` is a
     // REQUIRED target (String, not Option, IR addendum §3.3), so an EMPTY
@@ -996,7 +1086,7 @@ pub fn walk_quest(
             Node::Objective(o) => {
                 if let Some(label) = obj_labels[obj_idx] {
                     em.bind(label);
-                    walk_seq(em, &o.body, StageState::default(), cx, &[], diags);
+                    walk_body(em, &o.body, cx, diags);
                 }
                 obj_idx += 1;
             }
@@ -1016,7 +1106,7 @@ pub fn walk_quest(
                     empty_on_labels.push(label);
                 } else {
                     em.bind(label);
-                    walk_seq(em, &on.body, StageState::default(), cx, &[], diags);
+                    walk_body(em, &on.body, cx, diags);
                 }
             }
             // dsl 0.12.0: mirrors `walk_seq`'s `mark` interception exactly
@@ -1024,8 +1114,13 @@ pub fn walk_quest(
             Node::Directive(d) if d.tag == lute_manifest::core::LABEL_DIRECTIVE => {
                 em.marker(|| directive_marker(d));
                 if let Some(id) = attr_string(&d.attrs, lute_manifest::core::LABEL_NAME_ATTR) {
+                    bind_label(cx, &id, &quest.body[i + 1..], &mut state);
                     em.bind_named(id);
                 }
+            }
+            Node::Directive(d) if d.tag == lute_manifest::core::JUMP_DIRECTIVE => {
+                state = emit_primitive(em, node, state, &[], cx, None);
+                route_jump(cx, d, &mut state);
             }
             // Fact args are ground — nothing authored, `lower_node`'s
             // wildcard skips them; lowering to `Command::Assert`/`Retract`
@@ -1143,7 +1238,7 @@ pub fn walk_entry(
     apply_source(&mut cmd, cx);
     em.push(cmd, || SourceInfo::at(entry.span));
     em.bind(label);
-    walk_seq(em, &entry.body, StageState::default(), cx, &[], diags);
+    walk_body(em, &entry.body, cx, diags);
 }
 
 /// Walk one bundle `<beat>` (dsl 0.23.0 §4): the `beat` head record FIRST,
@@ -1207,5 +1302,13 @@ pub fn walk_bundle_beat(
     apply_source(&mut cmd, cx);
     em.push(cmd, || SourceInfo::at(beat.span));
     em.bind(label);
-    walk_seq(em, &beat.body, StageState::default(), cx, &[], diags);
+    walk_body(em, &beat.body, cx, diags);
+}
+
+/// Walk a body the engine starts on its own (an objective or `<on>` body, a
+/// lore entry, a bundle beat): from an empty stage, reached.
+fn walk_body(em: &mut Emitter, body: &[Node], cx: &mut WalkCx<'_>, diags: &mut Vec<Diagnostic>) {
+    let reached = std::mem::replace(&mut cx.reached, true);
+    walk_seq(em, body, StageState::default(), cx, &[], diags);
+    cx.reached = reached;
 }
