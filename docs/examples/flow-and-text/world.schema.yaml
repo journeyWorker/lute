@@ -1,0 +1,10 @@
+# Shared world for the flow-and-text example.
+# The host reports `run.opened`: a play script writes it with an `engine:` step
+# (content cannot ::set engine-owned state).
+state:
+  run.opened: { type: bool, default: false, owner: engine }
+
+# The cutscenes a directive or a reward may raise. `acme.flow`'s `cutscene`
+# occasion takes one of these members as its target (`scene.<member>`).
+entities:
+  cutsceneId: { members: [chapter2] }

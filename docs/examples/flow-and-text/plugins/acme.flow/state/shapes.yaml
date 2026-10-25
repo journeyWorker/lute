@@ -1,0 +1,4 @@
+stateShapes:
+  - name: lockResult
+    fields:
+      - { name: won, type: bool, default: false }

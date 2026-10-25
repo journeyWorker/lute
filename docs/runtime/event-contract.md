@@ -224,6 +224,24 @@ emitted, and the record says it was ignored.
 {"kind":"accept","quest":"second","grant":{"quest":"first","instance":1,"index":1,"kind":"OFFER_QUEST"}}
 ```
 
+Since 0.51 a plugin directive or reward kind may declare `effects.raises`, and
+the resolved list `raises: [{ "occasion", "target"? }]` (with `occasion.target`
+bound, omitted when empty) rides the emitted `plugin` record and the `grant`
+record. The runtime raises nothing and a raise gets no record of its own. Raising
+is the host's duty, as a `raiseOccasion` input once the runtime is idle: for a
+directive, after the presentation that ran the call ends (`presentationEnd`);
+for a reward, after the output that carries the `grant` record has been applied,
+in record order and list order. A declared raise is *possible*, never
+guaranteed (the occasion's `raisedWhen` gate may refuse it). The `record`
+payload is untyped in the event schema, so only the record catalogue changes.
+A `plugin` record for a directive with `text` attributes also carries
+`localized: { "<attr>": { "lineId", "texts"? } }` beside its rendered
+`attrs.<attr>`: the translations with each marker replaced as for a line's
+`texts`. The runtime replays only the undelivered suffix of an output, so a host
+that delivers declared raises keeps its own pending queue across saves (the
+reference player: `SaveRuntime.pendingRaises`); the runtime `Snapshot` shape is
+unchanged.
+
 Rendered text keeps every host-token marker (`{{playerName}}`, and any other
 token a plugin declares in `hostTokens`) verbatim: the runtime never substitutes
 a host token, for any token, and the host or presenter does. The IR placeholder
@@ -337,6 +355,12 @@ deterministic replay: it keeps the world from before the input, the input
 and the answers given so far, re-runs the input with those answers, and
 stops at the next unanswered await. Each step returns only the events
 produced since the previous await, so a host sees every event once.
+
+Loop counters of a bounded backward jump (`::jump{to max}`, 0.51) are walk-local
+and rebuilt by the same replay: the `Snapshot` does not hold them, and a save at
+a choice await in a later iteration resumes to the same transcript. A `<branch>`
+reached again in a later iteration is a new `awaitChoice` with a new request
+id; its `presentation` stays `0`.
 
 ## Rejections and halts
 

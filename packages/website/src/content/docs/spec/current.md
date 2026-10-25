@@ -45,6 +45,37 @@ The normative release proposal is
 Historical behavior remains attributed to its introducing proposals below;
 this index does not rewrite those citations.
 
+## What is current at 0.51.0
+
+The table below is the area-by-area index as of 0.50.0. 0.51.0 ("flow and text") adds four
+features on top of it, with no new keyword and no new element. The normative text is
+[0.51.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md).
+
+- **Bounded backward jump** (§3). `::jump{to max}` may target an earlier `::label` at most `max` times
+  (a literal integer from 1 to 99); after that control falls through. A loop stays inside one body,
+  is entered only at its head label, and nests without crossing another loop. Every flow analysis
+  joins the states of all jumps at a label and iterates a loop head to a fixed point. New codes
+  `E-JUMP-MAX`, `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP`, `E-JUMP-LOOP-CROSS`. IR: `jump.max` and the
+  semantic id `lute.core.boundedJump/1`.
+- **Declared occasion raises** (§4). A directive or reward kind declares `effects.raises`, and an
+  occasion may be `raisedBy: declared`. The scenario graph draws a `[raises]` edge from the raiser to the
+  scenes and beats that answer it. A declared raise is a host promise and is possible, never
+  guaranteed. New codes `E-PLUGIN-RAISES`, `E-RAISES-TARGET`, `W-OCCASION-NEVER-RAISED`. IR: `raises`.
+- **Localizable directive text** (§5). An attribute typed `text` is localizable; its directive takes
+  `code=`, with the identity `{prefix}~{tag}~{code}~{attr}`. `lute tag` and `lute loc export` / `import` /
+  `report` handle it. New codes `E-LINE-CODE-RESERVED`, `E-LINE-ID-DUP`. IR: `localized`.
+- **`target: pair` lints** (§6). `open`, `close` and optional `inside` predicates find unclosed,
+  unopened, nested and misplaced pairs, in `body` or `section` scope.
+
+Structured attribute values (#176: `list`, `map`, `record`) are deferred, not covered; the refusal stays and its
+message names the scalar decompositions (§7).
+
+**0.51.0 supersedes a 0.1.0 non-goal.** The
+[0.1.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) (§14) lists
+backward diverts as a non-goal. A bounded, well-nested loop keeps every analysis finite and termination
+provable, so 0.51.0 allows it. The older proposals and the history sections of this page are not
+rewritten.
+
 ## What is current at 0.50.0
 
 

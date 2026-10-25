@@ -1,0 +1,16 @@
+# The retry loop to exhaustion. The lock stays shut for three answers: the first
+# call, then the two retries `max="2"` allows. The third "Again!" falls through
+# (the jump is not taken), the nested loop knocks 3 times in each of 2 rounds,
+# and `::playScene` follows. One answer per call of `tryLock`, in call order.
+file: ../scenes/lock.lute
+bridges: { tryLock: [ { won: false }, { won: false }, { won: false } ] }
+expect:
+  end: complete
+  state: { scene.knocks: 6 }
+  transcriptContains:
+    - "@mira: Again!"
+    - "@theo: That's enough for today."
+    - "@theo: Round done."
+    - "@theo: Now the real story."
+  transcriptLacks:
+    - "@mira: It clicks open."

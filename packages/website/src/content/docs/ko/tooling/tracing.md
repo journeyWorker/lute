@@ -260,6 +260,23 @@ trace complete: 1 decision; choices 1/2 (enter)
 
 같은 걷기에 대한 테스트는 플레이에서 보이는 것을 단언합니다 — `transcriptContains: ["@narrator: The treasure hall."]`, `transcriptLacks: ["@narrator: A guard waves you back."]`, `state: { run.gold: 10 }` — 그리고 통과합니다.
 
+### 루프 단계 (0.51)
+
+한정된 뒤로 가는 `::jump{to="…" max="N"}`([디렉티브](/ko/language/directives/#한정된-뒤로-점프--max) 참고)는 방문할 때마다 트랜스크립트에 나타납니다. 실행된 점프는 몇 번째인지와 한계를 출력하며 — `jump → attempt (again 1/2)` — `N`번을 다 쓰고 나면 점프는 **실행되지 않고** 걷기는 다음 노드로 이어집니다: `jump → attempt not taken (2/2 used)`. 드라이버의 `jump` 관찰도 같은 사실을 담습니다. 실행된 점프에는 번호와 `max`가, 이어지는 경우에는 `exhausted` 관찰이 붙습니다. 반복할 때마다 다시 도달한 branch는 새 메뉴이며, 그 `--choice` 목록은 제시마다 결정 하나씩 소비되므로 항목 세 개가 반복 세 번을 이끕니다. `<branch again>`의 `push` 선택지에 `::jump{to="retry" max="2"}`가 있는 latch 장면에 `--choice again=push,push,push`로 답하면:
+
+<!-- rerun-after-S8 -->
+```console
+$ lute trace scenes/latch.lute --project . --choice again=push,push,push
+  <branch again>   eligible: push, leave   -> push
+    jump → retry (again 1/2)
+  <branch again>   eligible: push, leave   -> push
+    jump → retry (again 2/2)
+  <branch again>   eligible: push, leave   -> push
+    jump → retry not taken (2/2 used)
+```
+
+(이 블록은 루프 줄만 보여 줍니다. `trace:` 머리글, 장면의 나머지 줄, 마지막 `trace complete:` 요약은 생략했습니다.) 트랜스크립트의 나머지와 마찬가지로 이것은 mock이 이끈 걷기에 대한 설명이지 정적 주장이 아닙니다. 실제 플레이에서 루프가 도달 가능한지 아닌지를 말해 주지 않습니다.
+
 ## 브리지 응답
 
 호스트 서비스를 호출하는 플러그인 디렉티브는 `bridgeResult` 효과를 통해 그 결과를 `scene.*` 슬롯에 씁니다. Trace는 서비스를 호출하지 않습니다. 0.24.0부터 응답되지 않은 호출은 해당 슬롯을 **unknown**으로 남깁니다 — 상태 형태의 기본값을 절대 사용하지 않습니다. 따라서 그 슬롯을 검사하는 가드가 있으면, 답변해야 할 내용을 이름으로 알려 주는 힌트와 함께 걷기가 미완료로 중단됩니다. [스토리 플레이](/ko/tooling/play/#브리지-호출에-답하기)의 마을 문에서 `::check`는 `scene.check.<key>.passed`와 `.margin`을 씁니다:

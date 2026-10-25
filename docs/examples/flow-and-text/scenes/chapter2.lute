@@ -1,0 +1,18 @@
+---
+kind: scene
+id: chapter2
+on: cutscene
+target: scene.chapter2
+once: false
+title: Chapter two
+---
+/*
+Answers the `cutscene` occasion for `scene.chapter2`. Nothing in the project
+raises that occasion except through a declared `effects.raises`: the
+`::playScene` in scenes/lock.lute and the `CUTSCENE` reward in
+quests/finale.lute. The scenario graph draws both as [raises] edges.
+*/
+
+## Chapter two {#chapter-two}
+
+@mira: The vault is open, and chapter two begins.

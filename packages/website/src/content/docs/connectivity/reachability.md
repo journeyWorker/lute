@@ -116,6 +116,16 @@ A plugin reward kind can declare [effects](/language/quests-and-scenes/#reward-e
 - **Start cycles are unchanged.** `[accept]` anchors, a reward accept's included, do not gate a quest's start: the engine may accept a quest outside any `::accept`, and accept deadlocks are out of scope. A cycle of accept-driven quests that accept each other only through rewards never draws `E-QUEST-START-CYCLE` or `E-QUEST-START-SELF`.
 - `lute scenario knowledge` and `lute lore` name the producer of a reward-asserted fact: `` met(mira) — produced by reward BADGE of quest `firstVisit` ``.
 
+## Occasions that nothing raises
+
+An occasion declared `raisedBy: declared` is raised by the host only through a directive's or reward kind's [declared `raises`](/plugins/manifests/#declared-occasion-raises) (0.51). A scene or bundle beat that answers such an occasion, with no `after:`, is anchored to the nodes whose raises reach it, and the graph draws a `[raises]` edge from each (see [the scene graph](/connectivity/scene-graph/#edges-that-declared-raises-draw)).
+
+- **Reachability reads the anchor as it reads every anchor.** For an anchored node, `Unreachable` reads `Unknown`: a declared raise is a host promise, not a proof.
+- **`W-OCCASION-NEVER-RAISED`** (warning, project-wide) is the analogue of `W-QUEST-NEVER-ACCEPTED`. It is reported at the `on:` of each scene or beat that answers a `raisedBy: declared` occasion (for a target, or targetless) that no declared raise reaches: `` scene `chapter2` answers `cutscene` for `scene.chapter2`, which `acme.stage` declares `raisedBy: declared`, but no `effects.raises` in the project raises it — add a `raises` entry to the directive or reward kind that leads here, or drop `raisedBy: declared` if the host raises `cutscene` on its own ``.
+- **The clock is not a declared raise.** An occasion the project clock raises (its `raise:` map) is raised outside any declared raise, so for it `raisedBy: declared` draws no anchor and `W-OCCASION-NEVER-RAISED` stays silent.
+- **A play step is no source.** A `lute play` or `lute test` step that raises the occasion does not count: a test proves a test, not the game.
+- **Clock analyses count declared raises.** A declared raise of a clock-mapped occasion may deliver it at any clock position, not only where the clock's `raise:` map schedules it. For a scene or beat that some declared raise reaches, the checker therefore no longer claims the occasion is raised only at the scheduled positions: schedule-only claims such as `W-BEAT-UNRAISED` ("never plays") do not fire for it. A genuine `when`-window failure is still reported: `W-CHAPTER-STALL` can still fire for a chain whose next scene's `when` has expired at every position. Answerers that no declared raise reaches are judged as before.
+
 ## Evidence in 0.34.0
 
 Scenario reach results include `evidence` in JSON. A structural reachability

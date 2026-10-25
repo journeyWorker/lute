@@ -80,6 +80,31 @@ const hud = Effect.gen(function* () {
 정렬에는 숫자 위치를 사용하고, 표시 문자열에는 `ClockView.slot`과
 `ClockView.weekdayLabel`을 사용하세요.
  
+## 0.51 추가 사항
+
+0.51의 IR 변경은 모두 추가형입니다. 새 키를 하나도 쓰지 않는 프로젝트는 바이트 단위로 같은 아티팩트로 컴파일되며, 예외가 하나 있습니다. 코어 `::jump`가 이제 `max`를 선언하므로 `capabilitySnapshot`은 모든 아티팩트에서 한 번 바뀝니다. 그 밖의 새 키(`effects.raises`, `raisedBy`, `type: text`)는 이를 선언한 스냅숏의 해시에만 접힙니다. 계약 스키마의 이름은 `-0.51` 계열로 바뀝니다.
+
+**제한된 역방향 jump.** `jump` 명령은 선택적 `max`(1~99의 정수)를 새로 가지며, jump에 없으면 생략됩니다. `max`가 없는 jump는 0.50과 바이트 단위로 같고 여전히 앞으로만 갑니다. `max`가 있으면 jump는 앞선 라벨을 대상으로 삼을 수 있고 최대 `max`번 실행됩니다. 그 뒤에는 실행되지 않고 제어가 다음 명령으로 넘어갑니다.
+
+- **새 semantic id `lute.core.boundedJump/1`**(모듈 `core`, 동작 "bounded backward jumps"). 아티팩트는 어떤 `jump` 명령에 `max`가 있을 때**만** 이를 `requiredSemantics`(출처 `bounded jump`)에 나열합니다. `max`를 무시하는 엔진은 한없이 반복하거나 전혀 반복하지 않으므로 이 id는 의미를 바꾸는 id입니다. `supportedIds`에 이를 나열하지 않은 엔진은 이런 아티팩트를 재생 전 semantic 협상에서 거부합니다. 레지스트리는 16개에서 17개 id가 됩니다.
+- **카운터.** 각 제한된 jump는 한 번의 walk(프레젠테이션 하나, 퀘스트 핸들러나 목표 세그먼트 하나, 엔트리나 비트 본문 하나)에 국한된 카운터를 0에서 시작해 가집니다. 제어가 jump에 도달했을 때(`when`이 있으면 그것이 성립하고) 카운터가 `max` 미만이면 카운터를 올리고 대상으로 이동하며, 아니면 다음 명령으로 넘어갑니다. 제어가 **jump의 영역 바깥**에서 jump의 대상에 도달할 때마다 카운터는 0으로 돌아갑니다. 영역은 명령 스트림에서 대상부터 jump까지의 구간이며, 라벨로 흘러 들어오거나, 앞으로 가는 jump로 오거나, 영역 안에 있지 않은 제한된 jump로 올 때가 이에 해당합니다. jump 자신의 실행이나 그 영역 안의 다른 제한된 jump의 실행은 카운터를 리셋하지 않습니다. 같은 머리를 공유하는 두 제한된 jump는 서로를 리셋하지 않습니다. 루프는 `<on>`이나 `<objective>` 경계에 걸치지 않으므로 영역은 항상 하나의 명령 범위 안에 있습니다.
+- **종료.** 두 번의 실행 사이에서 제어는 앞으로만 움직이므로 walk는 루프의 중첩으로 한정됩니다. 중첩 깊이 *d*의 영역은 둘러싼 jump들에 대해 최대 Π(max + 1)번 실행됩니다. 런타임의 폭주 단계 가드는 범위가 시작된 뒤 또는 마지막으로 실행된 제한된 jump 뒤의 단계를 세므로, `max` 없는 결함 순환은 여전히 가드에 걸립니다.
+- **스냅숏 변경 없음.** 카운터는 walk 안에서만 쓰이며 hub의 presentation을 재구성하는 것과 같은 재생으로 다시 만들어집니다. 런타임 `Snapshot`과 이벤트 스키마의 모양은 바뀌지 않고 버전 문자열만 `0.51`로 바뀝니다. 이후 반복에서 다시 도달한 `<branch>`는 새 `request`를 가진 새 `awaitChoice`이며 `presentation`은 `0`으로 유지됩니다. 루프 안의 `<hub>`는 매 방문을 presentation 0에서 시작합니다.
+- **트레이스.** 드라이버의 `jump` 관측은 실행 횟수와 `max`를 얻고, jump가 실행되지 않으면 소진 관측을 얻습니다. `lute trace`는 이를 정적 주장이 아니라 설명으로 출력합니다.
+
+**선언된 raise.** `plugin` 명령은 선택적 해석된 `raises: [{ occasion, target? }]`를 새로 가지며, `RewardEntry`도 같은 `raises`를 얻습니다. 각각 비어 있으면 생략되고 마지막에 쓰입니다(`RewardEntry.raises`는 `credits`, `retracts`, `asserts`, `accepts` 뒤). `@attr`은 속성의 컴파일된 값으로 바인딩되고 occasion의 도메인 접두사가 적용됩니다(`scene.chapter2`). `occasion.target`을 읽는 대상은 런타임이 바인딩할 때까지 참조를 유지하며, 바인딩되지 않은 대상은 항목을 쓰지 않습니다. 보상의 raise는 보상 종류의 `effects.raises`로 찍히고, `@target`은 `accepts`처럼 바인딩됩니다.
+
+- **내보내는 `plugin` 레코드**(중단된 변형 포함)와 **`grant` 레코드**는 `occasion.target`을 바인딩해 해석한 `raises`를 담으며, 비어 있으면 생략됩니다. `record` 페이로드는 이벤트 스키마에서 타입이 없으므로 레코드 카탈로그만 바뀝니다. 지급의 효과 레코드(`grant` 키가 붙은 `retract`, `assert`, `accept`)는 바뀌지 않으며, 런타임이 아무것도 발생시키지 않으므로 raise에는 자체 레코드가 없습니다. `lute run`의 적합성 레코드는 `raises`를 유지합니다.
+- **서술용이며 semantic id 없음.** 런타임은 `raises`로 동작하지 않으며 플러그인 어휘는 `capabilitySnapshot`으로 버전이 관리됩니다. 보상 종류가 `raises`만 선언해도 `lute.quest.rewardEffects/1`은 `requiredSemantics`에 들어가지 않습니다. 그 id는 여전히 `retracts`, `asserts`, `accepts`에서만 수집됩니다.
+- **호스트의 책무.** raise를 수행하는 호스트는 호출을 실행한 프레젠테이션이 끝나고(`presentationEnd`) 런타임이 idle이 된 뒤에, 또는 `grant` 레코드를 담은 출력이 적용된 뒤에 각 raise를 `raiseOccasion` 입력으로 보냅니다. 런타임은 출력의 아직 전달되지 않은 뒷부분만 재생하므로, 호스트는 저장을 거쳐 자체 대기 큐를 유지합니다([커스텀 호스트](/ko/player/custom-hosts/#선언된-raise) 참고).
+
+**현지화된 지시문 텍스트.** `plugin` 명령은 [`text`](/ko/plugins/manifests/#현지화-가능한-텍스트-속성-type-text)로 타입이 지정된 각 속성에 대해 선택적 `localized` 맵(`{ "<attr>": { "lineId", "placeholders"?, "texts"? } }`, 속성 이름이 키)을 새로 가집니다. `lineId`는 `{prefix}~{tag}~{code}~{attr}`이고 `placeholders`와 `texts`는 비어 있으면 생략됩니다. `fields.<attr>`는 작성된 그대로의 `{{…}}` 마커를 가진 원본 언어 문자열을 유지하므로 현지화를 무시하는 호스트는 전과 같은 값을 읽으며, 호출의 0.50 스탬프는 `stamps`에 남습니다. `texts`(locale 태그 → 번역 텍스트)는 대사 줄처럼 `lute compile --locale-bundle`이 채웁니다. `text` 속성이 없는 지시문은 0.50과 바이트 단위로 같습니다.
+
+- **런타임.** `localized`가 있는 `plugin` 명령에 대해 런타임은 각 `text` 속성의 마커를 한 번 렌더링해 렌더링된 원문을 레코드의 `attrs.<attr>`에, 렌더링된 번역을 레코드의 `localized: { <attr>: { lineId, texts } }`에 씁니다. 대사 줄과 같은 방식입니다. 호스트 토큰 마커는 그대로 남습니다. bridge await의 `attrs`도 같은 렌더링된 값을 담습니다. `lute run`의 적합성 레코드는 대사 줄의 번역을 빼는 것처럼 `localized`를 뺍니다.
+- **서술용이며 semantic id 없음.** 엔진은 `raises`와 `localized`를 읽어도 됩니다(MAY).
+
+**엔진이나 호스트가 해야 할 일.** 버전 게이트를 `0.51`로 넓히고, 제한된 루프가 있는 아티팩트를 받으려면 `supportedIds`에 `lute.core.boundedJump/1`을 나열하며, 선택적으로 선언된 raise를 수행하고 `localized`를 읽습니다. 모든 아티팩트의 `capabilitySnapshot`이 한 번 바뀌므로 스냅숏 해시를 고정해 둔 엔진은 이를 갱신합니다. `texts` 모델은 [현지화 텍스트](#현지화-텍스트)를 참고하세요.
+
 ## 0.50 추가 사항
 
 0.50의 IR 변경은 모두 추가형입니다. 새 키를 하나도 쓰지 않는 프로젝트는 `capabilitySnapshot`을 포함해 바이트 단위로 같은 아티팩트로 컴파일됩니다. 계약 스키마의 이름은 `-0.50` 계열로 바뀝니다.
@@ -684,6 +709,8 @@ while (pc < artifact.commands.length) {
   pc = next === null ? pc + 1 : index.get(next)!;
 }
 ```
+
+0.51부터 위의 `jump` case는 제한 없는 형태입니다. `max`가 있는 `jump`는 walk별 카운터를 유지하며 카운터가 `max` 미만일 때만 jump하고 아니면 다음으로 넘어갑니다(`next = null`). [0.51 추가 사항](#051-추가-사항)을 참고하세요.
 
 전체 장면 및 퀘스트 명령 집합은 스물세 가지 종류입니다: `line`, `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence`, `set`, `assert`, `retract`, `choice`, `match`, `hub`, `jump`, `end`, `barrier`, `quest`, `on`, `accept`, `plugin`. 로어 아티팩트에는 `entry`와 `beat` 선언 헤드도 추가되며, 엔진은 이를 재생하지 않고 조회합니다([로어 엔트리](/ko/language/lore-entries/)).
 

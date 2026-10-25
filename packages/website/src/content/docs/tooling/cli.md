@@ -469,6 +469,8 @@ scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `na
 
 A merged translation whose stored `sourceHash` (see [`loc import`](#loc-import)) differs from the hash of the record's current source text is `W-L10N-STALE`, one per `(lineId, locale)` pair: the line, option label or prompt changed after the export the translator worked from. The message names the lineId and the locale and says to re-export with `lute loc export` and update the translation. The translation is still merged. Like every warning it is promoted by `--deny W-L10N-STALE` or `--deny-warnings`, in a single-document compile and in the project compile. A `schemaVersion: 1` bundle carries no hashes and gets no stale check.
 
+Since 0.51 the bundle also reaches a directive's [localizable text](/language/dialogue-and-cast/#localizable-directive-text-since-051): a bundle entry keyed by the `lineId` of a `text` attribute is merged into `localized.<attr>.texts` of its `plugin` record, as a line's translation goes into `texts`. `W-L10N-MISSING` and `W-L10N-STALE` apply to these entries with the same wording and the same `--deny` promotion, one per `(lineId, locale)` pair. `E-L10N-MODIFIERS` does not apply to them, because a `text` value has no inline modifiers. A document compiled without `--locale-bundle`, or without `text` attributes, is byte-identical to before.
+
 ### `--stream` — compile a scene from a live body
 
 ```console
@@ -675,6 +677,8 @@ Back-fill a stable `code` into every untagged `:line`, and a missing `instance` 
 - **Default (no `--renumber`)** back-fills missing codes and instance keys and writes the files.
 - **`--renumber`** is the dangerous mode: it renumbers every line's `code` in clean document order instead (`0010`/`0020`/… per speaker per scope) — a drafting tool, refused for a document whose frontmatter declares `codesLocked:` (published codes are `lineId`/`voiceKey` identity; missing component instance keys are still added) or that has structural errors. **Without `--commit` it writes nothing** and prints what `--commit` would do — one line per changed code, `<path>:<line>: <old or (none)> -> <new>`, one line per file that would get instance keys, each refusal as `--commit` would print it — then `lute: would renumber <N> line(s) in <M> of <T> file(s); pass --commit to apply`. Exit **0**, or **1** when a file is refused (as `--commit` would). **`--renumber --commit`** applies it.
 - **`--check`** writes nothing and exits **1** when the selected mode would change any file, else **0** (a refusal is still **1**). `--commit` without `--renumber`, or together with `--check`, is `E-CLI-USAGE`.
+
+Since 0.51 `lute tag` also back-fills a `code` into every untagged directive that has a [`text` attribute](/language/dialogue-and-cast/#localizable-directive-text-since-051), in the order the compiler uses, so the directive's `lineId` (`{prefix}~{tag}~{code}~{attr}`) becomes reproducible from the source. `codesLocked:` applies to these codes as it does to line codes.
 
 `--json` prints the `0.48.0.tag` report: `{mode: "tag"|"renumber", applied, files: [{path, changed, lines, instances, refused?, renumbered?: [{line, from, to}]}]}` — `applied` is `true` only when files were written, `lines` counts the codes added or renumbered, `instances` the instance keys added, `refused` carries the refusal message, and `renumbered` appears only in renumber mode, with `from` `null` for a line that had no code.
 
@@ -1149,6 +1153,30 @@ Row kinds are `line`, `choice` (an option label, `key` `{branchOrHubId}.{choiceI
 kind,file,line,lineId,code,speaker,key,text,sourceFile,sourceLine,sourceHash
 ```
 
+Since 0.51 there is a fourth kind, `directive`: one row per [`text` attribute](/language/dialogue-and-cast/#localizable-directive-text-since-051) of a plugin directive, in document order (a directive's attributes in declaration order). Its `key` is `{tag}.{attr}`, its `lineId` is `{prefix}~{tag}~{code}~{attr}`, and its `code` is the directive's authored `code`. As for a line, `lineId` is reproducible only when `code` is authored; otherwise it is `null` (JSON) or empty (CSV), so run `lute tag` first. The JSON row carries `kind`, `file`, `line`, `lineId`, `code`, `key`, `text`, `source` and `sourceHash`. In CSV the existing columns are used, with `kind` `directive`, `code` and `key` filled and `speaker` empty; no column is added:
+
+<!-- rerun-after-S8 -->
+```json
+{
+  "kind": "directive",
+  "file": "scenes/intro.lute",
+  "line": 3,
+  "lineId": "intro~banner~0010~title",
+  "code": "0010",
+  "key": "banner.title",
+  "text": "Welcome to the hall, {{userName}}",
+  "source": null,
+  "sourceHash": "sha256:…"
+}
+```
+
+<!-- rerun-after-S8 -->
+```text
+directive,scenes/intro.lute,3,intro~banner~0010~title,0010,,banner.title,"Welcome to the hall, {{userName}}",,,sha256:…
+```
+
+(The hash is shortened here.)
+
 ## loc import
 
 ```console
@@ -1177,6 +1205,8 @@ Input is exactly what `export` writes, in either format (`.csv` → CSV, anythin
 
 (Hashes shortened here.) `sourceHashes` holds each row's `sourceHash` per lineId **and** locale (two locales may be translated from different exports); it is always written, `{}` when no row carried a hash. Every map is sorted, so the bundle is byte-stable: importing the same inputs twice produces identical bytes. `compile --locale-bundle` still reads a `schemaVersion: 1` bundle (no `sourceHashes`, no stale check). An unparseable input, a `lineId` appearing twice within one locale, or an empty locale tag is `E-LOCALE-BUNDLE`, reported with the offending file and row. A row with **no** `lineId` is skipped rather than rejected — an untagged line simply has no stable identity yet — and a single stderr summary counts them.
 
+Since 0.51 `loc import` accepts rows of `kind: "directive"` and keys the bundle by their `lineId` like every other row; an unknown `kind` is still refused. A directive row with no `lineId` (no authored `code`) is skipped like any untagged row.
+
 ## loc report
 
 ```console
@@ -1184,6 +1214,8 @@ $ lute loc report [--project <DIR>] [--json]
 ```
 
 Word-count and line-count report per document and per speaker — a production-planning view over the same content lines. Choice labels are counted (`choices`) but their words are not; branch/hub prompts are counted (`prompts`, since 0.47 — report version `0.47.0.loc-report`) and their words are included in the document and project word totals (they have no speaker). `--json` emits the report as JSON instead of human table lines. Exit **0** on success, **2** on I/O.
+
+Since 0.51 a directive's `text` attributes count like prompts: their words join the document and project word totals (they have no speaker), and a count `directiveTexts` appears in the JSON and in the human output only when it is nonzero.
 
 ## --explain
 

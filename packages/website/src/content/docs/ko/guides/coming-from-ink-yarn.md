@@ -6,14 +6,14 @@ description: "Ink와 Yarn Spinner에서 Lute로 옮기는 대응표: knot과 노
 Ink와 Yarn Spinner는 흐름(flow)입니다: 텍스트가 위에서 아래로 흐르고, divert나 jump가 위쪽을 포함해
 어디로든 보냅니다. Lute는 그 일을 둘로 나눕니다:
 
-- **장면 안에서** 텍스트는 앞으로만 흐릅니다. 메뉴는 `<branch>`(한 번 묻습니다)와 `<hub>`(플레이어가 떠날
+- **장면 안에서** 텍스트는 앞으로 흐르며, 되돌아가는 길은 횟수가 정해진 `::jump … max` 루프 하나뿐입니다. 메뉴는 `<branch>`(한 번 묻습니다)와 `<hub>`(플레이어가 떠날
   때까지 다시 묻습니다)이고, 상태에 따라 줄을 고르는 것은 `<match>`와 `when=`입니다.
 - **장면 사이에서는** 아무것도 divert하지 않습니다. 엔진이 **계기(occasion)**("다음 장", "플레이어가 틸리에게
   말을 건다")를 발생시키고, 각 장면은 자기가 어느 계기에 응답하는지 말합니다. 순서는 `after:`,
   `priority:`, 매니페스트의 `chapters:`가 정합니다. [장면을 이야기로
   잇기](/ko/getting-started/connect-scenes/)가 차근차근 보여 줍니다.
 
-어떤 경로도 뒤로 뛰거나 저절로 반복하지 않으므로, 검사기는 장면을 지나는 모든 경로를 따라갈 수 있고,
+모든 루프는 횟수가 정해져 있고 잘 중첩되며 그 밖에는 뒤로 뛰는 것이 없으므로, 검사기는 장면을 지나는 모든 경로를 따라갈 수 있고,
 그래서 어느 경로도 막다른 길이 아님을 증명할 수 있습니다.
 
 ## 대응표
@@ -24,7 +24,8 @@ Ink와 Yarn Spinner는 흐름(flow)입니다: 텍스트가 위에서 아래로 �
 | `= stitch` | — | 장면 안의 `## 제목` 섹션(섹션은 점프 대상이 아닙니다) |
 | 이야기의 다음 부분으로 가는 `-> knot` | `<<jump Node>>` | 계기(`on:`)에 응답하는 다른 장면. 순서는 `after:`나 `chapters:` |
 | 플레이어가 돌아오는 메뉴로 가는 `-> knot` | 허브 노드로 돌아가는 `<<jump>>` | `<hub>`: 선택지 하나가 끝날 때마다 다시 묻고, `exit` 선택지에서 끝납니다 |
-| 아래쪽의 이름 붙은 gather로 가는 `-> label` | — | 아래쪽 `::label{name="label"}`로 가는 `::jump{to="label"}`. 앞으로만 |
+| 아래쪽의 이름 붙은 gather로 가는 `-> label` | — | 아래쪽 `::label{name="label"}`로 가는 `::jump{to="label"}` |
+| 앞선 gather로 되돌아가는 반복되는 `-> label` | 재시도의 시작으로 되돌아가는 `<<jump>>` | 앞선 `::label`로 가는 `::jump{to="label" max="3"}`. 최대 `max`번 실행됩니다(0.51). [루프와 뒤로 가는 divert](#루프와-뒤로-가는-divert) 참고 |
 | 한 번만 고르는 `* [choice]` | `-> option <<once>>` | 허브의 `<choice … once>`. `<branch>`는 어차피 한 번만 묻습니다 |
 | 계속 남는 `+ [choice]` | `-> option` | `<hub>` 안의 평범한 `<choice>` |
 | `- gather` | 선택지 다음 줄들 | `</branch>` 다음 줄들. 어느 선택지를 골랐든 실행됩니다 |
@@ -237,11 +238,36 @@ Ink의 `{cond: -> a | -> b}`는 같은 계기에 응답하는 장면 두 개이�
 성립할 수 없으면 검사기는 둘을 같은 priority로 받아들입니다. [장면을 이야기로
 잇기](/ko/getting-started/connect-scenes/)가 바로 이것을 만듭니다.
 
-장면 안에서 `::jump{to="…"}`는 같은 문서 아래쪽의 `::label{name="…"}`로 앞으로 뜁니다. 뒤로는 결코
-뛰지 않습니다: 플레이어가 돌아오는 메뉴는 `<hub>`이고, 다시 재생되는 장면은 자기 계기에 다시 응답합니다.
+장면 안에서 `::jump{to="…"}`는 같은 문서의 `::label{name="…"}`로 뜁니다. `max`가 없으면 앞으로만 갑니다.
+플레이어가 돌아오는 메뉴는 `<hub>`이고, 다시 재생되는 장면은 자기 계기에 다시 응답합니다.
 `## 제목` 섹션은 점프 대상이 아닙니다 — `{#id}` 접미사를 단 섹션도 마찬가지입니다. 그 id는 안정적인 식별
 정보일 뿐이므로, 뛰어가고 싶은 제목 아래에 `::label`을 두세요. 선택지 id(Ink의 이름 붙은 선택지
 `* (inside)`)도 대상이 아닙니다. 선택지 id는 고른 것의 이름이지 텍스트 안의 자리가 아닙니다.
+
+### 루프와 뒤로 가는 divert
+
+0.51부터 앞선 gather로 되돌아가는 Ink의 `-> label`과 재시도의 시작으로 되돌아가는 Yarn의
+`<<jump Node>>`에 쓸 표기가 생겼습니다. 앞선 `::label`로 가는 `::jump{to="…" max="N"}`이며, 최대 `N`번(1부터
+99까지의 리터럴) 실행되고 그 뒤에는 제어가 다음으로 이어집니다:
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::label{name="again"}
+@narrator: The latch is stuck.
+<branch id="try">
+  <choice id="pull" text="Pull it">
+    ::jump{to="again" max="3"}
+  </choice>
+  <choice id="leave" text="Leave it"/>
+</branch>
+```
+
+이 한계가 Lute와 자유로운 divert의 차이입니다. 루프는 언제나 횟수가 정해져 있습니다. 조건이 바뀔 때까지
+반복하는 divert는 쓸 표기가 없는데, 한계가 1부터 99까지의 리터럴이기 때문입니다(`@ref`, `0`, 더 큰 수는
+`E-JUMP-MAX`). 라벨은 점프와 같은 본문이나 그것을 감싸는 본문에 있어야 하고, 사이에는 `<choice>`와 `<match>`
+arm 본문만 둘 수 있으므로 루프는 `<hub>` 옵션, `<on>`이나 `<objective>`, 섹션을 벗어날 수 없습니다
+(`E-JUMP-LOOP-SCOPE`). 루프는 라벨에서만 진입하고(`E-JUMP-INTO-LOOP`), 루프끼리는 중첩되되 겹치지 않습니다
+(`E-JUMP-LOOP-CROSS`). 다른 장면으로 되돌아가는 것은 여전히 점프가 아니라 계기입니다. "내가 떠날 때까지 다시
+물어라"처럼 플레이어가 멈출 때를 정한다면 `<hub>`를 쓰세요. [허브와 루프](/ko/language/choices-and-hubs/#허브와-루프)를 참고하세요.
 
 `visited('<scene id>')`는 장면이 한 번이라도 제시되었는지 묻습니다. 횟수가 아니라 참/거짓이고, 세이브
 전체에 걸칩니다: 새 런이 시작되어도 참으로 남습니다.
@@ -347,11 +373,11 @@ ok: text.lute (7 warning(s))
 
 디렉티브처럼 쓴 divert, 뒤로 가는 점프, 점프 대상으로 쓴 섹션 제목, 조건 안의 Ink·Yarn 습관:
 
-<!-- lute-diagnostics unverified="byte-exact lute check output; the did-you-mean and E-CEL-TYPE reasons are composed outside the file that declares their code, and E-JUMP-UNDEFINED matches two literals" -->
+<!-- lute-diagnostics unverified="0.51 feature; verified after S1-S8 land" -->
 ```
 $ lute check flow.lute
 flow.lute:12:1: error [E-UNKNOWN-DIRECTIVE] unknown directive `::goto` — did you mean `::jump{to="…"}`? It jumps forward to a `::label{name="…"}`
-flow.lute:13:12: error [E-JUMP-BACKWARD] `::jump` targets label `top`, which is not forward of this `::jump` in document order — `::jump` only jumps forward; to offer choices again, use a `<hub>` (it asks until an `exit` choice is taken)
+flow.lute:13:12: error [E-JUMP-BACKWARD] `::jump` targets label `top`, which is not forward of this `::jump` in document order — `::jump` only jumps forward unless it carries `max`: `::jump{to="again" max="3"}` repeats at most 3 times; to offer choices again, use a `<hub>` (it asks until an `exit` choice is taken)
 flow.lute:18:12: error [E-JUMP-UNDEFINED] `::jump` targets `Gallery`, which no `::label` in this document declares — `Gallery` is the `## Gallery` heading, not a label; a `::jump` target is a `::label{name="…"}` later in this document, so put `::label{name="Gallery"}` under that heading
 failed: flow.lute (3 error(s), 0 warning(s))
 $ lute check cond.lute

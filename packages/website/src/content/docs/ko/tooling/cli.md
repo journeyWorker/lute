@@ -444,6 +444,8 @@ scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `na
 
 병합된 번역에 저장된 `sourceHash`([`loc import`](#loc-import) 참고)가 레코드의 현재 원문 해시와 다르면 `(lineId, locale)` 쌍마다 하나씩 `W-L10N-STALE`입니다. 번역자가 작업한 export 이후 대사, 선택지 라벨 또는 프롬프트가 바뀌었다는 뜻입니다. 메시지는 lineId와 로케일을 밝히고 `lute loc export`로 다시 내보내 번역을 갱신하라고 안내합니다. 번역은 그대로 병합됩니다. 다른 경고와 마찬가지로 단일 문서 컴파일과 프로젝트 컴파일 모두에서 `--deny W-L10N-STALE` 또는 `--deny-warnings`로 승격됩니다. `schemaVersion: 1` 번들에는 해시가 없으므로 이 검사를 하지 않습니다.
 
+0.51부터 번들은 디렉티브의 [지역화 가능한 텍스트](/ko/language/dialogue-and-cast/#지역화-가능한-디렉티브-텍스트-051부터)에도 적용됩니다. `text` 속성의 `lineId`를 키로 하는 번들 항목은 줄의 번역이 `texts`에 들어가듯 해당 `plugin` 레코드의 `localized.<attr>.texts`에 병합됩니다. `W-L10N-MISSING`과 `W-L10N-STALE`은 이 항목에도 같은 문구와 같은 `--deny` 승격으로 `(lineId, locale)` 쌍마다 하나씩 적용됩니다. `text` 값에는 인라인 modifier가 없으므로 `E-L10N-MODIFIERS`는 적용되지 않습니다. `--locale-bundle` 없이, 또는 `text` 속성 없이 컴파일한 문서는 이전과 바이트 단위로 동일합니다.
+
 ### `--stream` — 스트리밍 컴파일
 
 `lute compile --stream <FILE>`은 완전한 씬 템플릿을 한 번 해석하고 검사합니다. `--project`를 사용하거나, 그렇지 않으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`(0.27.0)에 대해 `check`와 같이 해석합니다. 그런 다음 stdin에서 추가만 가능한 일반 Lute 섹션 본문 텍스트를 읽습니다. 완성되어 승인된 각 줄/디렉티브/블록은 기존의 누적 전체 문서 파이프라인으로 컴파일되고 NDJSON으로 stdout에 플러시됩니다. 초기 전체 아티팩트를 담은 `start`, 단위마다 전체 아티팩트를 담은 `update`, 성공적인 EOF 뒤의 `finish` 순서입니다. 거부되면 진단이 담긴 `error` 레코드가 기록되고 `finish`는 나오지 않습니다.
@@ -626,6 +628,8 @@ $ lute tag [<PATH>]… [--renumber [--commit]] [--check] [--json]
 ```
 
 기본 모드(`--renumber` 없음)는 태그가 없는 모든 `:line`에 안정적인 `code`를, 누락된 컴포넌트 인스턴스 키와 함께 뒤에서 채워 파일을 제자리에서 다시 씁니다. 이미 완전히 태그된 문서는 바이트 단위로 그대로 둡니다. `--renumber`는 위험한 모드로, 모든 줄의 `code`를 깨끗한 문서 순서로 다시 번호 매깁니다(`0010`/`0020`/…를 speaker와 scope마다 적용). 이는 초안 작성 도구이며, frontmatter에 `codesLocked:`가 선언된 문서(게시된 코드는 `lineId`/`voiceKey` identity)나 구조 오류가 있는 문서에서는 코드 재번호가 거부됩니다(종료 **1**. `codesLocked:` 문서에서도 누락된 컴포넌트 인스턴스 키는 계속 추가됩니다). `--commit`이 있어야만 씁니다. `--commit` 없는 `--renumber`는 **아무것도 쓰지 않고** `--commit`이 할 일을 미리 보여 줍니다. 바뀌는 코드마다 한 줄 `<path>:<line>: <old or (none)> -> <new>`, 인스턴스 키가 추가될 파일마다 한 줄, 거부된 파일마다 거부 메시지를 출력한 다음 `lute: would renumber <N> line(s) in <M> of <T> file(s); pass --commit to apply`를 출력하며, 종료 코드는 **0**이거나 파일이 거부되면(`--commit`도 그렇듯) **1**입니다. `--check`는 아무것도 쓰지 않고 선택한 모드가 어떤 파일이든 바꾸면 **1**, 아니면 **0**으로 종료합니다(거부도 **1**). `--commit`을 `--renumber` 없이, 또는 `--check`와 함께 쓰면 `E-CLI-USAGE`입니다. 성공 시 종료 **0**, 문서가 거부되면 **1**, I/O 시 **2**입니다.
+
+0.51부터 `lute tag`는 [`text` 속성](/ko/language/dialogue-and-cast/#지역화-가능한-디렉티브-텍스트-051부터)이 있는 태그 없는 디렉티브에도 컴파일러와 같은 순서로 `code`를 채워 넣으므로, 디렉티브의 `lineId`(`{prefix}~{tag}~{code}~{attr}`)를 소스만으로 재현할 수 있게 됩니다. `codesLocked:`는 줄 코드와 마찬가지로 이 코드에도 적용됩니다.
 
 `<PATH>`는 파일 또는 디렉터리일 수 있으며 기본값은 `.`입니다(dsl 0.22.0). 그 아래 모든 `.lute` 파일을 전체 프로젝트 `check`가 순회하는 것과 같은 정렬 순서로 재귀적으로 다시 씁니다. 변경된 파일은 파일명을 담은 줄을 출력하고, 할 일이 없는 파일은 조용히 둡니다. 마지막에는 요약을 출력합니다. 거부되거나 읽을 수 없는 파일은 보고한 뒤 순회를 계속하며, 종료 코드는 파일 전체 결과 중 가장 심각한 결과입니다. `--json`은 보고서 `0.48.0.tag`를 출력합니다. `{mode: "tag"|"renumber", applied, files: [{path, changed, lines, instances, refused?, renumbered?: [{line, from, to}]}]}`이며 `applied`는 파일을 실제로 썼을 때만 `true`, `lines`는 추가되거나 다시 매겨진 코드 수, `instances`는 추가된 인스턴스 키 수, `refused`는 거부 메시지, `renumbered`는 renumber 모드에서만 나오고 코드가 없던 줄의 `from`은 `null`입니다.
 
@@ -1103,6 +1107,30 @@ $ lute loc export [--project <DIR>] [--format csv] [-o, --output <PATH>]
 kind,file,line,lineId,code,speaker,key,text,sourceFile,sourceLine,sourceHash
 ```
 
+0.51부터 네 번째 종류 `directive`가 있습니다. 플러그인 디렉티브의 [`text` 속성](/ko/language/dialogue-and-cast/#지역화-가능한-디렉티브-텍스트-051부터)마다 한 행이며, 문서 순서(디렉티브의 속성은 선언 순서)를 따릅니다. `key`는 `{tag}.{attr}`, `lineId`는 `{prefix}~{tag}~{code}~{attr}`, `code`는 디렉티브에 작성된 `code`입니다. 줄과 마찬가지로 `lineId`는 `code`가 작성되어 있을 때만 재현할 수 있고, 그렇지 않으면 `null`(JSON) 또는 빈 값(CSV)이므로 먼저 `lute tag`를 실행하세요. JSON 행에는 `kind`, `file`, `line`, `lineId`, `code`, `key`, `text`, `source`, `sourceHash`가 들어갑니다. CSV는 기존 열을 그대로 쓰며 `kind`는 `directive`, `code`와 `key`는 채워지고 `speaker`는 비어 있습니다. 열은 추가되지 않습니다:
+
+<!-- rerun-after-S8 -->
+```json
+{
+  "kind": "directive",
+  "file": "scenes/intro.lute",
+  "line": 3,
+  "lineId": "intro~banner~0010~title",
+  "code": "0010",
+  "key": "banner.title",
+  "text": "Welcome to the hall, {{userName}}",
+  "source": null,
+  "sourceHash": "sha256:…"
+}
+```
+
+<!-- rerun-after-S8 -->
+```text
+directive,scenes/intro.lute,3,intro~banner~0010~title,0010,,banner.title,"Welcome to the hall, {{userName}}",,,sha256:…
+```
+
+(해시는 줄여 표기했습니다.)
+
 ## loc import
 
 ```console
@@ -1131,6 +1159,8 @@ $ lute loc import <FILE>… [-o, --output <PATH>] [--json]
 
 (위 해시는 줄여 표기했습니다.) `sourceHashes`는 각 행의 `sourceHash`를 lineId **와** 로케일별로 담습니다(두 로케일이 서로 다른 export에서 번역될 수 있기 때문입니다). 항상 기록되며, 해시를 가진 행이 없으면 `{}`입니다. 모든 맵이 정렬되므로 번들은 바이트 안정적입니다. 같은 입력을 두 번 import하면 동일한 바이트가 생성됩니다. `compile --locale-bundle`은 `schemaVersion: 1` 번들도 읽습니다(`sourceHashes`가 없고 stale 검사도 하지 않습니다). 파싱할 수 없는 입력, 한 로케일 안에서 중복된 `lineId`, 빈 로케일 태그는 `E-LOCALE-BUNDLE`이며 문제가 있는 파일과 행을 함께 보고합니다. `lineId`가 **없는** 행은 거부하지 않고 건너뜁니다. 태그되지 않은 줄은 아직 안정적인 identity가 없기 때문이며, stderr의 단일 요약에 그 수가 집계됩니다.
 
+0.51부터 `loc import`는 `kind: "directive"` 행을 받아들이며, 다른 모든 행과 마찬가지로 `lineId`를 키로 번들을 만듭니다. 알 수 없는 `kind`는 여전히 거부됩니다. `lineId`가 없는 directive 행(작성된 `code` 없음)은 태그 없는 다른 행처럼 건너뜁니다.
+
 ## loc report
 
 ```console
@@ -1138,6 +1168,8 @@ $ lute loc report [--project <DIR>] [--json]
 ```
 
 문서별 및 화자별 단어 수와 줄 수를 보고합니다. 같은 콘텐츠 줄을 대상으로 하는 제작 계획용 뷰입니다. 선택지 라벨은 개수(`choices`)만 세고 단어는 세지 않습니다. branch/hub 프롬프트는 개수(`prompts`, 0.47부터 — 보고서 버전 `0.47.0.loc-report`)를 세고, 그 단어는 문서 및 프로젝트 단어 합계에 포함됩니다(화자는 없습니다). `--json`은 사람이 읽는 표 대신 JSON으로 보고서를 출력합니다. 성공 시 **0**, I/O 오류 시 **2**입니다.
+
+0.51부터 디렉티브의 `text` 속성은 프롬프트처럼 집계됩니다. 그 단어는 문서 및 프로젝트 단어 합계에 포함되며(화자는 없습니다), `directiveTexts` 개수는 0이 아닐 때만 JSON과 사람이 읽는 출력에 나타납니다.
 
 ## --explain
 

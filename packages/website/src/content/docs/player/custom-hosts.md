@@ -315,7 +315,7 @@ The handler receives the typed `BridgeAwait` (`request`, `tag`, `document`, `pos
 
 ## Plugin records
 
-A non-blocking plugin directive reaches the host through `PlayerHost.plugin`, keyed by tag. The record becomes a waiting cue: the handler runs with a `PluginCall { tag, attrs, stamps?, document, position }` (`stamps` carries the command's plugin stamp attributes, separate from `attrs` and absent when it has none) at the record's place in the batch, the batch continues when it completes, and it runs in skip mode too (a game action is not presentation). Records of calls answered through a bridge are never handed to `plugin`. The cue factory returns exactly one cue per output event, in order, so a host may also wrap it.
+A non-blocking plugin directive reaches the host through `PlayerHost.plugin`, keyed by tag. The record becomes a waiting cue: the handler runs with a `PluginCall { tag, attrs, stamps?, localized?, raises?, document, position }` (`stamps` carries the command's plugin stamp attributes, separate from `attrs` and absent when it has none; `localized` and `raises` (0.51) are described under [Declared raises](#declared-raises) and [Locale](#locale-047), and are absent when the record has none) at the record's place in the batch, the batch continues when it completes, and it runs in skip mode too (a game action is not presentation). Records of calls answered through a bridge are never handed to `plugin`. The cue factory returns exactly one cue per output event, in order, so a host may also wrap it.
 
 `Director.make` accepts the same `bundle`, `bindings`, optional cue-factory
 wrapper, and `host` options, so a hand-composed director does not need a
@@ -324,6 +324,25 @@ second plugin-wiring call. If a pre-composed `Cues.make({ plugin })` and
 maps remain available and the duplicate runs only once. A pre-composed factory
 not built by `Cues.make` cannot take `host.plugin`: `Director.make` dies
 rather than drop the handlers — pass a wrapper instead.
+
+## Declared raises
+
+Since 0.51 a plugin directive or a reward kind may declare [`effects.raises`](/plugins/manifests/#declared-occasion-raises): occasions the **host** raises in answer to the call or the grant. The runtime raises nothing itself; it copies the resolved list (`raises: [{ occasion, target? }]`, with `occasion.target` already bound) onto the emitted `plugin` record and the `grant` record, and `PluginCall.raises?` hands it to a `plugin` handler. Raising it is the host's duty:
+
+- after the presentation that ran a directive call ends (`presentationEnd`), once the runtime is idle, send each listed occasion as a `raiseOccasion` input, in record order and list order;
+- after the output that carries a reward's `grant` record has been applied, do the same for its raises.
+
+The reference player does this with a **pending raise queue** in its session shell:
+
+- **Enqueue.** When an output is applied, the `raises` of its records are appended in record order and list order, each tagged with its source (`document`, `position`, and the output's input-log index). The output of a start (`newRun`, `toStart`, a lineage restore) is enqueued exactly once, like any other output.
+- **Drain boundary.** The director drains the queue at its presentation-settled boundary: after the batch that applied the output has settled and the runtime is idle, and **before** the host `idle` and the bindings' idle flow. Each step takes the head of the queue, removes it and sends it as a `raiseOccasion` input under the session lock, so a raise is delivered exactly once. A raise the runtime rejects is logged and dropped, not retried. The output of a raise may enqueue further raises; the drain continues until the queue is empty, then the idle flow runs.
+- **One rollback step per player input.** The checkpoint is the existing one taken before a player input is submitted, and it now also captures the pending queue. Automatic declared raises are sent through a path that does not append to history, so they never create a checkpoint of their own: `rollback(1)` undoes the player input and every raise it caused. Whether none, some or all of those raises had been delivered, `rollback(1)` restores the queue as it was before that input; replaying the input regenerates the raises, and each is delivered once. (`begin`'s `flow.newGame` raise keeps its own checkpoint, as before.)
+- **Starts.** An accepted `newRun`, `toStart` or lineage replacement clears the old pending raises before the new start output is enqueued; a rejected one leaves the queue as it was.
+- **Saves.** The runtime replays only the undelivered suffix of an output, so a raise delivered before a save cannot be rebuilt from the resumed output. The queue is therefore part of the player's state: `SaveRuntime` gains `pendingRaises`, each rollback point records the queue as it was before its player input, and `restore` and `rollback` reinstate it. A save of a project without declared raises writes `pendingRaises: []`. The save format is `"0.51"`, so `"0.50"` saves are refused, as every minor's are. The runtime `Contract.Snapshot` does not change.
+
+A host that composes its own session has the same duties: deliver each declared raise once after the settle point above, keep its own pending queue across saves and rollback, and drop a raise the runtime rejects.
+
+An occasion declared `raisedBy: declared` is raised only through declared raises, so a host must not raise it from its own configuration: a `bindings.flow.idle` or `bindings.flow.newGame` that raises such an occasion breaks the occasion's own declaration (see [Player bindings](/player/bindings/#flow-and-declared-occasions)).
 
 ## Idle flow
 
@@ -373,6 +392,8 @@ The locale is a setting (`settings.locale`), not a mount option. A loaded bundle
 For the current locale, the dialogue line (`texts[locale]`, `localeSegments[locale]`), choice and hub option labels (`texts[locale]`), branch and hub prompts (`promptTexts[locale]`) and the backlog read the translation and fall back to the source text; speaker names are not localized. `setSettings({ locale })` applies to the next text shown and to the backlog the next time it opens — no new game needed. The cue factory takes the locale per call, `fromOutput(output, readLines, locale)` and `choiceView(await, locale)`: a `cueFactory` wrapper or a custom factory receives it and passes it on.
 
 A dialogue line and a backlog entry take their translation from the runtime's `line` record, not from the compiled artifact: the record carries `texts` and `localeSegments` with every `{{…}}` marker already replaced by its value. A translation's marker gets the value the source line rendered for the marker with the same referent (the text inside `{{ }}`, trimmed), so a translator may reorder markers; a marker the source line does not have stays as written, and a translation may write `\{{` for a literal `{{` (lute 0.47.1). The record holds the decoded text; an engine that substitutes placeholders itself must apply the IR's escaped-interpolation reading (see [Localized text](/tooling/runtime-contract/#localized-text)). Option labels keep the 0.46 behaviour (their `{{…}}` markers are not rendered).
+
+A directive's `text` attributes (0.51, [`type: text`](/plugins/manifests/#localizable-text-attributes-type-text)) follow the same rules: the runtime renders each marker once and writes the rendered source into the record's `attrs.<attr>` and the rendered translations into `localized: { <attr>: { lineId, texts } }`. `PluginCall.localized?` is a `Readonly<Record<string, string>>` holding each `text` attribute in the player's current locale (`localized.<attr>.texts[locale]`, else `attrs.<attr>`), so a plugin handler shows the right language without reading the record. Host-token markers stay verbatim, as in a line. Locale discovery reads only each command's `texts` and `promptTexts`, each option's `texts`, and, for a `plugin` command, the keys of every `localized.<attr>.texts`; it never reads a `fields` or `stamps` map, so an attribute named `texts` or `promptTexts` is not misread, and a locale that translates only a directive's text is listed too.
 
 ## Rollback and history
 

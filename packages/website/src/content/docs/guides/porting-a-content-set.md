@@ -1,6 +1,6 @@
 ---
 title: Porting a content set
-description: "How to bring a large authored content set (a spreadsheet, another engine's export) into Lute with an importer: per-surface stamp columns, host tokens, reward effects, project diagnostic levels for an imported subtree, staging a speaker, and node lints for structural and dependent-attribute rules."
+description: "How to bring a large authored content set (a spreadsheet, another engine's export) into Lute with an importer: per-surface stamp columns, host tokens, reward effects, project diagnostic levels for an imported subtree, staging a speaker, node and pair lints for structural and dependent-attribute rules, bounded retry loops, scenes that a directive or reward raises, localizable directive text, and what structured values still lack."
 ---
 
 This guide is for a team that already has a content set in another shape (spreadsheet rows, an
@@ -21,6 +21,12 @@ lute lint  --project docs/examples/plugin-surfaces
 
 The plugin manifest vocabulary is on [Plugin manifests](/plugins/manifests/). This page collects the
 port recipes around it.
+
+Since 0.51 the guide also covers the problems that issues #159, #165, #170, #172 and #176 reported:
+[retry loops](#retry-loops-with-a-bounded-jump), [scenes that a directive or a reward raises](#scenes-that-a-directive-or-a-reward-raises),
+[directive text that players read](#text-in-a-directive-that-players-read), [balance rules](#balance-rules-with-pair) and
+[structured attribute values](#structured-values-are-not-supported-yet). The runnable project for these is
+[`docs/examples/flow-and-text/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text).
 
 ## Columns become stamps on the surface they belong to
 
@@ -537,8 +543,307 @@ lints:
     options: { keys: { plain: [L1, R1], timed: [T1] } }
 ```
 
-Balance rules (an opener that must be closed) are not `node` lints; a `pair` target is planned for a
-later release. See [Linting](/tooling/linting/) for the rest of `lute.lint.yaml`.
+### Balance rules with `pair`
+
+A balance rule is a rule about an opener that must be closed: `::group{mode="begin"}` and
+`::group{mode="end"}`, a window that opens and closes. It is a `target: pair` lint (since 0.51), in the same
+places as a `node` lint. A `pair` rule declares `open` and `close` predicates over the same `node` row, an
+optional `inside` predicate, and a `scope`; it has no `when`. A `pair` rule with a `when`, or any other rule
+with `open`, `close`, `inside` or `scope`, is `E-PLUGIN-PARSE` in a plugin's `lints:` and `E-LINT-CONFIG` in
+`lute.lint.yaml`.
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+lints:
+  - id: group-balanced
+    target: pair
+    open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'   # optional
+    scope: body                                                    # body (default) | section
+    level: error
+    message: "::group begin/end"
+```
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::group{mode="begin"}
+@mira: Look at this.
+@tomas: And this.
+::group{mode="end"}
+```
+
+That pair is balanced. Each scope runs one pass with one open slot:
+
+- **`scope: body`** (the default) pairs the direct children of each body, in order: the rows that are
+  siblings. **`scope: section`** pairs every row of one section or declaration in document order, at every
+  depth, so an `open` in one `<choice>` and a `close` in its sibling pair up. `section` is document order,
+  not paths.
+- A row for which `close` holds while a pair is open closes it. A row that satisfies both `open` and `close`
+  is a close while a pair is open, and an open otherwise.
+- A row for which `open` holds while a pair is open is a **nested open**: the outer pair stays open. A row
+  for which `close` holds with no pair open is an **unopened close**. At the end of the scope, an open pair
+  is an **unclosed open**.
+- With `inside`, every row strictly between an open and its close for which `inside` is false is an
+  **inside fault**. In `body` scope only siblings count, not their descendants.
+
+Each finding carries the rule's code and level, sits on the offending row, and appends a fixed phrase to
+the rule's `message`: ` — opened here, with no close in this body` (`in this section` for `section` scope),
+` — a close with no open pair in this body`, ` — opened again while the pair from line N is still open`, and
+` — not allowed inside the pair opened at line N`. A nested open and an inside fault name the open row as a
+related location.
+
+An `inside` violation: the `::bg` between the markers is not a line, `::actor` or `::sfx`, so the rule above
+reports it as not allowed inside the pair opened at line 1.
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::group{mode="begin"}
+@mira: Look at this.
+::bg{location="street" time="night"}
+::group{mode="end"}
+```
+
+A pair can span a branch. With `scope: section`, a begin before a `<branch>` and an end after it pair
+up, and so would a begin inside one `<choice>` and an end inside the next, which a `body` rule would report
+as an unclosed open and an unopened close:
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+lints:
+  - id: window-balanced
+    target: pair
+    open:   'node.tag == "window" && "mode" in node.attrs && node.attrs["mode"] == "open"'
+    close:  'node.tag == "window" && "mode" in node.attrs && node.attrs["mode"] == "close"'
+    scope: section
+    level: error
+    message: "::window open/close"
+```
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::window{mode="open"}
+<branch id="buy" prompt="Buy something?">
+  <choice id="yes" text="Yes">
+    @shopkeeper: Here you go.
+  </choice>
+  <choice id="no" text="No">
+    @shopkeeper: Next time.
+  </choice>
+</branch>
+::window{mode="close"}
+```
+
+The guard rule of the node lints holds here too: write `"mode" in node.attrs && …`, because a missing key in an
+unguarded predicate is `E-LINT-EXPR` and stops that rule for the document. Each row costs at most three
+predicate calls per `pair` rule. See [Linting](/tooling/linting/) for the rest of `lute.lint.yaml`.
+
+## Retry loops with a bounded `::jump`
+
+A sheet row like "play the minigame, and offer it again if the player fails, at most twice" is a loop. Before
+0.51 `::jump` could only go forward, so an importer unrolled the loop or hid it in a passthrough directive that no
+analysis could see. Since 0.51 a `::jump` that carries `max` may target an **earlier** `::label`:
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::label{name="attempt"}
+::tryLock{door="vault"}
+<match subject="scene.lock.vault.won">
+  <when is="false">
+    @mira: Again!
+    ::jump{to="attempt" max="2"}
+  </when>
+  <when is="true">
+    @mira: It clicks open.
+  </when>
+</match>
+@theo: That's enough for today.
+```
+
+`::tryLock` is a blocking bridge call that writes `scene.lock.vault.won` from the host's answer. `max` is the
+number of times the jump may be taken: after `max` takes it is not taken and control falls through to the next
+node, so this loop asks at most three times (once, then two retries).
+
+- **`max` is a literal integer from 1 to 99.** An `@ref`, `0`, a negative number or a number above 99 is
+  `E-JUMP-MAX`, since a loop bound is static. `max="two"` is only `E-ATTR-TYPE`. `max` on a jump that goes forward
+  is `E-JUMP-MAX` too, because it means nothing there. A backward jump without `max` stays `E-JUMP-BACKWARD`, and
+  its message now names `max` and the `<hub>` for offering choices again.
+- **`when=` and `max` combine:** the jump is taken while `when` holds and takes remain.
+- **A loop stays in one body.** The label must be in the jump's own body, or in a body that encloses it through
+  `<choice>` bodies of a `<branch>` or `<match>` arms only. A label outside the `<hub>` option the jump is in, or a
+  region that contains an `<on>` or `<objective>`, is `E-JUMP-LOOP-SCOPE`.
+- **A loop is entered only at its head.** A forward jump from outside to a label inside the loop after its head is
+  `E-JUMP-INTO-LOOP`. A forward jump to the head, and a jump out of the loop, are fine.
+- **Loops nest, they never cross.** Two loops either nest or are disjoint, or it is `E-JUMP-LOOP-CROSS` at the later
+  jump. Two bounded jumps may share one head, each with its own counter.
+
+A nested loop counts for itself. The inner counter returns to 0 every time control reaches the inner head from
+outside the inner loop, so an inner `max="2"` inside an outer `max="1"` runs the inner body three times in each of
+the two rounds:
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::label{name="round"}
+@theo: A new round.
+::label{name="knock"}
+@theo: Knock.
+::jump{to="knock" max="2"}
+@theo: Round done.
+::jump{to="round" max="1"}
+```
+
+Between two takes, control moves only forward, so a region of nesting depth *d* runs at most the product of
+(`max` + 1) over its enclosing jumps: every walk ends without the player's help, and the analyses stay finite.
+
+Every flow analysis joins the states of all jumps that reach a label, forward and backward, and iterates a loop head
+until it is stable. A read after a label that a jump skipped a `::set` to is `E-MAYBE-UNSET`, a jump past a
+re-entrance is `W-STAGE-ABSENT`, and a bounded jump does not end its body (`W-CODE-AFTER-JUMP` stays quiet; its
+exhaustion falls through). That also fixes two gaps for forward jumps, so a document that jumps over a write may gain
+an `E-MAYBE-UNSET` it did not have in 0.50.
+
+For play and tests: counters are local to one walk and rebuilt by replay, so a save needs nothing new. A `<branch>`
+reached again in a later iteration is a new menu, and a scripted `choose:` list for it is consumed one decision per
+presentation (`choose: { retry: [yes, yes, no] }` drives three iterations). A `<hub>` inside a loop starts each
+visit at its first presentation. `lute trace` prints `jump → attempt (again 1/2)` and
+`jump → attempt not taken (2/2 used)`.
+
+Use a loop for "the same stretch again, a bounded number of times". Use a `<hub>` to offer a menu again until the
+player takes an `exit` choice.
+
+## Scenes that a directive or a reward raises
+
+A sheet row "play cutscene X" does not run the cutscene. The host does, by raising an occasion that the scene
+answers. Lute does not raise occasions (that is a host duty), so before 0.51 the scene that answered it had no
+edge from the row that caused it, and the scenario graph could not order them. Since 0.51 a directive or a
+reward kind declares the occasions the host raises in answer to it, and an occasion can say that only declared
+raises ever raise it:
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+# plugins/acme.flow/occasions/occasions.yaml
+occasions:
+  cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
+# plugins/acme.flow/directives/flow.yaml
+directives:
+  - name: playScene
+    attrs:
+      - { name: scene, required: true, type: { entity: cutsceneId } }
+    effects:
+      raises: [{ occasion: cutscene, target: "@scene" }]
+# plugins/acme.flow/rewardkinds/rewards.yaml
+rewardKinds:
+  CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }
+```
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+---
+kind: scene
+id: chapter2
+on: cutscene
+target: scene.chapter2
+---
+```
+
+`::playScene{scene="chapter2"}` in a scene, or a `<reward kind="CUTSCENE" target="chapter2"/>` in a quest, now
+raises `cutscene` for `scene.chapter2`.
+
+- **`effects.raises`** is a non-empty list of `{ occasion, target? }`, beside `writes`/`asserts`/`retracts` on a
+  directive and `asserts`/`retracts`/`accepts` on a reward kind. A reward kind may declare only `raises`. The
+  `target` is `@<attr>` on a directive (a declared attribute), `@target` on a reward kind (the reward's `target=`), or
+  a literal target written whole (`scene.chapter2`); it is absent only for an occasion declared without a target.
+- **`raisedBy: declared`** on an occasion says the host raises it only where a declared `raises` says so. Without it
+  a declared raise is recorded and checked but draws no graph edge.
+- A shape fault is `E-PLUGIN-PARSE` at load. A directive that has a `lower:` compiles to a record that carries no
+  effects, so its `raises` could never reach the host: `E-PLUGIN-INVALID-DIRECTIVE`. At assembly, `E-PLUGIN-RAISES`
+  checks the occasion (with a did-you-mean) and the target's shape and type against it. The occasion may come from
+  another plugin, which then belongs in `depends:`.
+- In `check --project`, `E-RAISES-TARGET` checks each resolved target: a member of the entity kind, and answered by
+  some scene or beat. The value is the call's attribute, else the attribute's `default:`; a target with no value
+  raises nothing, and one that reads `occasion.target` is dynamic and not judged.
+- `W-OCCASION-NEVER-RAISED` warns at a scene or beat that answers a `raisedBy: declared` occasion that no
+  `effects.raises` in the project reaches. A `lute play` step that raises it is not a source, and an occasion the
+  project clock raises is never warned about. Re-level it in `lute.project.yaml` `diagnostics:` like any `W-*` code.
+
+Every analysis reads a declared raise as **possible, never guaranteed**: the host may refuse it at the occasion's
+gate, so a raise adds no fact, write or must-claim in the answering scene. `lute scenario`, `lute impact` and
+`lute scenario reach` draw a `[raises]` edge from the raiser to every answering scene and beat, and a scene that
+declares `after:` keeps `after:` as its route:
+
+<!-- rerun-after-S8 -->
+```console
+scene(lock) -> scene(chapter2) [raises]
+quest(finale) -> scene(chapter2) [raises]
+```
+
+The host performs the raise. After the presentation that ran the call ends, it sends each raise as a
+`raiseOccasion` input once the runtime is idle, in record order. For a reward it does so after settling the grant.
+The compiled `plugin` and `grant` records carry the resolved `raises`, and `lute play` prints
+`  → raises cutscene scene.chapter2` on those lines. The reference player performs them for you, keeps the pending
+ones in saves and rollback points, and a custom host does the same (see [Custom hosts](/player/custom-hosts/)).
+`lute play` does not raise by itself: a script raises the occasion as its next step.
+
+## Text in a directive that players read
+
+A staged banner, a toast or a chapter title is text a player reads, so it must be translatable. Declare such an
+attribute `type: text`:
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+directives:
+  - name: banner
+    attrs:
+      - { name: title,    required: true, type: text }
+      - { name: subtitle, type: text }
+      - { name: style,    type: { enum: [toast, card] } }
+```
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
+```
+
+- A `text` value is a quoted string in the choice-label grammar: `{{…}}` interpolations of state paths, `@def`s and
+  host tokens, each checked as in a label, and `\{{` for a literal brace. An `@ref` value is `E-ATTR-TYPE`.
+- `text` is admitted only on an attribute of a directive that stays a `plugin` record: no `lower:` and no
+  `bridge:`. It cannot have a `default:`, and it is not a type for stamps, plugin options, payloads or reward-kind
+  attributes. A directive with a `text` attribute cannot declare an attribute named `code`. Each fault is
+  `E-PLUGIN-PARSE` at the attribute, and a scoped stamp named `code` on such a directive is
+  `E-PLUGIN-RESERVED-STAMP-ATTR`.
+- **`code=`** is the identity of such a directive, as on a line. The `lineId` of each text attribute is
+  `{prefix}~{tag}~{code}~{attr}`: `hall~banner~0010~title`. `~` is reserved for these ids, so a `code` that contains it
+  is `E-LINE-CODE-RESERVED` and a `lineId` template that contains it is `E-IDENTITY-TEMPLATE`. Two `::banner` calls
+  in one scope with the same `code` are `E-DUP-LINE-CODE`, and two units anywhere in the project with one final
+  `lineId` are `E-LINE-ID-DUP`. `code=` on a directive without a `text` attribute is `E-UNKNOWN-ATTR`.
+- **`lute tag`** writes `code="…"` into every untagged directive that has a `text` attribute, in the order the
+  compiler back-fills. With `identity.requireStable`, `W-LINE-CODE-UNTAGGED` reports one without a code.
+
+The translation round trip is the one lines already use, and a text attribute is one more row kind:
+
+```sh
+lute tag scenes
+lute loc export --project . -o export/en.json
+# copy it to export/ko.json (the file stem is the locale) and translate the "text" values,
+# keeping every {{…}} marker
+lute loc import export/ko.json -o loc/ko.json          # the locale bundle
+lute compile scenes/hall.lute --project . --locale-bundle loc/ko.json
+```
+
+An exported row is `{ "kind": "directive", "lineId": "hall~banner~0010~title", "key": "banner.title", … }`. Its
+`lineId` is `null` until the directive has a `code`, so run `lute tag` first. `lute loc report` counts directive
+texts (`directiveTexts`) with the prompts. In the compiled `plugin` record, `fields.title` keeps the source text,
+markers as authored, and `localized.title` carries `{ lineId, placeholders, texts }` with the translations merged in. A missing
+locale is `W-L10N-MISSING` and a changed source is `W-L10N-STALE`, as for a line. The runtime renders the markers
+(a host token stays verbatim), and the reference player's `PluginCall.localized` gives a host handler each text in the
+player's locale.
+
+## Structured values are not supported yet
+
+A column that holds a list or a record (a tag list, a voice-asset map keyed by language) does not fit a directive
+attribute. `list`, `map` and `record` attribute and stamp types stay refused with `E-PLUGIN-INVALID-DIRECTIVE`,
+because no `.lute` value can satisfy them. Structured authoring (#176) is **deferred, not covered**: there is no
+spelling in 0.51 for generic enum-list metadata such as `::tagged{tags=…}`, and none for a voice-asset map keyed by
+language. One voice key per line, resolved without a locale, is not a per-language asset map.
+
+Where a scalar decomposition fits, use it:
+
+| The row has | Write |
+|---|---|
+| a few named fields | one attribute per field; scope a stamp to the surface with `on:` |
+| text a player reads, in several languages | one `text` attribute |
+| a list that really is a set of options | `<choice>` elements |
+
+The refusal message says the same: give each field its own attribute, use a `text` attribute for player-visible
+text, or write a list of options as `<choice>` elements. For a stamp the `text` clause is omitted, since a stamp cannot be `text`.
 
 ## What the tool catches, and what it does not
 
@@ -557,6 +862,13 @@ later release. See [Linting](/tooling/linting/) for the rest of `lute.lint.yaml`
 | A warning flood in an imported subtree | `diagnostics:` with `paths:`, counted in the summary |
 | A speaker shown off stage | `W-STAGE-ABSENT`, unless the importer emits the staging row |
 | A structural or dependent-value rule | a `node` lint |
+| A loop the checker could not see | `::jump{max}` with `E-JUMP-MAX`, `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP`, `E-JUMP-LOOP-CROSS` |
+| A scene that nothing raises | `W-OCCASION-NEVER-RAISED`; a mistyped raise target is `E-RAISES-TARGET` |
+| A raise of an occasion no plugin declares | `E-PLUGIN-RAISES`, with a did-you-mean |
+| Player-visible directive text that cannot be translated | `type: text`, `lute tag` and `lute loc` |
+| Two translation units with one id | `E-LINE-ID-DUP`; `~` in a `code` is `E-LINE-CODE-RESERVED` |
+| An opener that is never closed | a `pair` lint |
+| A list or record column | refused; use scalar decompositions |
 
 What Lute does **not** know:
 
@@ -566,3 +878,7 @@ What Lute does **not** know:
   host forgets, the marker stays in the text.
 - **Whether a quiet subtree is correct.** `off` hides a warning; it does not fix the row. Keep the
   `paths:` globs narrow, and delete the entry when the review is done.
+- **Whether the host performs a declared raise.** A `raises` entry is a promise about the host, never a guarantee
+  that the scene plays: the occasion's gate may refuse it.
+- **Whether a translation is right.** `W-L10N-STALE` says the source changed after the export; it does not read the
+  translation.

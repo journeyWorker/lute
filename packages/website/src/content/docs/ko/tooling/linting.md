@@ -58,8 +58,8 @@ Core 규칙 id는 bare kebab-case입니다. 플러그인 규칙 id는 `<plugin-i
 | 키 | 필수 | 의미 |
 | --- | --- | --- |
 | `id` | 예 | 프로젝트 로컬 bare 규칙 id입니다. |
-| `target` | 예 | `line`, `section`, `scene`, `speaker`, `group`, `project`, `node`(0.50부터) 중 하나입니다. |
-| `when` | 예 | 대상 행과 `options`에 대한 CEL assertion이며 `true`일 때 실행됩니다. |
+| `target` | 예 | `line`, `section`, `scene`, `speaker`, `group`, `project`, `node`(0.50부터), `pair`(0.51부터) 중 하나입니다. |
+| `when` | 예(`pair` 제외) | 대상 행과 `options`에 대한 CEL assertion이며 `true`일 때 실행됩니다. `pair` 규칙은 `when` 대신 `open`과 `close`를 받고 `when`은 거부합니다([`pair` lint](#pair-lint-051부터) 참고). |
 | `level` | 아니요 | `off`, `hint`, `info`, `warn`, `error`입니다. |
 | `message` | 예 | 결과 텍스트입니다. `{path.to.field}`는 metric 또는 option 경로를 보간합니다. 숫자는 끝의 `.0`을 제거하고 최대 두 자리로 반올림하여 출력하므로 ratio `3.3333…`은 `3.33`으로 표시됩니다. `{expr:%}`는 share를 반올림한 백분율로 출력합니다. |
 | `options` | 아니요 | `when`과 message에 노출되는 기본값입니다. |
@@ -184,6 +184,114 @@ lints:
 
 의존 attribute, discriminator 또는 marker가 없는 노드(`interaction` 없는 `preceding`, `kind` 없는 marker, `menuType` 없는 parent)에서는 결과도 `E-LINT-EXPR`도 없습니다. 멤버십 검사 없이 `node.attrs["mode"]`를 인덱싱하는 가드 없는 변형은 `mode`가 없는 노드에서 `E-LINT-EXPR`를 보고하며, 이것이 가드가 있는 이유입니다.
 
+## `pair` lint (0.51부터)
+
+`target: pair`(플러그인 `lints:` export와 `lute.lint.yaml`의 `custom:` 규칙에서 유효)는 두 종류의 노드가 짝을 이루어 균형을 맞추는지 검사합니다. `begin`과 그에 맞는 `end`, 즉 open과 close입니다. 플러그인이 디렉티브 두 개로 표시하는 마커를 위한 것이며, `node` 규칙이나 메트릭 표로는 이런 짝을 맞출 수 없습니다.
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+lints:
+  - id: group-balanced
+    target: pair
+    open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'   # optional
+    scope: body                                                    # body (default) | section
+    level: error
+    message: "::group begin/end"
+```
+
+| 키 | 필수 | 의미 |
+| --- | --- | --- |
+| `open` | 예 | [`node` 행](#node-lint-050부터)에 대한 lint-CEL 술어입니다. 짝을 여는 노드에서 성립합니다. |
+| `close` | 예 | 같은 형태이며, 짝을 닫는 노드에서 성립합니다. |
+| `inside` | 아니요 | open과 그 close 사이에 엄격히 놓인 모든 노드가 만족해야 하는 술어입니다. |
+| `scope` | 아니요 | `body`(기본값) 또는 `section`입니다. 아래를 참고하세요. |
+
+`open`, `close`, `inside`는 `node` 규칙과 같은 `node` 행(`kind`, `tag`, `speaker`, 작성된 그대로의 `attrs`, `index`, `first`, `last`, `depth`, `prev`, `next`, `parent`, `preceding`, `section`)과 `scene`, `options` binding, 문자열 멤버를 읽습니다. 없는 키는 CEL 의미를 유지하므로(`E-LINT-EXPR`) [레시피](#레시피)처럼 모든 인덱스를 가드하세요. 로더가 형태를 강제합니다. `pair`에서는 `open`과 `close`가 필수이고 `when`은 거부되며, 다른 모든 대상에서는 `open`, `close`, `inside`, `scope`가 거부됩니다. 위반은 플러그인 `lints:`에서는 `E-PLUGIN-PARSE`, `lute.lint.yaml`의 `custom:`에서는 `E-LINT-CONFIG`입니다.
+
+### 평가
+
+규칙은 scope마다 **열린 슬롯 하나**를 유지하며, scope의 노드를 문서 순서로 한 번 훑습니다.
+
+- **`scope: body`**(기본값): 각 body의 직계 자식을 순서대로 봅니다. 형제만 해당합니다. 모든 body(섹션, `<choice>`, `<match>` arm)가 각각 하나의 scope입니다.
+- **`scope: section`**: 한 섹션 또는 최상위 선언의 모든 노드를 모든 깊이에서 문서 순서로 봅니다. `node.preceding`이 초기화되는 단위입니다. 경로가 아니라 문서 순서이므로, 한 `<choice>`의 `open`은 형제 choice의 `close`와 짝을 이룹니다.
+
+각 노드에 대해:
+
+- 짝이 열려 있는 동안 `close`가 성립하는 노드는 그 짝을 **닫습니다**. `open`과 `close`를 모두 만족하는 노드는 짝이 열려 있으면 close이고, 아니면 open입니다.
+- 짝이 열려 있는 동안 `open`이 성립하는 노드는 **중첩 open**이며, 바깥 짝은 열린 채로 남습니다.
+- 열린 짝이 없는데 `close`가 성립하는 노드는 **열리지 않은 close**입니다.
+- `inside`가 있으면, open과 그 close 사이에 엄격히 놓인 노드 중 `inside`가 거짓인 노드는 모두 **inside 위반**입니다(`body` scope에서는 형제만 해당하며 그 자손은 해당하지 않습니다).
+- scope가 끝났을 때 아직 열려 있는 짝은 **닫히지 않은 open**입니다.
+
+결과는 규칙의 코드와 수준을 가지며 문제가 된 노드를 가리키고, 렌더링된 `message` 뒤에 고정된 문구 하나가 붙습니다.
+
+| 위반 | 덧붙는 문구 |
+| --- | --- |
+| 닫히지 않은 open | `` — opened here, with no close in this body `` (`scope: section`에서는 `in this section`) |
+| 열리지 않은 close | `` — a close with no open pair in this body `` |
+| 중첩 open | `` — opened again while the pair from line N is still open `` |
+| inside 위반 | `` — not allowed inside the pair opened at line N `` |
+
+중첩 open과 inside 결과는 open 노드를 `related`로도 가리킵니다.
+
+위 규칙에 다음 body를 적용해 보겠습니다. `::group`이 닫히지 않습니다.
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::group{mode="begin"}
+@narrator: The crowd gathers.
+@narrator: Nobody speaks.
+```
+
+`group-balanced`(코드 `L-GROUP-BALANCED`)는 `begin`에서 `::group begin/end — opened here, with no close in this body`를 보고합니다. begin 없는 `::group{mode="end"}`는 `::group begin/end — a close with no open pair in this body`, `end` 전에 나온 두 번째 `begin`은 `::group begin/end — opened again while the pair from line N is still open`으로 읽힙니다.
+
+### `inside` 규칙
+
+`inside`는 마커 사이에 놓일 수 있는 것을 제한합니다. 위의 `inside` 술어(줄, `::actor`, `::sfx`)에서는 마커 사이의 다른 디렉티브가 모두 위반입니다.
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::group{mode="begin"}
+@narrator: The crowd gathers.
+::bg{assetId="street.night"}
+::group{mode="end"}
+```
+
+`::bg`는 `::group begin/end — not allowed inside the pair opened at line 1`로 보고되며, `begin`이 `related`입니다.
+
+### `section` scope 짝
+
+`scope: body`에서는 `<branch>` 앞의 `begin`과 choice 안의 `end`가 서로 다른 body에 있습니다. `begin`은 닫히지 않은 open, `end`는 열리지 않은 close가 됩니다. `scope: section`은 문서 순서로 branch를 가로질러 둘을 짝짓습니다.
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+lints:
+  - id: fx-balanced
+    target: pair
+    open:   'node.tag == "fx" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "fx" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    scope: section
+    level: warn
+    message: "::fx begin/end"
+```
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::fx{mode="begin"}
+<branch id="ask">
+  <choice id="stay" text="Stay">
+    @narrator: You stay.
+    ::fx{mode="end"}
+  </choice>
+  <choice id="go" text="Go">
+    @narrator: You go.
+  </choice>
+</branch>
+```
+
+이 짝은 문서 순서로 균형이 맞으므로 결과가 없습니다. 섹션의 슬롯은 다음 `##` 제목이나 선언에서 초기화되므로, 거기까지 열려 있는 `begin`은 닫히지 않은 open(`in this section`)입니다.
+
+### 실행 위치와 비용
+
+`pair` 규칙은 `node` 규칙과 같은 노드 순회에서 `lute lint`와 언어 서버 모두 실행되며, 각 규칙은 노드마다 그 자리에서 평가되고 노드별로 저장되는 것은 없습니다. 순회는 `node` 또는 `pair` 규칙이 활성일 때 실행됩니다. 규칙의 술어에서 처음 나온 `E-LINT-EXPR`는 `node` 규칙과 마찬가지로 그 문서에 대해 해당 규칙을 중단시킵니다. 상태 기계 자체의 오버헤드는 선형입니다. `pair` 규칙마다 노드당 술어 호출은 최대 세 번이고 슬롯 작업은 상수입니다. 술어가 하는 일은 선형이라고 주장하지 않습니다. 예를 들어 긴 문자열의 `size()`는 문자 단위로 세므로, N개 노드마다 N자를 읽는 술어의 비용은 N²입니다. 작업 카운터가 이 둘을 구분해 보고합니다. `pair_evals`(술어 호출 횟수), `pair_slots`(슬롯 열기·닫기와 프레임 push), 문자열 연산이 훑는 문자 수를 세는 `eval_chars`입니다. `pair` 규칙은 IR, 이벤트, snapshot, `capabilitySnapshot`을 바꾸지 않으며 semantic id도 없습니다.
+
 ## Metric table
 
 규칙은 실행마다 한 번 계산되는 팩트를 검사합니다. 단어 수는 줄 텍스트를 whitespace로 나누며(각 interpolation은 token 하나로 셈), 문자 수는 Unicode scalar 수입니다.
@@ -283,7 +391,7 @@ lints:
 
 로더는 `id`를 원문 그대로 유지합니다. 플러그인 id가 `my-plugin`이면 활성 규칙 id는 `my-plugin/variant-coverage`이며, 사용자가 `rules:` 아래에 넣는 이름이자 진단 코드의 기반입니다. 잘못된 플러그인 항목은 로드 시 `E-LINT-RULE`이며 건너뜁니다. 플러그인 규칙은 프로젝트의 **기본 프로필** 활성화에서 옵니다. 프로젝트 루트마다 규칙 집합 하나를 모든 문서에 적용합니다(문서별 프로필 활성화는 향후 개선 사항입니다).
 
-플러그인 규칙은 고정된 코어 계산 메트릭 표에 대해 단언할 때만 데이터로 취급됩니다. 규칙에 다른 메트릭, 순회, 순서 규칙 또는 평가 기본 요소가 필요하면 YAML 확장이 아니라 코어 변경입니다. 구조 술어(노드가 무엇인지, 주변에 무엇이 있는지, 작가가 어떤 attribute를 썼는지)는 [`node` 대상](#node-lint-0050부터)이 맡고, 균형 검사(`pair`)는 0.51입니다. 플러그인 lint 선언은 자문용이며 capability snapshot과 `capabilitySnapshot` 모두에서 제외됩니다.
+플러그인 규칙은 고정된 코어 계산 메트릭 표에 대해 단언할 때만 데이터로 취급됩니다. 규칙에 다른 메트릭, 순회, 순서 규칙 또는 평가 기본 요소가 필요하면 YAML 확장이 아니라 코어 변경입니다. 구조 술어(노드가 무엇인지, 주변에 무엇이 있는지, 작가가 어떤 attribute를 썼는지)는 [`node` 대상](#node-lint-050부터)이 맡고, 균형 검사는 [`pair` 대상](#pair-lint-051부터)(0.51)이 맡습니다. 플러그인 lint 선언은 자문용이며 capability snapshot과 `capabilitySnapshot` 모두에서 제외됩니다.
 
 ## 코드, 거부 및 종료 상태
 

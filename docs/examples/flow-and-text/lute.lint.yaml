@@ -1,0 +1,13 @@
+# A pair lint (0.51): every `::group{mode="begin"}` must be closed by a
+# `::group{mode="end"}` in the same body, and only lines, `::actor` and `::sfx`
+# may sit between them. Every index is guarded, so a `::group` without a mode
+# raises no E-LINT-EXPR.
+custom:
+  - id: group-balanced
+    target: pair
+    open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'
+    scope: body
+    level: error
+    message: "::group begin/end"

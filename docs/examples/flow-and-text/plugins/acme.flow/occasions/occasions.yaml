@@ -1,0 +1,6 @@
+occasions:
+  # An ordinary occasion: the host may raise it at any time.
+  start: { select: first }
+  # 0.51: raised only through a declared `effects.raises` (`::playScene`, the
+  # `CUTSCENE` reward kind). Its target is `scene.<cutsceneId member>`.
+  cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }

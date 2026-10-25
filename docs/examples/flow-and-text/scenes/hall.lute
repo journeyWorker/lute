@@ -1,0 +1,22 @@
+---
+kind: scene
+id: hall
+title: The hall
+---
+/*
+Directive text (0.51). `title` and `subtitle` of `::banner` are `type: text`:
+their `code` is `0010`, so their lineIds are `hall~banner~0010~title` and
+`hall~banner~0010~subtitle`, and loc/ko.json translates them. `{{userName}}` is
+the core host token: the runtime keeps the marker, and the host substitutes it.
+
+The `::group` markers are balanced by the `pair` lint in lute.lint.yaml. Only
+lines (and `::actor`, `::sfx`) may sit between them.
+*/
+
+## The hall {#hall}
+
+::banner{code="0010" title="Welcome to the hall, {{userName}}" subtitle="Third floor"}
+::group{mode="begin"}
+@mira{code="0010"}: Welcome back.
+@theo{code="0010"}: The lamps are lit.
+::group{mode="end"}
