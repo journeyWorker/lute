@@ -17,10 +17,9 @@
 //! **By reference** (dsl 0.50.0 §8.1 "Cost"). A select/index chain rooted at
 //! a binding resolves to a [`Ref`] into the bound value: reading
 //! `node.attrs["x"]` copies neither the row nor its attribute map. A binding
-//! may also be a [`Record`], a host structure that answers one field at a
-//! time (the `node` row and its `preceding` scope); it becomes a [`Value`]
-//! only when a rule reads it whole (`size(node.preceding)`, comparing or
-//! rendering it).
+//! may also be a [`Record`], a host structure that answers one field (or its
+//! size) at a time (the `node` row and its `preceding` scope); it becomes a
+//! [`Value`] only when a rule reads it whole (comparing or rendering it).
 //!
 //! [`apply_op`]: lute_check::apply_op
 
@@ -80,12 +79,18 @@ impl Value {
 }
 
 /// A map-shaped structure the evaluator reads one field at a time. Its
-/// fields are never copied by a select, an index or an `in` test; only
-/// [`Record::materialize`] builds the whole map, for a rule that reads it
-/// whole.
+/// fields are never copied by a select, an index, an `in` test or `size()`;
+/// only [`Record::materialize`] builds the whole map, for a rule that reads
+/// it whole otherwise (rendering or comparing it).
 pub trait Record {
     /// The field `key`, or `None` when the record has no such key.
     fn field(&self, key: &str) -> Option<Ref<'_>>;
+    /// The number of fields (`size()`), without building the map.
+    fn len(&self) -> usize;
+    /// Whether the record has no field.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
     /// Every field, as one map value.
     fn materialize(&self) -> Value;
 }
@@ -353,16 +358,14 @@ fn eval_call<'e>(c: &CallExpr, env: &'e Env<'_>) -> Result<Ref<'e>, EvalError> {
         }
         ("size", [x]) => {
             let v = resolve(&x.expr, env)?;
-            let len = match v.as_value().as_ref() {
-                Value::Str(s) => s.chars().count(),
-                Value::List(l) => l.len(),
-                Value::Map(m) => m.len(),
-                other => {
-                    return Err(EvalError::new(format!(
-                        "size() on {} value",
-                        other.type_name()
-                    )))
-                }
+            let len = match &v {
+                Ref::Record(r) => r.len(),
+                v => match v.value() {
+                    Some(Value::Str(s)) => s.chars().count(),
+                    Some(Value::List(l)) => l.len(),
+                    Some(Value::Map(m)) => m.len(),
+                    _ => return Err(EvalError::new(format!("size() on {} value", v.type_name()))),
+                },
             };
             Ok(Ref::Owned(Value::Int(
                 i64::try_from(len).expect("a length is at most isize::MAX"),
@@ -838,6 +841,12 @@ mod tests {
                 _ => None,
             }
         }
+        fn len(&self) -> usize {
+            match &self.inner {
+                Value::Map(m) => m.len(),
+                _ => 0,
+            }
+        }
         fn materialize(&self) -> Value {
             self.reads.set(self.reads.get() + 1);
             self.inner.clone()
@@ -865,6 +874,8 @@ mod tests {
         assert_eq!(render_message("{scope.t.k}", &e), "v");
         assert_eq!(scope.reads.get(), 0);
         assert_eq!(run("size(scope)", &e), Ok(Value::Int(1)));
+        assert_eq!(scope.reads.get(), 0, "size() reads the record's length");
+        assert_eq!(render_message("{scope}", &e), "t");
         assert_eq!(scope.reads.get(), 1);
         assert_eq!(
             run(r#"scope["u"]"#, &e),

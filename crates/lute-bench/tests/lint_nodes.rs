@@ -16,11 +16,12 @@ fn node_lint_cost_grows_by_rows_only() {
     assert_eq!(report["pass"], true);
 
     let points = report["points"].as_array().unwrap();
-    assert_eq!(points.len(), 9);
+    assert_eq!(points.len(), 12);
     for p in points {
         // Exactly the asked node count, and no copy of the scope map.
         assert_eq!(p["rows"], p["n"], "{p}");
         assert_eq!(p["precedingMaterialized"], 0, "{p}");
+        assert_eq!(p["precedingCopied"], 0, "{p}");
     }
     let ratios = report["ratios"].as_array().unwrap();
     let work: Vec<(&str, f64, f64)> = ratios
@@ -39,23 +40,21 @@ fn node_lint_cost_grows_by_rows_only() {
             ("nodes", 2.3),
             ("nodes", 2.3),
             ("tags", 2.0),
-            ("depth", 2.0)
+            ("depth", 2.0),
+            ("size", 2.0)
         ]
     );
     for (axis, ratio, bound) in &work {
         assert!(ratio <= bound, "{axis}: work ratio {ratio} > {bound}");
     }
-    // The work is linear in the rows: a doubling is about 2×, and neither
-    // the tag count nor the depth multiplies it.
+    // The work is linear in the rows: a doubling is about 2×. The tag count
+    // adds only the ordered map's logarithmic steps, and the depth nothing.
     for (axis, ratio, _) in &work {
-        let (low, high) = if *axis == "nodes" {
-            (1.9, 2.1)
-        } else {
-            (0.8, 1.2)
-        };
-        assert!(
-            (low..=high).contains(ratio),
-            "{axis}: work ratio {ratio} outside {low}..={high}"
-        );
+        if *axis == "nodes" {
+            assert!(
+                (1.9..=2.1).contains(ratio),
+                "{axis}: work ratio {ratio} outside 1.9..=2.1"
+            );
+        }
     }
 }

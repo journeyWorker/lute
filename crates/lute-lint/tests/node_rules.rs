@@ -316,8 +316,9 @@ fn reward_amount_is_read_as_written() {
     );
 }
 
-/// The `preceding` view is never copied: a rule reading it by key builds
-/// no map, and a whole-map read builds one per row that reads it.
+/// The `preceding` view is never copied: a rule reading it by key or by
+/// `size()` builds no map, and a whole read (rendering it) builds one per
+/// row that reads it, each copying every entry and its attributes.
 #[test]
 fn preceding_is_materialized_only_by_a_whole_map_read() {
     let src = format!(
@@ -331,7 +332,8 @@ fn preceding_is_materialized_only_by_a_whole_map_read() {
     assert_eq!(keyed.node_stats.rows, 4);
     assert!(keyed.node_stats.preceding_lookups > 0);
     assert_eq!(keyed.node_stats.preceding_materialized, 0);
-    let whole = run(
+    assert_eq!(keyed.node_stats.preceding_copied, 0);
+    let sized = run(
         &src,
         &[node_rule(
             "scope-size",
@@ -339,14 +341,37 @@ fn preceding_is_materialized_only_by_a_whole_map_read() {
             "{node.tag}",
         )],
     );
+    assert_eq!(sized.node_stats.preceding_materialized, 0);
+    let messages = |outcome: &LintOutcome, code: &str| -> Vec<(u32, String)> {
+        outcome
+            .diagnostics
+            .iter()
+            .filter(|(_, d)| d.code == code)
+            .map(|(_, d)| (d.span.line, d.message.clone()))
+            .collect()
+    };
+    assert_eq!(
+        messages(&sized, "L-SCOPE-SIZE"),
+        [(8, "choice".to_string()), (9, "option".to_string())]
+    );
+    let whole = run(
+        &src,
+        &[node_rule("scope-shown", "true", "{node.preceding}")],
+    );
     assert_eq!(whole.node_stats.preceding_materialized, 4);
-    let sizes: Vec<_> = whole
-        .diagnostics
-        .iter()
-        .filter(|(_, d)| d.code == "L-SCOPE-SIZE")
-        .map(|(_, d)| (d.span.line, d.message.as_str()))
-        .collect();
-    assert_eq!(sizes, [(8, "choice"), (9, "option")]);
+    // Entries plus their attributes: {} / interaction{kind} /
+    // + branch{id} / + choice{id,text} = 0 + 2 + 4 + 7.
+    assert_eq!(whole.node_stats.preceding_copied, 13);
+    assert!(whole.node_stats.work() > sized.node_stats.work());
+    assert_eq!(
+        messages(&whole, "L-SCOPE-SHOWN"),
+        [
+            (6, String::new()),
+            (7, "interaction".to_string()),
+            (8, "branch, interaction".to_string()),
+            (9, "branch, choice, interaction".to_string()),
+        ]
+    );
     assert_eq!(run(&src, &[]).node_stats, Default::default());
 }
 

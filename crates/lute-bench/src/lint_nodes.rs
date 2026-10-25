@@ -1,19 +1,25 @@
 //! `lute-bench lint-nodes`: the `node` lint cost grid (dsl 0.50.0 §8.1).
 //!
-//! Generated documents, one `node` rule reading `preceding` by key. Three
-//! axes, each with the other two fixed:
+//! Generated documents, one `node` rule reading `preceding`. Four axes, each
+//! with the others fixed:
 //!
 //! - node count N ∈ {5 000, 10 000, 20 000} at T = 10 tags, depth D = 3:
 //!   each doubling costs ≤ 2.3×;
 //! - distinct tags T ∈ {10, 100, 1 000} at N = 10 000, D = 3: 10 → 1 000
 //!   costs ≤ 2×;
-//! - depth D ∈ {2, 8, 32} at N = 10 000, T = 10: 2 → 32 costs ≤ 2×.
+//! - depth D ∈ {2, 8, 32} at N = 10 000, T = 10: 2 → 32 costs ≤ 2×;
+//! - `size`: a rule reading `size(node.preceding)` at every row, T ∈ {10,
+//!   1 000, 10 000} at N = 10 000, D = 3 — every directive a distinct tag at
+//!   the last point, so the scope grows to N entries: 10 → 10 000 costs ≤ 2×.
 //!
-//! Two costs are measured per point: `work`, the walk's operation count
-//! ([`lute_lint::nodes::NodeWalkStats::work`], deterministic), and the best
-//! of `--samples` wall times of one `lute_lint::lint` call. `--check work`
-//! gates on the operation counts only (stable in CI); `--check both` (the
-//! default) also gates on the times. Whole-map reads of `preceding` must be
+//! The first three axes run [`WHEN`], which reads `preceding` by key.
+//!
+//! Two costs are measured per point: `work`, the units of input the walk
+//! processed ([`lute_lint::nodes::NodeWalkStats::work`]: rows, head bytes,
+//! attributes, ordered-map comparison steps, copied values; deterministic),
+//! and the best of `--samples` wall times of one `lute_lint::lint` call.
+//! `--check work` gates on the work only (stable in CI); `--check both` (the
+//! default) also gates on the times. Whole-map builds of `preceding` must be
 //! zero at every point.
 
 use std::hint::black_box;
@@ -27,9 +33,12 @@ use serde::Serialize;
 const USAGE: &str =
     "usage: lute-bench lint-nodes [--samples <n>] [--check work|both] [--json <path>|-]";
 
-/// The rule every point runs: a directive whose tag was seen before on its
-/// path with the same `value`.
+/// The rule of the first three axes: a directive whose tag was seen before
+/// on its path with the same `value`.
 const WHEN: &str = r#"node.kind == "directive" && "value" in node.attrs && node.tag in node.preceding && "value" in node.preceding[node.tag].attrs && node.preceding[node.tag].attrs["value"] == node.attrs["value"]"#;
+
+/// The rule of the `size` axis: reads the scope's size at every directive.
+const WHEN_SIZE: &str = r#"node.kind == "directive" && size(node.preceding) > 100000"#;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Check {
@@ -37,29 +46,39 @@ enum Check {
     Both,
 }
 
-/// One grid axis: its name, its points `(n, t, d)` and the bound on the
-/// cost ratio between the points it compares.
+/// One grid axis: its name, its rule, its points `(n, t, d)` and the bound
+/// on the cost ratio between the points it compares.
 struct Axis {
     name: &'static str,
+    when: &'static str,
     points: [(usize, usize, usize); 3],
     /// `(from, to, bound)` indexes into `points`.
     ratios: &'static [(usize, usize, f64)],
 }
 
-const AXES: [Axis; 3] = [
+const AXES: [Axis; 4] = [
     Axis {
         name: "nodes",
+        when: WHEN,
         points: [(5_000, 10, 3), (10_000, 10, 3), (20_000, 10, 3)],
         ratios: &[(0, 1, 2.3), (1, 2, 2.3)],
     },
     Axis {
         name: "tags",
+        when: WHEN,
         points: [(10_000, 10, 3), (10_000, 100, 3), (10_000, 1_000, 3)],
         ratios: &[(0, 2, 2.0)],
     },
     Axis {
         name: "depth",
+        when: WHEN,
         points: [(10_000, 10, 2), (10_000, 10, 8), (10_000, 10, 32)],
+        ratios: &[(0, 2, 2.0)],
+    },
+    Axis {
+        name: "size",
+        when: WHEN_SIZE,
+        points: [(10_000, 10, 3), (10_000, 1_000, 3), (10_000, 10_000, 3)],
         ratios: &[(0, 2, 2.0)],
     },
 ];
@@ -68,12 +87,14 @@ const AXES: [Axis; 3] = [
 #[serde(rename_all = "camelCase")]
 struct Point {
     axis: &'static str,
+    when: &'static str,
     n: usize,
     t: usize,
     d: usize,
     rows: u64,
     work: u64,
     preceding_materialized: u64,
+    preceding_copied: u64,
     best_ms: f64,
 }
 
@@ -95,7 +116,6 @@ struct Ratio {
 struct Report {
     schema_version: &'static str,
     samples: usize,
-    when: &'static str,
     points: Vec<Point>,
     ratios: Vec<Ratio>,
     pass: bool,
@@ -159,7 +179,7 @@ fn run(samples: usize, check: Check) -> Report {
     for axis in &AXES {
         let first = points.len();
         for &(n, t, d) in &axis.points {
-            points.push(measure(axis.name, n, t, d, samples));
+            points.push(measure(axis.name, axis.when, n, t, d, samples));
         }
         let at = &points[first..];
         for &(from, to, bound) in axis.ratios {
@@ -188,7 +208,6 @@ fn run(samples: usize, check: Check) -> Report {
     Report {
         schema_version: "0.50.0.lint-nodes",
         samples,
-        when: WHEN,
         points,
         ratios,
         pass,
@@ -203,7 +222,14 @@ fn round3(value: f64) -> f64 {
     (value * 1000.0).round() / 1000.0
 }
 
-fn measure(axis: &'static str, n: usize, t: usize, d: usize, samples: usize) -> Point {
+fn measure(
+    axis: &'static str,
+    when: &'static str,
+    n: usize,
+    t: usize,
+    d: usize,
+    samples: usize,
+) -> Point {
     let text = document(n, t, d);
     let (doc, _) = lute_syntax::parse(&text);
     let input = [LintDocInput {
@@ -216,7 +242,7 @@ fn measure(axis: &'static str, n: usize, t: usize, d: usize, samples: usize) -> 
         LintRuleDecl {
             id: "preceding-value".to_string(),
             target: LintTarget::Node,
-            when: WHEN.to_string(),
+            when: when.to_string(),
             level: Some(LintLevel::Warn),
             message: "repeats {node.tag}".to_string(),
             options: yaml_serde::Mapping::new(),
@@ -250,12 +276,14 @@ fn measure(axis: &'static str, n: usize, t: usize, d: usize, samples: usize) -> 
     }
     Point {
         axis,
+        when,
         n,
         t,
         d,
         rows: stats.rows,
         work: stats.work(),
         preceding_materialized: stats.preceding_materialized,
+        preceding_copied: stats.preceding_copied,
         best_ms: round3(best.as_secs_f64() * 1000.0),
     }
 }

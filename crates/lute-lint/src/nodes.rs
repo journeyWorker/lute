@@ -16,11 +16,13 @@
 //! visiting a keyed node records the entry it replaces, and leaving a body
 //! restores every entry recorded in it. A row's `node.preceding` is a
 //! borrowed view of that map ([`Preceding`]); a rule is evaluated while the
-//! row is visited, so the view is never stored or copied. The map becomes a
-//! [`Value`] only when a rule reads it whole ([`Record::materialize`]),
-//! which [`NodeWalkStats::preceding_materialized`] counts. The sibling
-//! summaries of the body being walked and of its ancestors' bodies are the
-//! only node data held at once.
+//! row is visited, so the view is never stored or copied. `size(node.preceding)`
+//! is answered from the map; the map becomes a [`Value`] only when a rule
+//! reads it whole otherwise ([`Record::materialize`]: rendering or comparing
+//! it), which copies every entry for that row and is counted
+//! ([`NodeWalkStats::preceding_copied`]). The sibling summaries of the body
+//! being walked and of its ancestors' bodies are the only node data held at
+//! once.
 //!
 //! The walk runs after the metric tables, because a row binds `scene`, the
 //! finished document row, and only when a `node` rule is active.
@@ -35,12 +37,17 @@ use crate::eval::{Record, Ref, Value};
 
 /// Work counters of [`walk_nodes`], for the cost acceptance (dsl 0.50.0
 /// §8.1): every count is per document walked and adds up across documents.
+/// [`NodeWalkStats::work`] sums the units of processed input — rows, head
+/// bytes scanned, attributes read, ordered-map comparison steps and entries
+/// copied — so a cost that grows with the scope's size shows in it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct NodeWalkStats {
     /// Rows visited.
     pub rows: u64,
     /// Authored attributes read from the source.
     pub attrs: u64,
+    /// Source bytes of the head lines the attribute scan reads.
+    pub head_bytes: u64,
     /// `preceding` entries set (one per visited node that is not a line).
     pub preceding_writes: u64,
     /// `preceding` entries restored when a body or declaration is left.
@@ -48,31 +55,44 @@ pub struct NodeWalkStats {
     /// `preceding` lookups by tag (`"t" in node.preceding`,
     /// `node.preceding["t"]`).
     pub preceding_lookups: u64,
+    /// Comparison steps of every `preceding` write, restore, lookup and
+    /// size read: each costs at most ⌈log₂(entries + 1)⌉ comparisons in
+    /// the ordered map, the bound counted here.
+    pub preceding_steps: u64,
     /// Whole `preceding` maps built for a rule that read the map whole
-    /// (`size(node.preceding)`): zero unless a rule does.
+    /// (rendering or comparing it): zero unless a rule does.
     pub preceding_materialized: u64,
+    /// Values copied by those builds: one per entry and one per attribute
+    /// of each entry.
+    pub preceding_copied: u64,
 }
 
 impl NodeWalkStats {
-    /// The sum of every counter: the work the walk did.
+    /// The units of input the walk processed: rows, head bytes scanned,
+    /// attributes read, map comparison steps and copied values. The event
+    /// counts (writes, restores, lookups, maps built) are not added again:
+    /// their cost is in `preceding_steps` and `preceding_copied`.
     pub fn work(&self) -> u64 {
-        self.rows
-            + self.attrs
-            + self.preceding_writes
-            + self.preceding_restores
-            + self.preceding_lookups
-            + self.preceding_materialized
+        self.rows + self.head_bytes + self.attrs + self.preceding_steps + self.preceding_copied
     }
 
     /// Add `other`'s counts.
     pub fn add(&mut self, other: &NodeWalkStats) {
         self.rows += other.rows;
         self.attrs += other.attrs;
+        self.head_bytes += other.head_bytes;
         self.preceding_writes += other.preceding_writes;
         self.preceding_restores += other.preceding_restores;
         self.preceding_lookups += other.preceding_lookups;
+        self.preceding_steps += other.preceding_steps;
         self.preceding_materialized += other.preceding_materialized;
+        self.preceding_copied += other.preceding_copied;
     }
+}
+
+/// The comparison bound of one operation on an ordered map of `entries`.
+fn steps(entries: usize) -> u64 {
+    u64::from(usize::BITS - (entries + 1).leading_zeros())
 }
 
 /// One row, valid while [`walk_nodes`] visits it. It is a [`Record`]: the
@@ -135,6 +155,10 @@ impl Record for NodeRow<'_> {
         })
     }
 
+    fn len(&self) -> usize {
+        ROW_FIELDS.len()
+    }
+
     fn materialize(&self) -> Value {
         Value::Map(
             ROW_FIELDS
@@ -153,25 +177,47 @@ pub struct Preceding<'w> {
     counters: &'w Counters,
 }
 
+impl Preceding<'_> {
+    fn count_steps(&self) {
+        let c = &self.counters.steps;
+        c.set(c.get() + steps(self.map.len()));
+    }
+}
+
 impl Record for Preceding<'_> {
     /// `key` is a tag.
     fn field(&self, key: &str) -> Option<Ref<'_>> {
         self.counters.lookups.set(self.counters.lookups.get() + 1);
+        self.count_steps();
         self.map
             .get(key)
             .map(|&i| Ref::Record(&self.arena[i].scoped as &dyn Record))
     }
 
+    /// The number of tags, read from the map without copying it.
+    fn len(&self) -> usize {
+        self.count_steps();
+        self.map.len()
+    }
+
     fn materialize(&self) -> Value {
-        self.counters
-            .materialized
-            .set(self.counters.materialized.get() + 1);
-        Value::Map(
-            self.map
-                .iter()
-                .map(|(tag, &i)| ((*tag).to_string(), self.arena[i].scoped.materialize()))
-                .collect(),
-        )
+        let c = &self.counters;
+        c.materialized.set(c.materialized.get() + 1);
+        let mut copied = 0u64;
+        let map = self
+            .map
+            .iter()
+            .map(|(tag, &i)| {
+                let attrs = &self.arena[i].scoped.attrs;
+                copied += 1 + match attrs {
+                    Value::Map(m) => m.len() as u64,
+                    _ => 0,
+                };
+                ((*tag).to_string(), self.arena[i].scoped.materialize())
+            })
+            .collect();
+        c.copied.set(c.copied.get() + copied);
+        Value::Map(map)
     }
 }
 
@@ -230,6 +276,10 @@ impl Record for NodeSummary {
         }
     }
 
+    fn len(&self) -> usize {
+        3
+    }
+
     fn materialize(&self) -> Value {
         Value::Map(BTreeMap::from([
             ("kind".to_string(), self.kind.clone()),
@@ -244,6 +294,10 @@ impl Record for Scoped {
         (key == "attrs").then_some(Ref::Borrowed(&self.attrs))
     }
 
+    fn len(&self) -> usize {
+        1
+    }
+
     fn materialize(&self) -> Value {
         Value::Map(BTreeMap::from([("attrs".to_string(), self.attrs.clone())]))
     }
@@ -253,7 +307,9 @@ impl Record for Scoped {
 #[derive(Debug, Default)]
 struct Counters {
     lookups: Cell<u64>,
+    steps: Cell<u64>,
     materialized: Cell<u64>,
+    copied: Cell<u64>,
 }
 
 fn count(n: usize) -> Value {
@@ -480,7 +536,9 @@ pub fn walk_nodes(
     walk.body(&decls, scope, true, visit);
     let mut stats = walk.stats;
     stats.preceding_lookups = walk.counters.lookups.get();
+    stats.preceding_steps += walk.counters.steps.get();
     stats.preceding_materialized = walk.counters.materialized.get();
+    stats.preceding_copied = walk.counters.copied.get();
     stats
 }
 
@@ -552,6 +610,7 @@ impl<'d> Walk<'d> {
             self.stats.rows += 1;
             let (_, tag) = kid.identity();
             if !tag.is_empty() {
+                self.stats.preceding_steps += steps(self.map.len());
                 let replaced = self.map.insert(tag, me);
                 self.undo.push((tag, replaced));
                 self.stats.preceding_writes += 1;
@@ -561,6 +620,7 @@ impl<'d> Walk<'d> {
             }
             if let Some(prev) = i.checked_sub(1) {
                 let (_, prev_tag) = kids[prev].identity();
+                self.stats.preceding_steps += steps(self.map.len());
                 if self.map.get(prev_tag) != Some(&(base + prev)) {
                     self.arena[base + prev] = NodeSummary::vacant();
                 }
@@ -585,6 +645,7 @@ impl<'d> Walk<'d> {
             let Some((tag, replaced)) = self.undo.pop() else {
                 break;
             };
+            self.stats.preceding_steps += steps(self.map.len());
             match replaced {
                 Some(i) => self.map.insert(tag, i),
                 None => self.map.remove(tag),
@@ -597,6 +658,9 @@ impl<'d> Walk<'d> {
         let (kind, tag) = kid.identity();
         let mut attrs = BTreeMap::new();
         if kid.has_attrs() {
+            let start = kid.span().byte_start;
+            let head = self.source.get(start..).unwrap_or_default();
+            self.stats.head_bytes += head.find('\n').unwrap_or(head.len()) as u64;
             for a in lute_syntax::authored_attrs(self.source, kid.span()) {
                 attrs.insert(a.key.to_string(), Value::Str(a.raw_value.to_string()));
                 self.stats.attrs += 1;

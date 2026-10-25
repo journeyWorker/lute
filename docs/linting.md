@@ -152,10 +152,10 @@ A `node` rule binds `node`, `scene` (the document row above) and `options`.
 A finding is anchored at the node: the line, the directive, or the whole
 element. Messages interpolate row paths such as `{node.attrs.value}`.
 
-Reading `node.preceding["t"]` or testing `"t" in node.preceding` costs a map
-lookup; the scope is never copied per row. Reading the whole map
-(`size(node.preceding)`, or interpolating it) builds it for that row only, so
-prefer keyed lookups.
+Reading `node.preceding["t"]`, testing `"t" in node.preceding` or taking
+`size(node.preceding)` costs a map lookup; the scope is never copied per row.
+Reading the whole map otherwise (interpolating or comparing it) copies it for
+each row that reads it, so prefer keyed lookups.
 
 ### Node rule recipes
 

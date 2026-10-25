@@ -405,7 +405,9 @@ pub struct AuthoredAttr<'s> {
 /// `::tag{…}` directive or a `@speaker{…}:` content line. A head of another
 /// shape (a `::tag` without braces, a line without `{…}`) has no
 /// attributes, and so does a span that does not start inside `source`.
-/// Block comments on the head line are blanked first, as the parser does.
+/// Block comments on the head line are blanked first, as the parser's
+/// whole-body pass does: the head starts outside any comment and string,
+/// and a comment still open at the line end runs on past it.
 /// Each attribute is returned once per occurrence, so a repeated key is
 /// repeated here.
 pub fn authored_attrs(source: &str, head: Span) -> Vec<AuthoredAttr<'_>> {
@@ -419,8 +421,15 @@ pub fn authored_attrs(source: &str, head: Span) -> Vec<AuthoredAttr<'_>> {
     };
     let blanked;
     let view = if line.contains("/*") {
-        match crate::lex::strip_comments_checked(line) {
-            Ok(text) => {
+        // Close a comment left open at the line end, so it is blanked to
+        // the end of the line as the whole-body pass blanks it, then drop
+        // the closer again (blanking keeps byte length).
+        let mut closed = String::with_capacity(line.len() + 2);
+        closed.push_str(line);
+        closed.push_str("*/");
+        match crate::lex::strip_comments_checked(&closed) {
+            Ok(mut text) => {
+                text.truncate(line.len());
                 blanked = text;
                 blanked.as_str()
             }
@@ -950,6 +959,40 @@ mod tests {
                 "{src:?}"
             );
         }
+    }
+
+    // S7 review: a comment opened at the end of the head line and closed on
+    // the next one still blanks the head's earlier closed comments, as the
+    // whole-body pass does.
+    #[test]
+    fn a_comment_left_open_at_the_line_end_keeps_earlier_comments_blanked() {
+        for src in [
+            "## A\n::sfx{/* loop */ sound=\"bell\"} /*\ncontinued */\n",
+            "## A\n::sfx{/* } */ sound=\"bell\"} /*\ncontinued */\n",
+        ] {
+            let (doc, _) = parse(src);
+            let crate::ast::Node::Directive(d) = &doc.sections[0].body[0] else {
+                panic!("directive expected: {src:?}");
+            };
+            let parsed: Vec<_> = d.attrs.iter().map(|a| a.key.as_str()).collect();
+            assert_eq!(parsed, ["sound"], "{src:?}");
+            assert_eq!(
+                authored(src, d.span),
+                pairs(&[("sound", "bell")]),
+                "{src:?}"
+            );
+        }
+        let src = "## A\n<branch id=\"b\">\n<choice /* > */ id=\"c\" text=\"Go\"> /*\n\
+                   continued */\n@x: a\n</choice>\n</branch>\n";
+        let (doc, _) = parse(src);
+        let crate::ast::Node::Branch(b) = &doc.sections[0].body[0] else {
+            panic!("branch expected");
+        };
+        assert_eq!(b.choices[0].text, "Go");
+        assert_eq!(
+            authored(src, b.choices[0].span),
+            pairs(&[("id", "c"), ("text", "Go")])
+        );
     }
 
     #[test]
