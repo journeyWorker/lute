@@ -225,8 +225,8 @@ fn arm_end_entrance_preloads_post_convergence_emotion() {
 fn join_states_unit_semantics() {
     let sprite = |emotion: &str| SpriteState {
         anchor: Some("center".to_string()),
-        pose: None,
         emotion: Some(emotion.to_string()),
+        ..SpriteState::default()
     };
     let mut a = StageState::default();
     a.on_stage.insert("marina".into(), sprite("surprised"));
@@ -240,10 +240,18 @@ fn join_states_unit_semantics() {
     b.bg = Some("cafe".into());
 
     let joined = StageState::join(&StageState::default(), vec![a, b]);
-    // Differing emotion => marina dropped (Unknown, §7.3).
-    assert!(!joined.on_stage.contains_key("marina"));
+    // Differing emotion => marina still on stage (every arm has her), her
+    // sprite unknown (#222; dropped to maybe-on-stage before 0.52).
+    assert_eq!(
+        joined.on_stage.get("marina"),
+        Some(&SpriteState {
+            unknown: true,
+            ..SpriteState::default()
+        })
+    );
     // Identical in every arm => carried, dirty intersection kept.
     assert!(joined.on_stage.contains_key("kenshi"));
+    assert!(!joined.on_stage["kenshi"].unknown);
     assert!(joined.dirty.contains("kenshi"));
     // Differing bg => Unknown (None).
     assert!(joined.bg.is_none());
@@ -332,11 +340,12 @@ fn clear_lowers_to_one_exit_per_character_on_stage() {
 }
 
 #[test]
-fn join_unions_dirty_but_only_over_carried_characters() {
+fn join_unions_dirty_over_characters_present_in_every_arm() {
     let sprite = |pose: Option<&str>| SpriteState {
         anchor: Some("center".to_string()),
         pose: pose.map(str::to_string),
         emotion: Some("neutral".to_string()),
+        ..SpriteState::default()
     };
     // Same SpriteState in every arm => carried; dirty in ANY arm => dirty.
     let mut a = StageState::default();
@@ -344,17 +353,62 @@ fn join_unions_dirty_but_only_over_carried_characters() {
     a.dirty.insert("marina".into());
     let mut b = StageState::default();
     b.on_stage.insert("marina".into(), sprite(None));
-    // A char DROPPED at the join (differing SpriteState) must NOT be
-    // resurrected into `dirty`, even though an arm marked it dirty.
+    // #222: a char on stage in every arm with differing SpriteState is
+    // carried with an unknown sprite, and keeps the dirty flag an arm set,
+    // so a later plain line still resets the pose.
     a.on_stage.insert("kenshi".into(), sprite(Some("poseLean")));
     a.dirty.insert("kenshi".into());
     b.on_stage.insert("kenshi".into(), sprite(None));
+    // On stage in one arm only: maybe on stage, never dirty.
+    a.on_stage.insert("pell".into(), sprite(None));
+    a.dirty.insert("pell".into());
 
     let joined = StageState::join(&StageState::default(), vec![a, b]);
     assert!(joined.on_stage.contains_key("marina"));
     assert!(joined.dirty.contains("marina"));
-    assert!(!joined.on_stage.contains_key("kenshi"));
-    assert!(!joined.dirty.contains("kenshi"));
+    assert!(joined.on_stage["kenshi"].unknown);
+    assert!(joined.dirty.contains("kenshi"));
+    assert!(!joined.on_stage.contains_key("pell"));
+    assert!(joined.maybe_on_stage.contains("pell"));
+    assert!(!joined.dirty.contains("pell"));
+}
+
+/// #222: on stage on every route with a differing emotion, a plain line
+/// after the join still resets the pose (v0.51.0: none, the join dropped
+/// her), and an `::actor` there injects like a fresh show (anchor), as on
+/// v0.51.0.
+#[test]
+fn a_character_on_every_route_with_differing_emotions_keeps_her_pose_reset() {
+    let body = r#"::actor{character="marina"}
+@marina{emotion="surprised"}: Morning.
+<branch id="fork">
+  <choice id="a" text="A">
+    @marina{emotion="delighted"}: Nice.
+  </choice>
+  <choice id="b" text="B">
+    @narrator: Quiet.
+  </choice>
+</branch>
+@marina: Bye.
+::actor{character="marina"}"#;
+    let (recs, _) = walk(body);
+    let by: Vec<&str> = recs
+        .iter()
+        .filter_map(|r| match &r.cmd {
+            Command::Actor(s) => s.stamp.provenance.as_ref().map(|p| p.by.as_str()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        by,
+        [
+            "auto-anchor-on-show",
+            "entry-emotion-lookahead",
+            "auto-pose-reset",
+            "auto-anchor-on-show"
+        ],
+        "{recs:#?}"
+    );
 }
 
 /// IR 0.10.0 (#36, D-AE): the human-readable justification serializes as

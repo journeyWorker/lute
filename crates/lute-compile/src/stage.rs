@@ -190,6 +190,14 @@ pub fn walk_seq(
                     Vec::new()
                 };
                 state = emit_primitive(em, node, state, &look, cx, None);
+                // dsl 0.52.0 §5.4: inside a hub body an unguarded `::end`
+                // ends the route (the body does not complete).
+                if let Node::Directive(d) = node {
+                    if cx.reached && cx.stage.ends(d) {
+                        cx.stage.diags.append(&mut state.diags);
+                        cx.reached = false;
+                    }
+                }
             }
             Node::Branch(b) => {
                 let cont = reachable_after(&nodes[i + 1..], tail);
@@ -670,25 +678,34 @@ fn walk_hub(
         arms: h.choices.iter().map(ArmSource::choice).collect(),
         ..SourceInfo::at(h.span)
     });
-    // Fork (D9): every arm starts from the ENTRY state; entry diagnostics are
-    // drained first so per-arm clones don't duplicate them (as in `walk_branch`).
+    // dsl 0.52.0 §5.4: every option starts from the hub HEAD, the checker's
+    // fixed point of the hub's re-presentation edge ([`StageFlow::hub`]);
+    // entry diagnostics are drained first so per-arm clones don't duplicate
+    // them (as in `walk_branch`).
     let mut state = state;
-    let base_diags = std::mem::take(&mut state.diags);
-    let reached = cx.reached;
-    let mut exits: Vec<Option<StageState>> = Vec::with_capacity(h.choices.len());
+    let mut diags_out = std::mem::take(&mut state.diags);
+    let head = cx.stage.hub(h, cx.reached.then_some(state));
+    let reached = head.is_some();
+    let start = head.clone().unwrap_or_default();
+    let mut completed = Vec::new();
+    let mut exits = Vec::new();
     for (c, l) in h.choices.iter().zip(&arms) {
         em.bind(*l);
         let into = into_attr(c);
         em.enter_into(into.clone());
         cx.reached = reached;
-        let exit = walk_seq(em, &c.body, state.clone(), cx, tail, diags);
+        cx.stage.enter_hub_body();
+        let mut exit = walk_seq(em, &c.body, start.clone(), cx, tail, diags);
+        cx.stage.leave_hub_body();
         em.leave_into(into.as_ref());
+        diags_out.append(&mut exit.diags);
         // Flat-VM contract (A2 §7): an EXIT arm ends in a forward Jump→converge,
         // exactly like a `<choice>` arm; a NON-exit arm emits NO trailing jump —
         // its completion returns control to the hub loop head, a RUNTIME property
         // of the `hub` kind. No backward jump is emitted (D2/§3.2 stays flat,
         // forward-only, "reduces to data").
-        if attr_bool(&c.attrs, "exit").unwrap_or(false) {
+        let is_exit = StageFlow::exit_option(c);
+        if is_exit {
             em.push(
                 Command::Jump(JumpCmd {
                     position: String::new(),
@@ -699,40 +716,43 @@ fn walk_hub(
                 || SourceInfo::at(h.span),
             );
         }
-        exits.push(cx.reached.then_some(exit));
+        if cx.reached {
+            if is_exit {
+                exits.push(exit);
+            } else {
+                completed.push(exit);
+            }
+        }
     }
     // dsl 0.28.0 §5: the `<return>` segment, bounded like an option body and
     // likewise ending in NO jump — the runtime runs it after a non-`exit`
-    // option's segment, then judges and presents the hub again. It starts
-    // from what every non-`exit` arm leaves behind (their diagnostics stay
-    // with the arms).
+    // option's segment, then judges and presents the hub again. dsl 0.52.0
+    // §5.4: it starts from the completion of the non-`exit` options, and no
+    // route reaches it when none completes.
     if let (Some(r), Some(l)) = (&h.on_return, back) {
-        let returning: Vec<StageState> = h
-            .choices
-            .iter()
-            .zip(&exits)
-            .filter(|(c, _)| !attr_bool(&c.attrs, "exit").unwrap_or(false))
-            .filter_map(|(_, s)| s.as_ref())
-            .map(|s| StageState {
-                diags: Vec::new(),
-                ..s.clone()
-            })
-            .collect();
-        let entry = StageState::join(&state, returning);
+        let entry = StageFlow::completion(completed);
         em.bind(l);
-        cx.reached = reached;
-        let exit = walk_seq(em, &r.body, entry, cx, tail, diags);
-        exits.push(cx.reached.then_some(exit));
+        cx.reached = entry.is_some();
+        cx.stage.enter_hub_body();
+        let mut exit = walk_seq(em, &r.body, entry.unwrap_or_default(), cx, tail, diags);
+        cx.stage.leave_hub_body();
+        diags_out.append(&mut exit.diags);
     }
     em.bind(conv);
-    let exits: Vec<StageState> = exits.into_iter().flatten().collect();
-    cx.reached = !exits.is_empty() || (reached && h.choices.is_empty() && h.on_return.is_none());
-    // Hub arms have no dominance relation (like `<match>` arms) — arm writes are
-    // may-writes at hub exit; `StageState::join` applies the conservative join.
-    let mut joined = StageState::join(&state, exits);
-    let mut diags = base_diags;
-    diags.append(&mut joined.diags);
-    joined.diags = diags;
+    // After the hub: `join(H, [H, the exit options' exit states])`, `H`
+    // standing for the presentation with nothing eligible.
+    let joined = match head {
+        Some(head) => {
+            let mut all = vec![head.clone()];
+            all.extend(exits);
+            Some(StageState::join(&head, all))
+        }
+        None => StageFlow::completion(exits),
+    };
+    cx.reached = joined.is_some();
+    let mut joined = joined.unwrap_or_default();
+    diags_out.append(&mut joined.diags);
+    joined.diags = diags_out;
     joined
 }
 

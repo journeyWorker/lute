@@ -22,10 +22,12 @@ use std::cell::Cell;
 use lute_manifest::core::{JUMP_DIRECTIVE, JUMP_MAX_ATTR, LABEL_DIRECTIVE, LABEL_NAME_ATTR};
 use lute_syntax::ast::{Arm, AttrValue, CelSlot, Directive, Node};
 
-/// The work one walk kind spent at loop heads (dsl 0.51.0 §3.4).
+/// The work one walk kind spent at loop heads (dsl 0.51.0 §3.4) and, for
+/// the stage walks, hub heads (dsl 0.52.0 §5.4).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LoopWalkStats {
-    /// Loop heads iterated, nested heads once per enclosing probe pass.
+    /// Loop and hub heads iterated, nested heads once per enclosing probe
+    /// pass.
     pub heads: u64,
     /// Probe passes over a region.
     pub probe_passes: u64,
