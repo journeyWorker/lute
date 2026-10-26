@@ -1,9 +1,14 @@
 //! `lute tag` localization pass (dsl §12): back-fill a stable `code` into every
-//! untagged content line (`@speaker{…}: text`, §7.1). Pure + total; the CLI
-//! wraps this with file I/O.
+//! untagged content line (`@speaker{…}: text`, §7.1) and every untagged call
+//! of a directive with a `text` attribute (0.51.0 §5.3). Pure + total; the
+//! CLI wraps this with file I/O and names the directives with `text`
+//! attributes from the document's capability snapshot.
 
-use lute_core_span::Severity;
-use lute_syntax::ast::{Arm, AttrValue, Line, Node};
+use std::collections::{BTreeMap, BTreeSet};
+
+use lute_core_span::{Severity, Span};
+use lute_manifest::schema::DIRECTIVE_TEXT_CODE_ATTR;
+use lute_syntax::ast::{Arm, AttrValue, Directive, Document, Line, Node};
 use lute_syntax::parse;
 
 /// The result of tagging: the (possibly rewritten) document text, how many
@@ -17,14 +22,18 @@ pub struct TagOutcome {
     pub instances: usize,
 }
 
-/// Back-fill a `code` attribute into every content line that lacks one (§12).
-/// Existing codes are never touched; new codes step above THAT SPEAKER's highest
-/// existing numeric `code` (a per-speaker counter, dsl §12); different speakers
-/// have independent sequences (`fixer` 0010…, `marina` 0010…), so their codes
-/// coexist and the lineId (§12) keys on speaker + code.
+/// Back-fill a `code` attribute into every content line that lacks one (§12),
+/// and into every directive call whose tag is in `text_tags` — the
+/// directives with a `text` attribute (0.51.0 §5.3) — that lacks one.
+/// Existing codes are never touched; new codes step above THAT SPEAKER's
+/// highest existing numeric `code` (a per-speaker counter, dsl §12), or that
+/// directive tag's (a keyspace of its own); different speakers have
+/// independent sequences (`fixer` 0010…, `marina` 0010…), so their codes
+/// coexist and the lineId (§12) keys on speaker + code. Directive calls are
+/// numbered in source order, as the compiler back-fills them.
 /// Idempotent, deterministic, total (a structurally broken doc is returned
 /// unchanged with `added: 0`).
-pub fn tag_document(text: &str) -> TagOutcome {
+pub fn tag_document(text: &str, text_tags: &BTreeSet<String>) -> TagOutcome {
     let (doc, diags) = parse(text);
     if diags.iter().any(|d| d.severity == Severity::Error) {
         return TagOutcome {
@@ -35,25 +44,14 @@ pub fn tag_document(text: &str) -> TagOutcome {
     }
     let bytes = text.as_bytes();
     let mut inserts: Vec<(usize, String)> = Vec::new();
-    let mut scene_lines = Vec::new();
-    for shot in &doc.sections {
-        collect_lines(&shot.body, &mut scene_lines);
-    }
-    tag_scope(scene_lines, bytes, &mut inserts);
-    for quest in &doc.quests {
+    for bodies in identity_scopes(&doc) {
         let mut lines = Vec::new();
-        collect_lines(&quest.body, &mut lines);
+        for body in &bodies {
+            collect_lines(body, &mut lines);
+        }
         tag_scope(lines, bytes, &mut inserts);
-    }
-    for entry in &doc.entries {
-        let mut lines = Vec::new();
-        collect_lines(&entry.body, &mut lines);
-        tag_scope(lines, bytes, &mut inserts);
-    }
-    for beat in &doc.beats {
-        let mut lines = Vec::new();
-        collect_lines(&beat.body, &mut lines);
-        tag_scope(lines, bytes, &mut inserts);
+        let directives = scope_text_directives(&bodies, text_tags);
+        tag_directive_scope(&directives, bytes, &mut inserts);
     }
     let codes = inserts.len();
     tag_components(text, &mut inserts);
@@ -291,7 +289,7 @@ fn code_insert(line: &Line, bytes: &[u8], code: &str) -> (usize, String) {
 ///
 /// Idempotent (a second run is byte-identical) and total, like
 /// [`tag_document`].
-pub fn retag_document(text: &str) -> RetagOutcome {
+pub fn retag_document(text: &str, text_tags: &BTreeSet<String>) -> RetagOutcome {
     let (doc, diags) = parse(text);
     if diags.iter().any(|d| d.severity == Severity::Error) {
         return RetagOutcome::Broken;
@@ -315,47 +313,23 @@ pub fn retag_document(text: &str) -> RetagOutcome {
     let mut skipped = 0usize;
     let mut changes: Vec<LineRenumber> = Vec::new();
 
-    let mut scene_lines: Vec<&Line> = Vec::new();
-    for shot in &doc.sections {
-        collect_lines(&shot.body, &mut scene_lines);
-    }
-    retag_scope(
-        scene_lines,
-        bytes,
-        &mut edits,
-        &mut renumbered,
-        &mut skipped,
-        &mut changes,
-    );
-    for quest in &doc.quests {
-        let mut quest_lines: Vec<&Line> = Vec::new();
-        collect_lines(&quest.body, &mut quest_lines);
+    for bodies in identity_scopes(&doc) {
+        let mut lines: Vec<&Line> = Vec::new();
+        for body in &bodies {
+            collect_lines(body, &mut lines);
+        }
         retag_scope(
-            quest_lines,
+            lines,
             bytes,
             &mut edits,
             &mut renumbered,
             &mut skipped,
             &mut changes,
         );
-    }
-    for entry in &doc.entries {
-        let mut entry_lines: Vec<&Line> = Vec::new();
-        collect_lines(&entry.body, &mut entry_lines);
-        retag_scope(
-            entry_lines,
-            bytes,
-            &mut edits,
-            &mut renumbered,
-            &mut skipped,
-            &mut changes,
-        );
-    }
-    for beat in &doc.beats {
-        let mut beat_lines: Vec<&Line> = Vec::new();
-        collect_lines(&beat.body, &mut beat_lines);
-        retag_scope(
-            beat_lines,
+        // 0.51.0 §5.3: the scope's directive codes, per tag, likewise.
+        let directives = scope_text_directives(&bodies, text_tags);
+        retag_directive_scope(
+            &directives,
             bytes,
             &mut edits,
             &mut renumbered,
@@ -506,6 +480,149 @@ fn collect_lines<'a>(nodes: &'a [Node], out: &mut Vec<&'a Line>) {
     }
 }
 
+/// The document's identity scopes (dsl 0.2.0 §7), each as its bodies: the
+/// scene (every shot), then each `<quest>`, `<entry>` and bundle `<beat>`.
+fn identity_scopes(doc: &Document) -> Vec<Vec<&Vec<Node>>> {
+    std::iter::once(doc.sections.iter().map(|s| &s.body).collect())
+        .chain(doc.quests.iter().map(|q| vec![&q.body]))
+        .chain(doc.entries.iter().map(|e| vec![&e.body]))
+        .chain(doc.beats.iter().map(|b| vec![&b.body]))
+        .collect()
+}
+
+/// The calls of `text_tags` directives in one scope, in source order — the
+/// order the compiler back-fills them in (a `<timeline>` plays its clips in
+/// another).
+fn scope_text_directives<'a>(
+    bodies: &[&'a Vec<Node>],
+    text_tags: &BTreeSet<String>,
+) -> Vec<&'a Directive> {
+    let mut out = Vec::new();
+    if text_tags.is_empty() {
+        return out;
+    }
+    let has_text = |tag: &str| text_tags.contains(tag);
+    for body in bodies {
+        crate::match_check::collect_text_directives(body, &has_text, &mut out);
+    }
+    out.sort_by_key(|d| d.span.byte_start);
+    out
+}
+
+/// 0.51.0 §5.3: each call in the document `text` of a `text_tags`
+/// directive — a call `lute tag` gives a `code` — as its tag and span, per
+/// identity scope in source order.
+pub fn text_directive_calls(text: &str, text_tags: &BTreeSet<String>) -> Vec<(String, Span)> {
+    let (doc, _) = parse(text);
+    identity_scopes(&doc)
+        .iter()
+        .flat_map(|bodies| scope_text_directives(bodies, text_tags))
+        .map(|d| (d.tag.clone(), d.span))
+        .collect()
+}
+
+/// Where and what to splice to give the call `d` a `code` attribute: first
+/// in its `{…}` block (after the `::tag`), or a fresh block.
+fn directive_code_insert(d: &Directive, bytes: &[u8], code: &str) -> (usize, String) {
+    let tag_end = d.span.byte_start + 2 + d.tag.len();
+    if bytes.get(tag_end) == Some(&b'{') {
+        let at = tag_end + 1;
+        let inserted = if bytes.get(at) == Some(&b'}') {
+            format!("{DIRECTIVE_TEXT_CODE_ATTR}=\"{code}\"")
+        } else {
+            format!("{DIRECTIVE_TEXT_CODE_ATTR}=\"{code}\" ")
+        };
+        (at, inserted)
+    } else {
+        (
+            tag_end,
+            format!("{{{DIRECTIVE_TEXT_CODE_ATTR}=\"{code}\"}}"),
+        )
+    }
+}
+
+/// The call's `code` attribute, if it has one.
+fn directive_code(d: &Directive) -> Option<&lute_syntax::ast::Attr> {
+    d.attrs.iter().find(|a| a.key == DIRECTIVE_TEXT_CODE_ATTR)
+}
+
+/// Back-fill one scope's untagged directive calls (`directives`, source
+/// order): per tag, above that tag's highest authored numeric code, `+10`,
+/// `{:04}` — the compiler's scheme (`lute-compile` `address.rs`).
+fn tag_directive_scope(
+    directives: &[&Directive],
+    bytes: &[u8],
+    inserts: &mut Vec<(usize, String)>,
+) {
+    let mut max_code: BTreeMap<&str, u64> = BTreeMap::new();
+    for d in directives {
+        let max = max_code.entry(d.tag.as_str()).or_insert(0);
+        if let Some(AttrValue::Str(s)) = directive_code(d).map(|a| &a.value) {
+            if let Ok(n) = s.trim().parse::<u64>() {
+                *max = (*max).max(n);
+            }
+        }
+    }
+    for d in directives.iter().filter(|d| directive_code(d).is_none()) {
+        let counter = max_code.entry(d.tag.as_str()).or_insert(0);
+        let Some(next) = counter.checked_add(10) else {
+            continue;
+        };
+        *counter = next;
+        inserts.push(directive_code_insert(d, bytes, &format!("{next:04}")));
+    }
+}
+
+/// Renumber one scope's directive calls (source order) with a fresh counter
+/// per tag, as [`retag_scope`] renumbers lines per speaker.
+fn retag_directive_scope(
+    directives: &[&Directive],
+    bytes: &[u8],
+    edits: &mut Vec<(usize, usize, String)>,
+    renumbered: &mut usize,
+    skipped: &mut usize,
+    changes: &mut Vec<LineRenumber>,
+) {
+    let mut counter: BTreeMap<&str, u64> = BTreeMap::new();
+    for d in directives {
+        let attr = directive_code(d);
+        let from = match attr.map(|a| &a.value) {
+            Some(AttrValue::Str(s)) => Some(s.clone()),
+            Some(_) => {
+                *skipped += 1;
+                continue;
+            }
+            None => None,
+        };
+        let next = counter.entry(d.tag.as_str()).or_insert(0);
+        let Some(nc) = next.checked_add(10) else {
+            continue;
+        };
+        *next = nc;
+        let code = format!("{nc:04}");
+        if from.as_deref() == Some(code.as_str()) {
+            continue;
+        }
+        match attr {
+            Some(attr) => edits.push((
+                attr.span.byte_start,
+                attr.span.byte_end,
+                format!("{DIRECTIVE_TEXT_CODE_ATTR}=\"{code}\""),
+            )),
+            None => {
+                let (at, inserted) = directive_code_insert(d, bytes, &code);
+                edits.push((at, at, inserted));
+            }
+        }
+        changes.push(LineRenumber {
+            line: d.span.line,
+            from,
+            to: code,
+        });
+        *renumbered += 1;
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -517,7 +634,7 @@ mod tests {
 
     #[test]
     fn tags_line_without_attrs() {
-        let out = tag_document(NO_ATTRS);
+        let out = tag_document(NO_ATTRS, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 1);
         assert!(
             out.text.contains("@narrator{code=\"0010\"}: hi there"),
@@ -528,7 +645,7 @@ mod tests {
 
     #[test]
     fn tags_line_with_existing_attrs() {
-        let out = tag_document(WITH_ATTRS);
+        let out = tag_document(WITH_ATTRS, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 1);
         // `code` is merged as the FIRST attribute, existing attrs preserved.
         assert!(
@@ -543,7 +660,7 @@ mod tests {
         // §7.1 no-attr path: `@marina: hi` -> `@marina{code="0010"}: hi`.
         let src =
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@marina: hi\n";
-        let out = tag_document(src);
+        let out = tag_document(src, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 1);
         assert!(
             out.text.contains("@marina{code=\"0010\"}: hi"),
@@ -557,7 +674,7 @@ mod tests {
         // §7.1 merge path: `code` lands as the FIRST attr, right after `{`.
         let src =
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@marina{emotion=\"x\"}: hi\n";
-        let out = tag_document(src);
+        let out = tag_document(src, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 1);
         assert!(
             out.text
@@ -588,7 +705,8 @@ mod tests {
                    @fixer{code=\"0050\"}: first\n\
                    @fixer{code=\"0010\" mono}: second\n\
                    @fixer: third\n";
-        let (text, n, skipped) = renumbered(retag_document(src));
+        let (text, n, skipped) =
+            renumbered(retag_document(src, &std::collections::BTreeSet::new()));
         assert_eq!((n, skipped), (3, 0));
         assert!(
             text.contains("@fixer{code=\"0010\"}: first"),
@@ -610,7 +728,9 @@ mod tests {
                    @fixer{code=\"0050\"}: first\n\
                    @fixer{code=\"0020\"}: second\n\
                    @fixer: third\n";
-        let RetagOutcome::Renumbered { changes, .. } = retag_document(src) else {
+        let RetagOutcome::Renumbered { changes, .. } =
+            retag_document(src, &std::collections::BTreeSet::new())
+        else {
             panic!("expected Renumbered");
         };
         assert_eq!(
@@ -635,7 +755,7 @@ mod tests {
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
                    @fixer: first\n\
                    ::use{component=\"fire\"}\n";
-        let out = tag_document(src);
+        let out = tag_document(src, &std::collections::BTreeSet::new());
         assert_eq!((out.added, out.instances), (2, 1));
     }
 
@@ -645,7 +765,7 @@ mod tests {
                    @fixer{code=\"0090\"}: a\n\
                    @marina{code=\"0070\"}: b\n\
                    @fixer: c\n";
-        let (text, n, _) = renumbered(retag_document(src));
+        let (text, n, _) = renumbered(retag_document(src, &std::collections::BTreeSet::new()));
         assert_eq!(n, 3);
         assert!(text.contains("@fixer{code=\"0010\"}: a"), "got:\n{text}");
         assert!(text.contains("@marina{code=\"0010\"}: b"), "got:\n{text}");
@@ -657,9 +777,9 @@ mod tests {
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
                    @fixer{code=\"0050\"}: first\n\
                    @fixer: second\n";
-        let (once, n1, _) = renumbered(retag_document(src));
+        let (once, n1, _) = renumbered(retag_document(src, &std::collections::BTreeSet::new()));
         assert_eq!(n1, 2);
-        let (twice, n2, _) = renumbered(retag_document(&once));
+        let (twice, n2, _) = renumbered(retag_document(&once, &std::collections::BTreeSet::new()));
         assert_eq!(n2, 0, "second run must be a no-op");
         assert_eq!(once, twice);
     }
@@ -669,8 +789,9 @@ mod tests {
         // A renumbered doc and a freshly-tagged doc are indistinguishable.
         let untagged = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
                         @fixer: a\n@marina: b\n@fixer: c\n";
-        let fresh = tag_document(untagged).text;
-        let (forced, _, _) = renumbered(retag_document(untagged));
+        let fresh = tag_document(untagged, &std::collections::BTreeSet::new()).text;
+        let (forced, _, _) =
+            renumbered(retag_document(untagged, &std::collections::BTreeSet::new()));
         assert_eq!(fresh, forced);
     }
 
@@ -678,7 +799,7 @@ mod tests {
     fn retag_refuses_codes_locked() {
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncodesLocked: true\n---\n\
                    ## Shot 1.\n@fixer{code=\"0050\"}: kept\n";
-        assert_eq!(retag_document(src), RetagOutcome::Locked);
+        assert_eq!(retag_document(src, &BTreeSet::new()), RetagOutcome::Locked);
     }
 
     #[test]
@@ -687,7 +808,7 @@ mod tests {
         let src =
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncodesLocked: \"no\"\n---\n\
                    ## Shot 1.\n@fixer{code=\"0050\"}: kept\n";
-        assert_eq!(retag_document(src), RetagOutcome::Locked);
+        assert_eq!(retag_document(src, &BTreeSet::new()), RetagOutcome::Locked);
     }
 
     #[test]
@@ -695,7 +816,7 @@ mod tests {
         let src =
             "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\ncodesLocked: false\n---\n\
                    ## Shot 1.\n@fixer{code=\"0050\"}: a\n";
-        let (text, n, _) = renumbered(retag_document(src));
+        let (text, n, _) = renumbered(retag_document(src, &std::collections::BTreeSet::new()));
         assert_eq!(n, 1);
         assert!(text.contains("code=\"0010\""), "got:\n{text}");
     }
@@ -705,7 +826,8 @@ mod tests {
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n\
                    @fixer{code=@customId}: special\n\
                    @fixer: plain\n";
-        let (text, n, skipped) = renumbered(retag_document(src));
+        let (text, n, skipped) =
+            renumbered(retag_document(src, &std::collections::BTreeSet::new()));
         assert_eq!((n, skipped), (1, 1));
         assert!(
             text.contains("@fixer{code=@customId}: special"),
@@ -730,7 +852,7 @@ mod tests {
 
     #[test]
     fn tag_bundle_beats_get_their_own_scopes() {
-        let out = tag_document(BUNDLE);
+        let out = tag_document(BUNDLE, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 4, "got:\n{}", out.text);
         for want in [
             "@n{code=\"0010\"}: e1",
@@ -745,7 +867,7 @@ mod tests {
 
     #[test]
     fn retag_bundle_beats_restart_counters() {
-        let (text, n, _) = renumbered(retag_document(BUNDLE));
+        let (text, n, _) = renumbered(retag_document(BUNDLE, &std::collections::BTreeSet::new()));
         assert_eq!(n, 5, "got:\n{text}");
         for want in [
             "@n{code=\"0010\"}: e1",
@@ -776,7 +898,7 @@ mod tests {
                    @fixer{code=\"0900\"}: second quest line\n\
                    </on>\n\
                    </quest>\n";
-        let (text, n, _) = renumbered(retag_document(src));
+        let (text, n, _) = renumbered(retag_document(src, &std::collections::BTreeSet::new()));
         assert_eq!(n, 2);
         assert!(
             text.contains("@fixer{code=\"0010\"}: first quest line"),
@@ -789,7 +911,7 @@ mod tests {
     }
     #[test]
     fn already_tagged_is_untouched_and_idempotent() {
-        let out = tag_document(ALREADY);
+        let out = tag_document(ALREADY, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 0);
         assert_eq!(out.text, ALREADY);
     }
@@ -798,7 +920,7 @@ mod tests {
     fn new_codes_step_above_same_speaker_max() {
         // same speaker `a`: one tagged 0050 + one untagged -> untagged gets 0060
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a{code=\"0050\"}: one\n@a: two\n";
-        let out = tag_document(src);
+        let out = tag_document(src, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 1);
         assert!(out.text.contains("@a{code=\"0050\"}: one"));
         assert!(
@@ -813,7 +935,7 @@ mod tests {
         // interleaved speakers: each starts its OWN sequence at 0010.
         // a: "one"(untagged), "three"(untagged) -> 0010, 0020 ; b: "two"(untagged) -> 0010
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a: one\n@b: two\n@a: three\n";
-        let out = tag_document(src);
+        let out = tag_document(src, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 3);
         assert!(
             out.text.contains("@a{code=\"0010\"}: one"),
@@ -834,8 +956,8 @@ mod tests {
 
     #[test]
     fn tagging_output_is_idempotent() {
-        let once = tag_document(NO_ATTRS).text;
-        let twice = tag_document(&once);
+        let once = tag_document(NO_ATTRS, &std::collections::BTreeSet::new()).text;
+        let twice = tag_document(&once, &std::collections::BTreeSet::new());
         assert_eq!(twice.added, 0);
         assert_eq!(twice.text, once);
     }
@@ -843,7 +965,7 @@ mod tests {
     #[test]
     fn tagged_output_still_parses_clean() {
         // the rewritten doc must have no NEW parse errors (the inserted code attr is valid)
-        let out = tag_document(NO_ATTRS);
+        let out = tag_document(NO_ATTRS, &std::collections::BTreeSet::new());
         let (_doc, diags) = lute_syntax::parse(&out.text);
         assert!(
             !diags
@@ -859,7 +981,7 @@ mod tests {
         // kept in the original text; merging `code` right after `{` must preserve
         // it, parse clean, and be idempotent on a second run.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@narrator{ /* keep me */ emotion=\"x\"}: hi\n";
-        let out = tag_document(src);
+        let out = tag_document(src, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 1);
         assert!(out.text.contains("code=\"0010\""), "got:\n{}", out.text);
         assert!(out.text.contains("emotion=\"x\""), "got:\n{}", out.text);
@@ -875,7 +997,7 @@ mod tests {
                 .any(|d| d.severity == lute_core_span::Severity::Error),
             "{diags:?}"
         );
-        let twice = tag_document(&out.text);
+        let twice = tag_document(&out.text, &std::collections::BTreeSet::new());
         assert_eq!(twice.added, 0, "must be idempotent");
         assert_eq!(twice.text, out.text);
     }
@@ -886,7 +1008,7 @@ mod tests {
         // mistaken for an attr block; the code goes in a fresh `{code=…}` after
         // the speaker ident, the text is untouched, and re-tagging is a no-op.
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@marina: hi /* { */ there\n";
-        let out = tag_document(src);
+        let out = tag_document(src, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 1);
         assert!(
             out.text
@@ -901,7 +1023,7 @@ mod tests {
                 .any(|d| d.severity == lute_core_span::Severity::Error),
             "{diags:?}"
         );
-        let twice = tag_document(&out.text);
+        let twice = tag_document(&out.text, &std::collections::BTreeSet::new());
         assert_eq!(
             twice.added, 0,
             "second tag run must be a no-op (idempotent)"
@@ -914,7 +1036,7 @@ mod tests {
         // same speaker `a` at u32::MAX + an untagged `a` line -> a's counter steps
         // to 4294967305 (u64 counter, so no saturation/collision at u32::MAX).
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a{code=\"4294967295\"}: one\n@a: two\n";
-        let out = tag_document(src);
+        let out = tag_document(src, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 1);
         // new code is strictly above the existing max (no duplicate 4294967295)
         assert!(
@@ -934,7 +1056,7 @@ mod tests {
         // same speaker `a` at u64::MAX + an untagged `a` line -> a's counter
         // overflows -> fail closed for that line (per speaker).
         let src = "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 1.\n@a{code=\"18446744073709551615\"}: one\n@a: two\n";
-        let out = tag_document(src);
+        let out = tag_document(src, &std::collections::BTreeSet::new());
         assert_eq!(
             out.added, 0,
             "counter overflow must fail closed, not emit a colliding code"
@@ -950,7 +1072,7 @@ mod tests {
         // quest doc (no shots) tagged ZERO lines even with untagged content
         // reachable via a `<quest>`'s `<on>` arm.
         let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n@narrator: hi\n</on>\n</quest>\n";
-        let out = tag_document(src);
+        let out = tag_document(src, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 1, "got:\n{}", out.text);
         assert!(
             out.text.contains("@narrator{code=\"0010\"}: hi"),
@@ -962,7 +1084,7 @@ mod tests {
     #[test]
     fn quest_objective_body_line_is_tagged() {
         let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"a\">\n@narrator: hi\n</objective>\n</quest>\n";
-        let out = tag_document(src);
+        let out = tag_document(src, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 1, "got:\n{}", out.text);
         assert!(
             out.text.contains("@narrator{code=\"0010\"}: hi"),
@@ -979,7 +1101,7 @@ mod tests {
         let src = "---\nkind: quest\n---\n\
                    <quest id=\"q1\">\n<on event=\"questComplete\">\n@narrator: one\n</on>\n</quest>\n\
                    <quest id=\"q2\">\n<on event=\"questComplete\">\n@narrator: two\n</on>\n</quest>\n";
-        let out = tag_document(src);
+        let out = tag_document(src, &std::collections::BTreeSet::new());
         assert_eq!(out.added, 2, "got:\n{}", out.text);
         assert!(
             out.text.contains("@narrator{code=\"0010\"}: one"),
@@ -996,8 +1118,8 @@ mod tests {
     #[test]
     fn quest_tagging_is_idempotent() {
         let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n@narrator: hi\n</on>\n</quest>\n";
-        let once = tag_document(src).text;
-        let twice = tag_document(&once);
+        let once = tag_document(src, &std::collections::BTreeSet::new()).text;
+        let twice = tag_document(&once, &std::collections::BTreeSet::new());
         assert_eq!(twice.added, 0);
         assert_eq!(twice.text, once);
     }
@@ -1035,7 +1157,7 @@ mod tests {
     #[test]
     fn force_locked_adds_instances_without_retagging_lines() {
         let src = "---\nkind: scene\ncodesLocked: true\n---\n## One\n::use{component=\"fire\"}\n@a{code=\"0050\"}: kept\n";
-        match retag_document(src) {
+        match retag_document(src, &std::collections::BTreeSet::new()) {
             RetagOutcome::LockedInstances { text, added } => {
                 assert_eq!(added, 1);
                 assert!(text.contains("instance=\"use-001\""));

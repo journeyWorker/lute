@@ -1,4 +1,4 @@
-use super::directives::{AttrDecl, FactEffect};
+use super::directives::{AttrDecl, FactEffect, RaiseDecl, RaiseTargetDecl};
 use super::SchemaError;
 use crate::types::{Field, PathSegment, Type};
 use serde::{Deserialize, Serialize};
@@ -195,8 +195,9 @@ pub struct RewardKindBody {
 /// A reward kind's `effects:` (0.50.0 §5.1): what a grant of the kind does
 /// besides its `credits:` write — the facts it retracts, then asserts
 /// ([`FactEffect`] patterns, the directive grammar; an `@attr` may only be
-/// `@target`), then the quests it accepts. Every list is optional, but the
-/// block declares at least one effect. A reward's state write is
+/// `@target`), then the quests it accepts — and (0.51.0 §4.1) the occasions
+/// the host raises after settling the grant. Every list is optional, but
+/// the block declares at least one effect. A reward's state write is
 /// `credits:`, so `writes` is no key here.
 #[derive(Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(try_from = "RawRewardEffects")]
@@ -207,6 +208,9 @@ pub struct RewardEffects {
     pub retracts: Vec<FactEffect>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub accepts: Vec<AcceptEffect>,
+    /// 0.51.0 §4.1 (#170): the occasions the host raises for the grant.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub raises: Vec<RaiseDecl>,
 }
 
 #[derive(Deserialize)]
@@ -218,15 +222,21 @@ struct RawRewardEffects {
     retracts: Vec<FactEffect>,
     #[serde(default)]
     accepts: Vec<AcceptEffect>,
+    #[serde(default, deserialize_with = "super::directives::raise_list")]
+    raises: Vec<RaiseDecl>,
 }
 
 impl TryFrom<RawRewardEffects> for RewardEffects {
     type Error = SchemaError;
     fn try_from(raw: RawRewardEffects) -> Result<Self, SchemaError> {
-        if raw.asserts.is_empty() && raw.retracts.is_empty() && raw.accepts.is_empty() {
+        if raw.asserts.is_empty()
+            && raw.retracts.is_empty()
+            && raw.accepts.is_empty()
+            && raw.raises.is_empty()
+        {
             return Err(SchemaError::RewardEffects(
                 "a reward kind's `effects:` declares no effect; list at least one of `asserts:`, \
-                 `retracts:` or `accepts:`, or remove `effects:`"
+                 `retracts:`, `accepts:` or `raises:`, or remove `effects:`"
                     .to_string(),
             ));
         }
@@ -234,6 +244,7 @@ impl TryFrom<RawRewardEffects> for RewardEffects {
             asserts: raw.asserts,
             retracts: raw.retracts,
             accepts: raw.accepts,
+            raises: raw.raises,
         })
     }
 }
@@ -248,15 +259,24 @@ impl RewardEffects {
             .chain(self.asserts.iter().map(|f| (f, true)))
     }
 
-    /// Whether any effect reads the reward's `@target`.
+    /// Whether any effect reads the reward's `@target` — a fact, an accept
+    /// or (0.51.0 §4.1) a raise.
     pub fn reads_target(&self) -> bool {
         self.facts()
             .any(|(f, _)| f.attrs().any(|a| a == REWARD_TARGET_ATTR))
             || self.accepts.contains(&AcceptEffect::Target)
+            || self.target_raises().next().is_some()
+    }
+
+    /// The raises whose target is the reward's `@target`.
+    pub fn target_raises(&self) -> impl Iterator<Item = &RaiseDecl> {
+        self.raises.iter().filter(|r| {
+            r.target.as_ref().and_then(RaiseTargetDecl::attr) == Some(REWARD_TARGET_ATTR)
+        })
     }
 }
 
-/// Printed as the three lists, each only when non-empty.
+/// Printed as the four lists, each only when non-empty.
 impl std::fmt::Debug for RewardEffects {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut s = f.debug_struct("RewardEffects");
@@ -268,6 +288,9 @@ impl std::fmt::Debug for RewardEffects {
         }
         if !self.accepts.is_empty() {
             s.field("accepts", &self.accepts);
+        }
+        if !self.raises.is_empty() {
+            s.field("raises", &self.raises);
         }
         s.finish()
     }

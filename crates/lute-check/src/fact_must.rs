@@ -84,9 +84,7 @@ use cel_parser::ast::{operators as op, Expr};
 use lute_core_span::Span;
 use lute_manifest::fact::{FactPattern, FactTerm};
 use lute_manifest::semantics::prereq::PrereqFormula;
-use lute_syntax::ast::{
-    Arm, Assert, Attr, AttrValue, CelSlot, Choice, Directive, Hub, Match, Node, Quest, Retract,
-};
+use lute_syntax::ast::{Arm, Assert, CelSlot, Choice, Directive, Hub, Match, Node, Quest, Retract};
 
 /// Guaranteed facts, each with where it is established.
 type FactMap = BTreeMap<GroundFact, Provenance>;
@@ -324,14 +322,28 @@ fn same(a: &Flow, b: &Flow) -> bool {
     }
 }
 
-fn attr_str<'a>(attrs: &'a [Attr], key: &str) -> Option<&'a str> {
-    attrs
-        .iter()
-        .find(|a| a.key == key)
-        .and_then(|a| match &a.value {
-            AttrValue::Str(s) => Some(s.as_str()),
-            _ => None,
-        })
+/// The must set's operations at a loop head (dsl 0.51.0 §3.4): the next
+/// head is the entry less what a back edge lacks; same facts, provenance
+/// ignored; top: no fact beyond the seeds (they hold on every route).
+struct MustHead;
+
+impl crate::loop_walk::HeadLattice<Facts> for MustHead {
+    fn meet(&self, entry: &Facts, back: Facts) -> Facts {
+        let mut head = entry.clone();
+        head.retain(|f| back.contains_key(f));
+        head
+    }
+
+    fn same(&self, a: &Facts, b: &Facts) -> bool {
+        a.same_facts(b)
+    }
+
+    fn top(&self, last: &Facts) -> Facts {
+        Facts {
+            seeds: Arc::clone(&last.seeds),
+            own: FactMap::new(),
+        }
+    }
 }
 
 /// Root-wide stability facts (see the module doc).
@@ -834,8 +846,16 @@ struct Walk<'a> {
     vocab: &'a RelVocab,
     /// Guard slot → (span, the meet of its visits' sets).
     slots: BTreeMap<(usize, usize), (Span, Facts)>,
-    /// `::jump{to}` label → the meet of the sets jumping to it.
+    /// `::jump{to}` label → the meet of the sets jumping to it. A probe pass
+    /// swaps in a fresh map of its own (dsl 0.51.0 §3.4).
     pending: BTreeMap<String, Facts>,
+    /// The document's loops ([`crate::next_labels::LoopTable`]).
+    loops: &'a crate::next_labels::LoopTable,
+    /// The head whose probe pass is walking: a bounded jump to it sends its
+    /// set there.
+    probing: Option<String>,
+    /// A probe pass: nothing is recorded and no `::end` route is kept.
+    probe: bool,
     /// The meet of every `::end` route.
     exit: Flow,
     /// Where an `<on>` / `<objective>` body starts (engine-chosen time).
@@ -868,6 +888,9 @@ impl<'a> Walk<'a> {
             vocab: &folded.env.rel_vocab,
             slots: BTreeMap::new(),
             pending: BTreeMap::new(),
+            loops: &folded.labels.loops,
+            probing: None,
+            probe: false,
             exit: None,
             body_base: root.start(),
             quest: None,
@@ -891,6 +914,9 @@ impl<'a> Walk<'a> {
 
     /// Record the set reaching the slot at `span`.
     fn record_span(&mut self, span: Span, flow: &Flow) {
+        if self.probe {
+            return;
+        }
         let Some(facts) = flow else {
             return;
         };
@@ -1015,11 +1041,49 @@ impl<'a> Walk<'a> {
             && !self.root.may.is_unbounded(&f.relation)
     }
 
-    /// A label site: meet the jumps that target it.
-    fn label(&self, id: &str, flow: &mut Flow) {
+    /// A label site: meet the jumps that target it; at a loop head, iterate
+    /// the region `rest` starts (dsl 0.51.0 §3.4).
+    fn label(&mut self, id: &str, rest: &[Node], flow: &mut Flow) {
         if let Some(jumped) = self.pending.get(id) {
             meet(flow, Some(jumped.clone()));
         }
+        if !self.loops.is_head(id) {
+            return;
+        }
+        if let Some(entry) = flow.take() {
+            let region = &rest[..crate::loop_walk::region_len(rest, id)];
+            *flow = Some(self.head(id, entry, region));
+        }
+    }
+
+    /// The stable must set at loop head `id`: `meet(entry, back edges)`,
+    /// iterated (Must only shrinks: at most `|entry| + 1` passes). Each
+    /// probe pass walks `region` with recording off and a fresh pending map,
+    /// whose entry under `id` is the meet of the back edges. Top: no fact
+    /// beyond the seeds. The body's starting rules (grant points, handler
+    /// writes, lasting guards, quest start facts) ran at the body's entry,
+    /// outside every region, so no pass re-applies them.
+    fn head(&mut self, id: &str, entry: Facts, region: &[Node]) -> Facts {
+        use crate::loop_walk::{head_fixpoint, WalkKind};
+        let bound = entry.own.len() + 1;
+        head_fixpoint(
+            WalkKind::Facts,
+            entry,
+            bound,
+            |h| {
+                let pending = std::mem::take(&mut self.pending);
+                let probing = self.probing.replace(id.to_string());
+                let probe = std::mem::replace(&mut self.probe, true);
+                let mut flow = Some(h.clone());
+                self.walk(region, &mut flow);
+                let back = self.pending.remove(id);
+                self.pending = pending;
+                self.probing = probing;
+                self.probe = probe;
+                back
+            },
+            &MustHead,
+        )
     }
 
     fn jump(&mut self, to: &str, flow: Flow) {
@@ -1035,7 +1099,14 @@ impl<'a> Walk<'a> {
     }
 
     fn walk(&mut self, nodes: &[Node], flow: &mut Flow) {
-        for node in nodes {
+        for (i, node) in nodes.iter().enumerate() {
+            if self.probe {
+                crate::loop_walk::probe_node(crate::loop_walk::WalkKind::Facts);
+            }
+            if let Some(id) = crate::loop_walk::label_of(node) {
+                self.label(id, &nodes[i + 1..], flow);
+                continue;
+            }
             match node {
                 Node::Line(l) => {
                     // dsl 0.24.0 §4: an unguarded line is its own slot —
@@ -1212,18 +1283,33 @@ impl<'a> Walk<'a> {
     }
 
     fn directive(&mut self, d: &Directive, flow: &mut Flow) {
-        use lute_manifest::core::{END_DIRECTIVE, JUMP_DIRECTIVE, LABEL_DIRECTIVE};
+        use lute_manifest::core::{END_DIRECTIVE, JUMP_DIRECTIVE};
         match d.tag.as_str() {
-            END_DIRECTIVE => meet(&mut self.exit, flow.take()),
-            LABEL_DIRECTIVE => {
-                if let Some(id) = attr_str(&d.attrs, lute_manifest::core::LABEL_NAME_ATTR) {
-                    self.label(id, flow);
+            END_DIRECTIVE => {
+                let ended = flow.take();
+                if !self.probe {
+                    meet(&mut self.exit, ended);
                 }
             }
             JUMP_DIRECTIVE => {
-                let to = attr_str(&d.attrs, "to");
-                match (&d.when, to) {
-                    (Some(when), to) => {
+                use crate::loop_walk::JumpRoute;
+                let to = crate::loop_walk::jump_target(d);
+                match (JumpRoute::of(d), to) {
+                    (JumpRoute::Bounded(when), to) => {
+                        if let Some(when) = when {
+                            self.record(when, flow);
+                        }
+                        // A back edge: its set reaches the head only in a
+                        // probe pass of that head; it falls through.
+                        if let Some(to) = to.filter(|to| self.probing.as_deref() == Some(*to)) {
+                            let mut sent = flow.clone();
+                            if let Some(when) = when {
+                                self.assume(when, &mut sent);
+                            }
+                            self.jump(to, sent);
+                        }
+                    }
+                    (JumpRoute::Guarded(when), to) => {
                         self.record(when, flow);
                         if let Some(to) = to {
                             let mut jumped = flow.clone();
@@ -1231,11 +1317,11 @@ impl<'a> Walk<'a> {
                             self.jump(to, jumped);
                         }
                     }
-                    (None, Some(to)) => {
+                    (JumpRoute::Away, Some(to)) => {
                         let jumped = flow.take();
                         self.jump(to, jumped);
                     }
-                    (None, None) => {}
+                    (JumpRoute::Away, None) => {}
                 }
             }
             _ => {
@@ -1458,4 +1544,54 @@ fn entry_read(e: &Expr) -> Option<(String, bool)> {
     let path = crate::cel_paths::select_path(e)?;
     let id = lute_manifest::semantics::cel_paths::reserved_entry_id(&path)?.to_string();
     Some((id, crate::cel_paths::is_entry_ever_read(&path)))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::loop_walk::{head_fixpoint, loop_walk_stats, reset_loop_walk_stats, WalkKind};
+
+    fn fact(i: usize) -> GroundFact {
+        GroundFact {
+            relation: "met".into(),
+            args: vec![format!("p{i}")],
+        }
+    }
+
+    /// dsl 0.51.0 §3.8 widening: a generated chain of facts whose head never
+    /// stabilizes within `|entry| + 1` passes takes the top — the seeds
+    /// alone.
+    #[test]
+    fn a_fact_head_that_never_stabilizes_takes_the_seeds() {
+        reset_loop_walk_stats();
+        let seed = GroundFact {
+            relation: "met".into(),
+            args: vec!["seed".into()],
+        };
+        let entry = Facts {
+            seeds: Arc::new(BTreeMap::from([(seed.clone(), Provenance::Seed)])),
+            own: (0..4).map(|i| (fact(i), Provenance::Seed)).collect(),
+        };
+        let bound = entry.own.len() + 1;
+        // Each back edge drops the head's first fact while it holds and
+        // restores the chain otherwise: a head that never stabilizes.
+        let full = entry.clone();
+        let head = head_fixpoint(
+            WalkKind::Facts,
+            entry,
+            bound,
+            |h| {
+                let mut back = full.clone();
+                if h.contains_key(&fact(0)) {
+                    back.retain(|f| *f != fact(0));
+                }
+                Some(back)
+            },
+            &MustHead,
+        );
+        assert!(head.own.is_empty());
+        assert!(head.contains_key(&seed));
+        let stats = loop_walk_stats(WalkKind::Facts);
+        assert_eq!((stats.probe_passes, stats.widened), (5, 1));
+    }
 }

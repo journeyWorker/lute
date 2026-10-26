@@ -20,7 +20,7 @@
 //! `E-CHAPTERS`); [`check_project_chapters`] checks its ids against the
 //! project's scenes.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
@@ -382,11 +382,14 @@ pub fn locate_in_manifest(manifest: &str, anchor: &ChapterAnchor) -> std::ops::R
 /// diagnostics, located in `lute.project.yaml` — the documents are still
 /// checked; a malformed chain is simply not applied), then every chain's
 /// ids against the scenes ([`check_chain`]). `docs` are the root's
-/// documents, already desugared, parallel to `foldeds`.
+/// documents, already desugared, parallel to `foldeds`; `raises` is their
+/// raise table (a scene a declared raise reaches is raised at every clock
+/// position, 0.51.0 §4.4).
 pub fn check_project_chapters(
     root: &Path,
     docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
+    raises: &crate::raises::RaiseTable<'_>,
 ) -> Vec<(PathBuf, Diagnostic)> {
     let Ok(Some(project)) = lute_manifest::project::load_project(root) else {
         return Vec::new();
@@ -403,7 +406,20 @@ pub fn check_project_chapters(
             )
         })
         .collect();
-    let project_scope = ProjectScope { docs, foldeds };
+    let raised = if raises.iter().next().is_some() {
+        crate::beats::project_beats(docs, foldeds)
+            .iter()
+            .filter(|b| b.kind == crate::beats::ProjectBeatKind::Scene && raises.reaches_any(b))
+            .map(|b| b.path)
+            .collect()
+    } else {
+        BTreeSet::new()
+    };
+    let project_scope = ProjectScope {
+        docs,
+        foldeds,
+        raised,
+    };
     for (index, chain) in project.defaults.chapters().iter().enumerate() {
         for (path, d) in check_chain(index, chain, &manifest, &project_scope) {
             out.push((path.unwrap_or_else(|| manifest_path.clone()), d));
@@ -412,10 +428,12 @@ pub fn check_project_chapters(
     out
 }
 
-/// The desugared documents of one project root and their folds (parallel).
+/// The desugared documents of one project root and their folds (parallel),
+/// with the scenes a declared raise reaches.
 struct ProjectScope<'a> {
     docs: &'a [ProjectDoc<'a>],
     foldeds: &'a [&'a FoldedEnv],
+    raised: BTreeSet<&'a Path>,
 }
 
 impl ProjectScope<'_> {
@@ -835,6 +853,7 @@ fn stall(
                 prev.as_ref().map(|(id, w)| (*id, w.as_deref())),
                 &chain.on,
                 folded,
+                scope.raised.contains(path),
             )?;
             (format!(", and {why}"), fix)
         }

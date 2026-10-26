@@ -268,6 +268,38 @@ title: The lighthouse
 그 분기들로 축소되므로, 런타임에 다시 제시하더라도 계산이 무한히 늘어나지 않으며 — 전체성이
 보존됩니다.
 
+## 허브와 루프
+
+둘 다 플레이어에게 다시 묻지만 답하는 질문이 다릅니다. 0.51부터는 한정된
+[`::jump{to="…" max="…"}`](/ko/language/directives/#한정된-뒤로-점프--max)가 보행을 앞선 `::label`로
+되돌릴 수 있으므로 `<branch>`도 여러 번 물을 수 있습니다.
+
+- **`<hub>`를 쓰는 경우:** 플레이어가 언제 떠날지 정할 때입니다. 여러 화제가 있는 대화, `exit` 선택지를
+  고를 때까지 남아 있는 메뉴, 사라지는 `once` 선택지, 방문 사이에 실행되는 `<return>` 블록이 여기에 해당합니다.
+  플레이어의 협조로 끝나며, 검사기는 끝날 수 있음을 증명합니다([막다른 길 없음](#막다른-길-없음)).
+- **루프를 쓰는 경우:** *게임*이 몇 번 반복할지 정할 때입니다. 미니게임 실패 후 재시도, "다시 해 보기(최대
+  세 번)", 정해진 횟수만 반복되는 프롬프트가 해당합니다. 한계는 1부터 99까지의 리터럴 `max`이며, 플레이어의
+  협조 없이도 보행이 끝납니다.
+
+```lute
+::label{name="retry"}
+<branch id="again" prompt="The lock is still stuck.">
+  <choice id="push" text="Push harder">
+    @mira: It won't budge.
+    ::jump{to="retry" max="2"}
+  </choice>
+  <choice id="leave" text="Give up">
+    @mira: Fine. Another way, then.
+  </choice>
+</branch>
+```
+
+여기서 `push`는 보행을 라벨로 되돌리고, 두 번 실행된 뒤 세 번째 `push`는 `<branch>` 뒤로 이어집니다. 다시
+도달한 `<branch>`는 새 메뉴이며 `presentation`은 `0`으로 유지됩니다. 루프 안의 `<hub>`는 방문마다
+제시 0에서 시작하지만, 앞선 방문에서 고른 `once` 선택지는 계속 소진된 상태입니다. 그 기억이 장면의 방문 기록
+(`scene.visited.<hub>.<choice>`)이므로 허브는 남은 선택지만 내놓습니다. 루프는 허브 옵션 본문 안에 둘 수
+있지만(그 옵션 안에 `::label`을 두세요), 허브 옵션 안에서 그 바깥으로 되돌아가는 루프는 `E-JUMP-LOOP-SCOPE`입니다.
+
 ## `<branch>`, `<hub>`, `<choice>`의 플러그인 스탬프
 
 0.50부터 플러그인은 이 세 요소에 자체 속성을 붙일 수 있습니다. `on:`이 `branch`, `hub`, `choice`를 이름으로 지정하는 [`stampAttrs`](/ko/plugins/manifests/#표면에-스탬프-한정하기-on) 엔트리는 그곳에서 허용되며, 그 밖의 곳에서는 허용되지 않습니다. 횡단 스탬프(`on:` 없음)는 `<branch>`, `<hub>`, `<choice>`에서 여전히 `E-UNKNOWN-ATTR`입니다. 다음 매니페스트가 있으면

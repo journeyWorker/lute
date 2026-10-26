@@ -1,6 +1,6 @@
 ---
 title: Core directives
-description: The thirteen lute.core directives — ten staging leaves (::bg, ::music, ::sfx, ::actor, ::clear, ::camera, ::cg, ::vfx, ::video, ::sequence), the walk terminator ::end, and the forward jump pair ::jump / ::label — with their attributes, the project-declared staging vocabulary, attribute quoting, timing keys, the wait blocking model, and the when= guard.
+description: The thirteen lute.core directives — ten staging leaves (::bg, ::music, ::sfx, ::actor, ::clear, ::camera, ::cg, ::vfx, ::video, ::sequence), the walk terminator ::end, and the jump pair ::jump / ::label (forward, or bounded backward with max) — with their attributes, the project-declared staging vocabulary, attribute quoting, timing keys, the wait blocking model, and the when= guard.
 ---
 
 A **staging directive** is a single-line leaf that stages the scene: background, music, sound,
@@ -18,7 +18,7 @@ accepts.
 ## Core vocabulary
 
 `lute.core` declares thirteen directives — ten staging leaves, the walk terminator `::end`, and the
-forward jump pair `::jump` / `::label` — with these canonical attributes:
+jump pair `::jump` / `::label` — with these canonical attributes:
 
 | Directive | Attributes |
 |---|---|
@@ -33,7 +33,7 @@ forward jump pair `::jump` / `::label` — with these canonical attributes:
 | `::video` | `assetId` (required), `display` (`show`\|`hide`, default `show`) |
 | `::sequence` | `name` (required, domain `sequence`) — a reference to a cinematic the engine owns; `wait` defaults to `true` |
 | `::end` | `reason` (optional, free-form) — terminates the walk; control flow, not staging (below) |
-| `::jump` | `to` (required) — jumps forward to a `::label`; control flow (below) |
+| `::jump` | `to` (required) — jumps to a `::label`, forward or (with `max`, 1–99) backward a bounded number of times; control flow (below) |
 | `::label` | `name` (required) — names a position for `::jump`; emits no record (below) |
 
 ```lute
@@ -430,11 +430,13 @@ reported dead and `W-CODE-AFTER-END` could not exist. Shipping `::end` as a new 
 also the honest version signal — an engine that does not implement the IR minor that introduced it
 (`0.8.0`) must refuse the artifact rather than fall through a record it does not recognise.
 
-## `::jump` and `::label` — forward jumps
+## `::jump` and `::label` — forward and bounded backward jumps
 
-`::label{name="…"}` names a position; `::jump{to="…"}` continues the walk there. A jump only goes
-**forward** in document order, so the walk stays a DAG — to offer choices again, use a
-[`<hub>`](/language/choices-and-hubs/). Labels share one namespace per document; a section's
+`::label{name="…"}` names a position; `::jump{to="…"}` continues the walk there. A jump without
+`max` only goes **forward** in document order, so the walk stays a DAG; with `max` (since 0.51) it
+may go backward a bounded number of times (see [Bounded backward jumps](#bounded-backward-jumps--max)).
+To offer choices again until the player leaves, use a [`<hub>`](/language/choices-and-hubs/).
+Labels share one namespace per document; a section's
 `{#id}` is identity metadata, not a label, and a `::jump` cannot target it. `::jump` takes
 `when=`, and a guarded jump is taken only while its condition holds:
 
@@ -463,13 +465,87 @@ state:
 {"kind": "jump", "family": "control", "position": "001-0300", "target": "001-0700"}
 ```
 
-A `to` that names no `::label` in the document is `E-JUMP-UNDEFINED`; a label at or above the jump
-is `E-JUMP-BACKWARD`. Content after an unguarded `::jump` in the same body never runs and is
-`W-CODE-AFTER-JUMP`. To jump to a line, put a `::label` immediately before it.
+A `to` that names no `::label` in the document is `E-JUMP-UNDEFINED`. A label at or above the jump
+is `E-JUMP-BACKWARD` unless the jump carries `max` (below); the message names the spelling —
+`::jump{to="again" max="3"}` repeats at most 3 times, and to offer choices again you use a `<hub>`.
+Content after an unguarded `::jump` in the same body never runs and is `W-CODE-AFTER-JUMP`. To jump
+to a line, put a `::label` immediately before it.
 
 Neither `::jump` nor `::label` carries a stamp (a plugin stamp or a timing key such as `wait` is
 `E-UNKNOWN-ATTR`; see [Directives that carry no stamp](#directives-that-carry-no-stamp)): put the
 attribute on the line or directive before the jump, or after the label.
+
+### Bounded backward jumps — `max`
+
+Since 0.51, a `::jump` may target an **earlier** `::label` when it carries `max`, the number of times
+the jump may be taken. After `max` takes the jump is not taken, and control falls through to the
+node after it. `max` is a literal integer from 1 to 99; `lute.core` declares it on `::jump` as an
+`int`:
+
+```lute
+::label{name="attempt"}
+::tryLock{door="vault"}
+<match subject="scene.lock.vault.won">
+  <when is="false">
+    @mira: Again!
+    ::jump{to="attempt" max="2"}
+  </when>
+  <when is="true">
+    @mira: It clicks open.
+  </when>
+</match>
+@theo: That's enough for today.
+```
+
+`::tryLock` is a blocking bridge call that writes `scene.lock.vault.won` (the
+[flow-and-text example](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text),
+`scenes/lock.lute`). The lock is tried at most three times: the first pass and two repeats. If the
+third attempt still fails, the jump is exhausted and `@theo` speaks. `when=` and `max` combine — the
+jump is taken while its `when` holds *and* takes remain. `max` is not a stamp carrier: `::jump` still
+carries no stamp, so `max` is the only attribute added.
+
+- **Counter.** Each bounded jump has its own counter, local to one walk (one presentation, one quest
+  handler or objective segment, one entry or beat body), starting at 0. When control reaches the
+  jump (and its `when` holds), a counter below `max` is incremented and control moves to the label;
+  otherwise control falls through.
+- **Reset.** A jump's counter returns to 0 whenever control arrives at its label from **outside the
+  loop**: by falling through into the label, by a forward jump, or by a bounded jump that is not
+  inside this loop. Taking the jump itself, or another bounded jump inside the loop, does not reset
+  it. So an inner loop gets its full `max` again on every iteration of the outer loop.
+- **Exhaustion.** After `max` takes the jump is simply not taken; nothing is reported. A `max` that
+  is never reached, or a `when` that never holds, is not an error.
+- **Shared labels.** Two or more bounded jumps may target the same label. Each has its own counter
+  and its own loop.
+
+The **loop** of a bounded jump is every node from its label to the jump, in document order; the
+label is the loop's **head**. To keep every loop well-nested and entered only at its head, the
+checker enforces these rules:
+
+| Rule | Code |
+|---|---|
+| `max` is a literal integer from 1 to 99 — not an `@ref`, not `0`, not negative, not above 99; and `max` on a forward jump means nothing | `E-JUMP-MAX` |
+| The label is in the jump's own body or in a body that encloses it, and every body in between is a `<choice>` body of a `<branch>` or an arm body of a `<match>`. The loop may not leave a `<hub>` option body or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section, and contains no `<on>` or `<objective>` | `E-JUMP-LOOP-SCOPE` |
+| A forward jump from outside a loop may not land strictly inside it after its head; a loop is entered only at its head | `E-JUMP-INTO-LOOP` |
+| Two loops nest or are disjoint; they may not overlap without nesting (loops with the same head nest) | `E-JUMP-LOOP-CROSS` |
+
+A jump from inside a loop to a label after it (an exit) and a forward jump from before the loop to
+its head are both legal. A bounded jump inside a component body is checked in the component's own
+document, and each expanded instance has its own counters and its own labels: the compiler names a
+label per `::use` instance, so a component used twice loops, or jumps forward, inside each instance
+(#207).
+
+Loops cannot make a walk run forever. Between two takes of bounded jumps control moves only
+forward, so it is bounded by the walk's length; a loop's counter resets only when its head is
+entered from outside, so by induction over the nesting a loop nested inside `d` bounded jumps runs
+at most the product of `(max + 1)` over those jumps. Every walk ends without player cooperation,
+and the checker can still follow every path. The reference runtime does not take the compiler's
+word for it: at load it refuses an artifact with a backward transfer other than a bounded `jump`,
+or with loops that cross (see the [runtime contract](/tooling/runtime-contract/#051-additions)).
+
+Flow analyses see the loops too. Definite assignment and stage tracking join the states of every
+jump that reaches a label, so a write that a jump skips is not assumed at the label: a read after it
+is `E-MAYBE-UNSET`, and a line there whose speaker a skipped `::actor` would have shown is
+`W-STAGE-ABSENT`. A loop head is iterated to a fixed point.
 
 ## Reserved directives
 

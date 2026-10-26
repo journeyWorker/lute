@@ -1,0 +1,9 @@
+state:
+  run.tries: { type: int, default: 0 }
+  run.guarded: { type: int, default: 0 }
+  run.outer: { type: int, default: 0 }
+  run.inner: { type: int, default: 0 }
+  run.shared: { type: int, default: 0 }
+  run.asks: { type: int, default: 0 }
+  run.visits: { type: int, default: 0 }
+  run.rounds: { type: int, default: 0 }

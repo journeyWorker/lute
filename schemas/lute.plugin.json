@@ -48,6 +48,9 @@
     },
     {
       "$ref": "#/definitions/lintsFile"
+    },
+    {
+      "$ref": "#/definitions/occasionsFile"
     }
   ],
   "definitions": {
@@ -196,7 +199,7 @@
         "attrs": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/attrDecl"
+            "$ref": "#/definitions/directiveAttrDecl"
           }
         },
         "semantics": {
@@ -218,6 +221,35 @@
         "lower": {
           "$ref": "#/definitions/lowering",
           "description": "Optional (0.24.0): absent means the generic `kind: \"plugin\"` passthrough."
+        }
+      }
+    },
+    "directiveAttrDecl": {
+      "description": "schema.rs::AttrDecl of a directive's own `attrs:` — the one place `type: text` is admitted (0.51.0 §5.1: localizable player-visible text, on a directive with no `lower:` and no `bridge:`, without `default:`; the loader judges those).",
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "type": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/type"
+            },
+            {
+              "const": "text"
+            }
+          ]
+        },
+        "default": {
+          "$ref": "#/definitions/literal"
         }
       }
     },
@@ -316,16 +348,49 @@
       }
     },
     "directiveEffects": {
-      "description": "schema.rs::DirectiveEffects.",
+      "description": "schema.rs::DirectiveEffects. Every list is optional: `writes` (plugin §7.4), `asserts`/`retracts` (dsl 0.27.0 §4, fact patterns `relation(arg, …)`), `raises` (0.51.0 §4.1, the occasions the host raises after the call).",
       "type": "object",
-      "required": [
-        "writes"
-      ],
       "properties": {
         "writes": {
           "type": "array",
           "items": {
             "$ref": "#/definitions/writeDecl"
+          }
+        },
+        "asserts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "retracts": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "raises": {
+          "$ref": "#/definitions/raises"
+        }
+      }
+    },
+    "raises": {
+      "description": "schema.rs::RaiseDecl list (0.51.0 §4.1): a non-empty list; each entry names the occasion the host raises and, for an occasion raised for a target, the target — `@<attr>` (a directive's own attribute; on a reward kind `@target`) or a literal dotted target (`scene.chapter2`).",
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "occasion"
+        ],
+        "properties": {
+          "occasion": {
+            "type": "string"
+          },
+          "target": {
+            "type": "string",
+            "description": "`@<attr>` or a dotted target, trimmed and validated by the loader (`RaiseTargetDecl`)."
           }
         }
       }
@@ -773,12 +838,11 @@
       }
     },
     "lintRuleDecl": {
-      "description": "lint.rs::LintRuleDecl. `target` is one of `line | section | scene | speaker | group | project | node`; `level` (optional) is one of `off | hint | info | warn | error`; `when` is a lint-CEL expression parsed by lute-lint at load time; `message` is a `{path.to.field}` template; `options` is an opaque YAML mapping the rule's own logic interprets. Consumers namespace the raw `id` as `<plugin-id>/<id>`.",
+      "description": "lint.rs::LintRuleDecl. `target` is one of `line | section | scene | speaker | group | project | node | pair`; `level` (optional) is one of `off | hint | info | warn | error`; `when` is a lint-CEL expression parsed by lute-lint at load time; `message` is a `{path.to.field}` template; `options` is an opaque YAML mapping the rule's own logic interprets. A `pair` rule (dsl 0.51.0 §6.1) states `open` and `close` (and optional `inside` and `scope`) instead of `when`; every other target states `when` and none of those. Consumers namespace the raw `id` as `<plugin-id>/<id>`.",
       "type": "object",
       "required": [
         "id",
         "target",
-        "when",
         "message"
       ],
       "properties": {
@@ -793,11 +857,27 @@
             "speaker",
             "group",
             "project",
-            "node"
+            "node",
+            "pair"
           ]
         },
         "when": {
           "type": "string"
+        },
+        "open": {
+          "type": "string"
+        },
+        "close": {
+          "type": "string"
+        },
+        "inside": {
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "body",
+            "section"
+          ]
         },
         "level": {
           "enum": [
@@ -813,6 +893,54 @@
         },
         "options": {
           "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "target": {
+            "const": "pair"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "open",
+          "close"
+        ],
+        "not": {
+          "required": [
+            "when"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "when"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "open"
+              ]
+            },
+            {
+              "required": [
+                "close"
+              ]
+            },
+            {
+              "required": [
+                "inside"
+              ]
+            },
+            {
+              "required": [
+                "scope"
+              ]
+            }
+          ]
         }
       }
     },
@@ -907,7 +1035,7 @@
       }
     },
     "rewardEffects": {
-      "description": "schema.rs::RewardEffects (closed, at least one effect; 0.50.0 §5.1). `asserts`/`retracts` are fact patterns `relation(arg, …)` whose args are members, `true`/`false`, `@target` or (a retract only) `_`; `accepts` entries are `@target` or a quest id. A reward's state write is `credits:`, so there is no `writes`.",
+      "description": "schema.rs::RewardEffects (closed, at least one effect; 0.50.0 §5.1). `asserts`/`retracts` are fact patterns `relation(arg, …)` whose args are members, `true`/`false`, `@target` or (a retract only) `_`; `accepts` entries are `@target` or a quest id; `raises` (0.51.0 §4.1) the occasions the host raises after settling the grant, each `target` `@target` or a literal. A reward's state write is `credits:`, so there is no `writes`.",
       "type": "object",
       "additionalProperties": false,
       "minProperties": 1,
@@ -929,6 +1057,9 @@
           "items": {
             "type": "string"
           }
+        },
+        "raises": {
+          "$ref": "#/definitions/raises"
         }
       }
     },
@@ -1088,6 +1219,86 @@
         },
         "via": {
           "type": "string"
+        }
+      }
+    },
+    "occasionsFile": {
+      "description": "schema.rs::OccasionsFile (export `occasions/*.yaml`, dsl 0.21.0 §2): an `occasions:` mapping keyed by the occasion name.",
+      "type": "object",
+      "required": [
+        "occasions"
+      ],
+      "properties": {
+        "occasions": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/occasionBody"
+          }
+        }
+      }
+    },
+    "occasionBody": {
+      "description": "schema.rs::OccasionBody (closed, as the loader refuses unknown keys). `raisedBy: declared` (0.51.0 §4.1): the host raises the occasion only where a declared `effects.raises` says so.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "select": {
+          "enum": [
+            "first",
+            "all",
+            "sequence"
+          ]
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "object",
+              "required": [
+                "prefix",
+                "entity"
+              ],
+              "properties": {
+                "prefix": {
+                  "type": "string"
+                },
+                "entity": {
+                  "type": "string"
+                },
+                "members": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              }
+            }
+          ]
+        },
+        "description": {
+          "type": "string"
+        },
+        "judge": {
+          "enum": [
+            "after",
+            "before"
+          ]
+        },
+        "raisedWhen": {
+          "type": "string"
+        },
+        "payload": {
+          "type": "object"
+        },
+        "outsideRun": {
+          "type": "boolean"
+        },
+        "raisedBy": {
+          "enum": [
+            "declared"
+          ]
         }
       }
     }

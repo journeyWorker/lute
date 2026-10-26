@@ -275,6 +275,68 @@ pub(crate) fn run_check_project(
                 ),
             ));
         }
+        // 0.51.0 §5.3: every final `lineId` keys one translation, project-wide.
+        // A unit expanded from a component is placed in that component's
+        // file, where its source span is.
+        let site = |unit: &lute_compile::index::UnitSite| {
+            let doc = model.documents().iter().find(|d| {
+                d.path
+                    .strip_prefix(model.root())
+                    .is_ok_and(|rel| rel.to_string_lossy().replace('\\', "/") == unit.doc)
+            })?;
+            let span = doc.source_map.as_ref()?.by_addr.get(&unit.addr)?.span;
+            let path = match &unit.component {
+                Some(name) => doc.input.components.table.get(name)?.src.clone(),
+                None => doc.path.clone(),
+            };
+            let span = if span.line == 0 {
+                normalize_span_from_text(&std::fs::read_to_string(&path).ok()?, span)
+            } else {
+                span
+            };
+            Some((path, span))
+        };
+        // `path:line`, relative to the project (a component's `src` is
+        // canonical, the root may not be).
+        let canonical_root = canonical_path(model.root());
+        let shown_at = |path: &Path, span: lute_core_span::Span| {
+            let rel = path
+                .strip_prefix(model.root())
+                .ok()
+                .or_else(|| path.strip_prefix(canonical_root.as_deref()?).ok())
+                .unwrap_or(path);
+            format!("{}:{}", rel.to_string_lossy().replace('\\', "/"), span.line)
+        };
+        for dup in lute_compile::index::line_id_duplicates(&index_inputs) {
+            let first = site(&dup.first);
+            let first_at = first.as_ref().map_or_else(
+                || dup.first.doc.clone(),
+                |(path, span)| shown_at(path, *span),
+            );
+            let mut d = manifests::as_diagnostic(
+                lute_compile::index::E_LINE_ID_DUP,
+                dup.message(&first_at),
+            );
+            let path = match site(&dup.unit) {
+                Some((path, span)) => {
+                    d.span = span;
+                    path
+                }
+                None => model.root().join(&dup.unit.doc),
+            };
+            if let Some((first_path, span)) = first {
+                let mut related = manifests::as_diagnostic(
+                    lute_compile::index::E_LINE_ID_DUP,
+                    format!("the first unit with lineId `{}`", dup.line_id),
+                );
+                related.span = span;
+                d.related.push(lute_core_span::RelatedDiagnostic {
+                    file: first_path.display().to_string(),
+                    diagnostic: related,
+                });
+            }
+            project_diags.push((path, d));
+        }
     }
     fold_inherited_version_stale(&mut file_results, &mut project_diags, &inputs);
     for model in &models {

@@ -301,18 +301,25 @@ fn dead_stretches<'n>(
 /// exactly: an unconditional forward jump leaves this body the same way
 /// `::end` does, so nothing after it in that body can ever run. A GUARDED
 /// `::jump{when=}` does NOT qualify (fall-through exists; see the
-/// `Node::Directive` arm in [`walk_reach`]).
+/// `Node::Directive` arm in [`walk_reach`]), and neither does a bounded
+/// `::jump{max=}` (dsl 0.51.0 §3.4: once its takes are used up, control
+/// falls through).
 pub(crate) const W_CODE_AFTER_NEXT: &str = "W-CODE-AFTER-JUMP";
 
 /// `W-CODE-AFTER-JUMP` for `nodes`, mirroring [`check_code_after_end`]
-/// verbatim except the terminator predicate (unguarded `::jump` — dispatch
-/// by TAG, [`lute_manifest::core::NEXT_DIRECTIVE`], AND `d.when.is_none()`).
+/// verbatim except the terminator predicate (an unguarded `::jump` without
+/// `max` — dispatch by TAG, [`lute_manifest::core::JUMP_DIRECTIVE`], AND
+/// `d.when.is_none()` AND no [`lute_manifest::core::JUMP_MAX_ATTR`]).
 pub(crate) fn check_code_after_next(
     nodes: &[Node],
     targets: &BTreeSet<String>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    let is_unguarded_next = |n: &Node| matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::JUMP_DIRECTIVE && d.when.is_none());
+    let is_unguarded_next = |n: &Node| {
+        matches!(n, Node::Directive(d) if d.tag == lute_manifest::core::JUMP_DIRECTIVE
+            && d.when.is_none()
+            && !d.attrs.iter().any(|a| a.key == lute_manifest::core::JUMP_MAX_ATTR))
+    };
     for dead in dead_stretches(nodes, is_unguarded_next, targets) {
         diags.push(diag(
             W_CODE_AFTER_NEXT,

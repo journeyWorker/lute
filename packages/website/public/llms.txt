@@ -1,6 +1,6 @@
 # Lute
 
-> Lute is a statically analyzable narrative language for branching games: `.lute` documents compile to a versioned JSON IR plus CEL. Write dialogue, quests, cinematic beats, and relational world state; check reachability, simulate outcomes, and compile before you ship. The current language version is **0.50.0** and the current IR version is **0.50.0**.
+> Lute is a statically analyzable narrative language for branching games: `.lute` documents compile to a versioned JSON IR plus CEL. Write dialogue, quests, cinematic beats, and relational world state; check reachability, simulate outcomes, and compile before you ship. The current language version is **0.51.0** and the current IR version is **0.51.0**.
 
 Lute is deliberately non-Turing: every document is a finite, terminating artifact, so the checker can prove reachability, definite-assignment, and envelope properties instead of guessing. The CLI (`lute`) is a headless checker, compiler, and preview tool; `lute context --json` emits the project-resolved authoring surface an AI or human needs to write valid Lute, and `lute check --json` gives a machine-readable diagnostic loop. In 0.43, report JSON carries `command`, `schemaVersion`, and `ok` (`ok` matches exit status 0); failures use the `0.43.0.error` envelope. `run --json` artifacts and `play --events` rows remain unwrapped.
 
@@ -32,11 +32,11 @@ the [0.33.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/propo
 - [Reserved names](https://lute-lang.vercel.app/reference/reserved-names/): The names Lute keeps for itself, where each is refused, and what to write instead.
 - [Many authors, one project](https://lute-lang.vercel.app/guides/multi-author/): How a lead and several area writers share one Lute project: ownership by directory, kinds assembled with add:, defaults, id conventions, contract beats, hand-off plays, and the merge gates that catch what collides.
 - [Coming from Ink or Yarn](https://lute-lang.vercel.app/guides/coming-from-ink-yarn/): A map from Ink and Yarn Spinner to Lute: knots and nodes, diverts and jumps, choices and loops, variables, conditional text, sequences, endings, comments and tags, and what the checker says when Ink or Yarn syntax slips into a .lute file.
-- [Porting a content set](https://lute-lang.vercel.app/guides/porting-a-content-set/): How to bring a large authored content set (a spreadsheet, another engine's export) into Lute with an importer: per-surface stamp columns, host tokens, reward effects, project diagnostic levels for an imported subtree, staging a speaker, and node lints for structural and dependent-attribute rules.
+- [Porting a content set](https://lute-lang.vercel.app/guides/porting-a-content-set/): How to bring a large authored content set (a spreadsheet, another engine's export) into Lute with an importer: per-surface stamp columns, host tokens, reward effects, project diagnostic levels for an imported subtree, staging a speaker, node and pair lints for structural and dependent-attribute rules, bounded retry loops, scenes that a directive or reward raises, localizable directive text, and what structured values still lack.
 - [Frontmatter & profiles](https://lute-lang.vercel.app/language/frontmatter-and-profiles/): The YAML frontmatter block that opens every .lute document — required and optional keys, plus the profile/plugins capability selectors.
 - [Content vocabulary](https://lute-lang.vercel.app/language/vocabulary/): The compiler declares the content-vocabulary slots and ships no members — how a project declares its own emotions, actions, anchors, costumes, camera framings and moves, transitions, CG layouts, sequences, music playback, moods, VFX types and text styles, the three declaration routes and their precedence, and the exits:/stops:/default: member semantics.
 - [Dialogue & cast](https://lute-lang.vercel.app/language/dialogue-and-cast/): Content lines — the @speaker syntax for dialogue and narration — plus document sections and their stable ids, the declared cast that closes the set of speakers (with per-speaker presence and emotions), delivery flags and the mono point-of-view rule, line attributes and voice keys, interpolation and ordinals, inline text modifiers, and display names.
-- [Core directives](https://lute-lang.vercel.app/language/directives/): The thirteen lute.core directives — ten staging leaves (::bg, ::music, ::sfx, ::actor, ::clear, ::camera, ::cg, ::vfx, ::video, ::sequence), the walk terminator ::end, and the forward jump pair ::jump / ::label — with their attributes, the project-declared staging vocabulary, attribute quoting, timing keys, the wait blocking model, and the when= guard.
+- [Core directives](https://lute-lang.vercel.app/language/directives/): The thirteen lute.core directives — ten staging leaves (::bg, ::music, ::sfx, ::actor, ::clear, ::camera, ::cg, ::vfx, ::video, ::sequence), the walk terminator ::end, and the jump pair ::jump / ::label (forward, or bounded backward with max) — with their attributes, the project-declared staging vocabulary, attribute quoting, timing keys, the wait blocking model, and the when= guard.
 - [Branch, match & when](https://lute-lang.vercel.app/language/branch-match-when/): The logic layer — player-driven <branch> menus and state-driven <match>/<when>/<otherwise> arms, with literal patterns, CEL guards, first-match-wins, and exhaustiveness.
 - [Choices & hubs](https://lute-lang.vercel.app/language/choices-and-hubs/): Choice mechanics — when guards and the into= run-record sugar — plus revisit <hub> conversations with once/exit flags, hub prompts, and the no-dead-end guarantee.
 - [Timeline & property tracks](https://lute-lang.vercel.app/language/timeline-and-property-tracks/): The <timeline> multi-track choreography block — a local clock, subject/channel/property tracks, absolute at offsets, and the one-writer-per-track rule.
@@ -73,10 +73,10 @@ the [0.33.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/propo
 - [Typed bridge directives](https://lute-lang.vercel.app/plugins/bridge/): How a plugin declares a typed runtime bridge, the directive that invokes it, the declared result state it writes, sync semantics, and the match over its result slot.
 - [Profiles & activation](https://lute-lang.vercel.app/plugins/profiles/): Selecting capability plugins with a source profile, layering typed options, and distinguishing activation from trusted project/host permission ceilings.
 
-### Specification 0.50.0
+### Specification 0.51.0
 
-- [Current specification](https://lute-lang.vercel.app/spec/current/): The consolidated index of what the Lute language and execution contract enforce today at version 0.50.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
-- [Specification index](https://lute-lang.vercel.app/spec/): Versioned proposal stack through 0.50.0, including the player contract and volume bindings release.
+- [Current specification](https://lute-lang.vercel.app/spec/current/): The consolidated index of what the Lute language and execution contract enforce today at version 0.51.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
+- [Specification index](https://lute-lang.vercel.app/spec/): Versioned proposal stack through 0.51.0, including the player contract and volume bindings release.
 
 ### Specification 0.41.1 (historical)
 
@@ -84,7 +84,7 @@ the [0.33.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/propo
 
 ## Specification
 
-- [Current specification](https://lute-lang.vercel.app/spec/current/): The consolidated index of what the Lute language and execution contract enforce today at version 0.50.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
+- [Current specification](https://lute-lang.vercel.app/spec/current/): The consolidated index of what the Lute language and execution contract enforce today at version 0.51.0 — each language area mapped to the versioned proposal that introduced or last changed it, all pointing back to the normative repository sources.
 - [Specification index](https://lute-lang.vercel.app/spec/): The versioned Lute spec stack — every scenario-DSL revision plus the plugin-system and character-cast capability proposals, with links to the normative repository sources.
 - [Normative proposals](https://github.com/journeyWorker/lute/tree/main/docs/proposals): The repository proposal files are the normative source of truth; the website is the readable companion.
 
@@ -126,7 +126,7 @@ Lute 0.36 identity: authored `::use` instance keys, `identity.requireStable`,
 `lute tag` back-fill, `identity.renames`/`identityRenames`, and `lute diff`
 `renamed`/`unmappedIdentity` results are documented in the full reference.
 
-## Player (0.50.0)
+## Player (0.51.0)
 
 - [Player overview](https://lute-lang.vercel.app/player/overview/): The renderer-free `@lute-lang/player` core and PixiJS/Web Audio `@lute-lang/player-web` browser player, their architecture and package boundaries.
 - [Player getting started](https://lute-lang.vercel.app/player/getting-started/): Compile a project, validate `player.bindings.yaml` with whole-project `lute check`, serve bundle/wasm/assets, and mount with `mountPlayer`.

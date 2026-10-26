@@ -87,7 +87,25 @@ A quest joins the graph by declaring `follows` (even `follows=""`; graph metadat
 - **`json`** (`--json`) — each edge is `{"from":…,"to":…,"kinds":[…]}`; `kinds` is an array for the same reason.
 - **`dot`** (`--format dot`) — an edge justified **only** by `active` atoms renders `[style=dashed]`; anything carrying a `visited` or `completed` atom stays solid, because the stronger claim is what a reader should see.
 
-The kind is presentational and analytical, never structural: the DAG shape is identical either way, since an `active` edge constrains ordering exactly as a `completed` edge does. Besides the three atom kinds, an edge may be an anchor that no `after` formula wrote: `[accept]` from a unit that `::accept`s a quest, `[subquest]` from a parent quest to its child, and `[start]` from a source its `start` reads (dsl 0.24.0, 0.25.0).
+The kind is presentational and analytical, never structural: the DAG shape is identical either way, since an `active` edge constrains ordering exactly as a `completed` edge does. Besides the three atom kinds, an edge may be an anchor that no `after` formula wrote: `[accept]` from a unit that `::accept`s a quest, `[subquest]` from a parent quest to its child, and `[start]` from a source its `start` reads (dsl 0.24.0, 0.25.0); since 0.51, `[raises]` from the node whose directive call or reward raises an occasion to the scene or beat that answers it ([below](#edges-that-declared-raises-draw)).
+
+### Edges that declared raises draw
+
+A directive or reward kind can declare that the host raises an occasion in answer to it ([`effects.raises`](/plugins/manifests/#declared-occasion-raises), 0.51). When the occasion is declared `raisedBy: declared`, the graph reads that declaration as the only way the occasion is raised, so a scene or bundle beat that answers it is **anchored** to the nodes that raise it:
+
+- **Sources.** A raise comes from the scene whose shots contain the call, the lore bundle beat whose body contains it, or the quest whose body contains it or that grants the reward. A call in a lore entry's body is a raise (it counts for `E-RAISES-TARGET` and `W-OCCASION-NEVER-RAISED`) but anchors nothing, as an entry's `::accept` anchors nothing. A call inside a component body counts at each `::use` site.
+- **Which answerer a raise reaches.** One rule serves the anchors, `W-OCCASION-NEVER-RAISED` and `E-RAISES-TARGET`'s "no scene or beat answers it": the raise names the answerer's `on:` occasion, and the occasion is untargeted, or the answerer declares no `target:` (it answers every target), or the raise's target is `occasion.target` (it stands for every answerer), or its static target equals the answerer's `target:`.
+- **The anchor.** A scene or bundle beat that answers a `raisedBy: declared` occasion, declares no `after:`, and has at least one raise source that is a graph node gets one anchor with every reaching source as an alternative. A node that declares `after:` keeps `after:` as its declared route, and no `[raises]` edge is drawn to it.
+- **The edge.** It is drawn `source -> answerer`: `lute scenario` text prints `scene(intro) -> scene(chapter2) [raises]`, `--json` gives `"kinds": ["raises"]`, and `--format dot` draws a solid edge labelled `raises`. `lute scenario reach` follows it and prints the anchor as `[raises] quest(finale) || scene(lock)`, and the `scenario` node envelope names the raise (`` raised by `::playScene` in scene `intro` ``). `lute impact` reads the semantic model graph, which draws neither `[accept]` nor `[raises]` edges, so it does not follow them (#210). An edge that would close a cycle is not drawn, so a scene that raises its own occasion again is never `E-CONN-CYCLE`; since that edge's source may then be ordered after the node it anchors, reachability repeats to a fixed point in that case.
+
+A declared raise is a host promise, not a proof, so it is a **may-edge** and no Must or guaranteed claim rests on it:
+
+- An anchored node starts where an entry node does: a raiser's unconditional `::set` or `::assert` is neither in the answerer's guaranteed-write envelope nor a fact that must hold there. The scenario node envelope lists such a writer as "not provably before this node", because a raise's sources are alternatives.
+- A `[raises]` edge does not gate a quest's start and does not join start-cycle detection.
+- [Cast presence](/language/dialogue-and-cast/#the-cast) may follow `[raises]` edges, which can only add `W-CAST-ABSENT` may-warnings, never remove one.
+- [Reachability](/connectivity/reachability/) reads such an anchor as it reads every anchor: `Unreachable` becomes `Unknown`, because a declared raise is a host promise, not a proof.
+
+A scene or beat that answers a `raisedBy: declared` occasion that no declared raise reaches is `W-OCCASION-NEVER-RAISED` ([reachability](/connectivity/reachability/#occasions-that-nothing-raises)).
 
 ### Bundle beats
 

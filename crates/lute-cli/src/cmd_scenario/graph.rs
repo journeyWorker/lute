@@ -280,8 +280,10 @@ pub(crate) fn run_scenario_graph(
             .collect();
         let key_set = lute_check::connectivity::scene_key_set(&docs);
         let quest_ids = lute_check::connectivity::quest_id_set(&docs);
+        let foldeds: Vec<&lute_check::FoldedEnv> = group_full.iter().map(|(_, _, f)| f).collect();
+        let raises = lute_check::raises::RaiseAnchors::of(&docs, &foldeds);
         let (mut graph, _cycle_diags) =
-            lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids);
+            lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids, &raises);
         // dsl 0.49.0 §6.1: start cycles, against the final reach verdicts.
         let fp = lute_model::compute_conn_fixpoint(
             &docs,

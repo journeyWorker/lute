@@ -150,6 +150,7 @@ pub(crate) fn validate_components(
         body_diags.extend(crate::match_check::check_line_codes_with_policy(
             &body,
             require_stable,
+            Some(snapshot),
         ));
         // Task 7e, the THIRD instance of the same class as Task 7b's
         // (content-line attrs) and Task 7c's (duplicate line codes):
@@ -299,7 +300,7 @@ pub(crate) fn validate_components(
 /// then quests, then entries). A component reached only through another
 /// component's body inherits the outer `::use`'s span — the importing
 /// document's only position for it.
-pub(crate) fn component_use_sites(
+pub fn component_use_sites(
     doc: &Document,
     components: &ComponentSet,
 ) -> std::collections::BTreeMap<String, Span> {
@@ -565,6 +566,21 @@ fn component_interp_scan(
     }
 }
 
+/// 0.51.0 §5.2: the `{{…}}` of each `text` attribute of `d`, judged as a
+/// body line's text is ([`component_interp_scan`]).
+fn component_text_interps(
+    d: &lute_syntax::ast::Directive,
+    snapshot: &CapabilitySnapshot,
+    ctx: &Ctx<'_>,
+    own: &std::collections::BTreeSet<String>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for (attr, text) in crate::directives::text_values(d, snapshot) {
+        let interps = lute_syntax::ast::scan_label_interps(text, attr.value_span);
+        component_interp_scan(&interps, ctx, own, diags);
+    }
+}
+
 /// `Some(name)` when `raw` (a component `<match on>` subject, dsl 0.4.0 §6.2)
 /// is EXACTLY a bare `@param` reference — no call args, nothing before or
 /// after it. Mirrors the `is_whole_slot` idiom (cel_resolve.rs:126-134) with
@@ -588,7 +604,8 @@ pub(crate) fn bare_param_ref(raw: &str) -> Option<String> {
 /// D7 (dsl 0.4.0 §6.1/§6.2, the corrected non-`is_some()` form): `true` when
 /// `tag`'s RESOLVED directive decl declares ACTUAL writes — non-empty
 /// `state.declares` (engine-written result slots) or non-empty
-/// `effects.writes` (incl. `WriteValue::FromBridgeResult`). Tested for
+/// `effects.writes` (incl. `WriteValue::FromBridgeResult`) or fact effects
+/// — a declared raise (0.51.0 §4.1) writes nothing. Tested for
 /// NON-EMPTINESS, not merely `Option::is_some`: a decl that carries a
 /// `state`/`effects` block with nothing declared in it (or a bare `bridge:`
 /// ref with no declared landing site) stays presentational. An unknown tag
@@ -597,7 +614,10 @@ pub(crate) fn bare_param_ref(raw: &str) -> Option<String> {
 pub(crate) fn directive_writes_state(snapshot: &CapabilitySnapshot, tag: &str) -> bool {
     snapshot.directive(tag).is_some_and(|decl| {
         decl.state.as_ref().is_some_and(|s| !s.declares.is_empty())
-            || decl.effects.as_ref().is_some_and(|e| !e.is_empty())
+            || decl
+                .effects
+                .as_ref()
+                .is_some_and(lute_manifest::schema::DirectiveEffects::writes_state)
     })
 }
 
@@ -859,6 +879,7 @@ pub(crate) fn walk_component_body(
                 body_attr_refs(&d.attrs, snapshot, arena, ctx, &AttrSite::Directive(&d.tag), &scope.own, &mut ds);
                 diags.extend(ds.into_iter().filter(|d| !is_host_schema_code(&d.code)));
                 component_guard(d, snapshot, arena, ctx, true, scope, diags);
+                component_text_interps(d, snapshot, ctx, &scope.own, diags);
             }
             Node::Directive(d) => {
                 // D7 (dsl 0.4.0 §6.1/§6.2): a directive whose resolved decl
@@ -882,6 +903,7 @@ pub(crate) fn walk_component_body(
                     diags.extend(check_directive(d, snapshot, providers, domains, ctx));
                     body_attr_refs(&d.attrs, snapshot, arena, ctx, &AttrSite::Directive(&d.tag), &scope.own, diags);
                     component_guard(d, snapshot, arena, ctx, false, scope, diags);
+                    component_text_interps(d, snapshot, ctx, &scope.own, diags);
                 }
             }
             Node::Set(s) if scope.effects => {

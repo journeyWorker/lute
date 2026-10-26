@@ -1,0 +1,11 @@
+# The loop is left early: the first answer opens the lock, so the jump is never
+# reached and exactly one bridge answer is consumed.
+file: ../scenes/lock.lute
+bridges: { tryLock: [ { won: true } ] }
+expect:
+  end: complete
+  state: { scene.knocks: 6 }
+  transcriptContains:
+    - "@mira: It clicks open."
+  transcriptLacks:
+    - "@mira: Again!"

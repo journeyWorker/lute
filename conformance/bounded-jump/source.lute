@@ -1,0 +1,88 @@
+---
+kind: scene
+luteVersion: "0.51.0"
+character: hero
+season: 1
+episode: 1
+title: Bounded jump
+uses: ./schema.yaml
+---
+
+## Retry exhausted
+
+::label{name="attempt"}
+::set{run.tries += 1}
+@hero: Attempt {{run.tries}}.
+::jump{to="attempt" max="2"}
+@narrator: Out of attempts.
+
+## Left early by its guard
+
+::label{name="again"}
+::set{run.guarded += 1}
+@hero: Round {{run.guarded}}.
+::jump{to="again" max="5" when="run.guarded < 2"}
+@narrator: The guard let go.
+
+## Nested loops
+
+::label{name="outer"}
+::set{run.outer += 1}
+::label{name="inner"}
+::set{run.inner += 1}
+@hero: Outer {{run.outer}}, inner {{run.inner}}.
+::jump{to="inner" max="1"}
+::jump{to="outer" max="1"}
+@narrator: Both loops are done.
+
+## Shared head
+
+::label{name="shared"}
+::set{run.shared += 1}
+@hero: Shared {{run.shared}}.
+::jump{to="shared" max="1"}
+::jump{to="shared" max="1"}
+@narrator: Both jumps are spent.
+
+## Branch in a loop
+
+::label{name="ask"}
+::set{run.asks += 1}
+<branch id="retry" prompt="Try again?">
+  <choice id="yes" text="Yes">
+    @hero: Once more.
+    ::jump{to="ask" max="5"}
+  </choice>
+  <choice id="no" text="No">
+    @hero: Enough.
+  </choice>
+</branch>
+
+## Hub in a loop
+
+::label{name="visit"}
+::set{run.visits += 1}
+<hub id="desk">
+  <choice id="look" text="Look">
+    @hero: Papers.
+  </choice>
+  <choice id="leave" text="Leave" exit>
+    @hero: Leaving.
+  </choice>
+</hub>
+::jump{to="visit" max="1"}
+
+## Loop in a hub option
+
+<hub id="bench">
+  <choice id="train" text="Train">
+    ::label{name="rep"}
+    ::set{run.rounds += 1}
+    @hero: Rep {{run.rounds}}.
+    ::jump{to="rep" max="1"}
+  </choice>
+  <choice id="rest" text="Rest" exit>
+    @hero: Resting.
+  </choice>
+</hub>
+@narrator: The end.

@@ -6,7 +6,7 @@ description: Complete player.bindings.yaml sections, effect catalogue, parameter
 `player.bindings.yaml` is optional and sits beside `lute.project.yaml`. Whole-project `lute check` (`lute check --project <DIR>`, no document operands) reads it after compilation. It does not affect the project fingerprint or runtime execution. Relative paths are resolved under `assetsBase`, which defaults to `assets/` beside the bindings file.
 
 ```yaml
-bindingsVersion: "0.50"
+bindingsVersion: "0.51"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }
@@ -63,7 +63,7 @@ flow:
 
 ## `bindingsVersion`
 
-`bindingsVersion` follows the `luteVersion` rule. Its value is `"MAJOR.MINOR"`; the **toolchain line** is the `MAJOR.MINOR` of the toolchain version (`"0.50"` for Lute 0.50.x).
+`bindingsVersion` follows the `luteVersion` rule. Its value is `"MAJOR.MINOR"`; the **toolchain line** is the `MAJOR.MINOR` of the toolchain version (`"0.51"` for Lute 0.51.x).
 
 - Whole-project `lute check` reports `W-BINDINGS-VERSION-STALE` at the value when it differs from the toolchain line. An older line says to update it to the toolchain line, which `lute fix` does; a newer line says to upgrade the toolchain rather than downgrade the stamp; a value that is not `MAJOR.MINOR` (such as `"0.47.0"`) is told to restamp it.
 - A section newer than the declared line is `E-BINDINGS-VERSION` at that section's key, naming the line it needs, for example `` `ui.ended` needs bindingsVersion "0.46" or newer; this file declares "0.45" ``. Sections are not checked when the value is not `MAJOR.MINOR`.
@@ -103,6 +103,12 @@ Unknown YAML keys are rejected. Unknown effects or parameters produce `E-BINDING
 Domain-keyed binding keys must be members of the merged project domains. `characters` keys must be declared cast ids. Flow occasions must be declared. These violations produce `E-BINDING-KEY`, with a nearby-name suggestion when one exists.
 
 A flow target (`flow.newGame.target`, `flow.idle.raise.target`, `flow.idle.menu[].target`) is the full occasion target `raiseOccasion` takes, written in the prefixed form `<prefix>.<member>` of the occasion's target domain: `place.square`, never the bare `square` (lute 0.47.1). Whole-project `lute check` checks it with the same rule as beat targets and `lute play` step targets: an `open:` entity kind admits any `<prefix>.<id>`; a closed kind or a `members:` subset admits exactly its members under the prefix. Anything else is `E-BINDING-KEY`; the message starts ``flow target `…`:`` and, when a close name exists, suggests ``did you mean `place.square`?``. A target on an occasion declared without a target (no `target:` or `target: false`) is `E-BINDING-KEY`, and so is a target on an occasion whose entity kind the project does not declare.
+
+### Flow and declared occasions
+
+`flow.newGame` and `flow.idle` (its `raise` and its `menu` entries) are host configuration: the reference player raises them itself, `flow.newGame` after the runtime begins and `flow.idle` when the runtime is idle. Since 0.51 a plugin occasion may be declared `raisedBy: declared` ([manifests](/plugins/manifests/#declared-occasion-raises)): the host then raises it only through a directive's or reward kind's declared `raises`. A `flow.newGame` or `flow.idle` that raises such an occasion breaks that declaration, because the checker has already treated the occasion as raised only by the declared sources: keep these bindings to occasions the host is meant to raise on its own.
+
+The reference player performs the declared raises itself, from a pending queue it drains after each presentation has settled and **before** the idle flow runs, so a `flow.idle` raise never overtakes one (see [Custom hosts](/player/custom-hosts/#declared-raises)). The player save that holds the queue carries format `"0.51"`; a `"0.50"` save is refused.
 
 A declared domain member, on-stage cast member, or compiled usage without a binding produces `W-BINDING-MISSING`. A binding in an asset/background/mood/sfx/vfx usage section that no compiled document uses produces `W-BINDING-UNUSED`. Diagnostics are anchored in `player.bindings.yaml` and appear in `lute check --project <DIR> --json`.
 

@@ -24,6 +24,7 @@ pub struct SemanticEntry {
 }
 
 const CORE: SemanticId = SemanticId("lute.core/1");
+const BOUNDED_JUMP: SemanticId = SemanticId("lute.core.boundedJump/1");
 const STAGING: SemanticId = SemanticId("lute.staging/1");
 const TIMELINE: SemanticId = SemanticId("lute.timeline/1");
 const QUEST_LIFECYCLE: SemanticId = SemanticId("lute.quest.lifecycle/1");
@@ -45,6 +46,11 @@ pub const REGISTRY: &[SemanticEntry] = &[
         id: CORE,
         module: "core",
         behavior: "baseline execution",
+    },
+    SemanticEntry {
+        id: BOUNDED_JUMP,
+        module: "core",
+        behavior: "bounded backward jumps",
     },
     SemanticEntry {
         id: STAGING,
@@ -185,6 +191,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "done",
     "double",
     "duration",
+    "dynamic",
     "effects",
     "else",
     "emotion",
@@ -237,8 +244,10 @@ pub const FIELD_TABLE: &[&str] = &[
     "list",
     "live",
     "localeSegments",
+    "localized",
     "location",
     "lute",
+    "max",
     "members",
     "meta",
     "mood",
@@ -284,6 +293,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "raise",
     "raiseAtStart",
     "raisedWhen",
+    "raises",
     "rate",
     "raw",
     "rearm",
@@ -659,7 +669,15 @@ fn collect_command(out: &mut Collected, command: &Command) {
             }
             add_stamp(out, &c.stamp, Some(&c.position), CORE);
         }
-        Command::Jump(c) => out.add(CORE, Some(&c.position), "jump command"),
+        Command::Jump(c) => {
+            out.add(CORE, Some(&c.position), "jump command");
+            // dsl 0.51.0 §3.6 (D5): an engine that ignores `max` either
+            // loops without bound or never loops, so the field changes
+            // meaning — its own id.
+            if c.max.is_some() {
+                out.add(BOUNDED_JUMP, Some(&c.position), "bounded jump");
+            }
+        }
         Command::End(c) => {
             out.add(CORE, Some(&c.position), "end command");
             add_stamp(out, &c.stamp, Some(&c.position), CORE);
@@ -675,6 +693,11 @@ fn collect_command(out: &mut Collected, command: &Command) {
         }
         Command::Plugin(c) => {
             out.add(CORE, Some(&c.position), "plugin record");
+            // 0.51.0 §5.4: `localized` is descriptive; a `{{@def}}` in it
+            // reads CEL like a label's.
+            for text in c.localized.values() {
+                scan_placeholders(out, &text.placeholders, Some(&c.position));
+            }
             add_stamp(out, &c.stamp, Some(&c.position), CORE);
         }
         Command::Entry(c) => collect_entry(out, c),
@@ -794,11 +817,35 @@ mod tests {
     use lute_ir::{DocKind, EnumEntry, PrereqEdgeEntry};
 
     #[test]
-    fn registry_has_all_sixteen_ids() {
-        assert_eq!(REGISTRY.len(), 16);
+    fn registry_has_all_seventeen_ids() {
+        assert_eq!(REGISTRY.len(), 17);
         assert!(REGISTRY
             .iter()
             .all(|entry| is_registered(entry.id.as_str())));
+    }
+
+    /// dsl 0.51.0 §3.6: `lute.core.boundedJump/1` only when a `jump` carries
+    /// `max`; a forward or converge jump needs only the core id.
+    #[test]
+    fn bounded_jumps_are_collected_only_when_present() {
+        let with = |max: Option<u8>| {
+            let mut ir = test_ir();
+            ir.commands.push(Command::Jump(crate::ir::JumpCmd {
+                position: "001-0300".into(),
+                target: "001-0100".into(),
+                max,
+            }));
+            collect(&ir)
+        };
+        let forward = with(None);
+        assert!(forward.ids.contains(CORE.as_str()));
+        assert!(!forward.ids.contains(BOUNDED_JUMP.as_str()));
+        let bounded = with(Some(2));
+        assert!(bounded.ids.contains(BOUNDED_JUMP.as_str()));
+        assert_eq!(
+            bounded.provenance[BOUNDED_JUMP.as_str()][0].what,
+            "bounded jump"
+        );
     }
 
     #[test]
@@ -873,10 +920,23 @@ mod tests {
             retracts: vec![],
             asserts: vec![],
             accepts: vec![],
+            raises: vec![],
         };
         let without = quest(plain.clone());
         assert!(without.ids.contains(QUEST_REWARDS.as_str()));
         assert!(!without.ids.contains(REWARD_EFFECTS.as_str()));
+        // 0.51.0 §4.6: a declared raise is descriptive — the runtime acts on
+        // nothing, so a raises-only reward needs no effects id either.
+        let raises_only = quest(RewardEntry {
+            raises: vec![crate::ir::RaiseRecord {
+                occasion: "cutscene".into(),
+                target: Some("scene.chapter2".into()),
+                dynamic: false,
+            }],
+            ..plain.clone()
+        });
+        assert!(raises_only.ids.contains(QUEST_REWARDS.as_str()));
+        assert!(!raises_only.ids.contains(REWARD_EFFECTS.as_str()));
         for with in [
             RewardEntry {
                 accepts: vec!["second".into()],
@@ -986,8 +1046,8 @@ mod tests {
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
             kind: DocKind::Scene,
-            lute: "0.50.0".into(),
-            ir_version: "0.50.0".into(),
+            lute: "0.51.0".into(),
+            ir_version: "0.51.0".into(),
             capability_snapshot: "cap".into(),
             identity_renames: vec![],
             required_semantics: vec![],

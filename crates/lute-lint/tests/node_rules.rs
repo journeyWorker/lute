@@ -11,7 +11,9 @@ use lute_core_span::Span;
 use lute_lint::eval::{Record, Value};
 use lute_lint::model::diagnostic_code;
 use lute_lint::nodes::{walk_nodes, NodeRow};
-use lute_lint::{lint, LintConfig, LintDocInput, LintOutcome, LintRuleDecl, LintScope};
+use lute_lint::{
+    lint, LintConfig, LintDocInput, LintOutcome, LintRuleBody, LintRuleDecl, LintScope,
+};
 use lute_manifest::provider::ProviderSet;
 
 fn span0() -> Span {
@@ -223,9 +225,11 @@ fn menu_type_and_choice_key() {
 fn an_unguarded_index_is_a_lint_expression_error() {
     let mut rule = recipe(&["speed-fits-mode"]).remove(0);
     rule.id = "speed-fits-mode-unguarded".to_string();
-    rule.when =
-        r#"node.tag == "move" && !(node.attrs["speed"] in options.speeds[node.attrs["mode"]])"#
-            .to_string();
+    rule.body = LintRuleBody::Predicate {
+        when:
+            r#"node.tag == "move" && !(node.attrs["speed"] in options.speeds[node.attrs["mode"]])"#
+                .to_string(),
+    };
     let src = format!(
         "{SCENE}## A\n::move{{speed=\"fast\"}}\n::move{{speed=\"fast\"}}\n::move{{mode=\"walk\" speed=\"fast\"}}\n"
     );
@@ -243,7 +247,9 @@ fn node_rule(id: &str, when: &str, message: &str) -> LintRuleDecl {
     LintRuleDecl {
         id: id.to_string(),
         target: lute_lint::LintTarget::Node,
-        when: when.to_string(),
+        body: LintRuleBody::Predicate {
+            when: when.to_string(),
+        },
         level: None,
         message: message.to_string(),
         options: yaml_serde::Mapping::new(),

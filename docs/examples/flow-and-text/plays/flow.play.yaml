@@ -1,0 +1,33 @@
+# The retry loop run to exhaustion, the declared raise, and its answer, end to
+# end. Lute raises no occasion by itself: after the `lock` scene's `::playScene`
+# and again after the `CUTSCENE` grant, the script raises `cutscene` as the host
+# would, and `chapter2` answers it.
+#
+#   lute play --project . --script plays/flow.play.yaml
+steps:
+  - occasion: start
+    label: the vault stays shut three times; the loop gives up
+    bridges: { tryLock: [ { won: false }, { won: false }, { won: false } ] }
+    expect: { winner: lock }
+  - occasion: cutscene
+    target: scene.chapter2
+    label: the host raises the cutscene `::playScene` declared
+    expect: { winner: chapter2 }
+  - label: the engine reports the vault open; finale grants CUTSCENE
+    engine:
+      state: { run.opened: true }
+    expect:
+      quests: { finale: complete }
+  - occasion: cutscene
+    target: scene.chapter2
+    label: the host raises the cutscene the reward declared
+    expect: { winner: chapter2 }
+expect:
+  end: complete
+  quests: { finale: complete }
+  transcriptContains:
+    - "@mira: Again!"
+    - "@theo: That's enough for today."
+    - "@mira: The vault is open, and chapter two begins."
+  transcriptLacks:
+    - "@mira: It clicks open."

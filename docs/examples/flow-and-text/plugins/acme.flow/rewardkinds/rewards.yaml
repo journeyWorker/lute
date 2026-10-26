@@ -1,0 +1,4 @@
+# A reward kind that only raises: no fact, write or accept. The host raises
+# `cutscene` for the reward's `target=` after settling the grant.
+rewardKinds:
+  CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }

@@ -299,22 +299,24 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     const resolved = yield* factory.fromOutput(output, read, locale)
     const localized = { output, read, locale, cues: resolved }
     batchCues = localized
-    // A line cue takes the batch's cue at its index for the locale current when
-    // it starts (`fromOutput` returns one cue per event, in order), then keeps it.
+    // A line or plugin cue takes the batch's cue at its index for the locale
+    // current when it starts (`fromOutput` returns one cue per event, in
+    // order), then keeps it: a line's text, a plugin call's `localized`.
     const cues = resolved.map((cue, index): Cue => {
-      if (cue.kind !== "line") return cue
+      if (cue.kind !== "line" && cue.kind !== "plugin") return cue
       let pinned: Cue | undefined
       const current = (): Cue => pinned ??= localized.cues[index] ?? cue
-      return {
+      const deferred = {
         kind: cue.kind,
         timing: cue.timing,
         stage: cue.stage,
         files: cue.files,
         describe: cue.describe,
-        get line() { return current().line },
-        execute: (ctx) => Effect.suspend(() => current().execute(ctx)),
-        complete: (ctx) => Effect.suspend(() => current().complete(ctx))
+        execute: (ctx: CueContext) => Effect.suspend(() => current().execute(ctx)),
+        complete: (ctx: CueContext) => Effect.suspend(() => current().complete(ctx))
       }
+      // A plugin cue has no line: reading it must not pin the cue early.
+      return cue.kind === "plugin" ? { ...deferred, line: undefined } : { ...deferred, get line() { return current().line } }
     })
     const files = cues.flatMap((cue) => cue.files)
     const inputPoint = (yield* options.session.current).logLength
@@ -566,16 +568,24 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       }
       case "idle.flow": {
         const sendIdle = (input: Input) => sendInput(input).pipe(Effect.catchCause(failed("idle input failed")))
-        // The idle flow runs on a fiber of its own (spec 0.41.0 §7.2): a host
-        // `idle` that waits for the game never blocks actions or `send`.
-        return forkHost(Effect.gen(function* () {
-          const hostInput = options.host?.idle === undefined ? undefined : yield* options.host.idle(command.await)
-          return hostInput !== undefined ? { _tag: "Input" as const, input: hostInput } : yield* options.session.idle
-        }), (result) => {
-          if (result?._tag === "Input") return sendIdle(result.input)
-          if (result?._tag !== "Menu") return Effect.void
-          idleOptions = result.options
-          return options.presenter.showScreen({ _tag: "Idle", options: result.options.map(({ label }) => ({ label })) })
+        return Effect.gen(function* () {
+          // 0.51.0 §4.6: the story settled at `idle` (after a batch, a load or
+          // a rollback). The pending declared raises go first, one batch each,
+          // until the queue is empty; only then the host `idle` and the
+          // bindings' idle flow.
+          const raised = yield* options.session.deliverRaise
+          if (raised !== undefined) return yield* playBatch(raised)
+          // The idle flow runs on a fiber of its own (spec 0.41.0 §7.2): a host
+          // `idle` that waits for the game never blocks actions or `send`.
+          yield* forkHost(Effect.gen(function* () {
+            const hostInput = options.host?.idle === undefined ? undefined : yield* options.host.idle(command.await)
+            return hostInput !== undefined ? { _tag: "Input" as const, input: hostInput } : yield* options.session.idle
+          }), (result) => {
+            if (result?._tag === "Input") return sendIdle(result.input)
+            if (result?._tag !== "Menu") return Effect.void
+            idleOptions = result.options
+            return options.presenter.showScreen({ _tag: "Idle", options: result.options.map(({ label }) => ({ label })) })
+          })
         })
       }
       case "mode.changed": return setMode(command.mode)

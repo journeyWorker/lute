@@ -130,6 +130,22 @@ fn all_refs_have_bodies(raw: &str, defs: &DefTable<'_>) -> bool {
         .all(|r| defs.bodies.contains_key(&r.name))
 }
 
+/// The literal an attribute's `@ref` value `raw` folds to (§5.1, the text
+/// [`decided_literal`] gives the lowerer); `None` for a ref that is no def
+/// with a body, does not expand, or depends on state — each reported by
+/// [`check_def_inlining`], never here. 0.51.0 §4.3: how a raise target
+/// written `@def` resolves.
+pub fn constant_attr(raw: &str, defs: &DefTable<'_>, schema: &crate::StateView) -> Option<String> {
+    if !all_refs_have_bodies(raw, defs)
+        || expand_cel(raw, defs, Some("$"), &mut Vec::new()).is_err()
+    {
+        return None;
+    }
+    fold_attr_ref(raw, defs, schema)
+        .as_ref()
+        .map(decided_literal)
+}
+
 fn diag(code: &str, message: String, span: Span) -> Diagnostic {
     Diagnostic {
         code: code.to_string(),
@@ -214,6 +230,14 @@ struct Cx<'a> {
 }
 
 impl Cx<'_> {
+    /// 0.51.0 §5.2: a `text` attribute's interpolations, as a label's.
+    fn text_interps(&mut self, d: &lute_syntax::ast::Directive) {
+        let snapshot = self.input.snapshot();
+        for (attr, text) in crate::directives::text_values(d, snapshot) {
+            self.interps(&lute_syntax::scan_label_interps(text, attr.value_span));
+        }
+    }
+
     fn nodes(&mut self, nodes: &[Node]) {
         for node in nodes {
             match node {
@@ -223,7 +247,10 @@ impl Cx<'_> {
                 }
                 Node::Directive(d) if d.tag == "use" => self.use_args(d),
                 Node::Directive(d) if d.is_accept() => {}
-                Node::Directive(d) => self.attrs(&d.attrs, &AttrSite::Directive(&d.tag)),
+                Node::Directive(d) => {
+                    self.attrs(&d.attrs, &AttrSite::Directive(&d.tag));
+                    self.text_interps(d);
+                }
                 Node::Branch(b) => {
                     self.attrs(&b.attrs, &AttrSite::Element(StampSurface::Branch));
                     for c in &b.choices {
@@ -257,6 +284,7 @@ impl Cx<'_> {
                         for clip in &track.clips {
                             if let ClipNode::Directive(d) = &clip.node {
                                 self.attrs(&d.attrs, &AttrSite::Directive(&d.tag));
+                                self.text_interps(d);
                             }
                         }
                     }

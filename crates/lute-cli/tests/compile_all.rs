@@ -142,7 +142,7 @@ fn all_writes_every_artifact_and_a_unioned_index() {
     );
 
     let index = read_json(&out.join("project.index.json"));
-    assert_eq!(index["irVersion"], "0.50.0");
+    assert_eq!(index["irVersion"], "0.51.0");
     assert!(
         index["capabilitySnapshot"]
             .as_str()
@@ -437,7 +437,13 @@ fn compile_all_warns_for_a_nested_manifest_that_differs_only_in_defaults() {
     // key is entirely the governing root's.
     let scene = |c: &str| format!("---\ntitle: T\n---\n\n## S\n\n@{c}{{code=\"0010\"}}: hi\n");
     std::fs::write(dir.join("scenes/a.lute"), scene("outerguy")).unwrap();
-    std::fs::write(dir.join("same/scenes/b.lute"), scene("outerguy")).unwrap();
+    // Both resolve to scene `outerguy.s09ep09`: a different code keeps their
+    // lineIds apart (one shared id is `E-LINE-ID-DUP`, 0.51.0 §5.3).
+    std::fs::write(
+        dir.join("same/scenes/b.lute"),
+        scene("outerguy").replace("0010", "0020"),
+    )
+    .unwrap();
     std::fs::write(dir.join("differs/scenes/c.lute"), scene("innerguy")).unwrap();
 
     let out = std::process::Command::new(BIN)

@@ -42,7 +42,8 @@ pub const LABEL_DIRECTIVE: &str = "label";
 /// The attribute of [`LABEL_DIRECTIVE`] that names the label.
 pub const LABEL_NAME_ATTR: &str = "name";
 
-/// The `lute.core` tag of a forward jump (dsl 0.37.0 §3.5): `::jump{to [when]}`.
+/// The `lute.core` tag of a jump (dsl 0.37.0 §3.5): `::jump{to [when] [max]}`,
+/// forward, or back to an earlier label when it carries [`JUMP_MAX_ATTR`].
 /// Unconditional or guarded via the SAME typed CEL `when` a content-line
 /// guard gets (`lute_syntax::ast::Directive::when`). Shared as a const for the
 /// same reason [`END_DIRECTIVE`] is: `lute-check`'s reachability/definite-
@@ -50,6 +51,12 @@ pub const LABEL_NAME_ATTR: &str = "name";
 /// (→ `Command::Jump`) and `normalize::synth_when_next_match`, and
 /// `lute-trace`'s walk all dispatch on this tag and MUST agree.
 pub const JUMP_DIRECTIVE: &str = "jump";
+
+/// The attribute of [`JUMP_DIRECTIVE`] that bounds a backward jump (dsl
+/// 0.51.0 §3.1): `::jump{to max}` may target an earlier `::label` and is
+/// taken at most `max` times, a literal integer from 1 to 99. Shared by the
+/// checker's label pass and its dead-code rule.
+pub const JUMP_MAX_ATTR: &str = "max";
 
 /// The `lute.core` tag of an on-stage character directive (dsl 0.37.0 §3.3):
 /// `::actor{character [anchor] [action] [emotion] [costume]}`. Shared by the

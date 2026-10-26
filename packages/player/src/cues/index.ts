@@ -196,8 +196,10 @@ export interface BundleLocales {
  * A bundle's source locale — the index's `contentLang`, else the
  * `contentLang` of the first artifact (in `index.documents` order) whose meta
  * declares one, else `"en"` — and its compiled locales: the keys of every
- * command's `texts`/`promptTexts` and every choice/hub option's `texts`
- * (the IR's only translation maps; a `stamps` or `fields` map is never read).
+ * command's `texts`/`promptTexts`, every choice/hub option's `texts` and every
+ * `plugin` command's `localized.<attr>.texts` (0.51.0 §5.6) — the IR's only
+ * translation maps, read where the IR puts them: a `stamps` or `fields` map,
+ * or a `text` attribute named `texts`, is never read as one.
  */
 export const bundleLocales = (bundle: Bundle): BundleLocales => {
   const indexLang = bundle.index.contentLang
@@ -211,6 +213,9 @@ export const bundleLocales = (bundle: Bundle): BundleLocales => {
       addLocales(command.texts)
       addLocales(command.promptTexts)
       if (Array.isArray(command.options)) for (const option of command.options) addLocales(field(option, "texts"))
+      if (command.kind === "plugin" && isRecord(command.localized)) {
+        for (const entry of Object.values(command.localized)) addLocales(field(entry, "texts"))
+      }
     }
   }
   for (const document of bundle.index.documents) {
@@ -424,6 +429,28 @@ const makeEventCue = (event: Exclude<Event, { readonly type: "record" }>): Cue =
 
 const decodeJsonRecord = Schema.decodeUnknownOption(Schema.Record(Schema.String, Schema.Json))
 
+const decodeRaises = Schema.decodeUnknownOption(Schema.Array(Schema.Struct({ occasion: Schema.String, target: Schema.optionalKey(Schema.String) })))
+
+/** A record's declared `raises` (0.51.0 §4.6), in list order; empty when it has none. */
+export const declaredRaises = (raises: unknown): ReadonlyArray<{ readonly occasion: string; readonly target?: string }> =>
+  Option.getOrElse(decodeRaises(raises), () => [])
+
+/**
+ * A `plugin` record's `text` attributes in `locale` (0.51.0 §5.6): each
+ * `localized.<attr>.texts[locale]` translation, else the rendered source in
+ * `attrs.<attr>`; `undefined` when the record carries no `localized`.
+ */
+const localizedAttrs = (runtimeRecord: JsonRecord, attrs: BridgeAwait["attrs"], locale: string): Readonly<Record<string, string>> | undefined => {
+  const localized = record(runtimeRecord, "localized")
+  if (localized === undefined) return undefined
+  const result: Record<string, string> = {}
+  for (const [name, entry] of Object.entries(localized)) {
+    const source = attrs[name]
+    result[name] = localizedText(field(entry, "texts"), locale, string(source) ? source : "")
+  }
+  return result
+}
+
 /**
  * A `plugin` record whose tag has a host `plugin` handler: a waiting cue that
  * runs the handler at the record's place, in skip mode too (a game action is
@@ -434,14 +461,26 @@ const pluginCue = (
   runtimeRecord: JsonRecord,
   command: JsonRecord,
   document: string,
-  position: string
+  position: string,
+  locale: string
 ): Cue => {
   const tag = string(runtimeRecord.tag) ? runtimeRecord.tag : String(command.tag)
   const attrs: BridgeAwait["attrs"] = Option.getOrElse(decodeJsonRecord(runtimeRecord.attrs), () => ({}))
   // 0.49.0 §3.1: the record's plugin stamps ride beside `attrs`; the runtime
-  // omits them when the command has none, and so does the call.
+  // omits them when the command has none, and so does the call. So do the
+  // 0.51 `raises` and `localized`.
   const stamps = Option.getOrUndefined(decodeJsonRecord(runtimeRecord.stamps))
-  const call: PluginCall = { tag, attrs, ...(stamps === undefined ? {} : { stamps }), document, position }
+  const raises = declaredRaises(runtimeRecord.raises)
+  const localized = localizedAttrs(runtimeRecord, attrs, locale)
+  const call: PluginCall = {
+    tag,
+    attrs,
+    ...(stamps === undefined ? {} : { stamps }),
+    ...(raises.length === 0 ? {} : { raises }),
+    ...(localized === undefined ? {} : { localized }),
+    document,
+    position
+  }
   const run = (_ctx: CueContext): Effect.Effect<void> => handler(call)
   return cueBase("plugin", { ...timingOf(command, "plugin"), wait: true }, false, [], `plugin ${tag}`, run, run)
 }
@@ -518,7 +557,7 @@ const makeFactory = (options: CueFactoryOptions): CueFactoryShape => {
         // host answered through `awaitBridge`.
         const handler = runtimeRecord.kind === "plugin" && command.kind === "plugin" && !("answered" in runtimeRecord) && string(command.tag) ? plugins[command.tag] : undefined
         const cue = handler !== undefined
-          ? pluginCue(handler, runtimeRecord, command, event.document, position)
+          ? pluginCue(handler, runtimeRecord, command, event.document, position, locale)
           : makeRecordCue(command, bindings, locale, readLines, cast)
         if (cue === undefined) return yield* Effect.die(new Error(`unknown runtime record kind: ${String(command.kind)}`))
         cues.push(cue)

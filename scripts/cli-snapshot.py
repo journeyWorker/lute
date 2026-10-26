@@ -3,7 +3,7 @@
 
 Usage:
     scripts/cli-snapshot.py LUTE-BINARY OUTPUT-DIR
-    scripts/cli-snapshot.py LUTE-BINARY OUTPUT-DIR --compare BASELINE-DIR [--strict]
+    scripts/cli-snapshot.py LUTE-BINARY OUTPUT-DIR --compare BASELINE-DIR [--strict] [--capability-hash]
     scripts/cli-snapshot.py --self-test
 
 The corpus is discovered from ``docs/examples``, ``conformance``, and the
@@ -19,8 +19,11 @@ counted as renamed, not as a difference.
 ``--strict`` turns both allowances off: an added command and a renamed command
 are differences, so the proof also covers the set of commands.
 Comparison is byte-for-byte except for the release-stamp fields documented in
-``normalize_for_compare``.  The command's working directory is always the
-repository root, and locale/time environment variables are pinned.
+``normalize_for_compare``.  ``--capability-hash`` also replaces every
+capability hash (``capabilitySnapshot``/``capabilityVersion``, JSON and text),
+so a release that moves the hash once (spec 0.51.0 section 13, class 4) can
+prove the hash is the only difference.  The command's working directory is
+always the repository root, and locale/time environment variables are pinned.
 """
 
 from __future__ import annotations
@@ -45,20 +48,31 @@ ROOT = Path(__file__).resolve().parent.parent
 EXAMPLES = ROOT / "docs" / "examples"
 CONFORMANCE = ROOT / "conformance"
 
-# These are intentionally narrow.  In particular, replacing every 0.48/0.49/0.50
+# These are intentionally narrow.  In particular, replacing every 0.48/0.49/0.50/0.51
 # would hide a content change in prose, state values, paths, or diagnostic
 # messages.  Schema IDs are version stamps even though they are not JSON keys.
 STAMP_FIELD_RE = re.compile(
     r'(?P<prefix>"?(?:lute|luteVersion|irVersion|eventVersion|snapshotVersion)"?\s*[:=]\s*"?)'
-    r"0\.(?:48|49|50)(?:\.\d+)?"
+    r"0\.(?:48|49|50|51)(?:\.\d+)?"
 )
 SCHEMA_ID_RE = re.compile(
-    r"(?P<prefix>\blute[-_][A-Za-z0-9_-]*?-)0\.(?:48|49|50)"
+    r"(?P<prefix>\blute[-_][A-Za-z0-9_-]*?-)0\.(?:48|49|50|51)"
     r"(?=\.schema(?:\.json)?(?:[\"']|[^A-Za-z0-9_.]|$))"
 )
 # The engine gate names the toolchain's own IR version in its refusal.
-ENGINE_ACCEPTS_RE = re.compile(r"(?P<prefix>accepts `)0\.(?:48|49|50)\.\d+(?=`)")
-VERSION_RE = re.compile(r"(?<![A-Za-z0-9])0\.(?:48|49|50)(?:\.\d+)?(?![A-Za-z0-9])")
+ENGINE_ACCEPTS_RE = re.compile(r"(?P<prefix>accepts `)0\.(?:48|49|50|51)\.\d+(?=`)")
+VERSION_RE = re.compile(r"(?<![A-Za-z0-9])0\.(?:48|49|50|51)(?:\.\d+)?(?![A-Za-z0-9])")
+# Opt-in (`--capability-hash`): a capability hash after its key, in every form
+# the CLI prints — JSON `"capabilitySnapshot": "<hash>"` (spaced or compact),
+# text `capabilitySnapshot: <hash>` and `(capabilitySnapshot <hash>)` — and the
+# same for `capabilityVersion`. Only a whole 64-digit hex value is a hash: a
+# quoted value must close right after it, a bare one must end at whitespace,
+# `)` or the end of the text. Any other value after the key stays, so a
+# malformed stamp (`"<hash>-bad"`) is still a difference.
+CAPABILITY_HASH_RE = re.compile(
+    r'(?P<prefix>"?\bcapability(?:Snapshot|Version)"?(?:\s*[:=]\s*|\s+)(?P<quote>")?)'
+    r'[0-9a-f]{64}(?(quote)(?=")|(?=[\s)]|$))'
+)
 
 
 @dataclass(frozen=True)
@@ -501,7 +515,7 @@ def renamed(baseline: object, current: object) -> bool:
     return canonical_args(translate_baseline_args(baseline)) == canonical_args(current)
 
 
-def normalize_for_compare(data: bytes, label: str) -> bytes:
+def normalize_for_compare(data: bytes, label: str, capability_hash: bool = False) -> bytes:
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
@@ -511,30 +525,58 @@ def normalize_for_compare(data: bytes, label: str) -> bytes:
     text = ENGINE_ACCEPTS_RE.sub(lambda match: match.group("prefix") + "0.X", text)
     if label == "version":
         text = VERSION_RE.sub("0.X", text)
+    if capability_hash:
+        text = CAPABILITY_HASH_RE.sub(lambda match: match.group("prefix") + "<capability-hash>", text)
     return text.encode("utf-8")
 
 
-# (label, 0.49 rendering, 0.50 rendering) for every stamp form the
+# (label, 0.50 rendering, 0.51 rendering) for every stamp form the
 # normalizer owns; both renderings must normalize to the same text.
 SELF_TEST_STAMPS = (
-    ("compile", '{"irVersion": "0.49.1", "lute": "0.49.1"}', '{"irVersion": "0.50.0", "lute": "0.50.0"}'),
-    ("check", 'luteVersion: "0.49.1"', 'luteVersion: "0.50.0"'),
-    ("play", '{"eventVersion":"0.49.1","snapshotVersion":"0.49.1"}', '{"eventVersion":"0.50.0","snapshotVersion":"0.50.0"}'),
+    ("compile", '{"irVersion": "0.50.0", "lute": "0.50.0"}', '{"irVersion": "0.51.0", "lute": "0.51.0"}'),
+    ("check", 'luteVersion: "0.50.0"', 'luteVersion: "0.51.0"'),
+    ("play", '{"eventVersion":"0.50.0","snapshotVersion":"0.50.0"}', '{"eventVersion":"0.51.0","snapshotVersion":"0.51.0"}'),
     (
         "schema",
-        '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.49.schema.json"',
         '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.50.schema.json"',
+        '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.51.schema.json"',
     ),
-    ("run", "the engine accepts `0.49.1` artifacts", "the engine accepts `0.50.0` artifacts"),
-    ("version", "lute toolchain 0.49.1\nlanguage      0.49.1\n", "lute toolchain 0.50.0\nlanguage      0.50.0\n"),
+    ("run", "the engine accepts `0.50.0` artifacts", "the engine accepts `0.51.0` artifacts"),
+    ("version", "lute toolchain 0.50.0\nlanguage      0.50.0\n", "lute toolchain 0.51.0\nlanguage      0.51.0\n"),
 )
 # (label, text) the normalizer must leave byte-identical.
 SELF_TEST_UNTOUCHED = (
     ("version", "lute toolchain 0.4\n"),
     ("version", "lute toolchain 10.44.0\n"),
-    ("version", "lute toolchain 0.51.0\n"),
+    ("version", "lute toolchain 0.52.0\n"),
     ("compile", '{"irVersion": "0.4", "lute": "10.44.0"}'),
     ("check", "a value of 0.44 in prose stays"),
+)
+
+HASH_A = "17792c7f6b4c2dbf43cfbb0afab6ebcc5d8f51dcf2cb4d010b5ac2027af7d662"
+HASH_B = "4e09a57fc1407e19ca3a819b6822e42884a27ff41def9b3b165922da0a75b4d3"
+# (label, text with HASH_A) for every capability-hash form `--capability-hash`
+# owns: the text with HASH_B must normalize to the same bytes, and without the
+# flag the two must still differ.
+SELF_TEST_CAPABILITY_HASHES = (
+    ("compile", '{\n  "capabilitySnapshot": "%s",\n  "commands": []\n}'),
+    ("check", '{"capabilitySnapshot":"%s","ok":true}'),
+    ("compile", '{"capabilityVersion": "%s"}'),
+    ("context", "capabilitySnapshot: %s\ndirectives:\n"),
+    ("catalog", "refreshed 1 snapshot(s) in cat (capabilitySnapshot %s)\n"),
+)
+# (label, text) `--capability-hash` must leave byte-identical: a value that is
+# not a hash, the key in prose, a hash under another key, and a hash followed
+# by more of the value (`<hash>-bad`, `<hash> x`, `<hash>.x`).
+SELF_TEST_CAPABILITY_UNTOUCHED = (
+    ("run", '{"capabilityVersion": "x", "commands": []}'),
+    ("check", "carries removed field `capabilityVersion`; 0.37 reads `capabilitySnapshot` — rec"),
+    ("compile", '{"sourceHash": "%s"}' % HASH_A),
+    ("compile", '{"capabilitySnapshot": "%s0"}' % HASH_A),
+    ("compile", '{"capabilitySnapshot":"%s-bad"}' % HASH_A),
+    ("compile", '{"capabilityVersion": "%s x"}' % HASH_A),
+    ("context", "capabilitySnapshot: %s-bad\n" % HASH_A),
+    ("catalog", "(capabilitySnapshot %s.x)\n" % HASH_A),
 )
 
 
@@ -650,6 +692,22 @@ def self_test_compare() -> list[str]:
                 if got != expected:
                     mode = "strict" if strict else "not strict"
                     failures.append(f"compare {case} ({mode}): expected exit {expected}, got {got}: {log.getvalue()!r}")
+        # --capability-hash: a moved hash is the only difference it removes.
+        hashed = '{"capabilitySnapshot": "%s", "ok": %s}\n'
+        for case, current_stdout, plain_exit, hash_exit in (
+            ("moved hash", hashed % (HASH_B, "true"), 1, 0),
+            ("moved hash and value", hashed % (HASH_B, "false"), 1, 1),
+        ):
+            root = Path(scratch) / slug(case)
+            write_synthetic_snapshot(root / "baseline", (("a", ["compile", "a.lute"], hashed % (HASH_A, "true")),))
+            write_synthetic_snapshot(root / "current", (("a", ["compile", "a.lute"], current_stdout),))
+            for capability_hash, expected in ((False, plain_exit), (True, hash_exit)):
+                log = io.StringIO()
+                with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
+                    got = compare(root / "current", root / "baseline", True, capability_hash)
+                if got != expected:
+                    mode = "--capability-hash" if capability_hash else "no --capability-hash"
+                    failures.append(f"compare {case} ({mode}): expected exit {expected}, got {got}: {log.getvalue()!r}")
     return failures
 
 
@@ -674,14 +732,28 @@ def self_test() -> int:
         normalized = normalize_for_compare(text.encode(), label)
         if normalized != text.encode():
             failures.append(f"{label}: {text!r} changed to {normalized!r}")
+    for label, template in SELF_TEST_CAPABILITY_HASHES:
+        a, b = (template % h for h in (HASH_A, HASH_B))
+        a_norm = normalize_for_compare(a.encode(), label, capability_hash=True)
+        b_norm = normalize_for_compare(b.encode(), label, capability_hash=True)
+        if a_norm != b_norm or HASH_A.encode() in a_norm:
+            failures.append(f"capability hash {label}: {a!r} -> {a_norm!r}, {b!r} -> {b_norm!r}")
+        if normalize_for_compare(a.encode(), label) == normalize_for_compare(b.encode(), label):
+            failures.append(f"capability hash {label}: normalized without --capability-hash: {a!r}")
+    for label, text in SELF_TEST_CAPABILITY_UNTOUCHED:
+        normalized = normalize_for_compare(text.encode(), label, capability_hash=True)
+        if normalized != text.encode():
+            failures.append(f"capability hash {label}: {text!r} changed to {normalized!r}")
     for failure in failures:
         print(f"cli-snapshot self-test: FAIL {failure}", file=sys.stderr)
     if failures:
         return 1
     print(
         f"cli-snapshot self-test: OK ({len(SELF_TEST_STAMPS)} stamp forms, "
-        f"{len(SELF_TEST_UNTOUCHED)} untouched, {len(SELF_TEST_TRANSLATIONS)} translations, "
-        f"{len(SELF_TEST_NOT_RENAMED)} non-renames, {len(SELF_TEST_COMPARE)} compare cases)"
+        f"{len(SELF_TEST_UNTOUCHED)} untouched, {len(SELF_TEST_CAPABILITY_HASHES)} capability-hash "
+        f"forms, {len(SELF_TEST_CAPABILITY_UNTOUCHED)} capability-hash untouched, "
+        f"{len(SELF_TEST_TRANSLATIONS)} translations, {len(SELF_TEST_NOT_RENAMED)} non-renames, "
+        f"{len(SELF_TEST_COMPARE) + 2} compare cases)"
     )
     return 0
 
@@ -712,7 +784,7 @@ def record_label(path: Path, relative_path: str) -> str:
     return ""
 
 
-def compare(current: Path, baseline: Path, strict: bool = False) -> int:
+def compare(current: Path, baseline: Path, strict: bool = False, capability_hash: bool = False) -> int:
     try:
         current_manifest = manifest(current)
         baseline_manifest = manifest(baseline)
@@ -754,6 +826,8 @@ def compare(current: Path, baseline: Path, strict: bool = False) -> int:
     added_records = set(added)
     baseline_files = set(files(baseline))
     current_files = {f for f in files(current) if f.split("/", 1)[0] not in added_records}
+    # Outputs that differ only in their capability hash (--capability-hash).
+    hash_only = 0
     for name in sorted(baseline_files | current_files):
         before = baseline / name
         after = current / name
@@ -766,6 +840,12 @@ def compare(current: Path, baseline: Path, strict: bool = False) -> int:
         after_bytes = normalize_for_compare(after.read_bytes(), label)
         if before_bytes == after_bytes:
             continue
+        if capability_hash:
+            before_bytes = normalize_for_compare(before.read_bytes(), label, capability_hash=True)
+            after_bytes = normalize_for_compare(after.read_bytes(), label, capability_hash=True)
+            if before_bytes == after_bytes:
+                hash_only += 1
+                continue
         differences = True
         print(f"diff: {name}", file=sys.stderr)
         try:
@@ -784,6 +864,8 @@ def compare(current: Path, baseline: Path, strict: bool = False) -> int:
                 )
             )
         )
+    if capability_hash:
+        print(f"capability hash only: {hash_only} outputs differ in their capability hash alone")
     if differences:
         return 1
     if strict:
@@ -809,12 +891,19 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="with --compare: an added or renamed command is a difference too",
     )
+    parser.add_argument(
+        "--capability-hash",
+        action="store_true",
+        help="with --compare: replace every capability hash (capabilitySnapshot/capabilityVersion) before comparing",
+    )
     parser.add_argument("--self-test", action="store_true", help="check normalize_for_compare and compare, then exit")
     args = parser.parse_args(argv)
     if not args.self_test and (args.binary is None or args.output is None):
         parser.error("LUTE-BINARY and OUTPUT-DIR are required unless --self-test")
     if args.strict and args.compare is None:
         parser.error("--strict requires --compare")
+    if args.capability_hash and args.compare is None:
+        parser.error("--capability-hash requires --compare")
     return args
 
 
@@ -840,7 +929,7 @@ def main(argv: list[str]) -> int:
     if args.compare is None:
         return 0
     baseline = args.compare if args.compare.is_absolute() else (ROOT / args.compare)
-    return compare(output, baseline.resolve(), args.strict)
+    return compare(output, baseline.resolve(), args.strict, args.capability_hash)
 
 
 if __name__ == "__main__":

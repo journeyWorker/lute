@@ -365,6 +365,52 @@ enums:
     expect(ok, JSON.stringify(errors)).toBe(true);
   });
 
+  // 0.51.0 §4.1: the loader trims a raise target (`RaiseTargetDecl`), so
+  // the schema accepts every spelling the loader does.
+  test("plugin raises: directive, reward-kind and occasion files validate", () => {
+    const { ajv, pluginSchema } = loadAjv();
+    for (const yaml of [
+      "directives:\n  - name: playScene\n    attrs:\n      - { name: scene, type: string }\n" +
+        "    effects: { raises: [{ occasion: cutscene, target: \" @scene \" }, { occasion: idle }] }\n",
+      "rewardKinds:\n  SHOW: { effects: { raises: [{ occasion: cutscene, target: \" scene.chapter2 \" }] } }\n",
+      "occasions:\n  cutscene: { target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }\n",
+    ]) {
+      const { ok, errors } = validateAgainst(ajv, pluginSchema.$id, Bun.YAML.parse(yaml));
+      expect(ok, `${yaml}: ${JSON.stringify(errors)}`).toBe(true);
+    }
+  });
+
+  // 0.51.0 §6.1: `target: pair` states `open`/`close` (optional `inside`,
+  // `scope`) and refuses `when`; other targets state `when` only — the
+  // loader's shape check.
+  test("plugin lints: pair rule shape", () => {
+    const { ajv, pluginSchema } = loadAjv();
+    const file = (rule) => Bun.YAML.parse(`lints:\n  - id: g\n    message: m\n${rule}`);
+    for (const rule of [
+      "    target: pair\n    open: 'true'\n    close: 'false'\n",
+      "    target: pair\n    open: 'true'\n    close: 'false'\n    inside: 'true'\n    scope: section\n",
+      "    target: node\n    when: 'true'\n",
+    ]) {
+      const { ok, errors } = validateAgainst(ajv, pluginSchema.$id, file(rule));
+      expect(ok, `${rule}: ${JSON.stringify(errors)}`).toBe(true);
+    }
+    for (const rule of [
+      "    target: pair\n    when: 'true'\n    open: 'true'\n    close: 'true'\n",
+      "    target: pair\n    open: 'true'\n",
+      "    target: pair\n    open: 'true'\n    close: 'true'\n    scope: shot\n",
+      "    target: node\n    when: 'true'\n    inside: 'true'\n",
+      "    target: node\n    when: 'true'\n    open: null\n",
+      "    target: pair\n    when: null\n    open: 'true'\n    close: 'true'\n",
+      "    target: pair\n    open: 'true'\n    close: 'true'\n    inside: null\n",
+      "    target: pair\n    open: 'true'\n    close: 'true'\n    scope: null\n",
+      "    target: scene\n    when: 'true'\n    scope: body\n",
+      "    target: line\n",
+      "    target: node\n    when: 'true'\n    extra: 1\n",
+    ]) {
+      expect(validateAgainst(ajv, pluginSchema.$id, file(rule)).ok, rule).toBe(false);
+    }
+  });
+
   test("long form with ONLY `members:` validates (default/exits are #[serde(default)])", () => {
     const { ajv, declSchema, pluginSchema } = loadAjv();
     const doc = Bun.YAML.parse("enums:\n  mood: { members: [calm, tense] }\n");
@@ -653,8 +699,8 @@ options:
 
 describe("generated runtime contract schemas", () => {
   test("every conformance and contract-fixture line validates", () => {
-    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.50.schema.json`, "utf8"));
-    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.50.schema.json`, "utf8"));
+    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.51.schema.json`, "utf8"));
+    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.51.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     const eventValidate = ajv.compile(events);
     const snapshotValidate = ajv.compile(snapshots);
@@ -697,7 +743,7 @@ describe("generated runtime contract schemas", () => {
 // index types; every index the corpus compiles must validate against them.
 describe("generated IR index schema", () => {
   test("every compiled project.index.json validates as `projectIndex`", () => {
-    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.50.schema.json`, "utf8"));
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.51.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     ajv.addSchema(ir);
     const validate = ajv.compile({ $ref: `${ir.$id}#/$defs/projectIndex` });
@@ -729,7 +775,7 @@ describe("generated IR index schema", () => {
   });
 
   test("an index def row is closed to the documented shape", () => {
-    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.50.schema.json`, "utf8"));
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.51.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     ajv.addSchema(ir);
     const def = ajv.compile({ $ref: `${ir.$id}#/$defs/indexDef` });
@@ -745,11 +791,39 @@ describe("generated IR index schema", () => {
   });
 });
 
+// 0.51.0 §4.6 (S5 re-review): a `dynamic` raise has a target, the
+// `occasion.target` reference with or without a prefix; the runtime's load
+// checks the prefix is the occasion's declared one.
+describe("IR raise records", () => {
+  test("a dynamic raise needs the reference as its target", () => {
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.51.schema.json`, "utf8"));
+    const ajv = new (Ajv2020)({ allErrors: true, strict: false });
+    ajv.addSchema(ir);
+    const raise = ajv.compile({ $ref: `${ir.$id}#/$defs/raiseRecord` });
+    for (const ok of [
+      { occasion: "cutscene", target: "scene.occasion.target", dynamic: true },
+      { occasion: "bell", target: "occasion.target", dynamic: true },
+      { occasion: "cutscene", target: "scene.other" },
+      { occasion: "cutscene", target: "scene.other", dynamic: false },
+      { occasion: "idle" },
+    ]) {
+      expect(raise(ok), `${JSON.stringify(ok)}: ${JSON.stringify(raise.errors)}`).toBe(true);
+    }
+    for (const bad of [
+      { occasion: "cutscene", target: "scene.other", dynamic: true },
+      { occasion: "cutscene", target: ".occasion.target", dynamic: true },
+      { occasion: "cutscene", dynamic: true },
+    ]) {
+      expect(raise(bad), JSON.stringify(bad)).toBe(false);
+    }
+  });
+});
+
 // 0.50.0 §3.5: `<choice>` options carry the plugin stamps they author; the
 // option `$defs` are closed, so the schema must name `stamps`.
 describe("IR option stamps", () => {
   test("a compiled document with element and option stamps validates", () => {
-    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.50.schema.json`, "utf8"));
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.51.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     const validate = ajv.compile(ir);
     const project = `${ROOT}/crates/lute-cli/tests/fixtures/plugin-stamps-050-logic`;

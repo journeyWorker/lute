@@ -367,6 +367,83 @@ fn assign_identity_scope(cmds: &mut [Command], prefix: &str, identity: &Identity
             _ => {}
         }
     }
+    assign_directive_text_ids(cmds, prefix);
+}
+
+/// The owner of a directive text code counter (0.51.0 §5.3): a directive
+/// tag, in a keyspace of its own — never a line's speaker, so a speaker
+/// named like a tag never shares a counter with it.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+struct DirectiveTag(String);
+
+/// 0.51.0 §5.3: the `lineId` of each `text` attribute of each call in one
+/// identity scope, `{prefix}~{tag}~{code}~{attr}` — outside the `lineId`
+/// template, so `~` (refused in templates and codes) keeps it apart from
+/// every line, option and prompt id. Codes are counted per directive tag, a
+/// keyspace of their own (never a speaker's), and per component instance
+/// scope, as a line's are per speaker: an untagged call gets the next code
+/// above the scope's highest authored one (`+10`, `{:04}`), in source order
+/// — the order `lute tag` writes them in, even where a `<timeline>` plays
+/// its clips in another. A call emitted twice from one source keeps one code.
+/// A component's calls arrive already numbered over the whole component
+/// source (`normalize::backfill_component_directive_codes`), before its
+/// arguments fold a `<match>` away.
+fn assign_directive_text_ids(cmds: &mut [Command], prefix: &str) {
+    use crate::ir::PluginCmd;
+    fn owner(p: &PluginCmd) -> (String, DirectiveTag) {
+        let scope = p.stamp.source.as_ref().map_or("", |s| s.scope.as_str());
+        (scope.to_string(), DirectiveTag(p.tag.clone()))
+    }
+    let mut max_code: BTreeMap<(String, DirectiveTag), u64> = BTreeMap::new();
+    let mut untagged: BTreeMap<(String, DirectiveTag), Vec<usize>> = BTreeMap::new();
+    for cmd in cmds.iter() {
+        let Command::Plugin(p) = cmd else { continue };
+        let Some(id) = &p.text_identity else { continue };
+        match &id.code {
+            Some(code) => {
+                if let Ok(n) = code.parse::<u64>() {
+                    let e = max_code.entry(owner(p)).or_insert(0);
+                    *e = (*e).max(n);
+                }
+            }
+            None => untagged.entry(owner(p)).or_default().push(id.at),
+        }
+    }
+    let mut filled: BTreeMap<((String, DirectiveTag), usize), String> = BTreeMap::new();
+    for (key, mut ats) in untagged {
+        ats.sort_unstable();
+        ats.dedup();
+        let mut counter = max_code.get(&key).copied().unwrap_or(0);
+        for at in ats {
+            // An overflowing counter fails closed for this call only, as a
+            // line's does: it gets no id rather than a colliding one.
+            let Some(next) = counter.checked_add(10) else {
+                continue;
+            };
+            counter = next;
+            filled.insert((key.clone(), at), format!("{next:04}"));
+        }
+    }
+    for cmd in cmds.iter_mut() {
+        let Command::Plugin(p) = cmd else { continue };
+        let Some(id) = &p.text_identity else { continue };
+        let code = match &id.code {
+            Some(code) => code.clone(),
+            None => match filled.get(&(owner(p), id.at)) {
+                Some(code) => code.clone(),
+                None => continue,
+            },
+        };
+        let (scope, _) = owner(p);
+        let prefix = if scope.is_empty() {
+            prefix.to_string()
+        } else {
+            format!("{prefix}.{scope}")
+        };
+        for (attr, text) in &mut p.localized {
+            text.line_id = format!("{prefix}~{}~{code}~{attr}", p.tag);
+        }
+    }
 }
 
 fn internal(message: String) -> Diagnostic {
@@ -443,6 +520,7 @@ mod tests {
                 last.cmd = Command::Jump(JumpCmd {
                     position: String::new(),
                     target: Label(0).sym(),
+                    max: None,
                 });
             }
         }

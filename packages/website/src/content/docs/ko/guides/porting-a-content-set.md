@@ -1,6 +1,6 @@
 ---
 title: 콘텐츠 세트 이식하기
-description: "스프레드시트나 다른 엔진의 내보내기처럼 이미 존재하는 대규모 콘텐츠 세트를 임포터로 Lute에 옮기는 방법: 표면별 스탬프 열, 호스트 토큰, 보상 효과, 임포트된 하위 트리의 프로젝트 진단 수준, 화자 무대 등장, 구조 및 종속 속성 규칙을 위한 node lint를 설명합니다."
+description: "스프레드시트나 다른 엔진의 내보내기처럼 이미 존재하는 대규모 콘텐츠 세트를 임포터로 Lute에 옮기는 방법: 표면별 스탬프 열, 호스트 토큰, 보상 효과, 임포트된 하위 트리의 프로젝트 진단 수준, 화자 무대 등장, 구조 및 종속 속성 규칙을 위한 node·pair lint, 한도 있는 재시도 루프, 디렉티브나 보상이 raise하는 장면, 번역할 수 있는 디렉티브 텍스트, 구조화된 값의 현재 한계를 설명합니다."
 ---
 
 이 가이드는 콘텐츠 세트가 이미 다른 형태(스프레드시트 행, 엔진의 내보내기, 이전 스크립트 형식)로 존재하고,
@@ -21,6 +21,12 @@ lute lint  --project docs/examples/plugin-surfaces
 
 플러그인 매니페스트 어휘는 [플러그인 매니페스트](/ko/plugins/manifests/)에 있습니다. 이 페이지는 그 주변의 이식
 레시피를 모았습니다.
+
+0.51부터 이 가이드는 이슈 #159, #165, #170, #172, #176이 보고한 문제도 다룹니다.
+[재시도 루프](#한도-있는-jump로-만드는-재시도-루프), [디렉티브나 보상이 raise하는 장면](#디렉티브나-보상이-raise하는-장면),
+[플레이어가 읽는 디렉티브 텍스트](#플레이어가-읽는-디렉티브-텍스트), [균형 규칙](#pair로-쓰는-균형-규칙),
+[구조화된 속성 값](#구조화된-값은-아직-지원하지-않습니다)입니다. 이들을 실행해 볼 수 있는 프로젝트는
+[`docs/examples/flow-and-text/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text)입니다.
 
 ## 열은 자기 표면의 스탬프가 됩니다
 
@@ -509,8 +515,303 @@ lints:
     options: { keys: { plain: [L1, R1], timed: [T1] } }
 ```
 
-균형 규칙(반드시 닫혀야 하는 여는 요소)은 `node` lint가 아닙니다. `pair` 대상은 이후 릴리스에서 계획되어 있습니다.
+### `pair`로 쓰는 균형 규칙
+
+균형 규칙은 반드시 닫혀야 하는 여는 요소에 관한 규칙입니다. `::group{mode="begin"}`과 `::group{mode="end"}`, 열고 닫는
+창이 그 예입니다. 이것은 `target: pair` lint(0.51부터)이며 `node` lint와 같은 자리에서 쓸 수 있습니다. `pair` 규칙은 같은
+`node` 행 위의 `open`과 `close` 술어, 선택적인 `inside` 술어, `scope`를 선언하며 `when`은 없습니다. `pair` 규칙에 `when`을
+쓰거나 다른 target의 규칙에 `open`, `close`, `inside`, `scope`를 쓰면 플러그인 `lints:`에서는 `E-PLUGIN-PARSE`,
+`lute.lint.yaml`에서는 `E-LINT-CONFIG`입니다.
+
+```yaml
+lints:
+  - id: group-balanced
+    target: pair
+    open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'   # optional
+    scope: body                                                    # body (default) | section
+    level: error
+    message: "::group begin/end"
+```
+
+```lute
+::group{mode="begin"}
+@mira: Look at this.
+@tomas: And this.
+::group{mode="end"}
+```
+
+이 쌍은 균형이 맞습니다. 각 scope는 열린 슬롯 하나로 한 번 훑습니다.
+
+- **`scope: body`**(기본)는 각 본문의 직접 자식, 즉 형제인 행끼리 순서대로 짝짓습니다. **`scope: section`**은 한 섹션이나
+  선언의 모든 행을 깊이와 상관없이 문서 순서대로 짝짓습니다. 그래서 한 `<choice>`의 `open`과 그 형제의 `close`가 짝이 됩니다.
+  `section`은 경로가 아니라 문서 순서입니다.
+- 쌍이 열려 있는 동안 `close`가 성립하는 행은 그것을 닫습니다. `open`과 `close`가 모두 성립하는 행은 쌍이 열려 있으면 닫는
+  행이고, 아니면 여는 행입니다.
+- 쌍이 열려 있는 동안 `open`이 성립하는 행은 **중첩된 open**이며 바깥 쌍은 열린 채로 남습니다. 열린 쌍이 없을 때
+  `close`가 성립하는 행은 **열린 적 없는 close**입니다. scope가 끝났는데 열린 쌍이 있으면 **닫히지 않은 open**입니다.
+- `inside`가 있으면 여는 행과 닫는 행 사이의 모든 행 가운데 `inside`가 거짓인 행은 **inside 위반**입니다. `body` scope에서는
+  형제만 세며 그 자손은 세지 않습니다.
+
+각 발견에는 규칙의 코드와 수준이 붙고 문제의 행을 가리키며, 규칙의 `message` 뒤에 고정 문구가 붙습니다.
+` — opened here, with no close in this body`(`section` scope에서는 `in this section`),
+` — a close with no open pair in this body`, ` — opened again while the pair from line N is still open`,
+` — not allowed inside the pair opened at line N`입니다. 중첩된 open과 inside 위반은 여는 행을 관련 위치로 가리킵니다.
+
+`inside` 위반의 예입니다. 마커 사이의 `::bg`는 줄도 `::actor`도 `::sfx`도 아니므로 위의 규칙은 1행에서 열린 쌍 안에는
+허용되지 않는다고 보고합니다.
+
+```lute
+::group{mode="begin"}
+@mira: Look at this.
+::bg{location="street" time="night"}
+::group{mode="end"}
+```
+
+쌍은 `<branch>`를 가로지를 수 있습니다. `scope: section`에서는 `<branch>` 앞의 begin과 뒤의 end가 짝이 되며, 한
+`<choice>` 안의 begin과 다음 `<choice>` 안의 end도 짝이 됩니다. `body` 규칙이라면 이를 닫히지 않은 open과 열린 적 없는
+close로 보고합니다.
+
+```yaml
+lints:
+  - id: window-balanced
+    target: pair
+    open:   'node.tag == "window" && "mode" in node.attrs && node.attrs["mode"] == "open"'
+    close:  'node.tag == "window" && "mode" in node.attrs && node.attrs["mode"] == "close"'
+    scope: section
+    level: error
+    message: "::window open/close"
+```
+
+```lute
+::window{mode="open"}
+<branch id="buy" prompt="Buy something?">
+  <choice id="yes" text="Yes">
+    @shopkeeper: Here you go.
+  </choice>
+  <choice id="no" text="No">
+    @shopkeeper: Next time.
+  </choice>
+</branch>
+::window{mode="close"}
+```
+
+`node` lint의 가드 규칙은 여기서도 그대로입니다. `"mode" in node.attrs && …`처럼 쓰세요. 가드 없는 술어에서 없는 키는
+`E-LINT-EXPR`이며 그 문서에서 그 규칙을 멈춥니다. 행마다 `pair` 규칙당 최대 세 번의 술어 호출만 듭니다.
 `lute.lint.yaml`의 나머지는 [린트](/ko/tooling/linting/)를 참고하세요.
+
+## 한도 있는 `::jump`로 만드는 재시도 루프
+
+"미니게임을 하고, 실패하면 최대 두 번까지 다시 제안한다" 같은 시트 행은 루프입니다. 0.51 이전에는 `::jump`가 앞으로만 갈 수
+있어서 임포터가 루프를 풀어 쓰거나, 어떤 분석도 볼 수 없는 passthrough 디렉티브에 숨겼습니다. 0.51부터는 `max`가 있는
+`::jump`가 **앞선** `::label`을 가리킬 수 있습니다.
+
+```lute
+::label{name="attempt"}
+::tryLock{door="vault"}
+<match subject="scene.lock.vault.won">
+  <when is="false">
+    @mira: Again!
+    ::jump{to="attempt" max="2"}
+  </when>
+  <when is="true">
+    @mira: It clicks open.
+  </when>
+</match>
+@theo: That's enough for today.
+```
+
+`::tryLock`은 호스트의 답으로 `scene.lock.vault.won`을 쓰는 블로킹 브리지 호출입니다. `max`는 점프를 따라갈 수 있는 횟수이며,
+`max`번 따라간 뒤에는 점프하지 않고 다음 노드로 넘어갑니다. 따라서 이 루프는 최대 세 번(처음 한 번과 재시도 두 번) 묻습니다.
+
+- **`max`는 1~99의 정수 리터럴입니다.** `@ref`, `0`, 음수, 99 초과는 `E-JUMP-MAX`이며, 루프 한도는 정적이기 때문입니다.
+  `max="two"`는 `E-ATTR-TYPE`뿐입니다. 앞으로 가는 점프의 `max`도 아무 뜻이 없으므로 `E-JUMP-MAX`입니다. `max` 없이 뒤로
+  가는 점프는 계속 `E-JUMP-BACKWARD`이며, 메시지는 이제 `max`와 선택지를 다시 보여 주는 `<hub>`를 알려 줍니다.
+- **`when=`과 `max`는 함께 쓸 수 있습니다.** `when`이 성립하고 횟수가 남아 있는 동안 점프합니다.
+- **루프는 한 본문 안에 머뭅니다.** 레이블은 점프와 같은 본문에 있거나, `<branch>`의 `<choice>` 본문과 `<match>` 갈래
+  본문만 거쳐 점프를 감싸는 본문에 있어야 합니다. 점프가 든 `<hub>` 옵션 밖의 레이블이거나 영역이 `<on>`이나
+  `<objective>`를 포함하면 `E-JUMP-LOOP-SCOPE`입니다.
+- **루프는 머리에서만 진입합니다.** 바깥에서 출발해 머리 뒤, 루프 안의 레이블로 가는 앞으로 가는 점프는
+  `E-JUMP-INTO-LOOP`입니다. 머리로 가는 앞으로 가는 점프와 루프 밖으로 나가는 점프는 괜찮습니다.
+- **루프는 중첩될 뿐 교차하지 않습니다.** 두 루프는 중첩되거나 서로소여야 하며, 아니면 나중 점프에서 `E-JUMP-LOOP-CROSS`입니다.
+  두 `max` 점프가 머리 하나를 공유할 수 있고, 각자 자기 카운터를 가집니다.
+
+중첩된 루프는 각자 셉니다. 안쪽 카운터는 제어가 안쪽 루프 바깥에서 안쪽 머리에 도착할 때마다 0으로 돌아가므로,
+바깥 `max="1"` 안의 안쪽 `max="2"`는 두 라운드마다 안쪽 본문을 세 번씩 실행합니다.
+
+```lute
+::label{name="round"}
+@theo: A new round.
+::label{name="knock"}
+@theo: Knock.
+::jump{to="knock" max="2"}
+@theo: Round done.
+::jump{to="round" max="1"}
+```
+
+두 번 따라가는 사이에 제어는 앞으로만 움직이므로, 중첩 깊이 *d*인 영역은 감싸는 점프들의 (`max` + 1)의 곱만큼만 실행됩니다.
+모든 walk는 플레이어의 도움 없이 끝나며 분석은 유한하게 유지됩니다.
+
+모든 흐름 분석은 레이블에 닿는 모든 점프의 상태를 앞쪽이든 뒤쪽이든 합류시키고, 루프 머리가 안정될 때까지 반복합니다.
+점프가 `::set`을 건너뛰어 닿는 레이블 뒤의 읽기는 `E-MAYBE-UNSET`, 다시 등장하는 지점을 건너뛴 점프는
+`W-STAGE-ABSENT`이며, `max`가 있는 점프는 본문을 끝내지 않으므로(한도에 이르면 다음으로 넘어갑니다)
+`W-CODE-AFTER-JUMP`가 조용합니다. 앞으로 가는 점프의 틈 두 곳도 함께 고쳐지므로, 쓰기를 건너뛰는 점프가 있는 문서는 0.50에
+없던 `E-MAYBE-UNSET`을 새로 받을 수 있습니다.
+
+플레이와 테스트에서: 카운터는 한 번의 walk에 국한되고 리플레이로 다시 만들어지므로 런타임 스냅숏에 새로 필요한 것이 없습니다. 이후
+반복에서 다시 닿은 `<branch>`는 새 메뉴이며, 그 `choose:` 목록은 제시마다 결정 하나씩 소비됩니다(`choose: { retry: [yes,
+yes, no] }`가 세 번의 반복을 이끕니다). 루프 안의 `<hub>`는 방문마다 첫 제시에서 시작하며, 앞선 방문에서 고른 `once`
+선택지는 계속 소진된 상태입니다. `lute trace`는 `<jump -> attempt (again 1/2)>`와 `<jump -> attempt not taken (2/2 used)>`를
+출력합니다. 참조 런타임은 적재 시 루프를 다시 검사해, 뒤로 가는 이동이 잘 중첩된 한정 점프가 아닌 아티팩트를 거부합니다.
+컴포넌트 안의 `::label`은 `::use` 인스턴스마다 따로 컴파일되므로 각 인스턴스는 자기 라벨에서 루프를 돕니다(#207).
+
+"같은 구간을 한도 안에서 다시"에는 루프를 쓰고, 플레이어가 `exit` 선택지를 고를 때까지 메뉴를 다시 보여 줄 때는 `<hub>`를
+쓰세요.
+
+## 디렉티브나 보상이 raise하는 장면
+
+"컷신 X를 재생한다" 같은 시트 행은 컷신을 실행하지 않습니다. 호스트가 그 장면이 응답하는 occasion을 raise해서 실행합니다.
+occasion을 raise하는 것은 호스트의 일이고 Lute는 raise하지 않으므로, 0.51 이전에는 그 occasion에 응답하는 장면에 그 행에서
+오는 엣지가 없어서 시나리오 그래프가 둘의 순서를 알 수 없었습니다. 0.51부터 디렉티브나 보상 kind는 자신에 답해 호스트가
+raise하는 occasion을 선언하고, occasion은 선언된 raise로만 raise된다고 말할 수 있습니다.
+
+```yaml
+# plugins/acme.flow/occasions/occasions.yaml
+occasions:
+  cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
+# plugins/acme.flow/directives/flow.yaml
+directives:
+  - name: playScene
+    attrs:
+      - { name: scene, required: true, type: { entity: cutsceneId } }
+    effects:
+      raises: [{ occasion: cutscene, target: "@scene" }]
+# plugins/acme.flow/rewardkinds/rewards.yaml
+rewardKinds:
+  CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }
+```
+
+```lute check-in-project="docs/examples/flow-and-text/scenes/chapter2.lute"
+---
+kind: scene
+id: chapter2
+on: cutscene
+target: scene.chapter2
+---
+```
+
+장면의 `::playScene{scene="chapter2"}`나 퀘스트의 `<reward kind="CUTSCENE" target="chapter2"/>`가 이제 `scene.chapter2`를
+대상으로 `cutscene`을 raise합니다.
+
+- **`effects.raises`**는 `{ occasion, target? }`의 비어 있지 않은 목록이며, 디렉티브에서는 `writes`/`asserts`/`retracts`
+  옆에, 보상 kind에서는 `asserts`/`retracts`/`accepts` 옆에 둡니다. 보상 kind는 `raises`만 선언할 수도 있습니다.
+  `target`은 디렉티브에서는 `@<attr>`(선언된 속성), 보상 kind에서는 `@target`(보상의 `target=`), 또는 통째로 쓴 리터럴
+  target(`scene.chapter2`)이며, target 없이 선언된 occasion에서만 생략합니다.
+- occasion의 **`raisedBy: declared`**는 호스트가 선언된 `raises`가 말하는 곳에서만 그것을 raise한다는 뜻입니다. 없으면 선언된
+  raise는 기록되고 검사되지만 그래프 엣지는 그리지 않습니다.
+- 모양 오류는 로드 시 `E-PLUGIN-PARSE`입니다. `lower:`가 있는 디렉티브는 효과를 싣지 못하는 레코드로 컴파일되므로 그
+  `raises`는 호스트에 닿을 수 없습니다: `E-PLUGIN-INVALID-DIRECTIVE`. 어셈블리에서는 `E-PLUGIN-RAISES`가 occasion(did-you-mean
+  포함)과 target의 모양·타입을 검사합니다. occasion이 다른 플러그인의 것이면 그 플러그인을 `depends:`에 둡니다.
+- `check --project`에서는 `E-RAISES-TARGET`이 해석된 각 target을 검사합니다. 엔티티 kind의 멤버여야 하고 어떤 장면이나
+  비트가 응답해야 합니다. 값은 호출의 속성 값, 없으면 속성의 `default:`이며, 값이 없는 target은 아무것도 raise하지 않고
+  `occasion.target`을 읽는 target은 동적이라 판정하지 않습니다.
+- `W-OCCASION-NEVER-RAISED`는 프로젝트의 어떤 `effects.raises`도 닿지 않는 `raisedBy: declared` occasion에 응답하는 장면이나
+  비트에서 경고합니다. `lute play` 스텝의 raise는 근원이 아니고, 프로젝트 클록이 raise하는 occasion은 경고하지 않습니다.
+  `lute.project.yaml`의 `diagnostics:`에서 다른 `W-*`처럼 수준을 바꿀 수 있습니다.
+
+모든 분석은 선언된 raise를 **가능하지만 보장은 아님**으로 읽습니다. occasion의 게이트가 호스트의 raise를 거절할 수 있으므로
+raise는 응답하는 장면에 팩트, 쓰기, must 주장을 더하지 않습니다. `lute scenario`와 `lute scenario reach`는
+raise하는 쪽에서 응답하는 모든 장면과 비트로 `[raises]` 엣지를 그리며, `after:`를 선언한 장면은 `after:`를 자신의 경로로
+유지합니다. (`lute impact`는 시맨틱 모델 그래프를 읽으므로 `[raises]`도 `[accept]`도 따라가지 않습니다. #210.)
+[flow-and-text 예제](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text)에서는 다음과 같습니다.
+
+```console
+$ lute scenario --project docs/examples/flow-and-text
+project root: docs/examples/flow-and-text
+  topological layers:
+    layer 0: scene(hall), scene(lock), quest(finale)
+    layer 1: scene(chapter2)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(lock) -> scene(chapter2) [raises]
+    quest(finale) -> scene(chapter2) [raises]
+```
+
+raise는 호스트가 수행합니다. 호출을 실행한 제시가 끝난 뒤 런타임이 한가해지면, 호스트가 각 raise를 레코드 순서대로
+`raiseOccasion` 입력으로 보냅니다. 보상은 부여를 정산한 뒤에 그렇게 합니다. 컴파일된 `plugin`과 `grant` 레코드가 해석된
+`raises`를 담고, `lute play`는 그 줄에 `  → raises cutscene scene.chapter2`를 출력합니다. 레퍼런스 플레이어는 이를 대신
+수행하고 대기 중인 raise를 저장과 롤백 지점에 보관하며, 커스텀 호스트도 같은 일을 합니다
+([커스텀 호스트](/ko/player/custom-hosts/) 참고). `lute play`는 스스로 raise하지 않으며, 스크립트가 다음 스텝으로 그
+occasion을 raise합니다.
+
+## 플레이어가 읽는 디렉티브 텍스트
+
+연출되는 배너, 토스트, 챕터 제목은 플레이어가 읽는 텍스트이므로 번역할 수 있어야 합니다. 그런 속성은 `type: text`로 선언합니다.
+
+```yaml
+directives:
+  - name: banner
+    attrs:
+      - { name: title,    required: true, type: text }
+      - { name: subtitle, type: text }
+      - { name: style,    type: { enum: [toast, card] } }
+```
+
+```lute
+::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
+```
+
+- `text` 값은 선택지 라벨 문법의 따옴표 친 문자열입니다. 상태 경로, `@def`, 호스트 토큰의 `{{…}}` 보간은 라벨과 똑같이
+  검사됩니다. 리터럴 `{{`는 아직 쓸 수 없습니다(따옴표 속성에서 `\{{`는 `E-STRING-ESCAPE`입니다. #211). `@ref` 값은 `E-ATTR-TYPE`입니다.
+- `text`는 `plugin` 레코드로 남는 디렉티브의 속성에만 허용됩니다. `lower:`도 `bridge:`도 없어야 합니다. `default:`를 가질 수
+  없고, 스탬프, 플러그인 옵션, 페이로드, 보상 kind 속성의 타입으로도 쓸 수 없습니다. `text` 속성이 있는 디렉티브는 `code`라는
+  이름의 속성을 선언할 수 없습니다. 각 오류는 그 속성에서 `E-PLUGIN-PARSE`이고, 그런 디렉티브에 범위를 지정한 `code` 스탬프는
+  `E-PLUGIN-RESERVED-STAMP-ATTR`입니다.
+- **`code=`**는 줄과 같이 그런 디렉티브의 식별자입니다. 각 `text` 속성의 `lineId`는 `{prefix}~{tag}~{code}~{attr}`이며
+  `hall~banner~0010~title` 같은 모양입니다. `~`는 이 id를 위해 예약되어 있으므로 `~`가 든 `code`는 `E-LINE-CODE-RESERVED`,
+  `~`가 든 `lineId` 템플릿은 `E-IDENTITY-TEMPLATE`입니다. 한 범위의 `::banner` 두 호출이 같은 `code`를 가지면
+  `E-DUP-LINE-CODE`, 프로젝트 어디서든 두 단위의 최종 `lineId`가 같으면 `E-LINE-ID-DUP`입니다. `text` 속성이 없는 디렉티브의
+  `code=`는 `E-UNKNOWN-ATTR`입니다.
+- **`lute tag`**는 `text` 속성이 있고 코드가 없는 모든 디렉티브에, 컴파일러가 채우는 순서 그대로 `code="…"`를 씁니다.
+  컴포넌트는 그 사용자들의 스냅숏으로 태그하며, 사용자들이 서로 다르면 `E-COMPONENT-TEXT-DIRECTIVE`입니다.
+  `identity.requireStable`이면 코드 없는 디렉티브를 `W-LINE-CODE-UNTAGGED`가 보고합니다.
+
+번역 왕복은 줄이 이미 쓰는 것과 같으며, 텍스트 속성은 행 종류가 하나 늘 뿐입니다.
+
+```sh
+lute tag scenes
+lute loc export --project . -o export/en.json
+# export/ko.json으로 복사하고(파일 이름이 로케일입니다) "text" 값을 번역합니다.
+# 모든 {{…}} 마커를 그대로 유지하세요
+lute loc import export/ko.json -o loc/ko.json          # 로케일 번들
+lute compile scenes/hall.lute --project . --locale-bundle loc/ko.json
+```
+
+내보낸 행은 `{ "kind": "directive", "lineId": "hall~banner~0010~title", "key": "banner.title", … }` 모양입니다. 디렉티브에
+`code`가 생기기 전에는 `lineId`가 `null`이므로 먼저 `lute tag`를 실행하세요. `lute loc report`는 디렉티브 텍스트
+(`directiveTexts`)를 프롬프트처럼 셉니다. 컴파일된 `plugin` 레코드에서 `fields.title`은 마커를 작성된 그대로 둔 원문을 유지하고,
+`localized.title`은 병합된 번역과 함께 `{ lineId, placeholders, texts }`를 담습니다. 로케일이 없으면 `W-L10N-MISSING`, 원문이
+바뀌었으면 `W-L10N-STALE`이며 줄과 같습니다. 런타임이 마커를 렌더링하고(호스트 토큰은 그대로 남습니다), 레퍼런스 플레이어의
+`PluginCall.localized`가 호스트 핸들러에 플레이어 로케일의 각 텍스트를 줍니다.
+
+## 구조화된 값은 아직 지원하지 않습니다
+
+목록이나 레코드를 담는 열(태그 목록, 언어별로 키가 달린 음성 에셋 맵)은 디렉티브 속성에 맞지 않습니다. `list`, `map`,
+`record` 속성 및 스탬프 타입은 어떤 `.lute` 값으로도 만족할 수 없으므로 `E-PLUGIN-INVALID-DIRECTIVE`로 계속 거부됩니다.
+구조화된 작성(#176)은 **미루며 다루지 않습니다**. 0.51에는 `::tagged{tags=…}` 같은 일반적인 enum 목록 메타데이터를 쓸
+문법도, 언어별로 키가 달린 음성 에셋 맵을 쓸 문법도 없습니다. 로케일 없이 해석되는 줄당 음성 키 하나는 언어별 에셋 맵이
+아닙니다.
+
+스칼라로 나눌 수 있으면 그렇게 하세요.
+
+| 행이 가진 것 | 쓰는 방법 |
+|---|---|
+| 이름 있는 몇 개의 필드 | 필드마다 속성 하나. 스탬프는 `on:`으로 표면을 정합니다 |
+| 여러 언어로 플레이어가 읽는 텍스트 | `text` 속성 하나 |
+| 정말로 옵션의 집합인 목록 | `<choice>` 요소 |
+
+거부 메시지도 같은 말을 합니다. 필드마다 속성을 하나씩 두거나, 플레이어에게 보이는 텍스트에는 `text` 속성을, 옵션 목록에는
+`<choice>` 요소를 쓰라는 것입니다. 스탬프는 `text`가 될 수 없으므로 스탬프에는 `text` 안내가 빠집니다.
 
 ## 도구가 잡아내는 것과 잡아내지 못하는 것
 
@@ -529,6 +830,13 @@ lints:
 | 임포트된 하위 트리의 경고 홍수 | `paths:`가 있는 `diagnostics:`, 요약에 집계됨 |
 | 무대 밖에 보인 화자 | 임포터가 무대 행을 내보내지 않으면 `W-STAGE-ABSENT` |
 | 구조 또는 종속 값 규칙 | `node` lint |
+| 검사기가 볼 수 없던 루프 | `::jump{max}`와 `E-JUMP-MAX`, `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP`, `E-JUMP-LOOP-CROSS` |
+| 아무것도 raise하지 않는 장면 | `W-OCCASION-NEVER-RAISED`. 잘못 쓴 raise target은 `E-RAISES-TARGET` |
+| 어떤 플러그인도 선언하지 않은 occasion의 raise | `E-PLUGIN-RAISES`, did-you-mean 포함 |
+| 번역할 수 없는 플레이어용 디렉티브 텍스트 | `type: text`, `lute tag`, `lute loc` |
+| id가 같은 두 번역 단위 | `E-LINE-ID-DUP`. `code`의 `~`는 `E-LINE-CODE-RESERVED` |
+| 닫히지 않는 여는 요소 | `pair` lint |
+| 목록이나 레코드 열 | 거부됨. 스칼라로 나누세요 |
 
 Lute가 알지 **못하는** 것은 다음과 같습니다.
 
@@ -538,3 +846,6 @@ Lute가 알지 **못하는** 것은 다음과 같습니다.
   텍스트에 남습니다.
 - **조용한 하위 트리가 올바른지.** `off`는 경고를 숨길 뿐 행을 고치지 않습니다. `paths:` glob은 좁게 유지하고,
   검토가 끝나면 항목을 지우세요.
+- **호스트가 선언된 raise를 수행하는지.** `raises` 항목은 호스트에 대한 약속일 뿐 장면이 재생된다는 보장이 아닙니다. occasion의
+  게이트가 거절할 수 있습니다.
+- **번역이 올바른지.** `W-L10N-STALE`은 내보낸 뒤 원문이 바뀌었다고 알려 줄 뿐, 번역을 읽지는 않습니다.

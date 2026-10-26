@@ -6,7 +6,7 @@ import type { Settings, SlotId, SlotInfo } from "../ports/index.js"
 import type { SaveRuntime } from "../model.js"
 
 /** The save and profile format version (`saveVersion`, `profileVersion`): the release line. */
-const VERSION: "0.50" = "0.50"
+const VERSION: "0.51" = "0.51"
 
 /** A malformed or unreadable persisted save. */
 export class SaveCorrupt extends Schema.TaggedError<SaveCorrupt>()("SaveCorrupt", {
@@ -39,10 +39,19 @@ const Log = Schema.Union([
   Schema.Struct({ snapshot: Contract.Snapshot }),
   Schema.Struct({ input: Contract.Input })
 ])
+// 0.51.0 §4.6: a declared raise the host has not delivered yet.
+const PendingRaise = Schema.Struct({
+  occasion: Schema.String,
+  target: Schema.optionalKey(Schema.String),
+  document: Schema.String,
+  position: Schema.optionalKey(Schema.String),
+  logIndex: Schema.Int
+})
 const Runtime = Schema.Struct({
   snapshot: Contract.Snapshot,
   log: Schema.Array(Log),
-  backlog: Schema.Array(Backlog)
+  backlog: Schema.Array(Backlog),
+  pendingRaises: Schema.Array(PendingRaise)
 })
 const Save = Schema.Struct({
   saveVersion: Schema.Literal(VERSION),

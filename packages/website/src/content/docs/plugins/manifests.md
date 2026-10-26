@@ -41,7 +41,7 @@ An option's value is the active profile's, otherwise its declared `default:`. An
 
 ## Export files
 
-Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, and shape refs; since dsl 0.26.0 a directive attribute may also be typed `{ entity: <kind> }`, [below](#engine-ids-typed-by-an-entity-kind)). State paths use **structured segments**, never `$name` interpolation. A *directive attribute* or `stampAttrs` entry cannot be typed `list`, `map` or `record` at its top level (since 0.49): an attribute value is written as one scalar, so no `.lute` value could satisfy it, and the plugin load fails with `E-PLUGIN-INVALID-DIRECTIVE`, naming the attribute (``stamp attribute `tags` `` for a stamp) and suggesting a `string` parsed in the host or one attribute per field. Plugin `options:`, frontmatter keys, state shapes and bridge results keep these types, because YAML can write them.
+Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, and shape refs; since dsl 0.26.0 a directive attribute may also be typed `{ entity: <kind> }`, [below](#engine-ids-typed-by-an-entity-kind); since 0.51 a directive attribute may be typed `text`, [below](#localizable-text-attributes-type-text)). State paths use **structured segments**, never `$name` interpolation. A *directive attribute* or `stampAttrs` entry cannot be typed `list`, `map` or `record` at its top level (since 0.49): an attribute value is written as one scalar, so no `.lute` value could satisfy it, and the plugin load fails with `E-PLUGIN-INVALID-DIRECTIVE`, naming the attribute (``stamp attribute `tags` `` for a stamp). Since 0.51 the message ends with this hint: `` … so no `.lute` value can satisfy a `list`, `map` or `record` (structured attribute values are not supported yet): where it fits, give each field its own attribute (a stamp can be scoped to its surfaces with `on:`), use a `text` attribute for player-visible text in several languages, or write a list of options as `<choice>` elements ``. For a stamp the `text` clause is omitted, because a stamp cannot be `text`. Structured authoring itself (enum-list metadata such as `::tagged{tags=…}`, language-keyed voice-asset maps) is deferred: 0.51 gives it no spelling, so use the scalar decompositions the hint names. Plugin `options:`, frontmatter keys, state shapes and bridge results keep these types, because YAML can write them.
 
 - `directives/*.yaml` — `::name` directive declarations (see [Bridge](/plugins/bridge/)).
 - `state/*.yaml` — reusable typed record shapes (`stateShapes:`) and structured path templates (`stateTemplates:`); one file may hold both (since 0.24.0; before, the second was dropped).
@@ -104,7 +104,7 @@ occasions:
 ```
 
 An occasion takes these keys, and no others: `select`, `target`, `description`, `judge`,
-`raisedWhen`, `payload`, `outsideRun`.
+`raisedWhen`, `payload`, `outsideRun`, and (since 0.51) `raisedBy`.
 
 An occasion's `select:` says what the engine presents when it is raised. `first` (the default) presents the single winning beat, plus any eligible [`also`](/language/beats/#side-remarks-with-also) beat after it. `all` offers every eligible beat and the player picks one. `sequence` (dsl 0.23.0) presents every eligible beat in selection order, such as an evening routine followed by the day's event (see [Composing an occasion](/language/beats/#composing-an-occasion)). A beat's `also: true` on an `all` or `sequence` occasion is `E-BEAT-ATTR`. When a world event of the same name is also declared under `events:`, every raise of the occasion fires that event after the beats, before the occasion judges its `on=` objectives (see [Occasions](/language/beats/#occasions)).
 
@@ -122,6 +122,8 @@ An occasion's **`raisedWhen:`** (dsl 0.27.0 §4) says when the engine may raise 
 An occasion's **`payload:`** declares the typed values each raise hands its beats, a map from field to a type of the manifest type system above (`copies: int`): a gacha pull says how many copies came with the hero drawn. Beats read them as `occasion.payload.<field>`, and so do an `<objective on=>` of that occasion and an `<on event=>` handler named like it (see [Occasion payloads](/language/beats/#occasion-payloads)). Every raise gives every field: a `lute play` step that leaves one out is a usage error naming it, `lute trace` and `lute test` halt incomplete on a line that reads a field the mock does not seed, and a clock `raise:` naming an occasion with a payload is `E-CLOCK-DECL`.
 
 An occasion's **`outsideRun: true`** marks a moment that lives outside any run, a title screen or a gallery between runs: the engine raises it even after the project's [`terminal:`](/state/schemas/#the-end-of-the-game-terminal) holds, and the checker does not judge its beats under `!terminal`. The compiled artifact lists such occasions under `outsideRun`.
+
+An occasion's **`raisedBy: declared`** (0.51) says the host raises the occasion only where a directive's or a reward kind's [declared `raises`](#declared-occasion-raises) names it. The only value is `declared`; leaving the key out keeps the default, where the host may raise the occasion at any time. A `raisedBy: declared` occasion that no `raises` entry can reach draws `W-OCCASION-NEVER-RAISED` at the scene or beat that answers it. An occasion the project [clock](/language/clock/) raises is raised outside any declared raise, so `raisedBy: declared` draws no anchor for it and `W-OCCASION-NEVER-RAISED` stays silent. Any other `raisedBy` value is `E-PLUGIN-PARSE`. The key changes `capabilitySnapshot` only for a snapshot that declares it.
 
 Occasions are part of the capability snapshot, so they fold into `capabilitySnapshot`. Declaring a domain restamps, and so does adding or changing its `members:` list; an occasion that only ever says `target: true` or `false` keeps the stamp it had under 0.21.0. Likewise, `select: sequence` and `raisedWhen` change the stamp only for a snapshot that declares them.
 
@@ -318,6 +320,36 @@ A value outside the kind is `E-BAD-ENUM`, with a did-you-mean. An attribute type
 
 A value that reaches the attribute through a component param is checked at the `::use` argument, or at the param's `default:` (see [Engine ids through a param](/language/components-and-extends/#engine-ids-through-a-param)). `lute refs --project <DIR> --attr give.item` lists every value with the documents and lines that use it, so a lead sees who gives what before merging several authors' work.
 
+### Localizable text attributes: `type: text`
+
+Since 0.51 a directive attribute may be typed **`text`**: player-visible text that can be translated, so it is addressed and localized the way a dialogue line is.
+
+```yaml
+directives:
+  - name: banner
+    attrs:
+      - { name: title,    required: true, type: text }
+      - { name: subtitle, type: text }
+      - { name: style,    type: { enum: [toast, card] } }
+```
+
+`text` is admitted **only** as the type of a directive attribute (`attrs:`) of a directive that compiles to a `plugin` record: one with no `lower:` of any kind and no `bridge:`. The plugin load fails with `E-PLUGIN-PARSE`, at the attribute, for:
+
+- `text` on a directive with `lower:` (a staging record or a builtin) or with `bridge:`: `` `title` of `::banner` is `text`, but `::banner` lowers to the `actor` record, which carries no localized text — declare it `string`, or drop `lower:` so the call stays a `plugin` record ``;
+- `text` with a `default:`, because an untranslatable source text has nothing to translate;
+- `text` anywhere else the type grammar is read: a stamp (`stampAttrs`, refused at assembly beside the structured-type refusal), plugin `options:`, an occasion `payload:`, a reward kind's `attrs:`, bridge results, or `{ list: text }`. Each place keeps its own invalid-type diagnostic, which names the one place `text` is admitted. A [host token](#host-interpolation-tokens-hosttokens) cannot be `text` either: its type is `string`, `int` or an enum;
+- a directive with a `text` attribute that also declares an attribute named `code`, because `code` is the identity attribute of such a directive.
+
+A stamp scoped with `on: [banner]` and named `code` is shadowed by that core attribute: `E-PLUGIN-RESERVED-STAMP-ATTR`. A cross-cutting stamp named `code` keeps applying to other directives; on a directive with a `text` attribute the core `code` is matched first, as a line's own `code` is.
+
+In a document, a `text` value is a quoted string in the choice-label grammar: `{{…}}` interpolations of state paths, `@def`s and host tokens, with their modifiers; inline markup is not parsed. A literal `{{` cannot be written in a quoted attribute value yet (`\{{` is `E-STRING-ESCAPE` there, as in a choice label; #211). An `@ref` value is `E-ATTR-TYPE`: `` `title` of `::banner` is localizable `text`, written as a quoted string; a `@def` value has no translation of its own ``. The directive then takes `code=` (a string) as a content line does, on any directive with at least one `text` attribute; on any other directive `code` stays `E-UNKNOWN-ATTR`, and the message says why.
+
+```lute
+::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
+```
+
+The localization id of each `text` attribute is `{prefix}~{tag}~{code}~{attr}` (`intro~banner~0010~title` above, in `scenes/intro.lute`), and a `code` containing `~` is `E-LINE-CODE-RESERVED` (`` `code="a~1"` contains `~`, which is reserved for directive text identities ``). Two calls of one directive with `text` attributes sharing a `code` in one scope are `E-DUP-LINE-CODE`, and two units of the project that compile to one `lineId` are `E-LINE-ID-DUP` (`lute check --project`). `lute tag` writes the missing `code=` values (for a component, under the snapshots of the documents that use it; users that disagree on its text directives are `E-COMPONENT-TEXT-DIRECTIVE`), `lute loc export` lists one `directive` row per `text` attribute, and `lute loc import` and `lute loc report` take them. The compiled `plugin` record keeps the source string in `fields.<attr>` and adds a `localized` map ([Runtime contract](/tooling/runtime-contract/#051-additions)); a host without localization reads `fields` as before. A directive with no `text` attribute compiles byte-identically to 0.50, and `text` changes `capabilitySnapshot` only for a snapshot that declares it. (The whole-project quest-reference pass does not read `text` values yet; #212.)
+
 ### Reward target contracts
 
 A reward kind's `target:` says what a `<reward target="…">` value names, and since dsl 0.26.0 §2.5 the checker holds rewards to it:
@@ -361,7 +393,7 @@ rewardKinds:
   OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
 ```
 
-`effects` takes `asserts`, `retracts` and `accepts`, and no other key. An empty `effects: {}` is `E-PLUGIN-PARSE` ("declares no effect"). Each `asserts` / `retracts` entry is the same fact pattern a [directive's effects](#facts-a-directive-asserts-or-retracts) use, `relation(arg, …)`.
+`effects` takes `asserts`, `retracts`, `accepts` and (since 0.51) [`raises`](#declared-occasion-raises), and no other key. An empty `effects: {}` is `E-PLUGIN-PARSE` ("declares no effect"; the message lists `raises:` among the keys), while `effects: { raises: [...] }` alone is a valid block. Each `asserts` / `retracts` entry is the same fact pattern a [directive's effects](#facts-a-directive-asserts-or-retracts) use, `relation(arg, …)`.
 
 - **`writes` is not admitted.** A reward's state write is `credits:`, so `effects.writes` is `E-PLUGIN-KEY`, and its message adds `` — a reward's state write is `credits:` ``.
 - **Pattern arguments** are members, `true` / `false`, `@target`, and `_` (in `retracts` only). Any other `@name` is `E-PLUGIN-PARSE`: `` reward kind `BADGE` effect `met(@rarity)` reads `@rarity`; a reward kind's effects read only `@target` (a `<reward>` takes no other attribute) ``. A reward kind's own `attrs:` cannot be authored on `<reward>`, so there is nothing else to read.
@@ -370,6 +402,69 @@ rewardKinds:
 - `@target` is bound to the reward's quoted `target=`. A `<reward>` with no `target=` applies no effect for a pattern that reads it, with no extra diagnostic; a kind with `target: { required: true }` already reports `E-REWARD-TARGET` there.
 
 The checker judges each `<reward>` of such a kind with its `@target` bound. A fact pattern is held to exactly what an `::assert` / `::retract` of it is (relation declared, arity, argument kinds and members), with the same codes, at the reward's `kind=`; each message is prefixed `` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): ``. An `accepts` id is judged by `::accept`'s rule: `E-ACCEPT-TARGET` for an unknown id (with a did-you-mean), for a quest that has `start`, and for an auto-activating child. It is reported at the reward's `target=` value when the id came from `@target`, otherwise at `kind=`: `` `<reward kind="OFFER_QUEST" target="secnd">` accepts quest `secnd` (its kind's `effects.accepts`), but no quest in the project declares that id — did you mean `second`? ``. What the effects mean at the grant, and how analyses read them, is in [Quests & scenes](/language/quests-and-scenes/). A kind without `effects:` hashes as it did before.
+
+### Declared occasion raises
+
+Since 0.51 a directive's `effects:` and a reward kind's `effects:` may declare the occasions the **host** raises in answer to the call or the grant. Lute does not execute a raise: raising occasions is a host duty. A declared raise is a promise about what the host does, and it lets the checker connect the call to the scene or beat that answers the occasion.
+
+```yaml
+# plugins/acme.stage/occasions/o.yaml
+occasions:
+  cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
+```
+
+```yaml
+# plugins/acme.stage/directives/d.yaml
+directives:
+  - name: playScene
+    attrs:
+      - { name: scene, required: true, type: { entity: cutsceneId } }
+    effects:
+      raises: [{ occasion: cutscene, target: "@scene" }]
+```
+
+```yaml
+# plugins/acme.stage/rewardkinds/r.yaml
+rewardKinds:
+  CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }
+```
+
+```lute
+--- # scenes/chapter2.lute
+kind: scene
+id: chapter2
+on: cutscene
+target: scene.chapter2
+---
+```
+
+- **`effects.raises`** is a non-empty list of `{ occasion, target? }` entries, and no other keys. It sits beside `writes`, `asserts` and `retracts` on a directive, and beside `asserts`, `retracts` and `accepts` on a reward kind. A reward kind that declares only `raises` keeps the `lute.quest.rewardEffects/1` semantic id out of `requiredSemantics`.
+- **`target`** is one of: absent (only for an occasion declared without a target); `@<attr>` on a directive, naming one of its declared attributes; `@target` on a reward kind, the reward's `target=`; or a literal target written whole (`scene.chapter2`), as a beat writes it. A kind with `target: { forbidden: true }` cannot raise for `@target`.
+- **`raisedBy: declared`** on the occasion makes the host raise it only through declared raises (see [the occasion keys](#export-files) above). Without it, a declared raise of the occasion is recorded in the artifact and checked, but draws no graph edge.
+
+**Load faults** (`E-PLUGIN-PARSE`, at the entry): `raises: []`; an entry that is not a mapping with `occasion` and an optional `target`; a `target` that is neither `@<name>` nor a dotted target; on a directive, an `@<name>` that names no declared attribute; on a reward kind, any `@<name>` other than `@target`, or `@target` on a kind with `target: { forbidden: true }`; an unknown `raisedBy` value.
+
+A directive whose lowering has no carrier for raises, which is any `lower:` (a staging record or a builtin), cannot declare `effects.raises`. It is `E-PLUGIN-INVALID-DIRECTIVE`, at the `raises` key: `` directive `::playVideo` lowers to the `video` record, which carries no effects (only a `plugin` record does), so its `effects.raises` could never reach the host — drop `lower:` so the call stays a `plugin` record, or raise the occasion from a passthrough directive ``. This is the boundary `effects.writes` already has on record lowerings.
+
+**Assembly.** Occasions may come from another plugin, so the occasion is looked up when the plugins assemble. A refused entry is `E-PLUGIN-RAISES` and is dropped, and its siblings still land:
+
+| Fault | Message shape |
+|---|---|
+| the occasion is not in the snapshot | `` directive `::playScene` (`acme.stage`) raises occasion `cutscne`, which no active plugin declares (a plugin raising another plugin's occasion lists it in `depends:`) — did you mean `cutscene`? `` (when the occasion exists in an installed but inactive plugin, the message names that plugin instead) |
+| a `target` on an untargeted occasion, or none on a targeted one | `` … raises `cutscene` without a target, but `cutscene` is raised for a target (`scene.<cutsceneId>`) — add `target: "@<attr>"` `` |
+| for a domain occasion `{ prefix, entity }`, an `@attr` whose declared type is not `{ entity: <entity> }` (on a reward kind: whose `target:` contract is not `{ entity: <entity> }`) | `` … raises `cutscene` for `@scene`, which is typed `string`; the target of `cutscene` is a `cutsceneId` member, so type the attribute `{ entity: cutsceneId }` `` |
+| a literal target outside the occasion's domain shape (`<prefix>.<member>`; `members:` when listed) | `` … raises `cutscene` for `room.office`, but its targets are `scene.<cutsceneId>` `` |
+
+**Per call and per grant.** The project pass (`lute check --project`) reports `E-RAISES-TARGET` at the call's attribute value for an `@attr` target, at the directive head for a literal, and at the reward's `target=` (or `kind=`). A resolved target is the call's authored value, else the attribute's declared `default:`; only a target with neither is unbound, and an unbound target suppresses the raise with no extra diagnostic (`required` already reports). For each resolved target:
+
+- a domain target `<prefix>.<value>` that is not a member of the project's kind (or of the occasion's `members:`) is `E-RAISES-TARGET`, with a did-you-mean;
+- a target that **no** scene or beat answers (no document with `on:` that occasion and that target, or no `target:`) is `E-RAISES-TARGET`: `` `::playScene{scene="chaptr2"}` raises `cutscene` for `scene.chaptr2`, but no scene or beat answers it — did you mean `scene.chapter2`? ``.
+
+An `@def` attribute value folds to a constant like every attribute value, so it is a static target, and a call inside a component body is resolved at each `::use` with its arguments bound. The only dynamic target is a value that reads `occasion.target`, in a call inside a beat. It is not judged here; in the graph it stands for every scene or beat that answers the occasion.
+
+**What the host does.** After the presentation that ran a directive call ends (`presentationEnd`), the host raises each listed occasion for its resolved target, in record order and list order, as a `raiseOccasion` input once the runtime is idle. After the output that carries a reward's `grant` record has been applied, it does the same for the reward kind's raises. The occasion's own gate (`raisedWhen`) may still refuse a raise: that refusal is the host's to report, so Lute reads a declared raise as *possible*, never as guaranteed. It adds no fact, write or Must claim anywhere, and every analysis reads it as a may-edge. See [the scene graph](/connectivity/scene-graph/#edges-that-declared-raises-draw) and the host duties in [Custom hosts](/player/custom-hosts/#declared-raises).
+
+The compiled `plugin` record and the `grant` record carry the resolved `raises` list (`{ occasion, target? }`), with `@attr` bound to the attribute's value and the domain prefix applied (`scene.chapter2`); a target that reads `occasion.target` is written `scene.occasion.target` with `"dynamic": true`, and the runtime binds it to the member the beat runs for. The field is omitted when empty, so a manifest without `raises` leaves every artifact and `capabilitySnapshot` as it was. The [W-OCCASION-NEVER-RAISED](/connectivity/reachability/#occasions-that-nothing-raises) warning flags a scene or beat that answers a `raisedBy: declared` occasion no declared raise reaches.
 
 ### Cast
 

@@ -456,22 +456,28 @@ pub enum PrereqState {
     /// dsl 0.24.0 §2, 0.25.0 §4: no `after` declared on a quest, which is
     /// anchored by what the project says about it instead — each
     /// [`Anchor`] one necessary condition of its activation, in the order
-    /// subquest, `start` conjuncts, `::accept`s. Synthesized, never authored
+    /// subquest, `start` conjuncts, `::accept`s. 0.51.0 §4.5: a scene or
+    /// bundle beat without `after:` answering a `raisedBy: declared`
+    /// occasion is anchored too, by one [`EdgeKind::Raises`] anchor (the
+    /// nodes whose declared raises reach it). Synthesized, never authored
     /// (so never `E-CONN-PROFILE`/`-UNKNOWN-NODE` material). It never proves
-    /// the quest `Unreachable`: the engine may accept a quest outside any
-    /// `::accept` (dsl 0.21.0 §7a.3, 0.25.0 §5), and `after` stays the
-    /// declared route, so a dead anchor reads `Unknown`.
+    /// the node `Unreachable`: the engine may accept a quest outside any
+    /// `::accept` (dsl 0.21.0 §7a.3, 0.25.0 §5), a declared raise is a host
+    /// promise, not a proof, and `after` stays the declared route, so a dead
+    /// anchor reads `Unknown`.
     Anchored(Vec<Anchor>),
 }
 
-/// One synthesized prerequisite of a quest that declares no `after` (dsl
-/// 0.24.0 §2, 0.25.0 §4): the quest cannot activate before one of `from`
-/// is reached. Drawn as `from -> quest` edges of `kind`.
+/// One synthesized prerequisite of a node that declares no `after` (dsl
+/// 0.24.0 §2, 0.25.0 §4, 0.51.0 §4.5): the node cannot activate before one
+/// of `from` is reached. Drawn as `from -> node` edges of `kind`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Anchor {
     /// [`EdgeKind::Subquest`] (the parent, active before its child),
-    /// [`EdgeKind::Start`] (one top-level `start` conjunct), or
-    /// [`EdgeKind::Accept`] (every node whose body `::accept`s the quest).
+    /// [`EdgeKind::Start`] (one top-level `start` conjunct),
+    /// [`EdgeKind::Accept`] (every node whose body `::accept`s the quest), or
+    /// [`EdgeKind::Raises`] (every node whose declared raise reaches the
+    /// scene or bundle beat).
     pub kind: EdgeKind,
     /// The alternatives, in source order — every one a graph node.
     pub from: Vec<NodeId>,
@@ -521,6 +527,12 @@ pub enum EdgeKind {
     /// dsl 0.25.0 §4: the prerequisite quest is the dependent's subquest
     /// parent (`<objective quest=…>`) — the child is never active before it.
     Subquest,
+    /// 0.51.0 §4.5: a raise anchor — the prerequisite node's declared
+    /// `effects.raises` (a directive call or a granted reward) raises the
+    /// dependent's `raisedBy: declared` occasion. A may-edge: one raiser of
+    /// several ran, so no fact, write or Must claim crosses it. Appended
+    /// last, so the derived order of every other kind stays as it was.
+    Raises,
 }
 
 impl EdgeKind {
@@ -535,6 +547,7 @@ impl EdgeKind {
             EdgeKind::Accept => "accept",
             EdgeKind::Start => "start",
             EdgeKind::Subquest => "subquest",
+            EdgeKind::Raises => "raises",
         }
     }
 }

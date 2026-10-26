@@ -1388,10 +1388,17 @@ pub struct MatchArm {
     pub target: String,
 }
 
+/// A `jump` record: an authored `::jump{to [max]}` or the converge jump of a
+/// branch, match or hub arm.
 #[derive(Clone, Debug, Serialize)]
 pub struct JumpCmd {
     pub position: String,
     pub target: String,
+    /// dsl 0.51.0 §3.6: a bounded backward jump's `max` — how many times it
+    /// may be taken before control falls through (`lute.core.boundedJump/1`).
+    /// Absent on every other jump, which stays byte-identical to 0.50.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub max: Option<u8>,
 }
 
 /// `::end{reason?}` (dsl 0.8.0 §5): terminate the walk at this record.
@@ -1454,6 +1461,33 @@ pub struct FactRecord {
     pub args: Vec<String>,
 }
 
+/// 0.51.0 §4.6 (#170): one occasion a plugin call or a granted reward
+/// declares the host raises (`effects.raises`), resolved at compile: an
+/// `@attr` bound to the attribute's compiled value (its declared `default:`
+/// when omitted), a domain prefix applied (`scene.chapter2`). `target` is
+/// omitted for an untargeted occasion; a value reading `occasion.target`
+/// keeps the reference, prefix applied (`scene.occasion.target`), and is
+/// marked `dynamic: true` — the runtime binds a dynamic target only.
+/// Descriptive: the runtime raises nothing.
+#[derive(Clone, Debug, Serialize)]
+pub struct RaiseRecord {
+    pub occasion: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub dynamic: bool,
+}
+
+impl From<lute_check::raises::WireRaise> for RaiseRecord {
+    fn from(r: lute_check::raises::WireRaise) -> Self {
+        RaiseRecord {
+            occasion: r.occasion,
+            target: r.target,
+            dynamic: r.dynamic,
+        }
+    }
+}
+
 /// Plugin-directive passthrough (plan spec-gap note 1): `kind: "plugin"`,
 /// the authored tag, and its attrs typed via the manifest `AttrDecl`s.
 #[derive(Clone, Debug, Serialize)]
@@ -1477,8 +1511,49 @@ pub struct PluginCmd {
     /// dsl 0.27.0 §4: the facts the call asserts, applied after `retracts`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub asserts: Vec<FactRecord>,
+    /// 0.51.0 §5.4: each `text` attribute's localization, keyed by attribute
+    /// name (skip-if-empty: a directive without `text` attributes is
+    /// byte-identical). Descriptive, no semantic id.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub localized: BTreeMap<String, LocalizedText>,
     #[serde(flatten)]
     pub stamp: Stamp,
+    /// 0.51.0 §4.6: the occasions the call's `effects.raises` names, in list
+    /// order (skip-if-empty, appended last: an artifact without them is
+    /// byte-identical).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub raises: Vec<RaiseRecord>,
+    /// 0.51.0 §5.3: where the call's directive text identity comes from —
+    /// its authored `code` and its source position — for the addressing
+    /// pass. Never serialized: the code reaches the artifact only inside
+    /// `localized.<attr>.lineId`.
+    #[serde(skip)]
+    pub text_identity: Option<TextIdentity>,
+}
+
+/// 0.51.0 §5.4: one `text` attribute's localization. `fields.<attr>` keeps
+/// the source-language string, `{{…}}` markers as authored.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalizedText {
+    /// `{prefix}~{tag}~{code}~{attr}`, outside the `lineId` template.
+    pub line_id: String,
+    /// The value's `{{…}}` interpolations, as an option label's.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub placeholders: Vec<Placeholder>,
+    /// Translations by locale, filled by the locale merge.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub texts: BTreeMap<String, String>,
+}
+
+/// 0.51.0 §5.3: the identity inputs of a call with `text` attributes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TextIdentity {
+    /// The authored `code`, trimmed; `None` when the call is untagged.
+    pub code: Option<String>,
+    /// The call's source byte offset: an untagged call's back-filled code
+    /// follows source order, as `lute tag` writes it.
+    pub at: usize,
 }
 
 /// `<quest>` declaration head (dsl 0.2.0 §6.3, IR addendum §3.1). A
@@ -1955,6 +2030,11 @@ pub struct RewardEntry {
     /// applied after the facts through `::accept`'s path.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub accepts: Vec<String>,
+    /// 0.51.0 §4.6: the occasions the kind's `effects.raises` names,
+    /// `@target` bound to `target` (one left unbound is not written).
+    /// Stamped at compile; the host raises them once the grant settles.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub raises: Vec<RaiseRecord>,
 }
 
 impl RewardEntry {
@@ -1994,6 +2074,7 @@ impl RewardEntry {
             retracts: Vec::new(),
             asserts: Vec::new(),
             accepts: Vec::new(),
+            raises: Vec::new(),
         }
     }
 }

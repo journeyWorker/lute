@@ -1131,8 +1131,14 @@ mod tests {
             seq.contains("`name`: domain `sequence`") || seq.contains("`name`"),
             "{seq}"
         );
+        // dsl 0.51.0 §3.5: the meaning names the bounded backward jump, and
+        // the declared `max` is listed with the other attributes.
         let jump = hover_text(text, text.find("::jump").unwrap() + 2).unwrap();
-        assert!(jump.contains("jump forward"), "{jump}");
+        assert!(
+            jump.contains("forward, or back to an earlier label at most `max` times"),
+            "{jump}"
+        );
+        assert!(jump.contains("`max`"), "{jump}");
     }
 
     /// Camera domain attrs and the music `playback` key hover their declared

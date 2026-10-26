@@ -18,11 +18,12 @@
 //! the one report (`0.48.0.tag` / `0.48.0.fix`), or the error envelope on an
 //! I/O failure.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_check::LineRenumber;
+use lute_core_span::Diagnostic;
 use serde_json::{json, Value};
 
 use crate::envelope::{self, CliError};
@@ -201,13 +202,33 @@ pub fn run_tag(opts: &TagOptions<'_>) -> ExitCode {
     let mut failure: Option<CliError> = None;
     let mut records: Vec<TagFile> = Vec::new();
     let (mut changed, mut units) = (0, 0);
+    let mut sources = TextTagSources {
+        cache: &lute_load::InputCache::default(),
+        users: BTreeMap::new(),
+    };
     for file in &files {
         let scope = if single {
             Scope::Single
         } else {
             Scope::Tree(file)
         };
-        match tag_file(file, opts, write_files, scope) {
+        let text_tags = match sources.text_directive_tags(file) {
+            Ok(tags) => tags,
+            Err(conflict) => {
+                let shown = crate::render_diagnostics(
+                    file,
+                    std::slice::from_ref(&*conflict),
+                    &crate::SeverityPolicy::default(),
+                );
+                out(shown.trim_end());
+                let mut record = TagFile::new(file, opts.renumber);
+                record.refused = Some(conflict.message);
+                records.push(record);
+                worst = worst.max(Outcome::Refused);
+                continue;
+            }
+        };
+        match tag_file(file, opts, write_files, scope, &text_tags) {
             Ok((outcome, record)) => {
                 if outcome == Outcome::Changed {
                     changed += 1;
@@ -274,17 +295,184 @@ pub fn run_tag(opts: &TagOptions<'_>) -> ExitCode {
     )
 }
 
+/// 0.51.0 §5.3: a component's text directive calls are refused a `code`
+/// when its users' snapshots disagree on them.
+const E_COMPONENT_TEXT_DIRECTIVE: &str = "E-COMPONENT-TEXT-DIRECTIVE";
+
+/// One document of a project, as `lute tag` reads a component's users.
+struct User {
+    path: PathBuf,
+    /// The directives with a `text` attribute in its capability snapshot.
+    text_tags: BTreeSet<String>,
+    /// Every component its `::use`s expand, nested ones too — the checker's
+    /// use closure, never the import table: canonical path → name and the
+    /// span of the document's own `::use` that brings it in.
+    components: BTreeMap<PathBuf, (String, lute_core_span::Span)>,
+}
+
+/// Where `lute tag` reads which directives take `text` from: a document's
+/// own capability snapshot, or — for a component the project's documents
+/// use — the snapshots of those users, under which its body is checked and
+/// lowered. Each project's users are read once.
+struct TextTagSources<'c> {
+    cache: &'c lute_load::InputCache,
+    users: BTreeMap<PathBuf, Vec<User>>,
+}
+
+impl TextTagSources<'_> {
+    /// The tags of the directives with a `text` attribute that `file`'s
+    /// calls are tagged by: its own snapshot's (its project's, with the
+    /// document's own `plugins:`), or, for a component file with users,
+    /// theirs. `Err` when two users disagree on a call's directive: one
+    /// call has one localization identity, so it gets no `code`. Empty when
+    /// the document cannot be read (tagging then reports it).
+    fn text_directive_tags(&mut self, file: &Path) -> Result<BTreeSet<String>, Box<Diagnostic>> {
+        let project = crate::project::resolve_project(file, None);
+        let own = || snapshot_text_tags(self.cache, file, project.as_deref());
+        // A component is a document kind (`component:`), not a file name.
+        let (Some(project), Some(_)) = (
+            project.as_deref(),
+            crate::cmd_check::component_name_of(file),
+        ) else {
+            return Ok(own());
+        };
+        let Ok(canonical) = std::fs::canonicalize(file) else {
+            return Ok(own());
+        };
+        let cache = self.cache;
+        let users: Vec<&User> = self
+            .users
+            .entry(project.to_path_buf())
+            .or_insert_with(|| project_users(cache, project))
+            .iter()
+            .filter(|u| u.components.contains_key(&canonical))
+            .collect();
+        if users.is_empty() {
+            return Ok(snapshot_text_tags(cache, file, Some(project)));
+        }
+        let tags: BTreeSet<String> = users.iter().flat_map(|u| u.text_tags.clone()).collect();
+        let Ok(text) = std::fs::read_to_string(file) else {
+            return Ok(tags);
+        };
+        for (tag, span) in lute_check::text_directive_calls(&text, &tags) {
+            let with = users.iter().find(|u| u.text_tags.contains(&tag));
+            let without = users.iter().find(|u| !u.text_tags.contains(&tag));
+            if let (Some(with), Some(without)) = (with, without) {
+                return Err(Box::new(text_directive_conflict(
+                    &tag, span, &canonical, project, with, without,
+                )));
+            }
+        }
+        Ok(tags)
+    }
+}
+
+/// The directives with a `text` attribute in the capability snapshot
+/// `file` is checked against in `project`. Empty when the document cannot
+/// be read.
+fn snapshot_text_tags(
+    cache: &lute_load::InputCache,
+    file: &Path,
+    project: Option<&Path>,
+) -> BTreeSet<String> {
+    lute_load::build_input_with(cache, file, None, project, None)
+        .map(|built| text_tags_of(built.input.snapshot()))
+        .unwrap_or_default()
+}
+
+fn text_tags_of(snapshot: &lute_manifest::snapshot::CapabilitySnapshot) -> BTreeSet<String> {
+    snapshot
+        .directives
+        .values()
+        .filter(|d| d.has_text_attr())
+        .map(|d| d.name.clone())
+        .collect()
+}
+
+/// Every non-component document under `project` that loads — each under its
+/// own nearest project, so a nested project's documents read their own
+/// defaults — with its snapshot's text directives and the components its
+/// `::use`s expand.
+fn project_users(cache: &lute_load::InputCache, project: &Path) -> Vec<User> {
+    lute_load::find_lute_files(project)
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|p| crate::cmd_check::component_name_of(p).is_none())
+        .filter_map(|path| {
+            let root = lute_load::project_root_for(&path, project);
+            let built = lute_load::build_input_with(cache, &path, None, Some(&root), None)?;
+            let (doc, _) = lute_syntax::parse(&built.input.text);
+            let table = &built.input.components.table;
+            let components = lute_check::check::component_use_sites(&doc, &built.input.components)
+                .into_iter()
+                .filter_map(|(name, span)| Some((table.get(&name)?.src.clone(), (name, span))))
+                .collect();
+            Some(User {
+                text_tags: text_tags_of(built.input.snapshot()),
+                components,
+                path,
+            })
+        })
+        .collect()
+}
+
+/// [`E_COMPONENT_TEXT_DIRECTIVE`] at the call of `tag` (`span`) in the
+/// component `component`, naming a user whose snapshot gives `tag` a
+/// `text` attribute and one whose does not, each at its `::use`.
+fn text_directive_conflict(
+    tag: &str,
+    span: lute_core_span::Span,
+    component: &Path,
+    project: &Path,
+    with: &User,
+    without: &User,
+) -> Diagnostic {
+    let shown = |u: &User| {
+        u.path
+            .strip_prefix(project)
+            .unwrap_or(&u.path)
+            .display()
+            .to_string()
+    };
+    let mut d = crate::manifests::as_diagnostic(
+        E_COMPONENT_TEXT_DIRECTIVE,
+        format!(
+            "`::{tag}` has `text` attributes under the capability snapshot of {} but not under \
+             that of {}, which both use this component; a call has one localization identity, \
+             so `lute tag` gives it no `code` — activate the same plugins for both",
+            shown(with),
+            shown(without)
+        ),
+    );
+    d.span = span;
+    for (user, what) in [(with, "with"), (without, "without")] {
+        let mut related = crate::manifests::as_diagnostic(
+            E_COMPONENT_TEXT_DIRECTIVE,
+            format!("this use reads `::{tag}` {what} `text` attributes"),
+        );
+        if let Some((_, at)) = user.components.get(component) {
+            related.span = *at;
+        }
+        d.related.push(lute_core_span::RelatedDiagnostic {
+            file: user.path.display().to_string(),
+            diagnostic: related,
+        });
+    }
+    d
+}
+
 fn tag_file(
     file: &Path,
     opts: &TagOptions<'_>,
     write_files: bool,
     scope: Scope<'_>,
+    text_tags: &BTreeSet<String>,
 ) -> Result<(Outcome, TagFile), CliError> {
     let text = read(file)?;
     let mut record = TagFile::new(file, opts.renumber);
 
     if opts.renumber {
-        let outcome = match lute_check::retag_document(&text) {
+        let outcome = match lute_check::retag_document(&text, text_tags) {
             lute_check::RetagOutcome::LockedInstances { text: out, added } => {
                 record.changed = true;
                 record.instances = added;
@@ -372,7 +560,7 @@ fn tag_file(
         return Ok((outcome, record));
     }
 
-    let tagged = lute_check::tag_document(&text);
+    let tagged = lute_check::tag_document(&text, text_tags);
     if tagged.added == 0 {
         scope.say_unchanged("already tagged");
         return Ok((Outcome::Unchanged, record));

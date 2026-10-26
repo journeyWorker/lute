@@ -1,0 +1,9 @@
+---
+kind: quest
+id: fanfare
+---
+
+<quest id="fanfare" title="Fanfare" tier="run" start="user.fanfare">
+  <objective id="heard" title="Heard" done="true"/>
+  <reward kind="CUTSCENE" target="gallery"/>
+</quest>

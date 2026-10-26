@@ -179,3 +179,69 @@ fn project_target_rule_absent_under_document_scope() {
         codes(&out)
     );
 }
+
+/// dsl 0.51.0 §6.4: a `pair` rule runs in the editor through the same
+/// `lute_lint::lint` call as `node` rules, reading the open buffer's
+/// authored attributes, with its fault phrase and the related open row.
+#[test]
+fn pair_rule_runs_on_the_open_buffer() {
+    let (root, scene) = scaffold("pair_rule");
+    std::fs::write(
+        root.join("lute.lint.yaml"),
+        "lsp: true\n\
+         custom:\n\
+         - id: group-balanced\n\
+         \x20\x20target: pair\n\
+         \x20\x20open: 'node.tag == \"group\" && \"mode\" in node.attrs && node.attrs[\"mode\"] == \"begin\"'\n\
+         \x20\x20close: 'node.tag == \"group\" && \"mode\" in node.attrs && node.attrs[\"mode\"] == \"end\"'\n\
+         \x20\x20inside: 'node.kind == \"line\"'\n\
+         \x20\x20level: error\n\
+         \x20\x20message: \"::group begin/end\"\n",
+    )
+    .unwrap();
+    // The buffer differs from the file on disk: the editor lints the buffer.
+    let buffer = "---\nkind: scene\n---\n## Shot 1.\n::group{mode=\"begin\"}\n@alice: hi\n\
+                  ::bg{id=\"hall\"}\n::group{mode=\"begin\"}\n";
+    let doc = parse_doc(buffer);
+    let out = lint_document(&scene, &root, None, &ProviderSet::default(), &doc, buffer);
+    let found: Vec<(u32, &str, Vec<u32>)> = out
+        .iter()
+        .filter(|d| d.code == "L-GROUP-BALANCED")
+        .map(|d| {
+            (
+                d.span.line,
+                d.message.as_str(),
+                d.related.iter().map(|r| r.diagnostic.span.line).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        found,
+        [
+            (
+                5,
+                "::group begin/end — opened here, with no close in this body",
+                vec![]
+            ),
+            (
+                7,
+                "::group begin/end — not allowed inside the pair opened at line 5",
+                vec![5]
+            ),
+            (
+                8,
+                "::group begin/end — opened again while the pair from line 5 is still open",
+                vec![5]
+            ),
+        ],
+        "{:?}",
+        codes(&out)
+    );
+    // The related open row is located in this document by canonical path,
+    // which the publish boundary reads from the buffer.
+    let canonical = std::fs::canonicalize(&scene).unwrap().display().to_string();
+    assert!(out
+        .iter()
+        .flat_map(|d| &d.related)
+        .all(|r| r.file == canonical));
+}

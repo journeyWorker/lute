@@ -428,11 +428,13 @@ fn plugin_tokens_fold_into_the_snapshot_and_the_context_surface() {
     assert!(without.get("hostTokens").is_none(), "{without:#}");
     assert!(core_only.get("hostTokens").is_none(), "{core_only:#}");
     assert_ne!(with["capabilitySnapshot"], without["capabilitySnapshot"]);
-    // The core stamp `lute-0.49.1 context` prints for the same document:
-    // declaring `userName` in `lute.core` does not move it.
+    // The core stamp for the same document. `lute-0.49.1 context` printed
+    // `babc4707…`, and declaring `userName` in `lute.core` (0.50) did not move
+    // it; the core `::jump` declaring `max` (dsl 0.51.0 §3.1, §13 class 4)
+    // moved it once, to this value.
     assert_eq!(
         core_only["capabilitySnapshot"],
-        "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a"
+        "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae"
     );
     // A plugin whose `hostTokens` export is empty hashes as the same plugin
     // without the export.

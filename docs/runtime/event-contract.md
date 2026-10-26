@@ -1,6 +1,6 @@
 # Runtime event contract
 
-**Status: 0.50.0 runtime contract.**
+**Status: 0.51.0 runtime contract.**
 
 Runtime R2 executes a compiled bundle and returns effects as data. A **host**
 —a game, player or verification server—owns rendering, pacing, bridge calls
@@ -9,8 +9,8 @@ and grant settlement. The runtime never calls those services itself.
 The normative source is [Lute 0.40.0 §§3–12](../proposals/scenario-dsl/0.40.0.md#3-one-contract-definition-rust-types-generated-schemas),
 as amended by [Lute 0.41.0 §5](../proposals/scenario-dsl/0.41.0.md#5-runtime-and-the-event-contract-041).
 The Rust contract types in `crates/lute-runtime` are the single definition:
-the committed [events schema](../../schemas/lute-events-0.50.schema.json) and
-[snapshot schema](../../schemas/lute-snapshot-0.50.schema.json) are generated
+the committed [events schema](../../schemas/lute-events-0.51.schema.json) and
+[snapshot schema](../../schemas/lute-snapshot-0.51.schema.json) are generated
 from them with `schemars`. The generated schemas expose `Input`, `Seed`,
 `Output`, `Event`, `Await`, `Rejected`, snapshots, and the read-only query
 results. TypeScript hosts should also read the
@@ -159,7 +159,7 @@ so it is equivalent to `choose` with that option.
 A wire `Output` has `eventVersion`, ordered `events` and one `await`:
 
 ```json
-{"eventVersion": "0.50.0", "events": [], "await": {"type": "idle"}}
+{"eventVersion": "0.51.0", "events": [], "await": {"type": "idle"}}
 ```
 
 Consume events in execution order before acting on the await. Events are:
@@ -224,6 +224,47 @@ emitted, and the record says it was ignored.
 {"kind":"accept","quest":"second","grant":{"quest":"first","instance":1,"index":1,"kind":"OFFER_QUEST"}}
 ```
 
+Since 0.51 a directive or reward kind may declare `effects.raises`: the
+occasions the host raises after the call's presentation ends (`presentationEnd`)
+or after the grant settles. The `plugin` record (the halted one included) and
+the `grant` record carry them as `raises: [{ "occasion", "target"? }]`, in
+declaration order, omitted when there are none. `target` is written whole
+(`scene.chapter2`) and absent for an untargeted occasion; a call in a beat that
+passes `occasion.target` names the member the beat runs for, with the
+occasion's domain prefix (the IR records the reference as
+`scene.occasion.target` with `dynamic: true`, which the emitted record drops;
+a raise without the mark is never bound, and load refuses a marked raise whose
+target is not that reference with the occasion's declared prefix). The runtime raises nothing and emits no record of its
+own for a raise: the host sends each one as a `raiseOccasion` input once the
+runtime is idle, in record order and list order. A raise the occasion's gate
+refuses is the host's to report. The reference player keeps these in a pending
+raise queue (`player/custom-hosts`). The runtime replays only the undelivered
+suffix of an output, so a host that delivers declared raises keeps its own
+pending queue across saves (the reference player: `SaveRuntime.pendingRaises`);
+the runtime `Snapshot` shape is unchanged.
+
+```json
+{"kind":"plugin","position":"001-0200","tag":"playScene","attrs":{"scene":"chapter2"},"raises":[{"occasion":"cutscene","target":"scene.chapter2"}],"external":true,"unresolvedEffects":[]}
+{"kind":"grant","quest":"first","instance":1,"index":0,"reward":{"kind":"CUTSCENE","target":"chapter3","amount":1},"raises":[{"occasion":"cutscene","target":"scene.chapter3"}]}
+```
+
+Since 0.51 a directive attribute may be typed `text` (localizable directive
+text). The `plugin` record (the halted one included) and the `awaitBridge`
+await carry each such attribute in `attrs` rendered as a line's `text` is: its
+`{{…}}` markers replaced by their values. The record also carries
+`localized: { <attr>: { "lineId", "texts"? } }`, one entry per `text`
+attribute: the attribute's `lineId` (`{prefix}~{tag}~{code}~{attr}`) and its
+merged translations, each marker replaced by the value the source rendered
+for the marker with the same referent, as a line's `texts` are. `localized`
+is omitted for a call without `text` attributes and, like a line's delivery
+fields, is play-only: `lute run --json` leaves it out. An unset
+`occasion.payload` field or an unbound `occasion.target` in a `text`
+attribute is an unknown site, as in a line.
+
+```json
+{"kind":"plugin","position":"001-0200","tag":"banner","attrs":{"title":"Welcome, {{userName}}: 3 gold"},"localized":{"title":{"lineId":"intro~banner~0010~title","texts":{"ko":"3 골드, {{userName}} 님 환영"}}},"external":true,"unresolvedEffects":[],"note":"external bridge call — not invoked; bridgeResult effects unresolved"}
+```
+
 Rendered text keeps every host-token marker (`{{playerName}}`, and any other
 token a plugin declares in `hostTokens`) verbatim: the runtime never substitutes
 a host token, for any token, and the host or presenter does. The IR placeholder
@@ -285,7 +326,7 @@ An ineligible `Premise` is tagged on `premise` and has one of these shapes:
 `spentBy { raw }`, `when { raw }`, `gate { occasion, raw, reads:
 GuardRead[] }`, or `terminal { occasion, raw }`. `ClockView` carries
 `{ day, slot?, weekday?, weekdayLabel?, last?, ended? }`. These are generated
-definitions in `lute-events-0.50.schema.json` and in
+definitions in `lute-events-0.51.schema.json` and in
 `packages/runtime/src/generated/Contract.ts`; hosts must decode them rather
 than treating query JSON as untyped data.
 `stage()` returns the persistent presentation stage:
@@ -337,6 +378,12 @@ deterministic replay: it keeps the world from before the input, the input
 and the answers given so far, re-runs the input with those answers, and
 stops at the next unanswered await. Each step returns only the events
 produced since the previous await, so a host sees every event once.
+
+Loop counters of a bounded backward jump (`::jump{to max}`, 0.51) are walk-local
+and rebuilt by the same replay: the `Snapshot` does not hold them, and a save at
+a choice await in a later iteration resumes to the same transcript. A `<branch>`
+reached again in a later iteration is a new `awaitChoice` with a new request
+id; its `presentation` stays `0`.
 
 ## Rejections and halts
 
@@ -403,7 +450,7 @@ belongs in `user.*` and travels in the snapshot; per-line read-skip history
 is a player profile and never enters runtime state.
 
 The Event axis versions input, output and snapshot JSON and is aligned with
-the other axes at `0.50.0`. Hosts gate on exact major.minor before 1.0.
+the other axes at `0.51.0`. Hosts gate on exact major.minor before 1.0.
 Outputs carry `eventVersion`; snapshots carry the equal `snapshotVersion`.
 The input log is `(seed or snapshot, inputs)`. Replaying it against the same
 bundle must reproduce every serialized output byte-for-byte, including

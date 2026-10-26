@@ -94,10 +94,15 @@ impl Presence<'_> {
     }
 
     pub(crate) fn walk(&mut self, nodes: &[Node]) {
-        for node in nodes {
+        for (i, node) in nodes.iter().enumerate() {
             match node {
                 Node::Line(l) => self.line(l),
-                Node::Directive(d) => self.directive(d),
+                Node::Directive(d) => {
+                    self.directive(d);
+                    if let Some(id) = crate::loop_walk::label_of(node) {
+                        self.loop_head(id, &nodes[i + 1..]);
+                    }
+                }
                 Node::Set(s) => self.kill_path(&s.path),
                 Node::Timeline(t) => {
                     for clip in t.tracks.iter().flat_map(|tr| &tr.clips) {
@@ -302,6 +307,18 @@ impl Presence<'_> {
         }
     }
 
+    /// dsl 0.51.0 §3.4: a loop head is reached again after its region ran
+    /// (`rest` follows the head label in its body), so whatever the region
+    /// writes may have falsified a guard live at the head — the treatment a
+    /// `<hub>` gets for its bodies. No iteration: a killed guard stays dead.
+    fn loop_head(&mut self, id: &str, rest: &[Node]) {
+        if !self.folded.labels.loops.is_head(id) {
+            return;
+        }
+        crate::loop_walk::head_met(crate::loop_walk::WalkKind::Presence);
+        self.kill_writes(&rest[..crate::loop_walk::region_len(rest, id)]);
+    }
+
     /// A write of state `path`: every guard reading it, a record it sits
     /// in, or a field under it stops counting.
     fn kill_path(&mut self, path: &str) {
@@ -337,25 +354,31 @@ impl Presence<'_> {
         let mut facts = Vec::new();
         let mut quests = Vec::new();
         let mut calls = Vec::new();
+        let folded = self.folded;
+        let vocab = &folded.env.rel_vocab;
+        let mut directive = |d: &Directive| {
+            if let Some((q, _)) = d.accept_quest() {
+                quests.push(format!("quest.{q}"));
+            }
+            if let Some(facts) = vocab.call_facts(d) {
+                calls.push(facts);
+            }
+        };
         visit(nodes, &mut |node| match node {
             Node::Set(s) => paths.push(s.path.clone()),
+            // A clip writes as its node does in a body (the walk's own
+            // timeline arm): a `::set` its path, a directive its effects.
             Node::Timeline(t) => {
                 for clip in t.tracks.iter().flat_map(|tr| &tr.clips) {
-                    if let ClipNode::Set(s) = &clip.node {
-                        paths.push(s.path.clone());
+                    match &clip.node {
+                        ClipNode::Set(s) => paths.push(s.path.clone()),
+                        ClipNode::Directive(d) => directive(d),
                     }
                 }
             }
             Node::Assert(a) => facts.push((&a.pattern, true)),
             Node::Retract(r) => facts.push((&r.pattern, false)),
-            Node::Directive(d) => {
-                if let Some((q, _)) = d.accept_quest() {
-                    quests.push(format!("quest.{q}"));
-                }
-                if let Some(facts) = self.folded.env.rel_vocab.call_facts(d) {
-                    calls.push(facts);
-                }
-            }
+            Node::Directive(d) => directive(d),
             _ => {}
         });
         for p in paths.iter().chain(&quests) {

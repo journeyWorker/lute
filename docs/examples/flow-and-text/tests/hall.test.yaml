@@ -1,0 +1,9 @@
+# The hall plays its two coded lines between the balanced `::group` markers.
+# The banner's text is checked in the artifact, not the transcript: see the
+# README (`lute compile --locale-bundle loc/ko.json`).
+file: ../scenes/hall.lute
+expect:
+  end: complete
+  transcriptContains:
+    - "@mira: Welcome back."
+    - "@theo: The lamps are lit."

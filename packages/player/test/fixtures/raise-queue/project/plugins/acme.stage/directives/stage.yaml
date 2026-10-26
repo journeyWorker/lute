@@ -1,0 +1,18 @@
+directives:
+  - name: playScene
+    attrs:
+      - { name: scene, required: true, type: { entity: cutsceneId } }
+      - { name: title, type: text }
+      - { name: texts, type: text }
+      - { name: promptTexts, type: text }
+    effects: { raises: [{ occasion: cutscene, target: "@scene" }] }
+  - name: openVault
+    effects: { raises: [{ occasion: vault }] }
+  - name: ask
+    layer: bridge
+    semantics: [ "bridgeCall" ]
+    bridge: { service: oracle, operation: ask }
+    effects:
+      writes:
+        - { scope: run, path: [answer], value: { fromBridgeResult: answer } }
+      raises: [{ occasion: cutscene, target: scene.cellar }]

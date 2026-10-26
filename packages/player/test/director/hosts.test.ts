@@ -16,7 +16,7 @@ import { flush, withHarness } from "./support.js"
 import type { Harness } from "./support.js"
 
 const canvas = { width: 1920, height: 1080 }
-const noFlow: Bindings = { bindingsVersion: "0.50", canvas }
+const noFlow: Bindings = { bindingsVersion: "0.51", canvas }
 const visit: Input = { type: "raiseOccasion", occasion: "visit" }
 const gateFixture = join(repositoryRoot, "crates", "lute-cli", "tests", "fixtures", "runtime-gate-041")
 /** 0.49.0 §3.1: `::wave` (non-blocking) and `::battle` (bridge) carrying plugin stamps, raised by `duel` for `foe.kato`. */

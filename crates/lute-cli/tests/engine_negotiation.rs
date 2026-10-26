@@ -6,6 +6,7 @@ use serde_json::Value as Json;
 const BIN: &str = env!("CARGO_BIN_EXE_lute");
 const ALL_IDS: &[&str] = &[
     "lute.core/1",
+    "lute.core.boundedJump/1",
     "lute.staging/1",
     "lute.timeline/1",
     "lute.quest.lifecycle/1",
@@ -668,4 +669,101 @@ fn reward_effects_require_their_semantic_id_only_when_used() {
         "{}",
         String::from_utf8_lossy(&accepted.stderr)
     );
+}
+
+/// A scene with a retry loop (`with_max`) or the same jump forward only.
+fn jump_scene(tag: &str, with_max: bool) -> (lute_scratch::ScratchDir, PathBuf, Json) {
+    let dir = lute_scratch::ScratchDir::named(tag);
+    let jump = if with_max {
+        "::label{name=\"again\"}\n@narrator: Try.\n::jump{to=\"again\" max=\"2\"}\n"
+    } else {
+        "@narrator: Try.\n::jump{to=\"again\"}\n@narrator: Skipped.\n::label{name=\"again\"}\n"
+    };
+    let source = write(
+        &dir,
+        "scene.lute",
+        &format!(
+            "---\nkind: scene\nluteVersion: \"0.51.0\"\nid: loop\ntitle: T\n---\n\n## Shot \
+             1.\n\n{jump}@narrator: Done.\n"
+        ),
+    );
+    let artifact = dir.join("scene.json");
+    let out = run(&[
+        "compile".into(),
+        source.display().to_string(),
+        "-o".into(),
+        artifact.display().to_string(),
+    ]);
+    assert!(
+        out.status.success(),
+        "compile failed: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let json: Json = serde_json::from_str(&std::fs::read_to_string(&artifact).unwrap()).unwrap();
+    (dir, artifact, json)
+}
+
+/// dsl 0.51.0 §3.6: `lute.core.boundedJump/1` is required only by an
+/// artifact with a bounded jump, and an engine matrix without it refuses
+/// that artifact before playback.
+#[test]
+fn bounded_jumps_require_their_semantic_id_only_when_used() {
+    const BOUNDED: &str = "lute.core.boundedJump/1";
+    let (_plain_dir, _, plain) = jump_scene("jump-forward", false);
+    assert!(!required_ids(&plain).contains(&BOUNDED), "{plain}");
+    assert!(
+        plain["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c.get("max").is_none()),
+        "a forward jump carries no `max`: {plain}"
+    );
+
+    let (_dir, artifact, json) = jump_scene("jump-bounded", true);
+    assert!(required_ids(&json).contains(&BOUNDED), "{json}");
+    let jump = json["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["kind"] == "jump")
+        .expect("the bounded jump record");
+    assert_eq!(jump["max"], 2);
+    assert!(jump["target"].as_str().unwrap() < jump["position"].as_str().unwrap());
+
+    let dir = artifact.parent().unwrap();
+    let ir = ir_version(&json);
+    let without: Vec<&str> = ALL_IDS
+        .iter()
+        .copied()
+        .filter(|id| *id != BOUNDED)
+        .collect();
+    let old = matrix_file(dir, "old.yaml", "old-engine", ir, &without, "");
+    let refused = run_str(&[
+        "run",
+        artifact.to_str().unwrap(),
+        "--engine",
+        old.to_str().unwrap(),
+    ]);
+    assert_eq!(refused.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(stderr.contains("E-ENGINE-SEMANTICS"), "{stderr}");
+    assert!(stderr.contains(BOUNDED), "{stderr}");
+    assert!(refused.stdout.is_empty(), "refused playback emits nothing");
+
+    let all = matrix_file(dir, "all.yaml", "new-engine", ir, ALL_IDS, "");
+    let accepted = run_str(&[
+        "run",
+        artifact.to_str().unwrap(),
+        "--engine",
+        all.to_str().unwrap(),
+    ]);
+    assert!(
+        accepted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&accepted.stdout);
+    assert_eq!(stdout.matches("Try.").count(), 3, "{stdout}");
 }

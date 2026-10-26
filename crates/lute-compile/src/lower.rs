@@ -5,7 +5,9 @@
 
 use std::collections::BTreeMap;
 
-use lute_manifest::schema::{DirectiveDecl, Lowering, OpBy, WriteDecl, WriteValue};
+use lute_manifest::schema::{
+    DirectiveDecl, Lowering, OpBy, WriteDecl, WriteValue, DIRECTIVE_TEXT_CODE_ATTR,
+};
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::stamps::StampSurface;
 use lute_manifest::types::{Literal, PathSegment, Type};
@@ -13,8 +15,9 @@ use lute_syntax::ast::{Assert, Attr, AttrValue, Directive, InlineNode, Line, Ret
 
 use crate::ir::{
     placeholder_from_interp, AcceptCmd, ActorCmd, AssertCmd, BgCmd, CameraCmd, CelPairExt, CgCmd,
-    Command, Effect, EffectSource, EndCmd, FactRecord, JumpCmd, LineCmd, MusicCmd, PluginCmd,
-    RetractCmd, Role, Segment, SequenceCmd, SetCmd, SfxCmd, Stamp, Timing, VfxCmd, VideoCmd,
+    Command, Effect, EffectSource, EndCmd, FactRecord, JumpCmd, LineCmd, LocalizedText, MusicCmd,
+    PluginCmd, RaiseRecord, RetractCmd, Role, Segment, SequenceCmd, SetCmd, SfxCmd, Stamp,
+    TextIdentity, Timing, VfxCmd, VideoCmd,
 };
 use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
 use lute_ir::CelPair;
@@ -284,12 +287,11 @@ pub fn lower_directive(
             ..Timing::default()
         },
         // plugin §14.1: the stamps admissible on this directive ride its
-        // stamp, core and plugin directives alike. A key the directive
-        // DECLARES itself stays the record's own field — the same precedence
-        // the checker applies in `directives::check_directive` — so this only
-        // lifts the stamps.
+        // stamp, core and plugin directives alike. A key the directive OWNS
+        // stays out of them — the same precedence the checker applies in
+        // `directives::check_directive` — so this only lifts the stamps.
         stamps: plugin_stamps(&dir.attrs, snapshot, surface.as_ref(), |k| {
-            declares_attr(decl, k)
+            owns_attr(decl, k)
         }),
         authored: Some(authored_directive(dir, decl)),
         ..Stamp::default()
@@ -424,7 +426,8 @@ pub fn lower_directive(
         // `stage-clear` rule) injects one `sprite` exit per character, and
         // `stage::emit_primitive` emits those in its place.
         lute_manifest::core::CLEAR_DIRECTIVE => return None,
-        // dsl 0.12.0: `::jump{to [when]}` — an unconditional forward jump.
+        // dsl 0.12.0: `::jump{to [when]}` — an unconditional jump (forward,
+        // or back to an earlier label with `max`, dsl 0.51.0).
         // A GUARDED `::jump` is desugared by
         // `normalize::synth_when_next_match` into a canonical one-arm
         // `<match>` BEFORE this ever runs (mirrors the gated-line desugar),
@@ -434,9 +437,17 @@ pub fn lower_directive(
         // placeholder (`"#<id>"`), resolved to a real `addr` by
         // `address::assign_addresses`'s document-wide named-label pass,
         // exactly like a numeric `"@<n>"` resolves the anonymous ones.
+        // dsl 0.51.0 §3.6: a bounded backward jump carries its `max` (the
+        // checker has proven it a literal in 1..=99, `E-JUMP-MAX`).
         lute_manifest::core::JUMP_DIRECTIVE => Command::Jump(JumpCmd {
             position: String::new(),
             target: format!("#{}", get("to").unwrap_or_default()),
+            max: dir
+                .attrs
+                .iter()
+                .find(|a| a.key == lute_manifest::core::JUMP_MAX_ATTR)
+                .and_then(|a| lute_check::next_labels::JumpMax::parse(&a.value))
+                .map(lute_check::next_labels::JumpMax::get),
         }),
         // `COMPONENT_BEGIN`/`END`: normalization sentinels → no record. `use`:
         // DEFENSIVE/unreachable — normalize.rs fail-louds a timeline-clip `::use`
@@ -476,13 +487,23 @@ pub fn lower_directive(
                 if is_stamp_timing_attr(&a.key) {
                     continue; // already resolved into the stamp
                 }
-                // A stamp this directive does not declare itself already rode
-                // into `stamp.stamps` above; it must not be duplicated as one
-                // of the record's own `fields`.
-                if !declares_attr(decl, &a.key)
+                // A stamp this directive does not own already rode into
+                // `stamp.stamps` above; it must not be duplicated as one of
+                // the record's own `fields`.
+                if !owns_attr(decl, &a.key)
                     && surface
                         .as_ref()
                         .is_some_and(|s| snapshot.stamp_attrs.get(s, &a.key).is_some())
+                {
+                    continue;
+                }
+                // 0.51.0 §5.3 (Review051b F5): the implicit identity `code`
+                // of a directive with `text` attributes is owned but is no
+                // field — it reaches the artifact only in `localized` — and
+                // neither is a component call's back-filled one.
+                if (a.key == DIRECTIVE_TEXT_CODE_ATTR
+                    || a.key == crate::normalize::COMPONENT_CODE_ATTR)
+                    && decl.is_some_and(DirectiveDecl::has_text_attr)
                 {
                     continue;
                 }
@@ -520,6 +541,58 @@ pub fn lower_directive(
             let facts = decl
                 .map(|d| lute_check::directive_facts::call_facts(d, dir))
                 .unwrap_or_default();
+            // 0.51.0 §4.6: the declared `effects.raises`, each target
+            // resolved as the checker's raise table resolves it (authored,
+            // then the attribute's `default:`); an unbound one is not written.
+            let raises = decl
+                .map(|d| lute_check::raises::call_raises(d, &snapshot.occasions, &dir.attrs))
+                .unwrap_or_default()
+                .into_iter()
+                .map(RaiseRecord::from)
+                .collect();
+            // 0.51.0 §5.4: each authored `text` attribute's localization;
+            // addressing fills its `lineId` from `text_identity`.
+            let text_decl = decl.filter(|d| d.has_text_attr());
+            let localized = text_decl
+                .map(|_| {
+                    lute_check::directives::text_values(dir, snapshot)
+                        .map(|(a, text)| {
+                            let placeholders = lute_syntax::scan_label_interps(text, a.value_span)
+                                .iter()
+                                .map(placeholder_from_interp)
+                                .collect();
+                            (
+                                a.key.clone(),
+                                LocalizedText {
+                                    line_id: String::new(),
+                                    placeholders,
+                                    texts: BTreeMap::new(),
+                                },
+                            )
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+            // An untagged component call carries its source-order back-fill
+            // (`normalize::backfill_component_directive_codes`); an authored
+            // code wins.
+            let code_attr = |key: &str| {
+                dir.attrs
+                    .iter()
+                    .find(|a| a.key == key)
+                    .and_then(|a| match &a.value {
+                        AttrValue::Str(s) => Some(s.trim().to_string()),
+                        _ => None,
+                    })
+            };
+            let text_identity = text_decl.map(|_| TextIdentity {
+                code: if dir.attrs.iter().any(|a| a.key == DIRECTIVE_TEXT_CODE_ATTR) {
+                    code_attr(DIRECTIVE_TEXT_CODE_ATTR)
+                } else {
+                    code_attr(crate::normalize::COMPONENT_CODE_ATTR)
+                },
+                at: dir.span.byte_start,
+            });
             Command::Plugin(PluginCmd {
                 position: String::new(),
                 tag: dir.tag.clone(),
@@ -531,7 +604,10 @@ pub fn lower_directive(
                 effects,
                 retracts: fact_records(&facts.retracts),
                 asserts: fact_records(&facts.asserts),
+                localized,
                 stamp,
+                raises,
+                text_identity,
             })
         }
     })
@@ -749,12 +825,13 @@ pub(crate) fn attr_bool(attrs: &[Attr], key: &str) -> Option<bool> {
     attrs.iter().find(|a| a.key == key)?.value.flag()
 }
 
-/// Whether `decl` declares `key` as one of the directive's OWN attributes.
-/// The discriminator between "this is a field of the record" and "this may be
-/// a plugin-declared cross-cutting stamp attr" (plugin §14.1) — and the same
-/// precedence the checker uses when admitting an attr key.
-fn declares_attr(decl: Option<&DirectiveDecl>, key: &str) -> bool {
-    decl.is_some_and(|d| d.attrs.iter().any(|a| a.name == key))
+/// Whether the directive `decl` owns `key`: an attribute it declares, or the
+/// implicit identity `code` of a directive with a `text` attribute (0.51.0
+/// §5.3, Review051b F5). The discriminator between "the record's own" and
+/// "this may be a plugin-declared cross-cutting stamp attr" (plugin §14.1) —
+/// the same precedence the checker uses when admitting an attr key.
+fn owns_attr(decl: Option<&DirectiveDecl>, key: &str) -> bool {
+    decl.is_some_and(|d| d.owns_attr(key))
 }
 
 /// 0.50.0 §3.5: the plugin stamps a `<branch>`, `<hub>` or `<choice>`

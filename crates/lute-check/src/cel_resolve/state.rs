@@ -58,6 +58,7 @@ pub(crate) fn ty_desc(t: &Type) -> String {
         Type::Int => "an int".to_string(),
         Type::Double => "a double".to_string(),
         Type::Str => "a string".to_string(),
+        Type::Text => "localizable text".to_string(),
         Type::Enum(_) | Type::EnumFromOption(_) => "an enum".to_string(),
         Type::List(_) => "a list".to_string(),
         Type::Record(_) => "a record".to_string(),

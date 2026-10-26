@@ -15,7 +15,7 @@ import type { PlayerView } from "../src/model.js"
 import type { Autosave } from "../src/stores/autosave.js"
 import { flush } from "./director/support.js"
 
-export const quayBindings: Bindings = { bindingsVersion: "0.50", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
+export const quayBindings: Bindings = { bindingsVersion: "0.51", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
 
 /** The services `LutePlayer.make` needs over `bundle`; one store shared by every player built under it (a reload). */
 export const hostLayer = (bundle: string) => Layer.mergeAll(LuteBun.runtime, LuteBun.bundle(bundle), InputLog.memory, KeyValueStore.layerMemory)

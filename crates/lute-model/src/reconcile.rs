@@ -311,6 +311,10 @@ pub fn reconcile_collected(
         let beat_foldeds: Vec<&lute_check::FoldedEnv> =
             group_full.iter().map(|(_, _, f)| f).collect();
         let mocked = mocked_accepts_under(root);
+        // 0.51.0 §4.5 (D14): every declared raise of the root, resolved
+        // once and read by the raise, clock and chapter passes and the graph.
+        let raises = lute_check::raises::RaiseTable::build(&group, &beat_foldeds);
+        let raise_anchors = raises.anchors(&group, &beat_foldeds);
         let choose_keys = crate::scripts::choose_keys(root);
         // The standalone project passes read only this root's documents —
         // never one another's output or the connectivity chain's — so they
@@ -326,6 +330,15 @@ pub fn reconcile_collected(
             Box::new(|| lute_check::check_project_accepts(&group)),
             // dsl 0.24.0 §2: an accept-driven quest no `::accept`, mock, or test accepts.
             Box::new(|| lute_check::check_project_never_accepted(&group, &mocked)),
+            // 0.51.0 §4.3: every declared raise's resolved target lies in its
+            // occasion's domain and some scene or beat answers it.
+            Box::new(|| {
+                lute_check::raises::check_project_raise_targets(&group, &beat_foldeds, &raises)
+            }),
+            // 0.51.0 §4.5: a `raisedBy: declared` occasion no declared raise raises.
+            Box::new(|| {
+                lute_check::raises::check_project_never_raised(&group, &beat_foldeds, &raises)
+            }),
             // dsl 0.19.0 §3/§5: project-wide entry id / series-order uniqueness
             // and `entry.<id>.read` references (the quest passes' lore mirror).
             Box::new(|| lute_check::check_project_entry_ids(&group)),
@@ -345,7 +358,9 @@ pub fn reconcile_collected(
             // Two documents' menus answered by one `choose:` key a script writes.
             Box::new(|| lute_check::check_project_branch_ids(root, &group, &choose_keys)),
             // dsl 0.28.0 §4: the manifest's `chapters:` names this root's scenes.
-            Box::new(|| lute_check::chapters::check_project_chapters(root, &group, &beat_foldeds)),
+            Box::new(|| {
+                lute_check::chapters::check_project_chapters(root, &group, &beat_foldeds, &raises)
+            }),
             // dsl 0.26.0 §2.1: every declaration of one state path agrees.
             Box::new(|| lute_check::state_decls::check_project_state_decls(&group, &beat_foldeds)),
             // An objective whose `done` can only hold once its deadline does.
@@ -354,7 +369,9 @@ pub fn reconcile_collected(
             }),
             // A beat whose `when` holds only where the clock does not raise
             // its occasion (or only at a last `dayEnd` the game's end closes).
-            Box::new(|| lute_check::clock_positions::check_project_unraised(&group, &beat_foldeds)),
+            Box::new(|| {
+                lute_check::clock_positions::check_project_unraised(&group, &beat_foldeds, &raises)
+            }),
             // A repeatable beat must not answer a clock raise and advance
             // itself into the next raised position.
             Box::new(|| {
@@ -389,8 +406,12 @@ pub fn reconcile_collected(
                 let quest_ids = lute_check::connectivity::quest_id_set(&group);
                 let node_diags =
                     lute_check::connectivity::resolve_nodes(&group, &key_set, &quest_ids);
-                let (mut conn_graph, mut cycle_diags) =
-                    lute_check::connectivity::assemble_graph(&group, &key_set, &quest_ids);
+                let (mut conn_graph, mut cycle_diags) = lute_check::connectivity::assemble_graph(
+                    &group,
+                    &key_set,
+                    &quest_ids,
+                    &raise_anchors,
+                );
                 // T7/T14/Fix2 wiring: `compute_conn_fixpoint` iterates the
                 // reach/live-assert/may-set/dead-quest composition to a finite
                 // fixpoint (see its own doc comment for the termination + soundness

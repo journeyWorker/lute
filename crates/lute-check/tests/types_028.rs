@@ -395,6 +395,7 @@ fn with_tip(text: &str, writes: &[(&str, &[&str])]) -> Vec<Diagnostic> {
                     .collect(),
                 asserts: Vec::new(),
                 retracts: Vec::new(),
+                raises: Vec::new(),
             }),
             bridge: None,
             lower: Lowering::Passthrough,

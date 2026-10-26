@@ -8,7 +8,9 @@ use std::sync::Arc;
 use serde_json::{json, Value as Json};
 
 use super::format::value_to_json;
-use super::{addr, Machine, Site, Step, NOTE_NO_DECISION, NOTE_NO_ELIGIBLE, NOTE_SKIPPED};
+use super::{
+    addr, required_target, Machine, Site, Step, NOTE_NO_DECISION, NOTE_NO_ELIGIBLE, NOTE_SKIPPED,
+};
 use crate::driver::{
     guard_premise, Driver, Forced, GuardRead, Menu, MenuKind, MenuOption, Pick, SiteKind, Verdict,
 };
@@ -359,7 +361,6 @@ impl<D: Driver> Machine<D> {
             .get("selectionKey")
             .and_then(Json::as_str)
             .map(str::to_string);
-        let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
         let options: &[Json] = cmd
             .get("options")
             .and_then(Json::as_array)
@@ -476,7 +477,7 @@ impl<D: Driver> Machine<D> {
             rec.insert("ineligible".into(), json!(closed));
         }
         self.driver.emit(Json::Object(rec));
-        let target = opt.get("target").and_then(Json::as_str).unwrap_or(converge);
+        let target = required_target(opt, "target");
         Step::Next(self.resolve(target))
     }
 
@@ -498,7 +499,7 @@ impl<D: Driver> Machine<D> {
             .map(str::to_string);
         // dsl 0.23.0 §4: `<hub prompt>` rides every presentation record.
         let prompt = cmd.get("prompt").and_then(Json::as_str).map(str::to_string);
-        let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
+        let converge = required_target(cmd, "converge");
         let converge_idx = self.resolve(converge);
         let options: &[Json] = cmd
             .get("options")
@@ -517,11 +518,7 @@ impl<D: Driver> Machine<D> {
             .map(|t| self.resolve(t));
         let mut starts: Vec<usize> = options
             .iter()
-            .map(|o| {
-                o.get("target")
-                    .and_then(Json::as_str)
-                    .map_or(converge_idx, |t| self.resolve(t))
-            })
+            .map(|o| self.resolve(required_target(o, "target")))
             .collect();
         starts.extend(return_idx);
         starts.push(converge_idx);
@@ -765,7 +762,7 @@ impl<D: Driver> Machine<D> {
             .get("arms")
             .and_then(Json::as_array)
             .map_or(&[], Vec::as_slice);
-        let converge = cmd.get("converge").and_then(Json::as_str).unwrap_or("");
+        let converge = required_target(cmd, "converge");
         let subject_slot = self.slot(cmd.get("subject"));
         let subject = subject_slot.as_ref().map_or("", |s| s.raw.as_str());
         let subject_path = subject_slot
@@ -843,7 +840,7 @@ impl<D: Driver> Machine<D> {
                 }
             };
             if matched {
-                let target = arm.get("target").and_then(Json::as_str).unwrap_or(converge);
+                let target = required_target(arm, "target");
                 self.driver.emit(json!({
                     "position": addr(cmd),
                     "kind": "match",

@@ -112,7 +112,7 @@ fn writes_is_no_key_and_names_credits() {
     assert!(
         got[0]
             .2
-            .contains("has no key `writes` (its keys: asserts, retracts, accepts) — a reward's state write is `credits:`"),
+            .contains("has no key `writes` (its keys: asserts, retracts, accepts, raises) — a reward's state write is `credits:`"),
         "{got:?}"
     );
 }

@@ -49,8 +49,8 @@ pub struct LintDocInput {
 ///   `config_path` when provided (else to the first input document).
 ///   Kept separate so a caller may treat them differently (they never
 ///   originate from a document text).
-/// - `node_stats`: the work of the `node` walks, summed over documents
-///   (all zero when no `node` rule ran).
+/// - `node_stats`: the work of the node walks (`node` and `pair` rules),
+///   summed over documents (all zero when neither kind ran).
 #[derive(Default, Debug)]
 pub struct LintOutcome {
     pub diagnostics: Vec<(PathBuf, Diagnostic)>,
@@ -153,19 +153,17 @@ pub fn lint(
         .collect();
     let project = compute_project_row(&scene_words);
 
-    // `node` rules: every one in a single walk of each document's nodes
-    // (dsl 0.50.0 §8.1), below.
-    let node_rules: Vec<&ResolvedRule> = rules
-        .iter()
-        .filter(|r| r.target == LintTarget::Node)
-        .collect();
+    // `node` and `pair` rules: every one in a single walk of each
+    // document's nodes (dsl 0.50.0 §8.1, 0.51.0 §6.2), below.
+    let walks = |r: &&ResolvedRule| matches!(r.target, LintTarget::Node | LintTarget::Pair);
+    let node_rules: Vec<&ResolvedRule> = rules.iter().filter(walks).collect();
 
     // Track project-target rules: a finding is emitted on the FIRST
     // contributing SCENE document (a component/quest never anchors a
     // scene-aggregate finding), with RelatedDiagnostic entries pointing at
     // each subsequent contributing scene (spec §8).
     for rule in &rules {
-        if rule.target == LintTarget::Node {
+        if walks(&rule) {
             continue;
         }
         if rule.target == LintTarget::Project {
@@ -246,6 +244,7 @@ struct DocEntry<'i> {
 impl DocEntry<'_> {
     fn context<'a>(&'a self, providers: &'a ProviderSet) -> DocContext<'a> {
         DocContext {
+            path: &self.input.path,
             doc: &self.input.doc,
             source: &self.input.text,
             tables: &self.tables,

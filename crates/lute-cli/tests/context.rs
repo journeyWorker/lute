@@ -144,9 +144,16 @@ fn context_json_lists_defs_ownership_tiers_builtins_and_ids() {
         .iter()
         .find(|b| b["name"] == "jump")
         .unwrap();
+    // dsl 0.51.0 §3.5: the syntax is read from the core declaration, which
+    // gained `max`; the meaning names the bounded backward jump.
     assert_eq!(
         jump["syntax"],
-        "::jump{to=\"<string>\" [when=\"<condition>\"]}"
+        "::jump{to=\"<string>\" [when=\"<condition>\"] [max=\"<int>\"]}"
+    );
+    assert_eq!(
+        jump["meaning"],
+        "jump to the `::label` named by `to` — forward, or back to an earlier label at most \
+         `max` times (only while `when` holds)"
     );
 
     // The quest's reserved paths are listed whether or not this document

@@ -6,7 +6,7 @@ description: Build one small, real Lute scene from an empty file step by step, r
 This is the "start here" for a scenario writer who has never touched Lute — no compiler background
 required. It builds **one small real scene** from an empty file, step by step, running the actual
 `lute` tool at every step so you can see exactly what it says. It targets language version
-**0.50.0**.
+**0.51.0**.
 
 You need a plain-text editor, a terminal, and the `lute` command
 ([install it first](/getting-started/installation/)). Everything you write here is **core Lute
@@ -319,9 +319,9 @@ plays — one entry per line, choice, and jump, in order:
 $ lute compile my-scene.lute
 {
   "kind": "scene",
-  "lute": "0.50.0",
-  "irVersion": "0.50.0",
-  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "lute": "0.51.0",
+  "irVersion": "0.51.0",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
   "requiredSemantics": [
     "lute.core/1"
   ],
@@ -635,7 +635,7 @@ CEL conditions (standard CEL profile):
     now() -> int
     visited(string) -> bool
   relation arguments: use list form, e.g. holds('inParty', ['elena', '_']); single quotes are required inside double-quoted attributes
-capabilitySnapshot: babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a
+capabilitySnapshot: 529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae
 permissions: unrestricted (authoring/compile-time restrictions; not runtime sandbox enforcement)
 directives (13):
   actor: character: string (required), anchor: domain:anchor, action: domain:action, emotion: domain:emotion, costume: domain:costume   [reads.onStage usesAnchor mayExitCharacter writes.characterState]

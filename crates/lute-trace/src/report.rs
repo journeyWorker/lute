@@ -240,9 +240,12 @@ pub enum Step {
         text: String,
     },
     /// dsl 0.26.0 §7 (T1-4): a taken `::jump{to}` — the walk continues at
-    /// the mark `to`, as play's does.
+    /// the mark `to`, as play's does. dsl 0.51.0 §3.7: a bounded jump also
+    /// says which take this was, or that it was not taken.
     Jump {
         to: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        bounded: Option<JumpBound>,
     },
     /// dsl 0.28.0 §5: control comes back to hub `hub` through its `<return>`
     /// block — the lines that follow are the return's, not the option's.
@@ -296,6 +299,17 @@ pub struct GrantRef {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub objective: Option<String>,
     pub kind: String,
+}
+
+/// dsl 0.51.0 §3.7: what a bounded backward jump did — an explanation of
+/// the walk, not a static claim.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(tag = "outcome", rename_all = "camelCase")]
+pub enum JumpBound {
+    /// Taken: this is take `take` of at most `max`.
+    Again { take: u8, max: u8 },
+    /// Not taken: all `max` takes were used, control fell through.
+    NotTaken { max: u8 },
 }
 
 /// One decision (§4.5: "the construct kind, its id/span, the outcome, and
@@ -1027,7 +1041,15 @@ fn render_step(step: &Step, out: &mut String, expand: bool, premises: &BTreeMap<
             ));
         }
         Step::Exclusive { text } => out.push_str(&format!("    ✗ exclusive: {text}\n")),
-        Step::Jump { to } => out.push_str(&format!("    <jump -> {to}>\n")),
+        Step::Jump { to, bounded } => out.push_str(&match bounded {
+            None => format!("    <jump -> {to}>\n"),
+            Some(JumpBound::Again { take, max }) => {
+                format!("    <jump -> {to} (again {take}/{max})>\n")
+            }
+            Some(JumpBound::NotTaken { max }) => {
+                format!("    <jump -> {to} not taken ({max}/{max} used)>\n")
+            }
+        }),
         Step::HubReturn { hub } => out.push_str(&format!("    -- return (hub {hub}) --\n")),
         Step::Grant {
             quest,

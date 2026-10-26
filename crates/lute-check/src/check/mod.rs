@@ -99,7 +99,7 @@ mod component_body;
 mod fold;
 mod guard;
 mod host;
-mod injections;
+pub(crate) mod injections;
 mod interp;
 mod literal_text;
 mod mono;
@@ -115,10 +115,11 @@ pub use mono::{E_MONO_NO_POV, E_MONO_POV};
 pub use section_ids::E_SECTION_DUP;
 
 use choice_record::{check_choice_record, into_literal};
+pub use component_body::component_use_sites;
 pub(crate) use component_body::{bare_param_ref, directive_writes_state};
 use component_body::{
-    component_def_reads, component_own_slots, component_use_sites, use_target, validate_components,
-    walk_component_body, BodyScope,
+    component_def_reads, component_own_slots, use_target, validate_components, walk_component_body,
+    BodyScope,
 };
 pub(crate) use fold::base_fold;
 pub(crate) use fold::resolve_kinds;
@@ -142,14 +143,13 @@ use postprocess::{
     suppress_unparsed_child_list_verdicts, suppress_unproven_absence,
 };
 pub use postprocess::{diagnostic_order, order_diagnostics};
-pub(crate) use use_site::literal_arg_ok;
 pub use use_site::use_speaker_lines;
 use use_site::{
     check_param_literal_defaults, check_speaker_args, check_use, check_use_def_enum_args,
-    check_use_interp_args, check_use_speaker_args, check_use_typed_args, collect_use_directives,
-    dedup_guarded_use_reports, use_diag, E_COMPONENT_ARG, E_COMPONENT_BODY, E_COMPONENT_CYCLE,
-    E_COMPONENT_STATE,
+    check_use_interp_args, check_use_speaker_args, check_use_typed_args, dedup_guarded_use_reports,
+    use_diag, E_COMPONENT_ARG, E_COMPONENT_BODY, E_COMPONENT_CYCLE, E_COMPONENT_STATE,
 };
+pub(crate) use use_site::{collect_use_directives, literal_arg_ok};
 use version::check_lute_version_stale;
 pub use version::{version_triple, INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE};
 use walker::Walker;
@@ -367,10 +367,19 @@ pub struct FoldedEnv {
     /// the project recomputation alike. Shared with the [`CheckInput`]'s
     /// base, never copied.
     pub snapshot: std::sync::Arc<lute_manifest::snapshot::CapabilitySnapshot>,
+    /// dsl 0.12.0 / 0.51.0 §3.2: the whole-document label pass, run once per
+    /// fold: `check()` reports its diagnostics, and every flow walk of this
+    /// document reads its [`crate::next_labels::LoopTable`].
+    pub labels: crate::next_labels::LabelPass,
+    /// The components this document imports (the [`CheckInput`]'s, shared):
+    /// what the project raise table (0.51.0 §4.3, [`crate::raises`]) walks at
+    /// each `::use`, with the use's arguments bound.
+    pub components: std::sync::Arc<crate::component_import::ComponentSet>,
 }
 
-/// Every field but [`FoldedEnv::snapshot`], which is the input's (and would
-/// print the whole capability vocabulary per document).
+/// Every field but [`FoldedEnv::snapshot`] and [`FoldedEnv::components`],
+/// which are the input's (and would print the whole capability vocabulary
+/// and every imported component body per document).
 impl std::fmt::Debug for FoldedEnv {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("FoldedEnv")
@@ -384,6 +393,7 @@ impl std::fmt::Debug for FoldedEnv {
             .field("cast", &self.cast)
             .field("use_lines", &self.use_lines)
             .field("member_envs", &self.member_envs)
+            .field("labels", &self.labels)
             .finish_non_exhaustive()
     }
 }

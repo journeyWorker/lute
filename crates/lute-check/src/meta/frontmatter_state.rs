@@ -109,6 +109,20 @@ pub(crate) fn parse_state(
                         typed.state.faulty.insert(path.to_string());
                     }
                     match yaml_serde::from_value::<StateDeclRaw>(decl_val.clone()) {
+                        Ok(raw) if raw.ty.contains_text() => {
+                            // 0.51.0 §5.1: `text` is a directive attribute's
+                            // type only; state holds values, not translations.
+                            // Skipped like the arms below.
+                            diags.push(err_at(
+                                "E-STATE-DECL",
+                                format!(
+                                    "state path `{path}` cannot declare the type `text`, which is \
+                                     admitted only as the type of a plugin directive attribute \
+                                     (localizable directive text) — declare it `string`"
+                                ),
+                                meta_key_span(meta, path),
+                            ));
+                        }
                         Ok(raw) if matches!(raw.ty, Type::NarrativeTime) => {
                             // D11: `narrativeTime` is engine-surfaced only (a
                             // plugin capability's `state_shapes` anchor path,

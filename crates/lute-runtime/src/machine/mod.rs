@@ -1,5 +1,5 @@
 //! The one walker over a COMPILED execution IR (the executable counterpart of
-//! `docs/runtime/` + `schemas/lute-ir-0.50.schema.json`), parameterised by a
+//! `docs/runtime/` + `schemas/lute-ir-0.51.schema.json`), parameterised by a
 //! [`Driver`] (`docs/design/runtime-unification.md` §3.2). `lute run`
 //! (`RunDriver`), `lute play` (`PlayDriver`) and `lute trace` / `lute test`
 //! (`TraceDriver`) execute through it.
@@ -62,6 +62,8 @@ mod build;
 mod commands;
 mod entry;
 mod format;
+#[cfg(test)]
+mod loop_tests;
 mod menu;
 mod plugin;
 mod quest;
@@ -79,12 +81,16 @@ use crate::datalog::Fact;
 use crate::eval::Read;
 use crate::{MockSet, UnresolvedAtom, Value};
 pub use format::{value_to_json, value_to_string};
+pub(crate) use plugin::dynamic_raise_fault;
 pub use plugin::BridgeReads;
 
 /// The bounded step outcome of the dispatcher.
 pub(crate) enum Step {
     /// Continue at this command index (`>= commands.len()` ⇒ end).
     Next(usize),
+    /// dsl 0.51.0 §3.7: a taken bounded backward jump — continue at this
+    /// index (its head); the range's runaway guard counts from here.
+    Loop(usize),
     /// Halt the walk (incomplete decision or a hard error already recorded).
     Halt,
 }
@@ -119,6 +125,11 @@ pub const LINE_DELIVERY_KEYS: [&str; 8] = [
     "texts",
     "localeSegments",
 ];
+
+/// The `plugin` record fields that carry its `text` attributes' identity
+/// and rendered translations (0.51.0 §5.6) — what a play transcript shows
+/// and `lute run --json` leaves out, as it leaves out a line's.
+pub const PLUGIN_DELIVERY_KEYS: [&str; 1] = ["localized"];
 
 /// The `choice` / `hub` record fields that mark what a menu did not offer
 /// (spent `once` options, guard-closed options) — what a play menu shows and
@@ -253,6 +264,22 @@ pub(crate) struct Code {
     pub(crate) addr_order: Vec<(String, usize)>,
     /// Every CEL slot of `commands`, decoded once ([`Code::slot`]).
     slots: HashMap<usize, Arc<Slot>>,
+    /// dsl 0.51.0 §3.7: the stream's bounded loops ([`Code::loop_table`]).
+    loops: Loops,
+    /// Why the loop topology of `commands` is refused at load
+    /// ([`Code::loop_table`]); a walk over this Code does not start.
+    pub(crate) fault: Option<String>,
+}
+
+/// dsl 0.51.0 §3.7: the bounded jumps of a command stream.
+#[derive(Debug, Default)]
+struct Loops {
+    /// Loop head index → the index of every bounded jump to it. A bounded
+    /// jump at *j* to head *t* ≤ *j* owns the region [*t*, *j*] of the flat
+    /// stream (*t* = *j*: an empty loop, a label right before its jump).
+    heads: BTreeMap<usize, Vec<usize>>,
+    /// Every `jump` with `max`, by index: its bound.
+    bounds: BTreeMap<usize, u8>,
 }
 
 impl std::fmt::Debug for Code {
@@ -288,13 +315,131 @@ impl Code {
             collect_slots(c, &mut slots);
         }
         addr_order.sort();
-        Code {
+        let mut code = Code {
             kind,
             commands,
             addr_index,
             addr_order,
             slots,
+            loops: Loops::default(),
+            fault: None,
+        };
+        match code.loop_table() {
+            Ok(loops) => code.loops = loops,
+            Err(fault) => code.fault = Some(fault),
         }
+        code
+    }
+
+    /// Resolve a control-flow target `addr` to a command index. A `converge`
+    /// that points "one past the last record" (execution-model.md) is not in
+    /// the map → fall through to the first command whose addr sorts after
+    /// it, or the end of the stream.
+    pub(crate) fn resolve(&self, addr: &str) -> usize {
+        if let Some(&i) = self.addr_index.get(addr) {
+            return i;
+        }
+        for (a, i) in &self.addr_order {
+            if a.as_str() > addr {
+                return *i;
+            }
+        }
+        self.commands.len()
+    }
+
+    /// dsl 0.51.0 §3.7: the loops of the stream, validated as the checker's
+    /// loop rules leave them (§3.2), so every walk terminates within the
+    /// product of the enclosing `max`es. Every control transfer of every
+    /// record ([`transfers`]) is a position string where the field is
+    /// required or present, and goes forward, except a `jump` with `max` (a
+    /// bounded loop); a `max` is an integer in 1..=99; and two loops nest or
+    /// are disjoint. `Err` names the malformed record.
+    fn loop_table(&self) -> Result<Loops, String> {
+        let mut loops = Loops::default();
+        let mut regions = Vec::new();
+        for (j, cmd) in self.commands.iter().enumerate() {
+            // An unknown kind has no transfers to check; it is refused as
+            // unknown (`Runtime::load`, or when the walk reaches it).
+            let Some(fields) = transfers(cmd) else {
+                continue;
+            };
+            let kind = cmd.get("kind").and_then(Json::as_str).unwrap_or("");
+            let position = cmd.get("position").and_then(Json::as_str).unwrap_or("?");
+            let bound = match cmd.get("max") {
+                Some(max) if kind == "jump" => Some(
+                    max.as_u64()
+                        .and_then(|m| u8::try_from(m).ok())
+                        .filter(|m| (1..=JUMP_MAX_LIMIT).contains(m))
+                        .ok_or_else(|| {
+                            format!(
+                                "malformed `jump` record at {position}: `max` must be an \
+                                 integer from 1 to {JUMP_MAX_LIMIT}, got {max}"
+                            )
+                        })?,
+                ),
+                _ => None,
+            };
+            for Transfer {
+                field,
+                value,
+                required,
+            } in fields
+            {
+                let target = match value {
+                    Some(Json::String(target)) => target,
+                    // An optional target is absent or `null` (an empty
+                    // objective body).
+                    None | Some(Json::Null) if !required => continue,
+                    _ => {
+                        return Err(format!(
+                            "malformed `{kind}` record at {position}: `{field}` is missing or \
+                             not a position"
+                        ))
+                    }
+                };
+                let to = self.resolve(target);
+                if let Some(max) = bound {
+                    loops.bounds.insert(j, max);
+                    if to <= j {
+                        loops.heads.entry(to).or_default().push(j);
+                        regions.push((to, j));
+                    }
+                } else if to <= j {
+                    return Err(format!(
+                        "malformed `{kind}` record at {position}: its `{field}` goes back to \
+                         {target}, a cycle that never ends (only a `jump` with `max` may go \
+                         back)"
+                    ));
+                }
+            }
+        }
+        // Nest, never cross: in (head ascending, end descending) order an
+        // open region must contain every region that starts inside it.
+        regions.sort_by(|a, b| a.0.cmp(&b.0).then(b.1.cmp(&a.1)));
+        let mut open: Vec<(usize, usize)> = Vec::new();
+        for &(head, end) in &regions {
+            while open.last().is_some_and(|&(_, e)| e < head) {
+                open.pop();
+            }
+            if let Some(&(_, outer_end)) = open.last() {
+                if end > outer_end {
+                    let at = |i: usize| {
+                        self.commands[i]
+                            .get("position")
+                            .and_then(Json::as_str)
+                            .unwrap_or("?")
+                    };
+                    return Err(format!(
+                        "malformed `jump` records at {} and {}: their loops overlap without \
+                         nesting",
+                        at(outer_end),
+                        at(end)
+                    ));
+                }
+            }
+            open.push((head, end));
+        }
+        Ok(loops)
     }
 
     /// The decoded slot of a `{cel, expr}` pair (`None` when absent or its
@@ -309,6 +454,84 @@ impl Code {
             None => Slot::of(pair),
         }
     }
+}
+
+/// dsl 0.51.0 §3.1: the largest `max` a bounded jump may carry.
+const JUMP_MAX_LIMIT: u8 = 99;
+
+/// One control transfer field of a record ([`transfers`]).
+struct Transfer<'a> {
+    field: &'static str,
+    /// The field's value, when present.
+    value: Option<&'a Json>,
+    /// The executor reads it unconditionally ([`required_target`]): absent
+    /// or not a position string, the record is malformed.
+    required: bool,
+}
+
+/// Every control transfer `cmd` makes — the one list the load check walks
+/// ([`Code::loop_table`]). `None` for a kind the runtime does not execute;
+/// every kind of [`COMMAND_KINDS`] is named here, so a new kind has to be
+/// classified. The only structural back-transfer the compiler emits by
+/// design has no target field: a `<hub>` presents itself again inside
+/// [`Machine::do_hub`]'s loop (its options, `return` and `converge` all point
+/// forward).
+fn transfers(cmd: &Json) -> Option<Vec<Transfer<'_>>> {
+    fn field<'a>(field: &'static str, of: &'a Json, required: bool) -> Transfer<'a> {
+        // `options[].target` names the `target` key of each option.
+        let key = field.rsplit('.').next().unwrap_or(field);
+        Transfer {
+            field,
+            value: of.get(key),
+            required,
+        }
+    }
+    let each = |key: &str| {
+        cmd.get(key)
+            .and_then(Json::as_array)
+            .map(Vec::as_slice)
+            .unwrap_or_default()
+    };
+    let mut out = Vec::new();
+    match cmd.get("kind").and_then(Json::as_str).unwrap_or("") {
+        "jump" => out.push(field("target", cmd, true)),
+        "choice" | "hub" => {
+            for option in each("options") {
+                out.push(field("options[].target", option, true));
+            }
+            out.push(field("return", cmd, false));
+            out.push(field("converge", cmd, true));
+        }
+        "match" => {
+            for arm in each("arms") {
+                out.push(field("arms[].target", arm, true));
+            }
+            out.push(field("otherwise", cmd, false));
+            out.push(field("converge", cmd, true));
+        }
+        // Segment starts: the body a quest objective, handler, entry or
+        // beat runs, after its declaration.
+        "quest" => {
+            for objective in each("objectives") {
+                out.push(field("objectives[].body", objective, false));
+            }
+        }
+        "on" | "entry" | "beat" => out.push(field("body", cmd, true)),
+        "accept" | "actor" | "assert" | "barrier" | "bg" | "camera" | "cg" | "end" | "line"
+        | "music" | "plugin" | "retract" | "sequence" | "set" | "sfx" | "vfx" | "video" => {}
+        _ => return None,
+    }
+    Some(out)
+}
+
+/// The required target `key` of `cmd` (a [`Transfer`] with `required`).
+/// Every executed Code passed the load check ([`Code::loop_table`]; a
+/// refused Code runs nothing), so the field is a position string here.
+pub(crate) fn required_target<'a>(cmd: &'a Json, key: &str) -> &'a str {
+    cmd.get(key).and_then(Json::as_str).expect(
+        "a required target is a position string: checked at load (Code::loop_table), and a \
+         refused Code runs nothing",
+    )
 }
 
 /// [`Code::slots`]' key: the pair's address. `commands` is never mutated
@@ -463,6 +686,11 @@ pub struct Machine<D: Driver> {
     /// occasion's beats ([`Machine::run_deferred_handlers`]). `None`: bodies
     /// run where they fire.
     deferred_handlers: Option<Vec<String>>,
+    /// dsl 0.51.0 §3.7: how many times each bounded backward jump (by
+    /// command index) was taken since its head was last entered from outside
+    /// its region. Walk-local: a resumed input replays the walk and rebuilds
+    /// it, so no snapshot carries it.
+    loop_counts: BTreeMap<usize, u8>,
 }
 
 impl<D: Driver> std::fmt::Debug for Machine<D> {
@@ -588,20 +816,25 @@ impl<D: Driver> Machine<D> {
     /// the map → fall through to the first command whose addr sorts after it,
     /// or the end of the stream.
     fn resolve(&self, addr: &str) -> usize {
-        if let Some(&i) = self.code.addr_index.get(addr) {
-            return i;
+        self.code.resolve(addr)
+    }
+
+    /// `Err` when this walk's Code was refused at load
+    /// ([`Code::loop_table`]): no part of it runs, however often a walk
+    /// entry point is called.
+    pub(crate) fn code_fault(&self) -> Result<(), WalkError> {
+        match &self.code.fault {
+            Some(message) => Err(WalkError {
+                message: message.clone(),
+            }),
+            None => Ok(()),
         }
-        for (a, i) in &self.code.addr_order {
-            if a.as_str() > addr {
-                return *i;
-            }
-        }
-        self.code.commands.len()
     }
 
     /// Drive the whole walk: `lute run` once per artifact; `lute play` (dsl
     /// 0.21.0 §6) once per presented beat, then [`Machine::into_carry`].
     pub fn run(&mut self) -> Result<(), WalkError> {
+        self.code_fault()?;
         if self.code.kind == "quest" {
             self.run_quest();
         } else if self.code.kind == "lore" {
@@ -714,6 +947,7 @@ impl<D: Driver> Machine<D> {
             return;
         }
         let mut pc = start;
+        self.arrive(None, start);
         let mut guard = 0usize;
         let limit = self.code.commands.len() * 64 + 1024;
         while pc >= start && pc < stop && pc < self.code.commands.len() {
@@ -722,19 +956,69 @@ impl<D: Driver> Machine<D> {
                 self.fatal = Some("execution did not terminate (control-flow cycle?)".into());
                 return;
             }
-            match self.step(pc) {
-                Step::Next(n) => {
-                    if self.fatal.is_some() || self.incomplete || self.terminated {
-                        return;
-                    }
-                    if n < start || n >= stop {
-                        return;
-                    }
-                    pc = n;
-                }
+            let (n, took_loop) = match self.step(pc) {
+                Step::Next(n) => (n, false),
+                Step::Loop(n) => (n, true),
                 Step::Halt => return,
+            };
+            if self.fatal.is_some() || self.incomplete || self.terminated {
+                return;
+            }
+            if n < start || n >= stop {
+                return;
+            }
+            // dsl 0.51.0 §3.7: between two bounded takes the walk only moves
+            // forward, so the guard counts from the last take; a cycle without
+            // `max` still trips it.
+            if took_loop {
+                guard = 0;
+            }
+            self.arrive(Some(pc), n);
+            pc = n;
+        }
+    }
+
+    /// dsl 0.51.0 §3.7, reset by position: control moves from `from` (`None`:
+    /// the range starts) to `to`. Every bounded jump whose head is `to` and
+    /// whose region [`to`, jump] does not contain `from` starts counting
+    /// again; a take from inside the region keeps its count.
+    fn arrive(&mut self, from: Option<usize>, to: usize) {
+        let Some(jumps) = self.code.loops.heads.get(&to) else {
+            return;
+        };
+        for &jump in jumps {
+            if from.is_none_or(|p| !(to..=jump).contains(&p)) {
+                self.loop_counts.remove(&jump);
             }
         }
+    }
+
+    /// A `jump` record at `pc`. Not a transcript record: `lute trace` reports
+    /// an authored `::jump` and the source-only steps that ride on the jump.
+    /// dsl 0.51.0 §3.7: a jump with `max` (validated at load,
+    /// [`Code::loop_table`]) is taken while its counter is below `max`
+    /// ([`Step::Loop`], observed with the take number), then falls through
+    /// (observed as exhausted).
+    fn do_jump(&mut self, cmd: &Json, pc: usize) -> Step {
+        let position = cmd.get("position");
+        let target = self.resolve(required_target(cmd, "target"));
+        let Some(&max) = self.code.loops.bounds.get(&pc) else {
+            self.driver
+                .observe(json!({ "kind": "jump", "position": position }));
+            return Step::Next(target);
+        };
+        let taken = self.loop_counts.get(&pc).copied().unwrap_or(0);
+        if taken >= max {
+            self.driver.observe(
+                json!({ "kind": "jump", "position": position, "exhausted": true, "max": max }),
+            );
+            return Step::Next(pc + 1);
+        }
+        self.loop_counts.insert(pc, taken + 1);
+        self.driver.observe(
+            json!({ "kind": "jump", "position": position, "taken": taken + 1, "max": max }),
+        );
+        Step::Loop(target)
     }
 
     /// Dispatch one command; returns the next index (or `Halt`).
@@ -773,14 +1057,7 @@ impl<D: Driver> Machine<D> {
                 self.exec_retract(cmd);
                 Step::Next(pc + 1)
             }
-            "jump" => {
-                // Not a transcript record: `lute trace` reports an authored
-                // `::jump` and the source-only steps that ride on the jump.
-                self.driver
-                    .observe(json!({ "kind": "jump", "position": cmd.get("position") }));
-                let t = cmd.get("target").and_then(Json::as_str).unwrap_or("");
-                Step::Next(self.resolve(t))
-            }
+            "jump" => self.do_jump(cmd, pc),
             "choice" => self.do_choice(cmd),
             "hub" => self.do_hub(cmd),
             "match" => self.do_match(cmd),

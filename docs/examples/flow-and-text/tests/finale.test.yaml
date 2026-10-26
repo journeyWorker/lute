@@ -1,0 +1,7 @@
+# Completing `finale` grants the `CUTSCENE` reward. The grant record carries the
+# declared raise; the host performs it (see plays/flow.play.yaml, whose last
+# step raises `cutscene` as the host would).
+file: ../quests/finale.lute
+state: { run.opened: true }
+expect:
+  quests: { finale: complete }

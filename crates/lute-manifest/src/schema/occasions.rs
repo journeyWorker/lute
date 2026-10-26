@@ -47,6 +47,32 @@ pub struct OccasionBody {
     /// the project's `terminal:` holds. See [`OccasionDecl::outside_run`].
     #[serde(default, rename = "outsideRun")]
     pub outside_run: bool,
+    /// 0.51.0 §4.1 (#170): `raisedBy: declared` — the host raises the
+    /// occasion only where a declared `effects.raises` says so. See
+    /// [`OccasionDecl::raised_by`].
+    #[serde(default, rename = "raisedBy")]
+    pub raised_by: RaisedBy,
+}
+
+/// Who raises an occasion (0.51.0 §4.1, §4.4): `Any` (the default, and the
+/// only meaning before 0.51) — the host may raise it at any time; `Declared`
+/// (`raisedBy: declared`) — only through a declared `effects.raises` of a
+/// directive or reward kind. `declared` is the one value an author writes.
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum RaisedBy {
+    #[default]
+    #[serde(skip_deserializing)]
+    Any,
+    Declared,
+}
+
+impl RaisedBy {
+    /// `true` for the default `Any` (skipped when serialized).
+    pub fn is_any(&self) -> bool {
+        *self == RaisedBy::Any
+    }
 }
 
 /// How the engine presents an occasion's eligible beats (dsl 0.21.0 §2):
@@ -139,6 +165,9 @@ pub struct OccasionDecl {
         skip_serializing_if = "std::ops::Not::not"
     )]
     pub outside_run: bool,
+    /// 0.51.0 §4.1: see [`RaisedBy`].
+    #[serde(default, rename = "raisedBy", skip_serializing_if = "RaisedBy::is_any")]
+    pub raised_by: RaisedBy,
 }
 
 impl std::fmt::Debug for OccasionDecl {
@@ -163,6 +192,10 @@ impl std::fmt::Debug for OccasionDecl {
         // dsl 0.28.0: only when declared (capabilitySnapshot stability).
         if self.outside_run {
             s.field("outside_run", &self.outside_run);
+        }
+        // 0.51.0 §4.1: only when declared (capabilitySnapshot stability).
+        if !self.raised_by.is_any() {
+            s.field("raised_by", &self.raised_by);
         }
         s.finish()
     }
@@ -418,6 +451,12 @@ fn payload_type(field: &str, v: &yaml_serde::Value) -> Result<Type, String> {
                 "<kind>"
             };
             format!("payload field `{field}` is typed `{name}` without its argument — write `{field}: {{ {name}: {arg} }}`")
+        } else if name == "text" {
+            // 0.51.0 §5.1: a payload value is the host's, never translated.
+            format!(
+                "payload field `{field}` has the type `text`, which is admitted only as the type \
+                 of a directive attribute; {PAYLOAD_TYPE_FORMS}"
+            )
         } else if MULTI.contains(&name) {
             format!("payload field `{field}` cannot be a `{name}`; {PAYLOAD_TYPE_FORMS}")
         } else {
@@ -490,7 +529,7 @@ fn payload_type(field: &str, v: &yaml_serde::Value) -> Result<Type, String> {
 }
 
 /// A YAML value as an author wrote it, on one line (`[a, b]`, `3`).
-fn shown_yaml(v: &yaml_serde::Value) -> String {
+pub(crate) fn shown_yaml(v: &yaml_serde::Value) -> String {
     yaml_serde::to_string(v)
         .unwrap_or_default()
         .trim()

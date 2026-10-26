@@ -1,0 +1,15 @@
+# Flow and text (0.51): bounded retry loops, declared occasion raises, localizable
+# directive text, and a pair lint. One plugin, `acme.flow`, declares the bridge
+# directive, the raising directive and reward kind, and the text directive.
+pluginsDir: plugins/
+defaultProfile: flow
+profiles:
+  flow:
+    plugins: { acme.flow: true }
+defaults:
+  contentLang: en
+  uses: [world.schema.yaml]
+
+# Identity templates (dsl §10), as in the plugin-surfaces project.
+identity:
+  voiceKey: "{prefix}.{speaker}-{code}"

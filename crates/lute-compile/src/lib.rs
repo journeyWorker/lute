@@ -402,7 +402,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// strings. `schemas/lute-ir-0.29.schema.json` is renamed to
 /// `schemas/lute-ir-0.30.schema.json` per the release-line rule, its name
 /// patterns widened to the name rule.
-pub const LUTE_IR_VERSION: &str = "0.50.0";
+pub const LUTE_IR_VERSION: &str = "0.51.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -514,6 +514,7 @@ fn compile_inner(
         &input.components,
         &cast,
         &folded.env.domains,
+        input.snapshot(),
         &folded.env.state,
         &folded.env.occasion_scopes,
     );
@@ -534,12 +535,13 @@ fn compile_inner(
     // kind-dispatched (IR addendum §6): scene = the existing shot loop
     // (byte-identical aside from `kind`/version); quest = a parallel loop
     // over `doc.quests`, one addressing unit per `<quest>` declaration.
-    let mut cx = stage::WalkCx {
-        snapshot: input.snapshot(),
-        env: &folded.env,
-        components: Vec::new(),
-        timelines: 0,
-    };
+    let mut cx = stage::WalkCx::new(
+        input.snapshot(),
+        &folded.env,
+        &folded.labels.loops,
+        lute_check::SubjectScope::of(&folded),
+        Some(&input.components),
+    );
     let (meta, mut commands, addr_diags) = match folded.doc_kind {
         lute_check::DocKind::Scene => {
             let mut state = StageState::default();
@@ -1475,6 +1477,11 @@ fn stamp_reward_kinds(commands: &mut [Command], snapshot: &CapabilitySnapshot) {
                     .into_iter()
                     .map(|(quest, _)| quest)
                     .collect();
+                // 0.51.0 §4.6: `@target` bound as for `accepts`.
+                r.raises = lute_check::raises::reward_raises(effects, &snapshot.occasions, target)
+                    .into_iter()
+                    .map(ir::RaiseRecord::from)
+                    .collect();
             }
         }
     }
@@ -1769,7 +1776,8 @@ fn type_label(append_unset: bool, ty: &Type) -> (String, Option<Vec<String>>) {
         Type::Bool => ("bool".to_string(), None),
         Type::Int => ("int".to_string(), None),
         Type::Double => ("double".to_string(), None),
-        Type::Str => ("string".to_string(), None),
+        // `text` (0.51.0 §5.1) is a string at the value level.
+        Type::Str | Type::Text => ("string".to_string(), None),
         Type::Enum(members) => {
             let mut domain = members.clone();
             // Only a real implicit branch slot's (or quest state's) domain gains
@@ -1880,7 +1888,7 @@ mod tests {
     fn lang_and_ir_version_stamps() {
         // 0.41.0 axis alignment (docs/versioning.md): a breaking minor that
         // moves language and IR together with the toolchain.
-        assert_eq!(super::LUTE_IR_VERSION, "0.50.0");
+        assert_eq!(super::LUTE_IR_VERSION, "0.51.0");
     }
 
     #[test]
@@ -1889,8 +1897,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.50.0");
-        assert_eq!(v["irVersion"], "0.50.0");
+        assert_eq!(v["lute"], "0.51.0");
+        assert_eq!(v["irVersion"], "0.51.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

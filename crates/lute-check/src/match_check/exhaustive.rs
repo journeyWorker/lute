@@ -7,6 +7,8 @@ use super::{
     literal_is_foreign, quest_state_is_literal, subject_path, Arm, BTreeSet, Ctx, Diagnostic,
     Domain, DomainInfo, DomainValue, Interval, IsLiteral, IsPattern, Match, NumCoverage, Severity,
 };
+use lute_manifest::types::Type;
+use std::collections::BTreeMap;
 
 /// `E-WHEN-PATTERN`: a `<when>` arm carrying neither an `is` literal pattern nor
 /// a `test` guard (dsl §7.3.1, D-D). One of the two is REQUIRED — an empty
@@ -388,6 +390,55 @@ pub fn is_exhaustive(m: &Match, schema: &crate::StateView) -> bool {
     let subject = subject_path(m);
     let info = infer_domain(subject.as_deref(), schema);
     is_exhaustive_resolved(m, subject.as_deref(), &info, schema)
+}
+
+/// What a `<match>` subject resolves against — the folded state schema and
+/// the def tables a `@def` subject expands through — so a walk outside
+/// definite assignment decides exhaustiveness by the same rule
+/// (`resolve_subject` + [`is_exhaustive_resolved`]).
+#[derive(Clone, Copy, Debug)]
+pub struct SubjectScope<'a> {
+    schema: &'a crate::StateView,
+    bodies: &'a BTreeMap<String, String>,
+    params: &'a BTreeMap<String, Vec<(String, Type)>>,
+    def_types: &'a BTreeMap<String, Type>,
+}
+
+impl<'a> SubjectScope<'a> {
+    /// A document's scope: its folded schema and merged def tables.
+    pub fn of(folded: &'a crate::check::FoldedEnv) -> Self {
+        SubjectScope {
+            schema: &folded.env.state,
+            bodies: &folded.def_bodies,
+            params: &folded.env.def_params,
+            def_types: &folded.env.def_types,
+        }
+    }
+
+    /// `schema` with no defs in scope.
+    pub fn bare(schema: &'a crate::StateView) -> Self {
+        static NO_BODIES: BTreeMap<String, String> = BTreeMap::new();
+        static NO_PARAMS: BTreeMap<String, Vec<(String, Type)>> = BTreeMap::new();
+        static NO_TYPES: BTreeMap<String, Type> = BTreeMap::new();
+        SubjectScope {
+            schema,
+            bodies: &NO_BODIES,
+            params: &NO_PARAMS,
+            def_types: &NO_TYPES,
+        }
+    }
+
+    /// `m` is exhaustive (dsl §11.2): `<otherwise>`, or its subject's domain
+    /// covered by its arms — the rule `E-NONEXHAUSTIVE` and definite
+    /// assignment apply.
+    pub fn is_exhaustive(&self, m: &Match) -> bool {
+        let defs = crate::cel_expand::DefTable {
+            bodies: self.bodies,
+            params: self.params,
+        };
+        let (subject, info) = super::resolve_subject(m, &defs, self.def_types, self.schema);
+        is_exhaustive_resolved(m, subject.as_deref(), &info, self.schema)
+    }
 }
 
 /// [`is_exhaustive`] over an already-resolved subject path and domain

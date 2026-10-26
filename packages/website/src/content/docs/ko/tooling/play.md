@@ -521,6 +521,21 @@ expect:                                   # assert the end of the play
 - 그 순간 메뉴가 제시하지 않는 결정은 워크를 오류(종료 코드 1)로 멈춥니다: 가드가 거짓인 선택지, 또는
   이미 고른 `once` hub 선택지(`lute trace`와 같은 `E-TRACE-CHOICE`).
 
+#### 루프 안의 스크립트된 결정 (0.51)
+
+한정된 뒤로 가는 `::jump{to="…" max="N"}`([디렉티브](/ko/language/directives/#한정된-뒤로-점프--max) 참고)는 루프 안의 `<branch>`나 `<hub>`를 한 장면에서 여러 번 제시되게 만듭니다. 위의 목록은 제시마다 적용됩니다:
+
+- 이후 반복에서 다시 도달한 **branch**는 새 메뉴(새 `awaitChoice` 요청)이며, 그 목록은 제시마다 결정 하나씩 소비됩니다. `choose: { retry: [yes, yes, no] }`는 반복 세 번을 이끕니다. 점프를 되돌리는 `yes` 두 번, 그리고 루프를 떠나는 `no`입니다. 루프가 먼저 소진되면 남은 항목은 그냥 쓰이지 않고, 걷기가 아직 묻는데 목록이 바닥나면 위와 같이 미완료(종료 코드 3)로 멈춥니다.
+- 루프 안의 **hub**는 방문마다 제시 0에서 시작하며, 목록은 0.49와 같이 방문마다 따로입니다. 루프가 걷기를 hub로 되돌릴 때마다 목록은 첫 항목부터 다시 쓰입니다. 앞선 방문에서 고른 `once` 선택지는 계속 소진된 상태이므로, 그것을 다시 지정하는 목록은 `E-TRACE-CHOICE`(종료 코드 1)로 멈춥니다.
+
+```yaml
+choose: { retry: [yes, yes, no] }   # a <branch id="retry"> inside a ::jump{max="3"} loop
+steps:
+  - occasion: lockPicked
+```
+
+루프의 두 번째 반복 중 선택 지점에서 만든 세이브는 같은 트랜스크립트로 재개됩니다. 루프 카운터는 걷기 안에서만 유효하고 이미 준 답을 다시 재생하며 재구성되므로, 런타임 스냅숏에 새 필드가 생기지 않습니다.
+
 ### 계기 스텝
 
 `{ occasion, target?, payload?, engine?, pick?, choose?, expect?, bridges? }`는 엔진과 똑같이 계기를 발생시킵니다.
@@ -2643,6 +2658,11 @@ explain safe(warden): holds
   만든 호출을 댑니다: `set scene.check.sneak.passed = false  (effect of ::check)`,
   `assert holding(brassKey)  (effect of ::give)`, `retract holding(lamp)  (effect of ::give)` — 철회가 먼저,
   그다음 호출의 단언. `--json`에서는 그 레코드에 `"effectOf": "<tag>"`가 붙습니다.
+- 0.51부터 `effects.raises`를 선언한 플러그인 호출과 보상 지급의 줄 끝에는 선언된 raise마다
+  `  → raises <occasion> <target>`이 붙습니다(`::playScene{scene="chapter2"}        (plugin call, not invoked)  → raises cutscene scene.chapter2`,
+  `grant[#1 i0] finale CUTSCENE 1 -> chapter2  → raises cutscene scene.chapter2`). `lute play`는 그 계기를 직접
+  raise하지 않습니다. 호스트처럼 스크립트의 다음 스텝이 raise합니다. `--json`에서는 `plugin` 레코드에
+  `"raises": [{ "occasion", "target"? }]`가 붙습니다.
 - `--ir`은 대신 낮춰진 레코드를 출력합니다: 각 연출 레코드를 IR 형태의 `::<kind>{…}`로 — 속성은 IR 필드
   이름순이며 `position`, `kind`, `family`는 빠집니다(`::actor{character="mara" anchor="left" action="sway"}`라면
   `::actor{action="sway" anchor="left" character="mara"}`) —, 컴파일러가 주입한 레코드도 포함해

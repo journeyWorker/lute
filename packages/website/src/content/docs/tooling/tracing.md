@@ -261,6 +261,32 @@ trace complete: 1 decision; choices 1/2 (enter)
 
 A test of the same walk asserts what play sees — `transcriptContains: ["@narrator: The treasure hall."]`, `transcriptLacks: ["@narrator: A guard waves you back."]`, `state: { run.gold: 10 }` — and passes.
 
+### Loop steps (0.51)
+
+A bounded backward `::jump{to="…" max="N"}` ([directives](/language/directives/#bounded-backward-jumps--max)) shows in the transcript at every visit. A take prints the take number and the bound — `<jump -> retry (again 1/2)>` — and, once the `N` takes are used, the jump is **not taken** and the walk falls through to the next node: `<jump -> retry not taken (2/2 used)>`. The driver's `jump` observation carries the same facts: the take number and `max` for a take, and an `exhausted` observation for the fall-through. A branch reached again in each iteration is a new menu, and a `--choice` list for it is consumed one decision per presentation, so three entries drive three iterations. A latch scene with `::label{name="retry"}` before `<branch id="again">` and `::jump{to="retry" max="2"}` in its `push` choice, answered `--choice again=push,push,push`:
+
+```console
+$ lute trace scenes/latch.lute --project . --choice again=push,push,push
+trace: scenes/latch.lute  (seeds: 0 paths, 0 facts; 3 selections)
+  ## The latch
+    <label>
+    @mira  The latch sticks.
+  <branch again>   eligible: push, leave   -> push
+    <jump -> retry (again 1/2)>
+    <label>
+    @mira  The latch sticks.
+  <branch again>   eligible: push, leave   -> push
+    <jump -> retry (again 2/2)>
+    <label>
+    @mira  The latch sticks.
+  <branch again>   eligible: push, leave   -> push
+    <jump -> retry not taken (2/2 used)>
+    @mira  Let's go.
+trace complete: 3 decisions; choices 1/2 (again)
+```
+
+Like the rest of the transcript this is an explanation of the walk the mocks drove, not a static claim — it never says a loop is, or is not, reachable in a real playthrough.
+
 ## Bridge answers
 
 A plugin directive that calls a host service writes its result into `scene.*` slots through `bridgeResult` effects. Trace calls no service: since 0.24.0 an unanswered call leaves those slots **unknown** — never the state shape's default — so a guard over one halts the walk incomplete with a hint naming the answer to give. In the town gate from [Playing a story](/tooling/play/#answering-bridge-calls), `::check` writes `scene.check.<key>.passed` and `.margin`:

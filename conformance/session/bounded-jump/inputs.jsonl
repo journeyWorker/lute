@@ -1,0 +1,4 @@
+{"seed":{"derive":true}}
+{"input":{"occasion":"visit","type":"raiseOccasion"}}
+{"input":{"option":"yes","request":1,"type":"choose"}}
+{"input":{"option":"no","request":2,"type":"choose"}}

@@ -153,7 +153,7 @@ Describes the command line itself as the `schema` report (always JSON; reads no 
 Each `lute` invocation appends one line to `telemetry.jsonl` in Lute's state directory — `$XDG_STATE_HOME/lute` when that is an absolute path, else `$HOME/.local/state/lute`; `%LOCALAPPDATA%\lute` on Windows:
 
 ```json
-{"v":1,"ts":1760400000000,"lute":"0.50.0","command":"check","json":true,"exit":0,"durationMs":12}
+{"v":1,"ts":1760400000000,"lute":"0.51.0","command":"check","json":true,"exit":0,"durationMs":12}
 ```
 
 That is the whole record: the command id (or `null`), whether the run was in JSON mode, the exit code, the wall time and the toolchain version. No argument or flag value, path, file content, output or environment is recorded, and nothing is sent anywhere — the file stays on your machine. It is rotated to `telemetry.jsonl.1` at 1 MiB; recording is best-effort and never changes a command's output or exit code. Turn it off with `LUTE_TELEMETRY=0` (or `false`, `off`, `no`) or `DO_NOT_TRACK=1`; `lute doctor` shows which (`• Telemetry: off (LUTE_TELEMETRY)`, or the file path when it is on). The repository's own tests, scripts and CI run with it off.
@@ -376,7 +376,7 @@ calendar aggregate results also carry `scope`. Parse, type, and declaration
 errors omit evidence.
 
 The impact and constraints sections were introduced in the historical 0.34.0
-contract; the repository's current release is 0.50.0 and the AI edit-loop
+contract; the repository's current release is 0.51.0 and the AI edit-loop
 commands are documented below.
 
 ## compile
@@ -402,7 +402,7 @@ The index carries the document table plus the **union** of every artifact's `ent
 ```json
 {
   "irVersion": "0.10.0",
-  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
   "requiredSemantics": [
     "lute.core/1",
     "lute.quest.lifecycle/1"
@@ -468,6 +468,8 @@ scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `na
 ```
 
 A merged translation whose stored `sourceHash` (see [`loc import`](#loc-import)) differs from the hash of the record's current source text is `W-L10N-STALE`, one per `(lineId, locale)` pair: the line, option label or prompt changed after the export the translator worked from. The message names the lineId and the locale and says to re-export with `lute loc export` and update the translation. The translation is still merged. Like every warning it is promoted by `--deny W-L10N-STALE` or `--deny-warnings`, in a single-document compile and in the project compile. A `schemaVersion: 1` bundle carries no hashes and gets no stale check.
+
+Since 0.51 the bundle also reaches a directive's [localizable text](/language/dialogue-and-cast/#localizable-directive-text-since-051): a bundle entry keyed by the `lineId` of a `text` attribute is merged into `localized.<attr>.texts` of its `plugin` record, as a line's translation goes into `texts`. `W-L10N-MISSING` and `W-L10N-STALE` apply to these entries with the same wording and the same `--deny` promotion, one per `(lineId, locale)` pair. `E-L10N-MODIFIERS` does not apply to them, because a `text` value has no inline modifiers. A document compiled without `--locale-bundle`, or without `text` attributes, is byte-identical to before.
 
 ### `--stream` — compile a scene from a live body
 
@@ -643,7 +645,7 @@ Since 0.22.0 the surface also carries `defs` (each named condition's `name`, `ty
 
 ```json
 {
-  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
   "textModifiers": {
     "core": [
       {
@@ -675,6 +677,8 @@ Back-fill a stable `code` into every untagged `:line`, and a missing `instance` 
 - **Default (no `--renumber`)** back-fills missing codes and instance keys and writes the files.
 - **`--renumber`** is the dangerous mode: it renumbers every line's `code` in clean document order instead (`0010`/`0020`/… per speaker per scope) — a drafting tool, refused for a document whose frontmatter declares `codesLocked:` (published codes are `lineId`/`voiceKey` identity; missing component instance keys are still added) or that has structural errors. **Without `--commit` it writes nothing** and prints what `--commit` would do — one line per changed code, `<path>:<line>: <old or (none)> -> <new>`, one line per file that would get instance keys, each refusal as `--commit` would print it — then `lute: would renumber <N> line(s) in <M> of <T> file(s); pass --commit to apply`. Exit **0**, or **1** when a file is refused (as `--commit` would). **`--renumber --commit`** applies it.
 - **`--check`** writes nothing and exits **1** when the selected mode would change any file, else **0** (a refusal is still **1**). `--commit` without `--renumber`, or together with `--check`, is `E-CLI-USAGE`.
+
+Since 0.51 `lute tag` also back-fills a `code` into every untagged directive that has a [`text` attribute](/language/dialogue-and-cast/#localizable-directive-text-since-051), in the order the compiler uses, so the directive's `lineId` (`{prefix}~{tag}~{code}~{attr}`) becomes reproducible from the source. `codesLocked:` applies to these codes as it does to line codes.
 
 `--json` prints the `0.48.0.tag` report: `{mode: "tag"|"renumber", applied, files: [{path, changed, lines, instances, refused?, renumbered?: [{line, from, to}]}]}` — `applied` is `true` only when files were written, `lines` counts the codes added or renumbered, `instances` the instance keys added, `refused` carries the refusal message, and `renumbered` appears only in renumber mode, with `from` `null` for a line that had no code.
 
@@ -988,7 +992,7 @@ $ lute play --script <FILE> [--project <DIR>] [--providers <DIR>] [--permission-
 Play a story through a WHOLE project as a sequence of raised **occasions** (dsl 0.21.0) — the reference-runtime consumer of [beats and occasions](/tooling/play/). The project (`--project`, else discovered) is compiled once, in memory, with the same gate and declaration union the project compile uses (scene, quest, and lore documents). `--engine <FILE>` loads `lute.engine.yaml`, performs the exact-major.minor IR gate first, then compares the project-index `requiredSemantics` union with `supportedIds`. A missing id refuses with exit **2** and `E-ENGINE-SEMANTICS` before any step, command, condition, asset, or bridge runs; malformed matrices and unsupported IR lines use `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`. Omit it for the built-in `reference` matrix. The required `--script` is a `*.play.yaml` file with a closed key set. Its `steps:` each do one thing — raise an `occasion:` (with `target:`, `pick:`, and a step-local `choose:` that replaces the script's `choose:` key by key for that presentation), start a `newRun:`, write what the engine owns with `engine:` (`state:` literals or `{ add: <n> }`, `facts:`, `retract:`), fire a world `event:`, move a declared clock with `advance: slot | day | <n>` (dsl 0.24.0: writes the clock's paths, settles the quests, raises `dayEnd` / `dayStart` at each midnight it crosses and the `slot` occasion once where it stops, per the clock's `raise:`; it may carry the same moment's `engine:` writes, which land where the clock arrives — after any `dayEnd` / `dayStart` on the way, before the final settle and raise), or end the playthrough with `end: true` — and any step may carry `label:`, `repeat: <n>`, its own `bridges:` answers, and `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`; `- include: <file>` splices another file's steps in place. Beside `steps:`, the script takes the `lute trace --mock` grammars for `state:`, `facts:`, `choose:` and `bridges:`, a save to start from (`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, and a top-level `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }` judging the end of the play (dsl 0.22.0). Each occasion step lists the occasion's candidate beats with their verdicts, presents the winner (or the step's `pick` on a `select: all` occasion; `pick: none`, or no `pick` when nothing is eligible, presents nothing) through `lute run`'s reference evaluator, and advances every quest lifecycle, so later `when` conditions and `after: completed(…)` see real progress. `--json` emits the same transcript as one object.
 
 Since dsl 0.26.0: `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }` moves the clock to the next such position (forward only, never zero steps), and a step `expect:` takes `clock: { weekday, slot, day }` (since 0.28, also `ended`); `engine: { accept: [quest ids] }` accepts an accept-driven quest mid-play (`quest <id> accepted (engine)`); an entry may be named `<document id>.<entry id>` in `pick:`, `entriesRead:` and the selection expectations; a beat targeting `kind:<kind>` answers every member of the kind; a guarded directive that did not run prints `skip ::give{item="potion"} — when: false`; a bridge answer is typed by its result slot or the capability's `result:`, and an untyped one is refused (exit **2**); and a project whose documents declare one state path with two types is refused (exit **1**). The project loads once per play — on Monster League a play load fell from about 12 s to about 1.5 s. See [Playing a story](/tooling/play/).
-`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.50.0"`. It cannot be combined with `--json`, `--ir`, `--derivation`, or `--conditions-output`.
+`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.51.0"`. It cannot be combined with `--json`, `--ir`, `--derivation`, or `--conditions-output`.
 
 `--no-derive` (or the script's `derive: false`; the flag wins) stops applying the project's Datalog rules, so an unmocked derived atom is unknown and halts the walk incomplete. `--derivation <ATOM>` (repeatable) prints, after the play, the derivation tree of a ground atom — the rule used and each premise's own support (seed fact, asserted, or derived in turn), negated premises shown `(absent)` — or, when it does not hold, every rule that could conclude it with its failing premises; `--json` carries the same tree under `explain`.
 
@@ -1149,6 +1153,28 @@ Row kinds are `line`, `choice` (an option label, `key` `{branchOrHubId}.{choiceI
 kind,file,line,lineId,code,speaker,key,text,sourceFile,sourceLine,sourceHash
 ```
 
+Since 0.51 there is a fourth kind, `directive`: one row per [`text` attribute](/language/dialogue-and-cast/#localizable-directive-text-since-051) of a plugin directive, in document order (a directive's attributes in declaration order). Its `key` is `{tag}.{attr}`, its `lineId` is `{prefix}~{tag}~{code}~{attr}`, and its `code` is the directive's authored `code`. As for a line, `lineId` is reproducible only when `code` is authored; otherwise it is `null` (JSON) or empty (CSV), and the stderr advisory counts them (`N directive texts untagged — run lute tag`). The JSON row carries `kind`, `file`, `line`, `lineId`, `code`, `key`, `text`, `source` and `sourceHash`. In CSV the existing columns are used, with `kind` `directive`, `code` and `key` filled and `speaker` empty; no column is added. The `::banner` of [`docs/examples/flow-and-text`](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text) (`lute loc export --project docs/examples/flow-and-text`):
+
+```json
+{
+  "code": "0010",
+  "file": "docs/examples/flow-and-text/scenes/hall.lute",
+  "key": "banner.title",
+  "kind": "directive",
+  "line": 18,
+  "lineId": "hall~banner~0010~title",
+  "source": null,
+  "sourceHash": "sha256:fde24517faf3…",
+  "text": "Welcome to the hall, {{userName}}"
+}
+```
+
+```text
+directive,docs/examples/flow-and-text/scenes/hall.lute,18,hall~banner~0010~title,0010,,banner.title,"Welcome to the hall, {{userName}}",,,sha256:fde24517faf3…
+```
+
+(The hash is shortened here.)
+
 ## loc import
 
 ```console
@@ -1177,6 +1203,8 @@ Input is exactly what `export` writes, in either format (`.csv` → CSV, anythin
 
 (Hashes shortened here.) `sourceHashes` holds each row's `sourceHash` per lineId **and** locale (two locales may be translated from different exports); it is always written, `{}` when no row carried a hash. Every map is sorted, so the bundle is byte-stable: importing the same inputs twice produces identical bytes. `compile --locale-bundle` still reads a `schemaVersion: 1` bundle (no `sourceHashes`, no stale check). An unparseable input, a `lineId` appearing twice within one locale, or an empty locale tag is `E-LOCALE-BUNDLE`, reported with the offending file and row. A row with **no** `lineId` is skipped rather than rejected — an untagged line simply has no stable identity yet — and a single stderr summary counts them.
 
+Since 0.51 `loc import` accepts rows of `kind: "directive"` and keys the bundle by their `lineId` like every other row; an unknown `kind` is still refused. A directive row with no `lineId` (no authored `code`) is skipped like any untagged row.
+
 ## loc report
 
 ```console
@@ -1184,6 +1212,8 @@ $ lute loc report [--project <DIR>] [--json]
 ```
 
 Word-count and line-count report per document and per speaker — a production-planning view over the same content lines. Choice labels are counted (`choices`) but their words are not; branch/hub prompts are counted (`prompts`, since 0.47 — report version `0.47.0.loc-report`) and their words are included in the document and project word totals (they have no speaker). `--json` emits the report as JSON instead of human table lines. Exit **0** on success, **2** on I/O.
+
+Since 0.51 a directive's `text` attributes count like prompts: their words join the document and project word totals (they have no speaker). In the JSON a document and `totals` carry `directiveTexts` only when it is nonzero; the human table gains a `directive texts` column, and its summary a `N directive text(s)` count, only when the project has any.
 
 ## --explain
 

@@ -20,7 +20,7 @@ lute compile --project examples/player-demo -o dist/bundle
 `lute.project.yaml` 옆에 `player.bindings.yaml`을 만듭니다. 이 파일은 컴파일된 staging id를 파일에 연결하고 canvas와 효과를 지정합니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 `assets/`입니다.
 
 ```yaml
-bindingsVersion: "0.50"
+bindingsVersion: "0.51"
 canvas: { width: 1280, height: 720 }
 volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
@@ -43,7 +43,7 @@ lute check --project examples/player-demo
 정확한 0.49 패키지를 설치합니다.
 
 ```console
-bun add @lute-lang/player-web@0.50.0 @lute-lang/player@0.50.0 @lute-lang/runtime@0.50.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.51.0 @lute-lang/player@0.51.0 @lute-lang/runtime@0.51.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player`는 `@lute-lang/runtime`과 `effect`를 peer dependency로 선언하므로 페이지가 한 번만 설치하고 모든 패키지가 같은 `effect`를 공유합니다.
@@ -139,7 +139,7 @@ player-web는 스테이지를 고정된 레이어로 그립니다. 아래에서 
 타이틀 화면의 제목은 바인딩에 `ui.title.text`가 있으면 그 값입니다. 없으면 제목을 그리지 않습니다(player-web은 임시 이름을 표시하지 않습니다). `ui.title.background`와 `ui.title.music`은 선택 사항이며, 없으면 배경을 그리지 않고 음악도 재생하지 않습니다.
 
 ```yaml
-bindingsVersion: "0.50"
+bindingsVersion: "0.51"
 ui:
   title: { text: "The Signal at Low Tide", background: ui/title.png, music: ui/title.wav }
 ```

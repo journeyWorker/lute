@@ -116,6 +116,16 @@ quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` wa
 - **시작 순환은 그대로입니다.** 보상 accept를 포함한 `[accept]` 앵커는 퀘스트의 시작을 게이트하지 않습니다. 엔진은 어떤 `::accept` 밖에서도 퀘스트를 수락할 수 있고, accept 교착은 범위 밖입니다. 보상을 통해서만 서로를 accept하는 수락 기반 퀘스트의 순환은 `E-QUEST-START-CYCLE`도 `E-QUEST-START-SELF`도 내지 않습니다.
 - `lute scenario knowledge`와 `lute lore`는 보상이 assert한 사실의 생산자를 지목합니다: `` met(mira) — produced by reward BADGE of quest `firstVisit` ``.
 
+## raise되지 않는 occasion
+
+`raisedBy: declared`로 선언된 occasion은 호스트가 디렉티브나 보상 종류의 [선언된 `raises`](/ko/plugins/manifests/#선언된-occasion-raise)를 통해서만 발생시킵니다(0.51). 그런 occasion에 응답하며 `after:`가 없는 씬이나 번들 비트는 그 raise가 닿는 노드에 앵커되고, 그래프는 각 노드에서 `[raises]` 엣지를 그립니다([씬 그래프](/ko/connectivity/scene-graph/#선언된-raise가-그리는-엣지) 참고).
+
+- **도달 가능성은 모든 앵커를 읽는 방식대로 이 앵커를 읽습니다.** 앵커된 노드의 `Unreachable`은 `Unknown`으로 읽습니다. 선언된 raise는 증명이 아니라 호스트의 약속입니다.
+- **`W-OCCASION-NEVER-RAISED`**(경고, 프로젝트 전체)는 `W-QUEST-NEVER-ACCEPTED`의 짝입니다. 어떤 선언된 raise도 닿지 않는 `raisedBy: declared` occasion(대상이 있든 없든)에 응답하는 각 씬이나 비트의 `on:` 위치에 보고됩니다: `` scene `chapter2` answers `cutscene` for `scene.chapter2`, which `acme.stage` declares `raisedBy: declared`, but no `effects.raises` in the project raises it — add a `raises` entry to the directive or reward kind that leads here, or drop `raisedBy: declared` if the host raises `cutscene` on its own ``.
+- **시계는 선언된 raise가 아닙니다.** 프로젝트 시계가 발생시키는 occasion(`raise:` 맵)은 선언된 raise와 무관하게 발생하므로, 그 occasion에는 `raisedBy: declared`가 앵커를 그리지 않고 `W-OCCASION-NEVER-RAISED`도 침묵합니다.
+- **플레이 스텝은 소스가 아닙니다.** occasion을 발생시키는 `lute play`나 `lute test` 스텝은 계산에 넣지 않습니다. 테스트는 게임이 아니라 테스트를 증명합니다.
+- **시계 분석은 선언된 raise를 셉니다.** 시계에 매핑된 occasion의 선언된 raise는 시계의 `raise:` 맵이 예약한 위치만이 아니라 어느 시계 위치에서든 그것을 전달할 수 있습니다. 그래서 어떤 선언된 raise가 닿는 씬이나 비트에 대해 체커는 더 이상 occasion이 예약된 위치에서만 발생한다고 주장하지 않으며, `W-BEAT-UNRAISED`("never plays") 같은 예약 전용 주장은 발생하지 않습니다. 진짜 `when` 창 실패는 여전히 보고됩니다. 다음 씬의 `when`이 모든 위치에서 만료된 체인에는 `W-CHAPTER-STALL`이 여전히 나올 수 있습니다. 선언된 raise가 닿지 않는 응답자는 이전처럼 판정됩니다.
+
 ## 0.34.0의 증거
 
 시나리오 reach 결과에는 JSON에서 `evidence`가 포함됩니다. 구조적 도달 가능성

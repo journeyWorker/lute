@@ -130,6 +130,11 @@ pub struct Scope<'a> {
     /// scope (`writesOnComplete`'s re-derivation), which sees `::set`/`into=`
     /// writes only.
     pub snapshot: Option<&'a lute_manifest::snapshot::CapabilitySnapshot>,
+    /// The document's loops (dsl 0.51.0 §3.2): each head's flow is iterated.
+    /// `None` in a bare scope: a back edge's flow then contains its head's
+    /// (both lattices only grow along a path), so the head is its entry
+    /// either way and the result is the same.
+    pub loops: Option<&'a crate::next_labels::LoopTable>,
     /// Parsed path uses are immutable for a scope. Share this cache with
     /// `with_schema` scopes so one CEL fragment is parsed once even when the
     /// document is checked through several nested environments.
@@ -157,6 +162,7 @@ impl<'a> Scope<'a> {
             preceded: folded.typed.after.is_some() || folded.typed.beat.is_some(),
             components: None,
             snapshot: Some(&*folded.snapshot),
+            loops: Some(&folded.labels.loops),
             parse_cache: new_parse_cache(),
         }
     }
@@ -173,6 +179,7 @@ impl<'a> Scope<'a> {
             preceded: false,
             components: None,
             snapshot: None,
+            loops: None,
             parse_cache: new_parse_cache(),
         }
     }
@@ -189,6 +196,7 @@ impl<'a> Scope<'a> {
             preceded: self.preceded,
             components: self.components,
             snapshot: self.snapshot,
+            loops: self.loops,
             parse_cache: Rc::clone(&self.parse_cache),
         }
     }
@@ -241,18 +249,64 @@ pub fn check_definite_assignment(
     cx: &Scope<'_>,
     assume: Option<&CelSlot>,
 ) -> (Vec<Diagnostic>, Assigned, Vec<(String, Span)>) {
-    let mut diags = Vec::new();
-    let mut reads = Vec::new();
-    let mut flow = Flow {
+    let entry = Flow {
         available: assumed_present(assume, cx),
         writes: Assigned::new(),
     };
-    walk_nodes(nodes, cx, &mut flow, &mut diags, &mut reads);
+    let mut walk = Walk {
+        cx,
+        diags: Vec::new(),
+        reads: Vec::new(),
+        pending: BTreeMap::new(),
+        probing: None,
+        entry: entry.clone(),
+    };
+    let mut flow = Some(entry);
+    walk.nodes(nodes, &mut flow);
+    let Walk {
+        mut diags,
+        reads,
+        pending,
+        ..
+    } = walk;
     hint_choice_records(nodes, &reads, &mut diags);
     if cx.preceded {
         hint_other_scenes(nodes, &reads, &mut diags);
     }
-    (diags, flow.writes, reads)
+    // A jump to a label outside `nodes` (a handler jumping to its quest's
+    // label) leaves the body too: what it wrote is written on that route.
+    let left = join_flows(
+        std::iter::once(flow)
+            .chain(pending.into_values().map(Some))
+            .collect(),
+    );
+    (diags, left.map(|f| f.writes).unwrap_or_default(), reads)
+}
+
+/// One definite-assignment walk over a node stream (dsl 0.51.0 §3.4): the
+/// diagnostics and reads it reports, and the `Flow` of every `::jump`
+/// pending at its label. A flow of `None` is a point no route reaches (after
+/// an unguarded jump without `max`), the identity of the join.
+struct Walk<'s, 'a> {
+    cx: &'s Scope<'a>,
+    diags: Vec<Diagnostic>,
+    reads: Vec<(String, Span)>,
+    /// `::jump{to}` label → the join (`intersect_flows`) of the complete
+    /// flows jumping to it. A probe pass swaps in a fresh map of its own.
+    pending: BTreeMap<String, Flow>,
+    /// The head whose probe pass is walking (`Some` in every probe pass,
+    /// nested heads' included): nothing is reported then.
+    probing: Option<String>,
+    /// The walk's starting flow: what an `<on>` handler or `<objective>`
+    /// body (run by the engine on its own, not reached through the body's
+    /// flow) starts from at a point no route of the body reaches.
+    entry: Flow,
+}
+
+/// The join of `flows`, `None` being the identity.
+fn join_flows(flows: Vec<Option<Flow>>) -> Option<Flow> {
+    let reached: Vec<Flow> = flows.into_iter().flatten().collect();
+    (!reached.is_empty()).then(|| intersect_flows(reached))
 }
 
 /// dsl 0.27.0 (round-5 T3-21): an `E-MAYBE-UNSET` on a `run.*`/`user.*`
@@ -404,80 +458,221 @@ pub fn check_quest_guard_defassign(slot: &CelSlot, cx: &Scope<'_>) -> Vec<Diagno
     diags
 }
 
-/// Forward-walk a node sequence, threading the assigned set through in order.
-fn walk_nodes(
-    nodes: &[Node],
-    cx: &Scope<'_>,
-    flow: &mut Flow,
-    diags: &mut Vec<Diagnostic>,
-    reads: &mut Vec<(String, Span)>,
-) {
-    for node in nodes {
-        match node {
-            Node::Set(set) => walk_set(set, cx, flow, diags, reads),
-            Node::Branch(branch) => walk_branch(branch, cx, flow, diags, reads),
-            Node::Match(m) => walk_match(m, cx, flow, diags, reads),
-            Node::Timeline(tl) => walk_timeline(tl, cx, flow, diags, reads),
-            Node::Hub(hub) => walk_hub(hub, cx, flow, diags, reads),
-            // A `{{path}}` interpolation on a content line is a state READ at the
-            // line's position (dsl §7.6, §9.4): give it the SAME definite-
-            // assignment treatment as a guard / `::set` read — a maybe-unset path
-            // (declared, no default, no dominating write, no guard) is
-            // `E-MAYBE-UNSET`. A `{{@def}}` reads what its expanded body reads
-            // (dsl 0.24.0); `Reserved` interps carry no state path.
-            // (`E-UNDECLARED` for the path and `E-UNDECLARED-REF` for the ref are
-            // the cel-layer resolver's job, mirroring how guard reads split.)
-            //
-            // dsl 0.4.0 §7.2: a `when=` guard is a one-arm, NON-DOMINATING
-            // construct — the line may or may not emit, exactly like an
-            // `<on>`/`<hub>` arm (`walk_hub`/`walk_on` above): fork the
-            // incoming set, let `apply_condition` prove reads for THIS
-            // line's interps only, then DISCARD the fork (nothing folds back
-            // past a line that may not show) — so `when="isSet(run.tip)"`
-            // proves `{{run.tip}}`, but the outer set is untouched either way.
-            Node::Line(line) => match &line.when {
-                Some(when) => {
-                    let mut fork = flow.available.clone();
-                    apply_condition(when, cx, &mut fork, diags, reads);
-                    check_interp_reads(&line.interps, cx, &fork, diags, reads);
-                }
-                None => check_interp_reads(&line.interps, cx, &flow.available, diags, reads),
-            },
-            // dsl 0.12.0 / 0.26.0 §4: a directive `when=` (`::jump`, `::use`,
-            // `::give`, …) is a one-arm, NON-DOMINATING construct — the SAME
-            // treatment a gated line's `when=` gets above: fork, prove THIS
-            // guard's own reads via `apply_condition`, check the directive's
-            // own reads against the fork, then discard it. A `::use` `@def`
-            // argument is spliced into the component body, so it is read
-            // here, at the call, under the call's guard.
-            Node::Directive(d) => {
-                let guarded = d.when.as_ref().map(|when| {
-                    let mut fork = flow.available.clone();
-                    apply_condition(when, cx, &mut fork, diags, reads);
-                    fork
-                });
-                if d.tag == "use" {
-                    let available = guarded.as_ref().unwrap_or(&flow.available);
-                    check_use_arg_reads(d, cx, available, diags, reads);
-                }
-                // 0.49.0 §5.2: an unguarded blocking bridge call's result
-                // writes are applied before the next command, so they are
-                // definite assignments after the call. Under `when=` they
-                // would enter only the discarded fork: nothing to record.
-                if guarded.is_none() {
-                    for path in blocking_result_writes(d, cx) {
-                        flow.available.insert(path.clone());
-                        flow.writes.insert(path);
+impl Walk<'_, '_> {
+    /// Forward-walk a node sequence, threading the flow through in order.
+    /// An unreached point (`None`) still descends into nested bodies, where
+    /// a label may be reached by a jump.
+    fn nodes(&mut self, nodes: &[Node], flow: &mut Option<Flow>) {
+        let cx = self.cx;
+        for (i, node) in nodes.iter().enumerate() {
+            if self.probing.is_some() {
+                crate::loop_walk::probe_node(crate::loop_walk::WalkKind::Assign);
+            }
+            if let Some(id) = crate::loop_walk::label_of(node) {
+                self.label(id, &nodes[i + 1..], flow);
+                continue;
+            }
+            match node {
+                Node::Branch(branch) => self.branch(branch, flow),
+                Node::Match(m) => self.match_arms(m, flow),
+                Node::Hub(hub) => self.hub(hub, flow.as_ref()),
+                Node::On(on) => self.on(on, flow.as_ref()),
+                Node::Objective(o) => self.objective(o, flow.as_ref()),
+                // Fact args are ground (entity ids / bools), never `state:`
+                // paths — no definite-assignment read/write to track (0.3.0
+                // T2; write policy is Task 10).
+                Node::Assert(_) | Node::Retract(_) => {}
+                Node::Directive(d) => self.directive(d, flow),
+                Node::Set(_) | Node::Timeline(_) | Node::Line(_) => {
+                    let Some(f) = flow.as_mut() else {
+                        continue;
+                    };
+                    let (diags, reads) = (&mut self.diags, &mut self.reads);
+                    match node {
+                        Node::Set(set) => walk_set(set, cx, f, diags, reads),
+                        Node::Timeline(tl) => walk_timeline(tl, cx, f, diags, reads),
+                        // A `{{path}}` interpolation on a content line is a
+                        // state READ at the line's position (dsl §7.6, §9.4):
+                        // give it the SAME definite-assignment treatment as a
+                        // guard / `::set` read — a maybe-unset path (declared,
+                        // no default, no dominating write, no guard) is
+                        // `E-MAYBE-UNSET`. A `{{@def}}` reads what its
+                        // expanded body reads (dsl 0.24.0); `Reserved` interps
+                        // carry no state path. (`E-UNDECLARED` for the path
+                        // and `E-UNDECLARED-REF` for the ref are the cel-layer
+                        // resolver's job, mirroring how guard reads split.)
+                        //
+                        // dsl 0.4.0 §7.2: a `when=` guard is a one-arm,
+                        // NON-DOMINATING construct — the line may or may not
+                        // emit, exactly like an `<on>`/`<hub>` arm: fork the
+                        // incoming set, let `apply_condition` prove reads for
+                        // THIS line's interps only, then DISCARD the fork
+                        // (nothing folds back past a line that may not show)
+                        // — so `when="isSet(run.tip)"` proves `{{run.tip}}`,
+                        // but the outer set is untouched either way.
+                        Node::Line(line) => match &line.when {
+                            Some(when) => {
+                                let mut fork = f.available.clone();
+                                apply_condition(when, cx, &mut fork, diags, reads);
+                                check_interp_reads(&line.interps, cx, &fork, diags, reads);
+                            }
+                            None => {
+                                check_interp_reads(&line.interps, cx, &f.available, diags, reads);
+                            }
+                        },
+                        _ => {}
                     }
                 }
             }
-            Node::On(on) => walk_on(on, cx, flow, diags, reads),
-            Node::Objective(o) => walk_objective(o, cx, flow, diags, reads),
-            // Fact args are ground (entity ids / bools), never `state:` paths —
-            // no definite-assignment read/write to track (0.3.0 T2; write
-            // policy is Task 10).
-            Node::Assert(_) | Node::Retract(_) => {}
         }
+    }
+
+    /// dsl 0.12.0 / 0.26.0 §4: a directive `when=` (`::jump`, `::use`,
+    /// `::give`, …) is a one-arm, NON-DOMINATING construct — the SAME
+    /// treatment a gated line's `when=` gets: fork, prove THIS guard's own
+    /// reads via `apply_condition`, check the directive's own reads against
+    /// the fork, then discard it. A `::use` `@def` argument is spliced into
+    /// the component body, so it is read here, at the call, under the
+    /// call's guard. A `::jump` routes the flow (dsl 0.51.0 §3.4).
+    fn directive(&mut self, d: &lute_syntax::ast::Directive, flow: &mut Option<Flow>) {
+        let cx = self.cx;
+        let Some(f) = flow.as_mut() else {
+            return;
+        };
+        let guarded = d.when.as_ref().map(|when| {
+            let mut fork = f.available.clone();
+            apply_condition(when, cx, &mut fork, &mut self.diags, &mut self.reads);
+            fork
+        });
+        if d.tag == "use" {
+            let available = guarded.as_ref().unwrap_or(&f.available);
+            check_use_arg_reads(d, cx, available, &mut self.diags, &mut self.reads);
+        }
+        // 0.51.0 §5.2: a `text` attribute's `{{path}}` is read when the call
+        // runs — after its own `when` guard proves, as a choice label's.
+        if let Some(snapshot) = cx.snapshot {
+            let available = guarded.as_ref().unwrap_or(&f.available);
+            for (attr, text) in crate::directives::text_values(d, snapshot) {
+                check_label_reads(
+                    text,
+                    cx,
+                    available,
+                    attr.value_span,
+                    &mut self.diags,
+                    &mut self.reads,
+                );
+            }
+        }
+        if d.tag == lute_manifest::core::JUMP_DIRECTIVE {
+            self.jump(d, guarded, flow);
+            return;
+        }
+        // 0.49.0 §5.2: an unguarded blocking bridge call's result writes are
+        // applied before the next command, so they are definite assignments
+        // after the call. Under `when=` they would enter only the discarded
+        // fork: nothing to record.
+        if guarded.is_none() {
+            for path in blocking_result_writes(d, cx) {
+                f.available.insert(path.clone());
+                f.writes.insert(path);
+            }
+        }
+    }
+
+    /// A `::jump` (dsl 0.51.0 §3.4): the complete flow — `available`, with
+    /// the jump's own guard proofs (`guarded`), and `writes` — goes to its
+    /// label; an unguarded jump without `max` leaves no fall-through. A
+    /// bounded jump's flow reaches its head only in a probe pass of it.
+    fn jump(
+        &mut self,
+        d: &lute_syntax::ast::Directive,
+        guarded: Option<Assigned>,
+        flow: &mut Option<Flow>,
+    ) {
+        use crate::loop_walk::JumpRoute;
+        let Some(to) = crate::loop_walk::jump_target(d) else {
+            return;
+        };
+        let sent = match JumpRoute::of(d) {
+            JumpRoute::Away => flow.take(),
+            JumpRoute::Guarded(_) => flow.clone(),
+            JumpRoute::Bounded(_) if self.probing.as_deref() == Some(to) => flow.clone(),
+            JumpRoute::Bounded(_) => None,
+        };
+        let Some(mut sent) = sent else {
+            return;
+        };
+        if let Some(available) = guarded {
+            sent.available = available;
+        }
+        let joined = match self.pending.remove(to) {
+            Some(earlier) => intersect_flows(vec![earlier, sent]),
+            None => sent,
+        };
+        self.pending.insert(to.to_string(), joined);
+    }
+
+    /// A label: join the flows jumping to it into the fall-through flow
+    /// (consumed: what is left pending at the end jumped out of the walked
+    /// nodes); at a loop head, iterate the region `rest` starts.
+    fn label(&mut self, id: &str, rest: &[Node], flow: &mut Option<Flow>) {
+        if let Some(jumped) = self.pending.remove(id) {
+            *flow = join_flows(vec![flow.take(), Some(jumped)]);
+        }
+        if !self.cx.loops.is_some_and(|loops| loops.is_head(id)) {
+            return;
+        }
+        if let Some(entry) = flow.take() {
+            let region = &rest[..crate::loop_walk::region_len(rest, id)];
+            *flow = Some(self.head(id, entry, region));
+        }
+    }
+
+    /// The flow at loop head `id`: `intersect_flows(entry, back edges)`,
+    /// iterated. Both lattices only grow along a path, so a back edge's flow
+    /// contains the head's and the head is stable after one probe pass (the
+    /// one-pass stability tests assert it). Top: both sets empty.
+    fn head(&mut self, id: &str, entry: Flow, region: &[Node]) -> Flow {
+        use crate::loop_walk::{head_fixpoint, WalkKind};
+        let bound = entry.available.len() + entry.writes.len() + 1;
+        head_fixpoint(
+            WalkKind::Assign,
+            entry,
+            bound,
+            |h| {
+                let pending = std::mem::take(&mut self.pending);
+                let probing = self.probing.replace(id.to_string());
+                let diags = std::mem::take(&mut self.diags);
+                let reads = std::mem::take(&mut self.reads);
+                let mut flow = Some(h.clone());
+                self.nodes(region, &mut flow);
+                let back = self.pending.remove(id);
+                self.pending = pending;
+                self.probing = probing;
+                self.diags = diags;
+                self.reads = reads;
+                back
+            },
+            &AssignHead,
+        )
+    }
+}
+
+/// Both lattices' operations at a loop head (dsl 0.51.0 §3.4): the join
+/// branches use, the same sets, and top: both sets empty.
+struct AssignHead;
+
+impl crate::loop_walk::HeadLattice<Flow> for AssignHead {
+    fn meet(&self, entry: &Flow, back: Flow) -> Flow {
+        intersect_flows(vec![entry.clone(), back])
+    }
+
+    fn same(&self, a: &Flow, b: &Flow) -> bool {
+        a.available == b.available && a.writes == b.writes
+    }
+
+    fn top(&self, _: &Flow) -> Flow {
+        Flow::default()
     }
 }
 
@@ -722,91 +917,115 @@ fn apply_choice_record(choice: &Choice, flow: &mut Flow) {
     }
 }
 
-/// A `<branch>`: each `<choice>` forks the incoming set; join = intersection when
-/// some choice is unconditional (one arm always runs), else the pre-block set.
-/// dsl 0.28.0 (T3-61): the pick record `scene.choices.<id>` is written when a
-/// choice is picked, before its arm runs — set in every arm, so after a
-/// branch that always picks it is set. A `timeout` can end the branch
-/// without a pick (its expiry is the engine's), so the record stays
-/// unproven after one.
-fn walk_branch(
-    branch: &Branch,
-    cx: &Scope<'_>,
-    flow: &mut Flow,
-    diags: &mut Vec<Diagnostic>,
-    reads: &mut Vec<(String, Span)>,
-) {
-    let record = format!("scene.choices.{}", branch.id);
-    let had_record = flow.available.contains(&record);
-    let mut arm_finals: Vec<Flow> = Vec::new();
-    let mut has_unconditional = false;
-    for choice in &branch.choices {
-        let mut arm = flow.clone();
-        match &choice.when {
-            Some(cond) => apply_condition(cond, cx, &mut arm.available, diags, reads),
-            None => has_unconditional = true,
+impl Walk<'_, '_> {
+    /// A `<branch>`: each `<choice>` forks the incoming set; join =
+    /// intersection when some choice is unconditional (one arm always runs),
+    /// else the intersection with the pre-block set too (an arm reached only
+    /// through a label inside it may hold less than the pre-block set;
+    /// otherwise the pre-block set is the result). dsl 0.28.0 (T3-61): the
+    /// pick record `scene.choices.<id>` is written when a choice is picked,
+    /// before its arm runs — set in every arm, so after a branch that always
+    /// picks it is set. A `timeout` can end the branch without a pick (its
+    /// expiry is the engine's), so the record stays unproven after one.
+    fn branch(&mut self, branch: &Branch, flow: &mut Option<Flow>) {
+        let cx = self.cx;
+        let record = format!("scene.choices.{}", branch.id);
+        let had_record = flow.as_ref().is_some_and(|f| f.available.contains(&record));
+        let mut arm_finals: Vec<Option<Flow>> = Vec::new();
+        let mut has_unconditional = false;
+        for choice in &branch.choices {
+            let mut arm = flow.clone();
+            if choice.when.is_none() {
+                has_unconditional = true;
+            }
+            if let Some(a) = arm.as_mut() {
+                if let Some(cond) = &choice.when {
+                    apply_condition(cond, cx, &mut a.available, &mut self.diags, &mut self.reads);
+                }
+                // §7.6: a `{{path}}` in the choice LABEL is a READ at the point the
+                // choice is OFFERED — after its own `when` guard proves (a guarded
+                // choice's label shows only when the guard holds), so check
+                // against the post-guard arm.
+                check_label_reads(
+                    &choice.text,
+                    cx,
+                    &a.available,
+                    choice.span,
+                    &mut self.diags,
+                    &mut self.reads,
+                );
+                if !branch.id.is_empty() {
+                    a.available.insert(record.clone());
+                }
+                apply_choice_record(choice, a);
+            }
+            self.nodes(&choice.body, &mut arm);
+            arm_finals.push(arm);
         }
-        // §7.6: a `{{path}}` in the choice LABEL is a READ at the point the choice
-        // is OFFERED — after its own `when` guard proves (a guarded choice's label
-        // shows only when the guard holds), so check against the post-guard arm.
-        check_label_reads(&choice.text, cx, &arm.available, choice.span, diags, reads);
-        if !branch.id.is_empty() {
-            arm.available.insert(record.clone());
+        if has_unconditional && !arm_finals.is_empty() {
+            *flow = join_flows(arm_finals);
+            if let (Some(f), false) = (flow.as_mut(), had_record) {
+                if branch.attrs.iter().any(|a| a.key == "timeout") {
+                    f.available.remove(&record);
+                }
+            }
+        } else {
+            // A guarded-only branch may fall through.
+            arm_finals.push(flow.take());
+            *flow = join_flows(arm_finals);
         }
-        apply_choice_record(choice, &mut arm);
-        walk_nodes(&choice.body, cx, &mut arm, diags, reads);
-        arm_finals.push(arm);
     }
-    if has_unconditional && !arm_finals.is_empty() {
-        *flow = intersect_flows(arm_finals);
-        if !had_record && branch.attrs.iter().any(|a| a.key == "timeout") {
-            flow.available.remove(&record);
-        }
-    }
-    // else: a guarded-only branch may fall through — keep the pre-block set.
-}
 
-/// A `<hub>` (dsl §7.3.2, §11.1.3): hub arms have NO dominance relation among one
-/// another (same join rule as `<match>` arms), so a write inside one arm is a
-/// **may-write** at hub exit, never a definite assignment. Definite-assignment
-/// therefore stays conservative — each choice's `when` guard and body are walked
-/// on its own discarded fork (mirroring `walk_branch`: the guard's value reads are
-/// still flagged), but nothing is folded back into the surviving set (a hub never
-/// proves a path assigned past the block) — for EITHER lattice.
-fn walk_hub(
-    hub: &Hub,
-    cx: &Scope<'_>,
-    flow: &mut Flow,
-    diags: &mut Vec<Diagnostic>,
-    reads: &mut Vec<(String, Span)>,
-) {
-    for choice in &hub.choices {
-        let mut arm = flow.clone();
-        // Same guard-read check as `walk_branch` — a maybe-unset read inside a
-        // choice `when` must not escape defassign. The arm is discarded, so a
-        // guard-proven path never survives past the block (conservative).
-        if let Some(cond) = &choice.when {
-            apply_condition(cond, cx, &mut arm.available, diags, reads);
+    /// A `<hub>` (dsl §7.3.2, §11.1.3): hub arms have NO dominance relation
+    /// among one another (same join rule as `<match>` arms), so a write inside
+    /// one arm is a **may-write** at hub exit, never a definite assignment.
+    /// Definite-assignment therefore stays conservative — each choice's `when`
+    /// guard and body are walked on its own discarded fork (mirroring
+    /// [`Self::branch`]: the guard's value reads are still flagged), but
+    /// nothing is folded back into the surviving set (a hub never proves a
+    /// path assigned past the block) — for EITHER lattice. A jump out of an
+    /// arm still carries the arm's flow to its label.
+    fn hub(&mut self, hub: &Hub, flow: Option<&Flow>) {
+        let cx = self.cx;
+        for choice in &hub.choices {
+            let mut arm = flow.cloned();
+            if let Some(a) = arm.as_mut() {
+                // Same guard-read check as a branch — a maybe-unset read inside
+                // a choice `when` must not escape defassign. The arm is
+                // discarded, so a guard-proven path never survives past the
+                // block (conservative).
+                if let Some(cond) = &choice.when {
+                    apply_condition(cond, cx, &mut a.available, &mut self.diags, &mut self.reads);
+                }
+                // Label reads (§7.6): checked against the post-guard arm, then
+                // discarded with the rest of the fork.
+                check_label_reads(
+                    &choice.text,
+                    cx,
+                    &a.available,
+                    choice.span,
+                    &mut self.diags,
+                    &mut self.reads,
+                );
+                // dsl 0.28.0 (T1-23, T3-61): the option's pick is recorded
+                // before its arm.
+                if let Some(id) = hub_id(hub) {
+                    a.available.insert(format!("scene.choices.{id}"));
+                    a.available
+                        .insert(format!("scene.visited.{id}.{}", choice.id));
+                }
+                apply_choice_record(choice, a);
+            }
+            self.nodes(&choice.body, &mut arm);
+            // arm (and any record write) discarded — a hub never folds back.
         }
-        // Label reads (§7.6): checked against the post-guard arm, then discarded
-        // with the rest of the fork.
-        check_label_reads(&choice.text, cx, &arm.available, choice.span, diags, reads);
-        // dsl 0.28.0 (T1-23, T3-61): the option's pick is recorded before its arm.
-        if let Some(id) = hub_id(hub) {
-            arm.available.insert(format!("scene.choices.{id}"));
-            arm.available
-                .insert(format!("scene.visited.{id}.{}", choice.id));
+        // dsl 0.28.0 §5: the `<return>` block runs after some non-`exit` arm,
+        // so what held at hub entry still holds there (the arms' own writes
+        // are may-writes); walked on its own discarded fork, like an arm.
+        if let Some(r) = &hub.on_return {
+            let mut back = flow.cloned();
+            self.nodes(&r.body, &mut back);
         }
-        apply_choice_record(choice, &mut arm);
-        walk_nodes(&choice.body, cx, &mut arm, diags, reads);
-        // arm (and any record write) discarded — a hub never folds back.
-    }
-    // dsl 0.28.0 §5: the `<return>` block runs after some non-`exit` arm, so
-    // what held at hub entry still holds there (the arms' own writes are
-    // may-writes); walked on its own discarded fork, like an arm.
-    if let Some(r) = &hub.on_return {
-        let mut back = flow.clone();
-        walk_nodes(&r.body, cx, &mut back, diags, reads);
     }
 }
 
@@ -872,74 +1091,85 @@ fn hint_choice_records(nodes: &[Node], reads: &[(String, Span)], diags: &mut [Di
     }
 }
 
-/// An `<on>` arm (dsl 0.2.0 §4.4): `<on>` arms have NO dominance relation among
-/// one another (the same join rule as `<match>`/`<hub>` arms) — a write inside
-/// one arm is a **may-write**, never a definite assignment. Mirrors
-/// [`walk_hub`]: the `when` guard proves paths for THIS arm only, the body
-/// walks on a forked, DISCARDED set — nothing folds back into the surviving
-/// set (a path first written only inside `<on>` arms stays maybe-unset unless
-/// every arm writes it or it carries a schema `default`).
-fn walk_on(
-    on: &On,
-    cx: &Scope<'_>,
-    flow: &Flow,
-    diags: &mut Vec<Diagnostic>,
-    reads: &mut Vec<(String, Span)>,
-) {
-    let mut arm = flow.clone();
-    if let Some(cond) = &on.when {
-        apply_condition(cond, cx, &mut arm.available, diags, reads);
+impl Walk<'_, '_> {
+    /// An `<on>` arm (dsl 0.2.0 §4.4): `<on>` arms have NO dominance relation
+    /// among one another (the same join rule as `<match>`/`<hub>` arms) — a
+    /// write inside one arm is a **may-write**, never a definite assignment.
+    /// Mirrors [`Self::hub`]: the `when` guard proves paths for THIS arm
+    /// only, the body walks on a forked, DISCARDED set — nothing folds back
+    /// into the surviving set (a path first written only inside `<on>` arms
+    /// stays maybe-unset unless every arm writes it or it carries a schema
+    /// `default`). The engine runs the handler on its own, so at a point no
+    /// route of the body reaches it starts from the walk's entry flow.
+    fn on(&mut self, on: &On, flow: Option<&Flow>) {
+        let mut arm = Some(flow.unwrap_or(&self.entry).clone());
+        if let (Some(a), Some(cond)) = (arm.as_mut(), &on.when) {
+            apply_condition(
+                cond,
+                self.cx,
+                &mut a.available,
+                &mut self.diags,
+                &mut self.reads,
+            );
+        }
+        self.nodes(&on.body, &mut arm);
     }
-    walk_nodes(&on.body, cx, &mut arm, diags, reads);
-}
 
-/// An `<objective>` (dsl 0.2.0 §6.4): the body emits ONCE, when `done` first
-/// holds — a discrete, non-dominating transition exactly like an `<on>` arm
-/// (§4.4), so it gets the SAME may-write join as [`walk_on`]. `done` is a
-/// value READ (like a `<match>` subject, [`walk_match`]) — it does not gate
-/// the body, so it is checked via [`check_reads`], not [`apply_condition`].
-/// `when` DOES gate visibility (mirrors a hub/branch choice guard) and proves
-/// paths for this arm only.
-fn walk_objective(
-    o: &Objective,
-    cx: &Scope<'_>,
-    flow: &Flow,
-    diags: &mut Vec<Diagnostic>,
-    reads: &mut Vec<(String, Span)>,
-) {
-    let mut arm = flow.clone();
-    // dsl 0.10.0 §12.2: `done=` is a quest-entry-shaped predicate like
-    // `<quest start|fail>` — no body to prove into, but `isSet(p) && …`
-    // short-circuits inside the expression, so the same intra-expression
-    // narrowing applies. The narrowing is slot-LOCAL: `apply_condition` runs
-    // against a CLONE of the inherited set, which is dropped here and never
-    // reaches `arm.available` below.
-    //
-    // The clone starts from `arm.available` rather than from empty, which is
-    // what keeps this a relaxation: a `::set` dominating the objective still
-    // proves the read, exactly as `check_reads(&o.done, …, &arm.available, …)`
-    // did before.
-    let mut done_assigned = arm.available.clone();
-    apply_condition(&o.done, cx, &mut done_assigned, diags, reads);
-    // dsl 0.23.0 §2 / 0.24.0 §2.1: `by=` / `until=` are read like `done=` —
-    // slot-local narrowing only.
-    for deadline in o.by.iter().chain(&o.until) {
-        let mut deadline_assigned = arm.available.clone();
-        apply_condition(deadline, cx, &mut deadline_assigned, diags, reads);
-    }
-    if let Some(cond) = &o.visible_when {
-        apply_condition(cond, cx, &mut arm.available, diags, reads);
-    }
-    walk_nodes(&o.body, cx, &mut arm, diags, reads);
-    // dsl 0.16.0 §2: an objective `reward.when` is a slot-LOCAL guard —
-    // same intra-expression narrowing `done=`/`when=` get, discarded so it
-    // can never leak into the surviving set (a reward may or may not fire,
-    // like an `<on>` arm). Runs after the body to keep the walk order
-    // byte-identical to `lute_syntax::walk::objective`.
-    for r in &o.rewards {
-        if let Some(cond) = &r.when {
-            let mut fork = arm.available.clone();
-            apply_condition(cond, cx, &mut fork, diags, reads);
+    /// An `<objective>` (dsl 0.2.0 §6.4): the body emits ONCE, when `done`
+    /// first holds — a discrete, non-dominating transition exactly like an
+    /// `<on>` arm (§4.4), so it gets the SAME may-write join as [`Self::on`].
+    /// `done` is a value READ (like a `<match>` subject,
+    /// [`Self::match_arms`]) — it does not gate the body, so it is checked
+    /// via [`check_reads`], not [`apply_condition`]. `when` DOES gate
+    /// visibility (mirrors a hub/branch choice guard) and proves paths for
+    /// this arm only. Like a handler, it starts from the walk's entry flow
+    /// at a point no route of the body reaches.
+    fn objective(&mut self, o: &Objective, flow: Option<&Flow>) {
+        let cx = self.cx;
+        let entry = flow.is_none().then(|| self.entry.clone());
+        let flow = flow.or(entry.as_ref());
+        let mut arm = flow.cloned();
+        if let Some(a) = arm.as_mut() {
+            let (diags, reads) = (&mut self.diags, &mut self.reads);
+            // dsl 0.10.0 §12.2: `done=` is a quest-entry-shaped predicate like
+            // `<quest start|fail>` — no body to prove into, but `isSet(p) && …`
+            // short-circuits inside the expression, so the same
+            // intra-expression narrowing applies. The narrowing is
+            // slot-LOCAL: `apply_condition` runs against a CLONE of the
+            // inherited set, which is dropped here and never reaches
+            // `a.available` below.
+            //
+            // The clone starts from `a.available` rather than from empty,
+            // which is what keeps this a relaxation: a `::set` dominating the
+            // objective still proves the read, exactly as
+            // `check_reads(&o.done, …, &a.available, …)` did before.
+            let mut done_assigned = a.available.clone();
+            apply_condition(&o.done, cx, &mut done_assigned, diags, reads);
+            // dsl 0.23.0 §2 / 0.24.0 §2.1: `by=` / `until=` are read like
+            // `done=` — slot-local narrowing only.
+            for deadline in o.by.iter().chain(&o.until) {
+                let mut deadline_assigned = a.available.clone();
+                apply_condition(deadline, cx, &mut deadline_assigned, diags, reads);
+            }
+            if let Some(cond) = &o.visible_when {
+                apply_condition(cond, cx, &mut a.available, diags, reads);
+            }
+        }
+        self.nodes(&o.body, &mut arm);
+        // dsl 0.16.0 §2: an objective `reward.when` is a slot-LOCAL guard —
+        // same intra-expression narrowing `done=`/`when=` get, discarded so
+        // it can never leak into the surviving set (a reward may or may not
+        // fire, like an `<on>` arm). Runs after the body to keep the walk
+        // order byte-identical to `lute_syntax::walk::objective`; a body no
+        // route leaves is read from the objective's entry.
+        let Some(after) = arm.as_ref().or(flow) else {
+            return;
+        };
+        for r in &o.rewards {
+            if let Some(cond) = &r.when {
+                let mut fork = after.available.clone();
+                apply_condition(cond, cx, &mut fork, &mut self.diags, &mut self.reads);
+            }
         }
     }
 }
@@ -962,77 +1192,99 @@ fn check_label_reads(
     check_interp_reads(&interps, cx, assigned, diags, reads);
 }
 
-/// A `<match>`: the `on=` subject is checked for value-reads (it dominates every
-/// arm) but its position is NOT treated as a proving guard — a subject
-/// `has(p)`/`isSet(p)` must never add `p` to the block-surviving set or the arm
-/// bases (that would leak an unproven path past a non-exhaustive fall-through and
-/// survive `intersect_all` on exhaustive matches). Each `<when>`/`<otherwise>`
-/// still forks; join = intersection only when an `<otherwise>` makes the match
-/// exhaustive. Arm-level `<when test>` guards keep proving (see `apply_condition`).
-///
-/// dsl 0.23.1 (ashen N3): an arm NARROWS a plain state-path subject. Inside
-/// `<when is="x">` (no `unset` alternative) the subject equals a named value,
-/// so it is set; once an arm has taken every unset value (`is="unset"` with no
-/// narrowing `test`), every later arm and the `<otherwise>` see it set. The
-/// proof is arm-local (`available` only, never `writes`). dsl 0.24.0: a
-/// `@def` subject whose body is one state path narrows that path.
-fn walk_match(
-    m: &Match,
-    cx: &Scope<'_>,
-    flow: &mut Flow,
-    diags: &mut Vec<Diagnostic>,
-    reads: &mut Vec<(String, Span)>,
-) {
-    // Subject is a value-read check only; subject-position guards do NOT prove.
-    check_reads(&m.subject, cx, &flow.available, diags, reads);
+impl Walk<'_, '_> {
+    /// A `<match>`: the `on=` subject is checked for value-reads (it dominates
+    /// every arm) but its position is NOT treated as a proving guard — a
+    /// subject `has(p)`/`isSet(p)` must never add `p` to the block-surviving
+    /// set or the arm bases (that would leak an unproven path past a
+    /// non-exhaustive fall-through and survive `intersect_all` on exhaustive
+    /// matches). Each `<when>`/`<otherwise>` still forks; join = intersection
+    /// of the arms only when an `<otherwise>` makes the match exhaustive, else
+    /// with the pre-block set too.
+    ///
+    /// dsl 0.23.1 (ashen N3): an arm NARROWS a plain state-path subject.
+    /// Inside `<when is="x">` (no `unset` alternative) the subject equals a
+    /// named value, so it is set; once an arm has taken every unset value
+    /// (`is="unset"` with no narrowing `test`), every later arm and the
+    /// `<otherwise>` see it set. The proof is arm-local (`available` only,
+    /// never `writes`). dsl 0.24.0: a `@def` subject whose body is one state
+    /// path narrows that path.
+    fn match_arms(&mut self, m: &Match, flow: &mut Option<Flow>) {
+        let cx = self.cx;
+        // Subject is a value-read check only; subject-position guards do NOT
+        // prove.
+        if let Some(f) = flow.as_ref() {
+            check_reads(
+                &m.subject,
+                cx,
+                &f.available,
+                &mut self.diags,
+                &mut self.reads,
+            );
+        }
 
-    let (resolved, mut info) = resolve_subject(m, cx);
-    // dsl 0.28.0 (T3-61): a subject set on this path (a branch's pick
-    // record after it) needs no `unset` arm to make the match exhaustive.
-    if resolved
-        .as_deref()
-        .is_some_and(|p| proven(p, &flow.available, &[], cx.schema))
-    {
-        info.maybe_unset = false;
-    }
-    let exhaustive =
-        crate::match_check::is_exhaustive_resolved(m, resolved.as_deref(), &info, cx.schema);
-    let subject = resolved.filter(|p| is_declared(p, cx.schema) && !is_choicelog(p));
-    let mut unset_taken = false;
-    let mut arm_finals: Vec<Flow> = Vec::new();
-    for arm in &m.arms {
-        let mut branch = flow.clone();
-        match arm {
-            Arm::When { is, test, body, .. } => {
-                if let Some(p) = &subject {
-                    if unset_taken
-                        || crate::match_check::is_pattern_proves_set(is.as_ref(), Some(p))
-                    {
-                        branch.available.insert(p.clone());
-                    }
-                }
-                apply_condition(test, cx, &mut branch.available, diags, reads);
-                walk_nodes(body, cx, &mut branch, diags, reads);
-                unset_taken |= subject.as_deref().is_some_and(|p| {
-                    crate::match_check::arm_takes_unset(is.as_ref(), &test.raw, Some(p), cx.schema)
-                });
-            }
-            Arm::Otherwise { body, .. } => {
-                if let (Some(p), true) = (&subject, unset_taken) {
-                    branch.available.insert(p.clone());
-                }
-                walk_nodes(body, cx, &mut branch, diags, reads);
+        let (resolved, mut info) = resolve_subject(m, cx);
+        // dsl 0.28.0 (T3-61): a subject set on this path (a branch's pick
+        // record after it) needs no `unset` arm to make the match exhaustive.
+        if let (Some(p), Some(f)) = (resolved.as_deref(), flow.as_ref()) {
+            if proven(p, &f.available, &[], cx.schema) {
+                info.maybe_unset = false;
             }
         }
-        arm_finals.push(branch);
-    }
-    // Fold the arms' assignments into the surviving set iff the match is
-    // exhaustive (a covered finite/nullable domain, or an `<otherwise>`): every
-    // path then flows through exactly one arm, so the intersection of arm-final
-    // sets is provably assigned afterward. A non-exhaustive match may match
-    // nothing, so its pre-block set survives unchanged (dsl §9.4/§11.2).
-    if !arm_finals.is_empty() && exhaustive {
-        *flow = intersect_flows(arm_finals);
+        let exhaustive =
+            crate::match_check::is_exhaustive_resolved(m, resolved.as_deref(), &info, cx.schema);
+        let subject = resolved.filter(|p| is_declared(p, cx.schema) && !is_choicelog(p));
+        let mut unset_taken = false;
+        let mut arm_finals: Vec<Option<Flow>> = Vec::new();
+        for arm in &m.arms {
+            let mut branch = flow.clone();
+            match arm {
+                Arm::When { is, test, body, .. } => {
+                    if let Some(b) = branch.as_mut() {
+                        if let Some(p) = &subject {
+                            if unset_taken
+                                || crate::match_check::is_pattern_proves_set(is.as_ref(), Some(p))
+                            {
+                                b.available.insert(p.clone());
+                            }
+                        }
+                        apply_condition(
+                            test,
+                            cx,
+                            &mut b.available,
+                            &mut self.diags,
+                            &mut self.reads,
+                        );
+                    }
+                    self.nodes(body, &mut branch);
+                    unset_taken |= subject.as_deref().is_some_and(|p| {
+                        crate::match_check::arm_takes_unset(
+                            is.as_ref(),
+                            &test.raw,
+                            Some(p),
+                            cx.schema,
+                        )
+                    });
+                }
+                Arm::Otherwise { body, .. } => {
+                    if let (Some(b), Some(p), true) = (branch.as_mut(), &subject, unset_taken) {
+                        b.available.insert(p.clone());
+                    }
+                    self.nodes(body, &mut branch);
+                }
+            }
+            arm_finals.push(branch);
+        }
+        // Fold the arms' assignments into the surviving set iff the match is
+        // exhaustive (a covered finite/nullable domain, or an `<otherwise>`):
+        // every path then flows through exactly one arm, so the intersection
+        // of arm-final sets is provably assigned afterward. A non-exhaustive
+        // match may match nothing, so its pre-block set is met too (dsl
+        // §9.4/§11.2).
+        if !exhaustive || arm_finals.is_empty() {
+            arm_finals.push(flow.take());
+        }
+        *flow = join_flows(arm_finals);
     }
 }
 
@@ -1056,7 +1308,16 @@ fn walk_timeline(
                 ClipNode::Directive(d) if d.tag == "use" => {
                     check_use_arg_reads(d, cx, &flow.available, diags, reads);
                 }
-                ClipNode::Directive(_) => {}
+                ClipNode::Directive(d) => {
+                    // 0.51.0 §5.2: a clip's `text` attribute reads as a call's.
+                    for (attr, text) in cx
+                        .snapshot
+                        .into_iter()
+                        .flat_map(|s| crate::directives::text_values(d, s))
+                    {
+                        check_label_reads(text, cx, &flow.available, attr.value_span, diags, reads);
+                    }
+                }
             }
         }
     }

@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.50.0`, the grammar and semantics the checker
+- **Language** — currently `0.51.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.50.0`) and gated on by consuming engines.
+  artifact (currently `0.51.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,273 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.51.0]
+
+**Flow and text** (spec
+[`0.51.0.md`](docs/proposals/scenario-dsl/0.51.0.md); plan
+[`2026-10-26-lute-0.51.0-flow-and-text.md`](docs/superpowers/plans/2026-10-26-lute-0.51.0-flow-and-text.md);
+decisions [`2026-10-26-lute-0.51-decisions.md`](docs/superpowers/notes/2026-10-26-lute-0.51-decisions.md);
+options [`0.50-extensibility-options.md`](docs/design/0.50-extensibility-options.md)).
+The release answers the large-port dogfood issues #159, #165, #170 and #172
+(the `pair` half) with one kind of control flow every analysis can see, one
+host contract the scenario graph can see, one localizable attribute type and
+one lint target. There is **no new keyword and no new element**: the new
+surface is one core directive attribute (`::jump{max}`), two plugin manifest
+keys (`effects.raises` on directives and reward kinds; `raisedBy` on
+occasions), one attribute type (`text`) and one lint target (`pair`). #176
+(structured attribute values) is decided and not developed. Every axis reads
+`0.51.0`; the contract schemas move to the `0.51` line
+(`schemas/lute-{ir,events,snapshot,player-bindings}-0.51.schema.json`),
+`bindingsVersion` is `"0.51"` and the player's save/profile format is
+`"0.51"`. The seven npm packages align to `0.51.0`. Every report id is
+unchanged; every artifact's `capabilitySnapshot` moves once, because the core
+`jump` declares `max`. This is a clean cutover (ADR D6).
+
+### Breaking
+
+| Class (D6) | Change | Migration |
+|---|---|---|
+| Semantic (stricter) | Definite assignment and stage state join at labels (§3.4). A document whose jump skips a write or a re-entrance gains `E-MAYBE-UNSET` or `W-STAGE-ABSENT`; a skipped write leaves the guaranteed-write envelope; an explicit `::actor` after such a label may gain an injected anchor/preload. | Fix the reported read or staging. No corpus document changed (the three corpus files with `::jump` skip no write and no re-entrance). |
+| Identity (stricter) | `~` is refused in `lineId` templates (`E-IDENTITY-TEMPLATE`) and in codes (`E-LINE-CODE-RESERVED`); final `lineId`s are unique project-wide (`E-LINE-ID-DUP`) (§5.3). | None expected; rename the code or template otherwise. |
+| Language (looser) | `::jump{max}` loops; `code=` and `text` attributes on directives (§3, §5). | None. |
+| IR (additive) | `jump.max` with `lute.core.boundedJump/1`; `plugin.raises`, `plugin.localized`, `rewardEntry.raises` (§3.6, §4.6, §5.4). | Engines MAY read `raises` / `localized`. An engine without `lute.core.boundedJump/1` refuses an artifact that needs it (D5). |
+| Capability | `capabilitySnapshot` of every artifact moves once (core `jump` declares `max`). | Recompile. Engines that pin a snapshot hash update it. |
+| Plugin (additive) | `effects.raises`; `raisedBy`; `type: text` (§4.1, §5.1). | None without the keys. |
+| Lint (additive) | `target: pair` (§6). | None. |
+| Runtime / player | `raises` / `localized` on records; the runtime refuses at load an IR whose loops break the checker's rules; the reference host shell raises declared raises when idle; the **player save shape** gains `pendingRaises` (the Rust runtime `Snapshot` is unchanged) (§3.7, §4.6, §5.6). | Custom hosts perform declared raises and keep their own pending queue across saves (`player/custom-hosts`). |
+| Rust API | `DirectiveEffects.raises`; `RewardEffects.raises`; `OccasionDecl.raised_by`; `Type::Text`; `PluginCmd.raises` / `localized`; `RewardEntry.raises`; `JumpCmd.max`; `LintTarget::Pair` and the rule-body enum; `EdgeKind::Raises`; `check_next_labels` returns `LabelPass`; `assemble_graph` takes `RaiseAnchors`. | Follow the types; the PR carries `api-change`. |
+| TS API | `PluginCall.raises` / `localized`; `SaveRuntime.pendingRaises`; regenerated `Ir.ts` (`raiseRecord`, `localizedText`, `cmdJump.max`). | Additive, except a hand-built `SaveRuntime` adds `pendingRaises`. |
+| Release | All axes `0.51.0`; schemas `-0.51`; `bindingsVersion` and saves `"0.51"`. | Widen gates from `0.50` to `0.51`; a `"0.50"` save is refused as every minor's is. |
+
+### Syntax
+
+- **`::jump{to max}`** (§3.1): a jump with `max` (a literal integer from 1 to
+  99) may target an earlier `::label` in its own body, at most `max` times;
+  after that, control falls through. A loop region runs from the label to
+  the last bounded jump to it; it stays inside one inline body
+  (`E-JUMP-LOOP-SCOPE`, also for a region spanning an `<on>` / `<objective>`
+  at a quest body's top level), is entered only at its head
+  (`E-JUMP-INTO-LOOP`) and nests without crossing (`E-JUMP-LOOP-CROSS`); a
+  bad `max`, or `max` on a forward jump, is `E-JUMP-MAX`. A backward jump
+  without `max` stays `E-JUMP-BACKWARD`, which now names `max`. (#159)
+- **`code=` on a directive with `text` attributes** (§5.2), numbered by
+  `lute tag` per tag in source order; `code=` elsewhere is `E-UNKNOWN-ATTR`
+  naming why. (#165)
+
+### Semantics
+
+- **Bounded backward jumps** (§3.3): each bounded jump has a counter local to
+  one walk; it resets when control arrives at the label from outside the
+  jump's region. A bounded jump does not end its body for
+  `W-CODE-AFTER-JUMP`. (#159)
+- **One label join and a loop-head fixed point** (§3.4): every analysis that
+  threads a state through a body — fact Must, definite assignment (the
+  complete `Flow`, `available` and `writes`), the checker's stage fold and the
+  compiler's stage walk, presence — joins the states of every jump that
+  reaches a label with the fall-through state, and iterates a loop head to a
+  fixed point (bounded passes, then widening to the walk's top). Checker and
+  compiler agree on every label and head state. The 0.50 starting rules
+  (reward asserts, #203 deferred guards, #205 season facts) are unchanged.
+- **Declared raises** (§4.4): a declared raise is a host promise, so it is a
+  may-edge only. An answerer reached only through declared raises is
+  anchored like an accepted quest (`Unknown`, never proven unreachable); a
+  `[raises]` edge that would close a cycle is not drawn, and reachability
+  repeats to its fixed point when such an anchor names a graph source;
+  `occasions_before` follows `[raises]`; clock analyses count declared
+  raises. Raise-only edges stay out of node-envelope writer provenance. (#170)
+- **Directive text** (§5.2): a `text` value takes the choice-label grammar —
+  `{{…}}` interpolations checked like a line's (def inlining, definite
+  assignment, host tokens); an `@ref` is `E-ATTR-TYPE`. (#165)
+
+### IR
+
+- `jump.max` (1..=99, omitted when none; a jump without `max` is
+  byte-identical to 0.50), collected as the new semantic id
+  **`lute.core.boundedJump/1`** only by an artifact with a bounded jump
+  (REGISTRY 17). (#159)
+- `plugin` commands gain `raises` (`raiseRecord`: `occasion`, `target?`,
+  `dynamic?` — `true` only for an `occasion.target` reference) and
+  `localized` (`{ "<attr>": { lineId, placeholders?, texts? } }`);
+  `RewardEntry` gains `raises`. Both are descriptive: no semantic id, and a
+  reward whose kind declares only `raises` does not collect
+  `lute.quest.rewardEffects/1`. (#165, #170)
+- The schema is `schemas/lute-ir-0.51.schema.json` (title `irVersion 0.51.x`).
+
+### Plugin
+
+- **`effects.raises`** on directives and reward kinds: `[{ occasion, target? }]`,
+  a target being a literal or `@attr` (`@target` on a reward kind). Load
+  faults are `E-PLUGIN-PARSE`; `raises` on a record- or builtin-lowered
+  directive is `E-PLUGIN-INVALID-DIRECTIVE`; an unknown occasion or a target
+  of the wrong shape or type is `E-PLUGIN-RAISES` at assembly. (#170)
+- **`raisedBy: declared`** on an occasion: only declared raises raise it, so
+  an answerer nothing raises is `W-OCCASION-NEVER-RAISED`. (#170)
+- **`type: text`** on a directive attribute of a directive that compiles to a
+  `plugin` record: localizable text with the identity
+  `{prefix}~{tag}~{code}~{attr}`. Refused (`E-PLUGIN-PARSE`) on a lowered or
+  bridge directive, with a `default:`, beside a declared `code` attribute, and
+  at every other declared type position; a scoped `code` stamp on such a
+  directive is `E-PLUGIN-RESERVED-STAMP-ATTR`. (#165)
+- The `list` / `map` / `record` refusal (`E-PLUGIN-INVALID-DIRECTIVE`) names
+  the scalar decompositions instead of a host-parsed JSON string (§7, #176).
+- `schemas/lute.plugin.json` gains `raises`, `raisedBy` and `text`.
+
+### Bindings
+
+- None. `bindingsVersion` is `"0.51"`.
+
+### CLI
+
+- `lute scenario` / `scenario reach` draw `[raises]` edges (dot: `raises`);
+  the envelope prints `raised by <call> in <node>`. `lute impact` follows
+  neither `[raises]` nor `[accept]` ([#210](https://github.com/journeyWorker/lute/issues/210)). (#170)
+- `lute play` appends `→ raises <occasion> <target>` to plugin and grant
+  lines.
+- `lute loc export` emits directive text rows (`kind: "directive"`, `key`
+  `<tag>.<attr>`, `code` filled, no new CSV column) and advises `N directive
+  texts untagged — run lute tag`; `loc import` accepts the kind; `loc report`
+  counts `directiveTexts`; `--locale-bundle` merges them with
+  `W-L10N-MISSING` / `W-L10N-STALE`. `lute tag` / `--renumber` number
+  directive codes, a component under its users' snapshots
+  (`E-COMPONENT-TEXT-DIRECTIVE` when users disagree). (#165)
+- `lute trace` prints each bounded jump as `<jump -> L (again 1/2)>` and its
+  exhausted fall-through as `<jump -> L not taken (2/2 used)>`. (#159)
+- `lute context` and the LSP hover describe `jump`'s `max`.
+- Every report id is unchanged; every other output is identical to 0.50.0
+  apart from stamps and the classes the spec's §13 lists.
+
+### Lint
+
+- **`target: pair`** (plugin `lints:` exports and `lute.lint.yaml`
+  `custom:`): `open`, `close` and optional `inside` predicates over `node`
+  rows find unclosed, unopened, nested and misplaced pairs, in `body` (each
+  body's direct children) or `section` scope; a node matching both is a close
+  while a pair is open; `when` is refused. Shape faults are `E-LINT-CONFIG`
+  / `E-PLUGIN-PARSE`, an explicitly null key included; `E-LINT-EXPR` names
+  the rule and predicate. The LSP evaluates `pair` rules in-document.
+  `lute-bench lint-nodes` gains the `pair` and payload axes. (#172)
+
+### Runtime
+
+- Bounded-jump counters per walk, rebuilt by replay (no snapshot field); the
+  runaway guard counts steps since the last taken bounded jump. At load the
+  runtime re-checks the loop topology on the IR and refuses a backward
+  transfer without `max`, crossing loops and a `max` outside 1..=99, and a
+  malformed `dynamic` raise. (#159)
+- A label inside a component is compiled per `::use` instance, so a
+  component used twice jumps to its own labels ([#207](https://github.com/journeyWorker/lute/issues/207)).
+- `plugin` (and halted) records and the bridge await carry each `text`
+  attribute rendered once into `attrs`, and the record its `localized`
+  (`lineId`, rendered `texts`), host-token markers kept verbatim; `lute run`
+  drops `localized`. (#165)
+- `plugin` and `grant` records carry the resolved `raises`; an
+  `occasion.target` raise is bound to the running occasion's target. (#170)
+- `conformance/bounded-jump` and `conformance/session/bounded-jump` (a save
+  in the loop's second iteration resumes identically).
+
+### Player
+
+- The host shell performs declared raises: every applied output's `plugin` /
+  `grant` raises (start outputs included) are queued as `PendingRaise` and
+  delivered as `raiseOccasion` on the director's idle flow (after a batch,
+  load or rollback settles at `idle`; not at `ended`), under the session
+  lock, without a rollback checkpoint, so a player input and its raises are
+  one rollback step; a rejected raise is logged and dropped, and the head is
+  kept on an `InputLog` failure. An accepted `newRun`, start point or lineage
+  replacement replaces the queue. (#170)
+- The save and profile format version is `"0.51"`; `SaveRuntime.pendingRaises`
+  is required, so a 0.50 save is refused `SaveIncompatible`.
+- `PluginCall.raises` / `localized`; plugin cues are deferred like line cues,
+  so a call reads the locale current when it runs; `bundleLocales` reads
+  plugin `localized.<attr>.texts`. (#165)
+
+### Diagnostics
+
+- New: `E-JUMP-MAX`, `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP`,
+  `E-JUMP-LOOP-CROSS` (source); `E-PLUGIN-RAISES` (plugin assembly);
+  `E-RAISES-TARGET`, `W-OCCASION-NEVER-RAISED`, `E-LINE-ID-DUP` (project);
+  `E-LINE-CODE-RESERVED` (source); `E-COMPONENT-TEXT-DIRECTIVE` (`lute tag`).
+- Changed messages, sites and `--explain` text: `E-JUMP-BACKWARD`,
+  `E-MAYBE-UNSET`, `W-STAGE-ABSENT`, `W-CODE-AFTER-JUMP`, `E-PLUGIN-PARSE`,
+  `E-PLUGIN-RESERVED-STAMP-ATTR`, `E-ATTR-TYPE`, `E-UNKNOWN-ATTR`,
+  `E-DUP-LINE-CODE`, `E-IDENTITY-TEMPLATE`, `W-LINE-CODE-UNTAGGED`,
+  `W-L10N-MISSING`, `W-L10N-STALE`, `E-LINT-CONFIG`, `E-LINT-EXPR`,
+  `E-PLUGIN-INVALID-DIRECTIVE`, `E-STATE-DECL`, `W-BEAT-UNRAISED`,
+  `W-CHAPTER-STALL`.
+
+### Identity
+
+- Directive text ids are `{prefix}~{tag}~{code}~{attr}`, outside the
+  `lineId` template; `~` is refused in templates and codes; final ids are
+  unique project-wide. Existing line ids and voice keys do not move;
+  `eventVersion` / `snapshotVersion` read `0.51.0`.
+
+### Fixed
+
+- **A retry loop has a spelling, with no false `W-CODE-AFTER-*` and no hidden
+  edge.** ([#159](https://github.com/journeyWorker/lute/issues/159))
+- **Plugin directive attributes can carry localizable text** (`lineId`,
+  `loc export`, missing-translation checks). ([#165](https://github.com/journeyWorker/lute/issues/165))
+- **A scene can present another scene through a declared raise, visible to
+  the scenario graph and reachability.** ([#170](https://github.com/journeyWorker/lute/issues/170))
+- **Pairing lints (`target: pair`).** ([#172](https://github.com/journeyWorker/lute/issues/172): `node` shipped in 0.50,
+  `pair` now; closes it)
+- **Definite assignment and stage state no longer ignore forward jumps.**
+  ([#215](https://github.com/journeyWorker/lute/issues/215))
+- **A `::jump` in a component used twice targets its own instance's label.**
+  ([#207](https://github.com/journeyWorker/lute/issues/207))
+
+### Not developed
+
+- #176 structured attribute values (`list`, `map`, `record`): deferred, not
+  covered (decision note, spec §7). The refusal stays and names the scalar
+  decompositions: one attribute per field, a `text` attribute for
+  player-visible text, `<choice>` elements for a set of options. Generic
+  enum-list metadata and language-keyed voice-asset maps have no 0.51
+  spelling.
+- #159 B/C and the host flow effect; #170 A/B and payload in `raises`; #172
+  scene-graph targets; per-iteration branch `presentation`.
+
+### Documentation
+
+- Website (EN/KO) and `llms-full.txt`: bounded backward jumps
+  (`language/directives`, `language/choices-and-hubs`), declared raises
+  (`plugins/manifests`, `connectivity/*`, `tooling/runtime-contract`,
+  `player/*`), directive text (`language/dialogue-and-cast`, `tooling/cli`),
+  `pair` lints (`tooling/linting`), the ink/Yarn and porting guides,
+  `reference/diagnostics`, `reference/cheatsheet`, `spec/current` (0.51.0
+  supersedes the 0.1.0 non-goal of backward diverts) and `spec/index`;
+  `docs/runtime/{execution-model,event-contract,quest-lifecycle}.md`.
+- New example project `docs/examples/flow-and-text/`.
+
+### Out of scope
+
+- **Open follow-ups:** `lute impact` does not follow `[accept]` or
+  `[raises]` edges ([#210](https://github.com/journeyWorker/lute/issues/210)); a literal `{{` cannot be written in a quoted
+  attribute value ([#211](https://github.com/journeyWorker/lute/issues/211)); the project quest-reference check does not read
+  `{{quest.…}}` in directive text ([#212](https://github.com/journeyWorker/lute/issues/212)); `loc export` units in a choice
+  body inside a component expansion use the document prefix ([#213](https://github.com/journeyWorker/lute/issues/213)).
+- **Found, not fixed:** a forward `::jump` out of a hub option body
+  re-presents the hub ([#216](https://github.com/journeyWorker/lute/issues/216)); the `<hub>` stage walk forks every option
+  from the hub's entry state ([#217](https://github.com/journeyWorker/lute/issues/217)); option labels' `{{…}}` markers are
+  not rendered ([#218](https://github.com/journeyWorker/lute/issues/218)); `[accept]` writers listed as provably before the
+  accepted quest ([#209](https://github.com/journeyWorker/lute/issues/209)); `lute test --project` prints the discovery note
+  ([#214](https://github.com/journeyWorker/lute/issues/214)).
+
+### Migration notes
+
+| Class | Change | Migration |
+|---|---|---|
+| Semantic | Label joins: a read after a label a skipping jump reaches is `E-MAYBE-UNSET`; a line there may be `W-STAGE-ABSENT`. | Set the value on every path, or re-show the character. |
+| Identity | `~` refused in `lineId` templates and codes; duplicate final ids are `E-LINE-ID-DUP`. | Rename the code or template. |
+| IR | `jump.max`, `lute.core.boundedJump/1`, `raises`, `localized`. | Read them when needed; implement the semantic id before running artifacts that need it; gate on `0.51`. |
+| Capability | Every `capabilitySnapshot` moves. | Recompile; update pinned hashes. |
+| Player | Saves are `"0.51"` and carry `pendingRaises`. | Re-save; a custom host keeps its own pending raises. |
+| Release | All axes `0.51.0`; schemas `-0.51`; `bindingsVersion: "0.51"`. | Widen gates from `0.50` to `0.51`. |
+
+From 0.50.0: run `lute fix` to raise `luteVersion` stamps to `0.51.0` and
+`bindingsVersion` to `"0.51"`.
 
 ## [0.50.0]
 

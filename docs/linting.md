@@ -45,7 +45,7 @@ custom:
 
 | key | type | default | meaning |
 | --- | --- | --- | --- |
-| `lsp` | boolean | `false` | Publishes lint findings for open documents in the LSP only when this config file exists and sets it to `true`. Linting is otherwise absent from the LSP, even if rules are configured. LSP evaluates `line`, `section`, `scene`, `speaker`, `group`, and `node` targets; `project` rules are CLI-only in v1. |
+| `lsp` | boolean | `false` | Publishes lint findings for open documents in the LSP only when this config file exists and sets it to `true`. Linting is otherwise absent from the LSP, even if rules are configured. LSP evaluates `line`, `section`, `scene`, `speaker`, `group`, `node` and `pair` targets; `project` rules are CLI-only in v1. |
 | `ignore` | list of project-root-relative globs | `[]` | Documents excluded from linting. |
 | `rules` | map | `{}` | Per-rule level and option overrides for core and active plugin rules. |
 | `custom` | list of rules | `[]` | Project-local declarative CEL rules. |
@@ -70,11 +70,18 @@ Every custom entry has the same shape as a plugin rule:
 | key | required | meaning |
 | --- | --- | --- |
 | `id` | yes | Project-local bare rule id. |
-| `target` | yes | `line`, `section`, `scene`, `speaker`, `group`, `project`, or `node`. |
-| `when` | yes | A CEL assertion over the target row and `options`; it fires when `true`. |
+| `target` | yes | `line`, `section`, `scene`, `speaker`, `group`, `project`, `node`, or `pair`. |
+| `when` | yes, except on `pair` | A CEL assertion over the target row and `options`; it fires when `true`. Refused on `pair`. |
+| `open`, `close` | on `pair` only, both required | CEL predicates over the `node` row: where a pair begins and where it ends ([Pair rules](#pair-rules)). |
+| `inside` | no; `pair` only | A CEL predicate every row between an open and its close must satisfy. |
+| `scope` | no; `pair` only | `body` (the default) or `section`. |
 | `level` | no | `off`, `hint`, `info`, `warn`, or `error`. |
 | `message` | yes | Finding text. `{path.to.field}` interpolates a metric or option path. `{expr:%}` renders shares as percentages. |
-| `options` | no | Defaults exposed to `when` and the message. |
+| `options` | no | Defaults exposed to the predicates and the message. |
+
+A key that does not fit the target—`when` on `pair`, or `open`, `close`,
+`inside` or `scope` on any other target—or a `pair` rule without `open` or
+`close`, is `E-LINT-CONFIG` here and `E-PLUGIN-PARSE` in a plugin's `lints/`.
 
 The lint CEL fragment is ground-only: no `@ref` or `$` DSL tokens, state paths,
 or macros (`filter`, `map`, `exists`). It supports the shared ground-operation
@@ -82,7 +89,7 @@ semantics, metric-path selection and map indexing, `size()` for strings,
 lists, and maps, and the string members `s.startsWith(t)`, `s.endsWith(t)` and
 `s.contains(t)` (member-call form only; both operands must be strings). There
 are no regular expressions. An unresolved field (an absent map key included), a
-type mismatch, or a non-boolean `when` result is `E-LINT-EXPR`, reported once at
+type mismatch, or a non-boolean predicate result is `E-LINT-EXPR`, reported once at
 the rule declaration, and skips that rule for that document—it is never a
 silent pass. `&&` and `||` short-circuit, so a rule guards each key it indexes
 (`"x" in node.attrs && node.attrs["x"] == "y"`).
@@ -236,6 +243,72 @@ lints:
 These rules are shown as a plugin's `lints/*.yaml`; the same entries work under
 `custom:` in `lute.lint.yaml`.
 
+### Pair rules
+
+A `pair` rule checks that an opening node has a matching closing node. It
+states three predicates over the `node` row above: `open` (a row that begins a
+pair), `close` (a row that ends it) and the optional `inside` (every row
+strictly between them must satisfy it). `scope` picks the rows one pass
+balances:
+
+- `body` (the default): each body's direct children, in order. A pair opened
+  in a `<choice>` must close in that choice, and with `inside` only the
+  siblings between the two are checked, not their descendants.
+- `section`: every row of one section or top-level declaration in document
+  order, at every depth. It is document order, not paths: an open before a
+  `<branch>` and a close inside one of its choices pair up, and so do an open
+  in one `<choice>` and a close in its sibling; a close in each of two sibling
+  choices leaves the second without an open pair.
+
+Each pass holds one open pair at a time. At each row, while a pair is open, a
+row for which `close` holds closes it; otherwise a row for which `open` holds is
+a nested open (the outer pair stays open), and otherwise, with `inside`, a row
+for which `inside` is false is an inside fault. With no pair open, `open` opens
+one and `close` is a close with no open pair. A row that satisfies both
+predicates is therefore a close while a pair is open and an open otherwise. An
+open still unclosed when its body or section ends is reported at the open.
+
+A finding carries the rule's code and level, is anchored at the offending row,
+and appends one fixed phrase to the rendered message:
+
+| fault | phrase |
+| --- | --- |
+| unclosed open | `— opened here, with no close in this body` (`section` scope: `in this section`) |
+| close with no open pair | `— a close with no open pair in this body` (`section` scope: `in this section`) |
+| nested open | `— opened again while the pair from line N is still open` |
+| inside fault | `— not allowed inside the pair opened at line N` |
+
+A nested open and an inside fault also name the open row as a related
+location. As for `node` rules, every index a predicate takes must be guarded.
+
+```yaml
+lints:
+  - id: group-balanced
+    target: pair
+    open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'
+    scope: body
+    level: error
+    message: "::group begin/end"
+  # An open before a branch, its close inside a choice.
+  - id: letterbox-balanced
+    target: pair
+    open:  'node.tag == "letterbox" && "on" in node.attrs'
+    close: 'node.tag == "letterbox" && "off" in node.attrs'
+    scope: section
+    level: warn
+    message: "::letterbox on/off"
+```
+
+With `group-balanced`, a `::bg` between `::group{mode="begin"}` and
+`::group{mode="end"}` in one body is reported as `::group begin/end — not
+allowed inside the pair opened at line N`, N being the begin's line; a line or
+an `::sfx` there is not. A `<branch>` between them is itself a sibling and is
+reported, but the rows inside it are not checked. With `letterbox-balanced`,
+`::letterbox{on}` before a `<branch>` and `::letterbox{off}` in its one
+`<choice>` balance; as a `body` rule the same document would report both.
+
 ## Core rules
 
 All seven core rules are enabled by default. `asset-exists` is inert without a
@@ -271,18 +344,19 @@ lints:
 
 The loader keeps `id` raw. When a plugin id is `my-plugin`, the active rule id is
 `my-plugin/variant-coverage`, which is the name users put under `rules:` and the
-basis for its diagnostic code. A malformed plugin entry is `E-LINT-RULE` at load
-time and is skipped. Plugin rules come from the project's **default profile**
-activation — one rule set per project root, applied to every document
-(per-document profile activation is a future refinement).
+basis for its diagnostic code. A malformed plugin entry is `E-PLUGIN-PARSE` at
+load time (reported by `lute check`), and the plugin does not load. Plugin rules
+come from the project's **default profile** activation — one rule set per
+project root, applied to every document (per-document profile activation is a
+future refinement).
 
 A plugin rule is data only: it asserts over the core-computed rows above.
 Structural predicates — what follows, precedes or encloses a node, and which
 attribute values another attribute allows — are `node` rules. A rule that needs
-another metric or evaluation primitive is a core change, not a YAML extension;
-balanced pairs (an opener that needs a matching closer) are planned as a `pair`
-target in 0.51. Plugin lint declarations are advisory and are excluded from both
-the capability snapshot and `capabilitySnapshot`.
+another metric or evaluation primitive is a core change, not a YAML extension.
+Balanced pairs (an opener that needs a matching closer) are `pair` rules. Plugin
+lint declarations are advisory and are excluded from both the capability
+snapshot and `capabilitySnapshot`.
 
 ## Codes, denial, and exit status
 

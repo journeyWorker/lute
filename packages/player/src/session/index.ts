@@ -1,9 +1,9 @@
 /** Runtime-backed player session with rollback, saves, and backlog. */
-import { Context, Effect, Exit, Layer, Schema, Semaphore, SubscriptionRef } from "effect"
+import { Context, Effect, Exit, Layer, Result, Schema, Semaphore, SubscriptionRef } from "effect"
 import { Session as RuntimeSession } from "@lute-lang/runtime"
 import type { Contract, Errors } from "@lute-lang/runtime"
-import { recordTranslations } from "../cues/index.js"
-import type { Bindings, Input, InputPoint, LogEntry, Output, SaveRuntime } from "../model.js"
+import { declaredRaises, recordTranslations } from "../cues/index.js"
+import type { Bindings, Input, InputPoint, LogEntry, Output, PendingRaise, SaveRuntime } from "../model.js"
 import type { BacklogEntry, Settings } from "../ports/index.js"
 
 /** A failed rollback when no earlier input point is retained. */
@@ -54,6 +54,8 @@ interface PointRecord {
   readonly snapshot: Contract.Snapshot
   readonly log: ReadonlyArray<LogEntry>
   readonly backlog: ReadonlyArray<BacklogEntry>
+  /** The pending raises before the player input (0.51.0 §4.6). */
+  readonly pendingRaises: ReadonlyArray<PendingRaise>
 }
 
 /** Session service contract used by the director. */
@@ -76,8 +78,20 @@ export interface PlayerSessionShape {
   readonly current: Effect.Effect<InputPoint>
   readonly rollback: (steps: number) => Effect.Effect<InputPoint, NothingToRollback | Errors.RuntimeRejection | Errors.InputLogError>
   readonly snapshot: Effect.Effect<SaveRuntime, Errors.RuntimeRejection>
-  /** Continue from a save: runtime snapshot, input log and backlog; the rollback history is cleared. */
+  /** Continue from a save: runtime snapshot, input log, backlog and pending raises; the rollback history is cleared. */
   readonly restore: (save: SaveRuntime) => Effect.Effect<InputPoint, SaveIncompatible | Errors.RuntimeRejection | Errors.InputLogError>
+  /**
+   * Deliver the next pending declared raise (0.51.0 §4.6) while the runtime
+   * waits at `idle`: take the head of the queue, remove it and send it as a
+   * `raiseOccasion` input, at once under the session lock, so a raise is
+   * delivered exactly once. The send takes no rollback checkpoint: a raise
+   * belongs to the rollback step of the player input that caused it. A raise
+   * the runtime rejects is logged and dropped, and the next one is tried; one
+   * whose input log fails was not applied, so it stays at the head and the
+   * call fails with the `InputLogError`. `undefined` when the queue is empty
+   * or the runtime does not wait at `idle`.
+   */
+  readonly deliverRaise: Effect.Effect<Output | undefined, Errors.InputLogError>
   readonly backlog: SubscriptionRef.SubscriptionRef<ReadonlyArray<BacklogEntry>>
   readonly idle: Effect.Effect<IdleResult | undefined>
   readonly fingerprint: string
@@ -122,6 +136,29 @@ export const localizedEntry = (entry: BacklogEntry, locale: string): BacklogEntr
   const translated = entry.texts?.[locale]
   return translated === undefined ? entry : { ...entry, text: translated }
 }
+
+/**
+ * The declared raises of an output (0.51.0 §4.6): each record's `raises`,
+ * in record order and list order, tagged with the record's source and the
+ * input-log index of the entry the output answers.
+ */
+const raisesOf = (output: Output, logIndex: number): ReadonlyArray<PendingRaise> => {
+  const result: PendingRaise[] = []
+  for (const event of output.events) {
+    if (event.type !== "record" || typeof event.record !== "object" || event.record === null || !("raises" in event.record)) continue
+    const position = "position" in event.record && typeof event.record.position === "string" ? event.record.position : undefined
+    for (const raise of declaredRaises(event.record.raises)) {
+      result.push({ ...raise, document: event.document, ...(position === undefined ? {} : { position }), logIndex })
+    }
+  }
+  return result
+}
+
+const raiseInput = (raise: PendingRaise): Input => ({
+  type: "raiseOccasion",
+  occasion: raise.occasion,
+  ...(raise.target === undefined ? {} : { target: raise.target })
+})
 
 const linesFromOutput = (output: Output, cast: Readonly<Record<string, string>>): ReadonlyArray<BacklogEntry> => {
   const result: BacklogEntry[] = []
@@ -174,6 +211,8 @@ export const layer = (
     const startEntry: LogEntry = options.seed === undefined ? { snapshot: start } : { seed: options.seed }
     let log: ReadonlyArray<LogEntry> = [startEntry]
     let history: ReadonlyArray<PointRecord> = []
+    // 0.51.0 §4.6: the declared raises the host still owes, in delivery order.
+    let pending: ReadonlyArray<PendingRaise> = []
     // No input accepted since the player session was built: `begin` presents `started`.
     let fresh = true
 
@@ -183,26 +222,56 @@ export const layer = (
       return point(state, entries.length, log.length)
     })
 
-    const send = Effect.fn("Lute.Player.Session.send")(function* (input: Input) {
-      const before = yield* runtime.save
-      const beforeState = yield* SubscriptionRef.get(runtime.current)
+    /**
+     * Submit `input`. A player input (`checkpoint`) first keeps the rollback
+     * point before it; an automatic declared raise does not, so it belongs to
+     * the rollback step of the player input that caused it (0.51.0 §4.6).
+     */
+    const submit = Effect.fn("Lute.Player.Session.send")(function* (input: Input, checkpoint: boolean) {
       const beforeBacklog = yield* SubscriptionRef.get(backlog)
       const beforeLog = log
-      const beforePoint = point(beforeState, beforeBacklog.length, beforeLog.length)
+      let before: PointRecord | undefined
+      if (checkpoint) {
+        const snapshot = yield* runtime.save
+        const state = yield* SubscriptionRef.get(runtime.current)
+        before = { point: point(state, beforeBacklog.length, beforeLog.length), snapshot, log: beforeLog, backlog: beforeBacklog, pendingRaises: pending }
+      }
       const output = yield* runtime.send(input)
-      history = depth === 0 ? [] : [...history, { point: beforePoint, snapshot: before, log: beforeLog, backlog: beforeBacklog }].slice(-depth)
+      if (before !== undefined) history = depth === 0 ? [] : [...history, before].slice(-depth)
       log = [...beforeLog, { input }]
+      // An accepted `newRun` starts a run: the old pending raises go, and the
+      // start output's are queued once, like any output's.
+      const raised = raisesOf(output, beforeLog.length)
+      pending = input.type === "newRun" ? raised : [...pending, ...raised]
       fresh = false
       const added = linesFromOutput(output, cast)
       yield* SubscriptionRef.set(backlog, [...beforeBacklog, ...added])
       return output
     })
 
+    const deliverRaise = Effect.gen(function* () {
+      while (pending.length > 0 && (yield* SubscriptionRef.get(runtime.current)).await.type === "idle") {
+        const [head, ...rest] = pending
+        if (head === undefined) break
+        pending = rest
+        const sent = yield* Effect.result(submit(raiseInput(head), false))
+        if (Result.isSuccess(sent)) return sent.success
+        // Its input log failed, so the runtime did not apply it: still owed.
+        if (sent.failure._tag === "InputLogError") {
+          pending = [head, ...pending]
+          return yield* Effect.fail(sent.failure)
+        }
+        yield* Effect.logWarning("the runtime refused a declared raise; it is dropped", sent.failure, head)
+      }
+      return undefined
+    }).pipe(Effect.withSpan("Lute.Player.Session.deliverRaise"))
+
     /** Back to where the player session started: the snapshot captured when it was built. */
     const toStart = Effect.gen(function* () {
       yield* runtime.restore(start)
       log = [startEntry]
       history = []
+      pending = []
       yield* SubscriptionRef.set(backlog, [])
     })
 
@@ -218,8 +287,9 @@ export const layer = (
       if (Exit.isSuccess(restored)) {
         log = [{ snapshot: lineage }]
         history = []
+        pending = []
         yield* SubscriptionRef.set(backlog, [])
-        const sent = yield* Effect.exit(send({ type: "newRun" }))
+        const sent = yield* Effect.exit(submit({ type: "newRun" }, true))
         if (Exit.isSuccess(sent)) return sent.value
         yield* Effect.logWarning("the lineage refused newRun; New game starts from the start point", sent.cause)
         yield* toStart
@@ -231,7 +301,7 @@ export const layer = (
     const begin = Effect.gen(function* () {
       const waiting = (yield* SubscriptionRef.get(runtime.current)).await
       let first: Output | undefined
-      if (waiting.type === "ended" || (!fresh && waiting.type === "idle")) first = yield* send({ type: "newRun" })
+      if (waiting.type === "ended" || (!fresh && waiting.type === "idle")) first = yield* submit({ type: "newRun" }, true)
       else first = yield* continueLineage
       if (first === undefined) {
         let fromStart = fresh
@@ -239,11 +309,15 @@ export const layer = (
           yield* toStart
           fromStart = !acceptsNewRun(start.await)
         }
-        first = fromStart ? runtime.started : yield* send({ type: "newRun" })
+        if (fromStart) {
+          // The start output is presented again: its raises are the queue.
+          first = runtime.started
+          pending = raisesOf(first, 0)
+        } else first = yield* submit({ type: "newRun" }, true)
       }
       const newGame = options.bindings.flow?.newGame
       if (newGame == null) return first
-      const raised = yield* send({ type: "raiseOccasion", occasion: newGame.occasion, ...(newGame.target == null ? {} : { target: newGame.target }) })
+      const raised = yield* submit({ type: "raiseOccasion", occasion: newGame.occasion, ...(newGame.target == null ? {} : { target: newGame.target }) }, true)
       return { ...raised, events: [...first.events, ...raised.events] } satisfies Output
     }).pipe(Effect.withSpan("Lute.Player.Session.begin"))
 
@@ -255,6 +329,7 @@ export const layer = (
       if (target === undefined) return yield* Effect.fail(new NothingToRollback({ steps }))
       yield* runtime.restore(target.snapshot)
       log = target.log
+      pending = target.pendingRaises
       fresh = false
       yield* SubscriptionRef.set(backlog, target.backlog)
       history = history.slice(0, history.length - steps)
@@ -264,7 +339,7 @@ export const layer = (
     const snapshot = Effect.gen(function* () {
       const runtimeSnapshot = yield* runtime.save
       const entries = yield* SubscriptionRef.get(backlog)
-      return { snapshot: runtimeSnapshot, log, backlog: entries } satisfies SaveRuntime
+      return { snapshot: runtimeSnapshot, log, backlog: entries, pendingRaises: pending } satisfies SaveRuntime
     })
 
     const restore = Effect.fn("Lute.Player.Session.restore")(function* (save: SaveRuntime) {
@@ -273,6 +348,7 @@ export const layer = (
       }
       yield* runtime.restore(save.snapshot)
       log = save.log
+      pending = save.pendingRaises
       fresh = false
       yield* SubscriptionRef.set(backlog, save.backlog)
       const state = yield* SubscriptionRef.get(runtime.current)
@@ -284,11 +360,13 @@ export const layer = (
 
     return {
       begin: lock.withPermits(1)(begin),
-      send: (input: Input) => lock.withPermits(1)(send(input)),
+      send: (input: Input) => lock.withPermits(1)(submit(input, true)),
       current: lock.withPermits(1)(currentPoint),
       rollback: (steps: number) => lock.withPermits(1)(rollback(steps)),
       snapshot: lock.withPermits(1)(snapshot),
       restore: (save: SaveRuntime) => lock.withPermits(1)(restore(save)),
+      // Uninterruptible: a raise taken off the queue is always sent.
+      deliverRaise: lock.withPermits(1)(Effect.uninterruptible(deliverRaise)),
       backlog,
       idle: Effect.succeed(idle(options.bindings)),
       fingerprint: runtime.fingerprint

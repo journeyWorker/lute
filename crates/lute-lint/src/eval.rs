@@ -24,6 +24,7 @@
 //! [`apply_op`]: lute_check::apply_op
 
 use std::borrow::Cow;
+use std::cell::Cell;
 use std::collections::BTreeMap;
 
 use cel_parser::ast::{operators as op, CallExpr, Expr, IdedExpr};
@@ -159,9 +160,13 @@ impl Ref<'_> {
 /// resolve to a missing-field error the moment they're read. A binding is
 /// owned, borrowed (a shared `options` map is bound once per rule, not
 /// copied per row) or a [`Record`].
+///
+/// The env also counts the characters its evaluations scan in string
+/// operations ([`Env::chars_scanned`], dsl 0.51.0 §6.2 "Cost").
 #[derive(Debug, Default)]
 pub struct Env<'a> {
     bindings: Vec<(&'a str, Ref<'a>)>,
+    chars: Cell<u64>,
 }
 
 impl<'a> Env<'a> {
@@ -198,6 +203,24 @@ impl<'a> Env<'a> {
             .iter()
             .find(|(n, _)| *n == name)
             .map(|(_, r)| r.reborrow())
+    }
+    /// The characters every evaluation under this env scanned in a string
+    /// operation, so far:
+    ///
+    /// - `size(s)`: the characters of `s`;
+    /// - `s == t`, `s != t`: the characters of `s` when `s` and `t` have the
+    ///   same byte length (otherwise the lengths decide, with no scan);
+    /// - `s.startsWith(t)`, `s.endsWith(t)`: the characters of `t` when `t`
+    ///   is no longer than `s` (otherwise no scan);
+    /// - `s.contains(t)`: the characters of `s`.
+    pub fn chars_scanned(&self) -> u64 {
+        self.chars.get()
+    }
+    fn scan(&self, s: &str) {
+        self.scanned(s.chars().count());
+    }
+    fn scanned(&self, chars: usize) {
+        self.chars.set(self.chars.get() + chars as u64);
     }
 }
 
@@ -361,7 +384,11 @@ fn eval_call<'e>(c: &CallExpr, env: &'e Env<'_>) -> Result<Ref<'e>, EvalError> {
             let len = match &v {
                 Ref::Record(r) => r.len(),
                 v => match v.value() {
-                    Some(Value::Str(s)) => s.chars().count(),
+                    Some(Value::Str(s)) => {
+                        let chars = s.chars().count();
+                        env.scanned(chars);
+                        chars
+                    }
                     Some(Value::List(l)) => l.len(),
                     Some(Value::Map(m)) => m.len(),
                     _ => return Err(EvalError::new(format!("size() on {} value", v.type_name()))),
@@ -388,7 +415,15 @@ fn eval_call<'e>(c: &CallExpr, env: &'e Env<'_>) -> Result<Ref<'e>, EvalError> {
         ) => {
             let av = resolve(&a.expr, env)?;
             let bv = resolve(&b.expr, env)?;
-            apply_scalar(name, &[&av.as_value(), &bv.as_value()]).map(Ref::Owned)
+            let (av, bv) = (av.as_value(), bv.as_value());
+            if let (op::EQUALS | op::NOT_EQUALS, Value::Str(s), Value::Str(t)) =
+                (name, av.as_ref(), bv.as_ref())
+            {
+                if s.len() == t.len() {
+                    env.scan(s);
+                }
+            }
+            apply_scalar(name, &[&av, &bv]).map(Ref::Owned)
         }
         (op::NEGATE, [a]) => {
             let av = resolve(&a.expr, env)?;
@@ -424,7 +459,15 @@ fn member_call(
     let s = resolve(&target.expr, env)?;
     let t = resolve(&args[0].expr, env)?;
     match (s.value(), t.value()) {
-        (Some(Value::Str(s)), Some(Value::Str(t))) => Ok(Value::Bool(test(s, t))),
+        (Some(Value::Str(s)), Some(Value::Str(t))) => {
+            // The operand the member scans (see [`Env::chars_scanned`]).
+            if name == "contains" {
+                env.scan(s);
+            } else if t.len() <= s.len() {
+                env.scan(t);
+            }
+            Ok(Value::Bool(test(s, t)))
+        }
         _ => Err(EvalError::new(format!(
             "`.{name}` needs string operands, got {} and {}",
             s.type_name(),
@@ -792,6 +835,31 @@ mod tests {
             (r#""별빛".startsWith("별")"#, true),
         ] {
             assert_eq!(run(raw, &e), Ok(Value::Bool(want)), "{raw}");
+        }
+    }
+
+    // dsl 0.51.0 §6.2: the characters each string operation scans, counted
+    // per env (`speaker` is `alice`, 5 characters).
+    #[test]
+    fn string_operations_count_the_characters_they_scan() {
+        for (raw, chars) in [
+            ("size(line.speaker)", 5),
+            (r#""별빛" == "별빛""#, 2),
+            (r#"line.speaker == "bobby""#, 5),
+            (r#"line.speaker != "bob""#, 0),
+            (r#"line.speaker.startsWith("al")"#, 2),
+            (r#"line.speaker.endsWith("alice!")"#, 0),
+            (r#"line.speaker.contains("z")"#, 5),
+            (r#"line.words == 41"#, 0),
+            (r#"size(line.attrs) + size("ab")"#, 2),
+            (
+                r#"size(line.speaker) > 1 && line.speaker.endsWith("ce")"#,
+                7,
+            ),
+        ] {
+            let e = scenario_env();
+            run(raw, &e).expect(raw);
+            assert_eq!(e.chars_scanned(), chars, "{raw}");
         }
     }
 

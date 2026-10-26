@@ -101,6 +101,10 @@ pub enum AssembleError {
         kind: String,
         provider: String,
     },
+    /// 0.51.0 §4.2 (#170): a directive's or reward kind's `effects.raises`
+    /// entry names an occasion no active plugin declares, or a target of the
+    /// wrong shape or type. The entry is dropped; its siblings land.
+    Raises(crate::raises::RaiseError),
 }
 
 impl AssembleError {
@@ -124,6 +128,7 @@ impl AssembleError {
             AssembleError::StampSurface { .. } => "E-PLUGIN-STAMP-SURFACE",
             AssembleError::DomainSemantics { issue, .. } => issue.code(),
             AssembleError::UnknownRewardKindTarget { .. } => "E-PLUGIN-UNKNOWN-REWARD-TARGET",
+            AssembleError::Raises(_) => "E-PLUGIN-RAISES",
         }
     }
 }
@@ -294,6 +299,7 @@ impl std::fmt::Display for AssembleError {
                 "plugin `{plugin}` reward kind `{kind}` pins `target: {{ provider: \
                  {provider} }}`, which no active plugin declares"
             ),
+            AssembleError::Raises(e) => write!(f, "{e}"),
         }
     }
 }
@@ -580,7 +586,10 @@ pub fn assemble_snapshot(
                 continue;
             }
             let owner = crate::validate::AttrOwner::Stamp(ap.id.clone());
-            if let Some(me) = crate::validate::structured_attr(owner, &a.decl) {
+            // 0.51.0 §5.1: nor can a stamp be `text`.
+            let refusal = crate::validate::structured_attr(owner, &a.decl)
+                .or_else(|| crate::validate::text_stamp(&ap.id, &a.decl));
+            if let Some(me) = refusal {
                 errs.push(AssembleError::InvalidDirective {
                     plugin: ap.id.clone(),
                     directive: a.decl.name.clone(),
@@ -643,6 +652,7 @@ pub fn assemble_snapshot(
             }
             oc_owner.insert(oc.name.clone(), ap.id.clone());
             snap.occasions.insert(oc.name.clone(), oc.clone());
+            snap.occasion_owners.insert(oc.name.clone(), ap.id.clone());
         }
         // dsl 0.23.0 §7: cast members merge like occasions — one owner per id.
         for c in &pkg.cast {
@@ -776,6 +786,23 @@ pub fn assemble_snapshot(
     for (merging, entry) in stamp_pending {
         merge_stamp_attr(&mut snap, &merging, entry, &mut errs);
     }
+    // 0.51.0 §4.2: every declared raise against every active occasion (a
+    // raise may name a later-merged plugin's occasion).
+    let mut inactive_occasions: BTreeMap<String, String> = BTreeMap::new();
+    for (id, inst) in &installed.by_id {
+        if !active_ids.contains(id.as_str()) {
+            for oc in &inst.loaded.occasions {
+                inactive_occasions
+                    .entry(oc.name.clone())
+                    .or_insert_with(|| id.clone());
+            }
+        }
+    }
+    errs.extend(
+        crate::raises::check_raises(&mut snap, &dir_owner, &rk_owner, &inactive_occasions)
+            .into_iter()
+            .map(AssembleError::Raises),
+    );
     snap.directive_owners = dir_owner;
 
     snap.version = capability_version(&snap);

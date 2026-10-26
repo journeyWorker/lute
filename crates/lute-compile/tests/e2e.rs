@@ -592,8 +592,38 @@ fn semantic_field_coverage_walk(value: &serde_json::Value, path: &str) {
         ) {
             continue;
         }
+        // `localized` is keyed by the plugin's `text` attribute names
+        // (dsl 0.51.0 §5.4); each entry's own fields are checked.
+        if field == "localized" {
+            for (attr, entry) in child.as_object().into_iter().flatten() {
+                semantic_field_coverage_walk(entry, &format!("{path}.localized.{attr}"));
+            }
+            continue;
+        }
         semantic_field_coverage_walk(child, &format!("{path}.{field}"));
     }
+}
+
+/// dsl 0.51.0 §5.4: a `plugin` command's `localized` map is keyed by attribute
+/// name, so the key is not a field.
+#[test]
+fn localized_attribute_names_are_not_fields() {
+    let entry =
+        serde_json::json!({ "lineId": "hall~banner~0010~subtitle", "texts": { "ko": "x" } });
+    semantic_field_coverage_walk(
+        &serde_json::json!({ "kind": "plugin", "localized": { "subtitle": entry } }),
+        "doc",
+    );
+}
+
+/// The fields of a `localized` entry are still checked.
+#[test]
+#[should_panic(expected = "E-SEMANTICS-FIELD: serialized field `notAField`")]
+fn localized_entry_fields_are_checked() {
+    semantic_field_coverage_walk(
+        &serde_json::json!({ "localized": { "subtitle": { "notAField": 1 } } }),
+        "doc",
+    );
 }
 
 fn source_files(root: &Path, out: &mut Vec<PathBuf>) {

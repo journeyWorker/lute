@@ -401,10 +401,31 @@ impl ExecProject {
             Store::schema_for_project(&eval_json, false, &rules, &state_table),
             Store::schema_for_project(&eval_json, true, &rules, &state_table),
         ];
-        let codes = artifacts
+        let codes: BTreeMap<String, Arc<crate::machine::Code>> = artifacts
             .iter()
             .map(|(d, a)| (d.clone(), Arc::new(crate::machine::Code::of(a))))
             .collect();
+        // dsl 0.51.0 §3.7: a document whose control flow can cycle (a
+        // backward transfer that is not a bounded jump, crossing loops, a bad
+        // `max`) is refused at load; §4.6: so is a record whose `dynamic`
+        // raise is not the occasion's `occasion.target` reference.
+        let mut faults = Vec::new();
+        for (d, c) in &codes {
+            let raises = c
+                .commands
+                .iter()
+                .filter_map(|cmd| crate::machine::dynamic_raise_fault(cmd, &occasions));
+            faults.extend(
+                c.fault
+                    .iter()
+                    .cloned()
+                    .chain(raises)
+                    .map(|f| format!("{d}: {f}")),
+            );
+        }
+        if !faults.is_empty() {
+            return Err((2, faults));
+        }
         let bridge_reads = Arc::new(BridgeReads {
             result_types: index.bridge_results.clone(),
             ..BridgeReads::of(artifacts.values())

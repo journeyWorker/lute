@@ -495,6 +495,22 @@ entities:
 
 The hints are `ordinal`, `ordinalWord`, `cardinalWord` and `plural` for an `int` or `double` (or an `int` host token), and `capitalize`, `start` and `indefinite` for text. Any other — `{{run.floor:roman}}`, a misspelt `{{run.day:ordinalword}}` — is `E-CEL-PROFILE`. A numeric hint on a string, enum or bool path or def, or on a `string` or `enum` host token such as `{{userName}}`, is `E-REF-TYPE`, and so is a text hint on an `int`, `double`, or bool, or on an `int` host token.
 
+## Localizable directive text (since 0.51)
+
+A plugin directive can carry text that a translator must see, such as a banner title. Its [manifest](/plugins/manifests/) declares the attribute with `type: text`. A `text` attribute is admitted only on a directive that compiles to a `plugin` record (no `lower:`, no `bridge:`), and it takes no `default:`. Each `text` attribute is one translatable unit, the way a choice label is:
+
+```lute
+::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
+```
+
+- **Value grammar.** A `text` value is a quoted string in the same grammar as a `<choice>` label: `{{…}}` interpolations of state paths, `@def`s and [host tokens](#host-tokens) with their modifiers. A literal `{{` cannot be written in a quoted attribute value yet (`\{{` is `E-STRING-ESCAPE` there, as in a choice label; #211). [Inline text modifiers](#inline-text-modifiers) are not parsed in it. Each interpolation is checked as a label's is. An `@ref` value (`title=@greeting`) is `E-ATTR-TYPE`: a `@def` value has no translation of its own.
+- **`code=`.** A directive with at least one `text` attribute takes `code="…"` as a content line does: a string, trimmed. On any other directive `code` stays `E-UNKNOWN-ATTR`. A directive that declares its own attribute named `code` beside a `text` attribute is refused when the plugin loads.
+- **`lineId`.** The id of a `text` attribute is `{prefix}~{tag}~{code}~{attr}`, for example `intro~banner~0010~title`. It does not go through the `lineId` template, and position is never identity. `~` is the separator, so a `code` containing `~` is `E-LINE-CODE-RESERVED` and an identity template whose literal text contains `~` is `E-IDENTITY-TEMPLATE`. As a backstop, whole-project `lute check` reports two units with the same final `lineId` — a line, option, prompt or directive text — as `E-LINE-ID-DUP`, since a `lineId` keys one translation. Two `::banner` calls in one scope sharing a `code` are `E-DUP-LINE-CODE`.
+- **Back-fill.** An untagged directive gets the next code in its scope, counted per directive tag, as a line does; in a component the codes are counted over the whole component source. [`lute tag`](/tooling/cli/#tag) writes `code="…"` into every untagged directive that has a `text` attribute. A component is tagged under the snapshots of the documents that use it, and when those users resolve its text directives differently it is `E-COMPONENT-TEXT-DIRECTIVE`. With `identity.requireStable`, such a directive without `code` is `W-LINE-CODE-UNTAGGED`.
+- **Artifact.** The record's `fields.<attr>` keeps the source-language string with its `{{…}}` markers as authored, so a host that ignores localization reads what it read before. The `lineId` and the placeholders ride in `localized.<attr>`, and `code` itself is written to neither `fields` nor `stamps`. A directive without `text` attributes compiles exactly as in 0.50.
+
+The strings are exported, translated and merged with [`lute loc export`, `lute loc import` and `lute compile --locale-bundle`](/tooling/cli/#loc-export): run `lute tag` first, because a directive's `lineId` can be reproduced from the source only when its `code` is authored.
+
 ## Inline text modifiers
 
 A line's text may mark up part of itself for presentation — a styled word, a pause, a slowed

@@ -19,7 +19,7 @@ fn run(ir: serde_json::Value) -> std::process::Output {
 }
 
 fn base() -> serde_json::Value {
-    serde_json::json!({"irVersion":"0.50.0", "kind":"scene", "requiredSemantics":["lute.core/1"], "commands":[]})
+    serde_json::json!({"irVersion":"0.51.0", "kind":"scene", "requiredSemantics":["lute.core/1"], "commands":[]})
 }
 
 #[test]

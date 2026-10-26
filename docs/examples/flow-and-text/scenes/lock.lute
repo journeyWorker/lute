@@ -1,0 +1,56 @@
+---
+kind: scene
+id: lock
+on: start
+once: false
+title: The vault lock
+state:
+  scene.knocks: { type: int, default: 0 }
+---
+/*
+Bounded backward jumps (0.51), and a declared raise.
+
+  - The retry loop: `::tryLock` is a blocking bridge call that writes
+    `scene.lock.vault.won`. The jump is taken while the lock stays shut and
+    takes remain, so the loop asks at most three times (once, then two
+    retries). After the second take the jump is not taken and control falls
+    through to the next line.
+  - The nested loop: `knock` (inner, max 2) sits inside `round` (outer,
+    max 1). The inner counter returns to 0 each time control reaches `knock`
+    from outside it, so each of the two rounds knocks three times:
+    `scene.knocks` ends at 6.
+  - `::playScene` raises `cutscene` for `scene.chapter2` once this
+    presentation ends. The host does the raising; Lute draws the
+    [raises] edge lock -> chapter2.
+*/
+
+## The vault door {#door}
+
+::label{name="attempt"}
+::tryLock{door="vault"}
+<match subject="scene.lock.vault.won">
+  <when is="false">
+    @mira: Again!
+    ::jump{to="attempt" max="2"}
+  </when>
+  <when is="true">
+    @mira: It clicks open.
+  </when>
+</match>
+@theo: That's enough for today.
+
+## Knocking {#knocking}
+
+::label{name="round"}
+@theo: A new round.
+::label{name="knock"}
+::set{scene.knocks += 1}
+@theo: Knock.
+::jump{to="knock" max="2"}
+@theo: Round done.
+::jump{to="round" max="1"}
+
+## The cutscene {#cutscene}
+
+@theo: Now the real story.
+::playScene{scene="chapter2"}

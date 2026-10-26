@@ -50,6 +50,9 @@ impl<D: Driver> Machine<D> {
         world: Option<World>,
     ) -> Self {
         let code = code.unwrap_or_else(|| Arc::new(Code::of(art)));
+        // dsl 0.51.0 §3.7: a stream whose loops are malformed is refused
+        // before the walk starts (`Machine::run`).
+        let fatal = code.fault.clone();
 
         let mut store = match source {
             StoreSource::Schema(schema) => Store::from_project_schema(art, schema, world),
@@ -73,7 +76,7 @@ impl<D: Driver> Machine<D> {
             quest_instances: BTreeMap::new(),
             incomplete: false,
             terminated: false,
-            fatal: None,
+            fatal,
             refused: false,
             unresolved: Vec::new(),
             eval_observer: None,
@@ -90,6 +93,7 @@ impl<D: Driver> Machine<D> {
             defer_by: Vec::new(),
             deferred_handlers: None,
             bridge_reads: Arc::default(),
+            loop_counts: BTreeMap::new(),
         }
     }
 

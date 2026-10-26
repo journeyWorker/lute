@@ -6,14 +6,14 @@ description: "A map from Ink and Yarn Spinner to Lute: knots and nodes, diverts 
 Ink and Yarn Spinner are flows: text runs down the page, and a divert or a jump sends it anywhere,
 back up included. Lute splits that job in two:
 
-- **Inside a scene** the text runs forward only. Menus are `<branch>` (asked once) and `<hub>`
+- **Inside a scene** the text runs forward, with one way back: a counted `::jump … max` loop. Menus are `<branch>` (asked once) and `<hub>`
   (asked again until the player leaves), and state picks between lines with `<match>` and `when=`.
 - **Between scenes** nothing diverts. The engine raises an **occasion** ("the next chapter", "the
   player talks to Tilly"), and every scene says which occasion it answers. Order comes from
   `after:`, `priority:` and the manifest's `chapters:`. [Connect scenes into a
   story](/getting-started/connect-scenes/) walks through it.
 
-Because no path can jump backward or loop on its own, the checker can follow every path through
+Because every loop is counted and well-nested, and nothing else jumps backward, the checker can follow every path through
 a scene, which is what lets it prove that none of them dead-ends.
 
 ## The map
@@ -24,7 +24,8 @@ a scene, which is what lets it prove that none of them dead-ends.
 | `= stitch` | — | a `## heading` section inside the scene (a section is not a jump target) |
 | `-> knot`, to the next part of the story | `<<jump Node>>` | another scene that answers an occasion (`on:`), ordered by `after:` or `chapters:` |
 | `-> knot`, back to a menu the player returns to | `<<jump>>` back to a hub node | a `<hub>`: after each choice it asks again, until an `exit` choice |
-| `-> label`, to a labelled gather further down | — | `::jump{to="label"}` to a `::label{name="label"}` further down, forward only |
+| `-> label`, to a labelled gather further down | — | `::jump{to="label"}` to a `::label{name="label"}` further down |
+| `-> label`, back to an earlier gather, repeated | `<<jump>>` back to the start of a retry | `::jump{to="label" max="3"}` to an earlier `::label`, at most `max` times (0.51); see [Loops and back-diverts](#loops-and-back-diverts) |
 | `* [choice]`, once only | `-> option <<once>>` | a hub `<choice … once>`; a `<branch>` asks only once anyway |
 | `+ [choice]`, sticky | `-> option` | a plain `<choice>` in a `<hub>` |
 | `- gather` | the lines after the options | the lines after `</branch>`, which run whichever choice was taken |
@@ -238,12 +239,40 @@ occasion presents the next one. Ink's `{cond: -> a | -> b}` is two scenes on the
 each with a `when:`; when the two conditions cannot both hold, the checker accepts them at the
 same priority. [Connect scenes into a story](/getting-started/connect-scenes/) builds exactly this.
 
-Inside a scene, `::jump{to="…"}` jumps forward to a `::label{name="…"}` later in the same
-document. It never jumps backward: a menu the player comes back to is a `<hub>`, and a scene that
-plays again answers its occasion again. A `## heading` section is not a jump target — not even
+Inside a scene, `::jump{to="…"}` jumps to a `::label{name="…"}` in the same document. Without
+`max` it only goes forward; a menu the player comes back to is a `<hub>`, and a scene that plays
+again answers its occasion again. A `## heading` section is not a jump target — not even
 one with a `{#id}` suffix, which is stable identity metadata only — so put a `::label` under the
 heading you want to reach. Neither is a choice id (Ink's labelled choice `* (inside)`): a choice
 id names the pick, not a place in the text.
+
+### Loops and back-diverts
+
+Since 0.51, Ink's `-> label` back to an earlier gather and Yarn's `<<jump Node>>` back to the start
+of a retry have a spelling: `::jump{to="…" max="N"}` to an earlier `::label`, taken at most `N`
+times (a literal 1 to 99), after which control falls through:
+
+```lute
+::label{name="again"}
+@narrator: The latch is stuck.
+<branch id="try">
+  <choice id="pull" text="Pull it">
+    ::jump{to="again" max="3"}
+  </choice>
+  <choice id="leave" text="Leave it">
+    @narrator: You leave it.
+  </choice>
+</branch>
+```
+
+The limits are where Lute differs from a free divert. A loop is always counted: a divert that
+repeats until a condition changes has no spelling, because the bound is a literal from 1 to 99
+(an `@ref`, `0` or a larger number is `E-JUMP-MAX`). The label must be in the same body as the jump
+or in a body around it, through `<choice>` and `<match>` arm bodies only, so a loop cannot leave a
+`<hub>` option, an `<on>` or `<objective>`, or a section (`E-JUMP-LOOP-SCOPE`); a loop is entered
+only at its label (`E-JUMP-INTO-LOOP`); and loops nest, never overlap (`E-JUMP-LOOP-CROSS`). A jump
+back to a different scene is still an occasion, not a jump. When the player decides when to stop —
+"ask again until I leave" — use a `<hub>`; see [a hub, or a loop](/language/choices-and-hubs/#a-hub-or-a-loop).
 
 `visited('<scene id>')` asks whether a scene has ever been presented. It is true or false, not
 a count, and it covers the whole save: it stays true after a new run starts.
@@ -356,7 +385,7 @@ in conditions:
 ```
 $ lute check flow.lute
 flow.lute:12:1: error [E-UNKNOWN-DIRECTIVE] unknown directive `::goto` — did you mean `::jump{to="…"}`? It jumps forward to a `::label{name="…"}`
-flow.lute:13:12: error [E-JUMP-BACKWARD] `::jump` targets label `top`, which is not forward of this `::jump` in document order — `::jump` only jumps forward; to offer choices again, use a `<hub>` (it asks until an `exit` choice is taken)
+flow.lute:13:12: error [E-JUMP-BACKWARD] `::jump` targets label `top`, which is not forward of this `::jump` in document order — `::jump` only jumps forward unless it carries `max`: `::jump{to="top" max="3"}` repeats at most 3 times; to offer choices again, use a `<hub>` (it asks until an `exit` choice is taken)
 flow.lute:18:12: error [E-JUMP-UNDEFINED] `::jump` targets `Gallery`, which no `::label` in this document declares — `Gallery` is the `## Gallery` heading, not a label; a `::jump` target is a `::label{name="…"}` later in this document, so put `::label{name="Gallery"}` under that heading
 failed: flow.lute (3 error(s), 0 warning(s))
 $ lute check cond.lute

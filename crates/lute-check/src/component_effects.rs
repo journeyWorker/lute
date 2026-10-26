@@ -29,7 +29,7 @@ use lute_manifest::fact::{FactPattern, FactTerm};
 use lute_manifest::schema::CastMember;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
-use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, Directive, Document, Line, Node};
+use lute_syntax::ast::{Arm, Attr, AttrValue, CelSlot, ClipNode, Directive, Document, Line, Node};
 use lute_syntax::is_pattern::{classify_is_literal, IsLiteral};
 
 /// Why a component argument cannot be used as a ground fact term.
@@ -215,6 +215,132 @@ pub fn bind_slot_raw(
         let ty = params.iter().find(|(n, _)| n == &r.name).map(|(_, t)| t);
         let text = arg_cel_text(arg, ty);
         slot.raw.replace_range(s..e, &text);
+    }
+}
+
+/// Bind `@param` uses to `::use` args. A whole-slot `@param` attr value is
+/// replaced VALUE-LEVEL (a string arg becomes a plain `Str` attr — what a
+/// string-typed attr position needs); a `@param` inside a larger CEL is
+/// substituted textually, typed by the param's declared [`Type`]. Each
+/// line's text goes through `line_text` (`lute-compile` renders its
+/// `{{@param}}` interpolations there). `lute-compile`'s `::use` expansion
+/// and the project raise table ([`crate::raises`]) bind a body with this one
+/// function, then fold it with [`fold_component_matches`].
+pub fn bind_component_body(
+    nodes: &mut [Node],
+    args: &BTreeMap<String, AttrValue>,
+    params: &[(String, Type)],
+    line_text: &mut dyn FnMut(&mut Line),
+) {
+    for node in nodes {
+        match node {
+            Node::Line(l) => {
+                // T11 fix: a component-body gated line's `when=` slot is a
+                // CEL fragment just like any attr — it must see the SAME
+                // `@param` -> arg substitution `l.attrs` gets, or the T11
+                // desugar (and T8's `fold_component_matches`, which runs
+                // right after this on the same bound clone) would fold/
+                // decide against an unbound `@tier`-shaped marker instead
+                // of the caller's actual argument text.
+                if let Some(w) = &mut l.when {
+                    bind_slot_raw(w, args, params);
+                }
+                bind_attrs(&mut l.attrs, args, params);
+                line_text(l);
+            }
+            Node::Directive(d) => {
+                // dsl 0.26.0 §4: a directive's guard is a CEL slot like any.
+                if let Some(w) = &mut d.when {
+                    bind_slot_raw(w, args, params);
+                }
+                bind_attrs(&mut d.attrs, args, params);
+            }
+            Node::Set(s) => {
+                bind_slot_raw(&mut s.expr, args, params);
+                if let Some(w) = &mut s.when {
+                    bind_slot_raw(w, args, params);
+                }
+                bind_set_path(&mut s.path, args);
+            }
+            Node::Branch(b) => {
+                for c in &mut b.choices {
+                    if let Some(w) = &mut c.when {
+                        bind_slot_raw(w, args, params);
+                    }
+                    bind_attrs(&mut c.attrs, args, params);
+                    bind_component_body(&mut c.body, args, params, line_text);
+                }
+            }
+            Node::Match(m) => {
+                bind_slot_raw(&mut m.subject, args, params);
+                for arm in &mut m.arms {
+                    match arm {
+                        Arm::When { test, body, .. } => {
+                            bind_slot_raw(test, args, params);
+                            bind_component_body(body, args, params, line_text);
+                        }
+                        Arm::Otherwise { body, .. } => {
+                            bind_component_body(body, args, params, line_text);
+                        }
+                    }
+                }
+            }
+            Node::Timeline(t) => {
+                for track in &mut t.tracks {
+                    for clip in &mut track.clips {
+                        match &mut clip.node {
+                            ClipNode::Directive(d) => bind_attrs(&mut d.attrs, args, params),
+                            ClipNode::Set(s) => bind_slot_raw(&mut s.expr, args, params),
+                        }
+                    }
+                }
+            }
+            Node::Hub(h) => {
+                for c in &mut h.choices {
+                    if let Some(w) = &mut c.when {
+                        bind_slot_raw(w, args, params);
+                    }
+                    bind_attrs(&mut c.attrs, args, params);
+                    bind_component_body(&mut c.body, args, params, line_text);
+                }
+                if let Some(r) = &mut h.on_return {
+                    bind_component_body(&mut r.body, args, params, line_text);
+                }
+            }
+            Node::On(on) => {
+                if let Some(w) = &mut on.when {
+                    bind_slot_raw(w, args, params);
+                }
+                bind_attrs(&mut on.attrs, args, params);
+                bind_component_body(&mut on.body, args, params, line_text);
+            }
+            Node::Objective(o) => {
+                bind_slot_raw(&mut o.done, args, params);
+                if let Some(w) = &mut o.visible_when {
+                    bind_slot_raw(w, args, params);
+                }
+                for deadline in o.by.iter_mut().chain(o.until.iter_mut()) {
+                    bind_slot_raw(deadline, args, params);
+                }
+                bind_attrs(&mut o.attrs, args, params);
+                bind_component_body(&mut o.body, args, params, line_text);
+            }
+            // dsl 0.24.0 §4: an `effects: true` body's `@param` fact
+            // arguments take their `::use` constants (the checker rejects a
+            // non-constant argument, so a bound build leaves none).
+            Node::Assert(a) => {
+                bind_fact(&mut a.pattern, args);
+                if let Some(w) = &mut a.when {
+                    bind_slot_raw(w, args, params);
+                }
+            }
+            Node::Retract(r) => {
+                bind_fact(&mut r.pattern, args);
+                if let Some(w) = &mut r.when {
+                    bind_slot_raw(w, args, params);
+                }
+            }
+        }
     }
 }
 

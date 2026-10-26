@@ -1,0 +1,12 @@
+entities:
+  cutsceneId: { members: [hall, yard, cellar, gallery] }
+state:
+  run.halls: { type: int, default: 0 }
+  run.yards: { type: int, default: 0 }
+  run.cellars: { type: int, default: 0 }
+  run.vaults: { type: int, default: 0 }
+  run.open: { type: bool, default: false }
+  run.answer: { type: string, default: "" }
+  user.fanfare: { type: bool, default: false }
+  user.galleries: { type: int, default: 0 }
+  run.guest: { type: string, default: "Ada" }

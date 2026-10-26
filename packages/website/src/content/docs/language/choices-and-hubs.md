@@ -281,6 +281,40 @@ satisfies neither is `E-HUB-NO-EXIT`. Because a hub reduces at build time to one
 table plus its arms, its runtime re-presentation adds no unbounded computation — totality is
 preserved.
 
+## A hub, or a loop
+
+Both ask the player again, but they answer different questions. Since 0.51 a bounded
+[`::jump{to="…" max="…"}`](/language/directives/#bounded-backward-jumps--max) can send the walk back
+to an earlier `::label`, so a `<branch>` can be asked more than once.
+
+- **Use a `<hub>`** when the player decides when to leave: a conversation with several topics, a
+  menu that stays until an `exit` choice is taken, with `once` choices that drop out and a
+  `<return>` block between visits. The player's cooperation ends it, and the checker proves it can
+  end ([No dead ends](#no-dead-ends)).
+- **Use a loop** when the *game* decides how often: a retry after a failed minigame, "try again
+  (at most three times)", a prompt repeated a fixed number of times. The bound is a literal `max`
+  from 1 to 99; the walk ends without the player's cooperation.
+
+```lute
+::label{name="retry"}
+<branch id="again" prompt="The lock is still stuck.">
+  <choice id="push" text="Push harder">
+    @mira: It won't budge.
+    ::jump{to="retry" max="2"}
+  </choice>
+  <choice id="leave" text="Give up">
+    @mira: Fine. Another way, then.
+  </choice>
+</branch>
+```
+
+Here `push` sends the walk back to the label, and after two takes the third `push` falls through
+past the `<branch>`. A `<branch>` reached again is a new menu, and its `presentation` stays `0`. A
+`<hub>` inside a loop starts each visit at presentation 0, but a `once` choice taken on an earlier
+visit stays spent: its memory is the scene's visit record (`scene.visited.<hub>.<choice>`), so the
+hub offers only what is left. A loop may sit inside a hub option body (put the `::label` inside that
+option), but a loop cannot jump out of a hub option from inside it: `E-JUMP-LOOP-SCOPE`.
+
 ## Plugin stamps on `<branch>`, `<hub>` and `<choice>`
 
 Since 0.50 a plugin can attach its own attributes to these three elements. A [`stampAttrs`](/plugins/manifests/#scoping-a-stamp-to-surfaces-on) entry whose `on:` names `branch`, `hub` or `choice` is admissible there, and nowhere else on them: a cross-cutting stamp (no `on:`) is still `E-UNKNOWN-ATTR` on `<branch>`, `<hub>` and `<choice>`. With this manifest:

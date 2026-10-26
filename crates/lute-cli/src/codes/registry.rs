@@ -63,8 +63,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-ATTR-TYPE",
-        summary: "An attribute's value does not match its declared type — for example a non-numeric `duration`/`zoom`/`shake`, a non-boolean flag, a bare identifier where a quoted string is required, or a value naming no member of its provider, domain, or entity kind.",
-        spec: &[],
+        summary: "An attribute's value does not match its declared type — for example a non-numeric `duration`/`zoom`/`shake`, a non-boolean flag, a bare identifier where a quoted string is required, or a value naming no member of its provider, domain, or entity kind. A `text` attribute (or the `code` beside one) is a quoted string: an `@ref` value is refused, since a `@def` has no translation of its own.",
+        spec: &["dsl 0.51.0 §5.2"],
     },
     Code {
         code: "E-AUTHOR-CASE",
@@ -302,6 +302,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.4.0 §6.1", "dsl 0.4.0 §6.2", "dsl 0.24.0 §4"],
     },
     Code {
+        code: "E-COMPONENT-TEXT-DIRECTIVE",
+        summary: "`lute tag` on a component whose users' capability snapshots disagree on whether a directive it calls has `text` attributes: one user activates the plugin that declares them, another does not. A call has one localization identity, so `lute tag` gives it no `code` and leaves the component untouched; reported at the call, with a use of each kind related.",
+        spec: &["dsl 0.51.0 §5.3"],
+    },
+    Code {
         code: "E-COMPONENT-UNDECLARED",
         summary: "A `::use`'s `component` attribute names a component absent from the resolved `components:` table.",
         spec: &["dsl §13"],
@@ -488,8 +493,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-DUP-LINE-CODE",
-        summary: "Two content lines from the same speaker share the same `:line` `code=`, though a (speaker, code) pair must be unique — it is the voice-key/i18n identity join key.",
-        spec: &["dsl §12"],
+        summary: "Two content lines from the same speaker share the same `:line` `code=`, though a (speaker, code) pair must be unique — it is the voice-key/i18n identity join key. Likewise two calls of one directive with `text` attributes in one identity scope sharing `code=`: a (directive, code) pair is the localization identity of its `text` attributes.",
+        spec: &["dsl §12", "dsl 0.51.0 §5.3"],
     },
     Code {
         code: "E-DUP-TRACK",
@@ -643,8 +648,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-IDENTITY-TEMPLATE",
-        summary: "A project's `identity.lineId`/`identity.voiceKey` template names an unknown `{token}`, or resolves to an empty string.",
-        spec: &["dsl 0.8.0 §9"],
+        summary: "A project's `identity.lineId`/`identity.voiceKey` template names an unknown `{token}`, or resolves to an empty string, or the `lineId` template's literal text contains `~`, which is reserved for directive text identities (`{prefix}~{tag}~{code}~{attr}`).",
+        spec: &["dsl 0.8.0 §9", "dsl 0.51.0 §5.3"],
     },
     Code {
         code: "E-INERT-TITLE",
@@ -683,8 +688,28 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-JUMP-BACKWARD",
-        summary: "A `::jump{to}` names a label that is not forward of the `::jump` in document order — jumps must go forward only.",
-        spec: &["dsl 0.12.0"],
+        summary: "A `::jump{to}` without `max` names a label that is not forward of the `::jump` in document order. A jump goes forward unless it carries `max`: `::jump{to=\"again\" max=\"3\"}` jumps back at most 3 times; to offer choices again, use a `<hub>`.",
+        spec: &["dsl 0.12.0", "dsl 0.51.0 §3.1"],
+    },
+    Code {
+        code: "E-JUMP-INTO-LOOP",
+        summary: "A forward `::jump` from outside a loop (a `::label` and a later `::jump{to max}` back to it) lands on a label inside the loop after its head; a loop is entered only at its head label.",
+        spec: &["dsl 0.51.0 §3.2"],
+    },
+    Code {
+        code: "E-JUMP-LOOP-CROSS",
+        summary: "Two loops overlap without nesting: the later loop's head label lies inside the earlier loop, after its head, but the later loop ends after the earlier one. Loops nest or stay apart; close the inner loop before the outer one jumps back.",
+        spec: &["dsl 0.51.0 §3.2"],
+    },
+    Code {
+        code: "E-JUMP-LOOP-SCOPE",
+        summary: "A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section. A loop also may not span an `<on>` or `<objective>` at a quest's top level, because each runs on its own.",
+        spec: &["dsl 0.51.0 §3.2"],
+    },
+    Code {
+        code: "E-JUMP-MAX",
+        summary: "The `max` of a `::jump` is not a literal integer from 1 to 99 (a loop bound is static, so an `@ref` is refused too), or it sits on a forward jump, where it means nothing. A value that is not an integer at all is `E-ATTR-TYPE`.",
+        spec: &["dsl 0.51.0 §3.1"],
     },
     Code {
         code: "E-JUMP-UNDEFINED",
@@ -717,14 +742,24 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl §7.1"],
     },
     Code {
+        code: "E-LINE-CODE-RESERVED",
+        summary: "A `code=` on a content line or on a directive with `text` attributes contains `~`, the separator of a directive text identity (`{prefix}~{tag}~{code}~{attr}`); `lute tag` never writes one.",
+        spec: &["dsl 0.51.0 §5.3"],
+    },
+    Code {
+        code: "E-LINE-ID-DUP",
+        summary: "Two localization units of the project — lines, choice and hub options, prompts, directive texts — compile to one final `lineId` (reported at the later unit, the first one related), as a `lineId` template without `{prefix}` can produce across documents. A `lineId` keys one translation, so `lute loc import` and `--locale-bundle` could not tell them apart. Whole-project `check` and `compile --project`.",
+        spec: &["dsl 0.51.0 §5.3"],
+    },
+    Code {
         code: "E-LINT-CONFIG",
-        summary: "`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id. Since 0.49.0 it also covers an `asset-exists` `options.providers` key that is none of the selector shapes (`<tag>`, `<tag>.<attr>`, `@<attr>`). A `rules:` id that is a checker code is named as one: a warning's level is set in `lute.project.yaml` `diagnostics:`, and an error cannot be re-levelled.",
-        spec: &["dsl 0.49.0 §7.3", "dsl 0.50.0 §6.4"],
+        summary: "`lute.lint.yaml` is malformed — a wrong-typed or unknown top-level key, a bad rule override, or a custom rule id that collides with a core rule id. Since 0.49.0 it also covers an `asset-exists` `options.providers` key that is none of the selector shapes (`<tag>`, `<tag>.<attr>`, `@<attr>`). A `rules:` id that is a checker code is named as one: a warning's level is set in `lute.project.yaml` `diagnostics:`, and an error cannot be re-levelled. Since 0.51.0 it also covers a custom rule whose keys do not fit its target: `when` on `target: pair`, a `pair` rule without `open` or `close`, or `open`, `close`, `inside` or `scope` on any other target.",
+        spec: &["dsl 0.49.0 §7.3", "dsl 0.50.0 §6.4", "dsl 0.51.0 §6.1"],
     },
     Code {
         code: "E-LINT-EXPR",
-        summary: "A lint rule's `when` CEL expression fails to resolve or is mistyped, so that rule is skipped for the document.",
-        spec: &[],
+        summary: "A lint rule's predicate — `when`, or a `pair` rule's `open`, `close` or `inside` (named in the message) — fails to parse or resolve, or is mistyped, so that rule is skipped for the document.",
+        spec: &["dsl 0.51.0 §6.1"],
     },
     Code {
         code: "E-LINT-RULE",
@@ -968,8 +1003,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-INVALID-DIRECTIVE",
-        summary: "A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one); or a directive attribute or `stampAttrs` entry is typed `list`, `map` or `record`, which no authored attribute value can satisfy.",
-        spec: &["dsl 0.49.0 §3.2"],
+        summary: "A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one); or a directive attribute or `stampAttrs` entry is typed `list`, `map` or `record`, which no authored attribute value can satisfy (structured values are not supported yet: give each field its own attribute, use a `text` attribute for player-visible text in several languages, or write a list of options as `<choice>` elements); or a `stampAttrs` entry is typed `text`; or a directive whose `lower:` builds a staging record or runs a builtin hook declares `effects.raises`, which no such lowering carries to the host (only a `plugin` record does) — the raises are dropped.",
+        spec: &["dsl 0.49.0 §3.2", "dsl 0.51.0 §4.2", "dsl 0.51.0 §5.1", "dsl 0.51.0 §7"],
     },
     Code {
         code: "E-PLUGIN-IO",
@@ -1008,8 +1043,13 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-PARSE",
-        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect, a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, or a kind with `target: { forbidden: true }` reads `@target`, or a `hostTokens` name is not an identifier (letters, digits and `_`, not starting with a digit) or its `type` is not `string`, `int` or `{ enum: [...] }`.",
-        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1", "dsl 0.50.0 §5.1"],
+        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect (none of `asserts:`, `retracts:`, `accepts:` or `raises:`), a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, a raise targets an `@attr` other than `@target`, or a kind with `target: { forbidden: true }` reads `@target` (a raise for `@target` included), or an `effects.raises` list is empty, an entry is not a mapping of `occasion` and optional `target`, its `target` is neither `@<attr>` nor a dotted target, or (on a directive) its `@<attr>` names no attribute of the directive, or an occasion's `raisedBy` is not `declared`, or a `hostTokens` name is not an identifier (letters, digits and `_`, not starting with a digit) or its `type` is not `string`, `int` or `{ enum: [...] }`, or a `type: text` sits anywhere but a directive attribute (a plugin option, an occasion payload, a reward-kind attribute, a bridge result, a state shape, a nested `{ list: text }`), or a directive's `text` attribute is on a directive with `lower:` or `bridge:` (no localized text would reach the host), declares a `default:` (which has no translation), or sits beside a declared attribute named `code` (the identity attribute of a directive with `text` attributes), or a `lints/` rule's keys do not fit its target (`when` on `target: pair`, a `pair` rule without `open` or `close`, or `open`, `close`, `inside` or `scope` on any other target).",
+        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1", "dsl 0.50.0 §5.1", "dsl 0.51.0 §4.1", "dsl 0.51.0 §4.2", "dsl 0.51.0 §5.1", "dsl 0.51.0 §6.1"],
+    },
+    Code {
+        code: "E-PLUGIN-RAISES",
+        summary: "A directive's or reward kind's `effects.raises` entry names an occasion no active plugin declares (with a did-you-mean, or the installed but inactive plugin to declare in `depends:`), gives a `target` to an occasion raised for none or none to one raised for a target, targets an `@attr` of a domain occasion whose type is not `{ entity: <the domain's kind> }` (on a reward kind: whose `target:` contract is not), or names a literal target outside the occasion's `<prefix>.<member>` shape or `members:`. Judged at plugin assembly, where every active plugin's occasions are known; the entry is dropped and its siblings land.",
+        spec: &["dsl 0.51.0 §4.2"],
     },
     Code {
         code: "E-PLUGIN-RESERVED-NAME",
@@ -1018,8 +1058,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-RESERVED-STAMP-ATTR",
-        summary: "A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp. Also a `stampAttrs` entry scoped with `on:` to a surface that owns an attribute of the same name (`prompt` on `branch`, `text` on `choice`, `code` on `line`, a directive's own attribute), so the stamp could never be read there.",
-        spec: &["plugin §14", "dsl 0.50.0 §3.2"],
+        summary: "A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp. Also a `stampAttrs` entry scoped with `on:` to a surface that owns an attribute of the same name (`prompt` on `branch`, `text` on `choice`, `code` on `line`, a directive's own attribute, `code` on a directive with a `text` attribute), so the stamp could never be read there.",
+        spec: &["plugin §14", "dsl 0.50.0 §3.2", "dsl 0.51.0 §5.1"],
     },
     Code {
         code: "E-PLUGIN-STAMP-SURFACE",
@@ -1115,6 +1155,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-QUEST-UNREACHABLE",
         summary: "A `<quest>` can provably never complete because its `start` guard always decides false or its `fail` guard always decides true.",
         spec: &["dsl 0.4.0 §5.3"],
+    },
+    Code {
+        code: "E-RAISES-TARGET",
+        summary: "A declared raise's resolved target — the call's attribute value (an `@def` folded to its constant) or its declared `default:`, a reward's `target=`, or a literal — lies outside its occasion's `members:` (a literal: outside its entity kind), or no scene or beat answers the occasion for it (with a did-you-mean). A target that reads `occasion.target` is bound by the runtime and not judged; an attribute with no value and no `default:` raises nothing. A call in a component body is judged at each `::use`. Whole-project `check` only.",
+        spec: &["dsl 0.51.0 §4.3"],
     },
     Code {
         code: "E-REF-ARG-TYPE",
@@ -1358,8 +1403,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-STATE-DECL",
-        summary: "A `state:` declaration is malformed: a non-string key, an unknown or incomplete `type:` (including an `enum` not nested under `type:`), a bad `default:`/`per:` shape, or `state:` itself is not a map.",
-        spec: &["dsl 0.8.0 §4"],
+        summary: "A `state:` declaration is malformed: a non-string key, an unknown or incomplete `type:` (including an `enum` not nested under `type:`), a `type: text` (the type of a plugin directive attribute only), a bad `default:`/`per:` shape, or `state:` itself is not a map.",
+        spec: &["dsl 0.8.0 §4", "dsl 0.51.0 §5.1"],
     },
     Code {
         code: "E-STATE-DECL-CONFLICT",
@@ -1568,8 +1613,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-UNKNOWN-ATTR",
-        summary: "A content line, directive or logic element carries an attribute key that the content-line grammar, the directive's own declaration or the element's fixed attribute table does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to; on `<branch>`, `<hub>` and `<choice>` the message also lists the stamps scoped to that element.",
-        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1", "dsl 0.50.0 §3.4"],
+        summary: "A content line, directive or logic element carries an attribute key that the content-line grammar, the directive's own declaration or the element's fixed attribute table does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to; on `<branch>`, `<hub>` and `<choice>` the message also lists the stamps scoped to that element. `code=` on a directive without a `text` attribute names why: `code` is the localization identity of a directive with one.",
+        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1", "dsl 0.50.0 §3.4", "dsl 0.51.0 §5.2"],
     },
     Code {
         code: "E-UNKNOWN-DIRECTIVE",
@@ -1688,8 +1733,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-BEAT-UNRAISED",
-        summary: "A beat answers an occasion the clock's `raise:` map raises, and its `when` can hold only where the clock does not raise it — a `dayEnd` beat for a slot other than the day's last, a `dayStart` beat for a later slot of the day the run starts — or only at the last `dayEnd`, which the advance that ends the clock raises after `clock.ended` turns true, when a `terminal:` that holds with `clock.ended` has already ended the game. So it never plays. Answer an occasion raised where it holds, or change its `when`; for the last `dayEnd`, raise it before the clock ends or write `terminal:` so it holds only once the beat has played. A beat whose `when` holds where the run starts — the slot occasion or `dayStart` there, which the clock does not raise because no `advance:` stops there — is warned too, but it plays if the engine raises the occasion when a run starts: then declare `raiseAtStart: true` on the clock, which silences it; otherwise answer an occasion raised where it holds.",
-        spec: &["dsl 0.28.0"],
+        summary: "A beat answers an occasion the clock's `raise:` map raises, and its `when` can hold only where the clock does not raise it — a `dayEnd` beat for a slot other than the day's last, a `dayStart` beat for a later slot of the day the run starts — or only at the last `dayEnd`, which the advance that ends the clock raises after `clock.ended` turns true, when a `terminal:` that holds with `clock.ended` has already ended the game. So it never plays. Answer an occasion raised where it holds, or change its `when`; for the last `dayEnd`, raise it before the clock ends or write `terminal:` so it holds only once the beat has played. A beat whose `when` holds where the run starts — the slot occasion or `dayStart` there, which the clock does not raise because no `advance:` stops there — is warned too, but it plays if the engine raises the occasion when a run starts: then declare `raiseAtStart: true` on the clock, which silences it; otherwise answer an occasion raised where it holds. A beat some declared raise reaches (a directive's or reward kind's `effects.raises` of its occasion, for its target or for any when it declares no `target:`) may be raised at any position, so it is not reported.",
+        spec: &["dsl 0.28.0", "dsl 0.51.0 §4.4"],
     },
     Code {
         code: "W-BINDING-MISSING",
@@ -1728,8 +1773,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-CHAPTER-STALL",
-        summary: "A scene listed in a chain of the project's `chapters:` has its own `when:` that can stay false for good — it reads state the story may never set, or a window of the clock that closes: a `when` no raise of the chain's occasion meets (a `dayStart` chain whose scene needs the day the run starts, unless the clock declares `raiseAtStart: true` because the engine raises it there), or one that no later raise meets once the scene before it has played late (a slot of the last day of a clock that ends) — and the next listed scene's `after:` (the one the chain writes, or one it wrote itself) waits on it, so the chapters can stop there. A clock condition that a later raise still meets only delays the chain, and a condition over other `owner: engine` state is the engine's to make true; neither is reported. Only a chain stalls: a hand-written `after:` on a scene outside `chapters:` is itself the statement \"wait for that scene\" and never warns. If the scene may be skipped, let the next one follow the scene before it (`after: visited(\"<previous>\")`; the skipped one still plays first while eligible, as it ranks higher); if it must play, make sure the story makes its condition true, or let its `when` hold at a later raise.",
-        spec: &["dsl 0.28.0 §4", "dsl 0.29.0 §3"],
+        summary: "A scene listed in a chain of the project's `chapters:` has its own `when:` that can stay false for good — it reads state the story may never set, or a window of the clock that closes: a `when` no raise of the chain's occasion meets (a `dayStart` chain whose scene needs the day the run starts, unless the clock declares `raiseAtStart: true` because the engine raises it there), or one that no later raise meets once the scene before it has played late (a slot of the last day of a clock that ends) — and the next listed scene's `after:` (the one the chain writes, or one it wrote itself) waits on it, so the chapters can stop there. A clock condition that a later raise still meets only delays the chain, and a condition over other `owner: engine` state is the engine's to make true; neither is reported. Only a chain stalls: a hand-written `after:` on a scene outside `chapters:` is itself the statement \"wait for that scene\" and never warns. If the scene may be skipped, let the next one follow the scene before it (`after: visited(\"<previous>\")`; the skipped one still plays first while eligible, as it ranks higher); if it must play, make sure the story makes its condition true, or let its `when` hold at a later raise. A scene some declared raise reaches (`effects.raises`) may be raised at any position: a `when` that only the clock's schedule never meets is not reported, but one that has already expired by every position after the scene before it still is.",
+        spec: &["dsl 0.28.0 §4", "dsl 0.29.0 §3", "dsl 0.51.0 §4.4"],
     },
     Code {
         code: "W-CODE-AFTER-END",
@@ -1738,8 +1783,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-CODE-AFTER-JUMP",
-        summary: "Content follows an unguarded `::jump` directive in the same straight-line body, but the jump leaves that body so nothing after it can run.",
-        spec: &["dsl 0.12.0"],
+        summary: "Content follows an unguarded `::jump` directive without `max` in the same straight-line body, but the jump leaves that body so nothing after it can run. A bounded `::jump{to max}` does not end the body: once its takes are used up, control falls through to what follows.",
+        spec: &["dsl 0.12.0", "dsl 0.51.0 §3.4"],
     },
     Code {
         code: "W-COMPONENT-INSTANCE-UNTAGGED",
@@ -1828,8 +1873,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-LINE-CODE-UNTAGGED",
-        summary: "With `identity.requireStable`, a content line has no explicit per-speaker `code` and compiler allocation is being used; run `lute tag` to write one.",
-        spec: &["dsl 0.36.0 §2.2"],
+        summary: "With `identity.requireStable`, a content line (or a call of a directive with `text` attributes) has no explicit `code` and compiler allocation is being used; run `lute tag` to write one.",
+        spec: &["dsl 0.36.0 §2.2", "dsl 0.51.0 §5.3"],
     },
     Code {
         code: "W-LUTE-VERSION-STALE",
@@ -1850,6 +1895,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "W-OBJECTIVE-STRANDED",
         summary: "Within the declared clock windows of its own document's beats, a required objective may be stranded because those windows can all close and it has no `until=`/`by=`; a quest that re-arms (run or season tier, `rearm=`) or an objective another document's beat can complete is not reported. No path search is performed.",
         spec: &["dsl 0.31.0 §3", "dsl 0.41.0 §3.4"],
+    },
+    Code {
+        code: "W-OCCASION-NEVER-RAISED",
+        summary: "A scene, entry or bundle beat answers an occasion declared `raisedBy: declared` — the host raises it only through a directive's or reward kind's `effects.raises` — but no declared raise in the project reaches it (none raises the occasion for its `target:`, for `occasion.target`, or, when it declares no `target:`, for any target), so it never plays. Add a `raises` entry to the directive or reward kind that leads there, or drop `raisedBy: declared` if the host raises the occasion on its own. An occasion the project clock's `raise:` map raises is raised outside any declared raise and is not reported; a `lute play`/`lute test` step that raises the occasion is no raise (a test proves a test, not the game). Whole-project `check` only.",
+        spec: &["dsl 0.51.0 §4.5"],
     },
     Code {
         code: "W-OTHERWISE-DEAD",

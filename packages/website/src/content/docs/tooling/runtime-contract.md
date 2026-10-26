@@ -11,7 +11,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime).
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
-[`schemas/lute-ir-0.50.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.50.schema.json)
+[`schemas/lute-ir-0.51.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.51.schema.json)
 (JSON Schema draft 2020-12).
 
 ## Runtime event contract and `lute-runtime`
@@ -82,6 +82,32 @@ const hud = Effect.gen(function* () {
 Keep the numeric position for ordering, and use `ClockView.slot` and
 `ClockView.weekdayLabel` for display text.
  
+## 0.51 additions
+
+Every 0.51 IR change is additive: a project that uses none of the new keys compiles to byte-identical artifacts, with one exception: `capabilitySnapshot` changes once for every artifact, because the core `::jump` now declares `max`. Every other new key (`effects.raises`, `raisedBy`, `type: text`) folds into the hash only for a snapshot that declares it. The contract schemas are renamed to the `-0.51` line.
+
+**Bounded backward jump.** A `jump` command gains an optional `max` (an integer from 1 to 99), omitted when the jump has none; a jump without `max` is byte-identical to 0.50 and still goes only forward. With `max`, the jump may target an earlier label and is taken at most `max` times; after that it is not taken and control falls through to the next command.
+
+- **New semantic id `lute.core.boundedJump/1`** (module `core`, behaviour "bounded backward jumps"). An artifact lists it in `requiredSemantics` (provenance `bounded jump`) **only** when some `jump` command has `max`. An engine that ignores `max` either loops without bound or never loops, so the id is meaning-changing: an engine that does not list it in `supportedIds` refuses such an artifact at semantic negotiation, before playback. The registry goes from 16 to 17 ids.
+- **Counters.** Each bounded jump has a counter local to one walk (one presentation, one quest handler or objective segment, one entry or beat body), starting at 0. When control reaches the jump (and its `when` holds, if any) with the counter below `max`, the counter is incremented and control moves to the target; otherwise control falls through. The counter returns to 0 whenever control reaches the jump's target from **outside the jump's region**, which is the span from the target to the jump in the command stream: by falling through into the label, by a forward jump, or by a bounded jump that is not inside the region. A take of the jump itself, or of a bounded jump inside its region, does not reset it. Two bounded jumps sharing a head do not reset each other. A loop never spans an `<on>` or `<objective>` boundary, so a region is always inside one range of commands.
+- **Termination.** Between two takes control moves only forward, so a walk is bounded by the nesting of its loops; a region of nesting depth *d* runs at most Π(max + 1) times over its enclosing jumps. The reference runtime does not trust the compiler for this: at load it re-checks every control transfer of every record (a `jump`'s `target`; a choice or hub option's `target`, a hub's `return`, `converge`; a match arm's `target`, `otherwise`, `converge`; an objective's, handler's, entry's or beat's `body`). A transfer to the record itself or to an earlier one is refused unless it is a `jump` with `max` in a well-nested region; two bounded loops that overlap without nesting, a `max` outside 1..=99, and a required target that is missing or not a position are refused too. `Runtime::load` names the record (`` malformed `jump` record at 001-0200: its `target` goes back to 001-0100, a cycle that never ends (only a `jump` with `max` may go back) ``), and `lute run`/`lute trace` print the same fault. The runaway-step guard still counts steps since the range started or since the last taken bounded jump.
+- **Component labels.** A `::label` inside a component expansion is named per `::use` instance in the compiled stream, and that instance's jumps target its own labels, so a component used twice loops (or jumps forward) inside each instance (#207).
+- **No snapshot change.** Counters are walk-local and rebuilt by the same replay that rebuilds a hub's presentation. The runtime `Snapshot` and the event schema keep their shape; only the version string moves to `0.51`. A `<branch>` reached again in a later iteration is a new `awaitChoice` with a new `request`, and its `presentation` stays `0`; a `<hub>` inside a loop starts each visit at presentation 0.
+- **Trace.** The driver's `jump` observation gains the take number and `max`, and an exhausted observation when the jump is not taken. `lute trace` prints them as explanation, not as a static claim.
+
+**Declared raises.** A `plugin` command gains an optional resolved `raises: [{ occasion, target?, dynamic? }]` and `RewardEntry` gains the same `raises`, each omitted when empty and written last (`RewardEntry.raises` after `credits`, `retracts`, `asserts` and `accepts`). `@attr` is bound to the attribute's compiled value (else its declared `default:`) and the occasion's domain prefix is applied (`scene.chapter2`); an unbound target writes no entry. A target that reads `occasion.target` is written as the reference with the domain prefix (`scene.occasion.target`) and marked `"dynamic": true`; the runtime binds only a marked raise, and refuses at load a marked raise whose target is not `occasion.target` with the occasion's declared prefix, that has no target, or that is on an untargeted occasion. A reward's raises are stamped by the reward kind's `effects.raises`, with `@target` bound as for `accepts`; they are never dynamic.
+
+- The **emitted `plugin` record** (also the halted variant) and the **`grant` record** carry `raises`, with `occasion.target` bound and the `dynamic` mark dropped, omitted when empty. The `record` payload is untyped in the event schema, so only the record catalogue changes. The grant's effect records (`retract`, `assert`, `accept` with their `grant` key) are unchanged, and a raise gets no record of its own, because the runtime raises nothing. `lute run`'s conformance records keep `raises`.
+- **Descriptive, no semantic id.** The runtime does not act on `raises`, and plugin vocabulary is versioned by `capabilitySnapshot`. A reward whose kind declares only `raises` keeps `lute.quest.rewardEffects/1` out of `requiredSemantics`: that id is still collected only for `retracts`, `asserts` and `accepts`.
+- **Host duty.** A host that performs raises sends each one as a `raiseOccasion` input after the presentation that ran the call ends (`presentationEnd`) and the runtime is idle, or after the output carrying the `grant` record has been applied. It keeps its own pending queue across saves, because the runtime replays only the undelivered suffix of an output (see [Custom hosts](/player/custom-hosts/#declared-raises)).
+
+**Localized directive text.** A `plugin` command gains an optional `localized` map, keyed by attribute name (`{ "<attr>": { "lineId", "placeholders"?, "texts"? } }`), for each attribute typed [`text`](/plugins/manifests/#localizable-text-attributes-type-text); `lineId` is `{prefix}~{tag}~{code}~{attr}`, and `placeholders` and `texts` are omitted when empty. `fields.<attr>` keeps the source-language string with its `{{…}}` markers as authored, so a host that ignores localization reads what it read before; the 0.50 stamps of the call stay in `stamps`. `texts` (locale tag → translated text) is filled by `lute compile --locale-bundle`, as for a line. A directive without `text` attributes is byte-identical to 0.50.
+
+- **Runtime.** For a `plugin` command with `localized`, the runtime renders each `text` attribute's markers once and writes the rendered source into the record's `attrs.<attr>`, and the rendered translations into the record's `localized: { <attr>: { lineId, texts } }`, as it does for a line. Host-token markers stay verbatim. The bridge await's `attrs` carry the same rendered values. `lute run`'s conformance records drop `localized`, as they drop a line's translations.
+- **Descriptive, no semantic id.** Engines MAY read `raises` and `localized`.
+
+**What an engine or host must do.** Widen the version gate to `0.51`; list `lute.core.boundedJump/1` in `supportedIds` to accept an artifact with a bounded loop; optionally perform declared raises and read `localized`. The `capabilitySnapshot` of every artifact moves once, so an engine that pins a snapshot hash updates it. See [Localized text](#localized-text) for the `texts` model.
+
 ## 0.50 additions
 
 Every 0.50 IR change is additive: a project that uses none of the new keys compiles to byte-identical artifacts (`capabilitySnapshot` included). The contract schemas are renamed to the `-0.50` line.
@@ -451,8 +477,8 @@ Every host negotiates in this order, before opening a playback session:
 
 1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
    execution-IR shape, so an engine pins the exact `irVersion` major.minor
-   line: a `0.50` engine accepts only `0.50.*` artifacts and refuses `0.49.*`
-   and `0.51.*`; patch handling is the engine's policy. From 1.0 onward, the
+   line: a `0.51` engine accepts only `0.51.*` artifacts and refuses `0.50.*`
+   and `0.52.*`; patch handling is the engine's policy. From 1.0 onward, the
    released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
@@ -464,7 +490,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.50.0"
+irVersion: "0.51.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -480,7 +506,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.41.*` artifact against the `0.50.0`
+the matrix's exact major.minor line (a `0.41.*` artifact against the `0.51.0`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 
@@ -1018,6 +1044,8 @@ while (pc < artifact.commands.length) {
   pc = next === null ? pc + 1 : index.get(next)!;
 }
 ```
+
+Since 0.51 the `jump` case above is the unbounded form. A `jump` with `max` keeps a per-walk counter and takes the jump only while it is below `max`, otherwise falling through (`next = null`); see [0.51 additions](#051-additions).
 
 The full scene and quest command set is twenty-three kinds: `line`, `bg`,
 `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence`, `set`,

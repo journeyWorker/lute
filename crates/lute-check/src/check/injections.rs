@@ -2,9 +2,9 @@
 //! `::use` bodies in document position.
 
 use super::{
-    attr_str, lower_node_with_snapshot, Arm, CapabilitySnapshot, ComponentSet, Directive, Domain,
-    InjectedCommand, Node, StageState,
+    attr_str, lower_node_with_snapshot, Arm, Directive, InjectedCommand, Node, StageState,
 };
+use crate::inject::StageFlow;
 
 /// Fold the injection reducer over a node slice, threading `StageState` and
 /// collecting every injected command. `<branch>`/`<hub>` choices and
@@ -16,24 +16,41 @@ use super::{
 /// participate in stage-entity lifetime here (see the injection reducer's
 /// node-kind coverage).
 ///
-/// A `::use` is entered too ([`fold_use`], Task 7g) — `using` carries the
-/// component names on the current expansion path so a `::use` cycle
+/// dsl 0.51.0 §3.4: `flow` routes every `::jump` to its label and binds the
+/// state at every `::label` ([`StageFlow::label`], the function `lute
+/// compile` binds its label and loop-head states from). `None` is a point no
+/// route reaches (after an unguarded jump without `max`): nothing is staged
+/// there, and a label a jump reaches revives it. The reducer's diagnostics
+/// collect in [`StageFlow::diags`].
+///
+/// A `::use` is entered too ([`fold_use`], Task 7g) — `flow.using` carries
+/// the component names on the current expansion path so a `::use` cycle
 /// terminates.
 pub(crate) fn fold_injections(
     nodes: &[Node],
-    state: &mut StageState,
+    state: &mut Option<StageState>,
     out: &mut Vec<InjectedCommand>,
-    domains: &std::collections::BTreeMap<String, Domain>,
-    snapshot: &CapabilitySnapshot,
-    components: &ComponentSet,
-    using: &mut Vec<String>,
+    flow: &mut StageFlow<'_>,
 ) {
     for (i, node) in nodes.iter().enumerate() {
-        let taken = std::mem::take(state);
-        let (next, emit) =
-            lower_node_with_snapshot(taken, node, &nodes[i + 1..], domains, snapshot);
-        *state = next;
-        out.extend(emit);
+        flow.visit();
+        if let Some(id) = crate::loop_walk::label_of(node) {
+            *state = flow.label(id, &nodes[i + 1..], state.take());
+            continue;
+        }
+        if let Node::Directive(d) = node {
+            if d.tag == lute_manifest::core::JUMP_DIRECTIVE {
+                flow.jump(d, state);
+                continue;
+            }
+        }
+        if let Some(taken) = state.take() {
+            let (mut next, emit) =
+                lower_node_with_snapshot(taken, node, &nodes[i + 1..], flow.domains, flow.snapshot);
+            flow.diags.append(&mut next.diags);
+            *state = Some(next);
+            out.extend(emit);
+        }
         let arms: Vec<&[Node]> = match node {
             Node::Branch(b) => b.choices.iter().map(|c| c.body.as_slice()).collect(),
             Node::Hub(h) => h.bodies().map(std::vec::Vec::as_slice).collect(),
@@ -45,25 +62,30 @@ pub(crate) fn fold_injections(
                 })
                 .collect(),
             Node::Directive(d) if d.tag == "use" => {
-                fold_use(d, state, out, domains, snapshot, components, using);
+                fold_use(d, state, out, flow);
                 continue;
             }
             _ => continue,
         };
-        // Diagnostics already raised stay once, ahead of the arms' own.
-        let mut diags = std::mem::take(&mut state.diags);
-        let exits = arms
+        if arms.is_empty() {
+            continue;
+        }
+        let exits: Vec<StageState> = arms
             .into_iter()
-            .map(|body| {
+            .filter_map(|body| {
                 let mut arm = state.clone();
-                fold_injections(body, &mut arm, out, domains, snapshot, components, using);
+                fold_injections(body, &mut arm, out, flow);
                 arm
             })
             .collect();
-        let mut joined = StageState::join(state, exits);
-        diags.append(&mut joined.diags);
-        joined.diags = diags;
-        *state = joined;
+        // No arm left by its end: the walk resumes only at a label — unless
+        // control may pass the node without taking an arm, which keeps the
+        // stage it entered with (0.50 joins only the arms otherwise).
+        if !exits.is_empty() {
+            *state = Some(StageState::join(&StageState::default(), exits));
+        } else if !flow.may_take_no_arm(node) {
+            *state = None;
+        }
     }
 }
 
@@ -100,22 +122,22 @@ pub(crate) fn fold_injections(
 /// so the site is the only honest anchor. A nested `::use` prefixes again,
 /// naming the whole expansion path.
 ///
+/// dsl 0.51.0 §3.4: the body's labels and loops are its own document's
+/// ([`StageFlow::enter_component`]).
+///
 /// An unresolvable name (no `component=` attr, or one absent from the table)
 /// is silently skipped — the resolution failure is already
 /// `E-COMPONENT-UNKNOWN`/`E-COMPONENT-PARSE` on the import surface.
 fn fold_use(
     d: &Directive,
-    state: &mut StageState,
+    state: &mut Option<StageState>,
     out: &mut Vec<InjectedCommand>,
-    domains: &std::collections::BTreeMap<String, Domain>,
-    snapshot: &CapabilitySnapshot,
-    components: &ComponentSet,
-    using: &mut Vec<String>,
+    flow: &mut StageFlow<'_>,
 ) {
     let Some(name) = attr_str(d, "component") else {
         return;
     };
-    let Some(def) = components.table.get(&name) else {
+    let Some(def) = flow.components.and_then(|set| set.table.get(&name)) else {
         return;
     };
     // A `::use` cycle is `E-COMPONENT-CYCLE` (reported by the expansion
@@ -123,11 +145,12 @@ fn fold_use(
     // exactly as `insert_shape_fields` uses for self-referential state shapes:
     // popping after the body keeps a legitimate diamond (one component reached
     // twice by disjoint paths) foldable.
-    if using.iter().any(|n| n == &name) {
+    if flow.using.iter().any(|n| n == &name) {
         return;
     }
-    using.push(name);
-    let mark = state.diags.len();
+    flow.enter_component(&name);
+    flow.using.push(name);
+    let mark = flow.diags.len();
     // dsl 0.26.0 §3.2: a `@@p:` line stages the member this `::use` binds
     // `p` to (a nested `::use`'s arguments pass the binding through).
     let bound: Vec<Vec<Node>>;
@@ -152,10 +175,11 @@ fn fold_use(
         bound.iter().map(Vec::as_slice).collect()
     };
     for body in bodies {
-        fold_injections(body, state, out, domains, snapshot, components, using);
+        fold_injections(body, state, out, flow);
     }
-    let name = using.pop().expect("pushed above");
-    for diag in &mut state.diags[mark..] {
+    let name = flow.using.pop().expect("pushed above");
+    flow.leave_component();
+    for diag in &mut flow.diags[mark..] {
         diag.message = format!(
             "component `{name}` ({}): {}",
             def.src.display(),

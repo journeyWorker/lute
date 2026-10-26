@@ -3,7 +3,7 @@
 This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
 compiler — it checks a `.lute` document and lowers it to the execution IR
-described by the current schema (`schemas/lute-ir-0.50.schema.json`). It runs
+described by the current schema (`schemas/lute-ir-0.51.schema.json`). It runs
 no CEL, no Datalog fixpoint, keeps no fact store, and fires no bridge at
 compile time. Everything on the far side of the execution IR is the engine's
 job.
@@ -86,7 +86,7 @@ loads, exactly as it concatenates the command streams.
 
 `lute compile --project` writes that union, plus the document table and the
 project-wide capability vocabulary, as `project.index.json`. Its shape is the
-`projectIndex` definition of `schemas/lute-ir-0.50.schema.json`: the index
+`projectIndex` definition of `schemas/lute-ir-0.51.schema.json`: the index
 `$defs` (`projectIndex`, `indexDocument`, `indexEntry`, `indexBeat`,
 `indexOccasion`, `indexStateDomain`, `indexDef`, `fieldType`) are generated
 from the Rust index types by `lute-contract-schema` and `$ref` the hand-written
@@ -276,6 +276,10 @@ it with a program counter, resolving control-flow targets — which are all
 - **`jump.target`** — unconditional transfer. An authored
   `::jump{to="name"}` resolves to the position of the first record after the
   matching `::label{name="name"}`; a label emits no record of its own.
+  A `jump` without `max` only goes forward. Since 0.51 (`lute.core.boundedJump/1`)
+  a `jump` may carry `max` (integer 1..99) and then target an earlier
+  position — a bounded backward jump; see
+  [Bounded loops](#bounded-loops-051) below.
 - **`choice` / `hub`** — each option carries a `target` (taken when the option
   is chosen) and the record carries a `converge` position (where control
   resumes after the construct); a `hub` may also carry `return`. A `converge`
@@ -304,6 +308,61 @@ and `hub.options[].target`; `match.converge`, `match.otherwise` and
 `match.arms[].target`; `jump.target`; `quest.objectives[].body` (`null` for an
 empty body); `on.body`; `entry.body`; and `beat.body`. No other field holds a
 position.
+
+### Bounded loops (0.51) {#bounded-loops-051}
+
+A `jump` with `max` (`Option<u8>`, 1..99; absent means a plain forward jump, and
+such a record is byte-identical to 0.50) is taken at most `max` times, then
+falls through to the next command. An engine that ignores `max` either loops
+without bound or never loops, so it is gated by the semantic id
+`lute.core.boundedJump/1`.
+
+- **Counters.** The machine keeps one counter per bounded jump, keyed by the
+  jump's command index, local to one walk (one presentation, one quest handler
+  or objective segment, one entry or beat body). At the jump, if the counter is
+  below `max` it is incremented and control moves to `target`; otherwise control
+  falls through.
+- **Reset by position.** A bounded jump at index *j* with target *t* < *j* has
+  the region [*t*, *j*] of the flat command stream. On every transfer of control
+  from index *p* to index *t* — fall-through, any jump, a choice or match
+  transfer, or the first command of a range — the counter of every bounded jump
+  whose target is *t* and whose region does not contain *p* (or when there is no
+  *p* in this range) is reset to 0. Taking the jump itself, or another bounded
+  jump inside its region, does not reset it.
+- **Termination.** Between two takes control moves only forward, so a region of
+  nesting depth *d* is traversed at most Π(max_k + 1) times over its enclosing
+  jumps. The reference runtime checks this at load rather than trusting the
+  compiler: `Code::loop_table` walks every control transfer of every record
+  (`jump.target`; choice and hub `options[].target`, `hub.return`, `converge`;
+  match `arms[].target`, `otherwise`, `converge`; `quest.objectives[].body`;
+  `on`/`entry`/`beat` `body`) and refuses a transfer to the record itself or an
+  earlier one unless it is a `jump` with `max` in a well-nested region, two
+  bounded loops that overlap without nesting, a `max` outside 1..99, and a
+  required target that is missing or not a position string.
+  `ExecProject::from_index` (so `Runtime::load` and play) refuses such a
+  document, and a machine over a refused stream runs nothing. The runaway step
+  guard still counts steps since the range started or since the last taken
+  bounded backward jump.
+- **Component labels.** A `::label` inside a component expansion is compiled
+  as `<instance scope path>::<name>`, and a jump emitted in that expansion
+  targets the same instance's label, so two `::use` instances of one component
+  each loop (or jump forward) on their own labels (#207).
+- **Replay and saves.** Counters are walk-local and are rebuilt when a suspended
+  input is resumed by replaying it from its pre-input world with the answers
+  already given, as a hub's `presentation` is. The snapshot shape does not
+  change.
+- **Menus in a loop.** A `<branch>` reached again is a new `awaitChoice` with a
+  new `request`; its `presentation` stays `0`. Scripted `choose:` lists for a
+  branch are consumed one decision per presentation. A `<hub>` inside a loop
+  starts each visit at presentation 0, and its scripted list is per visit.
+- **Trace.** The driver's `jump` observation carries the take number and `max`
+  (`{ "kind": "jump", "position", "taken": n, "max": m }`) and, when a bounded
+  jump is not taken, an exhausted observation
+  (`{ "kind": "jump", "position", "exhausted": true, "max": m }`). `lute trace`
+  prints `<jump -> attempt (again 1/2)>` and
+  `<jump -> attempt not taken (2/2 used)>` (JSON: `"bounded": { "take", "max",
+  "outcome": "again" }` or `{ "max", "outcome": "notTaken" }`). This is
+  explanation, not a static claim.
 
 ## Command records
 
@@ -754,7 +813,7 @@ function run(artifact: ExecutionIr, state: StateStore, facts: FactStore) {
             next = arm ? arm.target : (cmd.otherwise ?? cmd.converge);
             break;
           }
-          case "jump":    next = cmd.target; break;
+          case "jump":    next = jumpTarget(cmd);        break; // 0.51: bounded `max`, see Control flow
           case "end":     finish(cmd.reason); return;  // terminate the walk
           case "barrier": joinTimeline(cmd.timeline, cmd.at); break; // see timeline-semantics.md
           default: throw new UnknownCommandKind(cmd.kind);

@@ -1,7 +1,7 @@
 # Lute runtime conformance fixtures
 
 These fixtures are the **executable acceptance suite for the runtime contract**
-(`docs/runtime/*.md` + `schemas/lute-ir-0.50.schema.json`). A third-party engine
+(`docs/runtime/*.md` + `schemas/lute-ir-0.51.schema.json`). A third-party engine
 that consumes compiled Lute artifacts should **replay every fixture** and check
 that its own machine transcript matches the checked-in `expected.json`. They are
 small by design — each isolates one contract surface — so a mismatch points
@@ -142,6 +142,7 @@ in the transcript: a grant that fires is unconditionally true; a `false`/
 | `grant-instance` | a single-walk `lute run` fixture pinning `instance` and `index` field presence on objective and quest rewards; multi-run identity is pinned by `crates/lute-cli/tests/grant_identity.rs` |
 | `grant-replay` | a single-walk `lute run` fixture pinning stable grant identity fields and objective/index coordinates; replay and multi-run identity are pinned by `crates/lute-cli/tests/grant_identity.rs` |
 | `reward-effects` | 0.50.0 §5.6 reward kind `effects` (a local plugin's `rewardKinds`): each effect record follows its `grant` record and carries the grant's identity (`grant: { quest, instance, index, objective?, kind }`, no `position`) — an objective-level assert (`BADGE` on `first.greet`), then on completion a retract (`REVOKE`), an assert (`BADGE`), a `when=` false reward with no grant and no effect (`SCAR`), an accept of the already-active `helper` (`ignored`), and an accept of the accept-driven `second`, which activates on the next lifecycle round; the `questComplete` handler reads `met(mira)` true and `met(theo)` false (grants precede the handler); `doomed`'s `outcome="failed"` reward asserts `rival(mira)` before its `questFailed` handler reads it |
+| `bounded-jump` | 0.51.0 §3.7 bounded backward jumps (`jump` with `max`): a retry loop taken `max` times then left by fall-through; a loop its `when=` guard leaves early; nested loops whose inner counter resets on each outer iteration; two jumps sharing a head (the inner take keeps the outer count, the outer take resets the inner); a `<branch>` in a loop driven by a three-decision script (`retry: [yes, yes, no]`); a `<hub>` in a loop, each visit from presentation 0 with its list replayed per visit; a loop inside a hub option body, starting over on each visit. The mid-loop save is the session case `session/bounded-jump` |
 | `identity/explicit-component` | explicit `instance="use-001"`/`use-002` component scopes; nested component joins remain stable under insertion |
 | `identity/insertion-before-repeat` | inserting before a repeated component preserves authored instance identities |
 | `identity/rename-ledger` | a project manifest's quest rename expands to objective/state pairs in `identityRenames`; `requiredSemantics` includes `lute.identity.renames/1` |
@@ -279,6 +280,7 @@ done
 | knowledge-validity-half-open; knowledge-validAt-now | `lute.core/1`, `lute.knowledge.facts/1`, `lute.knowledge.temporal/1` |
 | lore-first-read-disclosure; lore-reread-state; lore-bundle-beat | `lute.core/1`, `lute.knowledge.facts/1`, `lute.lore/1` |
 | reward-effects | `lute.core/1`, `lute.knowledge.facts/1`, `lute.quest.lifecycle/1`, `lute.quest.rewardEffects/1`, `lute.quest.rewards/1` |
+| bounded-jump | `lute.core.boundedJump/1`, `lute.core/1` |
 
 Invalid engine fixtures use `engine.yaml`, an artifact, and `expected-stderr`; they must exit 2 with `E-ENGINE-SEMANTICS`, `E-ENGINE-IR-VERSION`, and `E-ENGINE-MATRIX` respectively.
 

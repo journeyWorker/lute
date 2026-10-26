@@ -1,0 +1,13 @@
+---
+kind: scene
+id: hall
+title: Hall
+on: cutscene
+target: scene.hall
+once: false
+---
+
+## Hall
+
+::set{run.halls += 1}
+@narrator{code="0010"}: The hall.

@@ -43,6 +43,7 @@ pub mod fix;
 pub mod gates;
 pub mod inject;
 pub mod logic_attrs;
+pub mod loop_walk;
 pub mod lore;
 pub mod match_check;
 pub mod meta;
@@ -53,6 +54,7 @@ pub mod permissions;
 pub mod prereq;
 pub mod producible;
 pub mod project_check;
+pub mod raises;
 pub mod reachability;
 pub mod rel_schema;
 pub mod renames;
@@ -84,7 +86,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.50.0";
+pub const LUTE_LANG_VERSION: &str = "0.51.0";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
@@ -206,10 +208,12 @@ pub use fact_must::{compute_must, stable_seeds, unproduced_relations, FactMust};
 pub use fact_write::{check_assert, check_retract, E_DERIVED_WRITE, E_FACT_TIER_WRITE};
 pub use fix::{fix_document, FixResult};
 pub use inject::{
-    classify_node, is_declared_exit, lower_node, lower_node_with_snapshot, resolve_record_fields,
-    Departure, InjectKind, InjectedCommand, Provenance, ResolvedRecordField, ResolvedRecordFields,
-    SpriteState, StageKind, StageState,
+    classify_node, is_declared_exit, lower_node, lower_node_with_snapshot, record_stage_labels,
+    resolve_record_fields, take_stage_labels, Departure, InjectKind, InjectedCommand, Provenance,
+    ResolvedRecordField, ResolvedRecordFields, SpriteState, StageFlow, StageKind, StageLabel,
+    StageState,
 };
+pub use loop_walk::{loop_walk_stats, reset_loop_walk_stats, LoopWalkStats, WalkKind};
 pub use lore::{
     check_entries, document_series, entry_read_decl, entry_read_path, is_beat_target,
     is_entry_target, kind_target, parse_entry_order, resolve_entry_series, EntryRecord,
@@ -218,7 +222,7 @@ pub use lore::{
 pub use match_check::{
     check_branch, check_hub, check_line_codes, check_match, check_quest, check_quest_rewards,
     is_exhaustive, is_pattern_literals, BranchRecord, DomainInfo, HubRecord, QuestRecord,
-    E_REWARD_ATTR, E_REWARD_DUP, E_REWARD_KIND, E_WHEN_RANGE,
+    SubjectScope, E_REWARD_ATTR, E_REWARD_DUP, E_REWARD_KIND, E_WHEN_RANGE,
 };
 pub use meta::{
     ident_from_name, parse_meta, parse_meta_kind, resolve_doc_kind, DocKind, MetaKind, Namespace,
@@ -251,7 +255,10 @@ pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use rule_index::evaluable_rules;
 pub use schema_import::{resolve_imports, ImportCache, Memo, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner, E_ENGINE_OWNED_WRITE};
-pub use tag::{codes_locked, retag_document, tag_document, LineRenumber, RetagOutcome, TagOutcome};
+pub use tag::{
+    codes_locked, retag_document, tag_document, text_directive_calls, LineRenumber, RetagOutcome,
+    TagOutcome,
+};
 pub use temporal::{check_temporal, E_TEMPORAL_ARG};
 pub use time::{fmt_seconds, ms_to_seconds, parse_time_ms, TimeParse, TIME_MAX_FRACTIONAL_DIGITS};
 pub use timeline::{

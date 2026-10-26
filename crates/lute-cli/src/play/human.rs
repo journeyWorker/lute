@@ -312,7 +312,7 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
             // dsl 0.24.0 §5: the call's bridge answer, when it read one.
             let note = crate::runner::plugin_call_note(rec);
             let bridged = note.starts_with("(bridge");
-            match authored() {
+            let line = match authored() {
                 // T1-3: a call with only declared effects — its `set`
                 // records follow, each naming it.
                 Some(text) if note.is_empty() => text,
@@ -320,7 +320,8 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
                 Some(text) => format!("{text}        (plugin call, not invoked)"),
                 None if note.is_empty() => format!("  plugin {}", str_of(rec, "tag")),
                 None => format!("  plugin {} {note}", str_of(rec, "tag")),
-            }
+            };
+            format!("{line}{}", raises_note(rec))
         }
         "entry" => {
             let read = if rec.get("firstRead").and_then(Json::as_bool) == Some(true) {
@@ -485,12 +486,28 @@ fn render_record(rec: &Json, cmds: &DocCmds<'_>) -> Option<String> {
             let instance = rec.get("instance").and_then(Json::as_u64).unwrap_or(0);
             let index = rec.get("index").and_then(Json::as_u64).unwrap_or(0);
             format!(
-                "  grant[#{instance} i{index}] {owner} {} {amount}{target}{on_failed}{credited}",
-                str_of(&reward, "kind")
+                "  grant[#{instance} i{index}] {owner} {} {amount}{target}{on_failed}{credited}{}",
+                str_of(&reward, "kind"),
+                raises_note(rec)
             )
         }
         _ => format!("  {kind}"),
     })
+}
+
+/// 0.51.0 §4.6: `  → raises cutscene scene.chapter2` for each raise a
+/// `plugin` or `grant` record declares — the host's to make; `lute play`
+/// raises nothing itself (a script raises the occasion as its next step).
+fn raises_note(rec: &Json) -> String {
+    rec.get("raises")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+        .map(|r| match r.get("target").and_then(Json::as_str) {
+            Some(t) => format!("  → raises {} {t}", str_of(r, "occasion")),
+            None => format!("  → raises {}", str_of(r, "occasion")),
+        })
+        .collect()
 }
 
 fn render_records(out: &mut String, p: &ExecProject, view: View, document: &str, records: &[Json]) {

@@ -1,12 +1,14 @@
 //! `plugin` records (dsl 0.24.0 §5, 0.25.0 §7, 0.27.0 §4): the bridge call,
-//! its declared effects and facts, and [`BridgeReads`] — what content reads
-//! of the bridge results.
+//! its declared effects and facts, the rendered `text` attributes (0.51.0
+//! §5.6), and [`BridgeReads`] — what content reads of the bridge results.
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use lute_manifest::schema::{OccasionDecl, OccasionTarget};
 use serde_json::{json, Value as Json};
 
-use super::format::value_to_json;
+use super::commands::texts_with;
+use super::format::{substitute_markers, value_to_json};
 use super::{addr, fold_op, Machine, Site};
 use crate::driver::{BridgeCall, BridgeReply, Driver, SiteKind};
 use crate::eval::Read;
@@ -145,13 +147,24 @@ impl<D: Driver> Machine<D> {
             .collect();
         // dsl 0.41.0 §5.5: the call's attributes as executed, `occasion.target`
         // bound — what every `plugin` record and the bridge await carry.
-        let attrs = cmd.get("fields").and_then(Json::as_object);
+        // 0.51.0 §5.6: each `text` attribute rendered, as a line's text is.
+        let mut attrs = cmd.get("fields").and_then(Json::as_object).cloned();
+        let Some(localized) = self.render_texts(cmd, attrs.as_mut()) else {
+            return !self.stopped();
+        };
         // 0.49.0 §3.1: the command's plugin stamps ride beside `attrs`, never
         // merged into them, and are omitted when the command has none.
         let stamps = cmd
             .get("stamps")
             .and_then(Json::as_object)
             .filter(|s| !s.is_empty());
+        // 0.51.0 §4.6: the call's declared raises (`occasion.target` bound
+        // above), omitted when it declares none.
+        let raises = cmd
+            .get("raises")
+            .and_then(Json::as_array)
+            .filter(|r| !r.is_empty())
+            .map(|r| Json::Array(r.clone()));
         let (answer, host) = if reads.is_empty() {
             (None, crate::session::Writes::default())
         } else {
@@ -159,7 +172,7 @@ impl<D: Driver> Machine<D> {
                 tag: &tag,
                 addr: addr(cmd),
                 reads: &reads,
-                attrs,
+                attrs: attrs.as_ref(),
                 stamps,
             };
             match self.driver.bridge(&call) {
@@ -167,7 +180,7 @@ impl<D: Driver> Machine<D> {
                 BridgeReply::Unanswered => (None, crate::session::Writes::default()),
             }
         };
-        let attrs = Json::Object(attrs.cloned().unwrap_or_default());
+        let attrs = Json::Object(attrs.unwrap_or_default());
         // dsl 0.25.0 §7: whether content reads one of this call's results.
         let read = reads
             .iter()
@@ -203,6 +216,12 @@ impl<D: Driver> Machine<D> {
                 if let Some(stamps) = stamps {
                     rec["stamps"] = Json::Object(stamps.clone());
                 }
+                if !localized.is_empty() {
+                    rec["localized"] = Json::Object(localized);
+                }
+                if let Some(raises) = raises.clone() {
+                    rec["raises"] = raises;
+                }
                 self.driver.emit(rec);
                 return false;
             }
@@ -224,6 +243,16 @@ impl<D: Driver> Machine<D> {
         rec.insert("attrs".into(), attrs);
         if let Some(stamps) = stamps {
             rec.insert("stamps".into(), Json::Object(stamps.clone()));
+        }
+        // 0.51.0 §5.6: each `text` attribute's `lineId` and rendered
+        // translations, as a line record carries its own.
+        if !localized.is_empty() {
+            rec.insert("localized".into(), Json::Object(localized));
+        }
+        // 0.51.0 §4.6: the declared raises, `occasion.target` bound — the
+        // host raises them after the presentation ends.
+        if let Some(raises) = raises {
+            rec.insert("raises".into(), raises);
         }
         rec.insert("external".into(), Json::Bool(true));
         rec.insert("unresolvedEffects".into(), json!(unresolved));
@@ -337,6 +366,56 @@ impl<D: Driver> Machine<D> {
         // call's declared effects — state, then facts, then retracts, then
         // accepts — each recorded with `effectOf: <tag>` and `by: "host"`.
         self.host_writes(cmd, &tag, &host)
+    }
+
+    /// 0.51.0 §5.6: render each `text` attribute of plugin call `cmd` (its
+    /// `localized` map) as `rec_line` renders a line: every marker once,
+    /// against the attribute's placeholders, the rendered source written
+    /// into `attrs.<attr>` and each translation's markers given the value
+    /// the source rendered for the marker with the same referent. Host-token
+    /// markers stay verbatim. Returns the record's `localized` —
+    /// `{ <attr>: { lineId, texts? } }`, empty for a call without `text`
+    /// attributes — or `None` when an unset payload field or an unbound
+    /// `occasion.target` in a text stopped the walk (the line rule).
+    fn render_texts(
+        &mut self,
+        cmd: &Json,
+        mut attrs: Option<&mut serde_json::Map<String, Json>>,
+    ) -> Option<serde_json::Map<String, Json>> {
+        let mut out = serde_json::Map::new();
+        let Some(texts) = cmd.get("localized").and_then(Json::as_object) else {
+            return Some(out);
+        };
+        for (attr, text) in texts {
+            let Some(raw) = attrs
+                .as_deref()
+                .and_then(|a| a.get(attr))
+                .and_then(Json::as_str)
+                .map(str::to_string)
+            else {
+                continue;
+            };
+            let placeholders = text.get("placeholders").and_then(Json::as_array);
+            if self.text_halts(placeholders, addr(cmd)) {
+                return None;
+            }
+            let rendered = self.render_markers(&raw, placeholders);
+            if let Some(a) = attrs.as_deref_mut() {
+                a.insert(
+                    attr.clone(),
+                    Json::String(substitute_markers(&raw, &rendered, &mut 0)),
+                );
+            }
+            let mut entry = serde_json::Map::new();
+            if let Some(id) = text.get("lineId") {
+                entry.insert("lineId".into(), id.clone());
+            }
+            if let Some(t) = text.get("texts").filter(|t| !t.is_null()) {
+                entry.insert("texts".into(), texts_with(t, &raw, &rendered));
+            }
+            out.insert(attr.clone(), Json::Object(entry));
+        }
+        Some(out)
     }
 
     /// dsl 0.41.0 §5.3: a bridge answer's `writes` at the call. `false` =
@@ -570,7 +649,8 @@ fn fact_record(f: &Json) -> (String, Vec<String>) {
 const TARGET: &str = lute_manifest::semantics::beats::OCCASION_TARGET;
 
 /// Whether a plugin record writes through `occasion.target`: an effect path
-/// `F[occasion.target]`, a fact argument or a field given it.
+/// `F[occasion.target]`, a fact argument, a field given it, or a declared
+/// raise for it (0.51.0 §4.6).
 fn mentions_target(cmd: &Json) -> bool {
     let paths = cmd
         .get("effects")
@@ -592,6 +672,84 @@ fn mentions_target(cmd: &Json) -> bool {
             .get("fields")
             .and_then(Json::as_object)
             .is_some_and(|f| f.values().any(|v| v.as_str() == Some(TARGET)))
+        || raises_of(cmd).any(is_dynamic)
+}
+
+/// A plugin record's declared raises (0.51.0 §4.6).
+fn raises_of(cmd: &Json) -> impl Iterator<Item = &Json> {
+    cmd.get("raises")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+}
+
+/// A raise whose target the compiler marked `dynamic`: it reads
+/// `occasion.target`. Only the mark decides — a static target that happens
+/// to read `….occasion.target` is not bound.
+fn is_dynamic(raise: &Json) -> bool {
+    raise.get("dynamic").and_then(Json::as_bool) == Some(true)
+}
+
+/// 0.51.0 §4.6: why a record's `dynamic` raise is malformed, if one is. The
+/// compiler marks only the `occasion.target` reference with the occasion's
+/// domain prefix applied (`scene.occasion.target`; bare for a shape-only
+/// target), so load refuses any other marked target, a marked raise without
+/// one, and a mark on an untargeted occasion — binding would otherwise
+/// rewrite an arbitrary target to a bare member. An occasion `occasions`
+/// does not declare has no known prefix: its reference passes with any
+/// prefix or none. A static raise is never bound and is not checked.
+pub(crate) fn dynamic_raise_fault(
+    cmd: &Json,
+    occasions: &BTreeMap<String, OccasionDecl>,
+) -> Option<String> {
+    raises_of(cmd).filter(|r| is_dynamic(r)).find_map(|r| {
+        let occasion = r.get("occasion").and_then(Json::as_str).unwrap_or("");
+        let why = match (
+            r.get("target").and_then(Json::as_str),
+            occasions.get(occasion).map(|d| &d.target),
+        ) {
+            (_, Some(OccasionTarget::Shape(false))) => format!("`{occasion}` takes no target"),
+            (None, _) => "it has no target".to_string(),
+            (Some(target), Some(declared)) => {
+                let expected = match declared {
+                    OccasionTarget::Domain { prefix, .. } => format!("{prefix}.{TARGET}"),
+                    OccasionTarget::Shape(_) => TARGET.to_string(),
+                };
+                if target == expected {
+                    return None;
+                }
+                format!("its target `{target}` is not `{expected}`")
+            }
+            (Some(target), None) => {
+                let prefixed = |p: &str| p.strip_suffix('.').is_some_and(|p| !p.is_empty());
+                if target
+                    .strip_suffix(TARGET)
+                    .is_some_and(|p| p.is_empty() || prefixed(p))
+                {
+                    return None;
+                }
+                format!("its target `{target}` is not `{TARGET}` with a domain prefix or none")
+            }
+        };
+        let kind = cmd.get("kind").and_then(Json::as_str).unwrap_or("?");
+        let position = cmd.get("position").and_then(Json::as_str).unwrap_or("?");
+        Some(format!(
+            "malformed `{kind}` record at {position}: its raise of `{occasion}` is marked \
+             `dynamic` but {why}"
+        ))
+    })
+}
+
+/// A dynamic raise target — the reference, a domain prefix applied
+/// (`scene.occasion.target`) — with `member` in its place.
+fn bound_raise_target(target: &str, member: &str) -> String {
+    match target
+        .strip_suffix(TARGET)
+        .and_then(|p| p.strip_suffix('.'))
+    {
+        Some(prefix) => format!("{prefix}.{member}"),
+        None => member.to_string(),
+    }
 }
 
 /// The record with every write through `occasion.target` naming `member`.
@@ -631,6 +789,21 @@ fn bind_target(cmd: &Json, member: &str) -> Json {
             if v.as_str() == Some(TARGET) {
                 *v = Json::String(member.to_string());
             }
+        }
+    }
+    for r in cmd
+        .get_mut("raises")
+        .and_then(Json::as_array_mut)
+        .into_iter()
+        .flatten()
+        .filter(|r| is_dynamic(r))
+    {
+        if let Some(Json::String(t)) = r.get_mut("target") {
+            *t = bound_raise_target(t, member);
+        }
+        // Bound: the record names the target the host raises.
+        if let Some(r) = r.as_object_mut() {
+            r.remove("dynamic");
         }
     }
     cmd

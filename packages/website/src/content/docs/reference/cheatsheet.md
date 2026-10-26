@@ -414,7 +414,7 @@ defs:
 | `<branch id>` | A menu. The pick is recorded in `scene.choices.<id>`, which clears when the scene ends. At least one choice must be unguarded (`E-BRANCH-ALL-GUARDED`). Optional `prompt=` and `timeout="N"`. |
 | `<choice id text>` | `text=` is what the player sees. `when=` guard. `into="run.x"` writes `true`, or `value=` for numeric (`int`/`double`) and enum paths, so later scenes can read it. The IR's `choice` and `hub` records name the path a pick lands in as `selectionKey` (`scene.choices.greet`). |
 | `<hub id>` | Re-presents eligible choices until an `exit`. `once` removes a choice after one take. It needs an unguarded `exit`, or every choice `once` (`E-HUB-NO-EXIT`). Each pick sets `scene.visited.<hub>.<choice>`. Optional `prompt=` (0.23.0) is the question shown with the options; an empty one is `E-BRANCH-PROMPT`. |
-| `::jump{to when}` | A forward-only jump to a `::label{name}` in the same document (labels share one document-wide namespace; a repeated name is `E-LABEL-DUP`). A section heading or `{#id}` is not a target (`E-JUMP-UNDEFINED`). A backward jump is `E-JUMP-BACKWARD`. Without `when`, the content after it is dead (`W-CODE-AFTER-JUMP`). `::label` emits no record and takes no `when=`. Since 0.26.0 `lute trace` and `lute test` follow a taken jump to its label (the trace shows `<jump -> outro>`), as `lute play` does. |
+| `::jump{to when max}` | A jump to a `::label{name}` in the same document (labels share one document-wide namespace; a repeated name is `E-LABEL-DUP`). It goes forward. Since 0.51, `max="N"` (a literal integer from 1 to 99) lets it go back to an earlier label at most N times, then control falls through ([Bounded jumps](#bounded-jumps-declared-raises-directive-text--pair-lints-051)). A backward jump without `max` is `E-JUMP-BACKWARD`; `max` on a forward jump is `E-JUMP-MAX`. A section heading or `{#id}` is not a target (`E-JUMP-UNDEFINED`). Without `when`, and without `max`, the content after it is dead (`W-CODE-AFTER-JUMP`). `::label` emits no record and takes no `when=`. Since 0.26.0 `lute trace` and `lute test` follow a taken jump to its label (the trace shows `<jump -> outro>`), as `lute play` does. |
 | `::end{reason}` | Ends the scene. In `lute play` it ends only the presentation (or quest handler) it runs in; the playthrough goes on. Content after it in the same body is `W-CODE-AFTER-END`. |
 | `::accept{quest}` | Takes up an accept-driven quest (no `start`, or a child with `activate="accept"`). `at="nextRun"` (0.24.0) queues it until right after the next `newRun` reset; any other `at` is `E-ACCEPT-TARGET`. Takes `when=` (0.26.0). See [Quests](#quests). |
 
@@ -1392,6 +1392,77 @@ custom:
 
 → [Plugin manifests](/plugins/manifests/) · [CLI](/tooling/cli/) · [Linting](/tooling/linting/)
 
+## Bounded jumps, declared raises, directive text & pair lints (0.51)
+
+A `::jump` goes back to an earlier `::label` when it carries `max`, the most times it may be taken. After `max` takes, control falls through. `max` is a literal integer from 1 to 99 (`E-JUMP-MAX` otherwise, and on a forward jump). A loop stays inside one body (`E-JUMP-LOOP-SCOPE`), is entered only at its head label (`E-JUMP-INTO-LOOP`), and nests rather than overlaps (`E-JUMP-LOOP-CROSS`). A loop that must re-offer a menu until an `exit` choice is a `<hub>`.
+
+```lute
+::label{name="attempt"}
+::tryLock{door="vault"}
+<match subject="scene.lock.vault.won">
+  <when is="false">
+    @mira: Again!
+    ::jump{to="attempt" max="2"}
+  </when>
+  <when is="true">
+    @mira: It clicks open.
+  </when>
+</match>
+@theo: That's enough for today.
+```
+
+A directive or reward kind can declare the occasions the **host** raises after the call or the grant. An occasion marked `raisedBy: declared` is raised only through a declared `raises`; `lute scenario` draws a `[raises]` edge from the raiser to every scene or beat that answers it, and `W-OCCASION-NEVER-RAISED` warns when nothing raises it. A declared raise is possible, never guaranteed: it adds no fact, write or Must claim.
+
+```yaml
+# plugins/acme.stage/occasions/o.yaml
+occasions:
+  cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
+# plugins/acme.stage/directives/d.yaml
+directives:
+  - name: playScene
+    attrs:
+      - { name: scene, required: true, type: { entity: cutsceneId } }
+    effects:
+      raises: [{ occasion: cutscene, target: "@scene" }]
+# plugins/acme.stage/rewardkinds/r.yaml
+rewardKinds:
+  CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }
+```
+
+The `target` of a raise is `@<attr>` on a directive, `@target` on a reward kind, or a literal (`scene.chapter2`). `E-PLUGIN-RAISES` (assembly) and `E-RAISES-TARGET` (project) check it.
+
+An attribute typed `text` is localizable player-visible text. A directive that has one takes `code=`, and its translation key is `{prefix}~{tag}~{code}~{attr}`; `lute tag` writes the missing codes, and `lute loc export` / `import` / `report` handle the text as `kind: "directive"` rows.
+
+```yaml
+directives:
+  - name: banner
+    attrs:
+      - { name: title,    required: true, type: text }
+      - { name: subtitle, type: text }
+```
+
+```lute
+::banner{code="0010" title="Welcome to the hall, {{userName}}"}
+```
+
+A `pair` lint finds an opener that is never closed, a close with no opener, an opener inside an open pair, and rows not allowed `inside` a pair. `scope: body` (default) pairs siblings of one body; `scope: section` pairs rows in document order at any depth.
+
+```yaml
+custom:
+  - id: group-balanced
+    target: pair
+    open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'
+    scope: body
+    level: error
+    message: "::group begin/end"
+```
+
+`list`, `map` and `record` attribute types stay refused (structured authoring is not supported yet): give each field its own attribute, use a `text` attribute for player-visible text, or write a list of options as `<choice>` elements.
+
+→ [Directives](/language/directives/) · [Plugin manifests](/plugins/manifests/) · [Linting](/tooling/linting/) · [Porting a content set](/guides/porting-a-content-set/)
+
 ## Compiled artifact
 
 `lute compile` writes the execution IR. The envelope carries `kind`, `lute`, `irVersion`,
@@ -1667,7 +1738,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-MISSING-ATTR` | A required attribute is missing: `::actor` without `character`, `::cg` / `::video` without `assetId`, `::sequence` without `name`. |
 | `E-MONO-POV` / `E-MONO-NO-POV` | A `{mono}` line's speaker is neither the point of view nor in `monoSpeakers:`, or no `pov:` resolves at all (the document's, else the project's `defaults.pov`). |
 | `E-TEXT-MODIFIER` / `E-TEXT-ESCAPE` | An inline modifier is malformed: unclosed, a positional value (`:pause{0.5}` for `:pause{s=0.5}`), attributes on a text style; or an unknown `\` escape. |
-| `E-LABEL-DUP` / `E-JUMP-UNDEFINED` / `E-JUMP-BACKWARD` | Two `::label`s share a name; a `::jump` names no label in the document (a section is not one); a `::jump` points backward. |
+| `E-LABEL-DUP` / `E-JUMP-UNDEFINED` / `E-JUMP-BACKWARD` | Two `::label`s share a name; a `::jump` names no label in the document (a section is not one); a `::jump` points backward without `max` (since 0.51, `max="N"` allows N takes). |
 | `E-REWARD-DUP` | Two rewards of one quest share an `id`. |
 | `E-AUTHOR-CASE` | An authored key contains `_`. Write it in lowerCamelCase. |
 | `E-UNDECLARED` / `E-UNDECLARED-REF` | The state path, or the `@def`, is not declared, or its schema is not imported. |
@@ -1711,6 +1782,9 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-DISPLAY-NAME-DUP` | 0.26.0, whole-project `check` and `lute lint`. Two speakers are shown with the same display name: two cast `name:`s, a cast name and a `::use{… name="…"}` string, or two such strings. Rename one, or mark an intended role name `sharedName: true` on the cast entries. |
 | `E-PLUGIN-STAMP-SURFACE` | 0.50. A `stampAttrs` `on:` names something that is not `line`, `branch`, `hub`, `choice` or a stampable directive of the resolved profile (a typo, `jump`/`label`/`clear`, or a directive of an inactive plugin). Fix the name, or `depends:` on the plugin that declares the directive. |
 | `E-DIAGNOSTICS-CONFIG` | 0.50. A `diagnostics:` entry in `lute.project.yaml` is malformed or illegal: an `E-*` or `L-*` code, an unknown code, a bad level, or bad `paths`. Only `W-*` codes can be re-levelled. |
+| `E-JUMP-MAX` / `E-JUMP-LOOP-SCOPE` / `E-JUMP-INTO-LOOP` / `E-JUMP-LOOP-CROSS` | 0.51. `max` is not a literal integer from 1 to 99 or sits on a forward jump; a loop leaves its body or spans an `<on>`/`<objective>`; a forward jump enters a loop after its head; two loops overlap without nesting. |
+| `E-PLUGIN-RAISES` / `E-RAISES-TARGET` / `W-OCCASION-NEVER-RAISED` | 0.51. A `raises` entry names an unknown occasion or a target of the wrong shape; a resolved raise target is outside the domain or answered by no scene or beat; a `raisedBy: declared` occasion has an answerer that nothing raises. |
+| `E-LINE-CODE-RESERVED` / `E-LINE-ID-DUP` | 0.51. A `code` contains `~`; two localization units share one final `lineId`. |
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. An entry that can be read again in a run (a lookup entry, no `once`, a `once` shorter than the run, `spentBy`, `for`) `::set`s, `::retract`s or calls an effect-only directive that writes: its writes apply on the first read in a run only. Use `<beat … once="false">` for a repeating write, `once="run"`, or a `when="!entry.<id>.read"` guard. `::assert` is exempt. |
 | `E-COMPONENT-ARG` | A `::use` argument does not fit its param, or names none. Since 0.26.0 also `@@x:` for a param that is not a `speaker` param, or outside a component. |
 | `E-UNKNOWN-ATTR` | An attribute the directive does not declare. Since 0.26.0 also `when=` on a directive that lowers to a built-in record (the core staging directives such as `::bg` and `::sfx`, `::end`, `::label`, a plugin `lower:` record), and a plugin attribute named `when`. |

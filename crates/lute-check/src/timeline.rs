@@ -746,6 +746,7 @@ mod tests {
                     writes: vec![write("a"), write("b")],
                     asserts: Vec::new(),
                     retracts: Vec::new(),
+                    raises: Vec::new(),
                 }),
                 bridge: None,
                 lower: Lowering::Builtin {

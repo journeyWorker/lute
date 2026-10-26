@@ -160,7 +160,7 @@ $ lute schema [<COMMAND>]…
 `lute`를 실행할 때마다 Lute 상태 디렉터리의 `telemetry.jsonl`에 한 줄을 추가합니다. `XDG_STATE_HOME`이 절대 경로면 `$XDG_STATE_HOME/lute`, 아니면 `$HOME/.local/state/lute`, Windows에서는 `%LOCALAPPDATA%\lute`입니다.
 
 ```json
-{"v":1,"ts":1760400000000,"lute":"0.50.0","command":"check","json":true,"exit":0,"durationMs":12}
+{"v":1,"ts":1760400000000,"lute":"0.51.0","command":"check","json":true,"exit":0,"durationMs":12}
 ```
 
 이것이 기록의 전부입니다. 명령 id(또는 `null`), JSON 모드 여부, 종료 코드, 걸린 시간, 툴체인 버전입니다. 인자나 플래그 값, 경로, 파일 내용, 출력, 환경은 기록하지 않고 어디로도 보내지 않습니다. 파일은 내 컴퓨터에만 남습니다. 1 MiB가 되면 `telemetry.jsonl.1`로 돌리며, 기록은 best-effort라 명령의 출력이나 종료 코드를 바꾸지 않습니다. `LUTE_TELEMETRY=0`(또는 `false`, `off`, `no`)이나 `DO_NOT_TRACK=1`로 끕니다. `lute doctor`가 상태를 보여 줍니다(`• Telemetry: off (LUTE_TELEMETRY)`, 켜져 있으면 파일 경로). 저장소의 테스트, 스크립트, CI는 꺼진 상태로 실행합니다.
@@ -347,7 +347,7 @@ constraints:
 
 `proven`은 건전한 정적 증명이고, `witnessed`는 제공된 실행 또는 트레이스에서 나오며, `bounded`는 선언된 유한 범위 안에서만 건전하고, `heuristic`은 보수적인 안내이며, `unknown`은 분석이 판정하지 못했다는 뜻입니다. 진단에는 선택적 JSON `evidence` 및 `scope` 필드가 포함될 수 있습니다(bounded 진단에는 비어 있지 않은 scope가 반드시 있어야 합니다). `trace`, `play`, `test`, `calendar`, `scenario`, `beats`는 각 verdict/result에 `evidence`를 추가하며, calendar 집계 결과에는 `scope`도 포함됩니다. 파싱, 타입, 선언 오류에는 evidence가 없습니다.
 
-impact 및 constraints 섹션은 역사적인 0.34.0 계약에서 도입되었습니다. 저장소의 현재 릴리스는 0.50.0이며 AI 편집 루프 명령은 아래에 설명되어 있습니다.
+impact 및 constraints 섹션은 역사적인 0.34.0 계약에서 도입되었습니다. 저장소의 현재 릴리스는 0.51.0이며 AI 편집 루프 명령은 아래에 설명되어 있습니다.
 ## compile
 
 ```console
@@ -377,7 +377,7 @@ lute compile: no lute.project.yaml at or above . — pass the project directory 
 ```json
 {
   "irVersion": "0.10.0",
-  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
   "requiredSemantics": [
     "lute.core/1",
     "lute.quest.lifecycle/1"
@@ -443,6 +443,8 @@ scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `na
 ```
 
 병합된 번역에 저장된 `sourceHash`([`loc import`](#loc-import) 참고)가 레코드의 현재 원문 해시와 다르면 `(lineId, locale)` 쌍마다 하나씩 `W-L10N-STALE`입니다. 번역자가 작업한 export 이후 대사, 선택지 라벨 또는 프롬프트가 바뀌었다는 뜻입니다. 메시지는 lineId와 로케일을 밝히고 `lute loc export`로 다시 내보내 번역을 갱신하라고 안내합니다. 번역은 그대로 병합됩니다. 다른 경고와 마찬가지로 단일 문서 컴파일과 프로젝트 컴파일 모두에서 `--deny W-L10N-STALE` 또는 `--deny-warnings`로 승격됩니다. `schemaVersion: 1` 번들에는 해시가 없으므로 이 검사를 하지 않습니다.
+
+0.51부터 번들은 디렉티브의 [지역화 가능한 텍스트](/ko/language/dialogue-and-cast/#지역화-가능한-디렉티브-텍스트-051부터)에도 적용됩니다. `text` 속성의 `lineId`를 키로 하는 번들 항목은 줄의 번역이 `texts`에 들어가듯 해당 `plugin` 레코드의 `localized.<attr>.texts`에 병합됩니다. `W-L10N-MISSING`과 `W-L10N-STALE`은 이 항목에도 같은 문구와 같은 `--deny` 승격으로 `(lineId, locale)` 쌍마다 하나씩 적용됩니다. `text` 값에는 인라인 modifier가 없으므로 `E-L10N-MODIFIERS`는 적용되지 않습니다. `--locale-bundle` 없이, 또는 `text` 속성 없이 컴파일한 문서는 이전과 바이트 단위로 동일합니다.
 
 ### `--stream` — 스트리밍 컴파일
 
@@ -598,7 +600,7 @@ $ lute context <FILE> [--project <DIR>] [--providers <DIR>] [--permission-profil
 
 ```json
 {
-  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
   "textModifiers": {
     "core": [
       {
@@ -626,6 +628,8 @@ $ lute tag [<PATH>]… [--renumber [--commit]] [--check] [--json]
 ```
 
 기본 모드(`--renumber` 없음)는 태그가 없는 모든 `:line`에 안정적인 `code`를, 누락된 컴포넌트 인스턴스 키와 함께 뒤에서 채워 파일을 제자리에서 다시 씁니다. 이미 완전히 태그된 문서는 바이트 단위로 그대로 둡니다. `--renumber`는 위험한 모드로, 모든 줄의 `code`를 깨끗한 문서 순서로 다시 번호 매깁니다(`0010`/`0020`/…를 speaker와 scope마다 적용). 이는 초안 작성 도구이며, frontmatter에 `codesLocked:`가 선언된 문서(게시된 코드는 `lineId`/`voiceKey` identity)나 구조 오류가 있는 문서에서는 코드 재번호가 거부됩니다(종료 **1**. `codesLocked:` 문서에서도 누락된 컴포넌트 인스턴스 키는 계속 추가됩니다). `--commit`이 있어야만 씁니다. `--commit` 없는 `--renumber`는 **아무것도 쓰지 않고** `--commit`이 할 일을 미리 보여 줍니다. 바뀌는 코드마다 한 줄 `<path>:<line>: <old or (none)> -> <new>`, 인스턴스 키가 추가될 파일마다 한 줄, 거부된 파일마다 거부 메시지를 출력한 다음 `lute: would renumber <N> line(s) in <M> of <T> file(s); pass --commit to apply`를 출력하며, 종료 코드는 **0**이거나 파일이 거부되면(`--commit`도 그렇듯) **1**입니다. `--check`는 아무것도 쓰지 않고 선택한 모드가 어떤 파일이든 바꾸면 **1**, 아니면 **0**으로 종료합니다(거부도 **1**). `--commit`을 `--renumber` 없이, 또는 `--check`와 함께 쓰면 `E-CLI-USAGE`입니다. 성공 시 종료 **0**, 문서가 거부되면 **1**, I/O 시 **2**입니다.
+
+0.51부터 `lute tag`는 [`text` 속성](/ko/language/dialogue-and-cast/#지역화-가능한-디렉티브-텍스트-051부터)이 있는 태그 없는 디렉티브에도 컴파일러와 같은 순서로 `code`를 채워 넣으므로, 디렉티브의 `lineId`(`{prefix}~{tag}~{code}~{attr}`)를 소스만으로 재현할 수 있게 됩니다. `codesLocked:`는 줄 코드와 마찬가지로 이 코드에도 적용됩니다.
 
 `<PATH>`는 파일 또는 디렉터리일 수 있으며 기본값은 `.`입니다(dsl 0.22.0). 그 아래 모든 `.lute` 파일을 전체 프로젝트 `check`가 순회하는 것과 같은 정렬 순서로 재귀적으로 다시 씁니다. 변경된 파일은 파일명을 담은 줄을 출력하고, 할 일이 없는 파일은 조용히 둡니다. 마지막에는 요약을 출력합니다. 거부되거나 읽을 수 없는 파일은 보고한 뒤 순회를 계속하며, 종료 코드는 파일 전체 결과 중 가장 심각한 결과입니다. `--json`은 보고서 `0.48.0.tag`를 출력합니다. `{mode: "tag"|"renumber", applied, files: [{path, changed, lines, instances, refused?, renumbered?: [{line, from, to}]}]}`이며 `applied`는 파일을 실제로 썼을 때만 `true`, `lines`는 추가되거나 다시 매겨진 코드 수, `instances`는 추가된 인스턴스 키 수, `refused`는 거부 메시지, `renumbered`는 renumber 모드에서만 나오고 코드가 없던 줄의 `from`은 `null`입니다.
 
@@ -943,7 +947,7 @@ $ lute play --script <FILE> [--project <DIR>] [--providers <DIR>] [--permission-
 프로젝트 **전체**를 발생한 **계기(occasion)**의 시퀀스로 스토리를 플레이합니다(dsl 0.21.0). [비트와 계기](/ko/tooling/play/)의 참조 런타임 소비자입니다. 프로젝트(`--project` 또는 발견된 프로젝트)는 메모리에서 한 번 컴파일되며, 프로젝트 `compile`이 사용하는 것과 같은 게이트와 선언 유합(씬, 퀘스트, 로어 문서)을 사용합니다. `--engine <FILE>`은 `lute.engine.yaml`을 로드하고 정확한 major.minor IR 게이트를 먼저 수행한 다음 프로젝트 인덱스의 `requiredSemantics` 유합을 `supportedIds`와 비교합니다. id가 없으면 어떤 스텝, 명령, 조건, 에셋, 브리지도 실행하기 전에 종료 **2**와 `E-ENGINE-SEMANTICS`로 거부합니다. 잘못된 매트릭스와 지원하지 않는 IR 라인은 `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`을 사용합니다. 생략하면 내장 `reference` 매트릭스를 사용합니다. 필수 `--script`는 닫힌 키 집합을 가진 `*.play.yaml` 파일입니다. 각 `steps:`는 계기 `occasion:` 발생(그리고 `target:`, `pick:`, 해당 제시에서 스크립트의 `choose:` 키를 키별로 대체하는 스텝 로컬 `choose:`), `newRun:` 시작, `engine:`을 통한 엔진 소유 내용 쓰기(`state:` 리터럴 또는 `{ add: <n> }`, `facts:`, `retract:`), 월드 `event:` 발생, 선언된 시계를 `advance: slot | day | <n>`으로 이동(dsl 0.24.0: 시계의 경로를 쓰고, 퀘스트를 정산하며, 시계의 `raise:`에 따라 지나는 자정마다 `dayEnd` / `dayStart`를, 멈춘 곳에서 `slot` 계기를 한 번 발생시킵니다. 같은 순간의 `engine:` 쓰기를 함께 실을 수 있으며, 이 쓰기는 시계가 도착한 곳에 적용됩니다 — 도중의 `dayEnd` / `dayStart` 이후, 마지막 정산과 발생 이전), 또는 `end: true`로 플레이스루를 끝냅니다. 그리고 어떤 스텝이든 `label:`, `repeat: <n>`, 자체 `bridges:` 응답, `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`를 가질 수 있으며, `- include: <file>`은 다른 파일의 스텝을 그 자리에 이어 붙입니다. `steps:` 외에도 스크립트는 `state:`, `facts:`, `choose:`, `bridges:`에 대해 `lute trace --mock` 문법을, 시작점이 되는 세이브(`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, 그리고 플레이의 끝을 판정하는 최상위 `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }`(dsl 0.22.0)를 받습니다. 각 계기 스텝은 계기의 후보 비트와 그 판정을 나열하고, 승자(또는 `select: all` 계기에서는 스텝의 `pick`; `pick: none`이거나 자격 있는 비트가 없을 때 `pick`이 없으면 아무것도 제시하지 않음)를 `lute run`의 참조 평가기로 제시하며, 모든 퀘스트 생애주기를 진행시키므로 이후의 `when` 조건과 `after: completed(…)`가 실제 진행을 봅니다. `--json`은 같은 트랜스크립트를 하나의 객체로 내보냅니다.
 
 dsl 0.26.0부터 `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }`는 다음 해당 위치로 시계를 이동합니다(앞으로만, 0단계는 불가). 스텝 `expect:`는 `clock: { weekday, slot, day }`를 받고(0.28부터 `ended`도 가능), `engine: { accept: [quest ids] }`는 플레이 도중 수락 방식 퀘스트를 수락합니다(`quest <id> accepted (engine)`). 엔트리는 `pick:`, `entriesRead:`, 선택 기대값에서 `<document id>.<entry id>`로 이름 붙일 수 있습니다. `kind:<kind>`를 대상으로 하는 비트는 해당 종류의 모든 멤버에 응답합니다. 실행되지 않은 가드 디렉티브는 `skip ::give{item="potion"} — when: false`를 출력합니다. 브리지 응답은 결과 슬롯 또는 capability의 `result:`로 타입이 정해지며, 타입 없는 응답은 거부됩니다(종료 **2**). 문서가 하나의 상태 경로를 두 타입으로 선언하는 프로젝트도 거부됩니다(종료 **1**). 프로젝트는 플레이마다 한 번만 로드됩니다 — Monster League에서 플레이 로드 시간이 약 12초에서 약 1.5초로 줄었습니다. [스토리 플레이](/ko/tooling/play/)를 참고하세요.
-`--events`는 재개 가능한 런타임 이벤트 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 seed와 그 출력이 들어가고, 이후 플레이어가 취한 각 입력은 출력과 짝을 이룹니다(`choose`와 `bridgeResult` 응답 포함). 모든 출력에는 `eventVersion: "0.50.0"`이 들어갑니다. `--json`, `--ir`, `--derivation`, `--conditions-output`과 함께 사용할 수 없습니다.
+`--events`는 재개 가능한 런타임 이벤트 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 seed와 그 출력이 들어가고, 이후 플레이어가 취한 각 입력은 출력과 짝을 이룹니다(`choose`와 `bridgeResult` 응답 포함). 모든 출력에는 `eventVersion: "0.51.0"`이 들어갑니다. `--json`, `--ir`, `--derivation`, `--conditions-output`과 함께 사용할 수 없습니다.
 
 `--no-derive`(또는 스크립트의 `derive: false`; 플래그가 우선)는 프로젝트의 Datalog 규칙 적용을 중지하므로 mock하지 않은 파생 atom은 unknown이 되고 walk가 미완료로 멈춥니다. `--derivation <ATOM>`(반복 가능)은 플레이 후 ground atom의 도출 트리를 출력합니다. 사용된 규칙과 각 전제의 자체 근거(시드 fact, 단언, 또는 차례로 파생)가 나오고, 부정 전제는 `(absent)`로 표시됩니다. 성립하지 않으면 이를 결론낼 수 있는 모든 규칙과 실패한 전제를 출력합니다. `--json`에서는 같은 트리가 `explain` 아래에 들어갑니다. `--deny <CODE>`/`--deny-warnings`는 프로젝트 compile 게이트의 진단을 승격합니다. `--conditions-output <FILE>`은 CEL 조건을 평가할 때마다 JSONL 레코드 하나를 `<FILE>`에 추가합니다.
 
@@ -1103,6 +1107,28 @@ $ lute loc export [--project <DIR>] [--format csv] [-o, --output <PATH>]
 kind,file,line,lineId,code,speaker,key,text,sourceFile,sourceLine,sourceHash
 ```
 
+0.51부터 네 번째 종류 `directive`가 있습니다. 플러그인 디렉티브의 [`text` 속성](/ko/language/dialogue-and-cast/#지역화-가능한-디렉티브-텍스트-051부터)마다 한 행이며, 문서 순서(디렉티브의 속성은 선언 순서)를 따릅니다. `key`는 `{tag}.{attr}`, `lineId`는 `{prefix}~{tag}~{code}~{attr}`, `code`는 디렉티브에 작성된 `code`입니다. 줄과 마찬가지로 `lineId`는 `code`가 작성되어 있을 때만 재현할 수 있고, 그렇지 않으면 `null`(JSON) 또는 빈 값(CSV)이며 stderr 안내가 그 수를 셉니다(`N directive texts untagged — run lute tag`). JSON 행에는 `kind`, `file`, `line`, `lineId`, `code`, `key`, `text`, `source`, `sourceHash`가 들어갑니다. CSV는 기존 열을 그대로 쓰며 `kind`는 `directive`, `code`와 `key`는 채워지고 `speaker`는 비어 있습니다. 열은 추가되지 않습니다. [`docs/examples/flow-and-text`](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text)의 `::banner`입니다(`lute loc export --project docs/examples/flow-and-text`):
+
+```json
+{
+  "code": "0010",
+  "file": "docs/examples/flow-and-text/scenes/hall.lute",
+  "key": "banner.title",
+  "kind": "directive",
+  "line": 18,
+  "lineId": "hall~banner~0010~title",
+  "source": null,
+  "sourceHash": "sha256:fde24517faf3…",
+  "text": "Welcome to the hall, {{userName}}"
+}
+```
+
+```text
+directive,docs/examples/flow-and-text/scenes/hall.lute,18,hall~banner~0010~title,0010,,banner.title,"Welcome to the hall, {{userName}}",,,sha256:fde24517faf3…
+```
+
+(해시는 줄여 표기했습니다.)
+
 ## loc import
 
 ```console
@@ -1131,6 +1157,8 @@ $ lute loc import <FILE>… [-o, --output <PATH>] [--json]
 
 (위 해시는 줄여 표기했습니다.) `sourceHashes`는 각 행의 `sourceHash`를 lineId **와** 로케일별로 담습니다(두 로케일이 서로 다른 export에서 번역될 수 있기 때문입니다). 항상 기록되며, 해시를 가진 행이 없으면 `{}`입니다. 모든 맵이 정렬되므로 번들은 바이트 안정적입니다. 같은 입력을 두 번 import하면 동일한 바이트가 생성됩니다. `compile --locale-bundle`은 `schemaVersion: 1` 번들도 읽습니다(`sourceHashes`가 없고 stale 검사도 하지 않습니다). 파싱할 수 없는 입력, 한 로케일 안에서 중복된 `lineId`, 빈 로케일 태그는 `E-LOCALE-BUNDLE`이며 문제가 있는 파일과 행을 함께 보고합니다. `lineId`가 **없는** 행은 거부하지 않고 건너뜁니다. 태그되지 않은 줄은 아직 안정적인 identity가 없기 때문이며, stderr의 단일 요약에 그 수가 집계됩니다.
 
+0.51부터 `loc import`는 `kind: "directive"` 행을 받아들이며, 다른 모든 행과 마찬가지로 `lineId`를 키로 번들을 만듭니다. 알 수 없는 `kind`는 여전히 거부됩니다. `lineId`가 없는 directive 행(작성된 `code` 없음)은 태그 없는 다른 행처럼 건너뜁니다.
+
 ## loc report
 
 ```console
@@ -1138,6 +1166,8 @@ $ lute loc report [--project <DIR>] [--json]
 ```
 
 문서별 및 화자별 단어 수와 줄 수를 보고합니다. 같은 콘텐츠 줄을 대상으로 하는 제작 계획용 뷰입니다. 선택지 라벨은 개수(`choices`)만 세고 단어는 세지 않습니다. branch/hub 프롬프트는 개수(`prompts`, 0.47부터 — 보고서 버전 `0.47.0.loc-report`)를 세고, 그 단어는 문서 및 프로젝트 단어 합계에 포함됩니다(화자는 없습니다). `--json`은 사람이 읽는 표 대신 JSON으로 보고서를 출력합니다. 성공 시 **0**, I/O 오류 시 **2**입니다.
+
+0.51부터 디렉티브의 `text` 속성은 프롬프트처럼 집계됩니다. 그 단어는 문서 및 프로젝트 단어 합계에 포함됩니다(화자는 없습니다). JSON에서는 문서와 `totals`에 `directiveTexts`가 0이 아닐 때만 들어가고, 사람이 읽는 표에는 프로젝트에 하나라도 있을 때만 `directive texts` 열이, 요약에는 `N directive text(s)` 개수가 붙습니다.
 
 ## --explain
 

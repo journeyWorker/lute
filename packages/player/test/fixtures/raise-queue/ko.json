@@ -1,0 +1,35 @@
+[
+  {
+    "code": "0020",
+    "file": "project/porch.lute",
+    "key": "playScene.title",
+    "kind": "directive",
+    "line": 15,
+    "lineId": "porch~playScene~0020~title",
+    "source": null,
+    "sourceHash": "sha256:50d9e0c6430fe8820d322f26ac7b5d004541ef24656743d7e7923567188fddc4",
+    "text": "{{run.guest}}님, 환영합니다"
+  },
+  {
+    "code": "0020",
+    "file": "project/porch.lute",
+    "key": "playScene.texts",
+    "kind": "directive",
+    "line": 15,
+    "lineId": "porch~playScene~0020~texts",
+    "source": null,
+    "sourceHash": "sha256:22977ab955709b0b9e978e240894599c25670aece93f1d34430d5de2cfe2b3ab",
+    "text": "홀 텍스트"
+  },
+  {
+    "code": "0020",
+    "file": "project/porch.lute",
+    "key": "playScene.promptTexts",
+    "kind": "directive",
+    "line": 15,
+    "lineId": "porch~playScene~0020~promptTexts",
+    "source": null,
+    "sourceHash": "sha256:afc72eda2b2b105fa71f9ec4ef9c1c5e9376b16b6f980197fba5775589aaf51a",
+    "text": "홀 프롬프트"
+  }
+]

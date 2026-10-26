@@ -712,6 +712,7 @@ fn compile_gate_diags(input: &CheckInput) -> Vec<Diagnostic> {
         &input.components,
         &cast,
         &folded.env.domains,
+        input.snapshot(),
         &folded.env.state,
         &folded.env.occasion_scopes,
     );

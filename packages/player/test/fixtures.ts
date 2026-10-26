@@ -125,3 +125,18 @@ export const compileChoiceStamps: Effect.Effect<string> = compileBundle(join(fix
  * `position` (#200).
  */
 export const compileStampKeys: Effect.Effect<string> = compileBundle(join(fixtures, "stamp-keys", "project"))
+
+/**
+ * `raise-queue` (0.51.0 §4.6, §5.6): `porch` (occasion `visit`) shows a line,
+ * then the branch `door`: `in` calls `::playScene` for `hall` (with the
+ * `text` attributes `title`, `texts` and `promptTexts`) and for `yard`;
+ * `vault` calls `::openVault` (a raise of `vault`, closed by its
+ * `raisedWhen`) then `::playScene` for `yard`; `fanfare` sets `user.fanfare`,
+ * which starts the run-tier quest `fanfare`, whose `CUTSCENE` reward raises
+ * `gallery` (again at every `newRun`); `ask` calls `::playScene` for `yard`,
+ * the bridge `::ask` (which raises `cellar`), then the branch `then`. Each of
+ * `hall`, `yard`, `cellar`, `gallery` and `vault` answers its raise and
+ * counts its plays (`run.halls` … `user.galleries`). `ko.json` translates the
+ * three `text` attributes only; source locale `en`.
+ */
+export const compileRaiseQueue: Effect.Effect<string> = compileTranslated(join(fixtures, "raise-queue", "project"), [join(fixtures, "raise-queue", "ko.json")])

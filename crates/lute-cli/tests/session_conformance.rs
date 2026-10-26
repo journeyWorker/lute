@@ -158,6 +158,56 @@ fn load_refuses_another_ir_line_and_unknown_kinds() {
     assert!(r.message.contains("hologram"), "{}", r.message);
 }
 
+/// dsl 0.51.0 §3.7: load re-validates the checker's loop rules on the IR —
+/// a backward jump without `max` and two crossing loops are refused; the
+/// compiled `bounded-jump` case loads.
+#[test]
+fn load_refuses_malformed_loops() {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../conformance/session");
+    let bundle = compiled_bundle(&root.join("bounded-jump/project"), "loops");
+    Runtime::load(bundle.clone()).unwrap();
+    let with_jumps = |edit: &dyn Fn(&mut Vec<Value>)| {
+        let mut b = bundle.clone();
+        let artifact = b.artifacts.values_mut().next().unwrap();
+        edit(artifact["commands"].as_array_mut().unwrap());
+        Runtime::load(b).expect_err("malformed loops loaded")
+    };
+    // The bounded jump of the case, and its head.
+    let (jump, head) = {
+        let artifact = bundle.artifacts.values().next().unwrap();
+        let cmds = artifact["commands"].as_array().unwrap();
+        let j = cmds.iter().position(|c| c.get("max").is_some()).unwrap();
+        (j, cmds[j]["target"].clone())
+    };
+    let r = with_jumps(&|cmds| {
+        cmds[jump].as_object_mut().unwrap().remove("max");
+    });
+    assert_eq!(r.code, "E-RUNTIME-IR-VERSION", "{}", r.message);
+    assert!(r.message.contains("goes back to"), "{}", r.message);
+    // A bounded jump appended at the end back to the record after the head:
+    // its loop starts inside the case's loop and ends after it — they cross.
+    let r = with_jumps(&|cmds| {
+        let after_head = cmds
+            .iter()
+            .position(|c| c["position"] == head)
+            .map(|h| cmds[h + 1]["position"].clone())
+            .unwrap();
+        let last = cmds.last().unwrap()["position"]
+            .as_str()
+            .unwrap()
+            .to_string();
+        cmds.push(serde_json::json!({
+            "kind": "jump", "family": "control", "position": format!("{last}z"),
+            "target": after_head, "max": 1
+        }));
+    });
+    assert!(
+        r.message.contains("overlap without nesting"),
+        "{}",
+        r.message
+    );
+}
+
 /// The runtime gates on the IR the compiler stamps.
 #[test]
 fn the_runtime_executes_the_ir_the_compiler_emits() {

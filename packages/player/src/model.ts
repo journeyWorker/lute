@@ -206,6 +206,29 @@ export interface SaveRuntime {
   /** The session's start (`{ seed }` or `{ snapshot }`), then every accepted input. */
   readonly log: ReadonlyArray<LogEntry>
   readonly backlog: ReadonlyArray<BacklogEntry>
+  /**
+   * The declared raises not delivered yet, in delivery order (0.51.0 §4.6):
+   * the runtime resumes an output by replay, so a raise cannot be rebuilt
+   * from it. `[]` when none is pending.
+   */
+  readonly pendingRaises: ReadonlyArray<PendingRaise>
+}
+
+/**
+ * A declared raise (0.51.0 §4.6) the host owes: the `raises` entry of a
+ * `plugin` or `grant` record, sent as a `raiseOccasion` input once the
+ * runtime is idle, tagged with where it came from.
+ */
+export interface PendingRaise {
+  readonly occasion: string
+  /** The resolved target (`scene.chapter2`); absent for an untargeted occasion. */
+  readonly target?: string
+  /** The record's source document. */
+  readonly document: string
+  /** The record's position; absent for a record without one (a `grant`). */
+  readonly position?: string
+  /** The input-log index of the entry whose output carried the record. */
+  readonly logIndex: number
 }
 
 export type LogEntry = { readonly seed: Contract.Seed } | { readonly snapshot: Snapshot } | { readonly input: Input }

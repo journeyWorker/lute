@@ -35,9 +35,9 @@ use crate::session::{
 use crate::Machine;
 
 /// The event contract version outputs and snapshots are stamped with.
-pub const EVENT_VERSION: &str = "0.50.0";
+pub const EVENT_VERSION: &str = "0.51.0";
 /// The execution IR version this runtime executes (major.minor gate).
-pub const IR_VERSION: &str = "0.50.0";
+pub const IR_VERSION: &str = "0.51.0";
 
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -553,8 +553,10 @@ impl Runtime {
     /// Load a whole-project `lute compile` bundle (spec 0.38.0 §4.1). Rejected with
     /// `E-RUNTIME-IR-VERSION` when the index or an artifact is stamped with
     /// another IR major.minor than [`IR_VERSION`], when a command has a
-    /// `kind` this runtime does not execute, or when the bundle does not
-    /// decode.
+    /// `kind` this runtime does not execute, when the bundle does not
+    /// decode, or when a document is malformed (a loop that can cycle,
+    /// dsl 0.51.0 §3.7; a `dynamic` raise that is not its occasion's
+    /// `occasion.target` reference, §4.6).
     pub fn load(bundle: Bundle) -> Result<Self, Rejected> {
         let ir_line = |v: &str| v.split('.').take(2).collect::<Vec<_>>().join(".");
         let stamps = std::iter::once(("project.index.json", &bundle.index))

@@ -183,6 +183,7 @@ impl<'a> Walker<'a> {
                         ctx,
                     ));
                     self.check_attr_refs(&d.attrs, ctx, &AttrSite::Directive(&d.tag));
+                    self.check_text_interps(d, ctx);
                     self.diags
                         .extend(check_directive_when(d, self.snapshot, self.arena, ctx));
                 }
@@ -465,6 +466,7 @@ impl<'a> Walker<'a> {
                                         ctx,
                                         &AttrSite::Directive(&d.tag),
                                     );
+                                    self.check_text_interps(d, ctx);
                                 }
                                 ClipNode::Set(s) => {
                                     self.check_set_write(s, ctx);
@@ -661,6 +663,18 @@ impl<'a> Walker<'a> {
             snapshot: self.snapshot,
             providers: self.providers,
             domains: self.domains,
+        }
+    }
+
+    /// 0.51.0 §5.2: a `text` attribute's `{{…}}` interpolations are checked
+    /// as a choice label's are (referents, modifiers, host tokens).
+    fn check_text_interps(&mut self, d: &lute_syntax::ast::Directive, ctx: &Ctx<'_>) {
+        for (attr, text) in crate::directives::text_values(d, self.snapshot) {
+            check_interps(
+                &scan_label_interps(text, attr.value_span),
+                ctx,
+                &mut self.diags,
+            );
         }
     }
 

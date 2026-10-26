@@ -9,7 +9,7 @@ import { withHarness } from "./support.js"
 import type { Harness } from "./support.js"
 
 const canvas = { width: 1920, height: 1080 }
-const quayBindings: Bindings = { bindingsVersion: "0.50", canvas, flow: { newGame: { occasion: "visit" } } }
+const quayBindings: Bindings = { bindingsVersion: "0.51", canvas, flow: { newGame: { occasion: "visit" } } }
 const gateFixture = join(repositoryRoot, "crates", "lute-cli", "tests", "fixtures", "runtime-gate-041")
 
 const drain = (h: Harness) => Effect.gen(function* () {
@@ -74,7 +74,7 @@ describe("leaving an ended run (§2.5)", () => {
 
   it.effect("toTitle in the error flow keeps the confirm", () => Effect.gen(function* () {
     const bundle = yield* compileBundle(gateFixture)
-    yield* withHarness(bundle, { bindings: { bindingsVersion: "0.50", canvas } }, (h) => Effect.gen(function* () {
+    yield* withHarness(bundle, { bindings: { bindingsVersion: "0.51", canvas } }, (h) => Effect.gen(function* () {
       yield* h.action({ type: "newGame" })
       yield* h.director.send({ type: "raiseOccasion", occasion: "listen" }); yield* drain(h)
       expect(yield* h.view).toMatchObject({ flow: "error", story: "halted" })

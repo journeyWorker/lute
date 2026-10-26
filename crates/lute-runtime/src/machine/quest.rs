@@ -9,7 +9,7 @@ use std::sync::Arc;
 use serde_json::{json, Value as Json};
 
 use super::format::value_to_json;
-use super::{addr, fold_op, Code, Machine, Site, WalkError};
+use super::{addr, fold_op, required_target, Code, Machine, Site, WalkError};
 use crate::driver::{Driver, SiteKind};
 use crate::eval::Read;
 use crate::expr::{Expr, Slot};
@@ -86,6 +86,10 @@ struct RewardRec {
     retracts: Vec<(String, Vec<String>)>,
     asserts: Vec<(String, Vec<String>)>,
     accepts: Vec<String>,
+    /// 0.51.0 §4.6: `RewardEntry.raises` as compiled (`@target` bound),
+    /// copied onto the `grant` record — the host raises them once the grant
+    /// settles; the runtime raises nothing.
+    raises: Vec<Json>,
 }
 
 /// dsl 0.16.0 §3 D-D: which lifecycle transition is firing declarative
@@ -137,11 +141,7 @@ impl<D: Driver> Machine<D> {
                             .unwrap_or("")
                             .to_string(),
                         when: self.code.slot(cmd.get("when")),
-                        body: cmd
-                            .get("body")
-                            .and_then(Json::as_str)
-                            .unwrap_or("")
-                            .to_string(),
+                        body: required_target(cmd, "body").to_string(),
                         // Stream order recovers the enclosing quest: the `on`
                         // record is emitted inside its quest's walk, after the
                         // quest declaration head (stage.rs `walk_quest`).
@@ -174,6 +174,7 @@ impl<D: Driver> Machine<D> {
     /// the occasion's beats, in the order they fired. Their `when` was
     /// decided when they fired; a `::end` in one ends the rest.
     pub fn run_deferred_handlers(&mut self, bodies: &[String]) -> Result<(), WalkError> {
+        self.code_fault()?;
         self.quest_resume = true;
         let (_, _, seg_starts) = self.quest_program();
         for body in bodies {
@@ -409,6 +410,7 @@ impl<D: Driver> Machine<D> {
     /// done transitions again. Called once per quest artifact after every
     /// presentation, so later beat conditions see real quest progress.
     pub fn advance_quests(&mut self) -> Result<(), WalkError> {
+        self.code_fault()?;
         self.quest_resume = true;
         self.run_quest();
         self.store.derive();
@@ -1036,6 +1038,9 @@ impl<D: Driver> Machine<D> {
             if matches!(event, GrantEvent::Failed) {
                 rec.insert("onFailed".into(), Json::Bool(true));
             }
+            if !r.raises.is_empty() {
+                rec.insert("raises".into(), Json::Array(r.raises.clone()));
+            }
             self.driver.emit(Json::Object(rec));
             // 0.50.0 §5.3: then this reward's effects — retracts, asserts,
             // accepts — through the one assert/retract and accept paths,
@@ -1244,6 +1249,11 @@ fn parse_reward(code: &Code, r: &Json) -> RewardRec {
             .filter_map(Json::as_str)
             .map(str::to_string)
             .collect(),
+        raises: r
+            .get("raises")
+            .and_then(Json::as_array)
+            .cloned()
+            .unwrap_or_default(),
     }
 }
 

@@ -14,6 +14,7 @@ pub mod loader;
 pub mod permissions;
 pub mod project;
 pub mod provider;
+pub mod raises;
 pub mod relations;
 pub mod reserved;
 pub mod resolve;

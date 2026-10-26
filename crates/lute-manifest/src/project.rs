@@ -905,7 +905,9 @@ pub fn render_identity_template(template: &str, prefix: &str, speaker: &str, cod
 /// trips it.
 fn validate_template(template: &str, field: &str, diags: &mut Vec<ResolveDiag>) -> bool {
     let mut ok = true;
-    scan_template(template, |_lit, token| {
+    let mut tilde = false;
+    scan_template(template, |lit, token| {
+        tilde |= lit.contains('~');
         if let Some(name) = token {
             if !IDENTITY_TOKENS.contains(&name) {
                 ok = false;
@@ -920,6 +922,19 @@ fn validate_template(template: &str, field: &str, diags: &mut Vec<ResolveDiag>) 
             }
         }
     });
+    // 0.51.0 §5.3: `~` separates a directive text identity
+    // (`{prefix}~{tag}~{code}~{attr}`), which no line id may imitate.
+    if tilde && field == "lineId" {
+        ok = false;
+        diags.push(ResolveDiag {
+            span: None,
+            code: E_IDENTITY_TEMPLATE.to_string(),
+            message: format!(
+                "identity template `{field}` contains `~`, which is reserved for directive \
+                 text identities"
+            ),
+        });
+    }
     if ok && render_identity_template(template, "x", "x", "x").is_empty() {
         ok = false;
         diags.push(ResolveDiag {

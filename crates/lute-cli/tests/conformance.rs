@@ -448,6 +448,52 @@ fn reward_effect_records_follow_their_grant() {
     assert_eq!(state["quest.second.state"], "complete", "{state}");
 }
 
+/// dsl 0.51.0 §3.7: the `bounded-jump` fixture's cases — a retry loop
+/// exhausted, a loop left early by its guard, nested loops (the inner counter
+/// resets on each outer iteration), two jumps sharing a head, a branch in a
+/// loop driven by a three-decision script, a hub in a loop (each visit from
+/// presentation 0) and a loop in a hub option. The artifact requires
+/// `lute.core.boundedJump/1`.
+#[test]
+fn bounded_jump_loops_run_to_their_bounds() {
+    let dir = corpus_dir().join("bounded-jump");
+    let artifact = json_at(&dir.join("artifact.json"));
+    assert!(
+        artifact["requiredSemantics"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|id| id == "lute.core.boundedJump/1"),
+        "{}",
+        artifact["requiredSemantics"]
+    );
+    let transcript = json_at(&dir.join("expected.json"));
+    let state = &transcript["state"];
+    for (path, want) in [
+        ("run.tries", 3),
+        ("run.guarded", 2),
+        ("run.outer", 2),
+        ("run.inner", 4),
+        ("run.shared", 4),
+        ("run.asks", 3),
+        ("run.visits", 2),
+        ("run.rounds", 4),
+    ] {
+        assert_eq!(state[path], want, "{path}: {state}");
+    }
+    let commands = transcript["commands"].as_array().unwrap();
+    let picks = |menu: &str| -> Vec<&str> {
+        commands
+            .iter()
+            .filter(|c| c["branch"] == menu || c["hub"] == menu)
+            .filter_map(|c| c["chose"].as_str())
+            .collect()
+    };
+    assert_eq!(picks("retry"), ["yes", "yes", "no"]);
+    assert_eq!(picks("desk"), ["look", "leave", "look", "leave"]);
+    assert_eq!(picks("bench"), ["train", "train", "rest"]);
+}
+
 /// Engine-matrix invalid fixtures are intentionally not replay fixtures: they
 /// exercise the loader gate before a transcript can be produced.
 #[test]

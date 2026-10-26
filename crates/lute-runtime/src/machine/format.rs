@@ -11,9 +11,9 @@
 
 use serde_json::{json, Value as Json};
 
-use super::Machine;
-use crate::driver::Driver;
-use crate::Value;
+use super::{Machine, Site as UnknownAt};
+use crate::driver::{Driver, SiteKind};
+use crate::{UnresolvedAtom, Value};
 use lute_ir::LabelForms;
 
 impl<D: Driver> Machine<D> {
@@ -88,6 +88,35 @@ impl<D: Driver> Machine<D> {
             out.push(rendered);
         }
         out
+    }
+
+    /// Whether rendering a text whose markers are `placeholders` (a line's,
+    /// or a directive `text` attribute's, 0.51.0 §5.6) at command `at`
+    /// stops the walk: a payload field the raise did not carry (dsl 0.28.0,
+    /// T1-13) or a kind beat's `{{occasion.target}}` with no member bound
+    /// has no text to print, and the driver decides whether the walk stops
+    /// there. When it does not, the marker renders verbatim.
+    pub(crate) fn text_halts(&mut self, placeholders: Option<&Vec<Json>>, at: &str) -> bool {
+        if let Some(path) = self.unset_payload(placeholders) {
+            let atoms = [UnresolvedAtom::Path(path.clone())];
+            self.unresolved.extend(atoms.iter().cloned());
+            if self.at_unknown(UnknownAt::new(SiteKind::Payload, &path, at), &path, &atoms) {
+                return true;
+            }
+        }
+        if self.unbound_target(placeholders) {
+            let target = lute_manifest::semantics::beats::OCCASION_TARGET;
+            let atoms = [UnresolvedAtom::Path(target.to_string())];
+            self.unresolved.extend(atoms.iter().cloned());
+            if self.at_unknown(
+                UnknownAt::new(SiteKind::OccasionTarget, target, at),
+                target,
+                &atoms,
+            ) {
+                return true;
+            }
+        }
+        false
     }
 
     /// The first `{{occasion.payload.<field>}}` marker among `placeholders`

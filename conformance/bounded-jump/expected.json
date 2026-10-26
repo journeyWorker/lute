@@ -1,0 +1,420 @@
+{
+  "commands": [
+    {
+      "kind": "set",
+      "path": "run.tries",
+      "position": "001-0100",
+      "value": 1
+    },
+    {
+      "kind": "line",
+      "position": "001-0200",
+      "speaker": "hero",
+      "text": "Attempt 1."
+    },
+    {
+      "kind": "set",
+      "path": "run.tries",
+      "position": "001-0100",
+      "value": 2
+    },
+    {
+      "kind": "line",
+      "position": "001-0200",
+      "speaker": "hero",
+      "text": "Attempt 2."
+    },
+    {
+      "kind": "set",
+      "path": "run.tries",
+      "position": "001-0100",
+      "value": 3
+    },
+    {
+      "kind": "line",
+      "position": "001-0200",
+      "speaker": "hero",
+      "text": "Attempt 3."
+    },
+    {
+      "kind": "line",
+      "position": "001-0400",
+      "speaker": "narrator",
+      "text": "Out of attempts."
+    },
+    {
+      "kind": "set",
+      "path": "run.guarded",
+      "position": "002-0100",
+      "value": 1
+    },
+    {
+      "kind": "line",
+      "position": "002-0200",
+      "speaker": "hero",
+      "text": "Round 1."
+    },
+    {
+      "kind": "match",
+      "position": "002-0300",
+      "result": "arm 1"
+    },
+    {
+      "kind": "set",
+      "path": "run.guarded",
+      "position": "002-0100",
+      "value": 2
+    },
+    {
+      "kind": "line",
+      "position": "002-0200",
+      "speaker": "hero",
+      "text": "Round 2."
+    },
+    {
+      "kind": "match",
+      "position": "002-0300",
+      "result": "otherwise"
+    },
+    {
+      "kind": "line",
+      "position": "002-0700",
+      "speaker": "narrator",
+      "text": "The guard let go."
+    },
+    {
+      "kind": "set",
+      "path": "run.outer",
+      "position": "003-0100",
+      "value": 1
+    },
+    {
+      "kind": "set",
+      "path": "run.inner",
+      "position": "003-0200",
+      "value": 1
+    },
+    {
+      "kind": "line",
+      "position": "003-0300",
+      "speaker": "hero",
+      "text": "Outer 1, inner 1."
+    },
+    {
+      "kind": "set",
+      "path": "run.inner",
+      "position": "003-0200",
+      "value": 2
+    },
+    {
+      "kind": "line",
+      "position": "003-0300",
+      "speaker": "hero",
+      "text": "Outer 1, inner 2."
+    },
+    {
+      "kind": "set",
+      "path": "run.outer",
+      "position": "003-0100",
+      "value": 2
+    },
+    {
+      "kind": "set",
+      "path": "run.inner",
+      "position": "003-0200",
+      "value": 3
+    },
+    {
+      "kind": "line",
+      "position": "003-0300",
+      "speaker": "hero",
+      "text": "Outer 2, inner 3."
+    },
+    {
+      "kind": "set",
+      "path": "run.inner",
+      "position": "003-0200",
+      "value": 4
+    },
+    {
+      "kind": "line",
+      "position": "003-0300",
+      "speaker": "hero",
+      "text": "Outer 2, inner 4."
+    },
+    {
+      "kind": "line",
+      "position": "003-0600",
+      "speaker": "narrator",
+      "text": "Both loops are done."
+    },
+    {
+      "kind": "set",
+      "path": "run.shared",
+      "position": "004-0100",
+      "value": 1
+    },
+    {
+      "kind": "line",
+      "position": "004-0200",
+      "speaker": "hero",
+      "text": "Shared 1."
+    },
+    {
+      "kind": "set",
+      "path": "run.shared",
+      "position": "004-0100",
+      "value": 2
+    },
+    {
+      "kind": "line",
+      "position": "004-0200",
+      "speaker": "hero",
+      "text": "Shared 2."
+    },
+    {
+      "kind": "set",
+      "path": "run.shared",
+      "position": "004-0100",
+      "value": 3
+    },
+    {
+      "kind": "line",
+      "position": "004-0200",
+      "speaker": "hero",
+      "text": "Shared 3."
+    },
+    {
+      "kind": "set",
+      "path": "run.shared",
+      "position": "004-0100",
+      "value": 4
+    },
+    {
+      "kind": "line",
+      "position": "004-0200",
+      "speaker": "hero",
+      "text": "Shared 4."
+    },
+    {
+      "kind": "line",
+      "position": "004-0500",
+      "speaker": "narrator",
+      "text": "Both jumps are spent."
+    },
+    {
+      "kind": "set",
+      "path": "run.asks",
+      "position": "005-0100",
+      "value": 1
+    },
+    {
+      "branch": "retry",
+      "chose": "yes",
+      "kind": "choice",
+      "position": "005-0200"
+    },
+    {
+      "kind": "line",
+      "position": "005-0300",
+      "speaker": "hero",
+      "text": "Once more."
+    },
+    {
+      "kind": "set",
+      "path": "run.asks",
+      "position": "005-0100",
+      "value": 2
+    },
+    {
+      "branch": "retry",
+      "chose": "yes",
+      "kind": "choice",
+      "position": "005-0200"
+    },
+    {
+      "kind": "line",
+      "position": "005-0300",
+      "speaker": "hero",
+      "text": "Once more."
+    },
+    {
+      "kind": "set",
+      "path": "run.asks",
+      "position": "005-0100",
+      "value": 3
+    },
+    {
+      "branch": "retry",
+      "chose": "no",
+      "kind": "choice",
+      "position": "005-0200"
+    },
+    {
+      "kind": "line",
+      "position": "005-0600",
+      "speaker": "hero",
+      "text": "Enough."
+    },
+    {
+      "kind": "set",
+      "path": "run.visits",
+      "position": "006-0100",
+      "value": 1
+    },
+    {
+      "chose": "look",
+      "hub": "desk",
+      "kind": "hub",
+      "position": "006-0200"
+    },
+    {
+      "kind": "line",
+      "position": "006-0300",
+      "speaker": "hero",
+      "text": "Papers."
+    },
+    {
+      "chose": "leave",
+      "hub": "desk",
+      "kind": "hub",
+      "position": "006-0200"
+    },
+    {
+      "kind": "line",
+      "position": "006-0400",
+      "speaker": "hero",
+      "text": "Leaving."
+    },
+    {
+      "kind": "set",
+      "path": "run.visits",
+      "position": "006-0100",
+      "value": 2
+    },
+    {
+      "chose": "look",
+      "hub": "desk",
+      "kind": "hub",
+      "position": "006-0200"
+    },
+    {
+      "kind": "line",
+      "position": "006-0300",
+      "speaker": "hero",
+      "text": "Papers."
+    },
+    {
+      "chose": "leave",
+      "hub": "desk",
+      "kind": "hub",
+      "position": "006-0200"
+    },
+    {
+      "kind": "line",
+      "position": "006-0400",
+      "speaker": "hero",
+      "text": "Leaving."
+    },
+    {
+      "chose": "train",
+      "hub": "bench",
+      "kind": "hub",
+      "position": "007-0100"
+    },
+    {
+      "kind": "set",
+      "path": "run.rounds",
+      "position": "007-0200",
+      "value": 1
+    },
+    {
+      "kind": "line",
+      "position": "007-0300",
+      "speaker": "hero",
+      "text": "Rep 1."
+    },
+    {
+      "kind": "set",
+      "path": "run.rounds",
+      "position": "007-0200",
+      "value": 2
+    },
+    {
+      "kind": "line",
+      "position": "007-0300",
+      "speaker": "hero",
+      "text": "Rep 2."
+    },
+    {
+      "chose": "train",
+      "hub": "bench",
+      "kind": "hub",
+      "position": "007-0100"
+    },
+    {
+      "kind": "set",
+      "path": "run.rounds",
+      "position": "007-0200",
+      "value": 3
+    },
+    {
+      "kind": "line",
+      "position": "007-0300",
+      "speaker": "hero",
+      "text": "Rep 3."
+    },
+    {
+      "kind": "set",
+      "path": "run.rounds",
+      "position": "007-0200",
+      "value": 4
+    },
+    {
+      "kind": "line",
+      "position": "007-0300",
+      "speaker": "hero",
+      "text": "Rep 4."
+    },
+    {
+      "chose": "rest",
+      "hub": "bench",
+      "kind": "hub",
+      "position": "007-0100"
+    },
+    {
+      "kind": "line",
+      "position": "007-0500",
+      "speaker": "hero",
+      "text": "Resting."
+    },
+    {
+      "kind": "line",
+      "position": "007-0700",
+      "speaker": "narrator",
+      "text": "The end."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.51",
+  "kind": "scene",
+  "quests": {},
+  "state": {
+    "run.asks": 3,
+    "run.guarded": 2,
+    "run.inner": 4,
+    "run.outer": 2,
+    "run.rounds": 4,
+    "run.shared": 4,
+    "run.tries": 3,
+    "run.visits": 2,
+    "scene.choices.bench": "rest",
+    "scene.choices.desk": "leave",
+    "scene.choices.retry": "no",
+    "scene.visited.bench.rest": true,
+    "scene.visited.bench.train": true,
+    "scene.visited.desk.leave": true,
+    "scene.visited.desk.look": true
+  }
+}

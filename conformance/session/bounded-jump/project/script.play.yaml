@@ -1,0 +1,12 @@
+# dsl 0.51.0 §3.7: the branch is presented again in the loop's second
+# iteration (a new request); the session conformance tests snapshot and
+# restore at that await and resume to the same outputs.
+choose:
+  again: [yes, no]
+steps:
+  - occasion: visit
+    expect: { winner: retry, state: { run.asks: 2 } }
+expect:
+  end: complete
+  state: { run.asks: 2 }
+  transcriptContains: ["Once more.", "Enough.", "After the loop."]

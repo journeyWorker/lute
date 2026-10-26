@@ -1,5 +1,5 @@
 use super::identity::scene_identity;
-use super::{ConnGraph, NodeId, NodeInfo, PrereqState};
+use super::{ConnGraph, EdgeKind, NodeId, NodeInfo, PrereqState};
 use crate::ProjectDoc;
 
 use crate::check::CheckResult;
@@ -164,7 +164,9 @@ pub fn check_reachability(
     // dependent, so the pass repeats until nothing changes — the least fixed
     // point, from "not yet known" (`Unknown`). Values only ever refine
     // (`Unknown` to a verdict), so it ends; one pass suffices without back
-    // edges.
+    // edges. 0.51.0 §4.5: so does a raise anchor whose cycle-closing edge
+    // was not drawn — its source is not ordered before it.
+    let repeat = !g.back_edges.is_empty() || has_undrawn_raise_source(g);
     for _ in 0..=g.nodes.len() {
         let mut changed = false;
         for id in &g.topo_order {
@@ -181,7 +183,7 @@ pub fn check_reachability(
             );
             changed |= reach.insert(id.clone(), r) != Some(r);
         }
-        if !changed || g.back_edges.is_empty() {
+        if !changed || !repeat {
             break;
         }
     }
@@ -218,6 +220,26 @@ pub fn check_reachability(
     }
 
     (reach, diags)
+}
+
+/// Whether some [`EdgeKind::Raises`] anchor names a graph node whose edge to
+/// the anchored node [`crate::connectivity::assemble_graph`] did not draw
+/// (it would close a cycle): that source may be evaluated after the node it
+/// anchors. A self-raise is no route in, so it needs no second pass.
+/// (`[accept]` anchors keep 0.50's single pass.)
+fn has_undrawn_raise_source(g: &ConnGraph) -> bool {
+    g.nodes.values().any(|info| match &info.prereq {
+        PrereqState::Anchored(anchors) => anchors
+            .iter()
+            .filter(|a| a.kind == EdgeKind::Raises)
+            .flat_map(|a| &a.from)
+            .any(|from| {
+                from != &info.id
+                    && g.nodes.contains_key(from)
+                    && !g.edges.get(from).is_some_and(|t| t.contains(&info.id))
+            }),
+        _ => false,
+    })
 }
 
 /// One node's reachability given the verdicts in `reach` so far (a missing

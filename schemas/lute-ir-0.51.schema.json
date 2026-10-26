@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.50.schema.json",
-  "title": "Lute compiled execution IR (irVersion 0.50.x)",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.51.schema.json",
+  "title": "Lute compiled execution IR (irVersion 0.51.x)",
   "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `ExecutionIr`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (docs/runtime/execution-model.md, Version negotiation): before 1.0 an engine gates on the exact `irVersion` MAJOR.MINOR line it implements — an engine for 0.41.x accepts only 0.41.* artifacts and refuses every other line (E-ENGINE-IR-VERSION), because pre-1.0 minors may change the IR shape (clean cutover, D6). Patch levels within the line are compatible. Unknown fields within a known kind are ignored; an unknown command `kind` is a hard error. From 1.0 the gate becomes MAJOR only.\n\nIR 0.41.0 (dsl 0.38.0 §5) is a clean cutover with no legacy aliases: the envelope stamp is `capabilitySnapshot`; the descriptive heading table is `sections`; every command record carries required `kind`, `family` (the normative kind grouping a runtime dispatches on before `kind`), and `position`; per-record timing lives only in the nested `timing` object; staging kinds are `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, and `sequence`. A runtime reads timing only from `timing` and never from flattened legacy fields.",
   "type": "object",
   "additionalProperties": true,
@@ -1856,6 +1856,13 @@
             "type": "string"
           },
           "description": "0.50.0 §5.5: the quest ids the reward kind's `effects.accepts` resolves to, applied at the grant after the facts through the `::accept` path; absent when none."
+        },
+        "raises": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/raiseRecord"
+          },
+          "description": "0.51.0 §4.6: the occasions the reward kind's `effects.raises` declares, `@target` bound to `target` (an unbound one is not written), stamped at compile. Descriptive: the host raises each once the grant settles; the runtime raises nothing. Absent when none."
         }
       },
       "additionalProperties": true,
@@ -1883,6 +1890,75 @@
       ],
       "additionalProperties": false,
       "description": "0.50.0 §5.5: one fact a reward's effects write — the `relation` + `args` shape of an `assert` / `retract` record (\"_\" a retract wildcard)."
+    },
+    "localizedText": {
+      "type": "object",
+      "properties": {
+        "lineId": {
+          "type": "string",
+          "description": "`{prefix}~{tag}~{code}~{attr}` (0.51.0 §5.3), outside the `lineId` template; `~` appears in no other localization id."
+        },
+        "placeholders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/placeholder"
+          },
+          "description": "the value's `{{…}}` interpolations, as an option label's; absent when none."
+        },
+        "texts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "translations by locale, filled by the `--locale-bundle` merge; absent when none."
+        }
+      },
+      "required": [
+        "lineId"
+      ],
+      "additionalProperties": false,
+      "description": "0.51.0 §5.4: one `text` attribute's localization on a `plugin` record."
+    },
+    "raiseRecord": {
+      "type": "object",
+      "properties": {
+        "occasion": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string",
+          "description": "the target the occasion is raised for, written whole (`scene.chapter2`); for a `dynamic` raise the `occasion.target` reference with the domain prefix applied (`scene.occasion.target`), which the runtime binds on the emitted record. Absent for an untargeted occasion."
+        },
+        "dynamic": {
+          "type": "boolean",
+          "description": "the target reads `occasion.target` (a call in a beat): the runtime binds it to the member the beat runs for. Absent for a static target, which is never bound, whatever it reads like."
+        }
+      },
+      "required": [
+        "occasion"
+      ],
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "dynamic": {
+            "const": true
+          }
+        },
+        "required": [
+          "dynamic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "target": {
+            "pattern": "^([^.]+\\.)*occasion\\.target$"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "description": "0.51.0 §4.6: one declared raise — an occasion a plugin call or a granted reward promises the host raises (`effects.raises`), resolved at compile (an `@attr` bound to the attribute's compiled value or its declared `default:`, a domain prefix applied). A `dynamic` raise has a target, the `occasion.target` reference with or without a prefix; that the prefix is the occasion's declared one is checked at load (the runtime refuses the bundle)."
     },
     "objectiveEntry": {
       "type": "object",
@@ -2845,6 +2921,12 @@
         },
         "target": {
           "$ref": "#/$defs/position"
+        },
+        "max": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 99,
+          "description": "dsl 0.51.0 §3.6: a bounded backward jump is taken at most `max` times, then control falls through; its counter resets when control reaches `target` from outside the loop. Requires `lute.core.boundedJump/1`."
         }
       },
       "additionalProperties": true,
@@ -2854,7 +2936,7 @@
         "position",
         "target"
       ],
-      "description": "Unconditional control-flow jump. Carries no `timing`, `provenance`, or `source`."
+      "description": "Unconditional control-flow jump (backward only with `max`). Carries no `timing`, `provenance`, or `source`."
     },
     "cmdEnd": {
       "type": "object",
@@ -3451,6 +3533,13 @@
           },
           "description": "dsl 0.27.0 §4: the ground facts the call asserts (its directive's declared effects.asserts, @attr substituted), applied after `retracts`; absent when none."
         },
+        "localized": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/localizedText"
+          },
+          "description": "0.51.0 §5.4: each `text` attribute's localization, keyed by attribute name. `fields.<attr>` keeps the source-language string, `{{…}}` markers as authored. Descriptive (no semantic id); absent when the directive has no authored `text` attribute."
+        },
         "timing": {
           "$ref": "#/$defs/timing"
         },
@@ -3462,6 +3551,13 @@
         },
         "stamps": {
           "$ref": "#/$defs/stamps"
+        },
+        "raises": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/raiseRecord"
+          },
+          "description": "0.51.0 §4.6: the occasions the call's `effects.raises` declares, in list order, each target resolved (authored, then the attribute's `default:`; an unbound one is not written). Descriptive: the host raises each after the presentation ends; absent when none."
         }
       },
       "additionalProperties": true,

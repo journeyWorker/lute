@@ -358,7 +358,8 @@ pub fn propagate(
             // accepted quest activates mid-body of its anchor, a started one
             // whenever its `start` holds, so the anchor's writes are not
             // guaranteed there. [`quest_envelope`] answers an `after`-less
-            // quest from the entry floor; so does its node.
+            // quest from the entry floor; so does its node. 0.51.0 §4.5: a
+            // raise-anchored scene or beat too — one raiser of several ran.
             PrereqState::Absent | PrereqState::Anchored(_) => (Env::default(), false),
             PrereqState::Invalid => (Env::default(), true),
             PrereqState::Valid(f) => {

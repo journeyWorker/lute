@@ -515,6 +515,7 @@ fn scalar_name(t: &Type) -> &'static str {
         Type::Int => "int",
         Type::Double => "double",
         Type::Str => "string",
+        Type::Text => "text",
         Type::Enum(_) | Type::EnumFromOption(_) => "enum",
         Type::NarrativeTime => "narrativeTime",
         Type::List(_) => "list",

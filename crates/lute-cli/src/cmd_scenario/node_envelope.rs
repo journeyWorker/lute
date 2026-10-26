@@ -28,20 +28,34 @@ fn print_must_facts(out: &mut String, facts: &[lute_check::fact_env::MustFact]) 
 /// Every node from which `node` is transitively reachable in the prerequisite
 /// graph — the writers whose writes provably happen BEFORE control reaches
 /// it, which is the only thing a PRE-ENTRY envelope may claim. `g.edges` is
-/// keyed `prerequisite -> dependent`, so this is a reverse walk.
+/// keyed `prerequisite -> dependent`, so this is a reverse walk. An edge
+/// whose only kind is [`EdgeKind::Raises`] is not crossed (0.51.0 §4.5,
+/// Review051b F4): a raise anchor's sources are alternatives — one of them
+/// ran — so none is provably before; an edge that also carries another kind
+/// is crossed as before.
 ///
 /// `node` itself is excluded unless a cycle puts it upstream of itself; that
 /// is deliberate — the tables are explicitly "before its own writes".
+///
+/// [`EdgeKind::Raises`]: lute_check::connectivity::EdgeKind::Raises
 fn ancestors_of(
     g: &lute_check::connectivity::ConnGraph,
     node: &lute_check::connectivity::NodeId,
 ) -> BTreeSet<lute_check::connectivity::NodeId> {
+    use lute_check::connectivity::EdgeKind;
     let mut rev: BTreeMap<
         &lute_check::connectivity::NodeId,
         Vec<&lute_check::connectivity::NodeId>,
     > = BTreeMap::new();
+    let raise_only = |prereq, dep| {
+        g.edge_kinds_for(prereq, dep)
+            .is_some_and(|ks| ks.iter().all(|k| *k == EdgeKind::Raises))
+    };
     for (prereq, deps) in &g.edges {
-        for dep in deps.iter().filter(|dep| g.orders(prereq, dep)) {
+        for dep in deps
+            .iter()
+            .filter(|dep| g.orders(prereq, dep) && !raise_only(prereq, dep))
+        {
             rev.entry(dep).or_default().push(prereq);
         }
     }
@@ -57,6 +71,26 @@ fn ancestors_of(
         }
     }
     seen
+}
+
+/// 0.51.0 §4.5: each declared raise that reaches `node`, as
+/// `` raised by `::playScene{scene="chapter2"}` in scene `intro` `` — the
+/// alternatives a `[raises]` anchor stands for.
+fn print_raised_by(
+    out: &mut String,
+    scenario: &RootScenario,
+    node: &lute_check::connectivity::NodeId,
+) {
+    use lute_check::connectivity::NodeId;
+    for from in scenario.raises.of_node(node) {
+        let (kind, id) = match &from.source {
+            NodeId::Scene(k) => ("scene", k),
+            NodeId::Beat(k) => ("beat", k),
+            NodeId::Quest(q) => ("quest", q),
+            NodeId::Entry(e) => ("entry", e),
+        };
+        outln!(out, "  raised by {} in {kind} `{id}`", from.shown);
+    }
 }
 
 /// Invert `PerDocEffects` into `path -> (writers upstream of `node`, the
@@ -243,6 +277,7 @@ fn print_scene_envelope(
         "envelope for {node_id} (pre-entry — state available when control REACHES this node, \
          before its own writes):"
     );
+    print_raised_by(out, scenario, node_id);
     if crate::node_cycle_degraded(scenario, node_id) {
         print_cycle_envelope_note(out);
     }
