@@ -115,10 +115,11 @@ pub use mono::{E_MONO_NO_POV, E_MONO_POV};
 pub use section_ids::E_SECTION_DUP;
 
 use choice_record::{check_choice_record, into_literal};
+pub use component_body::component_use_sites;
 pub(crate) use component_body::{bare_param_ref, directive_writes_state};
 use component_body::{
-    component_def_reads, component_own_slots, component_use_sites, use_target, validate_components,
-    walk_component_body, BodyScope,
+    component_def_reads, component_own_slots, use_target, validate_components, walk_component_body,
+    BodyScope,
 };
 pub(crate) use fold::base_fold;
 pub(crate) use fold::resolve_kinds;

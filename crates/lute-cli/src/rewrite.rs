@@ -304,8 +304,10 @@ struct User {
     path: PathBuf,
     /// The directives with a `text` attribute in its capability snapshot.
     text_tags: BTreeSet<String>,
-    /// Every component it expands, nested ones too: canonical path → name.
-    components: BTreeMap<PathBuf, String>,
+    /// Every component its `::use`s expand, nested ones too — the checker's
+    /// use closure, never the import table: canonical path → name and the
+    /// span of the document's own `::use` that brings it in.
+    components: BTreeMap<PathBuf, (String, lute_core_span::Span)>,
 }
 
 /// Where `lute tag` reads which directives take `text` from: a document's
@@ -327,9 +329,10 @@ impl TextTagSources<'_> {
     fn text_directive_tags(&mut self, file: &Path) -> Result<BTreeSet<String>, Box<Diagnostic>> {
         let project = crate::project::resolve_project(file, None);
         let own = || snapshot_text_tags(self.cache, file, project.as_deref());
-        let (Some(project), true) = (
+        // A component is a document kind (`component:`), not a file name.
+        let (Some(project), Some(_)) = (
             project.as_deref(),
-            crate::compile_all::is_component_file(file),
+            crate::cmd_check::component_name_of(file),
         ) else {
             return Ok(own());
         };
@@ -386,21 +389,23 @@ fn text_tags_of(snapshot: &lute_manifest::snapshot::CapabilitySnapshot) -> BTree
         .collect()
 }
 
-/// Every non-component document of `project` that loads, with its
-/// snapshot's text directives and the components it expands.
+/// Every non-component document under `project` that loads — each under its
+/// own nearest project, so a nested project's documents read their own
+/// defaults — with its snapshot's text directives and the components its
+/// `::use`s expand.
 fn project_users(cache: &lute_load::InputCache, project: &Path) -> Vec<User> {
     lute_load::find_lute_files(project)
         .unwrap_or_default()
         .into_iter()
-        .filter(|p| !crate::compile_all::is_component_file(p))
+        .filter(|p| crate::cmd_check::component_name_of(p).is_none())
         .filter_map(|path| {
-            let built = lute_load::build_input_with(cache, &path, None, Some(project), None)?;
-            let components = built
-                .input
-                .components
-                .table
-                .iter()
-                .map(|(name, c)| (c.src.clone(), name.clone()))
+            let root = lute_load::project_root_for(&path, project);
+            let built = lute_load::build_input_with(cache, &path, None, Some(&root), None)?;
+            let (doc, _) = lute_syntax::parse(&built.input.text);
+            let table = &built.input.components.table;
+            let components = lute_check::check::component_use_sites(&doc, &built.input.components)
+                .into_iter()
+                .filter_map(|(name, span)| Some((table.get(&name)?.src.clone(), (name, span))))
                 .collect();
             Some(User {
                 text_tags: text_tags_of(built.input.snapshot()),
@@ -440,17 +445,13 @@ fn text_directive_conflict(
         ),
     );
     d.span = span;
-    let name = with.components.get(component).cloned().unwrap_or_default();
     for (user, what) in [(with, "with"), (without, "without")] {
         let mut related = crate::manifests::as_diagnostic(
             E_COMPONENT_TEXT_DIRECTIVE,
             format!("this use reads `::{tag}` {what} `text` attributes"),
         );
-        if let Some(at) = std::fs::read_to_string(&user.path)
-            .ok()
-            .and_then(|text| lute_check::first_component_use(&text, &name))
-        {
-            related.span = at;
+        if let Some((_, at)) = user.components.get(component) {
+            related.span = *at;
         }
         d.related.push(lute_core_span::RelatedDiagnostic {
             file: user.path.display().to_string(),

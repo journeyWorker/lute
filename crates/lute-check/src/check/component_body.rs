@@ -300,7 +300,7 @@ pub(crate) fn validate_components(
 /// then quests, then entries). A component reached only through another
 /// component's body inherits the outer `::use`'s span — the importing
 /// document's only position for it.
-pub(crate) fn component_use_sites(
+pub fn component_use_sites(
     doc: &Document,
     components: &ComponentSet,
 ) -> std::collections::BTreeMap<String, Span> {

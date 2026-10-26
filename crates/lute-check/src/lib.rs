@@ -256,8 +256,8 @@ pub use rule_index::evaluable_rules;
 pub use schema_import::{resolve_imports, ImportCache, Memo, RelImports, SchemaImports};
 pub use set_op::{check_set, WriteOwner, E_ENGINE_OWNED_WRITE};
 pub use tag::{
-    codes_locked, first_component_use, retag_document, tag_document, text_directive_calls,
-    LineRenumber, RetagOutcome, TagOutcome,
+    codes_locked, retag_document, tag_document, text_directive_calls, LineRenumber, RetagOutcome,
+    TagOutcome,
 };
 pub use temporal::{check_temporal, E_TEMPORAL_ARG};
 pub use time::{fmt_seconds, ms_to_seconds, parse_time_ms, TimeParse, TIME_MAX_FRACTIONAL_DIGITS};

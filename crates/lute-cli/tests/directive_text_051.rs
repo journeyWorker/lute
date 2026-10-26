@@ -869,6 +869,99 @@ fn users_disagreeing_on_a_text_directive_refuse_tagging() {
     );
 }
 
+/// The tagged component text: its `::banner` call got `code="0010"`.
+fn assert_card_tagged(dir: &Path, rel: &str, out: &Output) {
+    assert!(out.status.success(), "{}", text(out));
+    let tagged = std::fs::read_to_string(dir.join(rel)).unwrap();
+    assert!(
+        tagged.contains("::banner{code=\"0010\" title=\"Card\"}"),
+        "{tagged}"
+    );
+}
+
+/// S6 re-review #1: a document that imports the component but never
+/// `::use`s it is no user — the checker's use closure decides, not the
+/// import table.
+#[test]
+fn an_unused_import_is_no_user() {
+    let dir = project(
+        "dt-tag-unused-import",
+        &[
+            ("lute.project.yaml", PROJECT_NO_UI),
+            ("scenes/a.lute", &card_user("a", true)),
+            (
+                "scenes/b.lute",
+                "---\nkind: scene\nid: b\ncomponents: [../components/card.component.lute]\n---\n\n\
+                 ## Shot 1.\n\n@narrator: Hi.\n",
+            ),
+            ("components/card.component.lute", CARD),
+        ],
+    );
+    let out = lute(&dir, &["tag", "components/card.component.lute"]);
+    assert_card_tagged(&dir, "components/card.component.lute", &out);
+}
+
+/// S6 re-review #2: a component is a document kind (`component:`
+/// frontmatter), not a `.component.lute` file name — a wrapper component
+/// is no independent user, and a component named `card.lute` is tagged
+/// under its users' snapshot.
+#[test]
+fn components_are_known_by_frontmatter() {
+    let wrapper = "---\ncomponent: wrapper\ncomponents: [card.component.lute]\n---\n\n\
+                   ## Wrapper\n\n::use{component=\"card\" instance=\"in\"}\n";
+    let scene = "---\nkind: scene\nid: a\ncomponents: [../components/wrapper.lute]\nplugins:\n  \
+                 acme.ui: {}\n---\n\n## Shot 1.\n\n::use{component=\"wrapper\" instance=\"w\"}\n";
+    let dir = project(
+        "dt-tag-wrapper",
+        &[
+            ("lute.project.yaml", PROJECT_NO_UI),
+            ("scenes/a.lute", scene),
+            ("components/wrapper.lute", wrapper),
+            ("components/card.component.lute", CARD),
+        ],
+    );
+    let out = lute(&dir, &["tag", "components/card.component.lute"]);
+    assert_card_tagged(&dir, "components/card.component.lute", &out);
+
+    let scene = "---\nkind: scene\nid: a\ncomponents: [../components/card.lute]\nplugins:\n  \
+                 acme.ui: {}\n---\n\n## Shot 1.\n\n::use{component=\"card\" instance=\"one\"}\n";
+    let dir = project(
+        "dt-tag-plain-name",
+        &[
+            ("lute.project.yaml", PROJECT_NO_UI),
+            ("scenes/a.lute", scene),
+            ("components/card.lute", CARD),
+        ],
+    );
+    let out = lute(&dir, &["tag", "components/card.lute"]);
+    assert_card_tagged(&dir, "components/card.lute", &out);
+}
+
+/// S6 re-review #3: a user in a nested project is read under that
+/// project, whose defaults activate `acme.ui`, not the outer one's.
+#[test]
+fn a_nested_project_user_is_read_under_its_own_project() {
+    let nested = "pluginsDir: ../plugins/\ndefaultProfile: game\nprofiles:\n  game:\n    \
+                  plugins:\n      acme.ui: true\ndefaults:\n  contentLang: en\n  uses: \
+                  [../schema/world.schema.yaml]\n";
+    let dir = project(
+        "dt-tag-nested-project",
+        &[
+            ("lute.project.yaml", PROJECT_NO_UI),
+            ("scenes/a.lute", &card_user("a", true)),
+            ("sub/lute.project.yaml", nested),
+            (
+                "sub/scenes/n.lute",
+                "---\nkind: scene\nid: n\ncomponents: [../../components/card.component.lute]\n\
+                 ---\n\n## Shot 1.\n\n::use{component=\"card\" instance=\"one\"}\n",
+            ),
+            ("components/card.component.lute", CARD),
+        ],
+    );
+    let out = lute(&dir, &["tag", "components/card.component.lute"]);
+    assert_card_tagged(&dir, "components/card.component.lute", &out);
+}
+
 /// S6 review #2: only a declared type is judged — a literal `default:`
 /// that happens to hold a `type: text` entry is data, not a type.
 #[test]
