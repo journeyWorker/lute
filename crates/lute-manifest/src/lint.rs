@@ -156,6 +156,8 @@ pub enum LintShapeFault {
         key: &'static str,
         target: LintTarget,
     },
+    /// A key written with a null value where it takes one.
+    NullKey(&'static str),
 }
 
 impl std::fmt::Display for LintRuleShapeError {
@@ -177,28 +179,54 @@ impl std::fmt::Display for LintRuleShapeError {
                  target states `when`",
                 target.name()
             ),
+            LintShapeFault::NullKey(key) => write!(
+                f,
+                "rule `{id}`: `{key}` is null; give it a value or leave it out"
+            ),
         }
     }
 }
 
 impl std::error::Error for LintRuleShapeError {}
 
-/// The on-disk keys of a rule, before [`LintRuleDecl`]'s shape check.
+/// The on-disk keys of a rule, before [`LintRuleDecl`]'s shape check. A
+/// key the shape check judges by presence is `Option<Option<_>>`: `None`
+/// when absent, `Some(None)` when written as null ([`present`]).
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct RawLintRuleDecl {
     id: String,
     target: LintTarget,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    when: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    open: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    close: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    inside: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    scope: Option<PairScope>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    when: Option<Option<String>>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    open: Option<Option<String>>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    close: Option<Option<String>>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    inside: Option<Option<String>>,
+    #[serde(
+        default,
+        deserialize_with = "present",
+        skip_serializing_if = "Option::is_none"
+    )]
+    scope: Option<Option<PairScope>>,
     #[serde(default)]
     level: Option<LintLevel>,
     message: String,
@@ -206,73 +234,95 @@ struct RawLintRuleDecl {
     options: yaml_serde::Mapping,
 }
 
+/// A written key: `Some(None)` for an explicit null, `Some(Some(v))`
+/// otherwise (an absent key takes the field's `default`, `None`).
+fn present<'de, D, T>(d: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(d).map(Some)
+}
+
 impl TryFrom<RawLintRuleDecl> for LintRuleDecl {
     type Error = LintRuleShapeError;
 
     fn try_from(raw: RawLintRuleDecl) -> Result<Self, Self::Error> {
-        let fail = |fault| {
-            Err(LintRuleShapeError {
-                id: raw.id.clone(),
-                fault,
-            })
-        };
-        let body = if raw.target == LintTarget::Pair {
-            if raw.when.is_some() {
-                return fail(LintShapeFault::WhenOnPair);
-            }
-            let (Some(open), Some(close)) = (raw.open.clone(), raw.close.clone()) else {
-                let key = if raw.open.is_none() { "open" } else { "close" };
-                return fail(LintShapeFault::MissingPairKey(key));
-            };
-            LintRuleBody::Pair(PairSpec {
-                open,
-                close,
-                inside: raw.inside.clone(),
-                scope: raw.scope.unwrap_or_default(),
-            })
-        } else {
+        match raw.body() {
+            Ok(body) => Ok(Self {
+                id: raw.id,
+                target: raw.target,
+                body,
+                level: raw.level,
+                message: raw.message,
+                options: raw.options,
+            }),
+            Err(fault) => Err(LintRuleShapeError { id: raw.id, fault }),
+        }
+    }
+}
+
+impl RawLintRuleDecl {
+    /// The body the keys state for `target`, or why they do not fit it.
+    fn body(&self) -> Result<LintRuleBody, LintShapeFault> {
+        if self.target != LintTarget::Pair {
             let pair_keys = [
-                ("open", raw.open.is_some()),
-                ("close", raw.close.is_some()),
-                ("inside", raw.inside.is_some()),
-                ("scope", raw.scope.is_some()),
+                ("open", self.open.is_some()),
+                ("close", self.close.is_some()),
+                ("inside", self.inside.is_some()),
+                ("scope", self.scope.is_some()),
             ];
-            if let Some((key, _)) = pair_keys.into_iter().find(|(_, present)| *present) {
-                return fail(LintShapeFault::PairKeyOffPair {
+            if let Some((key, _)) = pair_keys.into_iter().find(|(_, written)| *written) {
+                return Err(LintShapeFault::PairKeyOffPair {
                     key,
-                    target: raw.target,
+                    target: self.target,
                 });
             }
-            let Some(when) = raw.when.clone() else {
-                return fail(LintShapeFault::MissingWhen);
-            };
-            LintRuleBody::Predicate { when }
-        };
-        Ok(Self {
-            id: raw.id,
-            target: raw.target,
-            body,
-            level: raw.level,
-            message: raw.message,
-            options: raw.options,
-        })
+            let when = value("when", &self.when)?.ok_or(LintShapeFault::MissingWhen)?;
+            return Ok(LintRuleBody::Predicate { when });
+        }
+        if self.when.is_some() {
+            return Err(LintShapeFault::WhenOnPair);
+        }
+        let open = value("open", &self.open)?;
+        let close = value("close", &self.close)?;
+        let inside = value("inside", &self.inside)?;
+        let scope = value("scope", &self.scope)?;
+        Ok(LintRuleBody::Pair(PairSpec {
+            open: open.ok_or(LintShapeFault::MissingPairKey("open"))?,
+            close: close.ok_or(LintShapeFault::MissingPairKey("close"))?,
+            inside,
+            scope: scope.unwrap_or_default(),
+        }))
+    }
+}
+
+/// A key's value: `None` when absent, the fault of an explicit null.
+fn value<T: Clone>(
+    key: &'static str,
+    written: &Option<Option<T>>,
+) -> Result<Option<T>, LintShapeFault> {
+    match written {
+        None => Ok(None),
+        Some(None) => Err(LintShapeFault::NullKey(key)),
+        Some(Some(v)) => Ok(Some(v.clone())),
     }
 }
 
 impl From<LintRuleDecl> for RawLintRuleDecl {
     fn from(decl: LintRuleDecl) -> Self {
         let (when, pair) = match decl.body {
-            LintRuleBody::Predicate { when } => (Some(when), None),
+            LintRuleBody::Predicate { when } => (Some(Some(when)), None),
             LintRuleBody::Pair(pair) => (None, Some(pair)),
         };
         Self {
             id: decl.id,
             target: decl.target,
             when,
-            open: pair.as_ref().map(|p| p.open.clone()),
-            close: pair.as_ref().map(|p| p.close.clone()),
-            inside: pair.as_ref().and_then(|p| p.inside.clone()),
-            scope: pair.map(|p| p.scope),
+            open: pair.as_ref().map(|p| Some(p.open.clone())),
+            close: pair.as_ref().map(|p| Some(p.close.clone())),
+            inside: pair.as_ref().and_then(|p| p.inside.clone()).map(Some),
+            scope: pair.map(|p| Some(p.scope)),
             level: decl.level,
             message: decl.message,
             options: decl.options,

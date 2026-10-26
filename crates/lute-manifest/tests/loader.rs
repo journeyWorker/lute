@@ -688,6 +688,22 @@ fn pair_lint_rules_load_and_their_shape_is_enforced() {
             "rule `g`: `scope` belongs to `target: pair`, not `target: scene`",
         ),
         ("    target: line\n", "rule `g`: missing field `when`"),
+        (
+            "    target: node\n    when: 'true'\n    close: null\n",
+            "rule `g`: `close` belongs to `target: pair`, not `target: node`",
+        ),
+        (
+            "    target: pair\n    when: null\n    open: 'true'\n    close: 'true'\n",
+            "rule `g`: `when` is refused on `target: pair`",
+        ),
+        (
+            "    target: pair\n    open: 'true'\n    close: null\n",
+            "rule `g`: `close` is null",
+        ),
+        (
+            "    target: pair\n    open: 'true'\n    close: 'true'\n    inside: null\n",
+            "rule `g`: `inside` is null",
+        ),
     ] {
         let errs = pkg(rule).expect_err(rule);
         assert!(

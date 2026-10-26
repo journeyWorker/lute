@@ -543,6 +543,36 @@ fn every_custom_shape_fault_is_a_config_error() {
             "`scope` belongs to `target: pair`, not `target: node`",
         ),
         ("    target: node\n", "rule `r`: missing field `when`"),
+        // A key written as null is written: refused where it does not
+        // belong, and not taken as absent where it does.
+        (
+            "    target: node\n    when: 'true'\n    open: null\n",
+            "`open` belongs to `target: pair`, not `target: node`",
+        ),
+        (
+            "    target: scene\n    when: 'true'\n    scope: null\n",
+            "`scope` belongs to `target: pair`, not `target: scene`",
+        ),
+        (
+            "    target: pair\n    when: null\n    open: 'true'\n    close: 'false'\n",
+            "`when` is refused on `target: pair`",
+        ),
+        (
+            "    target: pair\n    open: null\n    close: 'false'\n",
+            "rule `r`: `open` is null; give it a value or leave it out",
+        ),
+        (
+            "    target: pair\n    open: 'true'\n    close: 'false'\n    inside: null\n",
+            "rule `r`: `inside` is null",
+        ),
+        (
+            "    target: pair\n    open: 'true'\n    close: 'false'\n    scope: null\n",
+            "rule `r`: `scope` is null",
+        ),
+        (
+            "    target: node\n    when: null\n",
+            "rule `r`: `when` is null",
+        ),
     ];
     for (keys, want) in cases {
         let (cfg, diags) = parse_config(&rule(keys), span0()).unwrap();
