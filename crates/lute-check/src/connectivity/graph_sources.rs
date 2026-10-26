@@ -170,7 +170,7 @@ pub(crate) fn accept_sources<'a>(
                     record_id(id, &source, own);
                 }
             });
-            for grant in crate::reward_effects::quest_grants(quest, item.reward_kinds) {
+            for grant in crate::reward_effects::quest_grants(quest, &item.snapshot.reward_kinds) {
                 if let Some(id) = grant.accepted() {
                     record_id(id, &source, own);
                 }

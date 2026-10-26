@@ -1266,6 +1266,11 @@ pub struct ChoiceCmd {
     /// translated prompt, keyed on `promptLineId`. See `LineCmd::texts`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub prompt_texts: BTreeMap<String, String>,
+    /// dsl 0.52.0 §6.2: `{{…}}` interpolations in `prompt`, built as an
+    /// option's `placeholders` are. Absent when the prompt has none, so
+    /// every marker-less record is byte-identical.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prompt_placeholders: Vec<Placeholder>,
     /// dsl 0.11.0: the countdown, in whole seconds (dsl 0.37.0 §5.3
     /// `timeout`). Absent unless authored.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -1326,6 +1331,10 @@ pub struct HubCmd {
     /// `promptLineId`. See `LineCmd::texts`.
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub prompt_texts: BTreeMap<String, String>,
+    /// dsl 0.52.0 §6.2: `{{…}}` interpolations in `prompt`, built as an
+    /// option's `placeholders` are. Absent when the prompt has none.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub prompt_placeholders: Vec<Placeholder>,
     /// dsl 0.28.0 §5: the start of the hub's `<return>` segment — run each
     /// time a non-`exit` option's segment ends, before the hub is judged
     /// and presented again. It is a segment boundary like an option

@@ -7,8 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use lute_manifest::schema::{OccasionDecl, OccasionTarget};
 use serde_json::{json, Value as Json};
 
-use super::commands::texts_with;
-use super::format::{substitute_markers, value_to_json};
+use super::commands::texts_json;
+use super::format::value_to_json;
 use super::{addr, fold_op, Machine, Site};
 use crate::driver::{BridgeCall, BridgeReply, Driver, SiteKind};
 use crate::eval::Read;
@@ -399,19 +399,16 @@ impl<D: Driver> Machine<D> {
             if self.text_halts(placeholders, addr(cmd)) {
                 return None;
             }
-            let rendered = self.render_markers(&raw, placeholders);
+            let (rendered, _) = self.render_text(&raw, placeholders, text.get("texts"));
             if let Some(a) = attrs.as_deref_mut() {
-                a.insert(
-                    attr.clone(),
-                    Json::String(substitute_markers(&raw, &rendered, &mut 0)),
-                );
+                a.insert(attr.clone(), Json::String(rendered.text));
             }
             let mut entry = serde_json::Map::new();
             if let Some(id) = text.get("lineId") {
                 entry.insert("lineId".into(), id.clone());
             }
-            if let Some(t) = text.get("texts").filter(|t| !t.is_null()) {
-                entry.insert("texts".into(), texts_with(t, &raw, &rendered));
+            if text.get("texts").is_some_and(|t| !t.is_null()) {
+                entry.insert("texts".into(), texts_json(&rendered.texts));
             }
             out.insert(attr.clone(), Json::Object(entry));
         }

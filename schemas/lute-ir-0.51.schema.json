@@ -2749,6 +2749,13 @@
           },
           "description": "dsl 0.47.0 §3.1: merged locale texts, locale tag → translated prompt, keyed on `promptLineId`. Absent when no locale bundle translated it. The source-language string stays in `prompt`."
         },
+        "promptPlaceholders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/placeholder"
+          },
+          "description": "dsl 0.52.0 §6.2: the `{{…}}` interpolations in `prompt`, left to right, built as an option's `placeholders` are. Absent when the prompt has none; an engine that renders prompts reads it."
+        },
         "timeout": {
           "type": "integer",
           "minimum": 1,
@@ -2877,6 +2884,13 @@
             "type": "string"
           },
           "description": "dsl 0.47.0 §3.1: merged locale texts, locale tag → translated prompt, keyed on `promptLineId`. Absent when no locale bundle translated it. The source-language string stays in `prompt`."
+        },
+        "promptPlaceholders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/placeholder"
+          },
+          "description": "dsl 0.52.0 §6.2: the `{{…}}` interpolations in `prompt`, left to right, built as an option's `placeholders` are. Absent when the prompt has none; an engine that renders prompts reads it."
         },
         "return": {
           "$ref": "#/$defs/position",

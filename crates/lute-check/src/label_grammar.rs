@@ -3,8 +3,10 @@
 //! These values take `{{…}}` interpolation with modifiers, read by
 //! [`lute_syntax::line_text::interp_sites`] exactly as line text is: a
 //! `<choice text>` of a `<branch>` or `<hub>`, a `<branch prompt>` and a
-//! `<hub prompt>`, an `<objective title>` and a plugin directive attribute
-//! declared `type: text` (0.51.0 §5.2) — [`takes_label_grammar`].
+//! `<hub prompt>`, and a plugin directive attribute declared `type: text`
+//! (0.51.0 §5.2) — [`takes_label_grammar`]. An `<objective title>` is plain
+//! text (0.52.0 §6.7): any `{{` in it, `\{{` included, is
+//! `E-OBJECTIVE-TITLE-INTERP`, so this pass leaves it to that code.
 //!
 //! In such a value `\{{` is a literal `{{`, the line-text spelling (lute
 //! 0.47.1 §3). The lexer cannot tell a label from any other quoted value (a
@@ -77,7 +79,6 @@ pub(crate) fn takes_label_grammar(
     match owner {
         AttrOwner::Choice => attr == "text",
         AttrOwner::Branch | AttrOwner::Hub => attr == "prompt",
-        AttrOwner::Objective => attr == "title",
         AttrOwner::Directive(tag) => snapshot
             .directive(tag)
             .is_some_and(|d| d.text_attrs().any(|t| t.name == attr)),
@@ -216,6 +217,9 @@ impl Walk<'_> {
             if !quoted
                 || !has_escaped_opener(attr.raw_value)
                 || takes_label_grammar(owner, attr.key, self.snapshot)
+                // `E-OBJECTIVE-TITLE-INTERP` refuses every `{{` of an
+                // `<objective title>` (0.52.0 §6.7).
+                || (owner == AttrOwner::Objective && attr.key == "title")
             {
                 continue;
             }
@@ -302,7 +306,6 @@ mod tests {
             (AttrOwner::Choice, "text"),
             (AttrOwner::Branch, "prompt"),
             (AttrOwner::Hub, "prompt"),
-            (AttrOwner::Objective, "title"),
         ] {
             assert!(
                 takes_label_grammar(owner, attr, &snapshot),
@@ -313,6 +316,8 @@ mod tests {
             (AttrOwner::Choice, "when"),
             (AttrOwner::Branch, "id"),
             (AttrOwner::Quest, "title"),
+            // Plain text (0.52.0 §6.7).
+            (AttrOwner::Objective, "title"),
             (AttrOwner::When, "test"),
             (AttrOwner::Line("mira"), "code"),
             // No snapshot declaration: not a `text` attribute.

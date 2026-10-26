@@ -59,7 +59,7 @@ fn guards(text: &str) -> Vec<Diagnostic> {
     let results = vec![(path.clone(), result)];
     let docs = ProjectDocs::parse(
         vec![(path.clone(), doc)],
-        &lute_manifest::core::load_core_snapshot(),
+        lute_manifest::core::core_snapshot(),
     );
     let views = docs.views();
     let key_set = scene_key_set(&views);

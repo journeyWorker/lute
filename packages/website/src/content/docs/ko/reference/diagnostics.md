@@ -173,9 +173,9 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-BRANCH-PROMPT
 
-`<branch prompt>` 또는 `<hub prompt>` 값이 없거나 빈 문자열입니다. 프롬프트는 UI가 그대로 보여주는, 비어 있지 않은 문장이어야 합니다.
+`<branch prompt>` 또는 `<hub prompt>` 값이 없거나 빈 문자열입니다. 프롬프트는 UI가 보여주는, 비어 있지 않은 문장이어야 합니다. 프롬프트의 `{{…}}` 마커는 선택지 문구처럼 렌더링됩니다.
 
-명세: [dsl 0.11.1 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.11.1.md), [dsl 0.23.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)
+명세: [dsl 0.11.1 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.11.1.md), [dsl 0.23.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md), [dsl 0.52.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-BRANCH-TIMEOUT
 
@@ -1049,6 +1049,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 ### E-OBJECTIVE-QUEST-DONE
 
 `<objective>`가 `quest=` 하위 퀘스트 참조와 비어 있지 않은 `done=` 조건을 동시에 가지고 있는데, 이 둘은 함께 쓸 수 없습니다.
+
+### E-OBJECTIVE-TITLE-INTERP
+
+`<objective title>`에 `{{`가 있습니다(이스케이프 여부와 상관없이). 퀘스트 UI는 제목을 쓰인 그대로 보여주므로 제목에는 `{{…}}`를 쓸 수 없습니다. 제목은 평문으로 쓰고, 바뀌는 값은 대사로 보여주세요.
+
+명세: [dsl 0.52.0 §6.7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-OBJECTIVE-UNSATISFIABLE
 

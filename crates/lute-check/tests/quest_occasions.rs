@@ -86,13 +86,13 @@ fn scene_doc(id: &str, fm: &str, body: &str) -> String {
     )
 }
 
-fn docs(texts: &[(&str, &str)]) -> lute_check::ProjectDocs {
+fn docs(texts: &[(&str, &str)]) -> lute_check::ProjectDocs<'static> {
     lute_check::ProjectDocs::parse(
         texts
             .iter()
             .map(|(path, text)| (PathBuf::from(path), lute_syntax::parse(text).0))
             .collect(),
-        &lute_manifest::core::load_core_snapshot(),
+        lute_manifest::core::core_snapshot(),
     )
 }
 

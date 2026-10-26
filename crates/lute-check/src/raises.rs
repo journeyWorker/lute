@@ -8,7 +8,7 @@
 //! of one project root once per pass (D14), like 0.50's
 //! [`crate::reward_effects::GrantTable`]: each document's calls against its
 //! own capability snapshot and each reward against its own
-//! [`crate::ProjectDoc::reward_kinds`]. The sources are `accept_sources`'
+//! `rewardKinds` of [`crate::ProjectDoc::snapshot`]. The sources are `accept_sources`'
 //! kinds — a scene's shots, a lore bundle beat, a quest's body and each of
 //! its rewards once ([`crate::reward_effects::reward_grant_sites`]) — plus
 //! a lore entry's body (a raise that anchors nothing); a call inside a
@@ -138,6 +138,7 @@ impl<'d> RaiseTable<'d> {
                 .values()
                 .any(|d| d.effects.as_ref().is_some_and(|e| !e.raises.is_empty()));
             let reward_raises = item
+                .snapshot
                 .reward_kinds
                 .values()
                 .any(|k| k.effects.as_ref().is_some_and(|e| !e.raises.is_empty()));
@@ -523,7 +524,7 @@ impl<'d> Walk<'_, 'd> {
     /// Each reward of `quest` once whose kind declares raises, at the grant
     /// points 0.50.0 §5.4 admits ([`crate::reward_effects::reward_grant_sites`]).
     fn rewards(&mut self, quest: &Quest, source: Option<&NodeId>, item: &ProjectDoc<'d>) {
-        for site in crate::reward_effects::reward_grant_sites(quest, item.reward_kinds) {
+        for site in crate::reward_effects::reward_grant_sites(quest, &item.snapshot.reward_kinds) {
             self.reward(site.reward, site.effects, source);
         }
     }

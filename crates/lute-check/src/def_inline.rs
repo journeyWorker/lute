@@ -238,6 +238,13 @@ impl Cx<'_> {
         }
     }
 
+    /// 0.52.0 §6.1: a `<branch>`/`<hub>` prompt's interpolations, as a label's.
+    fn prompt_interps(&mut self, attrs: &[lute_syntax::ast::Attr]) {
+        if let Some((text, span)) = crate::logic_attrs::prompt_text(attrs) {
+            self.interps(&lute_syntax::scan_label_interps(text, span));
+        }
+    }
+
     fn nodes(&mut self, nodes: &[Node]) {
         for node in nodes {
             match node {
@@ -253,6 +260,7 @@ impl Cx<'_> {
                 }
                 Node::Branch(b) => {
                     self.attrs(&b.attrs, &AttrSite::Element(StampSurface::Branch));
+                    self.prompt_interps(&b.attrs);
                     for c in &b.choices {
                         self.choice_attrs(&c.attrs);
                         self.interps(&lute_syntax::scan_label_interps(&c.text, c.span));
@@ -261,6 +269,7 @@ impl Cx<'_> {
                 }
                 Node::Hub(h) => {
                     self.attrs(&h.attrs, &AttrSite::Element(StampSurface::Hub));
+                    self.prompt_interps(&h.attrs);
                     for c in &h.choices {
                         self.choice_attrs(&c.attrs);
                         self.interps(&lute_syntax::scan_label_interps(&c.text, c.span));

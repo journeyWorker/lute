@@ -362,9 +362,10 @@ fn ever_read_is_a_readable_reserved_flag_and_unwritable() {
     assert!(with_code(&ds, "E-UNDECLARED").is_empty(), "{ds:?}");
     assert_eq!(with_code(&ds, "E-QUEST-RESERVED-WRITE").len(), 1, "{ds:?}");
     // whole-project check resolves the id like `entry.<id>.read`.
+    let snap = snapshot();
     let docs = ProjectDocs::parse(
         vec![(PathBuf::from("s.lute"), lute_syntax::parse(&src).0)],
-        &snapshot(),
+        &snap,
     );
     let refs = check_project_entry_refs(&docs.views());
     assert_eq!(refs.len(), 1, "{refs:?}");
@@ -399,9 +400,10 @@ fn quest_failed_handler_on_a_quest_that_cannot_fail_is_dead() {
         ))
     };
     let run = |src: &str| {
+        let snap = snapshot();
         let docs = ProjectDocs::parse(
             vec![(PathBuf::from("q.lute"), lute_syntax::parse(src).0)],
-            &snapshot(),
+            &snap,
         );
         check_project_quest_handlers(&docs.views())
     };
@@ -432,7 +434,8 @@ fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {
         let (doc, _) = lute_syntax::parse(&input.text);
         raw.push((PathBuf::from(format!("{i}.lute")), doc));
     }
-    let owned = ProjectDocs::parse(raw, &snapshot());
+    let snap = snapshot();
+    let owned = ProjectDocs::parse(raw, &snap);
     let views = owned.views();
     let foldeds: Vec<_> = owned
         .documents()

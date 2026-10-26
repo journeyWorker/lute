@@ -100,13 +100,14 @@ fn scene_doc(id: &str, body: &str) -> String {
     )
 }
 
-fn docs(texts: &[(&str, &str)]) -> ProjectDocs {
+fn docs(texts: &[(&str, &str)]) -> ProjectDocs<'static> {
+    static SNAPSHOT: std::sync::LazyLock<CapabilitySnapshot> = std::sync::LazyLock::new(snapshot);
     ProjectDocs::parse(
         texts
             .iter()
             .map(|(path, text)| (PathBuf::from(path), lute_syntax::parse(text).0))
             .collect(),
-        &snapshot(),
+        &SNAPSHOT,
     )
 }
 

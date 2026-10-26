@@ -955,14 +955,7 @@ fn constraint_values(model: &ProjectModel) -> BTreeMap<String, Value> {
     let project_docs: Vec<_> = model
         .documents()
         .iter()
-        .map(|d| {
-            lute_check::ProjectDoc::new(
-                &d.path,
-                &d.doc,
-                &d.folded.typed,
-                &d.folded.snapshot.reward_kinds,
-            )
-        })
+        .map(|d| lute_check::ProjectDoc::new(&d.path, &d.doc, &d.folded.typed, &d.folded.snapshot))
         .collect();
     let slots =
         lute_check::clock_positions::project_objective_slot_results(&project_docs, &foldeds);

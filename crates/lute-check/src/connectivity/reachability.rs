@@ -573,7 +573,7 @@ pub fn live_assert_sites<'d>(
             };
             if assert_site_is_live(node_reach) {
                 collect_asserted(&quest.body, effects, &mut sites);
-                collect_reward_asserts(quest, item.reward_kinds, &mut sites);
+                collect_reward_asserts(quest, &item.snapshot.reward_kinds, &mut sites);
             }
         }
         for entry in &doc.entries {
@@ -652,7 +652,7 @@ pub fn assert_relations_per_doc(
         }
         for quest in &doc.quests {
             collect_asserted(&quest.body, effects, &mut sites);
-            collect_reward_asserts(quest, item.reward_kinds, &mut sites);
+            collect_reward_asserts(quest, &item.snapshot.reward_kinds, &mut sites);
         }
         for entry in &doc.entries {
             collect_asserted(&entry.body, effects, &mut sites);

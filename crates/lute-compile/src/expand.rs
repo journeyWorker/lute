@@ -496,12 +496,15 @@ pub fn inline_ref_placeholders(
     for cmd in commands {
         match cmd {
             Command::Line(l) => fill(&mut l.placeholders),
+            // 0.52.0 §6.2: a prompt's placeholders, as a label's.
             Command::Choice(c) => {
+                fill(&mut c.prompt_placeholders);
                 for o in &mut c.options {
                     fill(&mut o.placeholders);
                 }
             }
             Command::Hub(h) => {
+                fill(&mut h.prompt_placeholders);
                 for o in &mut h.options {
                     fill(&mut o.placeholders);
                 }
@@ -557,11 +560,13 @@ pub fn type_occasion_target_placeholders(commands: &mut [Command], scene_kind: O
             }
             Command::Line(l) => fix(&mut l.placeholders, &kind),
             Command::Choice(c) => {
+                fix(&mut c.prompt_placeholders, &kind);
                 for o in &mut c.options {
                     fix(&mut o.placeholders, &kind);
                 }
             }
             Command::Hub(h) => {
+                fix(&mut h.prompt_placeholders, &kind);
                 for o in &mut h.options {
                     fix(&mut o.placeholders, &kind);
                 }

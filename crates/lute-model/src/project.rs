@@ -552,12 +552,7 @@ impl ProjectModel {
         self.documents
             .iter()
             .map(|d| {
-                lute_check::ProjectDoc::new(
-                    &d.path,
-                    &d.doc,
-                    &d.folded.typed,
-                    &d.folded.snapshot.reward_kinds,
-                )
+                lute_check::ProjectDoc::new(&d.path, &d.doc, &d.folded.typed, &d.folded.snapshot)
             })
             .collect()
     }

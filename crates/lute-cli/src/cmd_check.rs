@@ -646,8 +646,12 @@ fn check_document(
     // dsl 0.49.0 §7.1 (#175): name the quest references this single-file
     // check left to whole-project `check`. Info only: `ok` is unchanged.
     let (doc, _) = lute_syntax::parse(&input.text);
-    let notes =
-        lute_check::project_check_skipped(&input.text, &doc, &input.imports().imported_quest_ids);
+    let notes = lute_check::project_check_skipped(
+        &input.text,
+        &doc,
+        &input.imports().imported_quest_ids,
+        input.snapshot(),
+    );
     if !notes.is_empty() {
         result.diagnostics.extend(notes);
         lute_check::order_diagnostics(&mut result.diagnostics);

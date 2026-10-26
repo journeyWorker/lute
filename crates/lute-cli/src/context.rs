@@ -497,9 +497,7 @@ fn project_docs(
 fn project_ids(docs: &[(PathBuf, lute_syntax::ast::Document, lute_check::TypedMeta)]) -> Value {
     let views: Vec<lute_check::ProjectDoc<'_>> = docs
         .iter()
-        .map(|(p, d, m)| {
-            lute_check::ProjectDoc::new(p, d, m, &lute_check::reward_effects::NO_REWARD_KINDS)
-        })
+        .map(|(p, d, m)| lute_check::ProjectDoc::new(p, d, m, &lute_check::EMPTY_SNAPSHOT))
         .collect();
     let scenes: Vec<String> = lute_check::connectivity::scene_key_set(&views)
         .into_keys()

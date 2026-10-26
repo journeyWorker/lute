@@ -983,6 +983,7 @@ export const cmdChoice = Schema.Struct({
   "prompt": Schema.optionalKey(Schema.String),
   "promptLineId": Schema.optionalKey(Schema.String),
   "promptTexts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  "promptPlaceholders": Schema.optionalKey(Schema.Array(Schema.suspend(() => placeholder))),
   "timeout": Schema.optionalKey(Schema.Int
   .pipe(
     Schema.check(Schema.isGreaterThanOrEqualTo(1))
@@ -1027,6 +1028,7 @@ export const cmdHub = Schema.Struct({
   "prompt": Schema.optionalKey(Schema.String),
   "promptLineId": Schema.optionalKey(Schema.String),
   "promptTexts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  "promptPlaceholders": Schema.optionalKey(Schema.Array(Schema.suspend(() => placeholder))),
   "return": Schema.optionalKey(Schema.suspend(() => position)),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),

@@ -229,7 +229,7 @@ pub use meta::{
     ident_from_name, parse_meta, parse_meta_kind, resolve_doc_kind, DocKind, MetaKind, Namespace,
     StateDecl, StateSchema, TypedMeta, E_KIND_MISSING, E_STATE_COLLECTION, E_UNKNOWN_KIND,
 };
-pub use project_doc::{ProjectDoc, ProjectDocs};
+pub use project_doc::{ProjectDoc, ProjectDocs, EMPTY_SNAPSHOT};
 
 pub use clock_positions::{
     check_project_advance_cascades, check_project_objective_clock_windows,

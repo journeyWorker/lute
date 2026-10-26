@@ -172,9 +172,9 @@ Spec: [dsl §7.3](/spec/)
 
 ### E-BRANCH-PROMPT
 
-A `<branch prompt>` or `<hub prompt>` value is missing or an empty string, but the prompt must be the non-empty sentence the UI shows verbatim.
+A `<branch prompt>` or `<hub prompt>` value is missing or an empty string, but the prompt must be the non-empty sentence the UI shows; its `{{…}}` markers are rendered like a choice label's.
 
-Spec: [dsl 0.11.1 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.11.1.md), [dsl 0.23.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)
+Spec: [dsl 0.11.1 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.11.1.md), [dsl 0.23.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md), [dsl 0.52.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-BRANCH-TIMEOUT
 
@@ -1047,6 +1047,12 @@ An `<objective>` has an empty `done` completion predicate and no `quest=` refere
 ### E-OBJECTIVE-QUEST-DONE
 
 An `<objective>` carries both a `quest=` subquest reference and a non-empty `done=` predicate, which are mutually exclusive.
+
+### E-OBJECTIVE-TITLE-INTERP
+
+An `<objective title>` holds `{{` — a marker, escaped or not — but a quest UI shows the title as written, so it takes no `{{…}}`. Write the title as plain text and show a value that changes in a line.
+
+Spec: [dsl 0.52.0 §6.7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-OBJECTIVE-UNSATISFIABLE
 

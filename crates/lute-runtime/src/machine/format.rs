@@ -12,11 +12,45 @@
 use serde_json::{json, Value as Json};
 
 use super::{Machine, Site as UnknownAt};
-use crate::driver::{Driver, SiteKind};
+use crate::driver::{Driver, MenuText, SiteKind};
 use crate::{UnresolvedAtom, Value};
 use lute_ir::LabelForms;
 
 impl<D: Driver> Machine<D> {
+    /// A display text and its translations, rendered as a line's are — the
+    /// one rendering path of lines, directive `text` attributes (0.51.0
+    /// §5.6) and menu labels and prompts (0.52.0 §6.3): `raw`'s markers once
+    /// each against `placeholders` ([`Self::render_markers`]) spliced into
+    /// the text, and each translation of `texts` (locale → text) with the
+    /// value the source gave its marker of the same referent (dsl 0.47.0
+    /// §2.2). The rendered markers are returned too, for a line's
+    /// `segments`. It consults no halt rule: whether a text stops the walk
+    /// ([`Self::text_halts`]) is the caller's to ask before it renders.
+    pub(crate) fn render_text(
+        &mut self,
+        raw: &str,
+        placeholders: Option<&Vec<Json>>,
+        texts: Option<&Json>,
+    ) -> (MenuText, Vec<String>) {
+        let rendered = self.render_markers(raw, placeholders);
+        let text = substitute_markers(raw, &rendered, &mut 0);
+        let texts = texts
+            .and_then(Json::as_object)
+            .map(|locales| {
+                locales
+                    .iter()
+                    .filter_map(|(locale, t)| {
+                        Some((
+                            locale.clone(),
+                            substitute_by_marker(t.as_str()?, raw, &rendered),
+                        ))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        (MenuText { text, texts }, rendered)
+    }
+
     /// Render each `{{…}}` marker of `text`, left to right, ONCE against its
     /// placeholder (same index): a `path` with its value (reserved defaults
     /// included), a `ref` by evaluating its inlined def body (`expr.raw`,

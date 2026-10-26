@@ -2,11 +2,13 @@
 //! `::set` / `assert` / `retract` over the one write path, `skipped`
 //! records, `barrier` and `end`.
 
+use std::collections::BTreeMap;
+
 use serde_json::{json, Value as Json};
 
 use super::format::{substitute_by_marker, substitute_markers, value_to_json};
 use super::{addr, fold_op, Machine, Site, LINE_DELIVERY_KEYS};
-use crate::driver::{Driver, SiteKind};
+use crate::driver::{Driver, MenuText, SiteKind};
 use crate::eval::Read;
 use crate::store::{json_arg_to_string, render_fact};
 use crate::{UnresolvedAtom, Value};
@@ -100,9 +102,10 @@ impl<D: Driver> Machine<D> {
             return;
         }
         // Every marker renders ONCE, by its global index in the plain text;
-        // the line text and its segments both splice from that list.
-        let rendered = self.render_markers(raw, placeholders);
-        let text = substitute_markers(raw, &rendered, &mut 0);
+        // the line text, its translations and its segments all splice from
+        // that list (the one rendering path, [`Machine::render_text`]).
+        let (MenuText { text, texts }, rendered) =
+            self.render_text(raw, placeholders, cmd.get("texts"));
         let mut rec = serde_json::Map::new();
         rec.insert("position".into(), Json::String(addr(cmd).to_string()));
         rec.insert("kind".into(), Json::String("line".into()));
@@ -119,7 +122,7 @@ impl<D: Driver> Machine<D> {
             if let Some(v) = cmd.get(key).filter(|v| !v.is_null()) {
                 let v = match key {
                     "segments" => segments_with(v, &rendered),
-                    "texts" => texts_with(v, raw, &rendered),
+                    "texts" => texts_json(&texts),
                     "localeSegments" => {
                         per_locale(v, |runs| locale_segments_with(runs, raw, &rendered))
                     }
@@ -132,15 +135,15 @@ impl<D: Driver> Machine<D> {
     }
 }
 
-/// A `texts` map (locale → translation) with each translation's `{{…}}`
-/// markers replaced by the value the source (`raw`, its markers
-/// `rendered`) gave the marker with the same referent (dsl 0.47.0 §2.2) —
-/// a line's, or a directive `text` attribute's (0.51.0 §5.6).
-pub(crate) fn texts_with(texts: &Json, raw: &str, rendered: &[String]) -> Json {
-    per_locale(texts, |text| match text.as_str() {
-        Some(text) => Json::String(substitute_by_marker(text, raw, rendered)),
-        None => text.clone(),
-    })
+/// A rendered translation map ([`MenuText::texts`]) as the record's `texts`
+/// object — a line's, or a directive `text` attribute's (0.51.0 §5.6).
+pub(crate) fn texts_json(texts: &BTreeMap<String, String>) -> Json {
+    Json::Object(
+        texts
+            .iter()
+            .map(|(locale, text)| (locale.clone(), Json::String(text.clone())))
+            .collect(),
+    )
 }
 
 /// A `texts` / `localeSegments` map (locale → translation) with each

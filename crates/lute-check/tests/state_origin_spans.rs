@@ -76,14 +76,7 @@ fn fold(dir: &Path, name: &str, text: &str, uses: &[&str]) -> Folded {
 fn project_check(docs: &[Folded]) -> Vec<(PathBuf, Diagnostic)> {
     let views: Vec<ProjectDoc<'_>> = docs
         .iter()
-        .map(|d| {
-            ProjectDoc::new(
-                &d.path,
-                &d.doc,
-                &d.folded.typed,
-                &d.folded.snapshot.reward_kinds,
-            )
-        })
+        .map(|d| ProjectDoc::new(&d.path, &d.doc, &d.folded.typed, &d.folded.snapshot))
         .collect();
     let foldeds: Vec<&FoldedEnv> = docs.iter().map(|d| &d.folded).collect();
     lute_check::state_decls::check_project_state_decls(&views, &foldeds)

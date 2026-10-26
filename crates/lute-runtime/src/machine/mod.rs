@@ -67,6 +67,8 @@ mod hub_leave_tests;
 #[cfg(test)]
 mod loop_tests;
 mod menu;
+#[cfg(test)]
+mod menu_text_tests;
 mod plugin;
 mod quest;
 

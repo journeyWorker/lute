@@ -369,7 +369,8 @@ fn check_required_stamps(
 }
 
 /// `E-BRANCH-PROMPT`: `<branch prompt>` must be a non-empty string — it is
-/// the choice-situation sentence the UI shows verbatim, and an empty/absent
+/// the choice-situation sentence the UI shows (its `{{…}}` markers rendered,
+/// 0.52.0 §6.3), and an empty/absent
 /// one is a silent blank prompt, not a valid "no prompt" spelling (there is
 /// none; the attribute is optional at the grammar level by being absent from
 /// `b.attrs` entirely, which this loop never sees).
@@ -689,6 +690,58 @@ pub(crate) fn check_objective_attrs(o: &Objective, diags: &mut Vec<Diagnostic>) 
     );
     // A flag value the parser could not read stays residual.
     check_flags(&o.attrs, "objective", &["optional"], diags);
+    if let Some((title, span)) = &o.title {
+        if let Some(message) = objective_title_message(&o.id, title) {
+            diags.push(Diagnostic {
+                code: E_OBJECTIVE_TITLE_INTERP.to_string(),
+                severity: Severity::Error,
+                message,
+                evidence: None,
+                span: *span,
+                layer: Layer::Content,
+                fixits: Vec::new(),
+                provenance: None,
+                covered: Vec::new(),
+                related: Vec::new(),
+            });
+        }
+    }
+}
+
+/// `E-OBJECTIVE-TITLE-INTERP` (0.52.0 §6.7): an `<objective title>` is plain
+/// text — nothing renders a marker in it — so a `{{` there, escaped or not,
+/// is refused once per title, at its value span.
+const E_OBJECTIVE_TITLE_INTERP: &str = "E-OBJECTIVE-TITLE-INTERP";
+
+/// The `E-OBJECTIVE-TITLE-INTERP` message for the first `{{` of `title`
+/// (quoted with its source text up to the first `}}` after it, or to the
+/// end), or `None` when the title holds no `{{`.
+fn objective_title_message(id: &str, title: &str) -> Option<String> {
+    let start = title.find("{{")?;
+    let rest = &title[start..];
+    let marker = rest
+        .get(2..)
+        .and_then(|r| r.find("}}"))
+        .map_or(rest, |end| &rest[..end + 4]);
+    Some(format!(
+        "`<objective id=\"{id}\">`'s `title` is shown as written — a quest UI does not render \
+         `{marker}` — so it takes no `{{{{…}}}}`: write the words as plain text \
+         (`title=\"Pay the toll\"`), and show a value that changes in a line"
+    ))
+}
+
+/// The `prompt` of a `<branch>` or `<hub>` (`attrs`, its residual list) and
+/// the span of its value. A prompt takes the label grammar (0.52.0 §6.1):
+/// every pass that scans a choice label's `{{…}}` scans it too, read when
+/// the menu shows (before its options).
+pub(crate) fn prompt_text(attrs: &[Attr]) -> Option<(&str, Span)> {
+    attrs
+        .iter()
+        .find(|a| a.key == "prompt")
+        .and_then(|a| match &a.value {
+            AttrValue::Str(s) => Some((s.as_str(), a.value_span)),
+            _ => None,
+        })
 }
 
 pub(crate) fn check_on_attrs(o: &On, diags: &mut Vec<Diagnostic>) {

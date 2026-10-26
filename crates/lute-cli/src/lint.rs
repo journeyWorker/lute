@@ -520,7 +520,7 @@ fn display_name_dups(
                 input.path.as_path(),
                 &input.doc,
                 &built.meta,
-                &built.input.snapshot().reward_kinds,
+                built.input.snapshot(),
             )
         })
         .collect();

@@ -537,6 +537,23 @@ fn inject_cmd(ic: &InjectedCommand) -> Command {
     })
 }
 
+/// dsl 0.52.0 §6.2: the placeholders of a `<branch>`/`<hub>` `prompt`
+/// (`attrs`, its residual list), scanned as an option label's are (spanned
+/// at the prompt's value); none when the prompt is absent or has no marker.
+fn prompt_placeholders(attrs: &[lute_syntax::ast::Attr]) -> Vec<crate::ir::Placeholder> {
+    attrs
+        .iter()
+        .find(|a| a.key == "prompt")
+        .map(|a| match &a.value {
+            AttrValue::Str(s) => lute_syntax::scan_label_interps(s, a.value_span)
+                .iter()
+                .map(placeholder_from_interp)
+                .collect(),
+            AttrValue::Ref(_) | AttrValue::BoolTrue => Vec::new(),
+        })
+        .unwrap_or_default()
+}
+
 fn walk_branch(
     em: &mut Emitter,
     b: &Branch,
@@ -576,6 +593,7 @@ fn walk_branch(
         // dsl 0.47.0 §3.1: stamped by the addressing pass with the options'.
         prompt_line_id: None,
         prompt_texts: Default::default(),
+        prompt_placeholders: prompt_placeholders(&b.attrs),
         timeout,
         default: timeout.and_then(|_| attr_string(&b.attrs, "default")),
         stamp: Stamp {
@@ -667,6 +685,7 @@ fn walk_hub(
         prompt: attr_string(&h.attrs, "prompt"),
         prompt_line_id: None,
         prompt_texts: Default::default(),
+        prompt_placeholders: prompt_placeholders(&h.attrs),
         on_return: back.map(super::cfg::Label::sym),
         stamp: Stamp {
             stamps: element_stamps(&h.attrs, cx.snapshot, &StampSurface::Hub),
@@ -1082,7 +1101,7 @@ pub fn walk_quest(
             let label = (!o.body.is_empty()).then(|| em.fresh());
             objectives.push(ObjectiveEntry {
                 id: o.id.clone(),
-                title: o.title.clone(),
+                title: o.title.as_ref().map(|(t, _)| t.clone()),
                 title_line_id: o.title.as_ref().map(|_| format!("{}.{}", quest.id, o.id)),
                 done: CelPair::from_slot(&o.done),
                 visible_when: o.visible_when.as_ref().map(CelPair::from_slot),

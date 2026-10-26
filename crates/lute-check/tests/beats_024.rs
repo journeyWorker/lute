@@ -76,14 +76,15 @@ fn quest_doc(body: &str) -> String {
     format!("---\nkind: quest\n---\n{body}")
 }
 
-fn parse_all(texts: &[&str]) -> ProjectDocs {
+fn parse_all(texts: &[&str]) -> ProjectDocs<'static> {
     let mut docs = Vec::new();
     for (i, text) in texts.iter().enumerate() {
         let input = input(text);
         let (doc, _) = lute_syntax::parse(&input.text);
         docs.push((PathBuf::from(format!("{i}.lute")), doc));
     }
-    ProjectDocs::parse(docs, &snapshot())
+    static SNAPSHOT: std::sync::LazyLock<CapabilitySnapshot> = std::sync::LazyLock::new(snapshot);
+    ProjectDocs::parse(docs, &SNAPSHOT)
 }
 
 fn project_beats(texts: &[&str]) -> Vec<(PathBuf, Diagnostic)> {

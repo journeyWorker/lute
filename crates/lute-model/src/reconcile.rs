@@ -301,7 +301,7 @@ pub fn reconcile_collected(
     for (root, group_full) in by_root {
         let group: Vec<ProjectDoc<'_>> = group_full
             .iter()
-            .map(|(p, d, f)| ProjectDoc::new(p.as_path(), d, &f.typed, &f.snapshot.reward_kinds))
+            .map(|(p, d, f)| ProjectDoc::new(p.as_path(), d, &f.typed, &f.snapshot))
             .collect();
         let mut group_ix: std::collections::HashMap<&Path, usize> =
             std::collections::HashMap::with_capacity(group_full.len());

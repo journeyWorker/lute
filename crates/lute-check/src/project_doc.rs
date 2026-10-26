@@ -1,25 +1,31 @@
-use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::LazyLock;
 
-use lute_manifest::schema::RewardKindDecl;
+use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::Document;
 
 use crate::meta::TypedMeta;
+
+/// An empty capability snapshot: the [`ProjectDoc::snapshot`] of a caller
+/// that resolves no reward and reads no plugin declaration (identity-only
+/// passes).
+pub static EMPTY_SNAPSHOT: LazyLock<CapabilitySnapshot> =
+    LazyLock::new(CapabilitySnapshot::default);
 
 /// Borrowed view of one parsed project document and its already-lifted metadata.
 ///
 /// Project-wide checker passes use this view instead of carrying an owning path
 /// and document tuple, so every pass observes the same typed frontmatter parse.
-/// `reward_kinds` is the reward vocabulary the document was checked against
-/// (its capability snapshot's `rewardKinds`): what resolves each of its
-/// `<reward>`s to the effects a grant applies (0.50.0 §5.4,
-/// [`crate::reward_effects`]).
+/// `snapshot` is the capability snapshot the document was checked against: its
+/// `rewardKinds` resolve each `<reward>` to the effects a grant applies (0.50.0
+/// §5.4, [`crate::reward_effects`]), and its directive declarations tell a
+/// `text` attribute (0.52.0 §6.5, [`crate::directives::text_values`]).
 #[derive(Clone, Copy, Debug)]
 pub struct ProjectDoc<'a> {
     pub path: &'a Path,
     pub doc: &'a Document,
     pub meta: &'a TypedMeta,
-    pub reward_kinds: &'a BTreeMap<String, RewardKindDecl>,
+    pub snapshot: &'a CapabilitySnapshot,
 }
 
 impl<'a> ProjectDoc<'a> {
@@ -27,13 +33,13 @@ impl<'a> ProjectDoc<'a> {
         path: &'a Path,
         doc: &'a Document,
         meta: &'a TypedMeta,
-        reward_kinds: &'a BTreeMap<String, RewardKindDecl>,
+        snapshot: &'a CapabilitySnapshot,
     ) -> Self {
         Self {
             path,
             doc,
             meta,
-            reward_kinds,
+            snapshot,
         }
     }
 }
@@ -44,20 +50,20 @@ impl<'a> ProjectDoc<'a> {
 /// The owned form is intended for callers that build project inputs outside
 /// the model, especially tests and command implementations.
 #[derive(Debug)]
-pub struct ProjectDocs {
+pub struct ProjectDocs<'s> {
     docs: Vec<(std::path::PathBuf, Document)>,
     metas: Vec<TypedMeta>,
-    /// The snapshot's reward vocabulary every document shares.
-    reward_kinds: BTreeMap<String, RewardKindDecl>,
+    /// The snapshot the documents were parsed with, which every one shares.
+    snapshot: &'s CapabilitySnapshot,
 }
 
-impl ProjectDocs {
+impl<'s> ProjectDocs<'s> {
     /// Parse project documents and retain their typed metadata alongside
     /// them, lifted with the same kind resolution [`crate::fold_env`] uses (a
     /// lore document keeps its `series`, a quest document its quest keys).
     pub fn parse(
         docs: Vec<(std::path::PathBuf, Document)>,
-        snapshot: &lute_manifest::snapshot::CapabilitySnapshot,
+        snapshot: &'s CapabilitySnapshot,
     ) -> Self {
         let defaults = lute_manifest::project::MetaDefaults::default();
         let metas = docs
@@ -70,7 +76,7 @@ impl ProjectDocs {
         Self {
             docs,
             metas,
-            reward_kinds: snapshot.reward_kinds.clone(),
+            snapshot,
         }
     }
 
@@ -79,7 +85,7 @@ impl ProjectDocs {
         self.docs
             .iter()
             .zip(&self.metas)
-            .map(|((path, doc), meta)| ProjectDoc::new(path, doc, meta, &self.reward_kinds))
+            .map(|((path, doc), meta)| ProjectDoc::new(path, doc, meta, self.snapshot))
             .collect()
     }
 

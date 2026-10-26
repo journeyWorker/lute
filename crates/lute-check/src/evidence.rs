@@ -280,6 +280,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-OBJECTIVE-ID-MISSING", DiagnosticClass::SourceError),
         ("E-OBJECTIVE-MISSING-DONE", DiagnosticClass::SourceError),
         ("E-OBJECTIVE-QUEST-DONE", DiagnosticClass::SourceError),
+        ("E-OBJECTIVE-TITLE-INTERP", DiagnosticClass::SourceError),
         (
             "E-OBJECTIVE-UNSATISFIABLE",
             DiagnosticClass::Analysis {

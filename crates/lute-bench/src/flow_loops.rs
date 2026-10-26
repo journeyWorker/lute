@@ -269,7 +269,7 @@ fn input_for(text: &str) -> CheckInput {
 /// The inputs of the project fact pass over the one document, built once
 /// per point (outside the timed phases).
 struct FactPass {
-    docs: ProjectDocs,
+    docs: ProjectDocs<'static>,
     folded: lute_check::FoldedEnv,
     graph: lute_check::connectivity::ConnGraph,
     vocab: RootVocab,
@@ -283,7 +283,7 @@ impl FactPass {
         let (folded, _, _) = fold_env(&doc, input);
         let docs = ProjectDocs::parse(
             vec![(path.clone(), doc)],
-            &lute_manifest::core::load_core_snapshot(),
+            lute_manifest::core::core_snapshot(),
         );
         let views = docs.views();
         let key_set = scene_key_set(&views);

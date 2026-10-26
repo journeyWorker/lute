@@ -13,11 +13,17 @@ use super::{
     NOTE_NO_ELIGIBLE, NOTE_SKIPPED,
 };
 use crate::driver::{
-    guard_premise, Driver, Forced, GuardRead, Menu, MenuKind, MenuOption, Pick, SiteKind, Verdict,
+    guard_premise, Driver, Forced, GuardRead, Menu, MenuKind, MenuOption, MenuText, Pick, SiteKind,
+    Verdict,
 };
 use crate::eval::Read;
 use crate::expr::{guard_atoms, Expr, Func, GuardAtom, Slot};
 use crate::{UnresolvedAtom, Value};
+
+/// The IR keys of an option label: its text, placeholders and translations.
+const OPTION_TEXT: [&str; 3] = ["text", "placeholders", "texts"];
+/// The IR keys of a `<branch>`/`<hub>` prompt (0.52.0 §6.2).
+const PROMPT_TEXT: [&str; 3] = ["prompt", "promptPlaceholders", "promptTexts"];
 
 /// One premise of a failed rule attempt, named for a refusal when it is
 /// what the attempt misses (HW27-10).
@@ -288,10 +294,10 @@ impl<D: Driver> Machine<D> {
         }
     }
 
-    /// A branch's options judged right now — what its menu shows. Display
-    /// only: the evaluation never feeds [`Machine::unresolved`], so an
-    /// unchosen option's unknown guard cannot halt a playthrough (an unknown
-    /// guard counts as offered).
+    /// A branch's options judged right now — what its menu shows, each label
+    /// rendered ([`Self::menu_text`]). Display only: the evaluation never
+    /// feeds [`Machine::unresolved`], so an unchosen option's unknown guard
+    /// cannot halt a playthrough (an unknown guard counts as offered).
     fn branch_verdicts(&mut self, options: &[Json]) -> Vec<MenuOption> {
         let mark = self.unresolved.len();
         let mut out = Vec::new();
@@ -305,6 +311,7 @@ impl<D: Driver> Machine<D> {
             };
             out.push(MenuOption {
                 id: oid.to_string(),
+                text: self.menu_text(o, OPTION_TEXT).unwrap_or_default(),
                 verdict,
                 exit: o.get("exit").and_then(Json::as_bool).unwrap_or(false),
                 once: o.get("once").and_then(Json::as_bool).unwrap_or(false),
@@ -312,6 +319,29 @@ impl<D: Driver> Machine<D> {
         }
         self.unresolved.truncate(mark);
         out
+    }
+
+    /// A menu text of `rec` — an option label (`keys` [`OPTION_TEXT`]) or a
+    /// prompt ([`PROMPT_TEXT`]) — rendered at this presentation with the
+    /// line renderer ([`Machine::render_text`]; 0.52.0 §6.3): an unknown
+    /// marker or a host token keeps its verbatim text. Display only, like
+    /// the verdicts: it never halts the walk ([`Machine::text_halts`] is not
+    /// asked) and never feeds [`Machine::unresolved`]. `None` when `rec` has
+    /// no such text.
+    fn menu_text(
+        &mut self,
+        rec: &Json,
+        [text, placeholders, texts]: [&str; 3],
+    ) -> Option<MenuText> {
+        let raw = rec.get(text)?.as_str()?;
+        let mark = self.unresolved.len();
+        let (rendered, _) = self.render_text(
+            raw,
+            rec.get(placeholders).and_then(Json::as_array),
+            rec.get(texts),
+        );
+        self.unresolved.truncate(mark);
+        Some(rendered)
     }
 
     /// The `E-TRACE-CHOICE` text for a picked option the driver refused; a
@@ -367,6 +397,8 @@ impl<D: Driver> Machine<D> {
             .and_then(Json::as_array)
             .map_or(&[], Vec::as_slice);
 
+        // The prompt shows with the menu, so it renders before the options.
+        let prompt = self.menu_text(cmd, PROMPT_TEXT);
         let judged = self.branch_verdicts(options);
         // A menu marks what was not offered.
         let closed: Vec<&str> = judged
@@ -379,6 +411,7 @@ impl<D: Driver> Machine<D> {
             id: &branch,
             addr: addr(cmd),
             presentation: 0,
+            prompt,
             options: &judged,
             timeout: cmd
                 .get("timeout")
@@ -500,8 +533,6 @@ impl<D: Driver> Machine<D> {
             .get("selectionKey")
             .and_then(Json::as_str)
             .map(str::to_string);
-        // dsl 0.23.0 §4: `<hub prompt>` rides every presentation record.
-        let prompt = cmd.get("prompt").and_then(Json::as_str).map(str::to_string);
         let options: &[Json] = cmd
             .get("options")
             .and_then(Json::as_array)
@@ -519,6 +550,9 @@ impl<D: Driver> Machine<D> {
         // [`Pick::HubAutoPass`]: the next menu position the pass considers.
         let mut auto_at = 0usize;
         loop {
+            // dsl 0.23.0 §4: `<hub prompt>` rides every presentation record,
+            // rendered at each presentation (0.52.0 §6.3) like the labels.
+            let prompt = self.menu_text(cmd, PROMPT_TEXT);
             // Eligible = not a `once` option already taken (its
             // `scene.visited.<hub>.<option>` is true, D8: the memory is the
             // reserved visit record, so a hub `::jump` re-enters still knows
@@ -543,6 +577,7 @@ impl<D: Driver> Machine<D> {
                 };
                 judged.push(MenuOption {
                     id: oid.to_string(),
+                    text: self.menu_text(o, OPTION_TEXT).unwrap_or_default(),
                     verdict,
                     exit: o.get("exit").and_then(Json::as_bool).unwrap_or(false),
                     once,
@@ -574,7 +609,7 @@ impl<D: Driver> Machine<D> {
                 rec.insert("kind".into(), Json::String("hub".into()));
                 rec.insert("hub".into(), Json::String(id.clone()));
                 if let Some(p) = &prompt {
-                    rec.insert("prompt".into(), Json::String(p.clone()));
+                    rec.insert("prompt".into(), Json::String(p.text.clone()));
                 }
                 rec.insert("chose".into(), chose);
                 rec
@@ -585,6 +620,7 @@ impl<D: Driver> Machine<D> {
                 id: &id,
                 addr: addr(cmd),
                 presentation,
+                prompt: prompt.clone(),
                 options: &judged,
                 timeout: None,
                 default: None,

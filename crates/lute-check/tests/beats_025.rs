@@ -47,12 +47,12 @@ fn scene(id: &str, fm: &str) -> String {
     format!("---\nkind: scene\nid: {id}\n{fm}---\n## Shot 1.\n@n: hi\n")
 }
 
-fn project(files: &[(&str, &str)]) -> ProjectDocs {
+fn project(files: &[(&str, &str)]) -> ProjectDocs<'static> {
     let docs = files
         .iter()
         .map(|(p, t)| (PathBuf::from(p), lute_syntax::parse(t).0))
         .collect();
-    ProjectDocs::parse(docs, &lute_manifest::core::load_core_snapshot())
+    ProjectDocs::parse(docs, lute_manifest::core::core_snapshot())
 }
 
 fn project_beat_diags(files: &[(&str, &str)]) -> Vec<(PathBuf, Diagnostic)> {

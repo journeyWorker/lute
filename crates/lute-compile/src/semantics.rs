@@ -293,6 +293,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "priority",
     "prompt",
     "promptLineId",
+    "promptPlaceholders",
     "promptTexts",
     "provenance",
     "quest",
@@ -648,6 +649,8 @@ fn collect_command(out: &mut Collected, command: &Command) {
         }
         Command::Choice(c) => {
             out.add(CORE, Some(&c.position), "choice command");
+            // dsl 0.52.0 §6.2: a prompt's placeholders read as a label's.
+            scan_placeholders(out, &c.prompt_placeholders, Some(&c.position));
             for option in &c.options {
                 if let Some(pair) = &option.when {
                     scan_cel(out, pair, Some(&c.position), "choice option guard");
@@ -668,6 +671,7 @@ fn collect_command(out: &mut Collected, command: &Command) {
         }
         Command::Hub(c) => {
             out.add(CORE, Some(&c.position), "hub command");
+            scan_placeholders(out, &c.prompt_placeholders, Some(&c.position));
             for option in &c.options {
                 if let Some(pair) = &option.when {
                     scan_cel(out, pair, Some(&c.position), "hub option guard");

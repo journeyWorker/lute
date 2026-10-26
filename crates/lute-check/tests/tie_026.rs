@@ -53,7 +53,7 @@ fn ties(texts: &[&str]) -> Vec<Diagnostic> {
         let (doc, _) = lute_syntax::parse(&input.text);
         raw.push((PathBuf::from(format!("{i}.lute")), doc));
     }
-    let owned = ProjectDocs::parse(raw, &lute_manifest::core::load_core_snapshot());
+    let owned = ProjectDocs::parse(raw, lute_manifest::core::core_snapshot());
     let views = owned.views();
     let foldeds: Vec<_> = owned
         .documents()

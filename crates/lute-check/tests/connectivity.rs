@@ -5,7 +5,7 @@
 //! `visited`/`completed` id actually exists in the project) is NOT resolved
 //! here — that is whole-project `check`'s job (Task 3+).
 
-use lute_check::{check, CheckInput, Mode, ProjectDocs, SchemaImports};
+use lute_check::{check, CheckInput, Mode, ProjectDocs, SchemaImports, EMPTY_SNAPSHOT};
 use lute_manifest::provider::ProviderSet;
 
 fn permissive_providers() -> ProviderSet {
@@ -123,7 +123,7 @@ fn quest_frontmatter_after_key_is_not_a_prereq_surface() {
 use lute_check::connectivity::{quest_id_set, resolve_nodes, scene_key_set};
 use std::path::PathBuf;
 
-fn docs_for(texts: &[(&str, &str)]) -> ProjectDocs {
+fn docs_for(texts: &[(&str, &str)]) -> ProjectDocs<'static> {
     let docs = texts
         .iter()
         .map(|(path, text)| {
@@ -131,10 +131,7 @@ fn docs_for(texts: &[(&str, &str)]) -> ProjectDocs {
             (PathBuf::from(*path), doc)
         })
         .collect();
-    ProjectDocs::parse(
-        docs,
-        &lute_manifest::snapshot::CapabilitySnapshot::default(),
-    )
+    ProjectDocs::parse(docs, &EMPTY_SNAPSHOT)
 }
 
 #[test]
@@ -1442,7 +1439,7 @@ fn run_producible_pipeline(files: Vec<(PathBuf, CheckInput)>) -> Vec<(PathBuf, D
         file_results.push((path.clone(), result));
         raw_docs.push((path.clone(), doc));
     }
-    let docs = ProjectDocs::parse(raw_docs, &CapabilitySnapshot::default());
+    let docs = ProjectDocs::parse(raw_docs, &EMPTY_SNAPSHOT);
     let key_set = scene_key_set(&docs.views());
     let quest_ids = quest_id_set(&docs.views());
     let (conn_graph, _cycle_diags) = assemble_graph(

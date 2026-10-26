@@ -133,8 +133,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-BRANCH-PROMPT",
-        summary: "A `<branch prompt>` or `<hub prompt>` value is missing or an empty string, but the prompt must be the non-empty sentence the UI shows verbatim.",
-        spec: &["dsl 0.11.1 §4", "dsl 0.23.0 §4"],
+        summary: "A `<branch prompt>` or `<hub prompt>` value is missing or an empty string, but the prompt must be the non-empty sentence the UI shows; its `{{…}}` markers are rendered like a choice label's.",
+        spec: &["dsl 0.11.1 §4", "dsl 0.23.0 §4", "dsl 0.52.0 §6.1"],
     },
     Code {
         code: "E-BRANCH-TIMEOUT",
@@ -900,6 +900,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-OBJECTIVE-QUEST-DONE",
         summary: "An `<objective>` carries both a `quest=` subquest reference and a non-empty `done=` predicate, which are mutually exclusive.",
         spec: &[],
+    },
+    Code {
+        code: "E-OBJECTIVE-TITLE-INTERP",
+        summary: "An `<objective title>` holds `{{` — a marker, escaped or not — but a quest UI shows the title as written, so it takes no `{{…}}`. Write the title as plain text and show a value that changes in a line.",
+        spec: &["dsl 0.52.0 §6.7"],
     },
     Code {
         code: "E-OBJECTIVE-UNSATISFIABLE",

@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 
 use lute_check::connectivity::{quest_id_set, resolve_nodes, scene_key, scene_key_set};
 use lute_check::meta::{parse_meta_kind_with_defaults, MetaKind, TypedMeta};
-use lute_check::{ProjectDoc, ProjectDocs};
+use lute_check::{ProjectDoc, ProjectDocs, EMPTY_SNAPSHOT};
 use lute_manifest::project::MetaDefaults;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::Document;
@@ -46,7 +46,7 @@ fn manifest_defaults_never_mint_a_scene_key() {
         Path::new("a.lute"),
         &doc,
         &typed,
-        &lute_check::reward_effects::NO_REWARD_KINDS,
+        &EMPTY_SNAPSHOT,
     )];
     assert!(
         scene_key_set(&views).is_empty(),
@@ -64,7 +64,7 @@ fn a_malformed_authored_id_gives_no_scene_key() {
         Path::new("a.lute"),
         &doc,
         &typed,
-        &lute_check::reward_effects::NO_REWARD_KINDS,
+        &EMPTY_SNAPSHOT,
     )];
     assert!(scene_key_set(&views).is_empty());
 }
@@ -72,10 +72,7 @@ fn a_malformed_authored_id_gives_no_scene_key() {
 #[test]
 fn a_quest_document_id_is_not_a_scene_key() {
     let doc = parse("---\nkind: quest\nid: errands\n---\n<quest id=\"q\">\n<objective id=\"o\" done=\"true\"/>\n</quest>\n");
-    let docs = ProjectDocs::parse(
-        vec![(PathBuf::from("q.lute"), doc)],
-        &CapabilitySnapshot::default(),
-    );
+    let docs = ProjectDocs::parse(vec![(PathBuf::from("q.lute"), doc)], &EMPTY_SNAPSHOT);
     let views = docs.views();
     assert_eq!(scene_key(views[0].meta), None);
     assert!(scene_key_set(&views).is_empty());
@@ -93,7 +90,7 @@ fn a_duplicate_block_frontmatter_keeps_reference_checks_on() {
             (PathBuf::from("b.lute"), parse(dup)),
             (PathBuf::from("a.lute"), parse(scene)),
         ],
-        &CapabilitySnapshot::default(),
+        &EMPTY_SNAPSHOT,
     );
     let views = docs.views();
     let res = resolve_nodes(&views, &scene_key_set(&views), &quest_id_set(&views));

@@ -75,7 +75,7 @@ fn lore(body: &str) -> String {
 
 /// One resolved root, analyzed the way whole-project `check` analyzes it.
 struct Root {
-    docs: ProjectDocs,
+    docs: ProjectDocs<'static>,
     foldeds: Vec<FoldedEnv>,
     per_file: Vec<Vec<Diagnostic>>,
     env: FactEnv,
@@ -97,7 +97,7 @@ fn root(texts: &[(&str, &str)]) -> Root {
         foldeds.push(folded);
         raw_docs.push((PathBuf::from(path), doc));
     }
-    let docs = ProjectDocs::parse(raw_docs, &lute_manifest::core::load_core_snapshot());
+    let docs = ProjectDocs::parse(raw_docs, lute_manifest::core::core_snapshot());
     let views = docs.views();
     let key_set = scene_key_set(&views);
     let quest_ids = quest_id_set(&views);

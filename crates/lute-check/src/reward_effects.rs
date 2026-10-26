@@ -12,7 +12,7 @@
 //! [`GrantEffect`]s in grant order; [`GrantTable`] holds a whole root's,
 //! built once per pass from the root's [`ProjectDoc`]s — each document's
 //! rewards resolve against the reward vocabulary it was checked against
-//! ([`ProjectDoc::reward_kinds`]). A reward's `when=` is carried as the
+//! (the `rewardKinds` of [`ProjectDoc::snapshot`]). A reward's `when=` is carried as the
 //! effect's guard, so no consumer re-finds the `<reward>`. No synthetic AST
 //! node is created.
 //!
@@ -36,10 +36,6 @@ use crate::{Ctx, ProjectDoc};
 
 /// A reward vocabulary by kind id (a capability snapshot's `rewardKinds`).
 pub type RewardKinds = BTreeMap<String, RewardKindDecl>;
-
-/// An empty reward vocabulary: the [`ProjectDoc::reward_kinds`] of a caller
-/// that resolves no reward (identity-only passes).
-pub static NO_REWARD_KINDS: RewardKinds = BTreeMap::new();
 
 /// Where a reward grants (0.50.0 §5.4 table).
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -236,7 +232,7 @@ pub struct RewardGrantSite<'d, 'k> {
 }
 
 /// Each `<reward>` of `quest` whose kind in `kinds` (its document's
-/// vocabulary, [`ProjectDoc::reward_kinds`]) declares `effects`, once, in
+/// vocabulary, the `rewardKinds` of [`ProjectDoc::snapshot`]) declares `effects`, once, in
 /// grant order: its top-level objectives' rewards (granted at the
 /// objective's completion; one with any `outcome=` grants nothing), then
 /// its own — without `outcome` at its completion, `outcome="failed"` at its
@@ -399,7 +395,7 @@ impl<'d> GrantTable<'d> {
         for item in docs {
             for quest in &item.doc.quests {
                 grants.extend(
-                    quest_grants(quest, item.reward_kinds)
+                    quest_grants(quest, &item.snapshot.reward_kinds)
                         .into_iter()
                         .map(|g| (item.path, g)),
                 );

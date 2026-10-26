@@ -246,15 +246,22 @@ fn build_core_snapshot() -> Result<CapabilitySnapshot, CoreLoadError> {
 static CORE: LazyLock<Result<CapabilitySnapshot, CoreLoadError>> =
     LazyLock::new(build_core_snapshot);
 
-/// Load the embedded `lute.core` snapshot.
+/// The embedded `lute.core` snapshot, borrowed for the program's lifetime
+/// (for a holder that borrows a snapshot, such as a project document set).
 ///
 /// The assets are part of this crate and are validated by the manifest tests;
 /// a failure here indicates a broken binary rather than author input.
-pub fn load_core_snapshot() -> CapabilitySnapshot {
+pub fn core_snapshot() -> &'static CapabilitySnapshot {
     match &*CORE {
-        Ok(snapshot) => snapshot.clone(),
+        Ok(snapshot) => snapshot,
         Err(error) => panic!("{error}"),
     }
+}
+
+/// Load the embedded `lute.core` snapshot (an owned copy of
+/// [`core_snapshot`]).
+pub fn load_core_snapshot() -> CapabilitySnapshot {
+    core_snapshot().clone()
 }
 
 /// Fallible form of [`load_core_snapshot`] for callers that need controlled

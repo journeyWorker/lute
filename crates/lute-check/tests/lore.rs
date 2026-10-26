@@ -527,12 +527,12 @@ fn when_test_literal_and_fix_reach_entry_arms() {
 
 // --- whole-project check -------------------------------------------------------------
 
-fn parse_docs(files: &[(&str, &str)]) -> ProjectDocs {
+fn parse_docs(files: &[(&str, &str)]) -> ProjectDocs<'static> {
     let docs = files
         .iter()
         .map(|(p, t)| (PathBuf::from(p), lute_syntax::parse(t).0))
         .collect();
-    ProjectDocs::parse(docs, &lute_manifest::core::load_core_snapshot())
+    ProjectDocs::parse(docs, lute_manifest::core::core_snapshot())
 }
 
 #[test]
