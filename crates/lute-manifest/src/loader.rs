@@ -766,9 +766,29 @@ fn load_package(
                         effects: body.effects,
                     })
                     .collect();
-                // 0.50.0 §5.1: an effect a `<reward>` cannot bind is this
-                // file's fault, at the effect's line.
+                // 0.52.0 §7.1: a kind attribute no `<reward>` could author
+                // is this file's fault, at its `attrs:` entry; 0.50.0 §5.1,
+                // 0.52.0 §7.3: so is an effect a `<reward>` cannot bind, at
+                // the effect's line.
                 for rk in &decls {
+                    for (j, me) in crate::validate::validate_reward_attrs(rk) {
+                        use crate::yaml_text::YamlStep;
+                        let steps = [
+                            YamlStep::Key("rewardKinds"),
+                            YamlStep::Key(rk.name.as_str()),
+                            YamlStep::Key("attrs"),
+                            YamlStep::Item(j),
+                        ];
+                        let at = crate::yaml_text::yaml_span(src.text, &steps)
+                            .map(|s| s.byte_start)
+                            .or_else(|| key_offset(src.text, &["rewardKinds", rk.name.as_str()]))
+                            .map(|o| crate::yaml_text::line_col(src.text, o));
+                        e.push(LoadError::Parse {
+                            file: src.file.display().to_string(),
+                            at,
+                            msg: me.message(),
+                        });
+                    }
                     for me in crate::validate::validate_reward_effects(rk) {
                         e.push(LoadError::Parse {
                             file: src.file.display().to_string(),

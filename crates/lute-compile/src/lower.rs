@@ -901,7 +901,7 @@ fn attr_json(attr: &Attr, decl: Option<&DirectiveDecl>) -> serde_json::Value {
 /// An attr value as JSON in the shape its declared type asks for: `int` or
 /// `double` parses numerically, `bool` maps the two literals, everything else
 /// stays a string.
-fn attr_json_typed(attr: &Attr, ty: Option<&Type>) -> serde_json::Value {
+pub(crate) fn attr_json_typed(attr: &Attr, ty: Option<&Type>) -> serde_json::Value {
     match &attr.value {
         AttrValue::BoolTrue => serde_json::Value::Bool(true),
         AttrValue::Ref(slot) => serde_json::Value::String(slot.raw.clone()),
@@ -928,7 +928,7 @@ fn attr_json_typed(attr: &Attr, ty: Option<&Type>) -> serde_json::Value {
 /// the attr's type (`lute_manifest::validate::attr_default_accepts`), whose
 /// one widening is a YAML integer defaulting a `double`: that reads `1.0`,
 /// as an authored `1` would.
-fn default_json(default: &Literal, ty: &Type) -> serde_json::Value {
+pub(crate) fn default_json(default: &Literal, ty: &Type) -> serde_json::Value {
     match (default, ty) {
         (Literal::Int(n), Type::Double) => serde_json::Value::from(*n as f64),
         _ => crate::literal_json(default),

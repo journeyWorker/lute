@@ -1323,10 +1323,10 @@ impl<'a> Guards<'a> {
             _ => &[],
         });
         for reward in objective_rewards.chain(&quest.rewards) {
-            let Some(effects) = crate::reward_effects::kind_effects(kinds, reward) else {
+            let Some((kind, _)) = crate::reward_effects::kind_effects(kinds, reward) else {
                 continue;
             };
-            let facts = crate::reward_effects::reward_facts(effects, reward);
+            let facts = crate::reward_effects::reward_facts(kind, reward);
             let dropped: Vec<crate::fact_env::QueryPattern> = facts
                 .retracts
                 .iter()

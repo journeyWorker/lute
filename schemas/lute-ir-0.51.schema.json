@@ -1841,14 +1841,14 @@
           "items": {
             "$ref": "#/$defs/factRecord"
           },
-          "description": "0.50.0 §5.5: the facts the reward kind's `effects.retracts` declares, `@target` bound to `target` (\"_\" a wildcard), stamped at compile. Applied at the grant, after the `grant` record and before `asserts`, through the `::retract` path; absent when none."
+          "description": "0.50.0 §5.5: the facts the reward kind's `effects.retracts` declares, each `@<attr>` bound as `attrs` is — `@target` to `target` — (\"_\" a wildcard; a pattern left unbound is not written), stamped at compile. Applied at the grant, after the `grant` record and before `asserts`, through the `::retract` path; absent when none."
         },
         "asserts": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/factRecord"
           },
-          "description": "0.50.0 §5.5: the facts the reward kind's `effects.asserts` declares, `@target` bound, applied at the grant after `retracts` through the `::assert` path; absent when none."
+          "description": "0.50.0 §5.5: the facts the reward kind's `effects.asserts` declares, each `@<attr>` bound as for `retracts`, applied at the grant after `retracts` through the `::assert` path; absent when none."
         },
         "accepts": {
           "type": "array",
@@ -1862,7 +1862,11 @@
           "items": {
             "$ref": "#/$defs/raiseRecord"
           },
-          "description": "0.51.0 §4.6: the occasions the reward kind's `effects.raises` declares, `@target` bound to `target` (an unbound one is not written), stamped at compile. Descriptive: the host raises each once the grant settles; the runtime raises nothing. Absent when none."
+          "description": "0.51.0 §4.6: the occasions the reward kind's `effects.raises` declares, each `@<attr>` bound as `attrs` is — `@target` to `target` (an unbound one is not written), stamped at compile. Descriptive: the host raises each once the grant settles; the runtime raises nothing. Absent when none."
+        },
+        "attrs": {
+          "type": "object",
+          "description": "0.52.0 §7.4: the reward kind's declared `attrs` as this reward binds them — each authored attribute, else its declared `default:` — typed as a `plugin` record's `fields` are (`int`/`double` numbers, `bool` booleans, everything else strings). Descriptive (no semantic id): a host reads it by the plugin's reward-kind contract, which `capabilityVersion` pins. The `grant` record's `reward` carries a copy. Absent when empty."
         }
       },
       "additionalProperties": true,

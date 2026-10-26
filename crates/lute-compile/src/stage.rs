@@ -1073,6 +1073,17 @@ fn component_attr(d: &Directive) -> String {
         .unwrap_or_default()
 }
 
+/// One `<reward>`'s wire entry, stamped with what its kind declares in
+/// `snapshot` ([`RewardEntry::from_ast`]).
+fn reward_entry(
+    reward: &lute_syntax::ast::Reward,
+    snapshot: &CapabilitySnapshot,
+    owner_is_quest: bool,
+) -> RewardEntry {
+    let kind = snapshot.reward_kinds.get(reward.kind.trim());
+    RewardEntry::from_ast(reward, kind, &snapshot.occasions, owner_is_quest)
+}
+
 /// Walk a `<quest>` declaration (dsl 0.2.0 §6.3, IR addendum §3): emits the
 /// `quest` declaration head FIRST (objective table inlined, symbolic `body`
 /// targets for non-empty objective bodies via `em.fresh()` — the quest
@@ -1126,7 +1137,7 @@ pub fn walk_quest(
                 rewards: o
                     .rewards
                     .iter()
-                    .map(|r| RewardEntry::from_ast(r, false))
+                    .map(|r| reward_entry(r, cx.snapshot, false))
                     .collect(),
                 // dsl 0.21.0 §7a.2: the occasion the objective is judged at;
                 // `None` (omitted) keeps every other objective byte-identical.
@@ -1157,7 +1168,7 @@ pub fn walk_quest(
         rewards: quest
             .rewards
             .iter()
-            .map(|r| RewardEntry::from_ast(r, true))
+            .map(|r| reward_entry(r, cx.snapshot, true))
             .collect(),
         // dsl 0.22.0 §7, 0.27.0 §5: only `tier="run"` / `"season:<name>"`
         // are serialized (`E-ATTR-TYPE` / `E-SEASON-DECL` gated the rest).

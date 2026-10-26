@@ -159,6 +159,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "assetId",
     "at",
     "atom",
+    "attrs",
     "authored",
     "beat",
     "body",
@@ -953,6 +954,7 @@ mod tests {
             asserts: vec![],
             accepts: vec![],
             raises: vec![],
+            attrs: BTreeMap::new(),
         };
         let without = quest(plain.clone());
         assert!(without.ids.contains(QUEST_REWARDS.as_str()));
@@ -969,6 +971,14 @@ mod tests {
         });
         assert!(raises_only.ids.contains(QUEST_REWARDS.as_str()));
         assert!(!raises_only.ids.contains(REWARD_EFFECTS.as_str()));
+        // 0.52.0 §7.4: a reward's `attrs` are descriptive — no new id.
+        let attrs_only = quest(RewardEntry {
+            attrs: [("rarity".to_string(), serde_json::json!("gold"))]
+                .into_iter()
+                .collect(),
+            ..plain.clone()
+        });
+        assert_eq!(attrs_only.ids, without.ids);
         for with in [
             RewardEntry {
                 accepts: vec!["second".into()],

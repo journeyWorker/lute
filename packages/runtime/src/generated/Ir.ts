@@ -666,7 +666,8 @@ export const rewardEntry = Schema.Struct({
   "retracts": Schema.optionalKey(Schema.Array(Schema.suspend(() => factRecord))),
   "asserts": Schema.optionalKey(Schema.Array(Schema.suspend(() => factRecord))),
   "accepts": Schema.optionalKey(Schema.Array(Schema.String)),
-  "raises": Schema.optionalKey(Schema.Array(Schema.suspend(() => raiseRecord)))
+  "raises": Schema.optionalKey(Schema.Array(Schema.suspend(() => raiseRecord))),
+  "attrs": Schema.optionalKey(Schema.Json)
 });
 export type rewardEntry = typeof rewardEntry.Type;
 

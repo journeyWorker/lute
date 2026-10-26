@@ -2044,11 +2044,18 @@ pub struct RewardEntry {
     /// applied after the facts through `::accept`'s path.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub accepts: Vec<String>,
-    /// 0.51.0 §4.6: the occasions the kind's `effects.raises` names,
-    /// `@target` bound to `target` (one left unbound is not written).
+    /// 0.51.0 §4.6: the occasions the kind's `effects.raises` names, each
+    /// `@<attr>` bound as `attrs` is (one left unbound is not written).
     /// Stamped at compile; the host raises them once the grant settles.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub raises: Vec<RaiseRecord>,
+    /// 0.52.0 §7.4: the kind's declared attributes as the reward binds them
+    /// — each authored one, else its declared `default:`
+    /// ([`lute_check::reward_effects::reward_attr_value`]) — typed as a
+    /// `plugin` record's `fields` are. Descriptive: a host reads it by the
+    /// plugin's reward-kind contract. Omitted when empty.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub attrs: BTreeMap<String, serde_json::Value>,
 }
 
 impl RewardEntry {
@@ -2060,7 +2067,24 @@ impl RewardEntry {
     /// Constraints): unauthored → `amount: 1`; a scalar fills `amount`; a
     /// range fills `amountMin`/`amountMax` verbatim (never pre-rolled,
     /// spec D-C).
-    pub fn from_ast(reward: &lute_syntax::ast::Reward, owner_is_quest: bool) -> Self {
+    ///
+    /// `kind` is the reward's kind declaration in the capability snapshot,
+    /// when it declares one: dsl 0.23.0 §8 and 0.50.0 §5.5 stamp what it
+    /// declares — the `credits:` path a grant adds its amount to and the
+    /// `effects` it applies (`retracts` / `asserts` and, 0.51.0 §4.6, the
+    /// `raises` on an occasion of `occasions`, each `@<attr>` bound by the
+    /// checker's own rule; the quests it `accepts`) — and 0.52.0 §7.4 its
+    /// bound `attrs`, so `lute run` / `lute play` (and an engine) grant
+    /// without the snapshot at hand. Without a kind the entry is as
+    /// authored.
+    pub fn from_ast(
+        reward: &lute_syntax::ast::Reward,
+        kind: Option<&lute_manifest::schema::RewardKindDecl>,
+        occasions: &BTreeMap<String, lute_manifest::schema::OccasionDecl>,
+        owner_is_quest: bool,
+    ) -> Self {
+        use lute_check::reward_effects::RewardAttrValue;
+        use lute_check::reward_effects::{reward_accepts, reward_attr_value, reward_facts};
         use lute_syntax::ast::RewardAmount;
         let (amount, amount_min, amount_max) = match reward.amount {
             None => (Some(1), None, None),
@@ -2075,7 +2099,7 @@ impl RewardEntry {
         } else {
             None
         };
-        RewardEntry {
+        let mut entry = RewardEntry {
             id: reward.id.as_ref().map(|(id, _)| id.clone()),
             kind: reward.kind.clone(),
             target: reward.target.clone(),
@@ -2089,7 +2113,36 @@ impl RewardEntry {
             asserts: Vec::new(),
             accepts: Vec::new(),
             raises: Vec::new(),
+            attrs: BTreeMap::new(),
+        };
+        let Some(kind) = kind else {
+            return entry;
+        };
+        entry.credits.clone_from(&kind.credits);
+        if let Some(effects) = &kind.effects {
+            let facts = reward_facts(kind, reward);
+            entry.retracts = crate::lower::fact_records(&facts.retracts);
+            entry.asserts = crate::lower::fact_records(&facts.asserts);
+            entry.accepts = reward_accepts(effects, reward)
+                .into_iter()
+                .map(|(quest, _)| quest)
+                .collect();
+            entry.raises = lute_check::raises::reward_raises(kind, reward, occasions)
+                .into_iter()
+                .map(RaiseRecord::from)
+                .collect();
         }
+        for decl in &kind.attrs {
+            let value = match reward_attr_value(kind, reward, &decl.name) {
+                Some(RewardAttrValue::Authored(a)) => {
+                    crate::lower::attr_json_typed(a, Some(&decl.ty))
+                }
+                Some(RewardAttrValue::Default(d)) => crate::lower::default_json(d, &decl.ty),
+                Some(RewardAttrValue::Target(_)) | None => continue,
+            };
+            entry.attrs.insert(decl.name.clone(), value);
+        }
+        entry
     }
 }
 

@@ -117,8 +117,10 @@ fn writes_is_no_key_and_names_credits() {
     );
 }
 
+/// 0.52.0 §7.3: an effect reads `@target` or a declared attribute; an
+/// undeclared one names what the kind declares.
 #[test]
-fn an_effect_reads_only_target() {
+fn an_effect_reads_target_or_a_declared_attribute() {
     let got = faults(
         "effects-rarity",
         "rewardKinds:\n  COINS: {}\n  BADGE:\n    target: { entity: person }\n    effects:\n      asserts: [\"met(@rarity)\"]\n",
@@ -128,8 +130,8 @@ fn an_effect_reads_only_target() {
     assert_eq!((*code, *line), ("E-PLUGIN-PARSE", Some(6)), "{got:?}");
     assert!(
         message.ends_with(
-            "reward kind `BADGE` effect `met(@rarity)` reads `@rarity`; a reward kind's effects \
-             read only `@target` (a `<reward>` takes no other attribute)"
+            "reward kind `BADGE` effect `met(@rarity)` reads `@rarity`, but the kind declares \
+             no such attribute (declared: target)"
         ),
         "{message}"
     );

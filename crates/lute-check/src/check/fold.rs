@@ -870,14 +870,6 @@ fn fold_env_in(
             }
         }
         fold_diags.extend(record.diags);
-        // dsl 0.16.0 §2/§4/§6: reward shape/closure/vocabulary, alongside
-        // the rest of the quest fold.
-        fold_diags.extend(check_quest_rewards(
-            quest,
-            snapshot,
-            input.providers(),
-            &vocab.kinds,
-        ));
     }
     // dsl 0.23.0 §6: a subquest's `tier` equals its parent's — the
     // same-document half of `E-QUEST-TIER-MIX`.
@@ -952,6 +944,17 @@ fn fold_env_in(
             None => Arc::clone(&domains_pre),
         },
     };
+    // dsl 0.16.0 §2/§4/§6: reward shape/closure/vocabulary; 0.52.0 §7.2: a
+    // kind attribute is typed against the same domains a directive's is.
+    for quest in &doc.quests {
+        fold_diags.extend(check_quest_rewards(
+            quest,
+            snapshot,
+            input.providers(),
+            &vocab.kinds,
+            &domains,
+        ));
+    }
     if let Some(clock) = &clock {
         let reserved = crate::clock::reserved_decls(clock, &schema);
         // dsl 0.24.0 §1 / 0.27.0 §4: `clock.weekday`, and a finite clock's

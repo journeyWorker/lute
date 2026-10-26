@@ -61,7 +61,9 @@ use lute_syntax::ast::{
 
 use lute_manifest::core::{
     BRANCH_ATTRS, BRANCH_CHOICE_ATTRS, CHOICE_RETIRED_ATTRS, HUB_ATTRS, HUB_CHOICE_ATTRS,
+    REWARD_ATTRS,
 };
+use lute_manifest::schema::RewardKindDecl;
 
 use crate::content_line::E_UNKNOWN_ATTR;
 
@@ -83,6 +85,19 @@ struct Stamped<'a> {
     cx: StampCx<'a>,
 }
 
+/// The attributes a plugin adds to a logic element's own table, each typed
+/// by its declaration.
+#[derive(Clone, Copy)]
+enum Extension<'a> {
+    /// The plugin stamps of the element's surface (0.50.0 §3.4).
+    Stamps(Stamped<'a>),
+    /// A `<reward>`'s kind attributes (0.52.0 §7.2).
+    RewardKind {
+        kind: &'a RewardKindDecl,
+        cx: StampCx<'a>,
+    },
+}
+
 // The `<branch>` and `<hub>` tables are `lute_manifest::core`'s
 // `BRANCH_ATTRS` (dsl 0.11.0: `prompt`/`timeout`/`default`, the engine-wire
 // fields for the countdown UI) and `HUB_ATTRS` (dsl 0.23.0 §4: `prompt`).
@@ -92,13 +107,6 @@ struct Stamped<'a> {
 const MATCH_ATTRS: &[&str] = &["subject"];
 const WHEN_ATTRS: &[&str] = &["is", "test"];
 const OTHERWISE_ATTRS: &[&str] = &[];
-/// dsl 0.16.0 §2: `<reward>` closes over the five wire-contract keys.
-/// Every OTHER attribute is `E-UNKNOWN-ATTR` at its own span; a malformed
-/// `amount=` survives here as a residual so [`check_reward_attrs`] can
-/// anchor `E-REWARD-ATTR` at the value span. `id=` (dsl 0.37.0 §3.5) is the
-/// reward's identity within its quest; an unquoted one survives as a
-/// residual for `E-REWARD-ATTR`.
-pub const REWARD_ATTRS: &[&str] = &["id", "kind", "target", "amount", "when", "outcome"];
 /// dsl 0.19.0 §3: `<entry>` closes over its declared keys — the seven 0.19.0
 /// keys plus the dsl 0.21.0 §3.2 beat keys `on` and `priority` and the dsl
 /// 0.22.0 §7 beat key `once` (and dsl 0.25.0 §2's `share`). The parser extracts each into a typed field,
@@ -315,7 +323,7 @@ pub(crate) fn check_branch_attrs(b: &Branch, cx: StampCx<'_>, diags: &mut Vec<Di
         BRANCH_ATTRS,
         &[],
         None,
-        Some(stamped),
+        Some(Extension::Stamps(stamped)),
         diags,
     );
     check_required_stamps(&b.attrs, stamped, &b.id, b.span, diags);
@@ -487,7 +495,15 @@ pub(crate) fn check_hub_attrs(h: &Hub, cx: StampCx<'_>, diags: &mut Vec<Diagnost
         surface: &StampSurface::Hub,
         cx,
     };
-    close(&h.attrs, "hub", HUB_ATTRS, &[], None, Some(stamped), diags);
+    close(
+        &h.attrs,
+        "hub",
+        HUB_ATTRS,
+        &[],
+        None,
+        Some(Extension::Stamps(stamped)),
+        diags,
+    );
     // `<hub>` keeps its `id` in the residual list (module docs).
     let id = h
         .attrs
@@ -519,8 +535,20 @@ pub(crate) fn check_match_attrs(m: &Match, diags: &mut Vec<Diagnostic>) {
     close(&m.attrs, "match", MATCH_ATTRS, &[], None, None, diags);
 }
 
-pub(crate) fn check_reward_attrs(r: &Reward, diags: &mut Vec<Diagnostic>) {
-    close(&r.attrs, "reward", REWARD_ATTRS, &[], None, None, diags);
+/// dsl 0.16.0 §2: `<reward>` closes over its own keys
+/// ([`REWARD_ATTRS`]) and, 0.52.0 §7.2, the attributes its kind declares
+/// (`kind`, when the snapshot declares it), each typed by its declaration.
+/// Every OTHER attribute is `E-UNKNOWN-ATTR` at its own span; a malformed
+/// `amount=` or unquoted `id=` survives as a residual for `E-REWARD-ATTR`
+/// (`crate::match_check`), which also owns an `@ref` kind attribute.
+pub(crate) fn check_reward_attrs(
+    r: &Reward,
+    kind: Option<&RewardKindDecl>,
+    cx: StampCx<'_>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let ext = kind.map(|kind| Extension::RewardKind { kind, cx });
+    close(&r.attrs, "reward", REWARD_ATTRS, &[], None, ext, diags);
 }
 
 pub(crate) fn check_entry_attrs(e: &Entry, diags: &mut Vec<Diagnostic>) {
@@ -778,7 +806,7 @@ pub(crate) fn check_choice_attrs(
         permitted,
         CHOICE_RETIRED_ATTRS,
         hint,
-        Some(stamped),
+        Some(Extension::Stamps(stamped)),
         diags,
     );
     check_required_stamps(&c.attrs, stamped, &c.id, c.span, diags);
@@ -830,42 +858,64 @@ pub(crate) fn check_flags(attrs: &[Attr], tag: &str, flags: &[&str], diags: &mut
 /// One construct's closure: every attr whose key is outside `permitted` draws
 /// one [`E_UNKNOWN_ATTR`] at its own span — or its rename's code, when the key
 /// was renamed — unless it is in `told_elsewhere`, which a dedicated code
-/// reports. On `<branch>`, `<hub>` and `<choice>` (`stamps`), a plugin stamp
-/// the element's surface admits is permitted after the construct's own keys,
-/// and its value is typed by its declaration (0.50.0 §3.4).
+/// reports. On `<branch>`, `<hub>` and `<choice>` (`ext`, the stamps), a
+/// plugin stamp the element's surface admits is permitted after the
+/// construct's own keys, and its value is typed by its declaration (0.50.0
+/// §3.4); on a `<reward>` (`ext`, its kind), so is an attribute its kind
+/// declares (0.52.0 §7.2), which the unknown-key message then lists.
 fn close(
     attrs: &[Attr],
     tag: &str,
     permitted: &[&str],
     told_elsewhere: &[&str],
     hint: Option<(&[&str], &str)>,
-    stamps: Option<Stamped<'_>>,
+    ext: Option<Extension<'_>>,
     diags: &mut Vec<Diagnostic>,
 ) {
+    let stamps = match ext {
+        Some(Extension::Stamps(s)) => Some(s),
+        _ => None,
+    };
+    let kind = match ext {
+        Some(Extension::RewardKind { kind, .. }) => Some(kind),
+        _ => None,
+    };
     for attr in attrs {
         let key = attr.key.as_str();
         if permitted.contains(&key) {
             continue;
         }
-        if let Some(Stamped { surface, cx }) = stamps {
-            if let Some(sdecl) = cx.snapshot.stamp_attrs.get(surface, key) {
-                // Typed like a directive attribute; re-layered to the
-                // element's own layer, as a content line re-layers its stamps.
-                let before = diags.len();
-                crate::directives::check_attr_value(
-                    &format!("<{tag}>"),
-                    sdecl,
-                    attr,
-                    cx.snapshot,
-                    cx.providers,
-                    cx.domains,
-                    diags,
-                );
-                for d in &mut diags[before..] {
-                    d.layer = Layer::Logic;
-                }
-                continue;
+        // A stamp the surface admits, or an attribute the reward's kind
+        // declares: typed like a directive attribute, re-layered to the
+        // element's own layer, as a content line re-layers its stamps.
+        let declared = match ext {
+            Some(Extension::Stamps(Stamped { surface, cx })) => cx
+                .snapshot
+                .stamp_attrs
+                .get(surface, key)
+                .map(|sdecl| (format!("<{tag}>"), sdecl, cx)),
+            Some(Extension::RewardKind { kind, cx }) => kind
+                .attrs
+                .iter()
+                .find(|a| a.name == key)
+                .map(|adecl| (format!("<{tag} kind=\"{}\">", kind.name), adecl, cx)),
+            None => None,
+        };
+        if let Some((owner, adecl, cx)) = declared {
+            let before = diags.len();
+            crate::directives::check_attr_value(
+                &owner,
+                adecl,
+                attr,
+                cx.snapshot,
+                cx.providers,
+                cx.domains,
+                diags,
+            );
+            for d in &mut diags[before..] {
+                d.layer = Layer::Logic;
             }
+            continue;
         }
         let renamed = RENAMED_ATTRS
             .iter()
@@ -904,12 +954,14 @@ fn close(
                 let admitted: Vec<&lute_manifest::stamps::StampAttrDecl> = stamps
                     .map(|s| s.cx.snapshot.stamp_attrs.for_surface(s.surface).collect())
                     .unwrap_or_default();
+                let kind_attrs = kind.map_or(&[][..], |k| k.attrs.as_slice());
                 let near = lute_manifest::suggest::did_you_mean(
                     key,
                     permitted
                         .iter()
                         .copied()
-                        .chain(admitted.iter().map(|s| s.decl.name.as_str())),
+                        .chain(admitted.iter().map(|s| s.decl.name.as_str()))
+                        .chain(kind_attrs.iter().map(|a| a.name.as_str())),
                 );
                 let listed: Vec<String> = permitted.iter().map(|k| format!("`{k}`")).collect();
                 let stamped = if admitted.is_empty() {
@@ -921,8 +973,21 @@ fn close(
                         .collect();
                     format!(" and the stamps {}", crate::directives::and_list(&names))
                 };
+                // 0.52.0 §7.2: a reward kind's own attributes join the list.
+                let declared = match kind {
+                    Some(k) if !kind_attrs.is_empty() => {
+                        let names: Vec<String> =
+                            kind_attrs.iter().map(|a| format!("`{}`", a.name)).collect();
+                        format!(
+                            ", and kind `{}` declares {}",
+                            k.name,
+                            crate::directives::and_list(&names)
+                        )
+                    }
+                    _ => String::new(),
+                };
                 format!(
-                    "`<{tag}>` has no attribute `{key}`{near}; its attributes are {}{stamped}",
+                    "`<{tag}>` has no attribute `{key}`{near}; its attributes are {}{stamped}{declared}",
                     listed.join(", ")
                 )
             }

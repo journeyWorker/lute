@@ -853,8 +853,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-MISSING-ATTR",
-        summary: "A directive is missing an attribute its declared schema requires, or a directive, content line, `<branch>`, `<hub>` or `<choice>` does not author a plugin stamp declared `required: true` on its surface (`on:`); a stamp is never injected, so its `default:` does not count.",
-        spec: &["dsl 0.50.0 §3.4"],
+        summary: "A directive is missing an attribute its declared schema requires, a `<reward>` does not author an attribute its reward kind declares `required: true`, or a directive, content line, `<branch>`, `<hub>` or `<choice>` does not author a plugin stamp declared `required: true` on its surface (`on:`); a stamp is never injected and a reward attribute's `default:` does not satisfy `required`, so neither counts as authored.",
+        spec: &["dsl 0.50.0 §3.4", "dsl 0.52.0 §7.2"],
     },
     Code {
         code: "E-MOCK-SUBJECT",
@@ -1058,8 +1058,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-PARSE",
-        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect (none of `asserts:`, `retracts:`, `accepts:` or `raises:`), a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, a raise targets an `@attr` other than `@target`, or a kind with `target: { forbidden: true }` reads `@target` (a raise for `@target` included), or an `effects.raises` list is empty, an entry is not a mapping of `occasion` and optional `target`, its `target` is neither `@<attr>` nor a dotted target, or (on a directive) its `@<attr>` names no attribute of the directive, or an occasion's `raisedBy` is not `declared`, or a `hostTokens` name is not an identifier (letters, digits and `_`, not starting with a digit) or its `type` is not `string`, `int` or `{ enum: [...] }`, or a `type: text` sits anywhere but a directive attribute (a plugin option, an occasion payload, a reward-kind attribute, a bridge result, a state shape, a nested `{ list: text }`), or a directive's `text` attribute is on a directive with `lower:` or `bridge:` (no localized text would reach the host), declares a `default:` (which has no translation), or sits beside a declared attribute named `code` (the identity attribute of a directive with `text` attributes), or a `lints/` rule's keys do not fit its target (`when` on `target: pair`, a `pair` rule without `open` or `close`, or `open`, `close`, `inside` or `scope` on any other target).",
-        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1", "dsl 0.50.0 §5.1", "dsl 0.51.0 §4.1", "dsl 0.51.0 §4.2", "dsl 0.51.0 §5.1", "dsl 0.51.0 §6.1"],
+        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `attrs:` entry reuses a name `<reward>` already has (`id`, `kind`, `target`, `amount`, `when`, `outcome`), repeats a name, declares a `default:` not of its type or a `list`, `map` or `record` type, or a reward kind's `effects:` declares no effect (none of `asserts:`, `retracts:`, `accepts:` or `raises:`), a fact effect reads an `@attr` that is neither `@target` nor an attribute the kind declares, or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, a raise targets an `@attr` that is neither `@target` nor an attribute the kind declares, or a kind with `target: { forbidden: true }` reads `@target` (a raise for `@target` included), or an `effects.raises` list is empty, an entry is not a mapping of `occasion` and optional `target`, its `target` is neither `@<attr>` nor a dotted target, or (on a directive) its `@<attr>` names no attribute of the directive, or an occasion's `raisedBy` is not `declared`, or a `hostTokens` name is not an identifier (letters, digits and `_`, not starting with a digit) or its `type` is not `string`, `int` or `{ enum: [...] }`, or a `type: text` sits anywhere but a directive attribute (a plugin option, an occasion payload, a reward-kind attribute, a bridge result, a state shape, a nested `{ list: text }`), or a directive's `text` attribute is on a directive with `lower:` or `bridge:` (no localized text would reach the host), declares a `default:` (which has no translation), or sits beside a declared attribute named `code` (the identity attribute of a directive with `text` attributes), or a `lints/` rule's keys do not fit its target (`when` on `target: pair`, a `pair` rule without `open` or `close`, or `open`, `close`, `inside` or `scope` on any other target).",
+        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1", "dsl 0.50.0 §5.1", "dsl 0.51.0 §4.1", "dsl 0.51.0 §4.2", "dsl 0.51.0 §5.1", "dsl 0.51.0 §6.1", "dsl 0.52.0 §7.1", "dsl 0.52.0 §7.3"],
     },
     Code {
         code: "E-PLUGIN-RAISES",
@@ -1283,8 +1283,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-REWARD-ATTR",
-        summary: r#"A `<reward>` element is malformed: an empty/missing `kind`, an `amount=` that is not a signed integer or a valid `N..M` range, an `outcome=` used on an objective-level reward or with a value other than `"failed"`, or a `target=` that is not a quoted id (an `@ref` or a bare `target`, which the IR cannot carry)."#,
-        spec: &["dsl 0.16.0 §2", "dsl 0.16.0 §6", "dsl 0.49.0 §3.3"],
+        summary: r#"A `<reward>` element is malformed: an empty/missing `kind`, an `amount=` that is not a signed integer or a valid `N..M` range, an `outcome=` used on an objective-level reward or with a value other than `"failed"`, a `target=` that is not a quoted id (an `@ref` or a bare `target`, which the IR cannot carry), or an attribute its reward kind declares written as an `@ref` (a reward's attributes are static data the engine grants against: write a quoted value)."#,
+        spec: &["dsl 0.16.0 §2", "dsl 0.16.0 §6", "dsl 0.49.0 §3.3", "dsl 0.52.0 §7.2"],
     },
     Code {
         code: "E-REWARD-DUP",
@@ -1628,8 +1628,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-UNKNOWN-ATTR",
-        summary: "A content line, directive or logic element carries an attribute key that the content-line grammar, the directive's own declaration or the element's fixed attribute table does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to; on `<branch>`, `<hub>` and `<choice>` the message also lists the stamps scoped to that element. `code=` on a directive without a `text` attribute names why: `code` is the localization identity of a directive with one.",
-        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1", "dsl 0.50.0 §3.4", "dsl 0.51.0 §5.2"],
+        summary: "A content line, directive or logic element carries an attribute key that the content-line grammar, the directive's own declaration or the element's fixed attribute table does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to; on `<branch>`, `<hub>` and `<choice>` the message also lists the stamps scoped to that element, and on a `<reward>` the attributes its reward kind declares (which it admits). `code=` on a directive without a `text` attribute names why: `code` is the localization identity of a directive with one.",
+        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1", "dsl 0.50.0 §3.4", "dsl 0.51.0 §5.2", "dsl 0.52.0 §7.2"],
     },
     Code {
         code: "E-UNKNOWN-DIRECTIVE",

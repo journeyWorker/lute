@@ -121,6 +121,11 @@ pub const BRANCH_ATTRS: &[&str] = &["id", "prompt", "timeout", "default"];
 /// `<hub>`'s attributes (dsl 0.10.0 §4, + `prompt`, dsl 0.23.0 §4).
 pub const HUB_ATTRS: &[&str] = &["id", "prompt"];
 
+/// `<reward>`'s own attributes (dsl 0.16.0 §2, + `id`, dsl 0.37.0 §3.5).
+/// A reward kind's `attrs:` join them on a `<reward>` of that kind (0.52.0
+/// §7.2) and may not reuse one of these names (§7.1).
+pub const REWARD_ATTRS: &[&str] = &["id", "kind", "target", "amount", "when", "outcome"];
+
 /// A `<choice>`'s attributes inside a `<branch>` (dsl 0.10.0 D-L).
 pub const BRANCH_CHOICE_ATTRS: &[&str] = &["id", "text", "when", "into", "value"];
 

@@ -96,7 +96,7 @@ const BEAT_KEYS: &[(&str, &str, &str)] = &[
 ///
 /// [`QUEST_ATTRS`]: lute_check::logic_attrs::QUEST_ATTRS
 /// [`OBJECTIVE_ATTRS`]: lute_check::logic_attrs::OBJECTIVE_ATTRS
-/// [`REWARD_ATTRS`]: lute_check::logic_attrs::REWARD_ATTRS
+/// [`REWARD_ATTRS`]: lute_manifest::core::REWARD_ATTRS
 const QUEST_KEY_DOCS: &[(&str, &str, &str)] = &[
     ("id", "<questId>", "read as quest.<id>.state"),
     ("title", "<text>", "the quest's name"),
@@ -323,7 +323,8 @@ pub(crate) fn extend_surface(
             .into()
     };
     root.insert("beatKeys".into(), keys(BEAT_KEYS));
-    use lute_check::logic_attrs::{OBJECTIVE_ATTRS, QUEST_ATTRS, REWARD_ATTRS};
+    use lute_check::logic_attrs::{OBJECTIVE_ATTRS, QUEST_ATTRS};
+    use lute_manifest::core::REWARD_ATTRS;
     root.insert("questKeys".into(), attr_rows(QUEST_ATTRS, QUEST_KEY_DOCS));
     root.insert(
         "objectiveKeys".into(),

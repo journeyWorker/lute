@@ -90,6 +90,9 @@ struct RewardRec {
     /// copied onto the `grant` record — the host raises them once the grant
     /// settles; the runtime raises nothing.
     raises: Vec<Json>,
+    /// 0.52.0 §7.5: `RewardEntry.attrs` as compiled, copied onto the `grant`
+    /// record's `reward`; empty when the entry carries none.
+    attrs: serde_json::Map<String, Json>,
 }
 
 /// dsl 0.16.0 §3 D-D: which lifecycle transition is firing declarative
@@ -1010,6 +1013,9 @@ impl<D: Driver> Machine<D> {
             if let Some(hi) = r.amount_max {
                 reward.insert("amountMax".into(), json!(hi));
             }
+            if !r.attrs.is_empty() {
+                reward.insert("attrs".into(), Json::Object(r.attrs.clone()));
+            }
             let mut rec = serde_json::Map::new();
             rec.insert("kind".into(), Json::String("grant".into()));
             rec.insert("quest".into(), Json::String(quest_id.to_string()));
@@ -1252,6 +1258,11 @@ fn parse_reward(code: &Code, r: &Json) -> RewardRec {
         raises: r
             .get("raises")
             .and_then(Json::as_array)
+            .cloned()
+            .unwrap_or_default(),
+        attrs: r
+            .get("attrs")
+            .and_then(Json::as_object)
             .cloned()
             .unwrap_or_default(),
     }

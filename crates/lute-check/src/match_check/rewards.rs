@@ -5,14 +5,16 @@ use super::{
     diag, Arm, AttrValue, BTreeMap, CapabilitySnapshot, Diagnostic, EntityKindDecl, IdStatus,
     KindShape, Node, ProviderSet, Quest, Reward, RewardTarget, Severity, Span,
 };
+use lute_manifest::schema::RewardKindDecl;
 
 /// `E-REWARD-ATTR` (dsl 0.16.0 §2/§6): a `<reward>` element's shape is
 /// malformed — missing/empty `kind`, an `amount=` value that is not a
 /// signed integer or an inclusive `N..M` range with `N <= M`, an `outcome=`
-/// value other than `"failed"`, or `outcome=` authored on an objective-level
-/// reward (only quest-level rewards fire on failure). Anchored at the
-/// offending attribute value (or the reward element for missing `kind`).
-/// Unknown attribute keys are `E-UNKNOWN-ATTR` via the D-J closure.
+/// value other than `"failed"`, `outcome=` authored on an objective-level
+/// reward (only quest-level rewards fire on failure), or (0.52.0 §7.2) an
+/// `@ref` value of a kind attribute. Anchored at the offending attribute
+/// value (or the reward element for missing `kind`). Unknown attribute keys
+/// are `E-UNKNOWN-ATTR` via the D-J closure.
 pub const E_REWARD_ATTR: &str = "E-REWARD-ATTR";
 
 /// `E-REWARD-KIND` (dsl 0.16.0 §4/§6): a `<reward kind="…">` value is not
@@ -24,27 +26,36 @@ pub const E_REWARD_KIND: &str = "E-REWARD-KIND";
 
 /// Reward shape (`E-REWARD-ATTR`) + vocabulary (`E-REWARD-KIND`) + target
 /// contract (`E-REWARD-TARGET`) + D-J attribute closure (`E-UNKNOWN-ATTR`)
-/// checks for every `<reward/>` on this quest AND its objectives (dsl 0.16.0
-/// §2, §4, §6; 0.26.0 §2.5). The vocabulary gate stays silent when
-/// `snapshot.reward_kinds` is empty. `providers` resolves a `{ provider: … }`
-/// target contract, `kinds` (the document's merged entity kinds) an
-/// `{ entity: … }` one. Anchored at the offending attribute so the author's
-/// editor lands on the fault, not the enclosing element.
+/// and kind attribute (0.52.0 §7.2: typed like directive attributes,
+/// `E-MISSING-ATTR`) checks for every `<reward/>` on this quest AND its
+/// objectives (dsl 0.16.0 §2, §4, §6; 0.26.0 §2.5). The vocabulary gate
+/// stays silent when `snapshot.reward_kinds` is empty. `providers` resolves
+/// a `{ provider: … }` target contract, `kinds` (the document's merged
+/// entity kinds) an `{ entity: … }` one; `domains` (the document's merged
+/// domains) types a kind attribute as it types a directive's. Anchored at
+/// the offending attribute so the author's editor lands on the fault, not
+/// the enclosing element.
 pub fn check_quest_rewards(
     quest: &Quest,
     snapshot: &CapabilitySnapshot,
     providers: &ProviderSet,
     kinds: &BTreeMap<String, EntityKindDecl>,
+    domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
     let targets = RewardTargetEnv { providers, kinds };
+    let cx = crate::logic_attrs::StampCx {
+        snapshot,
+        providers,
+        domains,
+    };
     for r in &quest.rewards {
-        check_one_reward(r, snapshot, &targets, RewardPos::Quest, &mut diags);
+        check_one_reward(r, cx, &targets, RewardPos::Quest, &mut diags);
     }
     for node in &quest.body {
         if let Node::Objective(o) = node {
             for r in &o.rewards {
-                check_one_reward(r, snapshot, &targets, RewardPos::Objective, &mut diags);
+                check_one_reward(r, cx, &targets, RewardPos::Objective, &mut diags);
             }
         }
     }
@@ -345,11 +356,12 @@ enum RewardPos {
 
 fn check_one_reward(
     r: &Reward,
-    snapshot: &CapabilitySnapshot,
+    cx: crate::logic_attrs::StampCx<'_>,
     targets: &RewardTargetEnv<'_>,
     pos: RewardPos,
     diags: &mut Vec<Diagnostic>,
 ) {
+    let snapshot = cx.snapshot;
     // Shape: `kind=` is required (dsl 0.16.0 §2). An empty value hits
     // `E-REWARD-ATTR` at the value span (or the open-tag span when the
     // attribute is missing — the parser stores the same span in both
@@ -433,10 +445,8 @@ fn check_one_reward(
         ));
     }
     // dsl 0.26.0 §2.5: the kind's `target:` contract.
-    let contract = snapshot
-        .reward_kinds
-        .get(r.kind.trim())
-        .and_then(|k| k.target.as_ref());
+    let kind = snapshot.reward_kinds.get(r.kind.trim());
+    let contract = kind.and_then(|k| k.target.as_ref());
     // A `forbidden` contract reports any written target itself (remove it).
     if !contract.is_some_and(|c| c.forbidden) {
         refuse_unquoted_target(r, diags);
@@ -445,10 +455,54 @@ fn check_one_reward(
         diags.extend(check_reward_target(r, contract, targets));
     }
     // D-J attribute closure (dsl 0.16.0 §2 tag row) — E-UNKNOWN-ATTR at
-    // each residual key's own span. A malformed `amount=` also survives in
-    // `attrs`, but `amount` is in REWARD_ATTRS so it is not reported here;
-    // its E-REWARD-ATTR emission above owns the diagnostic.
-    crate::logic_attrs::check_reward_attrs(r, diags);
+    // each residual key's own span; 0.52.0 §7.2: the kind's attributes join
+    // it, typed by their declarations. A malformed `amount=` also survives
+    // in `attrs`, but `amount` is in REWARD_ATTRS so it is not reported
+    // here; its E-REWARD-ATTR emission above owns the diagnostic.
+    crate::logic_attrs::check_reward_attrs(r, kind, cx, diags);
+    if let Some(kind) = kind {
+        check_kind_attrs(r, kind, diags);
+    }
+}
+
+/// 0.52.0 §7.2: what the closure does not judge of a reward's kind
+/// attributes — an `@ref` value (`E-REWARD-ATTR`: the engine grants against
+/// static data, as for `target=`) and a `required: true` attribute the
+/// reward does not write (`E-MISSING-ATTR`, at the element; a declared
+/// `default:` does not satisfy it, as on a directive).
+fn check_kind_attrs(r: &Reward, kind: &RewardKindDecl, diags: &mut Vec<Diagnostic>) {
+    for a in &r.attrs {
+        let AttrValue::Ref(slot) = &a.value else {
+            continue;
+        };
+        if !kind.attrs.iter().any(|d| d.name == a.key) {
+            continue;
+        }
+        diags.push(diag(
+            E_REWARD_ATTR,
+            Severity::Error,
+            format!(
+                "`<reward {key}={raw}>`: a reward's attributes are static data the engine \
+                 grants against — write a quoted value (`{key}=\"…\"`)",
+                key = a.key,
+                raw = slot.raw.trim()
+            ),
+            a.value_span,
+        ));
+    }
+    for d in kind.attrs.iter().filter(|d| d.required) {
+        if !r.attrs.iter().any(|a| a.key == d.name) {
+            diags.push(diag(
+                "E-MISSING-ATTR",
+                Severity::Error,
+                format!(
+                    "`<reward kind=\"{}\">` requires attribute `{}`",
+                    kind.name, d.name
+                ),
+                r.span,
+            ));
+        }
+    }
 }
 
 /// 0.49.0 §3.3 (#192): a reward's target is a quoted id. Only `target="…"`

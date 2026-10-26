@@ -43,10 +43,14 @@ pub fn domain_reading_set(snapshot: &CapabilitySnapshot) -> BTreeSet<String> {
         }
     }
     // dsl 0.26.0 §2.5: a reward kind's `target: { entity: K }` contract
-    // checks every `<reward target=…>` of that kind against `K`.
+    // checks every `<reward target=…>` of that kind against `K`; 0.52.0
+    // §7.2: its `attrs:` are typed as a directive's are.
     for kind in snapshot.reward_kinds.values() {
         if let Some(entity) = kind.target.as_ref().and_then(|t| t.entity.as_ref()) {
             out.insert(entity.clone());
+        }
+        for attr in &kind.attrs {
+            collect_domain_names(&attr.ty, &mut out);
         }
     }
     out

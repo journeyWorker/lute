@@ -375,7 +375,7 @@
       }
     },
     "raises": {
-      "description": "schema.rs::RaiseDecl list (0.51.0 §4.1): a non-empty list; each entry names the occasion the host raises and, for an occasion raised for a target, the target — `@<attr>` (a directive's own attribute; on a reward kind `@target`) or a literal dotted target (`scene.chapter2`).",
+      "description": "schema.rs::RaiseDecl list (0.51.0 §4.1): a non-empty list; each entry names the occasion the host raises and, for an occasion raised for a target, the target — `@<attr>` (a directive's own attribute; on a reward kind `@target` or one of the kind's `attrs`, 0.52.0 §7.3) or a literal dotted target (`scene.chapter2`).",
       "type": "array",
       "minItems": 1,
       "items": {
@@ -1013,7 +1013,7 @@
       }
     },
     "rewardKindBody": {
-      "description": "schema.rs::RewardKindBody (closed, as the loader refuses unknown keys). `credits` (dsl 0.23.0 §8) is the state path a grant of the kind adds its amount to; `effects` (0.50.0 §5.1) the facts a grant asserts and retracts and the quests it accepts.",
+      "description": "schema.rs::RewardKindBody (closed, as the loader refuses unknown keys). `attrs` (0.52.0 §7) are the kind's own attributes, authored on a `<reward>` of the kind beside its own keys and read by its `effects` as `@<name>`; `credits` (dsl 0.23.0 §8) is the state path a grant of the kind adds its amount to; `effects` (0.50.0 §5.1) the facts a grant asserts and retracts and the quests it accepts.",
       "type": "object",
       "additionalProperties": false,
       "properties": {
@@ -1021,6 +1021,7 @@
           "$ref": "#/definitions/rewardTarget"
         },
         "attrs": {
+          "description": "0.52.0 §7.1: declared like a directive's attributes (one scalar type each, a `default:` of that type, each name once); the loader refuses a name `<reward>` already has (`id`, `kind`, `target`, `amount`, `when`, `outcome`), a repeat, a mistyped default and a `list`/`map`/`record` type (E-PLUGIN-PARSE).",
           "type": "array",
           "items": {
             "$ref": "#/definitions/attrDecl"
@@ -1035,7 +1036,7 @@
       }
     },
     "rewardEffects": {
-      "description": "schema.rs::RewardEffects (closed, at least one effect; 0.50.0 §5.1). `asserts`/`retracts` are fact patterns `relation(arg, …)` whose args are members, `true`/`false`, `@target` or (a retract only) `_`; `accepts` entries are `@target` or a quest id; `raises` (0.51.0 §4.1) the occasions the host raises after settling the grant, each `target` `@target` or a literal. A reward's state write is `credits:`, so there is no `writes`.",
+      "description": "schema.rs::RewardEffects (closed, at least one effect; 0.50.0 §5.1). `asserts`/`retracts` are fact patterns `relation(arg, …)` whose args are members, `true`/`false`, `@target`, an `@<attr>` the kind declares in `attrs` (0.52.0 §7.3) or (a retract only) `_`; `accepts` entries are `@target` or a quest id; `raises` (0.51.0 §4.1) the occasions the host raises after settling the grant, each `target` `@target`, an `@<attr>` the kind declares or a literal. A reward's state write is `credits:`, so there is no `writes`.",
       "type": "object",
       "additionalProperties": false,
       "minProperties": 1,

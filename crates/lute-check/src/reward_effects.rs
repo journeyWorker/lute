@@ -17,9 +17,13 @@
 //! node is created.
 //!
 //! An effect reading `@target` binds the reward's quoted `target=` (0.49.0
-//! §3.3: the only form that reaches the IR); a reward without one does not
-//! apply that effect, the directive rule for an unbound `@attr`.
+//! §3.3: the only form that reaches the IR); one reading another `@<attr>`
+//! binds the reward's quoted value of the kind's attribute, else its
+//! declared `default:` (0.52.0 §7.3, [`reward_attr_value`]). A reward
+//! leaving the attribute unbound does not apply that effect, the directive
+//! rule for an unbound `@attr`.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
 
@@ -29,7 +33,8 @@ use lute_manifest::schema::{
     AcceptEffect, FactEffect, FactEffectArg, RewardEffects, RewardKindDecl, REWARD_TARGET_ATTR,
 };
 use lute_manifest::snapshot::Domain;
-use lute_syntax::ast::{CelSlot, Node, Objective, Quest, Reward};
+use lute_manifest::types::Literal;
+use lute_syntax::ast::{Attr, AttrValue, CelSlot, Node, Objective, Quest, Reward};
 
 use crate::directive_facts::CallFacts;
 use crate::{Ctx, ProjectDoc};
@@ -150,22 +155,89 @@ pub fn reward_text(reward: &Reward) -> String {
     }
 }
 
-/// The effects `reward`'s kind declares in `kinds`.
-pub fn kind_effects<'k>(kinds: &'k RewardKinds, reward: &Reward) -> Option<&'k RewardEffects> {
-    kinds.get(reward.kind.trim())?.effects.as_ref()
+/// `reward`'s kind in `kinds`, when it declares `effects`, with them.
+pub fn kind_effects<'k>(
+    kinds: &'k RewardKinds,
+    reward: &Reward,
+) -> Option<(&'k RewardKindDecl, &'k RewardEffects)> {
+    let kind = kinds.get(reward.kind.trim())?;
+    Some((kind, kind.effects.as_ref()?))
 }
 
-/// The facts one reward writes, retracts first — `call_facts`'s twin
-/// ([`crate::directive_facts::call_facts`]). A pattern reading `@target`
-/// on a reward without a quoted `target=` is not applied, so not listed.
-pub fn reward_facts(effects: &RewardEffects, reward: &Reward) -> CallFacts {
-    target_facts(effects, reward.target.as_deref())
+/// What a reward binds an effect's `@<name>` to (0.52.0 §7.3).
+#[derive(Clone, Copy, Debug)]
+pub enum RewardAttrValue<'a> {
+    /// `@target`: the reward's quoted `target=`.
+    Target(&'a str),
+    /// A kind attribute the reward writes: a quoted value or a bare flag.
+    Authored(&'a Attr),
+    /// The declared `default:` of a kind attribute the reward omits.
+    Default(&'a Literal),
 }
 
-/// [`reward_facts`] for a reward whose quoted `target=` is `target` — the
-/// one resolution the compiler stamps into the IR's `RewardEntry`.
-pub fn target_facts(effects: &RewardEffects, target: Option<&str>) -> CallFacts {
-    let resolve = |facts: &[FactEffect]| facts.iter().filter_map(|f| bind(f, target)).collect();
+impl RewardAttrValue<'_> {
+    /// The value as written: `gold`, `true` for a bare flag, a default as its
+    /// YAML literal reads.
+    pub fn text(&self) -> Cow<'_, str> {
+        match self {
+            RewardAttrValue::Target(t) => Cow::Borrowed(t),
+            RewardAttrValue::Authored(a) => match &a.value {
+                AttrValue::Str(s) => Cow::Borrowed(s),
+                AttrValue::BoolTrue => Cow::Borrowed("true"),
+                // Never bound ([`reward_attr_value`]); the reference as
+                // written.
+                AttrValue::Ref(slot) => Cow::Borrowed(slot.raw.trim()),
+            },
+            RewardAttrValue::Default(Literal::Str(s)) => Cow::Borrowed(s),
+            RewardAttrValue::Default(l) => Cow::Owned(lute_manifest::types::lit_str(l)),
+        }
+    }
+
+    /// The value as a fact argument: `@target` names a member as written
+    /// (0.50.0 §5.1); any other value reads as a fact constant does
+    /// (`true`/`false` a bool, else a member).
+    fn term(&self) -> FactTerm {
+        match self {
+            RewardAttrValue::Target(t) => FactTerm::Ident((*t).to_string()),
+            _ => crate::directive_facts::const_term(&self.text()),
+        }
+    }
+}
+
+/// The one binding rule of a reward's attributes (0.52.0 §7.3), shared by
+/// the checker's facts ([`reward_facts`]), the raise table
+/// ([`crate::raises::RaiseTable`], [`crate::raises::reward_raises`]) and
+/// lowering (`RewardEntry.attrs`): `@target` is the reward's quoted
+/// `target=`; a kind attribute is the reward's quoted value (a bare flag
+/// `true`), else the attribute's `default:`. `None` — unbound — without
+/// either, for an `@ref` value (`E-REWARD-ATTR`: a reward's attributes are
+/// static) and for a name the kind does not declare.
+pub fn reward_attr_value<'a>(
+    kind: &'a RewardKindDecl,
+    reward: &'a Reward,
+    name: &str,
+) -> Option<RewardAttrValue<'a>> {
+    if name == REWARD_TARGET_ATTR {
+        return reward.target.as_deref().map(RewardAttrValue::Target);
+    }
+    let decl = kind.attrs.iter().find(|a| a.name == name)?;
+    match reward.attrs.iter().find(|a| a.key == name) {
+        Some(a) if matches!(a.value, AttrValue::Ref(_)) => None,
+        Some(a) => Some(RewardAttrValue::Authored(a)),
+        None => decl.default.as_ref().map(RewardAttrValue::Default),
+    }
+}
+
+/// The facts one reward of `kind` writes, retracts first — `call_facts`'s
+/// twin ([`crate::directive_facts::call_facts`]). A pattern reading an
+/// attribute the reward leaves unbound ([`reward_attr_value`]) is not
+/// applied, so not listed.
+pub fn reward_facts(kind: &RewardKindDecl, reward: &Reward) -> CallFacts {
+    let Some(effects) = &kind.effects else {
+        return CallFacts::default();
+    };
+    let resolve =
+        |facts: &[FactEffect]| facts.iter().filter_map(|f| bind(f, kind, reward)).collect();
     CallFacts {
         retracts: resolve(&effects.retracts),
         asserts: resolve(&effects.asserts),
@@ -175,23 +247,19 @@ pub fn target_facts(effects: &RewardEffects, target: Option<&str>) -> CallFacts 
 /// The quests one reward accepts, each with whether it is the reward's
 /// `target=`; an `@target` accept of a reward without one is not applied.
 pub fn reward_accepts(effects: &RewardEffects, reward: &Reward) -> Vec<(String, bool)> {
-    target_accepts(effects, reward.target.as_deref())
-}
-
-/// [`reward_accepts`] for a reward whose quoted `target=` is `target`.
-pub fn target_accepts(effects: &RewardEffects, target: Option<&str>) -> Vec<(String, bool)> {
     effects
         .accepts
         .iter()
         .filter_map(|a| match a {
-            AcceptEffect::Target => target.map(|t| (t.to_string(), true)),
+            AcceptEffect::Target => reward.target.as_ref().map(|t| (t.clone(), true)),
             AcceptEffect::Quest(id) => Some((id.clone(), false)),
         })
         .collect()
 }
 
-/// One declared pattern with `@target` bound; `None` when unbound.
-fn bind(fact: &FactEffect, target: Option<&str>) -> Option<FactPattern> {
+/// One declared pattern with each `@attr` bound; `None` when one is
+/// unbound.
+fn bind(fact: &FactEffect, kind: &RewardKindDecl, reward: &Reward) -> Option<FactPattern> {
     let args = fact
         .args
         .iter()
@@ -199,11 +267,7 @@ fn bind(fact: &FactEffect, target: Option<&str>) -> Option<FactPattern> {
             let term = match a {
                 FactEffectArg::Const(c) => crate::directive_facts::const_term(c),
                 FactEffectArg::Wildcard => FactTerm::Wildcard,
-                FactEffectArg::Attr(name) if name == REWARD_TARGET_ATTR => {
-                    FactTerm::Ident(target?.to_string())
-                }
-                // The loader refuses any other `@attr` (0.50.0 §5.1).
-                FactEffectArg::Attr(_) => return None,
+                FactEffectArg::Attr(name) => reward_attr_value(kind, reward, name)?.term(),
             };
             Some(FactArg { term, span: (0, 0) })
         })
@@ -228,6 +292,7 @@ pub struct RewardGrantSite<'d, 'k> {
     pub point: GrantPoint,
     pub order: GrantOrder,
     pub reward: &'d Reward,
+    pub kind: &'k RewardKindDecl,
     pub effects: &'k RewardEffects,
 }
 
@@ -246,7 +311,7 @@ pub fn reward_grant_sites<'d, 'k>(
                     point: GrantPoint,
                     (rank, owner, reward_ix): (u8, usize, usize),
                     reward: &'d Reward| {
-        if let Some(effects) = kind_effects(kinds, reward) {
+        if let Some((kind, effects)) = kind_effects(kinds, reward) {
             out.push(RewardGrantSite {
                 quest,
                 objective,
@@ -258,6 +323,7 @@ pub fn reward_grant_sites<'d, 'k>(
                     effect: 0,
                 },
                 reward,
+                kind,
                 effects,
             });
         }
@@ -293,7 +359,7 @@ pub fn reward_grant_sites<'d, 'k>(
 pub fn quest_grants<'d>(quest: &'d Quest, kinds: &RewardKinds) -> Vec<GrantEffect<'d>> {
     let mut out = Vec::new();
     for site in reward_grant_sites(quest, kinds) {
-        let facts = reward_facts(site.effects, site.reward);
+        let facts = reward_facts(site.kind, site.reward);
         let accepts = reward_accepts(site.effects, site.reward);
         let effects = facts
             .writes()
@@ -442,10 +508,10 @@ pub fn check_reward_facts(
     });
     let mut out = Vec::new();
     for reward in objective_rewards.chain(&quest.rewards) {
-        let Some(effects) = kind_effects(kinds, reward) else {
+        let Some((kind, _)) = kind_effects(kinds, reward) else {
             continue;
         };
-        for (pattern, assert) in reward_facts(effects, reward).writes() {
+        for (pattern, assert) in reward_facts(kind, reward).writes() {
             let verb = if assert { "asserts" } else { "retracts" };
             for mut d in crate::fact_write::check_effect_write(
                 pattern,
