@@ -1,0 +1,4 @@
+occasions:
+  visit: { select: first }
+  cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
+  vault: { select: first, raisedBy: declared, raisedWhen: "run.open" }

@@ -117,10 +117,12 @@ Effect.runFork(game.pipe(Effect.provide(Layer.mergeAll(runtimeSession, bundleSou
 
 | | runtime `Contract.Snapshot` | player `SaveRuntime` |
 |---|---|---|
-| Holds | runtime state: `await`, `continuation?`, `project`, `request`, `snapshotVersion`, `world` (state, facts, stage, clock) | `{ snapshot, log, backlog }`: that runtime snapshot plus the player's accepted-input log and backlog |
+| Holds | runtime state: `await`, `continuation?`, `project`, `request`, `snapshotVersion`, `world` (state, facts, stage, clock) | `{ snapshot, log, backlog, pendingRaises }`: that runtime snapshot plus the player's accepted-input log, backlog and the declared raises it has not sent yet (`[]` when none) |
 | Produced by | runtime `Session.save` | the player handle's `snapshot` (`DirectorHandle.snapshot`) |
 | Consumed by | runtime `Session.restore`; `LutePlayer.make({ snapshot })`; `RuntimeSession.layer({ snapshot })` | the handle's `restore(save)`; save slots |
-| Restores | the story where it was | the story and the player's log and backlog; read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, the stage is rebuilt, its music is begun without waiting for it to start, and the await is presented again |
+| Restores | the story where it was | the story and the player's log, backlog and pending raises (each sent once the story is idle again); read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, the stage is rebuilt, its music is begun without waiting for it to start, and the await is presented again |
+
+**Declared raises (0.51).** A `plugin` or `grant` record whose directive or reward kind declares `effects.raises` carries `raises`. The player queues them when it applies the output and, each time the story settles at `idle`, sends them as `raiseOccasion` inputs, one batch each, in order, before the host `idle` and the bindings' idle flow; a raise the runtime refuses is logged and dropped. The raises belong to the player input that caused them: one rollback step undoes the input and every raise it caused. An accepted `newRun` or New game replaces the queue with the start output's raises. A host `plugin` handler sees them on `PluginCall.raises` (and each `text` attribute in the current locale on `PluginCall.localized`), but must not raise them itself.
 
 Checkpoint and restore a running player with the handle:
 

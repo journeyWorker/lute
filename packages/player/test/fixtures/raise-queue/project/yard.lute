@@ -1,0 +1,13 @@
+---
+kind: scene
+id: yard
+title: Yard
+on: cutscene
+target: scene.yard
+once: false
+---
+
+## Yard
+
+::set{run.yards += 1}
+@narrator{code="0010"}: The yard.

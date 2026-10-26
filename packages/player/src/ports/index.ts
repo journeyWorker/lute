@@ -286,6 +286,18 @@ export interface PluginCall {
    * `attrs`, as on {@link BridgeAwait}; absent when the command carries none.
    */
   readonly stamps?: NonNullable<BridgeAwait["stamps"]>
+  /**
+   * The occasions the host raises after this call (0.51.0 §4.6, the
+   * directive's `effects.raises`), resolved; absent when it declares none.
+   * The player raises them itself, in its pending raise queue.
+   */
+  readonly raises?: ReadonlyArray<{ readonly occasion: string; readonly target?: string }>
+  /**
+   * Each `text` attribute (0.51.0 §5.6) in the player's current locale: its
+   * translation, else the rendered source text in `attrs`; absent when the
+   * directive declares no `text` attribute.
+   */
+  readonly localized?: Readonly<Record<string, string>>
   /** The record's source document. */
   readonly document: string
   readonly position: string

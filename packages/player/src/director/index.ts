@@ -566,16 +566,24 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
       }
       case "idle.flow": {
         const sendIdle = (input: Input) => sendInput(input).pipe(Effect.catchCause(failed("idle input failed")))
-        // The idle flow runs on a fiber of its own (spec 0.41.0 §7.2): a host
-        // `idle` that waits for the game never blocks actions or `send`.
-        return forkHost(Effect.gen(function* () {
-          const hostInput = options.host?.idle === undefined ? undefined : yield* options.host.idle(command.await)
-          return hostInput !== undefined ? { _tag: "Input" as const, input: hostInput } : yield* options.session.idle
-        }), (result) => {
-          if (result?._tag === "Input") return sendIdle(result.input)
-          if (result?._tag !== "Menu") return Effect.void
-          idleOptions = result.options
-          return options.presenter.showScreen({ _tag: "Idle", options: result.options.map(({ label }) => ({ label })) })
+        return Effect.gen(function* () {
+          // 0.51.0 §4.6: the story settled at `idle` (after a batch, a load or
+          // a rollback). The pending declared raises go first, one batch each,
+          // until the queue is empty; only then the host `idle` and the
+          // bindings' idle flow.
+          const raised = yield* options.session.deliverRaise
+          if (raised !== undefined) return yield* playBatch(raised)
+          // The idle flow runs on a fiber of its own (spec 0.41.0 §7.2): a host
+          // `idle` that waits for the game never blocks actions or `send`.
+          yield* forkHost(Effect.gen(function* () {
+            const hostInput = options.host?.idle === undefined ? undefined : yield* options.host.idle(command.await)
+            return hostInput !== undefined ? { _tag: "Input" as const, input: hostInput } : yield* options.session.idle
+          }), (result) => {
+            if (result?._tag === "Input") return sendIdle(result.input)
+            if (result?._tag !== "Menu") return Effect.void
+            idleOptions = result.options
+            return options.presenter.showScreen({ _tag: "Idle", options: result.options.map(({ label }) => ({ label })) })
+          })
         })
       }
       case "mode.changed": return setMode(command.mode)

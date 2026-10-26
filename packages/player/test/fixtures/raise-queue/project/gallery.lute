@@ -1,0 +1,13 @@
+---
+kind: scene
+id: gallery
+title: Gallery
+on: cutscene
+target: scene.gallery
+once: false
+---
+
+## Gallery
+
+::set{user.galleries += 1}
+@narrator{code="0010"}: The gallery.

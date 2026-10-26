@@ -43,7 +43,8 @@ const world = {
 const runtime: SaveRuntime = {
   snapshot: { await: { type: "idle" }, continuation: null, project, request: 0, snapshotVersion: "0.50", world },
   log: [],
-  backlog: []
+  backlog: [],
+  pendingRaises: []
 }
 const saveData = (label: string) => ({ project, label, runtime })
 
@@ -86,6 +87,22 @@ describe("SaveStore", () => {
     yield* store.save("quick", saveData("clock"))
     expect((yield* store.load("quick")).savedAt).toBe(new Date(1_700_000_000_000).toISOString())
   }).pipe(Effect.provide(Layer.mergeAll(storesLayer, TestClock.layer()))))
+
+  it.effect("keeps the pending declared raises through the save codec (0.51.0 §4.6); an empty queue is stored as []", () => {
+    const { layer, values } = kvLayer()
+    const pendingRaises: SaveRuntime["pendingRaises"] = [
+      { occasion: "cutscene", target: "scene.hall", document: "porch.lute", position: "001-0300", logIndex: 3 },
+      { occasion: "cutscene", target: "scene.gallery", document: "fanfare.lute", logIndex: 4 }
+    ]
+    return Effect.gen(function* () {
+      const store = yield* SaveStore
+      yield* store.save(1, { project, label: "pending", runtime: { ...runtime, pendingRaises } })
+      expect((yield* store.load(1)).runtime.pendingRaises).toEqual(pendingRaises)
+      yield* store.save(2, saveData("none"))
+      expect(JSON.parse(values.get("save:2") ?? "{}").runtime.pendingRaises).toEqual([])
+      expect((yield* store.load(2)).runtime.pendingRaises).toEqual([])
+    }).pipe(Effect.provide(saveLayer({ project }).pipe(Layer.provide(layer))))
+  })
 
   it.effect("keeps runtime out of list metadata", () => {
     const { layer, values } = kvLayer()

@@ -108,7 +108,7 @@ prompt reads the record's `promptTexts[locale]`, else its source `prompt`. A bun
 locales come from `bundleLocales(bundle)`: the **source locale** is the
 index's `contentLang`, else the `contentLang` of the first artifact (in
 `index.documents` order) whose meta declares one, else `"en"`; the **compiled
-locales** are the keys of every `texts` and `promptTexts` map. The `Settings` screen model's `locales` is the source locale
+locales** are the keys of every command's `texts` and `promptTexts` map, every choice/hub option's `texts` and every `plugin` command's `localized.<attr>.texts` (0.51; a `fields` or `stamps` map, or a `text` attribute named `texts`, is never read as one). The `Settings` screen model's `locales` is the source locale
 followed by the compiled locales (sorted, without duplicates); a saved locale
 the bundle does not carry reads source text and Settings shows the source
 locale selected. `LutePlayer.make` starts a new profile at the source locale.
@@ -133,7 +133,9 @@ params: {} }`. The presenter decides what a custom effect plays.
 
 **Plugin records.** A `plugin` record whose tag has a `PlayerHost.plugin`
 handler is a waiting cue: the scheduler runs the handler (with a
-`PluginCall { tag, attrs, document, position }`) at the record's place and
+`PluginCall { tag, attrs, stamps?, raises?, localized?, document, position }`;
+`raises` are the record's declared raises and `localized` each `text`
+attribute in the current locale, 0.51) at the record's place and
 continues when it completes, in skip mode too. Without a handler, and for a
 record carrying `answered` (a call answered through `awaitBridge`) or an
 effect record sharing the plugin's position, it stays bookkeeping.
@@ -225,8 +227,9 @@ interface PlayerSession {
   readonly send: (input: Input) => Effect.Effect<Output, RuntimeRejection>
   readonly current: Effect.Effect<InputPoint>
   readonly rollback: (steps: number) => Effect.Effect<InputPoint>       // fails NothingToRollback
-  readonly snapshot: Effect.Effect<SaveRuntime>                        // runtime snapshot + log
+  readonly snapshot: Effect.Effect<SaveRuntime>                        // runtime snapshot + log + backlog + pending raises
   readonly restore: (save: SaveRuntime) => Effect.Effect<InputPoint, SaveIncompatible | RuntimeRejection>
+  readonly deliverRaise: Effect.Effect<Output | undefined>             // 0.51, below
   readonly backlog: SubscriptionRef<ReadonlyArray<BacklogEntry>>
 }
 ```
@@ -252,6 +255,21 @@ concatenated in order with the last await. Backlog names come from the `cast`
 option (the index `cast`); a backlog entry also keeps the runtime `line`
 record's rendered `texts` and `localeSegments`, and the director resolves them
 for the current locale when the `Backlog` screen opens (`localizedEntry`).
+
+**Pending raise queue (0.51.0 §4.6).** When an output is applied, the
+`raises` of its `plugin` and `grant` records are queued in record and list
+order, each tagged with its `document`, `position` and the output's input-log
+index. `deliverRaise` takes the head, removes it and sends it as a
+`raiseOccasion` under the session lock while the runtime waits at `idle`; a
+raise the runtime rejects is logged and dropped. The director calls it on
+`idle.flow` (after a batch, a load or a rollback settles at `idle`) and plays
+each output as its own batch, so every raise goes before the host `idle` and
+the bindings' idle flow. A raise takes no rollback checkpoint: the
+checkpoint `send` keeps before a player input also keeps the queue, so one
+`rollback(1)` undoes the input and every raise it caused. An accepted
+`newRun`, a return to the start point and a lineage replacement replace the
+queue with the start output's raises; a rejected one keeps it. Saves carry
+the queue (`SaveRuntime.pendingRaises`); `restore` and `rollback` reinstate it.
 
 ### stores (`stores/`)
 
@@ -444,10 +462,10 @@ Effect.runFork(game.pipe(Effect.provide(Layer.mergeAll(runtimeSession, bundleSou
 
 | | runtime `Contract.Snapshot` | player `SaveRuntime` |
 |---|---|---|
-| Holds | runtime state: `await`, `continuation?`, `project`, `request`, `snapshotVersion`, `world` (state, facts, stage, clock) | `{ snapshot, log, backlog }`: that runtime snapshot plus the player's accepted-input log and backlog |
+| Holds | runtime state: `await`, `continuation?`, `project`, `request`, `snapshotVersion`, `world` (state, facts, stage, clock) | `{ snapshot, log, backlog, pendingRaises }`: that runtime snapshot plus the player's accepted-input log, backlog and the declared raises it has not sent yet (`[]` when none) |
 | Produced by | runtime `Session.save` | the player handle's `snapshot` (`DirectorHandle.snapshot`) |
 | Consumed by | runtime `Session.restore`; `LutePlayer.make({ snapshot })`; `RuntimeSession.layer({ snapshot })` | the handle's `restore(save)`; save slots |
-| Restores | the story where it was | the story and the player's log and backlog; read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, the stage is rebuilt, its music is begun without waiting for it to start, and the await is presented again |
+| Restores | the story where it was | the story and the player's log, backlog and pending raises (each sent once the story is idle again); read marks added after the checkpoint are removed, rollback history is cleared, the `auto` slot is rewritten, the stage is rebuilt, its music is begun without waiting for it to start, and the await is presented again |
 
 Checkpoint and restore a running player with the handle:
 

@@ -1,0 +1,13 @@
+---
+kind: scene
+id: cellar
+title: Cellar
+on: cutscene
+target: scene.cellar
+once: false
+---
+
+## Cellar
+
+::set{run.cellars += 1}
+@narrator{code="0010"}: The cellar.

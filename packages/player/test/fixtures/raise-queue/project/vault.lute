@@ -1,0 +1,12 @@
+---
+kind: scene
+id: vault
+title: Vault
+on: vault
+once: false
+---
+
+## Vault
+
+::set{run.vaults += 1}
+@narrator{code="0010"}: The vault.

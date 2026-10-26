@@ -1,0 +1,34 @@
+---
+kind: scene
+id: porch
+title: Porch
+on: visit
+once: false
+---
+
+## Porch
+
+@narrator{code="0010"}: The porch is quiet.
+<branch id="door" prompt="Which way?">
+  <choice id="in" text="Go in">
+    ::playScene{code="0020" scene="hall" title="Welcome, {{run.guest}}" texts="Hall texts" promptTexts="Hall prompt"}
+    ::playScene{scene="yard"}
+  </choice>
+  <choice id="vault" text="Vault">
+    ::openVault
+    ::playScene{scene="yard"}
+  </choice>
+  <choice id="fanfare" text="Fanfare">
+    ::set{user.fanfare = true}
+  </choice>
+  <choice id="ask" text="Ask">
+    ::playScene{scene="yard"}
+    ::ask
+    @narrator{code="0025"}: The oracle says {{run.answer}}.
+    <branch id="then" prompt="Then?">
+      <choice id="leave" text="Leave">
+        @narrator{code="0030"}: You leave.
+      </choice>
+    </branch>
+  </choice>
+</branch>
