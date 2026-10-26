@@ -7,7 +7,7 @@ import * as LuteBun from "../../../runtime/src/bun.js"
 import { BundleSource } from "../../../runtime/src/index.js"
 import { compileBundle, jsonLines, sessionRoot } from "../../../runtime/test/support.js"
 import * as RuntimeSession from "../../../runtime/src/Session.js"
-import { compileHubKorean, compileQuayKorean, quayProject } from "../fixtures.js"
+import { compileHubKorean, compileQuayKorean, compileTollKorean, quayProject } from "../fixtures.js"
 import * as Bindings from "../../src/bindings/schema.js"
 import * as CueFactory from "../../src/cues/index.js"
 import * as Scheduler from "../../src/scheduler/index.js"
@@ -161,6 +161,18 @@ describe("CueFactory", () => {
       expect(local.choiceView(visit.await, "ko")).toMatchObject({ construct: "hub", prompt: "어느 가게로?", options: [{ text: "생선 가게" }, { text: "떠난다" }] })
       expect(local.choiceView(visit.await, "en")).toMatchObject({ construct: "hub", prompt: "Which stall?", options: [{ text: "The fish stall" }, { text: "Leave" }] })
       expect(CueFactory.bundleLocales(source)).toEqual({ source: "en", locales: ["en", "ko"] })
+    }))
+
+    it.effect("reads the labels and the prompt the runtime rendered onto the menu, never the artifact's raw text (0.52.0 §6.4)", () => Effect.gen(function* () {
+      const compiled = yield* compileTollKorean
+      const source = yield* Effect.provide(Effect.flatMap(BundleSource.BundleSource, (bundleSource) => bundleSource.load), LuteBun.bundle(compiled))
+      const visit = yield* Effect.scoped(Effect.flatMap(RuntimeSession.Session, (session) => session.send({ type: "raiseOccasion", occasion: "visit" })).pipe(
+        Effect.provide(LuteBun.session({ bundle: compiled, seed: { derive: true } }))
+      ))
+      if (visit.await.type !== "awaitChoice") throw new Error("toll-locale never awaits its branch")
+      const local = CueFactory.make({ bundle: source, bindings })
+      expect(local.choiceView(visit.await, "en")).toMatchObject({ id: "gate", prompt: "The toll is 5 gold.", options: [{ id: "pay", text: "Pay 5 gold" }, { id: "leave", text: "Walk away" }] })
+      expect(local.choiceView(visit.await, "ko")).toMatchObject({ id: "gate", prompt: "통행료는 5 골드다.", options: [{ id: "pay", text: "5 골드를 낸다" }, { id: "leave", text: "Walk away" }] })
     }))
 
     it.effect("names the source locale and the compiled locales of a bundle", () => Effect.gen(function* () {

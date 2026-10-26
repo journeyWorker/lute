@@ -80,6 +80,15 @@ export const compileTallyKorean: Effect.Effect<string> = compileTranslated(join(
 export const compileEscapeKorean: Effect.Effect<string> = compileTranslated(join(fixtures, "escape-locale", "project"), [join(fixtures, "escape-locale", "ko.json")])
 
 /**
+ * `toll-locale`: one scene that sets `run.gold = 5`, then the branch `gate`
+ * (prompt "The toll is {{run.gold}} gold.", options `pay` "Pay {{run.gold}}
+ * gold" and `leave` "Walk away"), whose Korean translations (`ko.json`) cover
+ * the prompt and `pay` but not `leave` (lute 0.52.0 §6.4); source locale
+ * `en`. `visit` starts it.
+ */
+export const compileTollKorean: Effect.Effect<string> = compileTranslated(join(fixtures, "toll-locale", "project"), [join(fixtures, "toll-locale", "ko.json")])
+
+/**
  * `flow-target-0471` (shared with the CLI's whole-project `check` test): `begin`
  * starts the run and leaves it idle; `player.bindings.yaml`'s idle menu
  * raises `visit` for `place.square` or `place.pier`, each the target of one

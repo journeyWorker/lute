@@ -493,15 +493,15 @@ const makeFactory = (options: CueFactoryOptions): CueFactoryShape => {
   const cast: Cast = bundle.index.cast ?? {}
   const plugins = options.plugin ?? {}
   const choiceView = (await_: ChoiceAwait, locale: string): ChoiceView => {
+    // 0.52.0 §6.4: the labels and the prompt are the runtime's rendering on the
+    // menu (`{{…}}` markers replaced, per locale); the source command gives
+    // only the stamps.
     const source = commands.get(await_.menu.document)?.get(await_.menu.position)
     const authoredOptions = Array.isArray(source?.options) ? source.options : []
     const authoredById: Record<string, JsonRecord> = {}
     for (const option of authoredOptions) if (isRecord(option) && string(option.id)) authoredById[option.id] = option
-    const textOf = (value: JsonRecord | undefined, fallback: string): string =>
-      localizedText(field(value, "texts"), locale, string(value?.text) ? value.text : fallback)
-    const sourcePrompt = field(source, "prompt")
-    const fallbackPrompt = string(sourcePrompt) ? sourcePrompt : await_.menu.prompt ?? undefined
-    const prompt = fallbackPrompt === undefined ? undefined : localizedText(field(source, "promptTexts"), locale, fallbackPrompt)
+    const menuPrompt = await_.menu.prompt
+    const prompt = menuPrompt === undefined || menuPrompt === null ? undefined : localizedText(await_.menu.promptTexts, locale, menuPrompt)
     // 0.50.0 §3.6: the element's and each option's plugin stamps, beside and
     // never merged into the authored fields; omitted when none is authored.
     const stampsOf = (value: JsonRecord | undefined) => {
@@ -515,10 +515,14 @@ const makeFactory = (options: CueFactoryOptions): CueFactoryShape => {
       timeout: await_.menu.timeout ?? undefined,
       default: await_.menu.default ?? undefined,
       ...stampsOf(source),
-      options: await_.menu.options.map((option) => {
-        const authoredOption = authoredById[option.id]
-        return { id: option.id, text: textOf(authoredOption, option.id), verdict: option.verdict, once: option.once, exit: option.exit, ...stampsOf(authoredOption) }
-      })
+      options: await_.menu.options.map((option) => ({
+        id: option.id,
+        text: localizedText(option.texts, locale, option.text),
+        verdict: option.verdict,
+        once: option.once,
+        exit: option.exit,
+        ...stampsOf(authoredById[option.id])
+      }))
     }
   }
   return {

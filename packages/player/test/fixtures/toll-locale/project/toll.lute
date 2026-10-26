@@ -1,0 +1,20 @@
+---
+kind: scene
+id: toll
+title: Toll
+on: visit
+once: false
+---
+
+## Toll
+
+::set{run.gold = 5}
+<branch id="gate" prompt="The toll is {{run.gold}} gold.">
+  <choice id="pay" text="Pay {{run.gold}} gold">
+    @narrator{code="0010"}: The gate opens.
+  </choice>
+  <choice id="leave" text="Walk away">
+    @narrator{code="0020"}: You turn back.
+  </choice>
+</branch>
+::set{run.over = true}
