@@ -566,6 +566,21 @@ fn component_interp_scan(
     }
 }
 
+/// 0.51.0 §5.2: the `{{…}}` of each `text` attribute of `d`, judged as a
+/// body line's text is ([`component_interp_scan`]).
+fn component_text_interps(
+    d: &lute_syntax::ast::Directive,
+    snapshot: &CapabilitySnapshot,
+    ctx: &Ctx<'_>,
+    own: &std::collections::BTreeSet<String>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    for (attr, text) in crate::directives::text_values(d, snapshot) {
+        let interps = lute_syntax::ast::scan_label_interps(text, attr.value_span);
+        component_interp_scan(&interps, ctx, own, diags);
+    }
+}
+
 /// `Some(name)` when `raw` (a component `<match on>` subject, dsl 0.4.0 §6.2)
 /// is EXACTLY a bare `@param` reference — no call args, nothing before or
 /// after it. Mirrors the `is_whole_slot` idiom (cel_resolve.rs:126-134) with
@@ -864,6 +879,7 @@ pub(crate) fn walk_component_body(
                 body_attr_refs(&d.attrs, snapshot, arena, ctx, &AttrSite::Directive(&d.tag), &scope.own, &mut ds);
                 diags.extend(ds.into_iter().filter(|d| !is_host_schema_code(&d.code)));
                 component_guard(d, snapshot, arena, ctx, true, scope, diags);
+                component_text_interps(d, snapshot, ctx, &scope.own, diags);
             }
             Node::Directive(d) => {
                 // D7 (dsl 0.4.0 §6.1/§6.2): a directive whose resolved decl
@@ -887,6 +903,7 @@ pub(crate) fn walk_component_body(
                     diags.extend(check_directive(d, snapshot, providers, domains, ctx));
                     body_attr_refs(&d.attrs, snapshot, arena, ctx, &AttrSite::Directive(&d.tag), &scope.own, diags);
                     component_guard(d, snapshot, arena, ctx, false, scope, diags);
+                    component_text_interps(d, snapshot, ctx, &scope.own, diags);
                 }
             }
             Node::Set(s) if scope.effects => {

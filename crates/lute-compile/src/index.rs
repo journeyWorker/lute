@@ -45,7 +45,7 @@ use lute_ir::{
     RuleEntry, SeedFactEntry, StateDomain,
 };
 
-use crate::ir::{ArtifactMeta, Command, ExecutionIr};
+use crate::ir::{ArtifactMeta, Command, ExecutionIr, Stamp};
 
 #[derive(Clone, Debug, Default)]
 pub struct IndexUnions {
@@ -628,12 +628,15 @@ impl UnitKind {
     }
 }
 
-/// One localization unit: its document, kind and record `addr`.
+/// One localization unit: its document, kind and record `addr`, and the
+/// component (innermost) its record was expanded from — whose file the
+/// record's source span is in.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct UnitSite {
     pub doc: String,
     pub kind: UnitKind,
     pub addr: String,
+    pub component: Option<String>,
 }
 
 /// A `lineId` a later unit (`unit`) shares with an earlier one (`first`).
@@ -661,41 +664,46 @@ impl LineIdDup {
 /// Every unit of `docs` (lines, choice and hub options, prompts, directive
 /// texts; in `docs` order, then record order) whose final `lineId` an
 /// earlier unit already carries. Units expanded from one component at
-/// several `::use` sites differ by their instance segment, so they never
-/// meet here.
+/// several `::use` sites differ by their instance segment under a template
+/// with `{prefix}`; one without it (`{speaker}_{code}`) makes them meet.
 pub fn line_id_duplicates(docs: &[IndexInput<'_>]) -> Vec<LineIdDup> {
     let mut first: BTreeMap<&str, UnitSite> = BTreeMap::new();
     let mut dups = Vec::new();
     for d in docs {
-        let mut units: Vec<(&str, UnitKind, &str)> = Vec::new();
+        let mut units: Vec<(&str, UnitKind, &str, &Stamp)> = Vec::new();
         for c in &d.artifact.commands {
             match c {
-                Command::Line(l) => units.push((&l.line_id, UnitKind::Line, &l.position)),
+                Command::Line(l) => units.push((&l.line_id, UnitKind::Line, &l.position, &l.stamp)),
                 Command::Choice(ch) => {
                     for o in &ch.options {
-                        units.push((&o.line_id, UnitKind::Option, &ch.position));
+                        units.push((&o.line_id, UnitKind::Option, &ch.position, &ch.stamp));
                     }
                     if let Some(id) = &ch.prompt_line_id {
-                        units.push((id, UnitKind::Prompt, &ch.position));
+                        units.push((id, UnitKind::Prompt, &ch.position, &ch.stamp));
                     }
                 }
                 Command::Hub(h) => {
                     for o in &h.options {
-                        units.push((&o.line_id, UnitKind::Option, &h.position));
+                        units.push((&o.line_id, UnitKind::Option, &h.position, &h.stamp));
                     }
                     if let Some(id) = &h.prompt_line_id {
-                        units.push((id, UnitKind::Prompt, &h.position));
+                        units.push((id, UnitKind::Prompt, &h.position, &h.stamp));
                     }
                 }
                 Command::Plugin(p) => {
                     for text in p.localized.values() {
-                        units.push((&text.line_id, UnitKind::DirectiveText, &p.position));
+                        units.push((
+                            &text.line_id,
+                            UnitKind::DirectiveText,
+                            &p.position,
+                            &p.stamp,
+                        ));
                     }
                 }
                 _ => {}
             }
         }
-        for (line_id, kind, addr) in units {
+        for (line_id, kind, addr, stamp) in units {
             if line_id.is_empty() {
                 continue;
             }
@@ -703,6 +711,7 @@ pub fn line_id_duplicates(docs: &[IndexInput<'_>]) -> Vec<LineIdDup> {
                 doc: d.path.clone(),
                 kind,
                 addr: addr.to_string(),
+                component: stamp.source.as_ref().map(|s| s.component.clone()),
             };
             match first.get(line_id) {
                 Some(earlier) => dups.push(LineIdDup {
@@ -963,7 +972,7 @@ mod tests {
     }
 
     fn lore(capability: &str, entries: &[(&str, Option<&str>, Option<u32>)]) -> ExecutionIr {
-        use crate::ir::{EntryCmd, LoreMeta, Stamp};
+        use crate::ir::{EntryCmd, LoreMeta};
         let mut a = scene("unused", capability);
         a.kind = DocKind::Lore;
         a.meta = ArtifactMeta::Lore(LoreMeta {

@@ -716,7 +716,7 @@ fn component_directive_codes_survive_folded_matches_and_tagging() {
 #[test]
 fn component_params_bind_inside_text_attributes() {
     let component = "---\ncomponent: card\nparams:\n  mode: string\n---\n\n## Card\n\n\
-                     ::banner{title=\"Mode {{@mode}} at {{run.gold}}\"}\n";
+                     ::banner{title=\"Mode {{@mode}} for {{userName}}\"}\n";
     let dir = with_card(
         "dt-comp-param",
         component,
@@ -725,14 +725,70 @@ fn component_params_bind_inside_text_attributes() {
     assert!(check(&dir).is_empty(), "{:#?}", check(&dir));
     let cmds = commands(&dir, "scenes/intro.lute");
     let banner = plugins(&cmds)[0];
-    assert_eq!(banner["fields"]["title"], "Mode fast at {{run.gold}}");
+    assert_eq!(banner["fields"]["title"], "Mode fast for {{userName}}");
     let kinds: Vec<&str> = banner["localized"]["title"]["placeholders"]
         .as_array()
         .unwrap()
         .iter()
         .map(|p| p["kind"].as_str().unwrap())
         .collect();
-    assert_eq!(kinds, ["path"]);
+    assert_eq!(kinds, ["reserved"]);
+}
+
+/// S6 review #4: a component body's `text` attributes are judged as its
+/// content lines' text is — an ambient read or an undeclared name is
+/// refused there, through a `::use` and standalone alike.
+#[test]
+fn component_text_attributes_are_checked_as_body_text() {
+    let component = "---\ncomponent: card\nparams:\n  mode: string\n---\n\n## Card\n\n\
+                     ::banner{title=\"{{notADeclaredHostToken}} {{@mode}}\"}\n\
+                     ::banner{title=\"{{@nope}}\"}\n";
+    let dir = with_card(
+        "dt-comp-interp",
+        component,
+        "::use{component=\"card\" instance=\"one\" mode=\"fast\"}",
+    );
+    let diags = check(&dir);
+    for code in ["E-COMPONENT-STATE", "E-UNDECLARED-REF"] {
+        assert!(
+            diags
+                .iter()
+                .any(|d| d.contains("components/card.component.lute") && d.contains(code)),
+            "{code}: {diags:#?}"
+        );
+    }
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.contains("E-COMPONENT-STATE") && d.contains("notADeclaredHostToken")),
+        "{diags:#?}"
+    );
+}
+
+/// S6 review #7: an `E-LINE-ID-DUP` unit expanded from a component is
+/// placed in the component's file, at its line.
+#[test]
+fn a_component_line_id_collision_points_into_the_component() {
+    let component = "---\ncomponent: card\n---\n\n## Card\n\n@mira{code=\"0010\"}: Hello.\n";
+    let doc = "---\nkind: scene\nid: intro\ncomponents: [../components/card.component.lute]\n\
+               ---\n\n## Shot 1.\n\n::use{component=\"card\" instance=\"one\"}\n\
+               ::use{component=\"card\" instance=\"two\"}\n";
+    let project_yaml = format!("{PROJECT}identity:\n  lineId: \"{{speaker}}_{{code}}\"\n");
+    let dir = project(
+        "dt-comp-dup",
+        &[
+            ("lute.project.yaml", &project_yaml),
+            ("scenes/intro.lute", doc),
+            ("components/card.component.lute", component),
+        ],
+    );
+    let out = text(&lute(&dir, &["check", "--project", "."]));
+    assert!(
+        out.lines().any(|l| l
+            .contains("components/card.component.lute:7:1: error [E-LINE-ID-DUP]")
+            && l.contains("at components/card.component.lute:7 —")),
+        "{out}"
+    );
 }
 
 /// S6 review #2: only a declared type is judged — a literal `default:`
