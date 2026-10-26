@@ -224,6 +224,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-INTO-VALUE", DiagnosticClass::SourceError),
         ("E-IR-REMOVED-FIELD", DiagnosticClass::SourceError),
         ("E-JUMP-BACKWARD", DiagnosticClass::SourceError),
+        ("E-JUMP-INTO-BODY", DiagnosticClass::SourceError),
         ("E-JUMP-INTO-LOOP", DiagnosticClass::SourceError),
         ("E-JUMP-LOOP-CROSS", DiagnosticClass::SourceError),
         ("E-JUMP-LOOP-SCOPE", DiagnosticClass::SourceError),

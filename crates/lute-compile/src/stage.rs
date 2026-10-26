@@ -47,16 +47,20 @@ pub struct WalkCx<'a> {
     /// jump reaches: no route reaches the nodes between, so they inject
     /// nothing.
     pub reached: bool,
+    /// dsl 0.52.0 §5.2: the checker's count of hub bodies each leaving
+    /// `::jump` leaves, written on its `jump` record as `leaves`.
+    pub leaves: &'a lute_check::next_labels::HubLeaves,
 }
 
 impl<'a> WalkCx<'a> {
-    /// A walk over one document whose loops are `loops` and whose `<match>`
-    /// subjects resolve against `subjects`; `components` names the
-    /// component table its inlined bodies come from.
+    /// A walk over one document whose label pass (its loops and leaving
+    /// jumps) is `labels` and whose `<match>` subjects resolve against
+    /// `subjects`; `components` names the component table its inlined
+    /// bodies come from.
     pub fn new(
         snapshot: &'a CapabilitySnapshot,
         env: &'a Env,
-        loops: &'a lute_check::next_labels::LoopTable,
+        labels: &'a lute_check::next_labels::LabelPass,
         subjects: lute_check::SubjectScope<'a>,
         components: Option<&'a lute_check::ComponentSet>,
     ) -> Self {
@@ -66,7 +70,7 @@ impl<'a> WalkCx<'a> {
             components: Vec::new(),
             timelines: 0,
             stage: StageFlow::new(
-                loops,
+                &labels.loops,
                 &env.domains,
                 snapshot,
                 subjects,
@@ -74,6 +78,7 @@ impl<'a> WalkCx<'a> {
                 lute_check::WalkKind::StageCompile,
             ),
             reached: true,
+            leaves: &labels.leaves,
         }
     }
 }
@@ -144,6 +149,7 @@ fn walk_flow_directive(
         _ => {
             state = emit_primitive(em, node, state, &[], cx, None);
             scope_jump_target(em, cx);
+            mark_hub_leave(em, d, cx);
             route_jump(cx, d, &mut state);
         }
     }
@@ -592,6 +598,7 @@ fn walk_branch(
                 position: String::new(),
                 target: conv.sym(),
                 max: None,
+                leaves: None,
             }),
             || SourceInfo::at(b.span),
         );
@@ -687,6 +694,7 @@ fn walk_hub(
                     position: String::new(),
                     target: conv.sym(),
                     max: None,
+                    leaves: None,
                 }),
                 || SourceInfo::at(h.span),
             );
@@ -874,6 +882,7 @@ fn walk_match(
                 position: String::new(),
                 target: conv.sym(),
                 max: None,
+                leaves: None,
             }),
             || SourceInfo::at(m.span),
         );
@@ -982,6 +991,23 @@ fn scope_jump_target(em: &mut Emitter, cx: &WalkCx<'_>) {
         if let Some(id) = jump.target.strip_prefix('#') {
             jump.target = format!("#{}", label_key(cx, id));
         }
+    }
+}
+
+/// dsl 0.52.0 §5.2: write the checker's `leaves` count
+/// ([`lute_check::next_labels::HubLeaves`]) on the `jump` record just
+/// emitted for the authored `::jump` `d`. A jump inside a component
+/// expansion never leaves a hub (a component admits no `<hub>`), and its
+/// span is in the component's file, so it is not looked up.
+fn mark_hub_leave(em: &mut Emitter, d: &Directive, cx: &WalkCx<'_>) {
+    if !cx.components.is_empty() {
+        return;
+    }
+    let Some(leaves) = cx.leaves.of(d) else {
+        return;
+    };
+    if let Some(Command::Jump(jump)) = em.recs.last_mut().map(|r| &mut r.cmd) {
+        jump.leaves = Some(leaves);
     }
 }
 

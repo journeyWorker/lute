@@ -9,7 +9,8 @@ use serde_json::{json, Value as Json};
 
 use super::format::value_to_json;
 use super::{
-    addr, required_target, Machine, Site, Step, NOTE_NO_DECISION, NOTE_NO_ELIGIBLE, NOTE_SKIPPED,
+    addr, required_target, HubRanges, Machine, RangeEnd, Site, Step, NOTE_NO_DECISION,
+    NOTE_NO_ELIGIBLE, NOTE_SKIPPED,
 };
 use crate::driver::{
     guard_premise, Driver, Forced, GuardRead, Menu, MenuKind, MenuOption, Pick, SiteKind, Verdict,
@@ -487,6 +488,8 @@ impl<D: Driver> Machine<D> {
     /// convergence. Exhaustion with eligible options still standing halts
     /// incomplete (`self.incomplete = true`, exit 3) rather than silently
     /// converging. Every iteration consumes one decision or leaves the loop.
+    /// dsl 0.52.0 §5.3: an option or `<return>` range that ends in a leave
+    /// ends the visit at once ([`leave_hub`]).
     pub(crate) fn do_hub(&mut self, cmd: &Json) -> Step {
         let id = cmd
             .get("id")
@@ -499,29 +502,18 @@ impl<D: Driver> Machine<D> {
             .map(str::to_string);
         // dsl 0.23.0 §4: `<hub prompt>` rides every presentation record.
         let prompt = cmd.get("prompt").and_then(Json::as_str).map(str::to_string);
-        let converge = required_target(cmd, "converge");
-        let converge_idx = self.resolve(converge);
         let options: &[Json] = cmd
             .get("options")
             .and_then(Json::as_array)
             .map_or(&[], Vec::as_slice);
-
-        // Segment starts in stream order: every option target, then the
-        // `<return>` segment (dsl 0.28.0 §5), then the converge. A segment
-        // runs from its start up to the NEXT start in this order (a non-`exit`
-        // option never falls through into the next option's body or the
-        // return block). Two starts on one address mean an empty segment —
-        // never the following segment's body.
-        let return_idx = cmd
-            .get("return")
-            .and_then(Json::as_str)
-            .map(|t| self.resolve(t));
-        let mut starts: Vec<usize> = options
-            .iter()
-            .map(|o| self.resolve(required_target(o, "target")))
-            .collect();
-        starts.extend(return_idx);
-        starts.push(converge_idx);
+        // The ranges this hub runs: each option's, then the `<return>`
+        // segment's, up to the converge (Code::hub_ranges, the one layout
+        // the load check of `leaves` reads too).
+        let HubRanges {
+            starts,
+            back: return_idx,
+            converge: converge_idx,
+        } = self.code.hub_ranges(cmd);
 
         let mut presentation = 0usize;
         // [`Pick::HubAutoPass`]: the next menu position the pass considers.
@@ -714,7 +706,9 @@ impl<D: Driver> Machine<D> {
             let mut rec = head(Json::String(choice_id.clone()));
             marks(&mut rec);
             self.driver.emit(Json::Object(rec));
-            self.run_range(starts[at], starts[at + 1]);
+            if let RangeEnd::Leave { to, hubs } = self.run_range(starts[at], starts[at + 1]) {
+                return leave_hub(to, hubs);
+            }
             if self.stopped() {
                 return Step::Halt;
             }
@@ -730,7 +724,9 @@ impl<D: Driver> Machine<D> {
                     "kind": "hubReturn",
                     "hub": id,
                 }));
-                self.run_range(back, converge_idx);
+                if let RangeEnd::Leave { to, hubs } = self.run_range(back, converge_idx) {
+                    return leave_hub(to, hubs);
+                }
                 if self.stopped() {
                     return Step::Halt;
                 }
@@ -860,6 +856,16 @@ impl<D: Driver> Machine<D> {
             "result": result,
         }));
         Step::Next(self.resolve(target))
+    }
+}
+
+/// dsl 0.52.0 §5.3: a hub visit ended by a leave of `hubs` hub ranges:
+/// control continues at `to` when this hub was the last one left, else the
+/// leave goes on to the range around the hub.
+fn leave_hub(to: usize, hubs: std::num::NonZeroU32) -> Step {
+    match std::num::NonZeroU32::new(hubs.get() - 1) {
+        None => Step::Next(to),
+        Some(hubs) => Step::Leave { to, hubs },
     }
 }
 

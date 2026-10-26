@@ -25,6 +25,7 @@ pub struct SemanticEntry {
 
 const CORE: SemanticId = SemanticId("lute.core/1");
 const BOUNDED_JUMP: SemanticId = SemanticId("lute.core.boundedJump/1");
+const HUB_LEAVE: SemanticId = SemanticId("lute.core.hubLeave/1");
 const STAGING: SemanticId = SemanticId("lute.staging/1");
 const TIMELINE: SemanticId = SemanticId("lute.timeline/1");
 const QUEST_LIFECYCLE: SemanticId = SemanticId("lute.quest.lifecycle/1");
@@ -51,6 +52,11 @@ pub const REGISTRY: &[SemanticEntry] = &[
         id: BOUNDED_JUMP,
         module: "core",
         behavior: "bounded backward jumps",
+    },
+    SemanticEntry {
+        id: HUB_LEAVE,
+        module: "core",
+        behavior: "jumps that leave a hub",
     },
     SemanticEntry {
         id: STAGING,
@@ -238,6 +244,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "labels",
     "last",
     "layout",
+    "leaves",
     "length",
     "lhs",
     "lineId",
@@ -677,6 +684,11 @@ fn collect_command(out: &mut Collected, command: &Command) {
             if c.max.is_some() {
                 out.add(BOUNDED_JUMP, Some(&c.position), "bounded jump");
             }
+            // dsl 0.52.0 §5.2 (D5): an engine that ignores `leaves` presents
+            // the hub again instead of leaving it — its own id.
+            if c.leaves.is_some() {
+                out.add(HUB_LEAVE, Some(&c.position), "hub leave");
+            }
         }
         Command::End(c) => {
             out.add(CORE, Some(&c.position), "end command");
@@ -817,35 +829,51 @@ mod tests {
     use lute_ir::{DocKind, EnumEntry, PrereqEdgeEntry};
 
     #[test]
-    fn registry_has_all_seventeen_ids() {
-        assert_eq!(REGISTRY.len(), 17);
+    fn registry_has_all_eighteen_ids() {
+        assert_eq!(REGISTRY.len(), 18);
         assert!(REGISTRY
             .iter()
             .all(|entry| is_registered(entry.id.as_str())));
+    }
+
+    fn with_jump(max: Option<u8>, leaves: Option<u32>) -> Collected {
+        let mut ir = test_ir();
+        ir.commands.push(Command::Jump(crate::ir::JumpCmd {
+            position: "001-0300".into(),
+            target: "001-0100".into(),
+            max,
+            leaves: leaves.map(|n| {
+                lute_check::next_labels::HubLeave::new(n).expect("a test count is at least 1")
+            }),
+        }));
+        collect(&ir)
     }
 
     /// dsl 0.51.0 §3.6: `lute.core.boundedJump/1` only when a `jump` carries
     /// `max`; a forward or converge jump needs only the core id.
     #[test]
     fn bounded_jumps_are_collected_only_when_present() {
-        let with = |max: Option<u8>| {
-            let mut ir = test_ir();
-            ir.commands.push(Command::Jump(crate::ir::JumpCmd {
-                position: "001-0300".into(),
-                target: "001-0100".into(),
-                max,
-            }));
-            collect(&ir)
-        };
-        let forward = with(None);
+        let forward = with_jump(None, None);
         assert!(forward.ids.contains(CORE.as_str()));
         assert!(!forward.ids.contains(BOUNDED_JUMP.as_str()));
-        let bounded = with(Some(2));
+        let bounded = with_jump(Some(2), None);
         assert!(bounded.ids.contains(BOUNDED_JUMP.as_str()));
         assert_eq!(
             bounded.provenance[BOUNDED_JUMP.as_str()][0].what,
             "bounded jump"
         );
+    }
+
+    /// dsl 0.52.0 §5.2: `lute.core.hubLeave/1` only when a `jump` carries
+    /// `leaves`.
+    #[test]
+    fn hub_leaves_are_collected_only_when_present() {
+        let stays = with_jump(None, None);
+        assert!(!stays.ids.contains(HUB_LEAVE.as_str()));
+        let leaves = with_jump(None, Some(2));
+        assert!(leaves.ids.contains(HUB_LEAVE.as_str()));
+        assert!(!leaves.ids.contains(BOUNDED_JUMP.as_str()));
+        assert_eq!(leaves.provenance[HUB_LEAVE.as_str()][0].what, "hub leave");
     }
 
     #[test]

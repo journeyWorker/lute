@@ -1399,6 +1399,11 @@ pub struct JumpCmd {
     /// Absent on every other jump, which stays byte-identical to 0.50.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max: Option<u8>,
+    /// dsl 0.52.0 §5.2: how many hub option or `<return>` bodies a forward
+    /// `::jump` leaves (`lute.core.hubLeave/1`): the runtime ends that many
+    /// hub visits. Absent on every jump that stays in its range body.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub leaves: Option<lute_check::next_labels::HubLeave>,
 }
 
 /// `::end{reason?}` (dsl 0.8.0 §5): terminate the walk at this record.

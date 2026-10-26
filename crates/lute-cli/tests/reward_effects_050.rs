@@ -504,26 +504,40 @@ fn a_handler_guard_gives_no_fact_a_sibling_handler_removes() {
 
 /// S3 re-review P2: a jump out of a handler ends that handler, and the
 /// next handlers still run; handlers never inherit each other's writes,
-/// so the third handler's label meets the first handler's jump with its
-/// own start (which lacks `met`: the second handler retracts it), and its
-/// nested `!holds` arm is live.
+/// so the third handler starts with its own state (which lacks `met`: the
+/// second handler retracts it), and its nested `!holds` arm is live. dsl
+/// 0.52.0 §5.1: the 0.51 route — the first handler's jump to a label in the
+/// third — enters another body and is `E-JUMP-INTO-BODY`; the first
+/// handler's jump now ends it at the end of its own body.
 #[test]
 fn a_jump_out_of_a_handler_carries_no_fact_past_a_sibling_retract() {
     let negated = GUARD.replace("holds('met'", "!holds('met'");
-    let dir = project(
-        "re-r2-jump",
-        &format!(
+    let quest = |first: &str, third: &str| {
+        format!(
             "<quest id=\"firstVisit\" tier=\"user\" title=\"First visit\" start=\"true\">\n  \
              <objective id=\"c1\" title=\"Do it\" done=\"run.flag\"/>\n  \
              <on event=\"questComplete\">\n    ::assert{{met(mira)}}\n    \
-             ::jump{{to=\"later\"}}\n  </on>\n  \
+             ::jump{{to=\"later\"}}\n{first}  </on>\n  \
              <on event=\"questComplete\">\n    ::retract{{met(mira)}}\n  </on>\n  \
-             <on event=\"questComplete\">\n    ::label{{name=\"later\"}}\n    {negated}\n  \
-             </on>\n</quest>\n"
-        ),
+             <on event=\"questComplete\">\n{third}    {negated}\n  </on>\n</quest>\n"
+        )
+    };
+    let dir = project(
+        "re-r2-jump",
+        &quest("    ::label{name=\"later\"}\n", ""),
         &[],
     );
     assert_eq!(check(&dir), Vec::<String>::new());
+    let dir = project(
+        "re-r2-jump-out",
+        &quest("", "    ::label{name=\"later\"}\n"),
+        &[],
+    );
+    let found = check(&dir);
+    assert!(
+        found.len() == 1 && found[0].contains("E-JUMP-INTO-BODY"),
+        "{found:?}"
+    );
 }
 
 /// S3 re-review P1 (season): a season can close and reopen within a run,

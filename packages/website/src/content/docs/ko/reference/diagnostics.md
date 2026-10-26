@@ -824,6 +824,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md), [dsl 0.51.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
+### E-JUMP-INTO-BODY
+
+`::jump`가 따로 실행되는 본문 — `<hub>` 선택지 본문이나 `<return>` 본문, `<on>`·`<objective>` 본문, 엔트리, 비트 — 안의 레이블을 그 본문 밖에서 가리킵니다. 점프는 자기 본문 안에 머물거나, `<hub>` 선택지·`<return>` 본문을 떠나 그 바깥 본문(허브 뒤)의 레이블로 갑니다. `<branch>`의 `<choice>` 본문과 `<match>` 갈래는 바깥 본문의 일부이고, 씬의 섹션들은 하나의 본문입니다.
+
+명세: [dsl 0.52.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
+
 ### E-JUMP-INTO-LOOP
 
 루프(`::label`과 그 뒤에서 그 레이블로 되돌아가는 `::jump{to max}`) 밖의 앞으로 가는 `::jump`가 루프 안, 머리 레이블보다 뒤의 레이블에 도착합니다. 루프에는 머리 레이블로만 들어갈 수 있습니다.

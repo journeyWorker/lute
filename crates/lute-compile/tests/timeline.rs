@@ -26,11 +26,11 @@ fn walk(body: &str) -> (Vec<Rec>, StageState) {
         domains: std::sync::Arc::new(lute_test_vocab::test_domains()),
         ..Default::default()
     };
-    let loops = lute_check::next_labels::LoopTable::default();
+    let labels = lute_check::next_labels::LabelPass::default();
     let mut cx = WalkCx::new(
         &snapshot,
         &env,
-        &loops,
+        &labels,
         lute_check::SubjectScope::bare(&env.state),
         None,
     );

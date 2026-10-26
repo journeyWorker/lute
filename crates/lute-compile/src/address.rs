@@ -521,6 +521,7 @@ mod tests {
                     position: String::new(),
                     target: Label(0).sym(),
                     max: None,
+                    leaves: None,
                 });
             }
         }

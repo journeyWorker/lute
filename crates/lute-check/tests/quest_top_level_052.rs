@@ -117,6 +117,29 @@ fn nested_bodies_keep_their_admission() {
     }
 }
 
+/// Content after the last body at a quest's top level used to run by
+/// fallthrough on v0.51.0 — the last body's segment ran to the end of the
+/// quest's commands (`machine/quest.rs` `quest_program`, `run_segment`) — so
+/// a trailing line after an `<on>` handler played as part of it. dsl 0.52.0
+/// §4 refuses it like any other top-level content: it moves into the
+/// handler it belongs to.
+#[test]
+fn a_trailing_line_after_the_last_handler_is_refused() {
+    let quest = format!(
+        "{HEAD}<quest id=\"q\" title=\"Q\" tier=\"run\" start=\"true\">\n  <objective id=\"o\" \
+         title=\"O\" done=\"run.d\"/>\n  <on event=\"questComplete\">\n    @a: done\n  </on>\n  \
+         @a: after the handler\n</quest>\n"
+    );
+    assert_eq!(
+        errors(&quest),
+        [(
+            "E-GRAMMAR-NOT-ADMITTED".to_string(),
+            refusal("a content line"),
+            15
+        )]
+    );
+}
+
 /// `<hub>`/`<timeline>` are refused anywhere in a quest and keep the message
 /// they had (dsl 0.2.0 §6.7); a hub's option lines are not refused again.
 #[test]

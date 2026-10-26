@@ -1046,6 +1046,10 @@ export const cmdJump = Schema.Struct({
   "max": Schema.optionalKey(Schema.Int
   .pipe(
     Schema.check(Schema.isGreaterThanOrEqualTo(1))
+  )),
+  "leaves": Schema.optionalKey(Schema.Int
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(1))
   ))
 });
 export type cmdJump = typeof cmdJump.Type;

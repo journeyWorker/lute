@@ -213,6 +213,7 @@ fn match_jump_barrier_serialize() {
         position: "004-0700".into(),
         target: "004-1100".into(),
         max: None,
+        leaves: None,
     });
     assert_eq!(
         j(&jm),
@@ -223,6 +224,7 @@ fn match_jump_barrier_serialize() {
         position: "004-0900".into(),
         target: "004-0200".into(),
         max: Some(3),
+        leaves: None,
     });
     assert_eq!(
         j(&bounded),
@@ -458,6 +460,7 @@ fn retarget_and_position_helpers_visit_every_flow_field() {
         position: String::new(),
         target: "@3".into(),
         max: None,
+        leaves: None,
     });
     assert!(jm.stamp_mut().is_none());
     let mut n = 0;
@@ -1097,6 +1100,7 @@ fn every_kind_has_its_spec_family() {
                 position: p(),
                 target: p(),
                 max: None,
+                leaves: None,
             }),
             "jump",
             "control",

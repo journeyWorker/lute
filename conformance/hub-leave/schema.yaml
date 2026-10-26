@@ -1,0 +1,2 @@
+state:
+  run.open: { type: bool, default: false }

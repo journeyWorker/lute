@@ -438,7 +438,9 @@ pub fn lower_directive(
         // `address::assign_addresses`'s document-wide named-label pass,
         // exactly like a numeric `"@<n>"` resolves the anonymous ones.
         // dsl 0.51.0 §3.6: a bounded backward jump carries its `max` (the
-        // checker has proven it a literal in 1..=99, `E-JUMP-MAX`).
+        // checker has proven it a literal in 1..=99, `E-JUMP-MAX`). dsl
+        // 0.52.0 §5.2: `leaves` comes from the checker's label pass, which
+        // the walk holds (`stage::mark_hub_leave`).
         lute_manifest::core::JUMP_DIRECTIVE => Command::Jump(JumpCmd {
             position: String::new(),
             target: format!("#{}", get("to").unwrap_or_default()),
@@ -448,6 +450,7 @@ pub fn lower_directive(
                 .find(|a| a.key == lute_manifest::core::JUMP_MAX_ATTR)
                 .and_then(|a| lute_check::next_labels::JumpMax::parse(&a.value))
                 .map(lute_check::next_labels::JumpMax::get),
+            leaves: None,
         }),
         // `COMPONENT_BEGIN`/`END`: normalization sentinels → no record. `use`:
         // DEFENSIVE/unreachable — normalize.rs fail-louds a timeline-clip `::use`

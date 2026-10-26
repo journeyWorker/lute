@@ -1,0 +1,99 @@
+---
+kind: scene
+luteVersion: "0.51.0"
+character: hero
+season: 1
+episode: 1
+title: Hub leave
+uses: ./schema.yaml
+---
+
+## The issue scene
+
+@narrator: Before the hub.
+<hub id="desk">
+  <choice id="take" text="Take it">
+    @narrator: Taking it, then jumping past the hub.
+    ::jump{to="after"}
+  </choice>
+  <choice id="leave" text="Leave" exit>
+    @narrator: Leaving.
+  </choice>
+</hub>
+::label{name="after"}
+@narrator: After the hub.
+
+## Out of two hubs
+
+<hub id="outer">
+  <choice id="enter" text="Enter">
+    <hub id="inner">
+      <choice id="run" text="Run">
+        @hero: Out of both.
+        ::jump{to="outside"}
+      </choice>
+      <choice id="back" text="Back" exit>
+        @hero: Back.
+      </choice>
+    </hub>
+    @hero: Still in the outer hub.
+  </choice>
+  <choice id="go" text="Go" exit>
+    @hero: Going.
+  </choice>
+</hub>
+::label{name="outside"}
+@narrator: Outside both hubs.
+
+## Out of the inner hub only
+
+<hub id="stairs">
+  <choice id="climb" text="Climb">
+    <hub id="landing">
+      <choice id="rest" text="Rest">
+        @hero: Resting, then on.
+        ::jump{to="upstairs"}
+      </choice>
+      <choice id="stay" text="Stay" exit>
+        @hero: Staying.
+      </choice>
+    </hub>
+    ::label{name="upstairs"}
+    @hero: Upstairs.
+  </choice>
+  <choice id="down" text="Down" exit>
+    @hero: Down again.
+  </choice>
+</hub>
+
+## Out of the return body
+
+<hub id="table">
+  <choice id="eat" text="Eat">
+    @hero: Eating.
+  </choice>
+  <choice id="stand" text="Stand" exit>
+    @hero: Standing.
+  </choice>
+  <return>
+    @hero: Full.
+    ::jump{to="fed"}
+  </return>
+</hub>
+::label{name="fed"}
+@narrator: Fed.
+
+## A guarded leave that falls through
+
+<hub id="door">
+  <choice id="knock" text="Knock">
+    @hero: Knocking.
+    ::jump{to="opened" when="run.open"}
+    @hero: No answer.
+  </choice>
+  <choice id="wait" text="Wait" exit>
+    @hero: Waiting.
+  </choice>
+</hub>
+::label{name="opened"}
+@narrator: The end.

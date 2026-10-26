@@ -1,0 +1,26 @@
+---
+kind: scene
+id: hub
+luteVersion: "0.51.0"
+title: hub
+on: visit
+priority: 0
+---
+## Hub
+@narrator{code="0010"}: Before the hub.
+<hub id="desk">
+  <choice id="take" text="Take it">
+    @narrator{code="0020"}: Taking it, then jumping past the hub.
+    ::jump{to="after"}
+  </choice>
+  <choice id="leave" text="Leave" exit>
+    @narrator{code="0030"}: Leaving.
+  </choice>
+</hub>
+::label{name="after"}
+@narrator{code="0040"}: After the hub.
+<branch id="confirm" prompt="Done?">
+  <choice id="done" text="Done">
+    @narrator{code="0050"}: Done.
+  </choice>
+</branch>

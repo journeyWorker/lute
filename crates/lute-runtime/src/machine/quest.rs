@@ -1166,7 +1166,7 @@ impl<D: Driver> Machine<D> {
             .find(|&&s| s > start)
             .copied()
             .unwrap_or(self.code.commands.len());
-        self.run_range(start, stop);
+        self.run_body(start, stop);
     }
 }
 

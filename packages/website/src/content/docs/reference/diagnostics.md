@@ -824,6 +824,12 @@ A `::jump{to}` without `max` names a label that is not forward of the `::jump` i
 
 Spec: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md), [dsl 0.51.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
+### E-JUMP-INTO-BODY
+
+A `::jump` targets a label in a body that runs as its own range — a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, an entry or a beat — from outside that body. A jump stays in its own body or leaves `<hub>` option and `<return>` bodies for a label in a body around them (after the hub); `<choice>` bodies of a `<branch>` and `<match>` arms are part of the body around them, and a scene's sections are one body.
+
+Spec: [dsl 0.52.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
+
 ### E-JUMP-INTO-LOOP
 
 A forward `::jump` from outside a loop (a `::label` and a later `::jump{to max}` back to it) lands on a label inside the loop after its head; a loop is entered only at its head label.

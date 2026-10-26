@@ -78,7 +78,7 @@ impl<D: Driver> Machine<D> {
         let start = self.resolve(body);
         let stop = self.segment_stop(at);
         self.apply_effects = first_read;
-        self.run_range(start, stop);
+        self.run_body(start, stop);
         self.apply_effects = true;
         if !self.incomplete && self.fatal.is_none() {
             // D11: the engine's post-presentation flags, for every driver —
@@ -164,6 +164,6 @@ impl<D: Driver> Machine<D> {
         let body = required_target(cmd, "body");
         let start = self.resolve(body);
         let stop = self.segment_stop(at);
-        self.run_range(start, stop);
+        self.run_body(start, stop);
     }
 }

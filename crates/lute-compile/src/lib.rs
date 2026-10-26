@@ -538,7 +538,7 @@ fn compile_inner(
     let mut cx = stage::WalkCx::new(
         input.snapshot(),
         &folded.env,
-        &folded.labels.loops,
+        &folded.labels,
         lute_check::SubjectScope::of(&folded),
         Some(&input.components),
     );

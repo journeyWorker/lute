@@ -2927,6 +2927,11 @@
           "minimum": 1,
           "maximum": 99,
           "description": "dsl 0.51.0 §3.6: a bounded backward jump is taken at most `max` times, then control falls through; its counter resets when control reaches `target` from outside the loop. Requires `lute.core.boundedJump/1`."
+        },
+        "leaves": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "dsl 0.52.0 §5.2: a forward jump out of `leaves` nested hub option or `<return>` bodies ends that many hub visits (no `<return>` body runs, no re-presentation) and continues at `target`. Never together with `max`. Requires `lute.core.hubLeave/1`."
         }
       },
       "additionalProperties": true,
