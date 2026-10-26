@@ -298,3 +298,97 @@ fn a_leave_outside_every_hub_is_refused_at_load() {
          leaves 0 hub option or `<return>` bodies"
     );
 }
+
+/// S3 review P1: a jump from outside the hub into its option body runs the
+/// body without a hub visit, so the leave inside it would reach no visit to
+/// end. Refused at load (before 0.52's check, the walk reached a panic).
+#[test]
+fn a_transfer_into_a_hub_body_from_outside_is_refused_at_load() {
+    assert_eq!(
+        refused(vec![
+            jump(0, 2),
+            hub(1, "h", &[("a", 2, false)], None, 3),
+            leave(2, 3, 1),
+            line(3, "after"),
+        ]),
+        "malformed `jump` record at 001-0100: its `target` goes to 001-0300, inside a hub \
+         option or `<return>` body it is not in; a body is entered only through its `hub` \
+         record"
+    );
+}
+
+/// The end of an option body is the next option's start (bodies are laid
+/// out consecutively): a transfer there from inside the option ends it and
+/// is no entry into the next body.
+#[test]
+fn a_transfer_to_the_end_of_its_own_option_loads_and_ends_it() {
+    let commands = vec![
+        hub(
+            0,
+            "h",
+            &[("a", 1, false), ("b", 3, false), ("out", 5, true)],
+            None,
+            7,
+        ),
+        line(1, "a"),
+        jump(2, 3),
+        line(3, "b"),
+        line(4, "b again"),
+        line(5, "out"),
+        jump(6, 7),
+        line(7, "after"),
+    ];
+    let (lines, out) = run(commands, &[("h", &["a", "out"])]);
+    out.unwrap();
+    assert_eq!(lines, ["[h \"a\"]", "a", "[h \"out\"]", "out", "after"]);
+}
+
+/// S3 review P2: an inner hub in the outer hub's last non-exit option, no
+/// outer `<return>`: the outer option's end and the outer converge are one
+/// address. Both counts are legal and mean different things — `leaves: 1`
+/// ends the inner visit only, completes the outer option and presents the
+/// outer hub again; `leaves: 2` ends both visits and continues after the
+/// outer hub. `leaves` is authoritative.
+fn coincident(leaves: u32) -> Vec<Json> {
+    vec![
+        hub(0, "outer", &[("out", 1, true), ("a", 3, false)], None, 8),
+        line(1, "out"),
+        jump(2, 8),
+        hub(3, "inner", &[("x", 4, false), ("y", 6, true)], None, 8),
+        line(4, "x"),
+        leave(5, 8, leaves),
+        line(6, "y"),
+        jump(7, 8),
+        line(8, "after"),
+    ]
+}
+
+#[test]
+fn at_a_coincident_end_one_leave_presents_the_outer_hub_again() {
+    let (lines, out) = run(
+        coincident(1),
+        &[("outer", &["a", "out"]), ("inner", &["x"])],
+    );
+    out.unwrap();
+    assert_eq!(
+        lines,
+        [
+            "[outer \"a\"]",
+            "[inner \"x\"]",
+            "x",
+            "[outer \"out\"]",
+            "out",
+            "after"
+        ]
+    );
+}
+
+#[test]
+fn at_a_coincident_end_two_leaves_continue_after_the_outer_hub() {
+    let (lines, out) = run(
+        coincident(2),
+        &[("outer", &["a", "out"]), ("inner", &["x"])],
+    );
+    out.unwrap();
+    assert_eq!(lines, ["[outer \"a\"]", "[inner \"x\"]", "x", "after"]);
+}

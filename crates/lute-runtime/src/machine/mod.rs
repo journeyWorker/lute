@@ -375,8 +375,9 @@ impl Code {
     /// required or present, and goes forward, except a `jump` with `max` (a
     /// bounded loop); a `max` is an integer in 1..=99; and two loops nest or
     /// are disjoint. dsl 0.52.0 §5.3: a `leaves` is a positive count, never
-    /// beside `max`, and reaches its target ([`Code::hub_leaves`]). `Err`
-    /// names the malformed record.
+    /// beside `max`, and reaches its target ([`Code::hub_leaves`]); and no
+    /// transfer enters a hub option or `<return>` body from outside it
+    /// ([`Code::body_entries`]). `Err` names the malformed record.
     fn loop_table(&self) -> Result<Loops, String> {
         let mut loops = Loops::default();
         let mut regions = Vec::new();
@@ -483,7 +484,9 @@ impl Code {
             }
             open.push((head, end));
         }
-        self.hub_leaves(&loops.leaves)?;
+        let bodies = self.hub_bodies();
+        self.hub_leaves(&bodies, &loops.leaves)?;
+        self.body_entries(&bodies)?;
         Ok(loops)
     }
 
@@ -518,6 +521,73 @@ impl Code {
         }
     }
 
+    /// Every hub option and `<return>` range of the stream, `(start, end,
+    /// hub)`: the range a [`Machine::do_hub`] visit runs, and its hub
+    /// record's index.
+    fn hub_bodies(&self) -> Vec<(usize, usize, usize)> {
+        self.commands
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.get("kind").and_then(Json::as_str) == Some("hub"))
+            .flat_map(|(h, c)| {
+                self.hub_ranges(c)
+                    .starts
+                    .windows(2)
+                    .map(|w| (w[0], w[1], h))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    /// dsl 0.52.0 §5.3 (S3 review P1): a hub option or `<return>` body is
+    /// entered only through its `hub` record. A transfer from outside a body
+    /// to a record inside it would run the body without a hub visit, so a
+    /// leave from it would reach no visit to end; it is refused, naming the
+    /// record and field. A transfer to the end of a range around it is not an
+    /// entry, even where that address starts the next body (consecutive
+    /// option bodies, a branch converging at the end of an option): reaching
+    /// it ends the range ([`Machine::run_range`]).
+    fn body_entries(&self, bodies: &[(usize, usize, usize)]) -> Result<(), String> {
+        if bodies.is_empty() {
+            return Ok(());
+        }
+        let segments = self.segment_bounds();
+        for (j, cmd) in self.commands.iter().enumerate() {
+            let Some(fields) = transfers(cmd) else {
+                continue;
+            };
+            let segment_end = segments
+                .iter()
+                .copied()
+                .find(|&s| s > j)
+                .unwrap_or(self.commands.len());
+            for Transfer { field, value, .. } in fields {
+                let Some(Json::String(target)) = value else {
+                    continue;
+                };
+                let to = self.resolve(target);
+                let ends_a_range = to == segment_end
+                    || bodies
+                        .iter()
+                        .any(|&(s, e, _)| (s..e).contains(&j) && e == to);
+                let enters = !ends_a_range
+                    && bodies
+                        .iter()
+                        .any(|&(s, e, h)| (s..e).contains(&to) && !(s..e).contains(&j) && j != h);
+                if enters {
+                    let kind = cmd.get("kind").and_then(Json::as_str).unwrap_or("?");
+                    let position = cmd.get("position").and_then(Json::as_str).unwrap_or("?");
+                    return Err(format!(
+                        "malformed `{kind}` record at {position}: its `{field}` goes to {target}, \
+                         inside a hub option or `<return>` body it is not in; a body is entered \
+                         only through its `hub` record"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// dsl 0.52.0 §5.3 (Review052 F1): every `jump` with `leaves` = *n*
     /// leaves exactly the *n* innermost hub option or `<return>` ranges
     /// around it for its target's range. With those removed, the innermost
@@ -529,23 +599,15 @@ impl Code {
     /// rest of a body it should stay in, and a target in a sibling body is
     /// in no remaining range: each is refused, naming the jump and the count
     /// that reaches its target.
-    fn hub_leaves(&self, leaves: &BTreeMap<usize, NonZeroU32>) -> Result<(), String> {
+    fn hub_leaves(
+        &self,
+        bodies: &[(usize, usize, usize)],
+        leaves: &BTreeMap<usize, NonZeroU32>,
+    ) -> Result<(), String> {
         if leaves.is_empty() {
             return Ok(());
         }
-        let hubs: Vec<(usize, usize)> = self
-            .commands
-            .iter()
-            .filter(|c| c.get("kind").and_then(Json::as_str) == Some("hub"))
-            .flat_map(|c| {
-                let ranges = self.hub_ranges(c);
-                ranges
-                    .starts
-                    .windows(2)
-                    .map(|w| (w[0], w[1]))
-                    .collect::<Vec<_>>()
-            })
-            .collect();
+        let hubs: Vec<(usize, usize)> = bodies.iter().map(|&(s, e, _)| (s, e)).collect();
         let segments = self.segment_bounds();
         for (&j, &n) in leaves {
             let cmd = &self.commands[j];
@@ -1182,17 +1244,18 @@ impl<D: Driver> Machine<D> {
     }
 
     /// [`Machine::run_range`] over a body segment no hub encloses: the whole
-    /// scene, or an objective, handler, entry or beat body. A jump never
-    /// leaves more hubs than enclose it (validated at load,
-    /// [`Code::hub_leaves`]), so such a range never ends in a leave.
+    /// scene, or an objective, handler, entry or beat body. Load guarantees
+    /// such a range never ends in a leave: a jump leaves at most the hub
+    /// ranges around it ([`Code::hub_leaves`]), and no transfer enters a hub
+    /// body without its `hub` record ([`Code::body_entries`]), so every leave
+    /// reaches the [`Machine::do_hub`] visit it ends.
     pub(crate) fn run_body(&mut self, start: usize, stop: usize) {
-        match self.run_range(start, stop) {
-            RangeEnd::Done => {}
-            RangeEnd::Leave { .. } => unreachable!(
-                "a `jump` leaves at most the hub ranges around it (Code::hub_leaves), and a body \
-                 segment runs inside none"
-            ),
-        }
+        let end = self.run_range(start, stop);
+        assert!(
+            matches!(end, RangeEnd::Done),
+            "load guarantees a body segment never ends in a leave (Code::hub_leaves, \
+             Code::body_entries)"
+        );
     }
 
     /// dsl 0.51.0 §3.7, reset by position: control moves from `from` (`None`:

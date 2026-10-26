@@ -190,9 +190,13 @@ impl BodyKind<'_> {
     }
 
     /// The `E-JUMP-INTO-BODY` message for `jump`, which enters this range
-    /// body from outside it (dsl 0.52.0 §5.1).
+    /// body from outside it (dsl 0.52.0 §5.1). Into a body the engine runs
+    /// on its own, the hint names the 0.52 migration of a jump that ended
+    /// its own body early by entering another (spec §13).
     fn enter_message(self, jump: &str) -> String {
         const SAME_BODY: &str = "jump to a label in the same body";
+        const SAME_BODY_OR_END: &str = "jump to a label in the same body (to end a body early, \
+                                        jump to a label at its end)";
         let hub_name =
             |hub: Option<&str>| hub.map_or("a `<hub>`".to_string(), |h| format!("hub `{h}`"));
         match self {
@@ -208,23 +212,23 @@ impl BodyKind<'_> {
             ),
             Self::Objective(id) => format!(
                 "`{jump}` enters the body of `<objective id=\"{id}\">`, which runs only when that \
-                 objective completes — {SAME_BODY}"
+                 objective completes — {SAME_BODY_OR_END}"
             ),
             Self::On(event) => format!(
                 "`{jump}` enters the `<on event=\"{event}\">` handler, which runs only when that \
-                 event fires — {SAME_BODY}"
+                 event fires — {SAME_BODY_OR_END}"
             ),
             Self::Beat(id) => format!(
                 "`{jump}` enters `<beat id=\"{id}\">`, which runs only when that beat is presented \
-                 — {SAME_BODY}"
+                 — {SAME_BODY_OR_END}"
             ),
             Self::Entry(id) => format!(
                 "`{jump}` enters `<entry id=\"{id}\">`, which runs only when that entry is read — \
-                 {SAME_BODY}"
+                 {SAME_BODY_OR_END}"
             ),
             Self::Section(_) => format!(
                 "`{jump}` enters the document's sections from a body that runs on its own — \
-                 {SAME_BODY}"
+                 {SAME_BODY_OR_END}"
             ),
             Self::Quest(_) | Self::Choice | Self::Arm => {
                 unreachable!("a quest's top level and inline bodies are never range bodies")
@@ -1459,7 +1463,8 @@ mod tests {
         assert_eq!(
             into_body(&objectives),
             "`::jump{to=\"p2\"}` enters the body of `<objective id=\"p\">`, which runs only when \
-             that objective completes — jump to a label in the same body"
+             that objective completes — jump to a label in the same body (to end a body early, \
+             jump to a label at its end)"
         );
         let handler = quest(
             "<objective id=\"o\" title=\"O\" done=\"run.a\">\n::jump{to=\"h\"}\n</objective>\n\
@@ -1468,7 +1473,8 @@ mod tests {
         assert_eq!(
             into_body(&handler),
             "`::jump{to=\"h\"}` enters the `<on event=\"questComplete\">` handler, which runs only \
-             when that event fires — jump to a label in the same body"
+             when that event fires — jump to a label in the same body (to end a body early, jump \
+             to a label at its end)"
         );
     }
 
@@ -1481,7 +1487,8 @@ mod tests {
         assert_eq!(
             into_body(&lore),
             "`::jump{to=\"x\"}` enters `<beat id=\"b2\">`, which runs only when that beat is \
-             presented — jump to a label in the same body"
+             presented — jump to a label in the same body (to end a body early, jump to a label \
+             at its end)"
         );
         let entries = parsed(
             "---\nkind: lore\n---\n<entry id=\"e1\" target=\"item.a\">\n  ::jump{to=\"x\"}\n</entry>\n\n\

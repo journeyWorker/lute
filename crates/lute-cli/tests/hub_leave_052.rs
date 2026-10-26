@@ -218,3 +218,74 @@ fn a_jump_into_a_sibling_option_is_refused() {
         text(&check)
     );
 }
+
+/// An inner hub in the outer hub's last non-exit option (no `<return>`): a
+/// jump from the inner option `x` to `label`, placed by `place`.
+fn coincident_scene(place: impl FnOnce(&str) -> String) -> String {
+    let body = "<hub id=\"outer\">\n  <choice id=\"out\" text=\"Out\" exit>\n    \
+                @narrator{code=\"0010\"}: Out.\n  </choice>\n  <choice id=\"a\" text=\"A\">\n    \
+                <hub id=\"inner\">\n      <choice id=\"x\" text=\"X\">\n        \
+                @narrator{code=\"0020\"}: X.\n        ::jump{to=\"end\"}\n      </choice>\n      \
+                <choice id=\"y\" text=\"Y\" exit>\n        @narrator{code=\"0030\"}: Y.\n      \
+                </choice>\n    </hub>\n    LABEL_IN_OPTION\n  </choice>\n</hub>\n\
+                LABEL_AFTER_HUB\n@narrator{code=\"0040\"}: After.\n";
+    format!(
+        "---\nkind: scene\nid: hub\ntitle: hub\non: visit\npriority: 0\n---\n## Hub\n{}",
+        place(body)
+    )
+}
+
+/// Compile `scene` and run it picking `a` then `out` on the outer hub and
+/// `x` on the inner one: the jump's `target` and `leaves`, and the lines.
+fn compile_and_run(tag: &str, scene: &str) -> (Json, Json, Vec<String>) {
+    let dir = issue_project(tag);
+    std::fs::write(dir.join("hub.lute"), scene).unwrap();
+    let compile = lute(&dir, &["compile", "--project", ".", "-o", "out"]);
+    assert!(compile.status.success(), "{}", text(&compile));
+    let artifact: Json =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("out/hub.lute.json")).unwrap())
+            .unwrap();
+    let jump = artifact["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["kind"] == "jump" && c.get("leaves").is_some())
+        .expect("the leaving jump")
+        .clone();
+    std::fs::write(
+        dir.join("mock.yaml"),
+        "choose:\n  outer: [a, out]\n  inner: [x]\n",
+    )
+    .unwrap();
+    let run = lute(&dir, &["run", "out/hub.lute.json", "--mock", "mock.yaml"]);
+    assert!(run.status.success(), "{}", text(&run));
+    let lines = std::str::from_utf8(&run.stdout)
+        .unwrap()
+        .lines()
+        .filter_map(|l| l.split_once("narrator: ").map(|(_, t)| t.to_string()))
+        .collect();
+    (jump["target"].clone(), jump["leaves"].clone(), lines)
+}
+
+/// S3 review P2: the coincident layout. A label at the end of the outer
+/// option and one after `</hub>` bind to one address, so only `leaves`
+/// tells them apart; the compiler writes 1 (present the outer hub again)
+/// and 2 (continue after it), and the runtime follows the count.
+#[test]
+fn a_coincident_end_keeps_the_source_forms_count() {
+    let in_option = coincident_scene(|b| {
+        b.replace("LABEL_IN_OPTION", "::label{name=\"end\"}")
+            .replace("LABEL_AFTER_HUB\n", "")
+    });
+    let after_hub = coincident_scene(|b| {
+        b.replace("    LABEL_IN_OPTION\n", "")
+            .replace("LABEL_AFTER_HUB", "::label{name=\"end\"}")
+    });
+    let (target_in, leaves_in, lines_in) = compile_and_run("hub-leave-coincident-1", &in_option);
+    let (target_after, leaves_after, lines_after) =
+        compile_and_run("hub-leave-coincident-2", &after_hub);
+    assert_eq!(target_in, target_after, "one address for both labels");
+    assert_eq!((leaves_in, leaves_after), (Json::from(1), Json::from(2)));
+    assert_eq!(lines_in, ["X.", "Out.", "After."]);
+    assert_eq!(lines_after, ["X.", "After."]);
+}
