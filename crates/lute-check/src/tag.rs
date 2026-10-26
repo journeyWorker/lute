@@ -6,7 +6,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
-use lute_core_span::Severity;
+use lute_core_span::{Severity, Span};
 use lute_manifest::schema::DIRECTIVE_TEXT_CODE_ATTR;
 use lute_syntax::ast::{Arm, AttrValue, Directive, Document, Line, Node};
 use lute_syntax::parse;
@@ -507,6 +507,35 @@ fn scope_text_directives<'a>(
     }
     out.sort_by_key(|d| d.span.byte_start);
     out
+}
+
+/// 0.51.0 §5.3: each call in the document `text` of a `text_tags`
+/// directive — a call `lute tag` gives a `code` — as its tag and span, per
+/// identity scope in source order.
+pub fn text_directive_calls(text: &str, text_tags: &BTreeSet<String>) -> Vec<(String, Span)> {
+    let (doc, _) = parse(text);
+    identity_scopes(&doc)
+        .iter()
+        .flat_map(|bodies| scope_text_directives(bodies, text_tags))
+        .map(|d| (d.tag.clone(), d.span))
+        .collect()
+}
+
+/// The span of the first `::use` of component `name` in the document
+/// `text`, if it has one.
+pub fn first_component_use(text: &str, name: &str) -> Option<Span> {
+    let (doc, _) = parse(text);
+    identity_scopes(&doc).iter().flatten().find_map(|body| {
+        let mut uses = Vec::new();
+        crate::check::collect_use_directives(body, &mut uses);
+        uses.into_iter()
+            .find(|d| {
+                d.attrs.iter().any(|a| {
+                    a.key == "component" && matches!(&a.value, AttrValue::Str(s) if s == name)
+                })
+            })
+            .map(|d| d.span)
+    })
 }
 
 /// Where and what to splice to give the call `d` a `code` attribute: first

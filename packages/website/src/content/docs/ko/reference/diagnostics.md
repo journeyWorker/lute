@@ -365,6 +365,12 @@ CEL 슬롯이나 비트 `when`이 컴파일 시점에 확장되지 못했습니�
 
 명세: [dsl 0.4.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.4.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.24.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
 
+### E-COMPONENT-TEXT-DIRECTIVE
+
+`lute tag`를 실행한 컴포넌트의 사용처들이 가진 capability snapshot이, 컴포넌트가 호출하는 디렉티브에 `text` 속성이 있는지에 대해 서로 다릅니다. 한 사용처는 그 속성을 선언한 플러그인을 활성화하고 다른 사용처는 활성화하지 않은 경우입니다. 호출 하나에는 현지화 식별자가 하나뿐이므로 `lute tag`는 그 호출에 `code`를 주지 않고 컴포넌트를 그대로 둡니다. 호출 위치에서 보고하고, 두 종류의 사용처를 하나씩 관련 위치로 붙입니다.
+
+명세: [dsl 0.51.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+
 ### E-COMPONENT-UNDECLARED
 
 `::use`의 `component` 속성이 해석된 `components:` 테이블에 없는 컴포넌트를 지정합니다.

@@ -142,14 +142,13 @@ use postprocess::{
     suppress_unparsed_child_list_verdicts, suppress_unproven_absence,
 };
 pub use postprocess::{diagnostic_order, order_diagnostics};
-pub(crate) use use_site::literal_arg_ok;
 pub use use_site::use_speaker_lines;
 use use_site::{
     check_param_literal_defaults, check_speaker_args, check_use, check_use_def_enum_args,
-    check_use_interp_args, check_use_speaker_args, check_use_typed_args, collect_use_directives,
-    dedup_guarded_use_reports, use_diag, E_COMPONENT_ARG, E_COMPONENT_BODY, E_COMPONENT_CYCLE,
-    E_COMPONENT_STATE,
+    check_use_interp_args, check_use_speaker_args, check_use_typed_args, dedup_guarded_use_reports,
+    use_diag, E_COMPONENT_ARG, E_COMPONENT_BODY, E_COMPONENT_CYCLE, E_COMPONENT_STATE,
 };
+pub(crate) use use_site::{collect_use_directives, literal_arg_ok};
 use version::check_lute_version_stale;
 pub use version::{version_triple, INHERITED_LUTE_VERSION, W_LUTE_VERSION_STALE};
 use walker::Walker;

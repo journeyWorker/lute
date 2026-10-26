@@ -364,6 +364,12 @@ A component body reads or writes ambient state directly — a CEL reference to a
 
 Spec: [dsl 0.4.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.4.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.4.0.md), [dsl 0.24.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.24.0.md)
 
+### E-COMPONENT-TEXT-DIRECTIVE
+
+`lute tag` on a component whose users' capability snapshots disagree on whether a directive it calls has `text` attributes: one user activates the plugin that declares them, another does not. A call has one localization identity, so `lute tag` gives it no `code` and leaves the component untouched; reported at the call, with a use of each kind related.
+
+Spec: [dsl 0.51.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+
 ### E-COMPONENT-UNDECLARED
 
 A `::use`'s `component` attribute names a component absent from the resolved `components:` table.

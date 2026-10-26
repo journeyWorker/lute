@@ -113,6 +113,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-COMPONENT-INSTANCE-INVALID", DiagnosticClass::SourceError),
         ("E-COMPONENT-PARSE", DiagnosticClass::SourceError),
         ("E-COMPONENT-STATE", DiagnosticClass::SourceError),
+        ("E-COMPONENT-TEXT-DIRECTIVE", DiagnosticClass::SourceError),
         ("E-COMPONENT-UNDECLARED", DiagnosticClass::SourceError),
         (
             "E-CONN-CYCLE",

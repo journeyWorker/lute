@@ -791,6 +791,84 @@ fn a_component_line_id_collision_points_into_the_component() {
     );
 }
 
+/// A project whose default profile activates no plugin: a scene opts into
+/// `acme.ui` through its own `plugins:`.
+const PROJECT_NO_UI: &str = "pluginsDir: plugins/\ndefaultProfile: game\nprofiles:\n  game:\n    \
+                             plugins: {}\ndefaults:\n  contentLang: en\n  uses: \
+                             [schema/world.schema.yaml]\n";
+
+/// A scene `id` using `components/card.component.lute`, with `acme.ui`
+/// active through its own `plugins:` when `ui`.
+fn card_user(id: &str, ui: bool) -> String {
+    let plugins = if ui { "plugins:\n  acme.ui: {}\n" } else { "" };
+    format!(
+        "---\nkind: scene\nid: {id}\ncomponents: [../components/card.component.lute]\n\
+         {plugins}---\n\n## Shot 1.\n\n::use{{component=\"card\" instance=\"one\"}}\n"
+    )
+}
+
+const CARD: &str = "---\ncomponent: card\n---\n\n## Card\n\n::banner{title=\"Card\"}\n";
+
+/// S6 review #6: an imported component's `text` directive calls are tagged
+/// under the snapshot of the scenes that use it — alone and in a tree.
+#[test]
+fn a_component_is_tagged_under_its_users_snapshot() {
+    for operand in ["components/card.component.lute", "."] {
+        let dir = project(
+            "dt-tag-users",
+            &[
+                ("lute.project.yaml", PROJECT_NO_UI),
+                ("scenes/a.lute", &card_user("a", true)),
+                ("components/card.component.lute", CARD),
+            ],
+        );
+        // The component file alone, under the default profile, does not know
+        // `::banner`; the scene that uses it does.
+        let before = line_ids(&commands(&dir, "scenes/a.lute"));
+        assert_eq!(before, ["a.card#one~banner~0010~title"]);
+        let out = lute(&dir, &["tag", operand]);
+        assert!(out.status.success(), "{operand}: {}", text(&out));
+        let tagged = std::fs::read_to_string(dir.join("components/card.component.lute")).unwrap();
+        assert!(
+            tagged.contains("::banner{code=\"0010\" title=\"Card\"}"),
+            "{operand}: {tagged}"
+        );
+        assert_eq!(line_ids(&commands(&dir, "scenes/a.lute")), before);
+    }
+}
+
+/// S6 review #6: users whose snapshots disagree on whether a call is a
+/// `text` directive give it no one identity — refused, both users named.
+#[test]
+fn users_disagreeing_on_a_text_directive_refuse_tagging() {
+    let dir = project(
+        "dt-tag-conflict",
+        &[
+            ("lute.project.yaml", PROJECT_NO_UI),
+            ("scenes/a.lute", &card_user("a", true)),
+            ("scenes/b.lute", &card_user("b", false)),
+            ("components/card.component.lute", CARD),
+        ],
+    );
+    let out = lute(&dir, &["tag", "components/card.component.lute"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    let shown = text(&out);
+    assert!(
+        shown.contains(
+            "components/card.component.lute:7:1: error [E-COMPONENT-TEXT-DIRECTIVE] `::banner` \
+             has `text` attributes under the capability snapshot of scenes/a.lute but not under \
+             that of scenes/b.lute"
+        ),
+        "{shown}"
+    );
+    assert!(shown.contains("scenes/a.lute:11:1"), "{shown}");
+    assert!(shown.contains("scenes/b.lute:9:1"), "{shown}");
+    assert_eq!(
+        std::fs::read_to_string(dir.join("components/card.component.lute")).unwrap(),
+        CARD
+    );
+}
+
 /// S6 review #2: only a declared type is judged — a literal `default:`
 /// that happens to hold a `type: text` entry is data, not a type.
 #[test]

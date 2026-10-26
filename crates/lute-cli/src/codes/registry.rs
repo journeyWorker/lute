@@ -302,6 +302,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.4.0 §6.1", "dsl 0.4.0 §6.2", "dsl 0.24.0 §4"],
     },
     Code {
+        code: "E-COMPONENT-TEXT-DIRECTIVE",
+        summary: "`lute tag` on a component whose users' capability snapshots disagree on whether a directive it calls has `text` attributes: one user activates the plugin that declares them, another does not. A call has one localization identity, so `lute tag` gives it no `code` and leaves the component untouched; reported at the call, with a use of each kind related.",
+        spec: &["dsl 0.51.0 §5.3"],
+    },
+    Code {
         code: "E-COMPONENT-UNDECLARED",
         summary: "A `::use`'s `component` attribute names a component absent from the resolved `components:` table.",
         spec: &["dsl §13"],
