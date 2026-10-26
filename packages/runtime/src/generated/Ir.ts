@@ -665,7 +665,8 @@ export const rewardEntry = Schema.Struct({
   "credits": Schema.optionalKey(Schema.String),
   "retracts": Schema.optionalKey(Schema.Array(Schema.suspend(() => factRecord))),
   "asserts": Schema.optionalKey(Schema.Array(Schema.suspend(() => factRecord))),
-  "accepts": Schema.optionalKey(Schema.Array(Schema.String))
+  "accepts": Schema.optionalKey(Schema.Array(Schema.String)),
+  "raises": Schema.optionalKey(Schema.Array(Schema.suspend(() => raiseRecord)))
 });
 export type rewardEntry = typeof rewardEntry.Type;
 
@@ -677,6 +678,26 @@ export const factRecord = Schema.Struct({
   "args": Schema.Array(Schema.String)
 });
 export type factRecord = typeof factRecord.Type;
+
+/**
+ * 0.51.0 §5.4: one `text` attribute's localization on a `plugin` record.
+ */
+export const localizedText = Schema.Struct({
+  "lineId": Schema.String,
+  "placeholders": Schema.optionalKey(Schema.Array(Schema.suspend(() => placeholder))),
+  "texts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String))
+});
+export type localizedText = typeof localizedText.Type;
+
+/**
+ * 0.51.0 §4.6: one declared raise — an occasion a plugin call or a granted reward promises the host raises (`effects.raises`), resolved at compile (an `@attr` bound to the attribute's compiled value or its declared `default:`, a domain prefix applied). A `dynamic` raise has a target, the `occasion.target` reference with or without a prefix; that the prefix is the occasion's declared one is checked at load (the runtime refuses the bundle).
+ */
+export const raiseRecord = Schema.Struct({
+  "occasion": Schema.String,
+  "target": Schema.optionalKey(Schema.String),
+  "dynamic": Schema.optionalKey(Schema.Boolean)
+});
+export type raiseRecord = typeof raiseRecord.Type;
 
 /**
  * One objective inlined in QuestCmd.objectives (dsl 0.2.0 §6.4). Declaration data only; the engine derives completion (all non-optional objectives done ⇒ quest complete).
@@ -1276,10 +1297,12 @@ export const cmdPlugin = Schema.Struct({
     "relation": Schema.String,
     "args": Schema.Array(Schema.String)
   }))),
+  "localized": Schema.optionalKey(Schema.Record(Schema.String, Schema.suspend(() => localizedText))),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
   "source": Schema.optionalKey(Schema.suspend(() => source)),
-  "stamps": Schema.optionalKey(Schema.suspend(() => stamps))
+  "stamps": Schema.optionalKey(Schema.suspend(() => stamps)),
+  "raises": Schema.optionalKey(Schema.Array(Schema.suspend(() => raiseRecord)))
 });
 export type cmdPlugin = typeof cmdPlugin.Type;
 
