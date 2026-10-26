@@ -608,9 +608,7 @@ fn mentions_target(cmd: &Json) -> bool {
             .get("fields")
             .and_then(Json::as_object)
             .is_some_and(|f| f.values().any(|v| v.as_str() == Some(TARGET)))
-        || raises_of(cmd)
-            .filter_map(|r| r.get("target").and_then(Json::as_str))
-            .any(|t| bound_raise_target(t, "").is_some())
+        || raises_of(cmd).any(is_dynamic)
 }
 
 /// A plugin record's declared raises (0.51.0 §4.6).
@@ -621,15 +619,23 @@ fn raises_of(cmd: &Json) -> impl Iterator<Item = &Json> {
         .flatten()
 }
 
-/// A raise target that reads `occasion.target` — the reference, a domain
-/// prefix applied (`scene.occasion.target`) — with `member` in its place;
-/// `None` for a static target.
-fn bound_raise_target(target: &str, member: &str) -> Option<String> {
-    if target == TARGET {
-        return Some(member.to_string());
+/// A raise whose target the compiler marked `dynamic`: it reads
+/// `occasion.target`. Only the mark decides — a static target that happens
+/// to read `….occasion.target` is not bound.
+fn is_dynamic(raise: &Json) -> bool {
+    raise.get("dynamic").and_then(Json::as_bool) == Some(true)
+}
+
+/// A dynamic raise target — the reference, a domain prefix applied
+/// (`scene.occasion.target`) — with `member` in its place.
+fn bound_raise_target(target: &str, member: &str) -> String {
+    match target
+        .strip_suffix(TARGET)
+        .and_then(|p| p.strip_suffix('.'))
+    {
+        Some(prefix) => format!("{prefix}.{member}"),
+        None => member.to_string(),
     }
-    let prefix = target.strip_suffix(TARGET)?.strip_suffix('.')?;
-    Some(format!("{prefix}.{member}"))
 }
 
 /// The record with every write through `occasion.target` naming `member`.
@@ -676,11 +682,14 @@ fn bind_target(cmd: &Json, member: &str) -> Json {
         .and_then(Json::as_array_mut)
         .into_iter()
         .flatten()
+        .filter(|r| is_dynamic(r))
     {
-        if let Some(t) = r.get_mut("target") {
-            if let Some(bound) = t.as_str().and_then(|s| bound_raise_target(s, member)) {
-                *t = Json::String(bound);
-            }
+        if let Some(Json::String(t)) = r.get_mut("target") {
+            *t = bound_raise_target(t, member);
+        }
+        // Bound: the record names the target the host raises.
+        if let Some(r) = r.as_object_mut() {
+            r.remove("dynamic");
         }
     }
     cmd

@@ -191,6 +191,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "done",
     "double",
     "duration",
+    "dynamic",
     "effects",
     "else",
     "emotion",
@@ -692,12 +693,12 @@ fn collect_command(out: &mut Collected, command: &Command) {
         }
         Command::Plugin(c) => {
             out.add(CORE, Some(&c.position), "plugin record");
-            add_stamp(out, &c.stamp, Some(&c.position), CORE);
             // 0.51.0 §5.4: `localized` is descriptive; a `{{@def}}` in it
             // reads CEL like a label's.
             for text in c.localized.values() {
                 scan_placeholders(out, &text.placeholders, Some(&c.position));
             }
+            add_stamp(out, &c.stamp, Some(&c.position), CORE);
         }
         Command::Entry(c) => collect_entry(out, c),
         Command::Accept(c) => {
@@ -930,6 +931,7 @@ mod tests {
             raises: vec![crate::ir::RaiseRecord {
                 occasion: "cutscene".into(),
                 target: Some("scene.chapter2".into()),
+                dynamic: false,
             }],
             ..plain.clone()
         });

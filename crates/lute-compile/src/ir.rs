@@ -1466,13 +1466,16 @@ pub struct FactRecord {
 /// `@attr` bound to the attribute's compiled value (its declared `default:`
 /// when omitted), a domain prefix applied (`scene.chapter2`). `target` is
 /// omitted for an untargeted occasion; a value reading `occasion.target`
-/// keeps it, and the runtime binds it. Descriptive: the runtime raises
-/// nothing.
+/// keeps the reference, prefix applied (`scene.occasion.target`), and is
+/// marked `dynamic: true` — the runtime binds a dynamic target only.
+/// Descriptive: the runtime raises nothing.
 #[derive(Clone, Debug, Serialize)]
 pub struct RaiseRecord {
     pub occasion: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub dynamic: bool,
 }
 
 impl From<lute_check::raises::WireRaise> for RaiseRecord {
@@ -1480,6 +1483,7 @@ impl From<lute_check::raises::WireRaise> for RaiseRecord {
         RaiseRecord {
             occasion: r.occasion,
             target: r.target,
+            dynamic: r.dynamic,
         }
     }
 }

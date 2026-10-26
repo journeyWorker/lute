@@ -439,6 +439,52 @@ fn a_mixed_reward_is_one_raise_site() {
     assert_eq!(raises_target.len(), 1, "{raises_target:?}");
 }
 
+/// S5 review: two scenes raising each other, one of them also raised by a
+/// reachable entry. The raise edge that would close the cycle is not drawn,
+/// so `chapter3` is ordered before its only raiser `chapter2`; the
+/// reachability pass still reaches its fixed point — `intro` →
+/// `chapter2` → `chapter3` is a route — instead of stopping after one pass
+/// with `chapter3` `Unknown`.
+#[test]
+fn a_raise_cycle_entered_from_a_reachable_raiser_is_reachable() {
+    let dir = project(
+        "raises-cycle-entered",
+        &[
+            (
+                "scenes/intro.lute",
+                &scene(
+                    "intro",
+                    "on: begin\n",
+                    "@narrator: Intro.\n\n::playScene{scene=\"chapter2\"}",
+                ),
+            ),
+            (
+                "scenes/chapter2.lute",
+                &chapter2("", "@narrator: Two.\n\n::playScene{scene=\"chapter3\"}"),
+            ),
+            (
+                "scenes/chapter3.lute",
+                &scene(
+                    "chapter3",
+                    "on: cutscene\ntarget: scene.chapter3\n",
+                    "@narrator: Three.\n\n::playScene{scene=\"chapter2\"}",
+                ),
+            ),
+        ],
+    );
+    assert!(check(&dir).is_empty(), "{:?}", check(&dir));
+    let t = scenario(&dir, &[]);
+    assert!(
+        t.contains("    scene(chapter3) -> scene(chapter2) [raises]\n"),
+        "{t}"
+    );
+    assert!(!t.contains("    scene(chapter2) -> scene(chapter3)"), "{t}");
+    for node in ["scene:chapter2", "scene:chapter3"] {
+        let reach = scenario(&dir, &["reach", "--node", node]);
+        assert!(reach.contains("  verdict: Reachable"), "{reach}");
+    }
+}
+
 /// §4.7 reachability: an anchor reads `Unknown` when its only raiser is
 /// unreachable; a self-raise and a two-scene raise cycle close no
 /// `E-CONN-CYCLE`; a written `after:` stays the declared route; a raise in
@@ -770,8 +816,8 @@ fn an_answerer_no_declared_raise_reaches_is_warned() {
 }
 
 /// The `occasion.target` raise of a kind beat is bound by the runtime: the
-/// IR keeps the reference (the domain prefix applied), the `plugin` record
-/// names the member the beat runs for.
+/// IR keeps the reference (the domain prefix applied) marked `dynamic`, the
+/// `plugin` record names the member the beat runs for.
 #[test]
 fn an_occasion_target_raise_is_bound_in_the_record() {
     let dir = project(
@@ -791,7 +837,7 @@ fn an_occasion_target_raise_is_bound_in_the_record() {
     let ir = compile(&dir, "scenes/visit.lute");
     assert_eq!(
         commands_of(&ir, "plugin")[0]["raises"],
-        json(r#"[{"occasion":"cutscene","target":"scene.occasion.target"}]"#),
+        json(r#"[{"occasion":"cutscene","target":"scene.occasion.target","dynamic":true}]"#),
         "{ir}"
     );
     let records = play_records(&dir, "  - { occasion: visit, target: scene.chapter2 }\n");
@@ -804,6 +850,65 @@ fn an_occasion_target_raise_is_bound_in_the_record() {
         json(r#"[{"occasion":"cutscene","target":"scene.chapter2"}]"#)
     );
     assert_eq!(plugin["attrs"]["scene"], "chapter2");
+}
+
+/// S5 review: only the compiler's `dynamic` mark makes a target bound. A
+/// literal target that merely reads `….occasion.target` (a shape-only
+/// occasion admits any dotted target) is static: recorded as written with no
+/// mark, and the call runs outside any beat instead of waiting for a member;
+/// the record raises the literal, and a step raising it presents its
+/// answerer.
+#[test]
+fn a_static_target_reading_like_the_reference_is_not_bound() {
+    let dir = project(
+        "raises-static-lookalike",
+        &[
+            (
+                "plugins/acme.stage/occasions/o.yaml",
+                "occasions:\n  bell: { target: true }\n  begin: {}\n",
+            ),
+            (
+                "plugins/acme.stage/directives/d.yaml",
+                "directives:\n  - name: ring\n    effects: { raises: [{ occasion: bell, target: \
+                 scene.occasion.target }] }\n",
+            ),
+            ("plugins/acme.stage/rewardkinds/r.yaml", "rewardKinds: {}\n"),
+            (
+                "scenes/intro.lute",
+                &scene("intro", "on: begin\n", "@narrator: Intro.\n\n::ring"),
+            ),
+            (
+                "scenes/belfry.lute",
+                &scene(
+                    "belfry",
+                    "on: bell\ntarget: scene.occasion.target\n",
+                    "@narrator: Dong.",
+                ),
+            ),
+        ],
+    );
+    assert!(check(&dir).is_empty(), "{:?}", check(&dir));
+    let ir = compile(&dir, "scenes/intro.lute");
+    let raises = &commands_of(&ir, "plugin")[0]["raises"];
+    assert_eq!(
+        *raises,
+        json(r#"[{"occasion":"bell","target":"scene.occasion.target"}]"#),
+        "{ir}"
+    );
+    assert!(raises[0].get("dynamic").is_none(), "{ir}");
+    let steps = format!("{BEGIN}  - {{ occasion: bell, target: scene.occasion.target }}\n");
+    let records = play_records(&dir, &steps);
+    let plugin = records
+        .iter()
+        .find(|r| r["kind"] == "plugin")
+        .unwrap_or_else(|| panic!("the call runs: {records:?}"));
+    assert_eq!(
+        plugin["raises"],
+        json(r#"[{"occasion":"bell","target":"scene.occasion.target"}]"#)
+    );
+    let t = play(&dir, &steps);
+    assert!(t.contains("  → raises bell scene.occasion.target\n"), "{t}");
+    assert!(t.contains("@narrator: Dong."), "{t}");
 }
 
 /// A clock schema raising `morning` at a day's first slot and `visit` at

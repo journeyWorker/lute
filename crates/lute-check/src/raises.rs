@@ -662,26 +662,29 @@ fn reward_target(
 /// One raise as the artifact records it (0.51.0 §4.6): the occasion and the
 /// target it is raised for, `None` for an untargeted occasion. A dynamic
 /// target keeps the `occasion.target` reference with the occasion's domain
-/// prefix applied, as any value gets it (`scene.occasion.target`); the
-/// runtime binds the reference to the member the beat runs for.
+/// prefix applied, as any value gets it (`scene.occasion.target`), and says
+/// so (`dynamic`): the runtime binds only a dynamic target to the member the
+/// beat runs for, never a static one that happens to read the same.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct WireRaise {
     pub occasion: String,
     pub target: Option<String>,
+    pub dynamic: bool,
 }
 
 impl WireRaise {
     /// `None` for an unbound target: the raise does not happen.
     fn of(name: &str, occasion: &OccasionDecl, target: RaiseTarget) -> Option<Self> {
-        let target = match target {
-            RaiseTarget::Untargeted => None,
-            RaiseTarget::Static(t) => Some(t),
-            RaiseTarget::Dynamic => Some(prefixed(occasion, OCCASION_TARGET)),
+        let (target, dynamic) = match target {
+            RaiseTarget::Untargeted => (None, false),
+            RaiseTarget::Static(t) => (Some(t), false),
+            RaiseTarget::Dynamic => (Some(prefixed(occasion, OCCASION_TARGET)), true),
             RaiseTarget::Unbound => return None,
         };
         Some(WireRaise {
             occasion: name.to_string(),
             target,
+            dynamic,
         })
     }
 }

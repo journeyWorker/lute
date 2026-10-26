@@ -1927,7 +1927,11 @@
         },
         "target": {
           "type": "string",
-          "description": "the target the occasion is raised for, written whole (`scene.chapter2`); `occasion.target` when the call reads it in a beat (the runtime binds it on the emitted record). Absent for an untargeted occasion."
+          "description": "the target the occasion is raised for, written whole (`scene.chapter2`); for a `dynamic` raise the `occasion.target` reference with the domain prefix applied (`scene.occasion.target`), which the runtime binds on the emitted record. Absent for an untargeted occasion."
+        },
+        "dynamic": {
+          "type": "boolean",
+          "description": "the target reads `occasion.target` (a call in a beat): the runtime binds it to the member the beat runs for. Absent for a static target, which is never bound, whatever it reads like."
         }
       },
       "required": [
