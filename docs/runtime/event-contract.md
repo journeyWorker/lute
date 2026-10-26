@@ -238,7 +238,10 @@ target is not that reference with the occasion's declared prefix). The runtime r
 own for a raise: the host sends each one as a `raiseOccasion` input once the
 runtime is idle, in record order and list order. A raise the occasion's gate
 refuses is the host's to report. The reference player keeps these in a pending
-raise queue (`player/custom-hosts`).
+raise queue (`player/custom-hosts`). The runtime replays only the undelivered
+suffix of an output, so a host that delivers declared raises keeps its own
+pending queue across saves (the reference player: `SaveRuntime.pendingRaises`);
+the runtime `Snapshot` shape is unchanged.
 
 ```json
 {"kind":"plugin","position":"001-0200","tag":"playScene","attrs":{"scene":"chapter2"},"raises":[{"occasion":"cutscene","target":"scene.chapter2"}],"external":true,"unresolvedEffects":[]}
@@ -375,6 +378,12 @@ deterministic replay: it keeps the world from before the input, the input
 and the answers given so far, re-runs the input with those answers, and
 stops at the next unanswered await. Each step returns only the events
 produced since the previous await, so a host sees every event once.
+
+Loop counters of a bounded backward jump (`::jump{to max}`, 0.51) are walk-local
+and rebuilt by the same replay: the `Snapshot` does not hold them, and a save at
+a choice await in a later iteration resumes to the same transcript. A `<branch>`
+reached again in a later iteration is a new `awaitChoice` with a new request
+id; its `presentation` stays `0`.
 
 ## Rejections and halts
 

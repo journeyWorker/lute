@@ -25,6 +25,8 @@ named ending bindings, a player-web host recipe, a second play-through
 (`user.*`, `prev.run`, `plays/second-run.play.yaml`) and a Korean translation
 (`locales/ko.json` from `lute loc export`, `locales/bundle.json` from `lute loc import`).
 
+[`flow-and-text/`](flow-and-text/) is the 0.51 "flow and text" project: a bounded `::jump{max}` retry loop over a bridge result and a nested loop, a directive and a reward kind whose `effects.raises` reach a `raisedBy: declared` occasion, a `::banner` with `type: text` attributes, `code=` and a Korean locale bundle (`loc/ko.json`), and a `target: pair` lint, pinned by `tests/` and `plays/`. It needs the 0.51 toolchain.
+
 ## Games
 
 [`games/`](games/) holds fourteen complete games written against Lute 0.21–0.28 as dogfood

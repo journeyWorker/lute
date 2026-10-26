@@ -1,0 +1,15 @@
+---
+kind: quest
+id: finale.quests
+title: Finale
+---
+/*
+A reward kind that only raises (0.51). Completing `finale` grants `CUTSCENE`
+for `chapter2`: the host raises `cutscene` for `scene.chapter2` after settling
+the grant, and `lute scenario` draws quest(finale) -> scene(chapter2) [raises].
+*/
+
+<quest id="finale" tier="run" title="Open the vault" start="true">
+  <reward kind="CUTSCENE" target="chapter2"/>
+  <objective id="open" title="Open the vault" done="run.opened"/>
+</quest>

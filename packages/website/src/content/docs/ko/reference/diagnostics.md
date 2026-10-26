@@ -2160,7 +2160,7 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-LINE-CODE-UNTAGGED
 
-콘텐츠 라인(0.51.0부터는 `text` 속성이 있는 디렉티브 호출도)에 명시적인 `code`가 없어 컴파일러 할당을 사용하고 있습니다. `lute tag`로 기록하세요.
+`identity.requireStable`일 때 콘텐츠 라인(0.51.0부터는 `text` 속성이 있는 디렉티브 호출도)에 명시적인 `code`가 없어 컴파일러 할당을 사용하고 있습니다. `lute tag`로 기록하세요.
 
 명세: [dsl 0.36.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.51.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 

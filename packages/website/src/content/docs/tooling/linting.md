@@ -78,8 +78,8 @@ Every custom entry has the same shape as a plugin rule:
 | key | required | meaning |
 | --- | --- | --- |
 | `id` | yes | Project-local bare rule id. |
-| `target` | yes | `line`, `section`, `scene`, `speaker`, `group`, `project`, or `node` (since 0.50). |
-| `when` | yes | A CEL assertion over the target row and `options`; it fires when `true`. |
+| `target` | yes | `line`, `section`, `scene`, `speaker`, `group`, `project`, `node` (since 0.50), or `pair` (since 0.51). |
+| `when` | yes, except for `pair` | A CEL assertion over the target row and `options`; it fires when `true`. A `pair` rule takes `open` and `close` instead and refuses `when` (see [`pair` lints](#pair-lints-since-051)). |
 | `level` | no | `off`, `hint`, `info`, `warn`, or `error`. |
 | `message` | yes | Finding text. `{path.to.field}` interpolates a metric or option path; a number renders trimmed (no trailing `.0`) and rounded to at most two decimals, so a ratio of `3.3333…` reads `3.33`. `{expr:%}` renders shares as rounded percentages. |
 | `options` | no | Defaults exposed to `when` and the message. |
@@ -211,6 +211,114 @@ lints:
 ```
 
 For a rule whose dependent attribute, discriminator or marker is missing (`preceding` without `interaction`, a marker without `kind`, a parent without `menuType`) there is no finding and no `E-LINT-EXPR`. An unguarded variant (`node.attrs["mode"]` without the membership test) on a node without `mode` reports `E-LINT-EXPR`, which is why the guard is there.
+
+## `pair` lints (since 0.51)
+
+`target: pair` (valid in plugin `lints:` exports and `lute.lint.yaml` `custom:` rules) checks that two kinds of node come in balanced pairs: a `begin` with its `end`, an open with its close. It is for markers a plugin writes as two directives, which neither `node` rules nor the metric tables can pair up.
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+lints:
+  - id: group-balanced
+    target: pair
+    open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'   # optional
+    scope: body                                                    # body (default) | section
+    level: error
+    message: "::group begin/end"
+```
+
+| key | required | meaning |
+| --- | --- | --- |
+| `open` | yes | A lint-CEL predicate over the [`node` row](#node-lints-since-050): holds for a node that opens a pair. |
+| `close` | yes | The same, for a node that closes it. |
+| `inside` | no | A predicate every node strictly between an open and its close must satisfy. |
+| `scope` | no | `body` (default) or `section`; see below. |
+
+`open`, `close` and `inside` read the same `node` row as a `node` rule (`kind`, `tag`, `speaker`, `attrs` as authored, `index`, `first`, `last`, `depth`, `prev`, `next`, `parent`, `preceding`, `section`), plus the `scene` and `options` bindings and the string members. A missing key keeps CEL semantics (`E-LINT-EXPR`), so guard every index as in the [recipes](#recipes). The loader enforces the shape: on `pair`, `open` and `close` are required and `when` is refused; on every other target `open`, `close`, `inside` and `scope` are refused. A fault is `E-PLUGIN-PARSE` in a plugin's `lints:` and `E-LINT-CONFIG` in `lute.lint.yaml` `custom:`.
+
+### Evaluation
+
+A rule keeps **one open slot** per scope and makes one pass over the scope's nodes in document order:
+
+- **`scope: body`** (the default): each body's direct children, in order — siblings only. Every body (a section, a `<choice>`, a `<match>` arm) is its own scope.
+- **`scope: section`**: every node of one section or top-level declaration in document order, at every depth — the unit at which `node.preceding` resets. It is document order, not paths: an `open` in one `<choice>` pairs with a `close` in its sibling.
+
+For each node:
+
+- a node for which `close` holds while a pair is open **closes** it. A node that satisfies both `open` and `close` is a close while a pair is open, and an open otherwise;
+- a node for which `open` holds while a pair is open is a **nested open**, and the outer pair stays open;
+- a node for which `close` holds with no pair open is an **unopened close**;
+- with `inside`, every node strictly between an open and its close for which `inside` is false is an **inside fault** (in `body` scope only the siblings count, not their descendants);
+- at the end of the scope, a pair still open is an **unclosed open**.
+
+A finding carries the rule's code and level, anchors at the offending node, and appends one fixed phrase to the rendered `message`:
+
+| fault | appended phrase |
+| --- | --- |
+| unclosed open | `` — opened here, with no close in this body `` (`in this section` for `scope: section`) |
+| unopened close | `` — a close with no open pair in this body `` |
+| nested open | `` — opened again while the pair from line N is still open `` |
+| inside fault | `` — not allowed inside the pair opened at line N `` |
+
+A nested-open and an inside finding also name the open node as `related`.
+
+Take the rule above with this body, where the `::group` is never closed:
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::group{mode="begin"}
+@narrator: The crowd gathers.
+@narrator: Nobody speaks.
+```
+
+`group-balanced` (code `L-GROUP-BALANCED`) reports `::group begin/end — opened here, with no close in this body` at the `begin`. A stray `::group{mode="end"}` with no begin reads `::group begin/end — a close with no open pair in this body`, and a second `begin` before the `end` reads `::group begin/end — opened again while the pair from line N is still open`.
+
+### An `inside` rule
+
+`inside` limits what may sit between the markers. With the `inside` predicate above (a line, `::actor` or `::sfx`), any other directive between the markers is a fault:
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::group{mode="begin"}
+@narrator: The crowd gathers.
+::bg{assetId="street.night"}
+::group{mode="end"}
+```
+
+The `::bg` is reported as `::group begin/end — not allowed inside the pair opened at line 1`, with the `begin` as `related`.
+
+### A `section`-scope pair
+
+Under `scope: body`, a `begin` before a `<branch>` and its `end` inside a choice sit in different bodies: the `begin` is an unclosed open and the `end` an unopened close. `scope: section` pairs them across the branch, in document order:
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+lints:
+  - id: fx-balanced
+    target: pair
+    open:   'node.tag == "fx" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "fx" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    scope: section
+    level: warn
+    message: "::fx begin/end"
+```
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::fx{mode="begin"}
+<branch id="ask">
+  <choice id="stay" text="Stay">
+    @narrator: You stay.
+    ::fx{mode="end"}
+  </choice>
+  <choice id="go" text="Go">
+    @narrator: You go.
+  </choice>
+</branch>
+```
+
+Here the pair is balanced in document order, so there is no finding. A section's slot resets at the next `##` heading or declaration, so a `begin` left open there is an unclosed open (`in this section`).
+
+### Where it runs, and cost
+
+`pair` rules run in the same node walk as `node` rules, in `lute lint` and in the language server, with each rule evaluated at its node and nothing stored per node; the walk runs when a `node` or a `pair` rule is active. The first `E-LINT-EXPR` in a rule's predicates stops that rule for the document, as for a `node` rule. The state machine's own overhead is linear: at most three predicate calls per `pair` rule per node, and constant slot work. What a predicate does is not claimed linear: `size()` of a long string, for example, is counted by character, so a predicate that reads N characters at each of N nodes costs N². The work counters report which is which: `pair_evals` (predicate invocations) and `pair_slots` (slot opens, closes and frame pushes), and `eval_chars` for the characters a string operation scans. A `pair` rule changes no IR, event, snapshot or `capabilitySnapshot`, and carries no semantic id.
 
 ## Metric tables
 
@@ -375,7 +483,7 @@ A plugin rule is data only when it asserts over these fixed, core-computed metri
 tables. If the rule needs another metric, traversal, ordering rule, or evaluation
 primitive, that is a core change—not a YAML extension. Structural predicates
 (what a node is, what surrounds it, which attributes the author wrote) are the
-[`node` target](#node-lints-since-050), and balance checks (`pair`) are 0.51. Plugin lint declarations
+[`node` target](#node-lints-since-050), and balance checks are the [`pair` target](#pair-lints-since-051) (0.51). Plugin lint declarations
 are advisory and are excluded from both the capability snapshot and
 `capabilitySnapshot`.
 

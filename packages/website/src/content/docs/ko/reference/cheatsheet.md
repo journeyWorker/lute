@@ -449,7 +449,7 @@ defs:
 | `<choice id text>` | `text=`는 보여 줄 선택지 텍스트입니다. `when=` 가드. `into="run.x"`는 `true`를 쓰고, number나 enum 경로에는 `value=`를 함께 써서 이후 씬이 읽을 수 있게 합니다. |
 | `<hub id>` | `exit`를 고를 때까지 자격 있는 선택지를 다시 보여 줍니다. `once`는 한 번 고른 선택지를 없앱니다. 가드 없는 `exit`가 있거나 모든 선택지가 `once`여야 합니다(`E-HUB-NO-EXIT`). 고를 때마다 `scene.visited.<hub>.<choice>`가 설정됩니다. 선택 속성 `prompt=`(0.23.0)는 선택지와 함께 보여 줄 질문이며, 비어 있으면 `E-BRANCH-PROMPT`입니다. |
 | `::label{name}` | 점프 대상 이름입니다. 문서 전체가 이름공간 하나를 쓰고, 레코드를 내지 않습니다. 줄을 대상으로 삼으려면 그 줄 바로 앞에 둡니다. 섹션의 `{#id}`는 점프 대상이 아닙니다. |
-| `::jump{to when}` | `::label`로 가는 앞쪽 전용 점프입니다. 뒤로 가는 점프는 `E-JUMP-BACKWARD`입니다. `when`이 없으면 그 뒤의 콘텐츠는 죽은 코드입니다(`W-CODE-AFTER-JUMP`). 0.26.0부터 `lute trace`와 `lute test`도 `lute play`처럼 실행된 점프를 따라 label로 갑니다(트랜스크립트에 `<jump -> outro>`). |
+| `::jump{to when max}` | 같은 문서의 `::label`로 가는 점프입니다. 기본은 앞쪽으로 갑니다. 0.51부터 `max="N"`(1~99의 정수 리터럴)이 있으면 앞선 label로 최대 N번까지 되돌아갈 수 있고, 그다음에는 다음 노드로 넘어갑니다([한도 있는 점프](#한도-있는-점프-선언된-raise-지시어-텍스트-pair-lint-051)). `max` 없이 뒤로 가는 점프는 `E-JUMP-BACKWARD`, 앞으로 가는 점프의 `max`는 `E-JUMP-MAX`입니다. `when`도 `max`도 없으면 그 뒤의 콘텐츠는 죽은 코드입니다(`W-CODE-AFTER-JUMP`). 0.26.0부터 `lute trace`와 `lute test`도 `lute play`처럼 실행된 점프를 따라 label로 갑니다(트랜스크립트에 `<jump -> outro>`). |
 | `::end{reason}` | 씬을 끝냅니다. `lute play`에서는 자신이 실행된 제시(또는 퀘스트 핸들러)만 끝내고, 플레이는 계속됩니다. 같은 본문에서 그 뒤의 콘텐츠는 `W-CODE-AFTER-END`입니다. |
 | `::accept{quest}` | 수락형 퀘스트(`start`가 없는 퀘스트, 또는 `activate="accept"`인 자식)를 받아들입니다. `at="nextRun"`(0.24.0)은 다음 `newRun` 초기화 직후로 수락을 미루며, 그 밖의 `at`은 `E-ACCEPT-TARGET`입니다. [퀘스트](#퀘스트)를 보세요. `when=`을 받습니다(0.26.0). |
 
@@ -1409,6 +1409,74 @@ custom:
 
 → [플러그인 매니페스트](/ko/plugins/manifests/) · [CLI](/ko/tooling/cli/) · [린팅](/ko/tooling/linting/)
 
+## 한도 있는 점프, 선언된 raise, 지시어 텍스트, pair lint (0.51)
+
+`::jump`는 `max`를 가지면 앞선 `::label`로 되돌아갈 수 있습니다. `max`는 점프를 따라갈 수 있는 최대 횟수이고, `max`번 따라간 뒤에는 다음 노드로 넘어갑니다. `max`는 1~99의 정수 리터럴이어야 하며(그 밖의 값과 앞으로 가는 점프의 `max`는 `E-JUMP-MAX`), 루프는 한 본문 안에 머물고(`E-JUMP-LOOP-SCOPE`), 머리 label로만 진입하며(`E-JUMP-INTO-LOOP`), 겹치지 않고 중첩됩니다(`E-JUMP-LOOP-CROSS`). 메뉴를 `exit` 선택지가 선택될 때까지 다시 보여 줄 때는 `<hub>`를 씁니다.
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::label{name="attempt"}
+::minigame{level="2"}
+<match subject="run.won">
+  <when is="false">
+    @mira: Again!
+    ::jump{to="attempt" max="2"}
+  </when>
+</match>
+@theo: That's enough for today.
+```
+
+디렉티브나 보상 kind는 호출이나 부여 뒤에 **호스트**가 던지는 occasion을 선언할 수 있습니다. `raisedBy: declared`인 occasion은 선언된 `raises`로만 던져집니다. `lute scenario`는 던지는 쪽에서 그 occasion에 응답하는 모든 장면과 비트로 `[raises]` 엣지를 그리고, 아무것도 던지지 않으면 `W-OCCASION-NEVER-RAISED`가 경고합니다. 선언된 raise는 가능할 뿐 보장이 아니며 팩트, 쓰기, Must 주장을 더하지 않습니다.
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+# plugins/acme.stage/occasions/o.yaml
+occasions:
+  cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
+# plugins/acme.stage/directives/d.yaml
+directives:
+  - name: playScene
+    attrs:
+      - { name: scene, required: true, type: { entity: cutsceneId } }
+    effects:
+      raises: [{ occasion: cutscene, target: "@scene" }]
+# plugins/acme.stage/rewardkinds/r.yaml
+rewardKinds:
+  CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }
+```
+
+raise의 `target`은 디렉티브에서는 `@<attr>`, 보상 kind에서는 `@target`, 또는 리터럴(`scene.chapter2`)입니다. `E-PLUGIN-RAISES`(어셈블리)와 `E-RAISES-TARGET`(프로젝트)가 검사합니다.
+
+`text` 타입 속성은 번역할 수 있는 플레이어용 텍스트입니다. `text` 속성이 있는 디렉티브는 `code=`를 받고, 번역 키는 `{prefix}~{tag}~{code}~{attr}`입니다. `lute tag`가 빠진 코드를 채우고, `lute loc export` / `import` / `report`가 그 텍스트를 `kind: "directive"` 행으로 다룹니다.
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+directives:
+  - name: banner
+    attrs:
+      - { name: title,    required: true, type: text }
+      - { name: subtitle, type: text }
+```
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::banner{code="0010" title="Welcome to the hall, {{userName}}"}
+```
+
+`pair` lint는 닫히지 않은 여는 요소, 열린 적 없는 닫는 요소, 이미 열린 쌍 안에서 다시 열린 요소, 쌍 안에 `inside`가 허용하지 않는 행을 찾습니다. `scope: body`(기본)는 한 본문의 형제끼리, `scope: section`은 깊이와 상관없이 문서 순서대로 행을 짝짓습니다.
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+custom:
+  - id: group-balanced
+    target: pair
+    open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'
+    scope: body
+    level: error
+    message: "::group begin/end"
+```
+
+`list`, `map`, `record` 속성 타입은 계속 거부됩니다(구조화된 속성 값은 아직 지원하지 않습니다). 필드마다 속성 하나를 두거나, 플레이어에게 보이는 텍스트에는 `text` 속성을, 옵션 목록에는 `<choice>` 요소를 쓰세요.
+
+→ [디렉티브](/ko/language/directives/) · [플러그인 매니페스트](/ko/plugins/manifests/) · [린팅](/ko/tooling/linting/) · [콘텐츠 세트 이식하기](/ko/guides/porting-a-content-set/)
+
 ## 산출물
 
 `lute compile`은 실행 IR을 씁니다. 봉투에는 `kind`, `lute`, `irVersion`, `capabilitySnapshot`, 정렬된
@@ -1710,6 +1778,9 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-DISPLAY-NAME-DUP` | 0.26.0, 프로젝트 전체 `check`와 `lute lint`. 두 화자가 같은 표시 이름으로 보입니다: 캐스트 `name:` 둘, 캐스트 이름과 `::use{… name="…"}` 문자열, 또는 그런 문자열 둘. 하나를 바꾸거나, 의도한 역할 이름이면 캐스트 항목에 `sharedName: true`를 적으세요. |
 | `E-PLUGIN-STAMP-SURFACE` | 0.50. `stampAttrs`의 `on:`이 `line`, `branch`, `hub`, `choice`, 또는 해결된 프로필의 스탬프 가능한 디렉티브가 아닌 것을 지정합니다(오타, `jump`/`label`/`clear`, 비활성 플러그인의 디렉티브). 이름을 고치거나 그 디렉티브를 선언한 플러그인을 `depends:`에 넣으세요. |
 | `E-DIAGNOSTICS-CONFIG` | 0.50. `lute.project.yaml`의 `diagnostics:` 항목이 잘못되었거나 허용되지 않습니다: `E-*`나 `L-*` 코드, 알 수 없는 코드, 잘못된 level, 잘못된 `paths`. 단계를 바꿀 수 있는 것은 `W-*` 코드뿐입니다. |
+| `E-JUMP-MAX` / `E-JUMP-LOOP-SCOPE` / `E-JUMP-INTO-LOOP` / `E-JUMP-LOOP-CROSS` | 0.51. `max`가 1~99의 정수 리터럴이 아니거나 앞으로 가는 점프에 붙었습니다. 루프가 자기 본문을 벗어나거나 `<on>`/`<objective>`를 포함합니다. 앞으로 가는 점프가 루프의 머리 뒤로 들어갑니다. 두 루프가 중첩되지 않고 겹칩니다. |
+| `E-PLUGIN-RAISES` / `E-RAISES-TARGET` / `W-OCCASION-NEVER-RAISED` | 0.51. `raises` 항목이 알 수 없는 occasion이나 잘못된 꼴의 target을 가리킵니다. 해석된 raise target이 도메인 밖이거나 어떤 장면·비트도 응답하지 않습니다. `raisedBy: declared` occasion에 응답하는 쪽이 있는데 아무것도 던지지 않습니다. |
+| `E-LINE-CODE-RESERVED` / `E-LINE-ID-DUP` | 0.51. `code`에 `~`가 있습니다. 두 로컬라이제이션 단위가 같은 최종 `lineId`를 가집니다. |
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. 한 런에서 다시 읽힐 수 있는 엔트리(조회 엔트리, `once` 없음, 런보다 짧은 `once`, `spentBy`, `for`)가 `::set`, `::retract`, 또는 쓰기 효과만 가진 디렉티브를 씁니다: 쓰기는 한 런에서 처음 읽을 때만 적용됩니다. 반복되는 쓰기는 `<beat … once="false">`에, 아니면 `once="run"`이나 `when="!entry.<id>.read"` 가드를 쓰세요. `::assert`는 제외입니다. |
 | `E-COMPONENT-ARG` | `::use` 인자가 파라미터에 맞지 않거나 없는 파라미터를 가리킵니다. 0.26.0부터는 `speaker` 파라미터가 아닌 것에 쓴 `@@x:`나 컴포넌트 밖의 `@@x:`도 해당합니다. |
 | `E-UNKNOWN-ATTR` | 디렉티브가 선언하지 않은 속성입니다. 0.26.0부터는 내장 레코드로 로워링되는 디렉티브(`::bg`, `::sfx` 같은 코어 연출 디렉티브, `::end`, `::label`, 플러그인 `lower:` 레코드)의 `when=`과 `when`이라는 이름의 플러그인 속성도 해당합니다. |
@@ -1749,7 +1820,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-L10N-MODIFIERS` | 번역의 수식어 묶음(이름, 잎/스팬 형태, 속성)이 원문과 다릅니다. 위치는 달라도 되지만, 빠지거나 더해지거나 바뀐 수식어가 있으면 그 번역은 병합되지 않습니다. |
 | `E-AUTHOR-CASE` | 작가가 쓰는 키(속성, 태그 속성, 프론트매터, 프로젝트 키)에 `_`가 있습니다. 메시지가 lowerCamelCase 이름을 알려 줍니다. |
 | `E-REWARD-DUP` | 한 퀘스트(목표의 보상 포함)의 두 `<reward>`가 같은 `id=`를 씁니다. |
-| `E-JUMP-BACKWARD` / `W-CODE-AFTER-JUMP` | `::jump`가 앞쪽에 있지 않은 label을 가리키거나, 가드 없는 `::jump` 뒤에 실행될 수 없는 콘텐츠가 있습니다. |
+| `E-JUMP-BACKWARD` / `W-CODE-AFTER-JUMP` | `::jump`가 `max` 없이 앞쪽에 있지 않은 label을 가리키거나(0.51부터 `max="N"`이면 N번까지 허용), `max` 없는 가드 없는 `::jump` 뒤에 실행될 수 없는 콘텐츠가 있습니다. |
 | `E-RENAMED-DIRECTIVE` / `E-RENAMED-ATTR` / `E-RENAMED-TAG-ATTR` | 이 버전에 없는 디렉티브, 속성, 태그 속성 이름입니다. 메시지가 쓸 이름을 알려 주며, `lute fix`가 기계적으로 고칩니다. |
 | `E-REMOVED-ATTR` / `E-CAMERA-REMOVED` / `E-CG-LAYOUT` | 그대로 옮길 수 없는 속성입니다. 메시지가 대신 쓸 도메인(`framing`, `cameraMove`, `cgLayout` 등)을 알려 주며, 손으로 고칩니다. |
 | `E-REMOVED-PROJECT-KEY` / `E-REMOVED-TAG` | `lute.project.yaml`의 `sequence:` 키(대체 키가 없습니다. 장 사슬은 `chapters:`)나 예약 태그 `<scene>`(문서의 섹션은 `##`)입니다. |

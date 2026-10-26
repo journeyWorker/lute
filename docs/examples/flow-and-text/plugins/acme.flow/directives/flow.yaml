@@ -1,0 +1,37 @@
+directives:
+  # A blocking bridge call, as in free-text-input's `::ask`: the host answers with
+  # `won`, which is written to `scene.lock.<door>.won` after the call. The retry
+  # loop in scenes/lock.lute reads it.
+  - name: tryLock
+    layer: bridge
+    attrs:
+      - { name: door, required: true, type: { slotId: { namespace: scene.lock } } }
+    semantics: [ "writes.sceneState", "bridgeCall" ]
+    state:
+      declares:
+        - { scope: scene, path: [lock, { fromAttr: { name: door, slotType: localId } }], shape: lockResult }
+    effects:
+      writes:
+        - { scope: scene, path: [lock, { fromAttr: { name: door } }, won], value: { fromBridgeResult: won } }
+    bridge: { service: locksmith, operation: tryLock }
+
+  # 0.51: the host raises `cutscene` for the scene named by `scene` after the
+  # presentation that ran the call. The occasion is `raisedBy: declared`, so the
+  # scenario graph draws a [raises] edge to every scene that answers it.
+  - name: playScene
+    attrs:
+      - { name: scene, required: true, type: { entity: cutsceneId } }
+    effects:
+      raises: [{ occasion: cutscene, target: "@scene" }]
+
+  # 0.51: `text` attributes are localizable. The directive takes `code=`, and the
+  # lineId of `title` is `{prefix}~banner~{code}~title`.
+  - name: banner
+    attrs:
+      - { name: title, required: true, type: text }
+      - { name: subtitle, type: text }
+
+  # The markers a `pair` lint balances (lute.lint.yaml).
+  - name: group
+    attrs:
+      - { name: mode, required: true, type: { enum: [begin, end] } }

@@ -292,8 +292,11 @@ objective does not un-complete within a quest instance (only a run-tier
 quest's reset at a run start clears it, §Run-tier quests above). Because
 completion is monotonic, the objective's **body segment plays exactly once**
 per instance — when `done` first holds. The
-body is a forward-only segment (ends by falling through / a forward converge —
-no backward jump); an empty-body objective has `body: null` and emits no
+body is a single segment that ends by falling through or by a forward converge;
+since 0.51 it may contain a bounded loop (`::jump{to max}`) that lies wholly
+inside it, because a loop never spans an `<on>` or `<objective>` boundary
+(`E-JUMP-LOOP-SCOPE`), so the segment still ends on its own and plays exactly
+once; an empty-body objective has `body: null` and emits no
 segment.
 
 A required objective whose `visibleWhen` visibility condition is provably false is
@@ -581,6 +584,25 @@ grant**: replay and restore follow the grant's instance identity
 (`(quest, instance, objective, index)`), and a restored save does not re-fire
 the effects of a grant it already recorded. The facts and accepted quests the
 effects produce are saved like any other fact or quest state.
+
+### Declared raises (0.51)
+
+A reward kind may also declare `effects.raises` (a list of `{ occasion, target? }`
+beside `retracts`, `asserts` and `accepts`), carried on the `RewardEntry` as
+`raises: RaiseRecord[]` (`{ occasion, target? }`, `@target` bound to the reward's
+quoted `target=`, omitted when empty and written after `accepts`). The runtime
+raises nothing: the resolved list rides the `grant` record, and raising it is the
+host's duty. After the output that carries the `grant` record has been applied,
+the host raises each listed occasion as a `raiseOccasion` input, in reward order
+and list order, once the runtime is idle. A raise is *possible*, never
+guaranteed: the occasion's own gate (`raisedWhen`) may refuse it, and that is
+the host's to report. A raise adds no fact, write or Must claim, gets no
+record of its own, and does not change the grant ordering above (a skipped
+reward, by `outcome` or by `when`, declares none of its raises). A reward whose
+kind declares only `raises` keeps `lute.quest.rewardEffects/1` out of
+`requiredSemantics`. Because the runtime replays only the undelivered suffix of
+an output, a host keeps its own pending raises across saves; the reference
+player does so in `SaveRuntime.pendingRaises`.
 
 ### Ranges are declaration data — the reference runtime never rolls
 

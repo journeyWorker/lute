@@ -41,7 +41,7 @@ options:                   # OPTIONAL — typed activation options
 
 ## Export 파일
 
-각 export 종류에는 규범 스키마가 있습니다. 모두 하나의 작은 매니페스트 타입 시스템(`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, 그리고 `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, shape 참조)으로 타입이 지정됩니다. dsl 0.26.0부터 디렉티브 속성은 `{ entity: <kind> }`로도 타입을 지정할 수 있습니다([엔진 id를 엔티티 종류로 타입 지정](#엔티티-종류로-형식이-지정된-엔진-id) 참고). 상태 경로는 `$name` 보간이 아니라 **구조화된 세그먼트**를 사용합니다. *디렉티브 속성*이나 `stampAttrs` 항목의 최상위 타입은 `list`, `map`, `record`일 수 없습니다(0.49부터). 속성 값은 스칼라 하나로 쓰므로 어떤 `.lute` 값도 이를 만족시킬 수 없고, 플러그인 로드는 속성 이름을 밝히며(스탬프는 `` stamp attribute `tags` ``) `E-PLUGIN-INVALID-DIRECTIVE`로 실패합니다. 호스트에서 파싱할 `string`으로 선언하거나 필드마다 속성 하나로 나누라고 안내합니다. 플러그인 `options:`, frontmatter 키, 상태 shape, 브리지 결과는 YAML로 쓸 수 있으므로 이 타입을 그대로 유지합니다.
+각 export 종류에는 규범 스키마가 있습니다. 모두 하나의 작은 매니페스트 타입 시스템(`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, 그리고 `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, shape 참조)으로 타입이 지정됩니다. dsl 0.26.0부터 디렉티브 속성은 `{ entity: <kind> }`로도 타입을 지정할 수 있고([엔진 id를 엔티티 종류로 타입 지정](#엔티티-종류로-형식이-지정된-엔진-id) 참고), 0.51부터는 `text`로도 타입을 지정할 수 있습니다([아래](#현지화-가능한-텍스트-속성-type-text) 참고). 상태 경로는 `$name` 보간이 아니라 **구조화된 세그먼트**를 사용합니다. *디렉티브 속성*이나 `stampAttrs` 항목의 최상위 타입은 `list`, `map`, `record`일 수 없습니다(0.49부터). 속성 값은 스칼라 하나로 쓰므로 어떤 `.lute` 값도 이를 만족시킬 수 없고, 플러그인 로드는 속성 이름을 밝히며(스탬프는 `` stamp attribute `tags` ``) `E-PLUGIN-INVALID-DIRECTIVE`로 실패합니다. 0.51부터 메시지는 다음 힌트로 끝납니다: `` … so no `.lute` value can satisfy a `list`, `map` or `record` (structured attribute values are not supported yet): where it fits, give each field its own attribute (a stamp can be scoped to its surfaces with `on:`), use a `text` attribute for player-visible text in several languages, or write a list of options as `<choice>` elements ``. 스탬프는 `text`가 될 수 없으므로 스탬프의 힌트에서는 `text` 절이 빠집니다. 구조화된 작성 자체(`::tagged{tags=…}` 같은 enum 목록 메타데이터, 언어별 음성 자산 맵)는 보류되었습니다. 0.51은 이를 위한 표기를 제공하지 않으므로 힌트가 가리키는 스칼라 분해를 사용하세요. 플러그인 `options:`, frontmatter 키, 상태 shape, 브리지 결과는 YAML로 쓸 수 있으므로 이 타입을 그대로 유지합니다.
 
 - `directives/*.yaml` — `::name` 디렉티브 선언([브리지](/ko/plugins/bridge/) 참고)입니다.
 - `state/*.yaml` — 재사용 가능한 타입 지정 레코드 shape(`stateShapes:`)와 구조화된 경로 템플릿(`stateTemplates:`)입니다. 한 파일에 둘 다 둘 수 있습니다(0.24.0부터, 이전에는 두 번째 항목이 버려졌습니다).
@@ -103,7 +103,7 @@ occasions:
   title:     { select: first, outsideRun: true }
 ```
 
-occasion에는 다음 키만 사용할 수 있으며, 그 밖의 키는 사용할 수 없습니다: `select`, `target`, `description`, `judge`, `raisedWhen`, `payload`, `outsideRun`.
+occasion에는 다음 키만 사용할 수 있으며, 그 밖의 키는 사용할 수 없습니다: `select`, `target`, `description`, `judge`, `raisedWhen`, `payload`, `outsideRun`, 그리고(0.51부터) `raisedBy`.
 
 occasion의 `select:`는 발생했을 때 엔진이 무엇을 제시할지 말합니다. `first`(기본값)는 하나의 승리 비트와 그 뒤의 자격 있는 [`also`](/ko/language/beats/#also로-곁가지-발언) 비트를 제시합니다. `all`은 자격 있는 모든 비트를 제공하고 플레이어가 하나를 고릅니다. `sequence`(dsl 0.23.0)는 선택 순서대로 자격 있는 모든 비트를 제시합니다. 예를 들어 저녁 루틴 뒤에 그날의 사건을 제시하는 방식입니다([계기 조합하기](/ko/language/beats/#계기-구성하기) 참고). `all` 또는 `sequence` occasion에서 비트의 `also: true`는 `E-BEAT-ATTR`입니다. 같은 이름의 월드 이벤트도 `events:` 아래에 선언되어 있다면, occasion이 발생할 때마다 비트 뒤에 그 이벤트가 발생하고 occasion이 `on=` 목표를 판정하기 전에 실행됩니다([계기](/ko/language/beats/#계기) 참고).
 
@@ -121,6 +121,8 @@ occasion의 **`raisedWhen:`**(dsl 0.27.0 §4)는 엔진이 occasion을 아예 �
 occasion의 **`payload:`**는 매번 발생할 때 비트에 넘겨주는 타입 지정 값을 선언합니다. 이는 위의 매니페스트 타입 시스템에서 필드와 타입을 대응시키는 맵입니다(`copies: int`). 예를 들어 가챠 추첨은 뽑힌 영웅과 함께 온 복사본 수를 전달합니다. 비트는 이를 `occasion.payload.<field>`로 읽으며, 해당 occasion의 `<objective on=>`과 그 이름에 대응하는 `<on event=>` 핸들러도 마찬가지입니다([occasion payload](/ko/language/beats/#계기-페이로드) 참고). 모든 발생은 모든 필드를 제공합니다. 하나를 빠뜨린 `lute play` 단계는 그 필드를 이름 붙이는 사용 오류가 되며, `lute trace`와 `lute test`는 mock이 시드하지 않은 필드를 읽는 줄에서 불완전한 상태로 중단하고, payload가 있는 occasion을 이름 붙인 시계 `raise:`는 `E-CLOCK-DECL`입니다.
 
 occasion의 **`outsideRun: true`**는 런 바깥에 존재하는 순간, 즉 타이틀 화면이나 런 사이의 갤러리를 표시합니다. 엔진은 프로젝트의 [`terminal:`](/ko/state/schemas/#게임-종료-terminal)이 성립한 뒤에도 이를 발생시키며, 체커는 `!terminal` 아래에서 그 비트를 판정하지 않습니다. 컴파일된 아티팩트는 이런 occasion을 `outsideRun` 아래에 나열합니다.
+
+occasion의 **`raisedBy: declared`**(0.51)는 호스트가 디렉티브나 보상 종류의 [선언된 `raises`](#선언된-occasion-raise)가 이름 붙인 곳에서만 그 occasion을 발생시킨다는 뜻입니다. 값은 `declared` 하나뿐이며, 키를 생략하면 호스트가 언제든 occasion을 발생시킬 수 있는 기본 동작이 유지됩니다. 어떤 `raises` 항목도 닿지 못하는 `raisedBy: declared` occasion은 그에 응답하는 씬이나 비트에서 `W-OCCASION-NEVER-RAISED`가 됩니다. 프로젝트 [시계](/ko/language/clock/)가 발생시키는 occasion은 선언된 raise와 무관하게 발생하므로, 그 occasion에는 `raisedBy: declared`가 앵커를 만들지 않고 `W-OCCASION-NEVER-RAISED`도 침묵합니다. 그 밖의 `raisedBy` 값은 `E-PLUGIN-PARSE`입니다. 이 키는 선언한 스냅숏의 `capabilitySnapshot`만 바꿉니다.
 
 occasion은 capability 스냅숏의 일부이므로 `capabilitySnapshot`에 접힙니다. 도메인을 선언하면 스탬프가 다시 찍히며, `members:` 목록을 추가하거나 바꿔도 마찬가지입니다. `target: true` 또는 `false`만 말하는 occasion은 0.21.0에서 가졌던 스탬프를 유지합니다. 마찬가지로 `select: sequence`와 `raisedWhen`은 이를 선언하는 스냅숏의 스탬프만 바꿉니다.
 
@@ -280,6 +282,36 @@ entities:
 
 컴포넌트 매개변수를 통해 속성에 도달하는 값은 `::use` 인자에서 또는 매개변수의 `default:`에서 검사합니다([매개변수를 통한 엔진 id](/ko/language/components-and-extends/#매개변수를-통한-엔진-id) 참조). `lute refs --project <DIR> --attr give.item`은 해당 값을 사용하는 문서와 줄을 함께 모든 값으로 나열하므로, 리드는 여러 작성자의 작업을 병합하기 전에 누가 무엇을 제공하는지 확인할 수 있습니다.
 
+### 현지화 가능한 텍스트 속성: `type: text`
+
+0.51부터 디렉티브 속성은 **`text`**로 타입을 지정할 수 있습니다. 번역할 수 있는 플레이어 노출 텍스트로, 대사 줄과 같은 방식으로 주소가 매겨지고 현지화됩니다.
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+directives:
+  - name: banner
+    attrs:
+      - { name: title,    required: true, type: text }
+      - { name: subtitle, type: text }
+      - { name: style,    type: { enum: [toast, card] } }
+```
+
+`text`는 `plugin` 레코드로 컴파일되는 디렉티브(어떤 종류의 `lower:`도 없고 `bridge:`도 없는 디렉티브)의 속성(`attrs:`) 타입으로**만** 허용됩니다. 다음은 속성 위치에서 `E-PLUGIN-PARSE`로 플러그인 로드가 실패합니다:
+
+- `lower:`(스테이징 레코드나 빌트인)나 `bridge:`가 있는 디렉티브의 `text`: `` `title` of `::banner` is `text`, but `::banner` lowers to the `actor` record, which carries no localized text — declare it `string`, or drop `lower:` so the call stays a `plugin` record ``;
+- `default:`가 있는 `text`. 번역할 수 없는 원문이 되기 때문입니다;
+- 타입 문법을 읽는 그 밖의 모든 곳의 `text`: 스탬프(`stampAttrs`, 구조화 타입 거부와 함께 어셈블리에서 거부), 플러그인 `options:`, occasion `payload:`, 보상 종류의 `attrs:`, 브리지 결과, `{ list: text }`. 각 위치는 자기 고유의 잘못된 타입 진단을 유지하며, 그 진단은 `text`가 허용되는 유일한 위치를 알려 줍니다. [호스트 토큰](#호스트-보간-토큰hosttokens)도 `text`가 될 수 없습니다. 그 타입은 `string`, `int`, enum입니다;
+- `text` 속성이 있는 디렉티브가 `code`라는 이름의 속성도 선언하는 경우. `code`는 그런 디렉티브의 식별 속성이기 때문입니다.
+
+`on: [banner]`로 한정되고 이름이 `code`인 스탬프는 그 코어 속성에 가려져 `E-PLUGIN-RESERVED-STAMP-ATTR`가 됩니다. 이름이 `code`인 교차 스탬프는 다른 디렉티브에는 계속 적용되며, `text` 속성이 있는 디렉티브에서는 줄의 자체 `code`처럼 코어 `code`가 먼저 매칭됩니다.
+
+문서에서 `text` 값은 선택지 라벨 문법의 따옴표 문자열입니다. 상태 경로, `@def`, 호스트 토큰의 `{{…}}` 보간(수정자 포함)과 리터럴 중괄호를 위한 `\{{`를 쓸 수 있고, 인라인 마크업은 파싱하지 않습니다. `@ref` 값은 `E-ATTR-TYPE`입니다. 그러면 디렉티브는 내용 줄처럼 `code=`(문자열)를 받으며, 이는 `text` 속성이 하나 이상 있는 디렉티브에서 허용됩니다. 다른 디렉티브에서 `code`는 계속 `E-UNKNOWN-ATTR`입니다.
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
+```
+
+각 `text` 속성의 현지화 id는 `{prefix}~{tag}~{code}~{attr}`(위에서는 `intro~banner~0010~title`)이며, `~`가 들어간 `code`는 `E-LINE-CODE-RESERVED`입니다. `lute tag`는 빠진 `code=` 값을 써 넣고, `lute loc export`는 `text` 속성마다 `directive` 행 하나를 내보내며, `lute loc import`와 `lute loc report`가 이를 받습니다. 컴파일된 `plugin` 레코드는 원문 문자열을 `fields.<attr>`에 유지하고 `localized` 맵을 추가합니다([런타임 계약](/ko/tooling/runtime-contract/#051-추가-사항)). 현지화를 모르는 호스트는 전처럼 `fields`를 읽습니다. `text` 속성이 없는 디렉티브는 0.50과 바이트 단위로 같게 컴파일되며, `text`는 선언한 스냅숏의 `capabilitySnapshot`만 바꿉니다.
+
 ### 보상 대상 계약
 
 보상 종류의 `target:`은 `<reward target="…">` 값이 무엇을 이름으로 지정하는지 선언하며, dsl 0.26.0 §2.5부터 체커는 보상에 이를 적용합니다.
@@ -323,7 +355,7 @@ rewardKinds:
   OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
 ```
 
-`effects`는 `asserts`, `retracts`, `accepts`만 받고 다른 키는 받지 않습니다. 빈 `effects: {}`는 `E-PLUGIN-PARSE`입니다("declares no effect"). `asserts` / `retracts`의 각 항목은 [디렉티브 효과](#디렉티브가-assert하거나-retract하는-팩트)와 같은 팩트 패턴 `relation(arg, …)`입니다.
+`effects`는 `asserts`, `retracts`, `accepts`, 그리고(0.51부터) [`raises`](#선언된-occasion-raise)만 받고 다른 키는 받지 않습니다. 빈 `effects: {}`는 `E-PLUGIN-PARSE`입니다("declares no effect". 메시지는 키 목록에 `raises:`를 포함합니다). 반면 `effects: { raises: [...] }`만 있는 블록은 유효합니다. `asserts` / `retracts`의 각 항목은 [디렉티브 효과](#디렉티브가-assert하거나-retract하는-팩트)와 같은 팩트 패턴 `relation(arg, …)`입니다.
 
 - **`writes`는 허용되지 않습니다.** 보상의 상태 쓰기는 `credits:`이므로 `effects.writes`는 `E-PLUGIN-KEY`이며, 메시지에 `` — a reward's state write is `credits:` ``가 덧붙습니다.
 - **패턴 인자**는 멤버, `true` / `false`, `@target`, 그리고 `_`(`retracts`에서만)입니다. 그 밖의 `@name`은 `E-PLUGIN-PARSE`입니다: `` reward kind `BADGE` effect `met(@rarity)` reads `@rarity`; a reward kind's effects read only `@target` (a `<reward>` takes no other attribute) ``. 보상 종류 자체의 `attrs:`는 `<reward>`에 쓸 수 없으므로 읽을 다른 값이 없습니다.
@@ -332,6 +364,69 @@ rewardKinds:
 - `@target`은 보상의 따옴표로 묶인 `target=`에 바인딩됩니다. `target=`이 없는 `<reward>`는 그 `@target`을 읽는 패턴의 효과를 적용하지 않으며, 추가 진단도 없습니다. `target: { required: true }`인 종류는 이미 `E-REWARD-TARGET`을 보고합니다.
 
 체커는 이런 종류의 `<reward>`마다 `@target`을 바인딩해 판정합니다. 팩트 패턴은 그것의 `::assert` / `::retract`와 똑같은 기준(관계 선언, arity, 인자 종류와 멤버)으로, 같은 코드를 사용해 보상의 `kind=` 위치에서 판정되며, 각 메시지는 `` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): `` 접두사를 가집니다. `accepts`의 id는 `::accept`의 규칙으로 판정됩니다. 알 수 없는 id(did-you-mean 포함), `start`가 있는 퀘스트, 자동 활성화되는 자식 퀘스트는 `E-ACCEPT-TARGET`입니다. id가 `@target`에서 왔다면 보상의 `target=` 값 위치에, 아니면 `kind=` 위치에 보고됩니다: `` `<reward kind="OFFER_QUEST" target="secnd">` accepts quest `secnd` (its kind's `effects.accepts`), but no quest in the project declares that id — did you mean `second`? ``. 지급 시점에 효과가 무엇을 의미하고 분석이 이를 어떻게 읽는지는 [퀘스트와 씬](/ko/language/quests-and-scenes/)에 있습니다. `effects:`가 없는 종류의 해시는 이전과 같습니다.
+
+### 선언된 occasion raise
+
+0.51부터 디렉티브의 `effects:`와 보상 종류의 `effects:`는 호출이나 지급에 대한 응답으로 **호스트**가 발생시키는 occasion을 선언할 수 있습니다. Lute는 raise를 실행하지 않습니다. occasion을 발생시키는 것은 호스트의 일입니다. 선언된 raise는 호스트가 무엇을 하는지에 대한 약속이며, 체커가 호출을 그 occasion에 응답하는 씬이나 비트와 연결할 수 있게 해 줍니다.
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+# plugins/acme.stage/occasions/o.yaml
+occasions:
+  cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
+```
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+# plugins/acme.stage/directives/d.yaml
+directives:
+  - name: playScene
+    attrs:
+      - { name: scene, required: true, type: { entity: cutsceneId } }
+    effects:
+      raises: [{ occasion: cutscene, target: "@scene" }]
+```
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+# plugins/acme.stage/rewardkinds/r.yaml
+rewardKinds:
+  CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }
+```
+
+```lute unverified="0.51 feature; verified after S1-S8 land"
+--- # scenes/chapter2.lute
+kind: scene
+id: chapter2
+on: cutscene
+target: scene.chapter2
+---
+```
+
+- **`effects.raises`**는 `{ occasion, target? }` 항목의 비어 있지 않은 목록이며 다른 키는 없습니다. 디렉티브에서는 `writes`, `asserts`, `retracts` 옆에, 보상 종류에서는 `asserts`, `retracts`, `accepts` 옆에 놓입니다. `raises`만 선언한 보상 종류는 `lute.quest.rewardEffects/1` 시맨틱 id를 `requiredSemantics`에 넣지 않습니다.
+- **`target`**은 다음 중 하나입니다. 생략(대상 없이 선언된 occasion에만 허용), 디렉티브에서의 `@<attr>`(선언된 속성 이름), 보상 종류에서의 `@target`(보상의 `target=`), 또는 비트가 쓰듯 통째로 적은 리터럴 대상(`scene.chapter2`). `target: { forbidden: true }`인 종류는 `@target`으로 raise할 수 없습니다.
+- occasion의 **`raisedBy: declared`**는 호스트가 선언된 raise를 통해서만 그것을 발생시키게 합니다([occasion 키](#export-파일) 참고). 없으면 선언된 raise는 아티팩트에 기록되고 검사되지만 그래프 엣지를 그리지 않습니다.
+
+**로드 오류**(`E-PLUGIN-PARSE`, 항목 위치): `raises: []`; `occasion`과 선택적 `target`을 가진 매핑이 아닌 항목; `@<name>`도 점으로 구분된 대상도 아닌 `target`; 디렉티브에서 선언되지 않은 속성을 가리키는 `@<name>`; 보상 종류에서 `@target`이 아닌 `@<name>`, 또는 `target: { forbidden: true }`인 종류의 `@target`; 알 수 없는 `raisedBy` 값.
+
+raise를 실을 곳이 없는 낮춤, 즉 어떤 `lower:`(스테이징 레코드나 빌트인)든 가진 디렉티브는 `effects.raises`를 선언할 수 없습니다. `raises` 키에서 `E-PLUGIN-INVALID-DIRECTIVE`입니다: `` directive `::playVideo` lowers to the `video` record, which carries no effects (only a `plugin` record does), so its `effects.raises` could never reach the host — drop `lower:` so the call stays a `plugin` record, or raise the occasion from a passthrough directive ``. 이는 `effects.writes`가 레코드 낮춤에서 이미 갖는 경계와 같습니다.
+
+**어셈블리.** occasion은 다른 플러그인에서 올 수 있으므로 플러그인이 어셈블될 때 조회합니다. 거부된 항목은 `E-PLUGIN-RAISES`이며 버려지고, 형제 항목은 그대로 반영됩니다:
+
+| 오류 | 메시지 형태 |
+|---|---|
+| occasion이 스냅숏에 없음 | `` directive `::playScene` (`acme.stage`) raises occasion `cutscne`, which no active plugin declares — did you mean `cutscene`? `` (다른 플러그인의 occasion을 raise하는 플러그인은 그것을 `depends:`에 나열해야 하며, 설치되었지만 비활성인 플러그인에 occasion이 있으면 메시지가 그렇게 알려 줍니다) |
+| 대상 없는 occasion에 `target`이 있거나, 대상이 있는 occasion에 없음 | `` … raises `cutscene` without a target, but `cutscene` is raised for a target (`scene.<cutsceneId>`) — add `target: "@<attr>"` `` |
+| 도메인 occasion `{ prefix, entity }`에서 선언된 타입이 `{ entity: <entity> }`가 아닌 `@attr`(보상 종류에서는 `target:` 계약이 `{ entity: <entity> }`가 아님) | `` … raises `cutscene` for `@scene`, which is typed `string`; the target of `cutscene` is a `cutsceneId` member, so type the attribute `{ entity: cutsceneId }` `` |
+| occasion의 도메인 형태(`<prefix>.<member>`, `members:`가 있으면 그 목록) 밖의 리터럴 대상 | `` … raises `cutscene` for `room.office`, but its targets are `scene.<cutsceneId>` `` |
+
+**호출별, 지급별 검사.** 프로젝트 패스(`lute check --project`)는 `@attr` 대상이면 호출의 속성 값 위치에, 리터럴이면 디렉티브 헤드에, 보상이면 `target=`(또는 `kind=`) 위치에 `E-RAISES-TARGET`을 보고합니다. 해석된 대상은 호출에 쓴 값이고, 없으면 속성의 선언된 `default:`입니다. 둘 다 없는 대상만 바인딩되지 않으며, 바인딩되지 않은 대상은 추가 진단 없이 raise를 억제합니다(`required`가 이미 보고합니다). 해석된 각 대상에 대해:
+
+- 프로젝트 종류(또는 occasion의 `members:`)의 멤버가 아닌 도메인 대상 `<prefix>.<value>`는 did-you-mean과 함께 `E-RAISES-TARGET`입니다;
+- 어떤 씬이나 비트도 응답하지 않는 대상(그 occasion을 `on:`으로 갖고 그 대상을 `target:`으로 갖거나 `target:`이 없는 문서가 없음)은 `E-RAISES-TARGET`입니다: `` `::playScene{scene="chaptr2"}` raises `cutscene` for `scene.chaptr2`, but no scene or beat answers it — did you mean `scene.chapter2`? ``.
+
+`@def` 속성 값은 모든 속성 값처럼 상수로 접히므로 정적 대상이며, 컴포넌트 본문 안의 호출은 각 `::use`에서 그 인자가 바인딩된 채 해석됩니다. 유일한 동적 대상은 `occasion.target`을 읽는 값(비트 안의 호출)입니다. 이는 여기서 판정하지 않으며, 그래프에서는 그 occasion에 응답하는 모든 씬과 비트를 대신합니다.
+
+**호스트가 하는 일.** 디렉티브 호출을 실행한 프레젠테이션이 끝난 뒤(`presentationEnd`), 호스트는 런타임이 idle이 되면 나열된 각 occasion을 해석된 대상에 대해 레코드 순서와 목록 순서대로 `raiseOccasion` 입력으로 발생시킵니다. 보상의 `grant` 레코드를 담은 출력이 적용된 뒤에는 보상 종류의 raise도 같은 식으로 발생시킵니다. occasion 자체의 게이트(`raisedWhen`)가 raise를 거부할 수 있으며, 그 거부를 보고하는 것은 호스트의 몫이므로 Lute는 선언된 raise를 보장이 아닌 *가능*으로만 읽습니다. 어디에도 팩트, 쓰기, Must 주장을 더하지 않으며, 모든 분석은 이를 may 엣지로 읽습니다. [씬 그래프](/ko/connectivity/scene-graph/#선언된-raise가-그리는-엣지)와 [커스텀 호스트](/ko/player/custom-hosts/#선언된-raise)의 호스트 책무를 참고하세요.
+
+컴파일된 `plugin` 레코드와 `grant` 레코드는 해석된 `raises` 목록(`{ occasion, target? }`)을 담습니다. `@attr`은 속성 값으로 바인딩되고 도메인 접두사가 적용되며(`scene.chapter2`), 비어 있으면 필드를 생략하므로 `raises`가 없는 매니페스트는 모든 아티팩트와 `capabilitySnapshot`을 그대로 둡니다.
 
 ### 캐스트
 

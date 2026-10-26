@@ -44,6 +44,35 @@ description: Lute 언어와 실행 계약이 현재 버전 0.50.0에서 강제�
 아래의 역사적 동작은 이를 도입한 제안에 계속 귀속되며, 이 인덱스는 해당
 인용을 다시 쓰지 않습니다.
 
+## 0.51.0에서 현재 유효한 사항
+
+아래 표는 0.50.0 기준의 영역별 인덱스입니다. 0.51.0("flow and text")은 새 키워드나 요소 없이 그 위에 네 가지 기능을
+더합니다. 규범적 텍스트는
+[0.51.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)입니다.
+
+- **한도 있는 뒤로 가는 점프**(§3). `::jump{to max}`는 앞선 `::label`로 최대 `max`번(1~99의 정수 리터럴) 되돌아갈 수
+  있고, 그 뒤에는 다음 노드로 넘어갑니다. 루프는 한 본문 안에 머물고, 머리 레이블로만 진입하며, 다른 루프와
+  교차하지 않고 중첩됩니다. 모든 흐름 분석은 레이블에서 모든 점프의 상태를 합류시키고 루프 머리를 고정점까지 반복합니다.
+  새 코드 `E-JUMP-MAX`, `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP`, `E-JUMP-LOOP-CROSS`. IR: `jump.max`와 semantic id
+  `lute.core.boundedJump/1`.
+- **선언된 occasion raise**(§4). 디렉티브나 보상 kind가 `effects.raises`를 선언하고, occasion은 `raisedBy: declared`일 수
+  있습니다. 시나리오 그래프는 던지는 쪽에서 그 occasion에 응답하는 장면과 비트로 `[raises]` 엣지를 그립니다. 선언된
+  raise는 호스트의 약속이며 가능할 뿐 보장이 아닙니다. 새 코드 `E-PLUGIN-RAISES`, `E-RAISES-TARGET`,
+  `W-OCCASION-NEVER-RAISED`. IR: `raises`.
+- **번역할 수 있는 디렉티브 텍스트**(§5). `text` 타입 속성은 번역할 수 있으며, 그 디렉티브는 `code=`를 받고 식별자는
+  `{prefix}~{tag}~{code}~{attr}`입니다. `lute tag`와 `lute loc export` / `import` / `report`가 이를 다룹니다. 새 코드
+  `E-LINE-CODE-RESERVED`, `E-LINE-ID-DUP`. IR: `localized`.
+- **`target: pair` lint**(§6). `open`, `close`, 선택적인 `inside` 술어로 닫히지 않은, 열린 적 없는, 중첩된, 자리가 잘못된
+  쌍을 `body` 또는 `section` 범위에서 찾습니다.
+
+구조화된 속성 값(#176: `list`, `map`, `record`)은 다루지 않고 미룹니다. 거부는 그대로이고 메시지가 스칼라로 나누는
+방법을 알려 줍니다(§7).
+
+**0.51.0은 0.1.0의 비목표를 대체합니다.**
+[0.1.0 제안](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md)(§14)은 뒤로 가는 분기를
+비목표로 둡니다. 한도가 있고 잘 중첩된 루프는 모든 분석을 유한하게 유지하고 종료를 증명할 수 있게 하므로 0.51.0이
+이를 허용합니다. 이전 제안과 이 페이지의 이력 절은 다시 쓰지 않습니다.
+
 ## 0.50.0에서 현재 유효한 사항
 
 

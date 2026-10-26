@@ -1,0 +1,6 @@
+bridgeCapabilities:
+  - service: locksmith
+    operation: tryLock
+    replay: recorded
+    result:
+      - { name: won, type: bool }

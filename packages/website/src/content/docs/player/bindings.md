@@ -104,6 +104,12 @@ Domain-keyed binding keys must be members of the merged project domains. `charac
 
 A flow target (`flow.newGame.target`, `flow.idle.raise.target`, `flow.idle.menu[].target`) is the full occasion target `raiseOccasion` takes, written in the prefixed form `<prefix>.<member>` of the occasion's target domain: `place.square`, never the bare `square` (lute 0.47.1). Whole-project `lute check` checks it with the same rule as beat targets and `lute play` step targets: an `open:` entity kind admits any `<prefix>.<id>`; a closed kind or a `members:` subset admits exactly its members under the prefix. Anything else is `E-BINDING-KEY`; the message starts ``flow target `…`:`` and, when a close name exists, suggests ``did you mean `place.square`?``. A target on an occasion declared without a target (no `target:` or `target: false`) is `E-BINDING-KEY`, and so is a target on an occasion whose entity kind the project does not declare.
 
+### Flow and declared occasions
+
+`flow.newGame` and `flow.idle` (its `raise` and its `menu` entries) are host configuration: the reference player raises them itself, `flow.newGame` after the runtime begins and `flow.idle` when the runtime is idle. Since 0.51 a plugin occasion may be declared `raisedBy: declared` ([manifests](/plugins/manifests/#declared-occasion-raises)): the host then raises it only through a directive's or reward kind's declared `raises`. A `flow.newGame` or `flow.idle` that raises such an occasion breaks that declaration, because the checker has already treated the occasion as raised only by the declared sources: keep these bindings to occasions the host is meant to raise on its own.
+
+The reference player performs the declared raises itself, from a pending queue it drains after each presentation has settled and **before** the idle flow runs, so a `flow.idle` raise never overtakes one (see [Custom hosts](/player/custom-hosts/#declared-raises)). The player save that holds the queue carries format `"0.51"`; a `"0.50"` save is refused.
+
 A declared domain member, on-stage cast member, or compiled usage without a binding produces `W-BINDING-MISSING`. A binding in an asset/background/mood/sfx/vfx usage section that no compiled document uses produces `W-BINDING-UNUSED`. Diagnostics are anchored in `player.bindings.yaml` and appear in `lute check --project <DIR> --json`.
 
 Use `lute check --project <DIR>` after `lute compile --project <DIR> -o <out>`; a clean project with no bindings remains valid because the file is optional.

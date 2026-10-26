@@ -521,6 +521,21 @@ expect:                                   # assert the end of the play
 - 그 순간 메뉴가 제시하지 않는 결정은 워크를 오류(종료 코드 1)로 멈춥니다: 가드가 거짓인 선택지, 또는
   이미 고른 `once` hub 선택지(`lute trace`와 같은 `E-TRACE-CHOICE`).
 
+#### 루프 안의 스크립트된 결정 (0.51)
+
+한정된 뒤로 가는 `::jump{to="…" max="N"}`([디렉티브](/ko/language/directives/#한정된-뒤로-점프--max) 참고)는 루프 안의 `<branch>`나 `<hub>`를 한 장면에서 여러 번 제시되게 만듭니다. 위의 목록은 제시마다 적용됩니다:
+
+- 이후 반복에서 다시 도달한 **branch**는 새 메뉴(새 `awaitChoice` 요청)이며, 그 목록은 제시마다 결정 하나씩 소비됩니다. `choose: { retry: [yes, yes, no] }`는 반복 세 번을 이끕니다. 점프를 되돌리는 `yes` 두 번, 그리고 루프를 떠나는 `no`입니다. 루프가 먼저 소진되면 남은 항목은 그냥 쓰이지 않고, 걷기가 아직 묻는데 목록이 바닥나면 위와 같이 미완료(종료 코드 3)로 멈춥니다.
+- 루프 안의 **hub**는 방문마다 제시 0에서 시작하며, 목록은 0.49와 같이 방문마다 따로입니다. 루프가 걷기를 hub로 되돌릴 때마다 목록은 첫 항목부터 다시 쓰입니다.
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+choose: { retry: [yes, yes, no] }   # a <branch id="retry"> inside a ::jump{max="3"} loop
+steps:
+  - occasion: lockPicked
+```
+
+루프의 두 번째 반복 중 선택 지점에서 만든 세이브는 같은 트랜스크립트로 재개됩니다. 루프 카운터는 걷기 안에서만 유효하고 이미 준 답을 다시 재생하며 재구성되므로, 세이브에 새 형태가 생기지 않습니다.
+
 ### 계기 스텝
 
 `{ occasion, target?, payload?, engine?, pick?, choose?, expect?, bridges? }`는 엔진과 똑같이 계기를 발생시킵니다.

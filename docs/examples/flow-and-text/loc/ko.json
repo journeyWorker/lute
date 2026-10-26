@@ -1,0 +1,34 @@
+{
+  "schemaVersion": 2,
+  "locales": [
+    "ko"
+  ],
+  "entries": {
+    "hall.mira_0010": {
+      "ko": "다시 오셨군요."
+    },
+    "hall.theo_0010": {
+      "ko": "등불이 모두 켜져 있습니다."
+    },
+    "hall~banner~0010~subtitle": {
+      "ko": "3층"
+    },
+    "hall~banner~0010~title": {
+      "ko": "홀에 오신 것을 환영합니다, {{userName}}"
+    }
+  },
+  "sourceHashes": {
+    "hall.mira_0010": {
+      "ko": "sha256:dfdbca16342fc2310736c8f0a886e428df148bb8c24e660c25e28fd9f365a584"
+    },
+    "hall.theo_0010": {
+      "ko": "sha256:7e2bda42cd90fdcdae8b36932dfab3e322d503d45276f6cd83bb5daef8b9ac2c"
+    },
+    "hall~banner~0010~subtitle": {
+      "ko": "sha256:9cc51c742002f3943f417e744d9e6b4b6e320a9ba93c43b64031b0d6e18fdb13"
+    },
+    "hall~banner~0010~title": {
+      "ko": "sha256:fde24517faf34d536db0a07c179f9727cd0b1f689a4ad325f62629540166b134"
+    }
+  }
+}

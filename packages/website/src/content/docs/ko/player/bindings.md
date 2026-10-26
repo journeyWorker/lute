@@ -104,6 +104,12 @@ domain 키 바인딩은 병합된 프로젝트 domain의 구성원이어야 합�
 
 flow target(`flow.newGame.target`, `flow.idle.raise.target`, `flow.idle.menu[].target`)은 `raiseOccasion`이 받는 계기 target 전체이며, 계기 target domain의 접두사 형태 `<prefix>.<member>`로 씁니다. 접두사 없는 `square`가 아니라 `place.square`처럼 씁니다(lute 0.47.1). 프로젝트 전체 `lute check`는 beat target과 `lute play` 단계 target과 같은 규칙으로 이를 검사합니다. `open:` 엔티티 종류는 어떤 `<prefix>.<id>`든 받고, 닫힌 종류나 `members:` 부분집합은 접두사 아래의 그 구성원만 받습니다. 그 밖의 값은 `E-BINDING-KEY`이며, 메시지는 ``flow target `…`:``로 시작하고 가까운 이름이 있으면 ``did you mean `place.square`?``를 제안합니다. target 없이 선언한 계기(`target:`이 없거나 `target: false`)에 target을 쓰거나, 프로젝트가 선언하지 않은 엔티티 종류의 계기에 target을 써도 `E-BINDING-KEY`입니다.
 
+### flow와 선언된 계기
+
+`flow.newGame`과 `flow.idle`(그 `raise`와 `menu` 항목)은 호스트 설정입니다. 참조 플레이어가 직접 이를 발생시키며, `flow.newGame`은 런타임이 시작된 뒤에, `flow.idle`은 런타임이 idle일 때 발생시킵니다. 0.51부터 플러그인 계기는 `raisedBy: declared`로 선언할 수 있으며([매니페스트](/ko/plugins/manifests/#선언된-occasion-raise) 참고), 이때 호스트는 디렉티브나 보상 종류의 선언된 `raises`를 통해서만 그것을 발생시킵니다. 그런 계기를 발생시키는 `flow.newGame`이나 `flow.idle`은 그 선언을 깨뜨립니다. 체커가 이미 그 계기를 선언된 소스만이 발생시키는 것으로 다뤘기 때문입니다. 이 바인딩은 호스트가 스스로 발생시키기로 한 계기에만 쓰세요.
+
+참조 플레이어는 선언된 raise를 직접 수행합니다. 각 연출이 끝난 뒤 idle 흐름이 실행되기 **전에** 비우는 대기 큐를 사용하므로 `flow.idle` raise가 선언된 raise를 앞지르는 일은 없습니다([커스텀 호스트](/ko/player/custom-hosts/#선언된-raise) 참고). 큐를 담는 플레이어 저장은 형식 `"0.51"`이며, `"0.50"` 저장은 거부됩니다.
+
 선언된 domain 구성원, stage 위 cast 구성원 또는 컴파일된 사용처에 바인딩이 없으면 `W-BINDING-MISSING`입니다. asset/background/mood/sfx/vfx 사용 섹션의 바인딩을 컴파일 문서가 사용하지 않으면 `W-BINDING-UNUSED`입니다. 진단은 `player.bindings.yaml`에 연결되어 `lute check --project <DIR> --json`에 표시됩니다.
 
 정식 저장소 레퍼런스는 [`docs/player/bindings.md`](https://github.com/journeyWorker/lute/blob/main/docs/player/bindings.md)입니다.

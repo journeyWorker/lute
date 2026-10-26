@@ -353,6 +353,21 @@ Its transcript is the example in [The transcript](#the-transcript).
 - A single `choose:` decision answers every presentation of its branch or hub. A list for a **hub** is one visit sequence, replayed at each presentation. A list of two or more for a **branch** is consumed one entry per presentation, in order, across the whole playthrough — so a scene that plays on three nights can decide differently each night. When the list runs out, the walk halts incomplete (exit 3) and says so.
 - A decision the menu does not offer at that moment halts the walk with an error (exit 1): a choice whose guard is false, or a `once` hub option already taken (`E-TRACE-CHOICE`, as in `lute trace`).
 
+#### Scripted decisions in a loop (0.51)
+
+A bounded backward `::jump{to="…" max="N"}` ([directives](/language/directives/#bounded-backward-jumps--max)) makes a `<branch>` or a `<hub>` inside the loop present more than once in a single scene. The lists above apply per presentation:
+
+- A **branch** reached again in a later iteration is a new menu (a new `awaitChoice` request), and its list is consumed one decision per presentation. `choose: { retry: [yes, yes, no] }` drives three iterations: two `yes` picks that take the jump back, then a `no` that leaves the loop. If the loop is exhausted first, the remaining entries are simply unused; if the list runs out while the walk still asks, the walk halts incomplete (exit 3), as above.
+- A **hub** inside a loop starts each visit at presentation 0, and its list is per visit, as in 0.49 — each time the loop brings the walk back to the hub, the list is replayed from its first entry.
+
+```yaml unverified="0.51 feature; verified after S1-S8 land"
+choose: { retry: [yes, yes, no] }   # a <branch id="retry"> inside a ::jump{max="3"} loop
+steps:
+  - occasion: lockPicked
+```
+
+A save at a choice inside a loop's second iteration resumes to the same transcript: the loop counters are walk-local and are rebuilt by replaying the answers already given, so the save has no new shape.
+
 ### Occasion steps
 
 `{ occasion, target?, payload?, engine?, pick?, choose?, expect?, bridges? }` raises an occasion, exactly as the engine would.

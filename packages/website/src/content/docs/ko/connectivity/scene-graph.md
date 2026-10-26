@@ -81,7 +81,25 @@ project root: .
 - **`json`**(`--json`) — 각 엣지는 `{"from":…,"to":…,"kinds":[…]}`입니다. 같은 이유로 `kinds`는 배열입니다.
 - **`dot`**(`--format dot`) — `active` 원자만으로 정당화된 엣지는 `[style=dashed]`로 그립니다. `visited` 또는 `completed` 원자를 포함하는 엣지는 강한 주장이므로 독자가 볼 수 있도록 실선으로 유지합니다.
 
-종류는 표현과 분석을 위한 것이며 구조적인 것이 아닙니다. DAG 모양은 어느 쪽이든 동일합니다. `active` 엣지도 `completed` 엣지와 정확히 똑같이 순서를 제한하기 때문입니다. 세 가지 원자 종류 외에도 `after` 수식이 작성하지 않은 앵커일 수 있습니다: 퀘스트를 `::accept`s하는 단위에서 오는 `[accept]`, 부모 퀘스트에서 자식 퀘스트로 오는 `[subquest]`, `start`가 읽는 소스에서 오는 `[start]`입니다(dsl 0.24.0, 0.25.0).
+종류는 표현과 분석을 위한 것이며 구조적인 것이 아닙니다. DAG 모양은 어느 쪽이든 동일합니다. `active` 엣지도 `completed` 엣지와 정확히 똑같이 순서를 제한하기 때문입니다. 세 가지 원자 종류 외에도 `after` 수식이 작성하지 않은 앵커일 수 있습니다: 퀘스트를 `::accept`s하는 단위에서 오는 `[accept]`, 부모 퀘스트에서 자식 퀘스트로 오는 `[subquest]`, `start`가 읽는 소스에서 오는 `[start]`입니다(dsl 0.24.0, 0.25.0). 0.51부터는 디렉티브 호출이나 보상이 occasion을 발생시키는 노드에서 그에 응답하는 씬이나 비트로 오는 `[raises]`도 있습니다([아래](#선언된-raise가-그리는-엣지) 참고).
+
+### 선언된 raise가 그리는 엣지
+
+디렉티브나 보상 종류는 호스트가 그에 대한 응답으로 occasion을 발생시킨다고 선언할 수 있습니다([`effects.raises`](/ko/plugins/manifests/#선언된-occasion-raise), 0.51). 엣지에는 이 선언이 그리는 `[raises]` 종류가 더해집니다. occasion이 `raisedBy: declared`로 선언되어 있으면, 그래프는 이 선언을 occasion이 발생하는 유일한 경로로 읽으므로 그에 응답하는 씬이나 번들 비트가 그것을 발생시키는 노드에 **앵커**됩니다:
+
+- **소스.** raise는 샷 안에 그 호출이 있는 씬, 본문에 그 호출이 있는 로어 번들 비트, 본문에 그 호출이 있거나 그 보상을 지급하는 퀘스트에서 옵니다. 로어 엔트리 본문의 호출은 raise이지만(`E-RAISES-TARGET`와 `W-OCCASION-NEVER-RAISED`에 포함됩니다) 엔트리의 `::accept`가 아무것도 앵커하지 않듯 아무것도 앵커하지 않습니다. 컴포넌트 본문 안의 호출은 각 `::use` 위치에서 계산됩니다.
+- **raise가 닿는 응답자.** 앵커, `W-OCCASION-NEVER-RAISED`, `E-RAISES-TARGET`의 "응답하는 씬이나 비트가 없음"이 하나의 규칙을 씁니다. raise가 응답자의 `on:` occasion을 이름 붙이고, occasion에 대상이 없거나, 응답자가 `target:`을 선언하지 않았거나(모든 대상에 응답), raise의 대상이 `occasion.target`이거나(모든 응답자를 대신함), 정적 대상이 응답자의 `target:`과 같으면 닿습니다.
+- **앵커.** `raisedBy: declared` occasion에 응답하고 `after:`가 없으며 그래프 노드인 raise 소스가 하나 이상 있는 씬이나 번들 비트는, 닿는 모든 소스를 대안으로 하는 앵커를 하나 얻습니다. `after:`를 선언한 노드는 `after:`를 선언된 경로로 유지하며 `[raises]` 엣지가 그려지지 않습니다.
+- **엣지.** `source -> answerer`로 그려집니다. `lute scenario` 텍스트는 `scene(intro) -> scene(chapter2) [raises]`를 출력하고, `--json`은 `"kinds": ["raises"]`를 주며, `--format dot`은 `raises` 라벨이 붙은 실선 엣지를 그립니다. `lute scenario reach`와 `lute impact`가 이를 따라가고, `scenario` 노드 엔벨로프는 raise를 이름 붙입니다(`` raised by `::playScene` in scene `intro` ``). 순환을 닫게 되는 엣지는 그려지지 않으므로, 자신의 occasion을 다시 발생시키는 씬이 `E-CONN-CYCLE`이 되는 일은 없습니다.
+
+선언된 raise는 증명이 아니라 호스트의 약속이므로 **may 엣지**이며, 어떤 Must나 보장된 주장도 이에 기대지 않습니다:
+
+- 앵커된 노드는 엔트리 노드와 같은 곳에서 시작합니다. raise하는 쪽의 무조건 `::set`이나 `::assert`는 응답자의 보장된 쓰기 엔벨로프에도, 거기서 반드시 성립하는 사실에도 들어가지 않습니다. raise의 소스는 대안이므로 시나리오 노드 엔벨로프는 그런 작성자를 "not provably before this node"로 나열합니다.
+- `[raises]` 엣지는 퀘스트의 시작을 게이트하지 않으며 시작 순환 감지에도 들어가지 않습니다.
+- [캐스트 존재](/ko/language/dialogue-and-cast/#캐스트)는 `[raises]` 엣지를 따라갈 수 있으며, 이는 `W-CAST-ABSENT` may 경고를 더할 수만 있고 없애지는 않습니다.
+- [도달 가능성](/ko/connectivity/reachability/)은 모든 앵커를 읽는 방식대로 이 앵커를 읽습니다. `Unreachable`은 `Unknown`이 됩니다. 선언된 raise는 증명이 아니라 호스트의 약속이기 때문입니다.
+
+어떤 선언된 raise도 닿지 않는 `raisedBy: declared` occasion에 응답하는 씬이나 비트는 `W-OCCASION-NEVER-RAISED`입니다([도달 가능성](/ko/connectivity/reachability/#raise되지-않는-occasion)).
 
 ### 번들 비트
 

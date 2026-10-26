@@ -299,7 +299,7 @@ const host = {
 
 ## Plugin 레코드
 
-non-blocking plugin 지시문은 tag로 키를 둔 `PlayerHost.plugin`으로 호스트에 전달됩니다. 레코드는 대기 cue가 되어, batch 안 레코드 위치에서 `PluginCall { tag, attrs, stamps?, document, position }`(`stamps`는 명령의 플러그인 스탬프 속성으로 `attrs`와 별개이며 없으면 생략됩니다)으로 핸들러를 실행하고 완료되면 batch를 이어 가며 skip 모드에서도 실행합니다(게임 동작은 연출이 아님). bridge로 답한 호출의 레코드는 `plugin`에 넘기지 않습니다. cue factory는 출력 이벤트마다 정확히 cue 하나를 순서대로 반환하므로 호스트가 factory를 감쌀 수도 있습니다.
+non-blocking plugin 지시문은 tag로 키를 둔 `PlayerHost.plugin`으로 호스트에 전달됩니다. 레코드는 대기 cue가 되어, batch 안 레코드 위치에서 `PluginCall { tag, attrs, stamps?, localized?, raises?, document, position }`(`stamps`는 명령의 플러그인 스탬프 속성으로 `attrs`와 별개이며 없으면 생략됩니다. `localized`와 `raises`(0.51)는 [선언된 raise](#선언된-raise)와 [Locale](#locale-047)에서 설명하며 레코드에 없으면 생략됩니다)으로 핸들러를 실행하고 완료되면 batch를 이어 가며 skip 모드에서도 실행합니다(게임 동작은 연출이 아님). bridge로 답한 호출의 레코드는 `plugin`에 넘기지 않습니다. cue factory는 출력 이벤트마다 정확히 cue 하나를 순서대로 반환하므로 호스트가 factory를 감쌀 수도 있습니다.
 
 `Director.make`도 같은 `bundle`, `bindings`, cue-factory wrapper, `host`
 옵션으로 기본 factory를 만들 수 있으므로 hand-composed director에 별도
@@ -309,6 +309,25 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 `Cues.make`로 만들지 않은 pre-composed factory에는 `host.plugin`을 합칠 수
 없으므로 `Director.make`는 handler를 버리지 않고 die합니다. 이때는 wrapper를
 넘기세요.
+
+## 선언된 raise
+
+0.51부터 plugin 지시문이나 보상 종류는 [`effects.raises`](/ko/plugins/manifests/#선언된-occasion-raise)를 선언할 수 있습니다. 호출이나 지급에 대한 응답으로 **호스트**가 발생시키는 occasion입니다. 런타임은 아무것도 발생시키지 않습니다. 해석된 목록(`raises: [{ occasion, target? }]`, `occasion.target`은 이미 바인딩됨)을 내보내는 `plugin` 레코드와 `grant` 레코드에 복사하고, `PluginCall.raises?`가 이를 `plugin` 핸들러에 건넵니다. 이를 발생시키는 것은 호스트의 책무입니다:
+
+- 지시문 호출을 실행한 연출이 끝나면(`presentationEnd`) 런타임이 idle일 때, 나열된 각 occasion을 레코드 순서와 목록 순서대로 `raiseOccasion` 입력으로 보냅니다;
+- 보상의 `grant` 레코드를 담은 출력이 적용된 뒤에는 그 raise도 같은 식으로 보냅니다.
+
+참조 플레이어는 세션 셸의 **대기 raise 큐**로 이를 수행합니다:
+
+- **적재.** 출력이 적용될 때 그 레코드의 `raises`가 레코드 순서와 목록 순서대로 큐에 추가되며, 각 항목에는 출처(`document`, `position`, 출력의 입력 로그 인덱스)가 붙습니다. 시작(`newRun`, `toStart`, lineage 복원)의 출력도 다른 출력처럼 정확히 한 번 적재됩니다.
+- **비우는 경계.** 디렉터는 연출이 정착되는 경계, 즉 출력을 적용한 batch가 정착되고 런타임이 idle이 된 뒤에, 그리고 호스트 `idle`과 바인딩의 idle 흐름 **전에** 큐를 비웁니다. 각 단계는 큐의 맨 앞을 꺼내 세션 락 아래에서 `raiseOccasion` 입력으로 보내므로 raise는 정확히 한 번 전달됩니다. 런타임이 거부한 raise는 로그에 남기고 버리며 재시도하지 않습니다. raise의 출력이 또 다른 raise를 적재할 수 있으며, 큐가 빌 때까지 계속 비운 다음 idle 흐름이 실행됩니다.
+- **플레이어 입력당 롤백 한 단계.** 체크포인트는 플레이어 입력을 제출하기 전에 찍는 기존 체크포인트이며, 이제 대기 큐도 함께 담습니다. 자동 선언 raise는 기록에 추가하지 않는 경로로 보내므로 자체 체크포인트를 만들지 않습니다. `rollback(1)`은 플레이어 입력과 그 입력이 일으킨 모든 raise를 되돌립니다. 그 raise 중 없든 일부든 전부든 전달된 상태였더라도 `rollback(1)`은 큐를 그 입력 이전 상태로 복원하고, 입력을 다시 재생하면 raise가 다시 만들어져 각각 한 번씩 전달됩니다. (`begin`의 `flow.newGame` raise는 이전처럼 자체 체크포인트를 가집니다.)
+- **시작.** 수락된 `newRun`, `toStart`, lineage 교체는 새 시작 출력을 적재하기 전에 이전 대기 raise를 비웁니다. 거부된 것은 큐를 그대로 둡니다.
+- **저장.** 런타임은 출력의 아직 전달되지 않은 뒷부분만 재생하므로, 저장 전에 전달된 raise는 재개된 출력에서 다시 만들 수 없습니다. 따라서 큐는 플레이어 상태의 일부입니다. `SaveRuntime`에 `pendingRaises`가 추가되고, 각 롤백 지점은 자신의 플레이어 입력 이전의 큐를 기록하며, `restore`와 `rollback`이 이를 복원합니다. 선언된 raise가 없는 프로젝트의 저장은 `pendingRaises: []`를 씁니다. 저장 형식은 `"0.51"`이므로 모든 마이너와 마찬가지로 `"0.50"` 저장은 거부됩니다. 런타임 `Contract.Snapshot`은 바뀌지 않습니다.
+
+자체 세션을 구성하는 호스트도 같은 책무를 집니다. 위의 정착 시점 뒤에 각 선언된 raise를 한 번씩 전달하고, 저장과 롤백을 거쳐 자체 대기 큐를 유지하며, 런타임이 거부한 raise는 버립니다.
+
+`raisedBy: declared`로 선언된 계기는 선언된 raise를 통해서만 발생하므로, 호스트는 자체 설정에서 이를 발생시키면 안 됩니다. 그런 occasion을 발생시키는 `bindings.flow.idle`이나 `bindings.flow.newGame`은 그 occasion의 선언을 깨뜨립니다([플레이어 바인딩](/ko/player/bindings/#flow와-선언된-계기) 참고).
 
 ## Idle 흐름
 
@@ -358,6 +377,8 @@ locale은 마운트 옵션이 아니라 설정(`settings.locale`)입니다. 불�
 현재 locale에 대해 대사(`texts[locale]`, `localeSegments[locale]`), choice와 hub 선택지 라벨(`texts[locale]`), branch와 hub 프롬프트(`promptTexts[locale]`), 백로그는 번역을 읽고 없으면 원본 텍스트로 돌아갑니다. 화자 이름은 현지화하지 않습니다. `setSettings({ locale })`은 다음에 보이는 텍스트와 다음에 여는 백로그에 적용되며 새 게임이 필요 없습니다. cue factory는 호출마다 locale을 받습니다(`fromOutput(output, readLines, locale)`, `choiceView(await, locale)`). `cueFactory` wrapper나 직접 만든 factory도 그것을 받아 그대로 넘깁니다.
 
 대사와 백로그 항목은 컴파일된 artifact가 아니라 런타임의 `line` 레코드에서 번역을 읽습니다. 이 레코드의 `texts`와 `localeSegments`는 모든 `{{…}}` 마커가 이미 값으로 바뀌어 있습니다. 번역의 마커는 원본 line에서 참조 대상이 같은 마커(`{{ }}` 안의 텍스트, 앞뒤 공백 제외)에 대해 렌더링한 값을 받으므로 번역자가 마커 순서를 바꿔도 됩니다. 원본 line에 없는 마커는 쓴 그대로 남고, 번역에도 리터럴 `{{`를 `\{{`로 쓸 수 있습니다(lute 0.47.1). 레코드는 디코딩된 텍스트를 담으며, placeholder를 직접 치환하는 엔진은 IR의 이스케이프된 보간 읽기 규칙을 적용해야 합니다([현지화 텍스트](/ko/tooling/runtime-contract/#현지화-텍스트) 참고). 선택지 라벨은 0.46과 같습니다(`{{…}}` 마커를 렌더링하지 않음).
+
+지시문의 `text` 속성(0.51, [`type: text`](/ko/plugins/manifests/#현지화-가능한-텍스트-속성-type-text))도 같은 규칙을 따릅니다. 런타임이 각 마커를 한 번 렌더링해 렌더링된 원문을 레코드의 `attrs.<attr>`에, 렌더링된 번역을 `localized: { <attr>: { lineId, texts } }`에 씁니다. `PluginCall.localized?`는 각 `text` 속성을 플레이어의 현재 locale로 담은 `Readonly<Record<string, string>>`(`localized.<attr>.texts[locale]`, 없으면 `attrs.<attr>`)이므로, plugin 핸들러는 레코드를 읽지 않고도 알맞은 언어를 보여 줄 수 있습니다. 호스트 토큰 마커는 대사 줄처럼 그대로 남습니다. locale 탐색은 각 명령의 `texts`와 `promptTexts`, 각 선택지의 `texts`, 그리고 `plugin` 명령의 경우 모든 `localized.<attr>.texts`의 키만 읽으며 `fields`나 `stamps` 맵은 읽지 않으므로, `texts`나 `promptTexts`라는 이름의 속성이 잘못 읽히지 않고, 지시문 텍스트만 번역한 locale도 목록에 포함됩니다.
 
 ## 롤백과 기록
 
