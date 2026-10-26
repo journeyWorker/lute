@@ -15,19 +15,22 @@
 //! lint set MUST NOT change artifact identity. The loader carries the
 //! declarations through; assembly reads none of it.
 //!
-//! Parse-only. `when` and `message` are strings here; the lint engine in
-//! `lute-lint` parses `when` via `lute_cel::parse_slot` and evaluates it
-//! over metric tables (design §5). Load-time YAML failures for a lint file
-//! surface through the loader's existing per-file
-//! [`crate::loader::LoadError::Parse`] channel — the same anchor every
-//! other export uses, and the load-time flavor of the design's `E-LINT-RULE`.
+//! Parse-only. Predicates and `message` are strings here; the lint engine
+//! in `lute-lint` parses them via `lute_cel::parse_slot` and evaluates them
+//! over metric tables and node rows (design §5). A rule's body is
+//! [`LintRuleBody`]: `when` for every target but `pair`, `open`/`close`
+//! (and optional `inside`/`scope`) for `pair` (dsl 0.51.0 §6.1). The shape
+//! is enforced while deserializing ([`LintRuleShapeError`]), so a plugin's
+//! malformed rule surfaces through the loader's per-file
+//! [`crate::loader::LoadError::Parse`] channel (`E-PLUGIN-PARSE`) and a
+//! `lute.lint.yaml` `custom:` one as `E-LINT-CONFIG`.
 
 use serde::{Deserialize, Serialize};
 
 /// One lint rule declared by a plugin's `lints/*.yaml` file — the loader's
 /// on-disk shape for a plugin-published rule (design §6). Consumers
 /// (lute-lint) resolve `level` against `lute.lint.yaml` overrides and
-/// evaluate `when` over the metric row named by `target`.
+/// evaluate the [`LintRuleBody`] over the rows named by `target`.
 ///
 /// Deserialization is deliberately permissive on `options` (an arbitrary
 /// YAML mapping the rule's own logic interprets) and on `level` (a plugin
@@ -38,7 +41,7 @@ use serde::{Deserialize, Serialize};
 /// Deserialize` PLUS `PartialEq` — the batch contract asks for equality so
 /// consumers (and tests) can compare rule sets without hand-rolling one.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+#[serde(try_from = "RawLintRuleDecl", into = "RawLintRuleDecl")]
 pub struct LintRuleDecl {
     /// Rule id, raw as authored in the plugin's YAML. The namespaced form
     /// `<plugin-id>/<id>` (design §3) is produced by
@@ -46,19 +49,19 @@ pub struct LintRuleDecl {
     /// consumer, NEVER stored here — the same plugin package can be reused
     /// under a different id and this decl still applies.
     pub id: String,
-    /// One of `line | section | scene | speaker | group | project | node` —
-    /// the metric table row `when` binds over (design §4, §6; `node`: dsl
-    /// 0.50.0 §8.1, one row per body node).
+    /// One of `line | section | scene | speaker | group | project | node |
+    /// pair` — the metric table row the body binds over (design §4, §6;
+    /// `node`: dsl 0.50.0 §8.1, one row per body node; `pair`: dsl 0.51.0
+    /// §6, begin/end balance over node rows).
     pub target: LintTarget,
-    /// A lint-CEL expression evaluated over the `target`'s row (design §5).
-    /// Held as a string here; parsing is deferred to `lute-lint`, so a
-    /// malformed CEL text is reported by the engine, not the loader.
-    pub when: String,
+    /// The rule's predicates, held as strings: parsing is deferred to
+    /// `lute-lint`, so a malformed CEL text is reported by the engine, not
+    /// the loader. [`LintRuleDecl::check_shape`] holds it against `target`.
+    pub body: LintRuleBody,
     /// Default severity level. `None` means "no plugin-side default" — the
     /// consumer's config resolution (design §3) picks a level, falling
     /// back to whatever `lute-lint`'s registry declares for a rule with
     /// no author-declared default.
-    #[serde(default)]
     pub level: Option<LintLevel>,
     /// Human-readable message template (design §5 "Message templates").
     /// `{path.to.field}` interpolation is applied by `lute-lint`; the raw
@@ -71,8 +74,210 @@ pub struct LintRuleDecl {
     /// re-shapes the interior — `yaml_serde` is already the workspace's
     /// YAML crate, and using its ordered `Mapping` keeps declaration
     /// order stable for consumers that render options back.
-    #[serde(default)]
     pub options: yaml_serde::Mapping,
+}
+
+impl LintRuleDecl {
+    /// Whether `body` fits `target`: a [`LintRuleBody::Pair`] for
+    /// [`LintTarget::Pair`], a [`LintRuleBody::Predicate`] for every other
+    /// target (dsl 0.51.0 §6.1). Deserialization already enforces it; a
+    /// rule built in Rust is checked by the lint engine with this.
+    pub fn check_shape(&self) -> Result<(), LintRuleShapeError> {
+        let fault = match (&self.body, self.target) {
+            (LintRuleBody::Predicate { .. }, LintTarget::Pair) => LintShapeFault::WhenOnPair,
+            (LintRuleBody::Pair(_), target) if target != LintTarget::Pair => {
+                LintShapeFault::PairKeyOffPair {
+                    key: "open",
+                    target,
+                }
+            }
+            _ => return Ok(()),
+        };
+        Err(LintRuleShapeError {
+            id: self.id.clone(),
+            fault,
+        })
+    }
+}
+
+/// What a rule asserts (dsl 0.51.0 §6.1).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LintRuleBody {
+    /// `when`: a lint-CEL expression evaluated over the `target`'s row
+    /// (design §5); a finding per row it holds for.
+    Predicate { when: String },
+    /// A `pair` rule's predicates over node rows.
+    Pair(PairSpec),
+}
+
+/// A `pair` rule (dsl 0.51.0 §6.1): `open`, `close` and the optional
+/// `inside` are lint-CEL predicates over the `node` row; `scope` says which
+/// rows one pass balances.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PairSpec {
+    pub open: String,
+    pub close: String,
+    /// Every row strictly between an open and its close must satisfy it.
+    pub inside: Option<String>,
+    pub scope: PairScope,
+}
+
+/// Which rows one `pair` pass balances (dsl 0.51.0 §6.2).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum PairScope {
+    /// Each body's direct children, in order.
+    #[default]
+    Body,
+    /// Every row of one section or top-level declaration, in document
+    /// order, at every depth.
+    Section,
+}
+
+/// A rule whose keys do not fit its target (dsl 0.51.0 §6.1).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LintRuleShapeError {
+    /// The rule's raw id.
+    pub id: String,
+    pub fault: LintShapeFault,
+}
+
+/// The shape faults of [`LintRuleShapeError`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LintShapeFault {
+    /// A target other than `pair` without `when`.
+    MissingWhen,
+    /// `when` on a `pair` rule.
+    WhenOnPair,
+    /// A `pair` rule without `open` or `close`.
+    MissingPairKey(&'static str),
+    /// `open`, `close`, `inside` or `scope` on a target other than `pair`.
+    PairKeyOffPair {
+        key: &'static str,
+        target: LintTarget,
+    },
+}
+
+impl std::fmt::Display for LintRuleShapeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let id = &self.id;
+        match self.fault {
+            LintShapeFault::MissingWhen => write!(f, "rule `{id}`: missing field `when`"),
+            LintShapeFault::WhenOnPair => write!(
+                f,
+                "rule `{id}`: `when` is refused on `target: pair`, which states `open` and \
+                 `close` instead"
+            ),
+            LintShapeFault::MissingPairKey(key) => {
+                write!(f, "rule `{id}`: a `target: pair` rule needs `{key}`")
+            }
+            LintShapeFault::PairKeyOffPair { key, target } => write!(
+                f,
+                "rule `{id}`: `{key}` belongs to `target: pair`, not `target: {}`; this \
+                 target states `when`",
+                target.name()
+            ),
+        }
+    }
+}
+
+impl std::error::Error for LintRuleShapeError {}
+
+/// The on-disk keys of a rule, before [`LintRuleDecl`]'s shape check.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct RawLintRuleDecl {
+    id: String,
+    target: LintTarget,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    when: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    open: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    close: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    inside: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    scope: Option<PairScope>,
+    #[serde(default)]
+    level: Option<LintLevel>,
+    message: String,
+    #[serde(default)]
+    options: yaml_serde::Mapping,
+}
+
+impl TryFrom<RawLintRuleDecl> for LintRuleDecl {
+    type Error = LintRuleShapeError;
+
+    fn try_from(raw: RawLintRuleDecl) -> Result<Self, Self::Error> {
+        let fail = |fault| {
+            Err(LintRuleShapeError {
+                id: raw.id.clone(),
+                fault,
+            })
+        };
+        let body = if raw.target == LintTarget::Pair {
+            if raw.when.is_some() {
+                return fail(LintShapeFault::WhenOnPair);
+            }
+            let (Some(open), Some(close)) = (raw.open.clone(), raw.close.clone()) else {
+                let key = if raw.open.is_none() { "open" } else { "close" };
+                return fail(LintShapeFault::MissingPairKey(key));
+            };
+            LintRuleBody::Pair(PairSpec {
+                open,
+                close,
+                inside: raw.inside.clone(),
+                scope: raw.scope.unwrap_or_default(),
+            })
+        } else {
+            let pair_keys = [
+                ("open", raw.open.is_some()),
+                ("close", raw.close.is_some()),
+                ("inside", raw.inside.is_some()),
+                ("scope", raw.scope.is_some()),
+            ];
+            if let Some((key, _)) = pair_keys.into_iter().find(|(_, present)| *present) {
+                return fail(LintShapeFault::PairKeyOffPair {
+                    key,
+                    target: raw.target,
+                });
+            }
+            let Some(when) = raw.when.clone() else {
+                return fail(LintShapeFault::MissingWhen);
+            };
+            LintRuleBody::Predicate { when }
+        };
+        Ok(Self {
+            id: raw.id,
+            target: raw.target,
+            body,
+            level: raw.level,
+            message: raw.message,
+            options: raw.options,
+        })
+    }
+}
+
+impl From<LintRuleDecl> for RawLintRuleDecl {
+    fn from(decl: LintRuleDecl) -> Self {
+        let (when, pair) = match decl.body {
+            LintRuleBody::Predicate { when } => (Some(when), None),
+            LintRuleBody::Pair(pair) => (None, Some(pair)),
+        };
+        Self {
+            id: decl.id,
+            target: decl.target,
+            when,
+            open: pair.as_ref().map(|p| p.open.clone()),
+            close: pair.as_ref().map(|p| p.close.clone()),
+            inside: pair.as_ref().and_then(|p| p.inside.clone()),
+            scope: pair.map(|p| p.scope),
+            level: decl.level,
+            message: decl.message,
+            options: decl.options,
+        }
+    }
 }
 
 /// Metric-table target a lint rule binds over (design §4). Serialized
@@ -89,6 +294,25 @@ pub enum LintTarget {
     /// Every body node — line, directive or element — with its authored
     /// attributes, siblings, parent and `preceding` scope (dsl 0.50.0 §8.1).
     Node,
+    /// Begin/end balance over node rows: `open`, `close`, optional
+    /// `inside` and `scope` (dsl 0.51.0 §6).
+    Pair,
+}
+
+impl LintTarget {
+    /// The target as written in a rule (`target: node`).
+    pub fn name(self) -> &'static str {
+        match self {
+            LintTarget::Line => "line",
+            LintTarget::Section => "section",
+            LintTarget::Scene => "scene",
+            LintTarget::Speaker => "speaker",
+            LintTarget::Group => "group",
+            LintTarget::Project => "project",
+            LintTarget::Node => "node",
+            LintTarget::Pair => "pair",
+        }
+    }
 }
 
 /// Severity level a lint fires at (design §3). Serialized lowercase to

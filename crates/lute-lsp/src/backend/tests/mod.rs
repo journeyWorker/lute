@@ -617,3 +617,73 @@ async fn analyze_runs_node_lints_over_the_buffer_text() {
         "the buffer's `swim` is unknown: {got:?}"
     );
 }
+
+/// dsl 0.51.0 §6.2: a `pair` lint's related open row is published as
+/// `relatedInformation` in the same document, located in the buffer (the
+/// file on disk is shorter), and is not mirrored as a foreign diagnostic.
+#[tokio::test(flavor = "current_thread")]
+async fn analyze_relates_a_pair_lint_to_its_open_row_in_the_buffer() {
+    use futures::StreamExt;
+    use std::fs;
+    use tower::{Service, ServiceExt};
+    use tower_lsp_server::jsonrpc::Request as RpcRequest;
+    use tower_lsp_server::LspService;
+
+    let root_scratch = lute_scratch::ScratchDir::new();
+    let root = root_scratch.join("lute_lsp_pair_lints");
+    fs::create_dir_all(root.join("scenes")).unwrap();
+    fs::write(
+        root.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n",
+    )
+    .unwrap();
+    fs::write(
+        root.join("lute.lint.yaml"),
+        "lsp: true\ncustom:\n  - id: group-balanced\n    target: pair\n    \
+         open: 'node.tag == \"group\" && \"mode\" in node.attrs && node.attrs[\"mode\"] == \"begin\"'\n    \
+         close: 'node.tag == \"group\" && \"mode\" in node.attrs && node.attrs[\"mode\"] == \"end\"'\n    \
+         inside: 'node.kind == \"line\"'\n    level: error\n    message: \"::group begin/end\"\n",
+    )
+    .unwrap();
+    let scene = root.join("scenes/a.lute");
+    fs::write(&scene, "---\nkind: scene\nid: a\n---\n").unwrap();
+    let buffer = "---\nkind: scene\nid: a\n---\n\n## Shot 1.\n\n::group{mode=\"begin\"}\n\
+                  @mira: Stay.\n::bg{id=\"hall\"}\n::group{mode=\"end\"}\n";
+
+    let (mut service, mut socket) = LspService::new(Backend::new);
+    let init = RpcRequest::build("initialize")
+        .params(serde_json::json!({ "capabilities": {} }))
+        .id(1)
+        .finish();
+    service.ready().await.unwrap().call(init).await.unwrap();
+    let uri = format!("file://{}", scene.display());
+    let open = RpcRequest::build("textDocument/didOpen")
+        .params(serde_json::json!({
+            "textDocument": { "uri": uri, "languageId": "lute", "version": 1, "text": buffer }
+        }))
+        .finish();
+    service.ready().await.unwrap().call(open).await.unwrap();
+    let note = socket.next().await.expect("didOpen should publish");
+    let params = note.params().expect("publish params");
+    assert_eq!(
+        params["uri"], uri,
+        "the document's own publish, no mirror first"
+    );
+    let diags = params["diagnostics"].as_array().expect("diagnostics");
+    let pair: Vec<&serde_json::Value> = diags
+        .iter()
+        .filter(|d| d["code"] == "L-GROUP-BALANCED")
+        .collect();
+    assert_eq!(pair.len(), 1, "{diags:?}");
+    assert_eq!(pair[0]["range"]["start"]["line"], 9, "the ::bg row");
+    assert_eq!(
+        pair[0]["message"],
+        "::group begin/end — not allowed inside the pair opened at line 8"
+    );
+    let related = pair[0]["relatedInformation"]
+        .as_array()
+        .expect("the open row is related");
+    assert_eq!(related.len(), 1, "{related:?}");
+    assert_eq!(related[0]["location"]["range"]["start"]["line"], 7);
+    assert_eq!(related[0]["message"], "the pair opened here");
+}

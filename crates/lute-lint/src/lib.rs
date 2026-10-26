@@ -14,7 +14,8 @@
 //! - [`engine::lint`] — orchestrator: takes parsed documents, resolved config,
 //!   plugin rules, and provider snapshots; returns [`engine::LintOutcome`]
 //!   (a deterministic `Vec<(PathBuf, Diagnostic)>`).
-//! - [`nodes::walk_nodes`] — the `node` target's rows (dsl 0.50.0 §8.1).
+//! - [`nodes::walk_nodes`] — the `node` target's rows (dsl 0.50.0 §8.1), which
+//!   `pair` rules balance (dsl 0.51.0 §6).
 //! - [`config::LintConfig`] / [`config::parse_config`] — YAML config loader.
 //! - [`model::LintRuleDecl`] and friends — declarative rule shape shared with
 //!   plugin YAML and `custom:`; re-exported from `lute_manifest::lint` (the
@@ -25,7 +26,7 @@
 //! Diagnostics are emitted with codes:
 //! - `L-<UPPER-KEBAB>` for rule findings (spec §8).
 //! - `E-LINT-CONFIG` for config-semantic errors (unknown id, bad option, …).
-//! - `E-LINT-EXPR` for an unresolvable/mistyped `when` (rule skipped).
+//! - `E-LINT-EXPR` for an unresolvable/mistyped predicate (rule skipped).
 //! - `E-LINT-RULE` for a malformed plugin/custom rule declaration.
 //!
 //! No lint diagnostic ever enters `CapabilitySnapshot`'s hash — lints are
@@ -37,8 +38,9 @@ pub mod eval;
 pub mod metrics;
 pub mod model;
 pub mod nodes;
+pub mod pair;
 pub mod rules;
 
 pub use config::{parse_config, LintConfig, RuleOverride};
 pub use engine::{lint, LintDocInput, LintOutcome, LintScope};
-pub use model::{LintLevel, LintRuleDecl, LintTarget};
+pub use model::{LintLevel, LintRuleBody, LintRuleDecl, LintTarget, PairScope, PairSpec};

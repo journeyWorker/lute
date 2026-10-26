@@ -838,12 +838,11 @@
       }
     },
     "lintRuleDecl": {
-      "description": "lint.rs::LintRuleDecl. `target` is one of `line | section | scene | speaker | group | project | node`; `level` (optional) is one of `off | hint | info | warn | error`; `when` is a lint-CEL expression parsed by lute-lint at load time; `message` is a `{path.to.field}` template; `options` is an opaque YAML mapping the rule's own logic interprets. Consumers namespace the raw `id` as `<plugin-id>/<id>`.",
+      "description": "lint.rs::LintRuleDecl. `target` is one of `line | section | scene | speaker | group | project | node | pair`; `level` (optional) is one of `off | hint | info | warn | error`; `when` is a lint-CEL expression parsed by lute-lint at load time; `message` is a `{path.to.field}` template; `options` is an opaque YAML mapping the rule's own logic interprets. A `pair` rule (dsl 0.51.0 §6.1) states `open` and `close` (and optional `inside` and `scope`) instead of `when`; every other target states `when` and none of those. Consumers namespace the raw `id` as `<plugin-id>/<id>`.",
       "type": "object",
       "required": [
         "id",
         "target",
-        "when",
         "message"
       ],
       "properties": {
@@ -858,11 +857,27 @@
             "speaker",
             "group",
             "project",
-            "node"
+            "node",
+            "pair"
           ]
         },
         "when": {
           "type": "string"
+        },
+        "open": {
+          "type": "string"
+        },
+        "close": {
+          "type": "string"
+        },
+        "inside": {
+          "type": "string"
+        },
+        "scope": {
+          "enum": [
+            "body",
+            "section"
+          ]
         },
         "level": {
           "enum": [
@@ -878,6 +893,54 @@
         },
         "options": {
           "type": "object"
+        }
+      },
+      "additionalProperties": false,
+      "if": {
+        "properties": {
+          "target": {
+            "const": "pair"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "open",
+          "close"
+        ],
+        "not": {
+          "required": [
+            "when"
+          ]
+        }
+      },
+      "else": {
+        "required": [
+          "when"
+        ],
+        "not": {
+          "anyOf": [
+            {
+              "required": [
+                "open"
+              ]
+            },
+            {
+              "required": [
+                "close"
+              ]
+            },
+            {
+              "required": [
+                "inside"
+              ]
+            },
+            {
+              "required": [
+                "scope"
+              ]
+            }
+          ]
         }
       }
     },

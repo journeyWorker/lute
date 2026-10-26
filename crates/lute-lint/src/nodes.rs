@@ -25,7 +25,10 @@
 //! once.
 //!
 //! The walk runs after the metric tables, because a row binds `scene`, the
-//! finished document row, and only when a `node` rule is active.
+//! finished document row, and only when a `node` or `pair` rule is active.
+//! A [`NodeVisitor`] also sees where each body and each section or
+//! top-level declaration begins and ends: a `pair` rule keeps its open
+//! slots in those frames (dsl 0.51.0 §6.2).
 
 use std::cell::Cell;
 use std::collections::BTreeMap;
@@ -36,10 +39,14 @@ use lute_syntax::ast::{Arm, BundleBeat, Choice, Document, Entry, HubReturn, Node
 use crate::eval::{Record, Ref, Value};
 
 /// Work counters of [`walk_nodes`], for the cost acceptance (dsl 0.50.0
-/// §8.1): every count is per document walked and adds up across documents.
-/// [`NodeWalkStats::work`] sums the units of processed input — rows, head
-/// bytes scanned, attributes read, modeled ordered-map steps and entries
-/// copied — so a cost that grows with the scope's size shows in it.
+/// §8.1, 0.51.0 §6.2): every count is per document walked and adds up
+/// across documents. [`NodeWalkStats::work`] sums the units of processed
+/// input — rows, head bytes scanned, attributes read, modeled ordered-map
+/// steps, entries copied, characters the evaluator scanned and `pair` slot
+/// operations — so a cost that grows with the scope's size shows in it.
+/// The walk counts rows, attributes, head bytes and the `preceding`
+/// counters; the rule evaluator counts [`NodeWalkStats::eval_chars`] and
+/// the `pair` counters.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct NodeWalkStats {
     /// Rows visited.
@@ -66,15 +73,32 @@ pub struct NodeWalkStats {
     /// Values copied by those builds: one per entry and one per attribute
     /// of each entry.
     pub preceding_copied: u64,
+    /// Characters the evaluator scanned in string operations of `node` and
+    /// `pair` predicates ([`crate::eval::Env::chars_scanned`]).
+    pub eval_chars: u64,
+    /// `pair` predicate invocations (`open`, `close`, `inside`): an event
+    /// count, not a cost — the cost of each is in the other counters.
+    pub pair_evals: u64,
+    /// `pair` slot operations: opens, closes and slot frames pushed (one
+    /// per body for a `body`-scope rule, one per section or top-level
+    /// declaration for a `section`-scope rule).
+    pub pair_slots: u64,
 }
 
 impl NodeWalkStats {
     /// The units of input the walk processed: rows, head bytes scanned,
-    /// attributes read, modeled map steps and copied values. The event
-    /// counts (writes, restores, lookups, maps built) are not added again:
-    /// their cost is in `preceding_steps` and `preceding_copied`.
+    /// attributes read, modeled map steps, copied values, scanned
+    /// characters and `pair` slot operations. The event counts (writes,
+    /// restores, lookups, maps built, `pair` invocations) are not added
+    /// again: their cost is in the others.
     pub fn work(&self) -> u64 {
-        self.rows + self.head_bytes + self.attrs + self.preceding_steps + self.preceding_copied
+        self.rows
+            + self.head_bytes
+            + self.attrs
+            + self.preceding_steps
+            + self.preceding_copied
+            + self.eval_chars
+            + self.pair_slots
     }
 
     /// Add `other`'s counts.
@@ -88,6 +112,37 @@ impl NodeWalkStats {
         self.preceding_steps += other.preceding_steps;
         self.preceding_materialized += other.preceding_materialized;
         self.preceding_copied += other.preceding_copied;
+        self.eval_chars += other.eval_chars;
+        self.pair_evals += other.pair_evals;
+        self.pair_slots += other.pair_slots;
+    }
+}
+
+/// What [`walk_nodes_with`] reports: every row, and where each body and
+/// each section or top-level declaration (the unit that resets
+/// `node.preceding`) begins and ends. A body's rows are its direct
+/// children; a nested body begins after the row that owns it and ends
+/// before that row's next sibling. A section or declaration scope holds
+/// the bodies inside it.
+pub trait NodeVisitor {
+    /// One row, valid during the call.
+    fn row(&mut self, row: &NodeRow<'_>);
+    /// A body begins.
+    fn body_start(&mut self) {}
+    /// The body begun last ends.
+    fn body_end(&mut self) {}
+    /// A section or top-level declaration begins.
+    fn scope_start(&mut self) {}
+    /// The section or declaration begun last ends.
+    fn scope_end(&mut self) {}
+}
+
+/// A [`NodeVisitor`] that sees rows only.
+struct Rows<'v>(&'v mut dyn FnMut(&NodeRow<'_>));
+
+impl NodeVisitor for Rows<'_> {
+    fn row(&mut self, row: &NodeRow<'_>) {
+        (self.0)(row);
     }
 }
 
@@ -494,6 +549,15 @@ pub fn walk_nodes(
     source: &str,
     visit: &mut dyn FnMut(&NodeRow<'_>),
 ) -> NodeWalkStats {
+    walk_nodes_with(doc, source, &mut Rows(visit))
+}
+
+/// [`walk_nodes`], reporting body and scope frames to `visitor` as well.
+pub fn walk_nodes_with(
+    doc: &Document,
+    source: &str,
+    visitor: &mut dyn NodeVisitor,
+) -> NodeWalkStats {
     let mut walk = Walk {
         source,
         arena: Vec::new(),
@@ -518,7 +582,9 @@ pub fn walk_nodes(
             depth: 0,
             section: &info,
         };
-        walk.body(&kids, scope, false, visit);
+        visitor.scope_start();
+        walk.body(&kids, scope, false, visitor);
+        visitor.scope_end();
     }
     let mut decls: Vec<Child<'_>> = doc
         .quests
@@ -535,7 +601,7 @@ pub fn walk_nodes(
         depth: 0,
         section: &outside,
     };
-    walk.body(&decls, scope, true, visit);
+    walk.body(&decls, scope, true, visitor);
     let mut stats = walk.stats;
     stats.preceding_lookups = walk.counters.lookups.get();
     stats.preceding_steps += walk.counters.steps.get();
@@ -557,7 +623,7 @@ fn section_value(index: usize, title: &str, id: &str) -> Value {
 impl<'d> Walk<'d> {
     /// Walk one body. `fresh` resets `preceding` before each child: the
     /// document's top-level declarations each start a new scope (dsl 0.50.0
-    /// §8.1).
+    /// §8.1), which `visitor` sees as a scope frame around the child.
     ///
     /// A sibling is summarized when the row before it is visited (it is that
     /// row's `next`), and its summary is dropped once no later row can read
@@ -569,8 +635,9 @@ impl<'d> Walk<'d> {
         kids: &[Child<'d>],
         scope: Scope<'_>,
         fresh: bool,
-        visit: &mut dyn FnMut(&NodeRow<'_>),
+        visitor: &mut dyn NodeVisitor,
     ) {
+        visitor.body_start();
         let base = self.arena.len();
         self.arena
             .extend(std::iter::repeat_with(NodeSummary::vacant).take(kids.len()));
@@ -581,6 +648,7 @@ impl<'d> Walk<'d> {
         for (i, &kid) in kids.iter().enumerate() {
             if fresh {
                 self.restore(frame);
+                visitor.scope_start();
             }
             let me = base + i;
             if let Some(&next) = kids.get(i + 1) {
@@ -608,7 +676,7 @@ impl<'d> Walk<'d> {
                 },
                 span: kid.span(),
             };
-            visit(&row);
+            visitor.row(&row);
             self.stats.rows += 1;
             let (_, tag) = kid.identity();
             if !tag.is_empty() {
@@ -634,11 +702,15 @@ impl<'d> Walk<'d> {
                     depth: scope.depth + 1,
                     ..scope
                 };
-                self.body(&grand, inner, false, visit);
+                self.body(&grand, inner, false, visitor);
+            }
+            if fresh {
+                visitor.scope_end();
             }
         }
         self.restore(frame);
         self.arena.truncate(base);
+        visitor.body_end();
     }
 
     /// Undo every `preceding` write made after `frame`.

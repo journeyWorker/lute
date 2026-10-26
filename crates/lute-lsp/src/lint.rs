@@ -113,8 +113,23 @@ pub fn lint_document(
         LintScope::Document,
     );
     // Drop `config_diagnostics`: no cross-file publish channel — see the
-    // module docs.
-    outcome.diagnostics.into_iter().map(|(_p, d)| d).collect()
+    // module docs. A finding's `related` rows (a `pair` rule's open row)
+    // name a root-relative path; the publish boundary
+    // (`Backend::relate`) locates them by canonical path.
+    outcome
+        .diagnostics
+        .into_iter()
+        .map(|(_p, mut d)| {
+            for r in &mut d.related {
+                let path = project_root.join(&r.file);
+                r.file = std::fs::canonicalize(&path)
+                    .unwrap_or(path)
+                    .display()
+                    .to_string();
+            }
+            d
+        })
+        .collect()
 }
 
 /// Namespaced lint rules for the project's DEFAULT profile activation, or

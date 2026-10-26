@@ -107,6 +107,11 @@ impl Backend {
         let idx = lute_core_span::TextIndex::new(&snapshot.text);
         let mut foreign = Vec::new();
         let mut texts = std::collections::HashMap::new();
+        // A `related` row in this very document (a `pair` lint's open row)
+        // is located in the buffer, not the file on disk.
+        if let Some(path) = super::document::canonical_path_of(&uri) {
+            texts.insert(path.display().to_string(), Some(snapshot.text.clone()));
+        }
         let mut diags: Vec<LspDiagnostic> = all_diags
             .iter()
             .map(|d| {

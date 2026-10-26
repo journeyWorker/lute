@@ -15,6 +15,7 @@
 //! Level precedence (spec §6): config override > decl level > rule default.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::Path;
 
 use cel_parser::ast::IdedExpr;
 use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
@@ -27,10 +28,11 @@ use crate::metrics::{
     SpeakerRow, TopStats,
 };
 use crate::model::{
-    diagnostic_code, level_severity, LintLevel, LintRuleDecl, LintTarget, E_LINT_CONFIG,
-    E_LINT_EXPR,
+    diagnostic_code, level_severity, LintLevel, LintRuleBody, LintRuleDecl, LintTarget, PairSpec,
+    E_LINT_CONFIG, E_LINT_EXPR,
 };
-use crate::nodes::{walk_nodes, NodeWalkStats};
+use crate::nodes::{walk_nodes_with, NodeRow, NodeVisitor, NodeWalkStats};
+use crate::pair::{Frame, PairRule};
 
 /// Embedded core data-rule YAML (spec §7). Kept as one const per rule so a
 /// grep for a rule id reaches the definition, not just the loader.
@@ -60,6 +62,8 @@ pub enum RuleKind {
     /// Data rule (embedded core, plugin YAML, or `custom:`) — CEL `when`
     /// and message template.
     Data { when: String, message: String },
+    /// A `pair` rule (dsl 0.51.0 §6): its predicates and message template.
+    Pair { pair: PairSpec, message: String },
     /// A built-in Rust rule.
     Rust(RustRuleId),
 }
@@ -318,8 +322,11 @@ fn resolve_core(
                     return None;
                 }
             };
+            let LintRuleBody::Predicate { when } = decl.body else {
+                unreachable!("the core data rules are `when` rules")
+            };
             let opts = to_mapping(&decl.options);
-            (opts, decl.when, decl.message)
+            (opts, when, decl.message)
         }
         CoreKind::Rust(_, defaults_yaml) => {
             let opts: yaml_serde::Mapping = yaml_serde::from_str(defaults_yaml).unwrap_or_default();
@@ -369,6 +376,10 @@ fn resolve_decl(
     config_span: Span,
     diags: &mut Vec<Diagnostic>,
 ) -> Option<ResolvedRule> {
+    if let Err(e) = decl.check_shape() {
+        diags.push(config_diag(e.to_string(), config_span));
+        return None;
+    }
     let default_options = to_mapping(&decl.options);
     let ovr = overrides.get(&id);
     let level = match ovr.and_then(|o| o.level) {
@@ -385,15 +396,23 @@ fn resolve_decl(
         }
         None => default_options,
     };
+    let message = decl.message.clone();
+    let kind = match &decl.body {
+        LintRuleBody::Predicate { when } => RuleKind::Data {
+            when: when.clone(),
+            message,
+        },
+        LintRuleBody::Pair(pair) => RuleKind::Pair {
+            pair: pair.clone(),
+            message,
+        },
+    };
     Some(ResolvedRule {
         id,
         target: decl.target,
         level,
         options,
-        kind: RuleKind::Data {
-            when: decl.when.clone(),
-            message: decl.message.clone(),
-        },
+        kind,
         source,
     })
 }
@@ -480,6 +499,8 @@ fn unknown_rule_message(id: &str) -> String {
 /// plugin/custom `when` and every core rule read the SAME bindings.
 #[derive(Debug)]
 pub struct DocContext<'a> {
+    /// The document's display path: the file of a finding's `related` rows.
+    pub path: &'a Path,
     /// The parsed document, for `node` rows.
     pub doc: &'a Document,
     /// The text `doc` was parsed from: `node.attrs` reads the authored heads.
@@ -494,8 +515,8 @@ pub struct DocContext<'a> {
 ///
 /// `E-LINT-EXPR` is returned as ONE `Finding` per rule when evaluation
 /// fails (spec §5); the engine then skips further rows for that rule.
-/// A `node` rule walks the document's nodes; the engine evaluates every
-/// `node` rule in one walk instead ([`evaluate_node_rules`]).
+/// A `node` or `pair` rule walks the document's nodes; the engine evaluates
+/// every such rule in one walk instead ([`evaluate_node_rules`]).
 pub fn evaluate_rule(
     rule: &ResolvedRule,
     ctx: &DocContext<'_>,
@@ -505,12 +526,15 @@ pub fn evaluate_rule(
     let Some(severity) = level_severity(rule.level) else {
         return Vec::new(); // level: off
     };
-    if rule.target == LintTarget::Node {
+    if matches!(rule.target, LintTarget::Node | LintTarget::Pair) {
         return evaluate_node_rules(&[rule], ctx, rule_decl_span).0;
     }
     match &rule.kind {
         RuleKind::Data { when, message } => {
             evaluate_data(rule, when, message, severity, ctx, project, rule_decl_span)
+        }
+        RuleKind::Pair { .. } => {
+            unreachable!("resolution gives a `pair` body to `target: pair` only")
         }
         RuleKind::Rust(RustRuleId::EmotionDistribution) => {
             eval_emotion_distribution(rule, severity, ctx)
@@ -522,81 +546,75 @@ pub fn evaluate_rule(
     }
 }
 
-/// Parse a rule's `when`, or the `E-LINT-EXPR` finding that it does not
-/// parse (spec §5).
-fn parse_when(rule_id: &str, when: &str, rule_decl_span: Span) -> Result<IdedExpr, Finding> {
+/// Parse a rule's predicate `key` (`when`, `open`, `close`, `inside`), or
+/// the `E-LINT-EXPR` finding that it does not parse (spec §5).
+pub(crate) fn parse_predicate(
+    rule_id: &str,
+    key: &str,
+    text: &str,
+    rule_decl_span: Span,
+) -> Result<IdedExpr, Finding> {
     let mut arena = lute_cel::CelArena::default();
-    match lute_cel::parse_slot(&mut arena, when, 0) {
+    match lute_cel::parse_slot(&mut arena, text, 0) {
         Ok(handle) => Ok(arena
             .get(handle)
             .expect("parse_slot returned this handle for this arena")
             .clone()),
         Err(e) => Err(expr_error(
             rule_id,
-            format!("`when` failed to parse: {}", e.message),
+            format!("`{key}` failed to parse: {}", e.message),
             rule_decl_span,
         )),
     }
 }
 
-/// Evaluate every `node` rule over one document in ONE walk of its nodes
-/// (dsl 0.50.0 §8.1). Each row binds `node` (the row, read by reference),
-/// `scene` (the document row) and the rule's `options`, and every rule is
-/// evaluated while the row's `preceding` view is valid. A rule's first
-/// `E-LINT-EXPR` stops that rule for this document. Rules at level `off`
-/// and rules that are not data rules are skipped. Returns the findings and
-/// the walk's work counters.
-pub fn evaluate_node_rules(
-    rules: &[&ResolvedRule],
-    ctx: &DocContext<'_>,
-    rule_decl_span: Span,
-) -> (Vec<Finding>, NodeWalkStats) {
-    struct Active<'r> {
-        id: &'r str,
-        code: String,
-        severity: Severity,
-        when: IdedExpr,
-        message: &'r str,
-        options: Value,
-        failed: bool,
-    }
-    let mut out = Vec::new();
-    let mut active = Vec::with_capacity(rules.len());
-    for rule in rules {
-        let Some(severity) = level_severity(rule.level) else {
-            continue;
-        };
-        let RuleKind::Data { when, message } = &rule.kind else {
-            continue;
-        };
-        match parse_when(&rule.id, when, rule_decl_span) {
-            Ok(when) => active.push(Active {
-                id: &rule.id,
-                code: diagnostic_code(&rule.id),
-                severity,
-                when,
-                message,
-                options: mapping_to_value(&rule.options),
-                failed: false,
-            }),
-            Err(f) => out.push(f),
-        }
-    }
-    if active.is_empty() {
-        return (out, NodeWalkStats::default());
-    }
-    let scene = ctx.tables.scene.as_ref().map(scene_value);
-    let stats = walk_nodes(ctx.doc, ctx.source, &mut |row| {
-        for a in active.iter_mut().filter(|a| !a.failed) {
+/// What the node-walk rules of one document produce: findings, and the
+/// counters the walk itself does not keep (`eval_chars`, `pair_evals`,
+/// `pair_slots`).
+#[derive(Debug)]
+pub(crate) struct Tally<'f> {
+    pub(crate) out: Vec<Finding>,
+    /// The document's display path, for `related` rows.
+    pub(crate) file: &'f str,
+    /// Where `E-LINT-EXPR` anchors.
+    pub(crate) decl_span: Span,
+    pub(crate) counts: NodeWalkStats,
+}
+
+/// An active `node` rule over one document.
+struct NodeRule<'r> {
+    id: &'r str,
+    code: String,
+    severity: Severity,
+    when: IdedExpr,
+    message: &'r str,
+    options: Value,
+    failed: bool,
+}
+
+/// The node walk's visitor: every `node` and `pair` rule at each row.
+struct NodeRules<'r, 'f> {
+    nodes: Vec<NodeRule<'r>>,
+    pairs: Vec<PairRule<'r>>,
+    scene: Option<Value>,
+    tally: Tally<'f>,
+}
+
+impl NodeVisitor for NodeRules<'_, '_> {
+    fn row(&mut self, row: &NodeRow<'_>) {
+        let tally = &mut self.tally;
+        for a in self.nodes.iter_mut().filter(|a| !a.failed) {
             let mut env = Env::new()
                 .with_record("node", row)
                 .with_ref("options", &a.options);
-            if let Some(scene) = &scene {
+            if let Some(scene) = &self.scene {
                 env = env.with_ref("scene", scene);
             }
-            let failure = match eval(&a.when.expr, &env) {
+            let result = eval(&a.when.expr, &env);
+            tally.counts.eval_chars += env.chars_scanned();
+            let failure = match result {
                 Ok(Value::Bool(true)) => {
-                    out.push(Finding {
+                    tally.out.push(Finding {
                         code: a.code.clone(),
                         severity: a.severity,
                         message: render_message(a.message, &env),
@@ -611,10 +629,106 @@ pub fn evaluate_node_rules(
                 Err(e) => e.message,
             };
             a.failed = true;
-            out.push(expr_error(a.id, failure, rule_decl_span));
+            tally.out.push(expr_error(a.id, failure, tally.decl_span));
         }
-    });
-    (out, stats)
+        for p in &mut self.pairs {
+            p.row(row, self.scene.as_ref(), tally);
+        }
+    }
+
+    fn body_start(&mut self) {
+        self.frame(Frame::Body, true);
+    }
+
+    fn body_end(&mut self) {
+        self.frame(Frame::Body, false);
+    }
+
+    fn scope_start(&mut self) {
+        self.frame(Frame::Scope, true);
+    }
+
+    fn scope_end(&mut self) {
+        self.frame(Frame::Scope, false);
+    }
+}
+
+impl NodeRules<'_, '_> {
+    fn frame(&mut self, frame: Frame, start: bool) {
+        for p in &mut self.pairs {
+            if start {
+                p.frame_start(frame, &mut self.tally);
+            } else {
+                p.frame_end(frame, &mut self.tally);
+            }
+        }
+    }
+}
+
+/// Evaluate every `node` and `pair` rule over one document in ONE walk of
+/// its nodes (dsl 0.50.0 §8.1, 0.51.0 §6.2). Each row binds `node` (the
+/// row, read by reference), `scene` (the document row) and the rule's
+/// `options`, and every rule is evaluated while the row's `preceding` view
+/// is valid; a `pair` rule keeps its open slots in the walk's frames
+/// ([`crate::pair`]). A rule's first `E-LINT-EXPR` stops that rule for
+/// this document. Rules at level `off` and Rust rules are skipped. Returns
+/// the findings and the walk's work counters; with no `pair` rule the
+/// `pair` counters are zero.
+pub fn evaluate_node_rules(
+    rules: &[&ResolvedRule],
+    ctx: &DocContext<'_>,
+    rule_decl_span: Span,
+) -> (Vec<Finding>, NodeWalkStats) {
+    let mut out = Vec::new();
+    let mut nodes = Vec::new();
+    let mut pairs = Vec::new();
+    for rule in rules {
+        let Some(severity) = level_severity(rule.level) else {
+            continue;
+        };
+        match &rule.kind {
+            RuleKind::Data { when, message } => {
+                match parse_predicate(&rule.id, "when", when, rule_decl_span) {
+                    Ok(when) => nodes.push(NodeRule {
+                        id: &rule.id,
+                        code: diagnostic_code(&rule.id),
+                        severity,
+                        when,
+                        message,
+                        options: mapping_to_value(&rule.options),
+                        failed: false,
+                    }),
+                    Err(f) => out.push(f),
+                }
+            }
+            RuleKind::Pair { pair, message } => {
+                let options = mapping_to_value(&rule.options);
+                match PairRule::parse(rule, pair, message, severity, options, rule_decl_span) {
+                    Ok(p) => pairs.push(p),
+                    Err(f) => out.push(f),
+                }
+            }
+            RuleKind::Rust(_) => {}
+        }
+    }
+    if nodes.is_empty() && pairs.is_empty() {
+        return (out, NodeWalkStats::default());
+    }
+    let file = ctx.path.display().to_string();
+    let mut visitor = NodeRules {
+        nodes,
+        pairs,
+        scene: ctx.tables.scene.as_ref().map(scene_value),
+        tally: Tally {
+            out,
+            file: &file,
+            decl_span: rule_decl_span,
+            counts: NodeWalkStats::default(),
+        },
+    };
+    let mut stats = walk_nodes_with(ctx.doc, ctx.source, &mut visitor);
+    stats.add(&visitor.tally.counts);
+    (visitor.tally.out, stats)
 }
 
 fn evaluate_data(
@@ -628,7 +742,7 @@ fn evaluate_data(
 ) -> Vec<Finding> {
     // Parse `when` once per rule per document. Parse failures produce
     // E-LINT-EXPR, rule skipped for this doc (spec §5).
-    let ided = match parse_when(&rule.id, when, rule_decl_span) {
+    let ided = match parse_predicate(&rule.id, "when", when, rule_decl_span) {
         Ok(ided) => ided,
         Err(f) => return vec![f],
     };
@@ -741,15 +855,15 @@ fn evaluate_data(
                 out.push(f);
             }
         }
-        LintTarget::Node => {
-            unreachable!("evaluate_rule hands a `node` rule to evaluate_node_rules")
+        LintTarget::Node | LintTarget::Pair => {
+            unreachable!("evaluate_rule hands `node` and `pair` rules to evaluate_node_rules")
         }
     }
 
     out
 }
 
-fn expr_error(rule_id: &str, msg: String, span: Span) -> Finding {
+pub(crate) fn expr_error(rule_id: &str, msg: String, span: Span) -> Finding {
     Finding {
         code: E_LINT_EXPR.to_string(),
         severity: Severity::Error,

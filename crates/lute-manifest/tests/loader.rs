@@ -551,7 +551,7 @@ fn write_lints_pkg(root: &std::path::Path, dup: bool) {
 
 #[test]
 fn loads_lints_export_round_trip() {
-    use lute_manifest::lint::{LintLevel, LintTarget};
+    use lute_manifest::lint::{LintLevel, LintRuleBody, LintTarget};
     let tmp_scratch = lute_scratch::ScratchDir::new();
     let tmp = tmp_scratch.join("lute_pkg_lints");
     write_lints_pkg(&tmp, false);
@@ -560,7 +560,12 @@ fn loads_lints_export_round_trip() {
     let r0 = &loaded.lints[0];
     assert_eq!(r0.id, "too-many-choices");
     assert_eq!(r0.target, LintTarget::Scene);
-    assert_eq!(r0.when, "scene.choices > options.max");
+    assert_eq!(
+        r0.body,
+        LintRuleBody::Predicate {
+            when: "scene.choices > options.max".to_string()
+        }
+    );
     assert_eq!(r0.level, Some(LintLevel::Warn));
     assert_eq!(r0.message, "scene has {scene.choices} choices");
     // options are the raw yaml_serde::Mapping — { max: 6 } is present.
@@ -619,6 +624,84 @@ fn malformed_lint_file_is_parse_error() {
         )),
         "malformed rule must surface as LoadError::Parse anchored at the file, got {errs:?}"
     );
+}
+
+/// dsl 0.51.0 §6.1: a `pair` rule loads with its predicates and scope, and
+/// each shape fault — `when` on `pair`, a missing `open`/`close`, a pair
+/// key on another target, a missing `when` — is the file's
+/// `LoadError::Parse` (`E-PLUGIN-PARSE`), naming the rule.
+#[test]
+fn pair_lint_rules_load_and_their_shape_is_enforced() {
+    use lute_manifest::lint::{LintRuleBody, LintTarget, PairScope, PairSpec};
+    let pkg = |rule: &str| {
+        let tmp_scratch = lute_scratch::ScratchDir::new();
+        let tmp = tmp_scratch.join("lute_pkg_pair");
+        fs::create_dir_all(tmp.join("lints")).unwrap();
+        fs::write(
+            tmp.join("plugin.yaml"),
+            "id: t.plug\nversion: 0.1.0\nkind: capability\nexports:\n  lints: lints/\n",
+        )
+        .unwrap();
+        fs::write(
+            tmp.join("lints/a.yaml"),
+            format!("lints:\n  - id: g\n    message: m\n{rule}"),
+        )
+        .unwrap();
+        let loaded = load_plugin_dir(&tmp);
+        drop(tmp_scratch);
+        loaded
+    };
+    let loaded = pkg(
+        "    target: pair\n    open: 'node.tag == \"a\"'\n    close: 'node.tag == \"b\"'\n    \
+         inside: 'node.kind == \"line\"'\n    scope: section\n",
+    )
+    .expect("a pair rule loads");
+    assert_eq!(loaded.lints[0].target, LintTarget::Pair);
+    assert_eq!(
+        loaded.lints[0].body,
+        LintRuleBody::Pair(PairSpec {
+            open: "node.tag == \"a\"".to_string(),
+            close: "node.tag == \"b\"".to_string(),
+            inside: Some("node.kind == \"line\"".to_string()),
+            scope: PairScope::Section,
+        })
+    );
+    for (rule, want) in [
+        (
+            "    target: pair\n    when: 'true'\n    open: 'true'\n    close: 'true'\n",
+            "rule `g`: `when` is refused on `target: pair`",
+        ),
+        (
+            "    target: pair\n    close: 'true'\n",
+            "rule `g`: a `target: pair` rule needs `open`",
+        ),
+        (
+            "    target: pair\n    open: 'true'\n",
+            "rule `g`: a `target: pair` rule needs `close`",
+        ),
+        (
+            "    target: node\n    when: 'true'\n    inside: 'true'\n",
+            "rule `g`: `inside` belongs to `target: pair`, not `target: node`",
+        ),
+        (
+            "    target: scene\n    when: 'true'\n    scope: section\n",
+            "rule `g`: `scope` belongs to `target: pair`, not `target: scene`",
+        ),
+        ("    target: line\n", "rule `g`: missing field `when`"),
+    ] {
+        let errs = pkg(rule).expect_err(rule);
+        assert!(
+            errs.iter().any(|e| matches!(
+                e,
+                LoadError::Parse { file, msg, .. } if file.ends_with("a.yaml") && msg.contains(want)
+            )),
+            "{rule}: {errs:?}"
+        );
+        assert!(
+            errs.iter().all(|e| e.code() == "E-PLUGIN-PARSE"),
+            "{errs:?}"
+        );
+    }
 }
 
 /// Lints must NEVER perturb `CapabilitySnapshot` / `capabilitySnapshot`

@@ -894,11 +894,15 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 `lute.lint.yaml`가 잘못되었습니다 — 타입이 틀렸거나 알 수 없는 최상위 키, 잘못된 규칙 오버라이드, 또는 코어 규칙 id와 충돌하는 커스텀 규칙 id입니다. 0.49.0부터는 `options.providers`의 `asset-exists` 키가 셀렉터 형태(`<tag>`, `<tag>.<attr>`, `@<attr>`) 중 어느 것도 아닌 경우도 포함합니다. 0.50.0부터 `rules:`의 id가 checker 코드이면 "알 수 없는 규칙 id" 대신 올바른 위치를 알려 줍니다: `` `W-STAGE-ABSENT` is a checker code, not a lint rule — set its level in `lute.project.yaml` `diagnostics:` ``. `E-*` id는 `… an error cannot be re-levelled`로 끝납니다.
 
-명세: [dsl 0.49.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §6.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+0.51.0부터 커스텀 규칙의 키가 대상에 맞지 않는 경우 — `target: pair`의 `when`, `open`이나 `close`가 없는 `pair` 규칙, 다른 대상의 `open`·`close`·`inside`·`scope` — 도 이 코드입니다: `` bad custom rule: rule `g`: `when` is refused on `target: pair`, which states `open` and `close` instead ``.
+
+명세: [dsl 0.49.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §6.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.51.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-LINT-EXPR
 
-린트 규칙의 `when` CEL 표현식을 해석할 수 없거나 타입이 잘못되어, 해당 규칙이 이 문서에서 건너뛰어집니다.
+린트 규칙의 술어 — `when`, 또는 `pair` 규칙의 `open`·`close`·`inside`(메시지에 이름이 나옵니다) — 를 파싱하거나 해석할 수 없거나 타입이 잘못되어, 해당 규칙이 이 문서에서 건너뛰어집니다.
+
+명세: [dsl 0.51.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-LINT-RULE
 
@@ -1202,7 +1206,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 0.51.0부터 `type: text`가 디렉티브 속성이 아닌 곳(플러그인 옵션, occasion payload, 보상 종류 속성, bridge 결과, state shape, 중첩된 `{ list: text }`)에 있거나, 디렉티브의 `text` 속성이 `lower:` 또는 `bridge:`가 있는 디렉티브에 있거나(현지화된 텍스트가 호스트에 닿지 않음), `default:`를 선언했거나(기본값에는 번역이 없음), `code`라는 선언된 속성 옆에 있는 경우(`code`는 `text` 속성이 있는 디렉티브의 식별 속성)도 이 코드입니다: `` `title` of `::banner` is `text`, but `::banner` lowers to the `actor` record, which carries no localized text — declare it `string`, or drop `lower:` so the call stays a `plugin` record ``.
 
-명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.51.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+0.51.0부터 `lints/` 규칙의 키가 대상에 맞지 않는 경우(`target: pair`의 `when`, `open`이나 `close`가 없는 `pair` 규칙, 다른 대상의 `open`·`close`·`inside`·`scope`)도 이 코드입니다.
+
+명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.51.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-PLUGIN-RAISES
 

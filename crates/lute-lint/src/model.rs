@@ -6,7 +6,9 @@
 //! types plugin YAML deserializes into. Do NOT duplicate the shape here: a
 //! divergence would silently break the lints/plugin loader contract.
 
-pub use lute_manifest::lint::{LintLevel, LintRuleDecl, LintTarget};
+pub use lute_manifest::lint::{
+    LintLevel, LintRuleBody, LintRuleDecl, LintTarget, PairScope, PairSpec,
+};
 
 /// Well-known lint diagnostic codes.
 pub const E_LINT_CONFIG: &str = "E-LINT-CONFIG";

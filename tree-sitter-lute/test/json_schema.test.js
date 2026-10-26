@@ -380,6 +380,33 @@ enums:
     }
   });
 
+  // 0.51.0 §6.1: `target: pair` states `open`/`close` (optional `inside`,
+  // `scope`) and refuses `when`; other targets state `when` only — the
+  // loader's shape check.
+  test("plugin lints: pair rule shape", () => {
+    const { ajv, pluginSchema } = loadAjv();
+    const file = (rule) => Bun.YAML.parse(`lints:\n  - id: g\n    message: m\n${rule}`);
+    for (const rule of [
+      "    target: pair\n    open: 'true'\n    close: 'false'\n",
+      "    target: pair\n    open: 'true'\n    close: 'false'\n    inside: 'true'\n    scope: section\n",
+      "    target: node\n    when: 'true'\n",
+    ]) {
+      const { ok, errors } = validateAgainst(ajv, pluginSchema.$id, file(rule));
+      expect(ok, `${rule}: ${JSON.stringify(errors)}`).toBe(true);
+    }
+    for (const rule of [
+      "    target: pair\n    when: 'true'\n    open: 'true'\n    close: 'true'\n",
+      "    target: pair\n    open: 'true'\n",
+      "    target: pair\n    open: 'true'\n    close: 'true'\n    scope: shot\n",
+      "    target: node\n    when: 'true'\n    inside: 'true'\n",
+      "    target: scene\n    when: 'true'\n    scope: body\n",
+      "    target: line\n",
+      "    target: node\n    when: 'true'\n    extra: 1\n",
+    ]) {
+      expect(validateAgainst(ajv, pluginSchema.$id, file(rule)).ok, rule).toBe(false);
+    }
+  });
+
   test("long form with ONLY `members:` validates (default/exits are #[serde(default)])", () => {
     const { ajv, declSchema, pluginSchema } = loadAjv();
     const doc = Bun.YAML.parse("enums:\n  mood: { members: [calm, tense] }\n");
