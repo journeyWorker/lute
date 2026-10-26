@@ -245,6 +245,23 @@ raise queue (`player/custom-hosts`).
 {"kind":"grant","quest":"first","instance":1,"index":0,"reward":{"kind":"CUTSCENE","target":"chapter3","amount":1},"raises":[{"occasion":"cutscene","target":"scene.chapter3"}]}
 ```
 
+Since 0.51 a directive attribute may be typed `text` (localizable directive
+text). The `plugin` record (the halted one included) and the `awaitBridge`
+await carry each such attribute in `attrs` rendered as a line's `text` is: its
+`{{…}}` markers replaced by their values. The record also carries
+`localized: { <attr>: { "lineId", "texts"? } }`, one entry per `text`
+attribute: the attribute's `lineId` (`{prefix}~{tag}~{code}~{attr}`) and its
+merged translations, each marker replaced by the value the source rendered
+for the marker with the same referent, as a line's `texts` are. `localized`
+is omitted for a call without `text` attributes and, like a line's delivery
+fields, is play-only: `lute run --json` leaves it out. An unset
+`occasion.payload` field or an unbound `occasion.target` in a `text`
+attribute is an unknown site, as in a line.
+
+```json
+{"kind":"plugin","position":"001-0200","tag":"banner","attrs":{"title":"Welcome, {{userName}}: 3 gold"},"localized":{"title":{"lineId":"intro~banner~0010~title","texts":{"ko":"3 골드, {{userName}} 님 환영"}}},"external":true,"unresolvedEffects":[],"note":"external bridge call — not invoked; bridgeResult effects unresolved"}
+```
+
 Rendered text keeps every host-token marker (`{{playerName}}`, and any other
 token a plugin declares in `hostTokens`) verbatim: the runtime never substitutes
 a host token, for any token, and the host or presenter does. The IR placeholder

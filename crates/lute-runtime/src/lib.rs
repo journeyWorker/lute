@@ -31,7 +31,7 @@ pub use input::{
 pub use machine::{
     render_fact, value_to_json, value_to_string, BridgeReads, Carry, EvalObserver, EvalSnapshot,
     Machine, Seed, WalkError, LINE_DELIVERY_KEYS, MENU_MARK_KEYS, NOTE_NO_DECISION,
-    NOTE_NO_ELIGIBLE, NOTE_SKIPPED,
+    NOTE_NO_ELIGIBLE, NOTE_SKIPPED, PLUGIN_DELIVERY_KEYS,
 };
 pub use runtime::{
     resolve_bridge_writes, AdvanceBy, Await, ClockPosition, Continuation, Evaluation, Event,

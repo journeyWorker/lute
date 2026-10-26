@@ -96,32 +96,8 @@ impl<D: Driver> Machine<D> {
         let speaker = cmd.get("speaker").and_then(Json::as_str).unwrap_or("");
         let raw = cmd.get("text").and_then(Json::as_str).unwrap_or("");
         let placeholders = cmd.get("placeholders").and_then(Json::as_array);
-        // dsl 0.28.0 (T1-13): a payload field the raise did not carry has
-        // no text to print; the driver decides whether the walk stops here.
-        if let Some(path) = self.unset_payload(placeholders) {
-            let atoms = [UnresolvedAtom::Path(path.clone())];
-            self.unresolved.extend(atoms.iter().cloned());
-            if self.at_unknown(
-                Site::new(SiteKind::Payload, &path, addr(cmd)),
-                &path,
-                &atoms,
-            ) {
-                return;
-            }
-        }
-        // A kind beat's `{{occasion.target}}` with no member bound has no
-        // text to print either.
-        if self.unbound_target(placeholders) {
-            let target = lute_manifest::semantics::beats::OCCASION_TARGET;
-            let atoms = [UnresolvedAtom::Path(target.to_string())];
-            self.unresolved.extend(atoms.iter().cloned());
-            if self.at_unknown(
-                Site::new(SiteKind::OccasionTarget, target, addr(cmd)),
-                target,
-                &atoms,
-            ) {
-                return;
-            }
+        if self.text_halts(placeholders, addr(cmd)) {
+            return;
         }
         // Every marker renders ONCE, by its global index in the plain text;
         // the line text and its segments both splice from that list.
@@ -143,10 +119,7 @@ impl<D: Driver> Machine<D> {
             if let Some(v) = cmd.get(key).filter(|v| !v.is_null()) {
                 let v = match key {
                     "segments" => segments_with(v, &rendered),
-                    "texts" => per_locale(v, |text| match text.as_str() {
-                        Some(text) => Json::String(substitute_by_marker(text, raw, &rendered)),
-                        None => text.clone(),
-                    }),
+                    "texts" => texts_with(v, raw, &rendered),
                     "localeSegments" => {
                         per_locale(v, |runs| locale_segments_with(runs, raw, &rendered))
                     }
@@ -157,6 +130,17 @@ impl<D: Driver> Machine<D> {
         }
         self.driver.emit(Json::Object(rec));
     }
+}
+
+/// A `texts` map (locale → translation) with each translation's `{{…}}`
+/// markers replaced by the value the source (`raw`, its markers
+/// `rendered`) gave the marker with the same referent (dsl 0.47.0 §2.2) —
+/// a line's, or a directive `text` attribute's (0.51.0 §5.6).
+pub(crate) fn texts_with(texts: &Json, raw: &str, rendered: &[String]) -> Json {
+    per_locale(texts, |text| match text.as_str() {
+        Some(text) => Json::String(substitute_by_marker(text, raw, rendered)),
+        None => text.clone(),
+    })
 }
 
 /// A `texts` / `localeSegments` map (locale → translation) with each

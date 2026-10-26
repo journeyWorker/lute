@@ -126,6 +126,11 @@ pub const LINE_DELIVERY_KEYS: [&str; 8] = [
     "localeSegments",
 ];
 
+/// The `plugin` record fields that carry its `text` attributes' identity
+/// and rendered translations (0.51.0 §5.6) — what a play transcript shows
+/// and `lute run --json` leaves out, as it leaves out a line's.
+pub const PLUGIN_DELIVERY_KEYS: [&str; 1] = ["localized"];
+
 /// The `choice` / `hub` record fields that mark what a menu did not offer
 /// (spent `once` options, guard-closed options) — what a play menu shows and
 /// `lute run --json` leaves out.

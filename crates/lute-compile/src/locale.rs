@@ -12,12 +12,15 @@
 //! every byte a bundle-less compile emits, stay exactly as they were.
 //!
 //! ## What the merge does and does not touch
-//! - `LineCmd.texts`, `ChoiceOption.texts`, `HubOption.texts` and (dsl 0.47.0
-//!   §3.1) a prompted branch/hub's `promptTexts` are filled from the bundle
-//!   entry matching that record's own `lineId` / `promptLineId`. All are
+//! - `LineCmd.texts`, `ChoiceOption.texts`, `HubOption.texts`, (dsl 0.47.0
+//!   §3.1) a prompted branch/hub's `promptTexts` and (0.51.0 §5.5) each
+//!   `PluginCmd.localized.<attr>.texts` of a directive's `text` attribute are
+//!   filled from the bundle entry matching that record's own `lineId` /
+//!   `promptLineId` / `localized.<attr>.lineId`. All are
 //!   `skip_serializing_if = "BTreeMap::is_empty"`, so a document with no
 //!   matching entry is byte-identical to 0.7.0.
-//! - `LineCmd.text` / the option `label` are NEVER overwritten. They remain the
+//! - `LineCmd.text` / the option `label` / a plugin's `fields.<attr>` are
+//!   NEVER overwritten. They remain the
 //!   SOURCE-language string (`contentLang`, dsl 0.8.0 §7), so a 0.7 consumer
 //!   that ignores the new maps reads exactly what it read before.
 //! - A bundle entry whose `lineId` matches no record in THIS document is
@@ -355,6 +358,18 @@ pub fn merge_locales(artifact: &mut ExecutionIr, bundle: &LocaleBundle) -> Vec<D
                 }
                 for o in &mut h.options {
                     bind(&o.line_id, &o.text, &mut o.texts, bundle, &mut diags);
+                }
+            }
+            // 0.51.0 §5.5: each `text` attribute against its source
+            // `fields.<attr>` (no inline markup: an option label's rule).
+            Command::Plugin(p) => {
+                for (attr, text) in &mut p.localized {
+                    let source = p
+                        .fields
+                        .get(attr)
+                        .and_then(serde_json::Value::as_str)
+                        .unwrap_or_default();
+                    bind(&text.line_id, source, &mut text.texts, bundle, &mut diags);
                 }
             }
             _ => {}

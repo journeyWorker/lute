@@ -12,10 +12,10 @@
 //! `export` wrote and touches no `.lute` file at all.
 //!
 //! ## Translatable units (`export`)
-//! Two kinds, both walked in document order (descending into `<branch>`/`<hub>`
+//! Four kinds, all walked in document order (descending into `<branch>`/`<hub>`
 //! choice bodies, `<match>` arms, `<objective>`/`<on>` bodies, quest bodies,
-//! lore `<entry>` bodies, and lore `<beat>` bundle bodies — mirroring
-//! `lute-check`'s own `collect_lines`):
+//! lore `<entry>` bodies, lore `<beat>` bundle bodies and `<timeline>`
+//! clips — mirroring `lute-check`'s own `collect_lines`):
 //! - **content lines** (`@speaker: text`, dsl §7.1) — `file`, `line`, `lineId`,
 //!   the stable `code` (dsl §12; `null` when the line carries no `code="…"`
 //!   string attr, i.e. it has not been through `lute tag`), `speaker`, and
@@ -26,11 +26,18 @@
 //!   `line`, `lineId` `{prefix}.{branchOrHubId}.prompt`, `key`
 //!   `{branchOrHubId}.prompt` and the prompt `text`, before that branch's or
 //!   hub's options.
+//! - **directive texts** (0.51.0 §5.5) — `kind: "directive"`, one row per
+//!   `text` attribute of a directive call, in the directive's declaration
+//!   order: `file`, `line`, `lineId` `{prefix}~{tag}~{code}~{attr}` (outside
+//!   the `lineId` template; `null` until the call has an authored `code`, as
+//!   for a line), `code`, `key` `{tag}.{attr}` and the value as authored,
+//!   `{{…}}` markers intact.
 //!
 //! Every row carries `sourceHash` (dsl 0.47.0 §3.2): `sha256:` of the plain
 //! source text the compiler emits for the record
 //! ([`lute_compile::locale::source_hash`]) — a line's text with inline markup
-//! and escapes removed, an option's text, a prompt. `loc import` stores it in
+//! and escapes removed, an option's text, a prompt, a directive text's
+//! `fields.<attr>`. `loc import` stores it in
 //! the bundle and `compile --locale-bundle` reports `W-L10N-STALE` when the source
 //! has changed since.
 //!
@@ -105,7 +112,9 @@
 //! `@player.name!`). Choice/hub labels are counted as units (their count), not
 //! folded into the word totals. A branch/hub prompt is counted both ways: its
 //! words join the document and project word totals (not any speaker's), and
-//! `prompts` counts the prompts.
+//! `prompts` counts the prompts. A directive text (0.51.0 §5.5) is counted as
+//! a prompt is, under `directiveTexts`, which the report shows only when
+//! nonzero.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -116,7 +125,8 @@ use lute_compile::locale::LocaleBundle;
 use lute_core_span::Severity;
 use lute_load::{build_input, find_lute_files, project_root_for};
 use lute_manifest::project::IdentityTemplates;
-use lute_syntax::ast::{Arm, Attr, AttrValue, Choice, Document, Node};
+use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_syntax::ast::{Arm, Attr, AttrValue, Choice, ClipNode, Directive, Document, Node};
 
 /// One translatable unit extracted from a document, carrying the byte offset
 /// used to sort the export deterministically.
@@ -149,17 +159,35 @@ enum Unit {
         source_hash: String,
         prompt: bool,
     },
+    /// One `text` attribute of a directive call (0.51.0 §5.5): `key` is
+    /// `{tag}.{attr}`, `lineId` `{prefix}~{tag}~{code}~{attr}`.
+    Directive {
+        file: String,
+        line: u32,
+        byte: usize,
+        outer_byte: usize,
+        source: Option<(String, u32)>,
+        line_id: Option<String>,
+        code: Option<String>,
+        key: String,
+        text: String,
+        source_hash: String,
+    },
 }
 
 impl Unit {
     fn file(&self) -> &str {
         match self {
-            Unit::Line { file, .. } | Unit::Choice { file, .. } => file,
+            Unit::Line { file, .. } | Unit::Choice { file, .. } | Unit::Directive { file, .. } => {
+                file
+            }
         }
     }
     fn byte(&self) -> usize {
         match self {
-            Unit::Line { byte, .. } | Unit::Choice { byte, .. } => *byte,
+            Unit::Line { byte, .. } | Unit::Choice { byte, .. } | Unit::Directive { byte, .. } => {
+                *byte
+            }
         }
     }
     /// Primary sort key: the byte offset in the CALLER. For an authored unit
@@ -170,19 +198,25 @@ impl Unit {
     /// ties within it.
     fn outer_byte(&self) -> usize {
         match self {
-            Unit::Line { outer_byte, .. } | Unit::Choice { outer_byte, .. } => *outer_byte,
+            Unit::Line { outer_byte, .. }
+            | Unit::Choice { outer_byte, .. }
+            | Unit::Directive { outer_byte, .. } => *outer_byte,
         }
     }
     /// The component file and line this unit was expanded out of, if any.
     fn source(&self) -> Option<&(String, u32)> {
         match self {
-            Unit::Line { source, .. } | Unit::Choice { source, .. } => source.as_ref(),
+            Unit::Line { source, .. }
+            | Unit::Choice { source, .. }
+            | Unit::Directive { source, .. } => source.as_ref(),
         }
     }
     /// The `sourceHash` column (dsl 0.47.0 §3.2).
     fn source_hash(&self) -> &str {
         match self {
-            Unit::Line { source_hash, .. } | Unit::Choice { source_hash, .. } => source_hash,
+            Unit::Line { source_hash, .. }
+            | Unit::Choice { source_hash, .. }
+            | Unit::Directive { source_hash, .. } => source_hash,
         }
     }
 }
@@ -195,15 +229,58 @@ type Region<'a> = Option<(&'a str, usize)>;
 /// Everything one document's walk needs to stamp a `lineId`: the display path,
 /// the identity PREFIX of the document scope being walked (`None` when the
 /// document has none — a schema fragment), the project's
-/// [`IdentityTemplates`], and the resolved component table the
-/// `__component-begin` sentinels name. Carried by reference so the recursive
-/// walk allocates nothing per node. A component expansion's lines use the
-/// prefix extended by its `{component}#{n}` segment ([`walk_nodes`]).
+/// [`IdentityTemplates`], the resolved component table the
+/// `__component-begin` sentinels name, and the capability snapshot that
+/// says which directive attributes are `text` (0.51.0 §5.1). Carried by
+/// reference so the recursive walk allocates nothing per node. A component
+/// expansion's lines use the prefix extended by its `{component}#{n}`
+/// segment ([`walk_nodes`]).
 struct Cx<'a> {
     file: &'a str,
     prefix: Option<&'a str>,
     templates: &'a IdentityTemplates,
     components: &'a lute_check::ComponentSet,
+    snapshot: &'a CapabilitySnapshot,
+}
+
+/// Push one unit per `text` attribute of directive call `d` (0.51.0 §5.5),
+/// in the directive's declaration order. Its `lineId` is the addressing
+/// pass's `{prefix}~{tag}~{code}~{attr}` — outside the `lineId` template —
+/// reproducible, as a line's is, only when the call carries an authored
+/// `code` (an untagged call's code is back-filled by the compiler).
+fn walk_directive<'a>(
+    cx: &Cx<'a>,
+    d: &Directive,
+    region: Region<'a>,
+    prefix: Option<&str>,
+    out: &mut Vec<Unit>,
+) {
+    let Some(decl) = cx.snapshot.directive(&d.tag).filter(|d| d.has_text_attr()) else {
+        return;
+    };
+    let code = line_code(&d.attrs);
+    for t in decl.text_attrs() {
+        // A `@ref` or bare value is `E-ATTR-TYPE` and has no text of its own.
+        let Some(text) = attr_str(&d.attrs, &t.name) else {
+            continue;
+        };
+        out.push(Unit::Directive {
+            file: cx.file.to_string(),
+            line: d.span.line,
+            byte: d.span.byte_start,
+            outer_byte: region.map_or(d.span.byte_start, |(_, at)| at),
+            source: region.map(|(f, _)| (f.to_string(), d.span.line)),
+            line_id: prefix
+                .zip(code.as_deref())
+                .map(|(p, c)| format!("{p}~{}~{c}~{}", d.tag, t.name)),
+            code: code.clone(),
+            key: format!("{}.{}", d.tag, t.name),
+            // The compiled `fields.<attr>`: the value with its `{{…}}`
+            // markers as authored — the stale check's input.
+            source_hash: lute_compile::locale::source_hash(text),
+            text: text.to_string(),
+        });
+    }
 }
 
 /// A line's authored stable `code` (dsl §12), trimmed to the exact string the
@@ -397,7 +474,15 @@ fn walk_nodes<'a>(
             }
             Node::Objective(o) => walk_nodes(cx, &o.body, region, prefix, out),
             Node::On(o) => walk_nodes(cx, &o.body, region, prefix, out),
-            Node::Directive(_) | Node::Set(_) | Node::Timeline(_) => {}
+            Node::Directive(d) => walk_directive(cx, d, region, prefix, out),
+            Node::Timeline(t) => {
+                for clip in t.tracks.iter().flat_map(|track| &track.clips) {
+                    if let ClipNode::Directive(d) = &clip.node {
+                        walk_directive(cx, d, region, prefix, out);
+                    }
+                }
+            }
+            Node::Set(_) => {}
             Node::Assert(_) | Node::Retract(_) => {}
         }
     }
@@ -461,6 +546,7 @@ fn document_units(
     doc: &Document,
     templates: &IdentityTemplates,
     components: &lute_check::ComponentSet,
+    snapshot: &CapabilitySnapshot,
     out: &mut Vec<Unit>,
 ) {
     let scene = scene_prefix(doc);
@@ -469,25 +555,22 @@ fn document_units(
         prefix: scene.as_deref(),
         templates,
         components,
+        snapshot,
     };
     for shot in &doc.sections {
         walk_nodes(&cx, &shot.body, None, cx.prefix, out);
     }
     for quest in &doc.quests {
         let cx = Cx {
-            file,
             prefix: Some(&quest.id),
-            templates,
-            components,
+            ..cx
         };
         walk_nodes(&cx, &quest.body, None, cx.prefix, out);
     }
     for entry in &doc.entries {
         let cx = Cx {
-            file,
             prefix: Some(&entry.id),
-            templates,
-            components,
+            ..cx
         };
         walk_nodes(&cx, &entry.body, None, cx.prefix, out);
     }
@@ -499,10 +582,8 @@ fn document_units(
             .as_deref()
             .map(|doc_id| lute_check::bundle_beat_key(doc_id, &beat.id));
         let cx = Cx {
-            file,
             prefix: key.as_deref(),
-            templates,
-            components,
+            ..cx
         };
         walk_nodes(&cx, &beat.body, None, cx.prefix, out);
     }
@@ -592,6 +673,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
             &doc,
             &ident,
             &input.components,
+            input.snapshot(),
             &mut units,
         );
     }
@@ -626,6 +708,10 @@ pub fn run_export(dir: &Path, format: &str, out: Option<&Path>) -> ExitCode {
         .iter()
         .filter(|u| matches!(u, Unit::Line { code: None, .. }))
         .count();
+    let untagged_texts = units
+        .iter()
+        .filter(|u| matches!(u, Unit::Directive { code: None, .. }))
+        .count();
 
     let rendered = match format {
         "json" => render_json(&units),
@@ -649,6 +735,9 @@ pub fn run_export(dir: &Path, format: &str, out: Option<&Path>) -> ExitCode {
 
     if untagged > 0 {
         eprintln!("{untagged} lines untagged — run lute tag");
+    }
+    if untagged_texts > 0 {
+        eprintln!("{untagged_texts} directive texts untagged — run lute tag");
     }
     ExitCode::SUCCESS
 }
@@ -705,6 +794,25 @@ fn render_json(units: &[Unit]) -> String {
                 "source": source_of(u),
                 "sourceHash": u.source_hash(),
             }),
+            Unit::Directive {
+                file,
+                line,
+                line_id,
+                code,
+                key,
+                text,
+                ..
+            } => serde_json::json!({
+                "kind": "directive",
+                "file": file,
+                "line": line,
+                "lineId": line_id,
+                "code": code,
+                "key": key,
+                "text": text,
+                "source": source_of(u),
+                "sourceHash": u.source_hash(),
+            }),
         })
         .collect();
     let mut s = serde_json::to_string_pretty(&serde_json::Value::Array(arr))
@@ -726,9 +834,11 @@ fn csv_field(s: &str) -> String {
 /// The RFC-4180 column schema, shared by [`render_csv`] and the import parser
 /// so a header rename can never desynchronize the two directions. ONE schema
 /// covers every unit kind: a line row leaves `key` empty, a choice or prompt
-/// row leaves `code`/`speaker` empty and carries its label in `text`. The two
-/// `source*` columns are empty for a line the document authored itself;
-/// `sourceHash` (dsl 0.47.0 §3.2) is last and always filled.
+/// row leaves `code`/`speaker` empty and carries its label in `text`, and a
+/// directive text row (0.51.0 §5.5) fills `code` and `key` and leaves
+/// `speaker` empty. The two `source*` columns are empty for a unit the
+/// document authored itself; `sourceHash` (dsl 0.47.0 §3.2) is last and
+/// always filled.
 pub(crate) const CSV_COLUMNS: [&str; 11] = [
     "kind",
     "file",
@@ -798,6 +908,27 @@ fn render_csv(units: &[Unit]) -> String {
                 source_line,
                 u.source_hash().to_string(),
             ],
+            Unit::Directive {
+                file,
+                line,
+                line_id,
+                code,
+                key,
+                text,
+                ..
+            } => [
+                "directive".to_string(),
+                file.clone(),
+                line.to_string(),
+                line_id.clone().unwrap_or_default(),
+                code.clone().unwrap_or_default(),
+                String::new(),
+                key.clone(),
+                text.clone(),
+                source_file,
+                source_line,
+                u.source_hash().to_string(),
+            ],
         };
         let cells: Vec<String> = row.iter().map(|c| csv_field(c)).collect();
         s.push_str(&cells.join(","));
@@ -833,6 +964,9 @@ struct DocStat {
     choices: usize,
     /// Branch/hub prompts (dsl 0.47.0 §3.1); their words are in `words`.
     prompts: usize,
+    /// Directive `text` attributes (0.51.0 §5.5); their words are in
+    /// `words`. Shown only when nonzero.
+    directive_texts: usize,
     speakers: BTreeMap<String, SpeakerStat>,
 }
 
@@ -894,6 +1028,15 @@ pub fn run_report(dir: &Path, json: bool) -> ExitCode {
                 stat.choices += 1;
                 totals.choices += 1;
             }
+            // 0.51.0 §5.5: counted like a prompt — words in the document
+            // and project totals (no speaker's), plus its own count.
+            Unit::Directive { text, .. } => {
+                let words = word_count(text);
+                stat.directive_texts += 1;
+                stat.words += words;
+                totals.directive_texts += 1;
+                totals.words += words;
+            }
         }
     }
 
@@ -928,7 +1071,7 @@ fn render_report_json(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> Str
     let documents: Vec<serde_json::Value> = docs
         .iter()
         .map(|(file, d)| {
-            serde_json::json!({
+            let mut doc = serde_json::json!({
                 "file": file,
                 "lines": d.lines,
                 "tagged": d.tagged,
@@ -937,10 +1080,14 @@ fn render_report_json(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> Str
                 "choices": d.choices,
                 "prompts": d.prompts,
                 "speakers": speakers_json(&d.speakers),
-            })
+            });
+            if d.directive_texts > 0 {
+                doc["directiveTexts"] = d.directive_texts.into();
+            }
+            doc
         })
         .collect();
-    let value = serde_json::json!({
+    let mut value = serde_json::json!({
         "documents": documents,
         "totals": {
             "documents": docs.len(),
@@ -953,6 +1100,9 @@ fn render_report_json(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> Str
             "speakers": speakers_json(&totals.speakers),
         },
     });
+    if totals.directive_texts > 0 {
+        value["totals"]["directiveTexts"] = totals.directive_texts.into();
+    }
     let mut s =
         serde_json::to_string_pretty(&value).expect("Value -> JSON serialization is infallible");
     s.push('\n');
@@ -971,26 +1121,30 @@ fn render_report_human(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> St
         .chain(std::iter::once("document".len()))
         .max()
         .unwrap_or(8);
+    // 0.51.0 §5.5: a `directive texts` column only when a document has one.
+    let texts = totals.directive_texts > 0;
+    let row = |s: &mut String, name: &str, d: &DocStat| {
+        s.push_str(&format!(
+            "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}  {:>7}",
+            name, d.lines, d.words, d.untagged, d.tagged, d.choices, d.prompts
+        ));
+        if texts {
+            s.push_str(&format!("  {:>15}", d.directive_texts));
+        }
+        s.push('\n');
+    };
     s.push_str(&format!(
-        "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}  {:>7}\n",
+        "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}  {:>7}",
         "document", "lines", "words", "untagged", "tagged", "choices", "prompts"
     ));
-    for (file, d) in docs {
-        s.push_str(&format!(
-            "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}  {:>7}\n",
-            file, d.lines, d.words, d.untagged, d.tagged, d.choices, d.prompts
-        ));
+    if texts {
+        s.push_str(&format!("  {:>15}", "directive texts"));
     }
-    s.push_str(&format!(
-        "{:<file_w$}  {:>6}  {:>6}  {:>8}  {:>6}  {:>7}  {:>7}\n",
-        "TOTAL",
-        totals.lines,
-        totals.words,
-        totals.untagged,
-        totals.tagged,
-        totals.choices,
-        totals.prompts
-    ));
+    s.push('\n');
+    for (file, d) in docs {
+        row(&mut s, file, d);
+    }
+    row(&mut s, "TOTAL", totals);
 
     // Per-speaker (project-wide) table.
     if !totals.speakers.is_empty() {
@@ -1015,13 +1169,17 @@ fn render_report_human(docs: &BTreeMap<String, DocStat>, totals: &DocStat) -> St
     }
 
     s.push_str(&format!(
-        "\n{} document(s), {} line(s), {} word(s), {} choice(s), {} prompt(s)\n",
+        "\n{} document(s), {} line(s), {} word(s), {} choice(s), {} prompt(s)",
         docs.len(),
         totals.lines,
         totals.words,
         totals.choices,
         totals.prompts
     ));
+    if texts {
+        s.push_str(&format!(", {} directive text(s)", totals.directive_texts));
+    }
+    s.push('\n');
     s
 }
 
@@ -1055,8 +1213,8 @@ struct ImportRow {
 /// Both of `loc export`'s own output formats, chosen by file extension
 /// (`.csv` → CSV, anything else → JSON):
 /// - **JSON** — the array [`render_json`] writes. Every row kind (`line`,
-///   `choice`, `prompt`) carries its translation in `text`; the join key is
-///   `lineId`.
+///   `choice`, `prompt`, `directive`) carries its translation in `text`; the
+///   join key is `lineId`.
 /// - **CSV** — the [`CSV_COLUMNS`] table [`render_csv`] writes, read BY HEADER
 ///   NAME (so column order is free). Only `lineId` and `text` are required —
 ///   in CSV every unit kind already carries its translatable string in `text`.
@@ -1284,11 +1442,11 @@ fn parse_json_rows(text: &str) -> Result<Vec<ImportRow>, String> {
         // Every row's translatable string is its `text` (dsl 0.37.0 D7) —
         // exactly what `render_json` writes for both kinds.
         let field = match obj.get("kind").and_then(serde_json::Value::as_str) {
-            Some("line" | "choice" | "prompt") => "text",
+            Some("line" | "choice" | "prompt" | "directive") => "text",
             Some(other) => {
                 return Err(format!(
-                    "entry {row} has unknown `kind` `{other}` (expected `line`, `choice` or \
-                     `prompt`)"
+                    "entry {row} has unknown `kind` `{other}` (expected `line`, `choice`, \
+                     `prompt` or `directive`)"
                 ))
             }
             None => return Err(format!("entry {row} has no `kind`")),

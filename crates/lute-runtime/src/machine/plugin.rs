@@ -1,13 +1,14 @@
 //! `plugin` records (dsl 0.24.0 §5, 0.25.0 §7, 0.27.0 §4): the bridge call,
-//! its declared effects and facts, and [`BridgeReads`] — what content reads
-//! of the bridge results.
+//! its declared effects and facts, the rendered `text` attributes (0.51.0
+//! §5.6), and [`BridgeReads`] — what content reads of the bridge results.
 
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_manifest::schema::{OccasionDecl, OccasionTarget};
 use serde_json::{json, Value as Json};
 
-use super::format::value_to_json;
+use super::commands::texts_with;
+use super::format::{substitute_markers, value_to_json};
 use super::{addr, fold_op, Machine, Site};
 use crate::driver::{BridgeCall, BridgeReply, Driver, SiteKind};
 use crate::eval::Read;
@@ -146,7 +147,11 @@ impl<D: Driver> Machine<D> {
             .collect();
         // dsl 0.41.0 §5.5: the call's attributes as executed, `occasion.target`
         // bound — what every `plugin` record and the bridge await carry.
-        let attrs = cmd.get("fields").and_then(Json::as_object);
+        // 0.51.0 §5.6: each `text` attribute rendered, as a line's text is.
+        let mut attrs = cmd.get("fields").and_then(Json::as_object).cloned();
+        let Some(localized) = self.render_texts(cmd, attrs.as_mut()) else {
+            return !self.stopped();
+        };
         // 0.49.0 §3.1: the command's plugin stamps ride beside `attrs`, never
         // merged into them, and are omitted when the command has none.
         let stamps = cmd
@@ -167,7 +172,7 @@ impl<D: Driver> Machine<D> {
                 tag: &tag,
                 addr: addr(cmd),
                 reads: &reads,
-                attrs,
+                attrs: attrs.as_ref(),
                 stamps,
             };
             match self.driver.bridge(&call) {
@@ -175,7 +180,7 @@ impl<D: Driver> Machine<D> {
                 BridgeReply::Unanswered => (None, crate::session::Writes::default()),
             }
         };
-        let attrs = Json::Object(attrs.cloned().unwrap_or_default());
+        let attrs = Json::Object(attrs.unwrap_or_default());
         // dsl 0.25.0 §7: whether content reads one of this call's results.
         let read = reads
             .iter()
@@ -211,6 +216,9 @@ impl<D: Driver> Machine<D> {
                 if let Some(stamps) = stamps {
                     rec["stamps"] = Json::Object(stamps.clone());
                 }
+                if !localized.is_empty() {
+                    rec["localized"] = Json::Object(localized);
+                }
                 if let Some(raises) = raises.clone() {
                     rec["raises"] = raises;
                 }
@@ -235,6 +243,11 @@ impl<D: Driver> Machine<D> {
         rec.insert("attrs".into(), attrs);
         if let Some(stamps) = stamps {
             rec.insert("stamps".into(), Json::Object(stamps.clone()));
+        }
+        // 0.51.0 §5.6: each `text` attribute's `lineId` and rendered
+        // translations, as a line record carries its own.
+        if !localized.is_empty() {
+            rec.insert("localized".into(), Json::Object(localized));
         }
         // 0.51.0 §4.6: the declared raises, `occasion.target` bound — the
         // host raises them after the presentation ends.
@@ -353,6 +366,56 @@ impl<D: Driver> Machine<D> {
         // call's declared effects — state, then facts, then retracts, then
         // accepts — each recorded with `effectOf: <tag>` and `by: "host"`.
         self.host_writes(cmd, &tag, &host)
+    }
+
+    /// 0.51.0 §5.6: render each `text` attribute of plugin call `cmd` (its
+    /// `localized` map) as `rec_line` renders a line: every marker once,
+    /// against the attribute's placeholders, the rendered source written
+    /// into `attrs.<attr>` and each translation's markers given the value
+    /// the source rendered for the marker with the same referent. Host-token
+    /// markers stay verbatim. Returns the record's `localized` —
+    /// `{ <attr>: { lineId, texts? } }`, empty for a call without `text`
+    /// attributes — or `None` when an unset payload field or an unbound
+    /// `occasion.target` in a text stopped the walk (the line rule).
+    fn render_texts(
+        &mut self,
+        cmd: &Json,
+        mut attrs: Option<&mut serde_json::Map<String, Json>>,
+    ) -> Option<serde_json::Map<String, Json>> {
+        let mut out = serde_json::Map::new();
+        let Some(texts) = cmd.get("localized").and_then(Json::as_object) else {
+            return Some(out);
+        };
+        for (attr, text) in texts {
+            let Some(raw) = attrs
+                .as_deref()
+                .and_then(|a| a.get(attr))
+                .and_then(Json::as_str)
+                .map(str::to_string)
+            else {
+                continue;
+            };
+            let placeholders = text.get("placeholders").and_then(Json::as_array);
+            if self.text_halts(placeholders, addr(cmd)) {
+                return None;
+            }
+            let rendered = self.render_markers(&raw, placeholders);
+            if let Some(a) = attrs.as_deref_mut() {
+                a.insert(
+                    attr.clone(),
+                    Json::String(substitute_markers(&raw, &rendered, &mut 0)),
+                );
+            }
+            let mut entry = serde_json::Map::new();
+            if let Some(id) = text.get("lineId") {
+                entry.insert("lineId".into(), id.clone());
+            }
+            if let Some(t) = text.get("texts").filter(|t| !t.is_null()) {
+                entry.insert("texts".into(), texts_with(t, &raw, &rendered));
+            }
+            out.insert(attr.clone(), Json::Object(entry));
+        }
+        Some(out)
     }
 
     /// dsl 0.41.0 §5.3: a bridge answer's `writes` at the call. `false` =

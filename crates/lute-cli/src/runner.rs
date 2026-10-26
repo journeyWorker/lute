@@ -64,7 +64,7 @@ use crate::envelope::{self, CliError};
 use lute_runtime::{
     render_fact, value_to_json, value_to_string, BridgeCall, BridgeQueues, BridgeReply, Driver,
     Forced, Machine, Menu, OnUnknown, Pick, ScriptedChoices, Seed, UnknownSite, Verdict,
-    LINE_DELIVERY_KEYS, MENU_MARK_KEYS,
+    LINE_DELIVERY_KEYS, MENU_MARK_KEYS, PLUGIN_DELIVERY_KEYS,
 };
 use serde::Serialize;
 use serde_json::{json, Value as Json};
@@ -1409,8 +1409,8 @@ fn parse_ir_version(v: &str) -> Option<(u64, u64, u64)> {
 /// `lute run`'s [`Driver`]: the mock's `choose:` and `bridges:`, a spent
 /// `once` force skipped and a closed one refused, no unknown halting. Its
 /// transcript is the conformance contract: the play-only record fields
-/// ([`LINE_DELIVERY_KEYS`], [`MENU_MARK_KEYS`]) are dropped as records
-/// arrive.
+/// ([`LINE_DELIVERY_KEYS`], [`PLUGIN_DELIVERY_KEYS`], [`MENU_MARK_KEYS`])
+/// are dropped as records arrive.
 pub(crate) struct RunDriver {
     choices: ScriptedChoices,
     bridges: BridgeQueues,
@@ -1460,6 +1460,7 @@ impl Driver for RunDriver {
     fn emit(&mut self, mut rec: Json) {
         let drop: &[&str] = match rec.get("kind").and_then(Json::as_str) {
             Some("line") => &LINE_DELIVERY_KEYS,
+            Some("plugin") => &PLUGIN_DELIVERY_KEYS,
             Some("choice" | "hub") => &MENU_MARK_KEYS,
             _ => &[],
         };
