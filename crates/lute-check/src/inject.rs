@@ -757,24 +757,30 @@ impl<'a> StageFlow<'a> {
         self.hub_bodies > 0 && d.tag == lute_manifest::core::END_DIRECTIVE
     }
 
-    /// The stable stage at loop head `id`: `join(entry, back edges)`,
-    /// iterated. Each probe pass folds `regions` with the checker's fold,
-    /// emission off and a fresh pending map. Bound: 4 × the characters the
-    /// entry state and the regions name, + 2 (each character moves at most
-    /// once from a known sprite to an unknown one (#222) and once each
-    /// between `on_stage`, `maybe_on_stage` and `exited`, plus
-    /// `bg`/`music`; a character neither names cannot reach the head). Top:
-    /// nobody on stage, every such character maybe on stage, `exited` as
-    /// reached, no `bg`/`music`. A loop head's region is the loop's; a hub
-    /// head's (`id` = `hub:<id>`, [`Self::hub`]) are the hub's bodies, and a
-    /// pass is one [`Self::hub_round`].
+    /// The stable stage at loop head `id`: `H₀ = entry`, `Hₙ₊₁ = join(Hₙ,
+    /// back(Hₙ))` — accumulated from the last head, never re-joined from
+    /// the entry alone, so the iteration only descends even though an
+    /// `::actor` of an unknown sprite injects like a fresh show (#222, the
+    /// S4 review's two-cycle): once a sprite is unknown at the head it stays
+    /// unknown. Each probe pass folds `regions` with the checker's fold,
+    /// emission off and a fresh pending map. Bound, a safety net only: 5 ×
+    /// the characters the entry state and the regions name, + 2 (each
+    /// character moves at most once from a known sprite to an unknown one,
+    /// off the stage, into `maybe_on_stage`, into `exited` and into `dirty`,
+    /// plus `bg`/`music`; a character neither names cannot reach the head).
+    /// Top: the last head's presence with unknown sprites and its `dirty`
+    /// (every iterate had them: presence only shrinks), every other such
+    /// character maybe on stage, `exited` as reached, no `bg`/`music`. A
+    /// loop head's region is the loop's; a hub head's (`id` = `hub:<id>`,
+    /// [`Self::hub`]) are the hub's bodies, and a pass is one
+    /// [`Self::hub_round`].
     fn head(&mut self, id: &str, entry: StageState, at: HeadAt<'_>) -> StageState {
         use crate::loop_walk::head_fixpoint;
         let characters = match at {
             HeadAt::Loop(region) => characters_of(&entry, [region]),
             HeadAt::Hub(hub) => characters_of(&entry, hub.bodies().map(Vec::as_slice)),
         };
-        let bound = 4 * characters.len() + 2;
+        let bound = 5 * characters.len() + 2;
         let kind = self.kind;
         head_fixpoint(
             kind,
@@ -815,13 +821,16 @@ enum HeadAt<'n> {
     Hub(&'n Hub),
 }
 
-/// The stage state's operations at a loop head (dsl 0.51.0 §3.4): the next
-/// head joins the entry with the back edges; the same stage, diagnostics
-/// ignored; top: nobody on stage, every one of `characters` maybe on stage,
-/// `exited` the union of every state the iteration reached, no `bg`/`music`.
+/// The stage state's operations at a head (dsl 0.51.0 §3.4, 0.52.0 §5.4):
+/// the next head joins the current head with the back edges (it only
+/// descends: presence shrinks, sprites turn unknown, `maybe_on_stage`,
+/// `exited` and `dirty` grow); the same stage, diagnostics ignored; top:
+/// the last head's presence with unknown sprites and its `dirty`, every
+/// other one of `characters` maybe on stage, `exited` the union of every
+/// state the iteration reached, no `bg`/`music`.
 struct StageHead {
     characters: BTreeSet<String>,
-    /// The `exited` of every head reached (each is `join(entry, back)`, so
+    /// The `exited` of every head reached (each is `join(head, back)`, so
     /// its `exited` is the union of both), collected as the meets run.
     seen: std::cell::RefCell<BTreeMap<String, Departure>>,
 }
@@ -836,13 +845,16 @@ impl StageHead {
 }
 
 impl crate::loop_walk::HeadLattice<StageState> for StageHead {
-    fn meet(&self, entry: &StageState, back: StageState) -> StageState {
-        let head = StageState::join(entry, vec![entry.bare(), back]);
+    fn meet(&self, _entry: &StageState, head: &StageState, back: Option<StageState>) -> StageState {
+        let Some(back) = back else {
+            return head.bare();
+        };
+        let next = StageState::join(head, vec![head.bare(), back]);
         let mut seen = self.seen.borrow_mut();
-        for (ch, how) in &head.exited {
+        for (ch, how) in &next.exited {
             seen.entry(ch.clone()).or_insert_with(|| how.clone());
         }
-        head
+        next
     }
 
     fn same(&self, a: &StageState, b: &StageState) -> bool {
@@ -854,8 +866,34 @@ impl crate::loop_walk::HeadLattice<StageState> for StageHead {
         for (ch, how) in &last.exited {
             exited.entry(ch.clone()).or_insert_with(|| how.clone());
         }
+        // Presence only shrinks along the iteration, so every iterate had
+        // the last head's: keep it (its sprite no longer known) and its
+        // pending pose resets.
+        let on_stage: BTreeMap<String, SpriteState> = last
+            .on_stage
+            .keys()
+            .map(|ch| {
+                let sprite = SpriteState {
+                    unknown: true,
+                    ..SpriteState::default()
+                };
+                (ch.clone(), sprite)
+            })
+            .collect();
         StageState {
-            maybe_on_stage: self.characters.clone(),
+            maybe_on_stage: self
+                .characters
+                .iter()
+                .filter(|ch| !on_stage.contains_key(*ch))
+                .cloned()
+                .collect(),
+            dirty: last
+                .dirty
+                .iter()
+                .filter(|ch| on_stage.contains_key(*ch))
+                .cloned()
+                .collect(),
+            on_stage,
             exited,
             ..StageState::default()
         }
@@ -2174,18 +2212,18 @@ mod tests {
         st
     }
 
-    /// dsl 0.51.0 §3.8 widening: a stage head that never stabilizes within
-    /// `3 × characters + 2` passes takes the top — nobody on stage, every
-    /// character maybe on stage, `exited` as reached.
+    /// S4 review P1: a back edge that would make the head alternate — it
+    /// takes `mira` off stage while she is on it at the head and returns
+    /// the entry otherwise — no longer does: the head accumulates from the
+    /// last one (`join(Hₙ, back(Hₙ))`), so once she may be off stage she
+    /// stays so, and the head stabilizes on the second pass. Re-joined from
+    /// the entry it alternated until the bound and took the top.
     #[test]
-    fn a_stage_head_that_never_stabilizes_takes_the_top() {
+    fn an_alternating_back_edge_stabilizes_once_the_head_descends() {
         use crate::loop_walk::{head_fixpoint, loop_walk_stats, reset_loop_walk_stats, WalkKind};
         reset_loop_walk_stats();
         let entry = staged("mira");
         let characters: BTreeSet<String> = ["mira".to_string(), "theo".to_string()].into();
-        let bound = 3 * characters.len() + 2;
-        // A back edge takes `mira` off stage while she is on it at the head
-        // and returns the entry otherwise: a head that never stabilizes.
         let gone = {
             let mut s = StageState::default();
             s.exited.insert("mira".into(), Departure::Exit { line: 3 });
@@ -2194,7 +2232,7 @@ mod tests {
         let head = head_fixpoint(
             WalkKind::Stage,
             entry.clone(),
-            bound,
+            5 * characters.len() + 2,
             |h| {
                 Some(if h.on_stage.contains_key("mira") {
                     gone.clone()
@@ -2205,11 +2243,51 @@ mod tests {
             &StageHead::new(characters.clone()),
         );
         assert!(head.on_stage.is_empty());
-        assert_eq!(head.maybe_on_stage, characters);
+        assert_eq!(head.maybe_on_stage, ["mira".to_string()].into());
         assert!(head.exited.contains_key("mira"));
+        let stats = loop_walk_stats(WalkKind::Stage);
+        assert_eq!((stats.probe_passes, stats.widened), (2, 0));
+    }
+
+    /// The widening top, a safety net only: a head still moving at the
+    /// bound keeps the presence and pending pose resets every iterate had
+    /// (presence only shrinks), with unknown sprites; every other character
+    /// is maybe on stage, `exited` as reached, no `bg`/`music`.
+    #[test]
+    fn a_stage_head_still_moving_at_the_bound_keeps_definite_presence() {
+        use crate::loop_walk::{head_fixpoint, loop_walk_stats, reset_loop_walk_stats, WalkKind};
+        reset_loop_walk_stats();
+        let mut entry = staged("mira");
+        entry.on_stage.insert("theo".into(), SpriteState::default());
+        entry.dirty.insert("mira".into());
+        let characters: BTreeSet<String> = ["mira".to_string(), "theo".to_string()].into();
+        // The back edge drops `theo`; one pass is not enough to see the head
+        // stable.
+        let back = {
+            let mut s = entry.bare();
+            s.on_stage.remove("theo");
+            s.exited.insert("theo".into(), Departure::Exit { line: 4 });
+            s
+        };
+        let head = head_fixpoint(
+            WalkKind::Stage,
+            entry.clone(),
+            1,
+            |_| Some(back.clone()),
+            &StageHead::new(characters.clone()),
+        );
+        assert_eq!(
+            head.on_stage.keys().collect::<Vec<_>>(),
+            ["mira"],
+            "{head:?}"
+        );
+        assert!(head.on_stage["mira"].unknown);
+        assert_eq!(head.dirty, ["mira".to_string()].into());
+        assert_eq!(head.maybe_on_stage, ["theo".to_string()].into());
+        assert!(head.exited.contains_key("theo"));
         assert_eq!((head.bg.clone(), head.music.clone()), (None, None));
         let stats = loop_walk_stats(WalkKind::Stage);
-        assert_eq!((stats.probe_passes, stats.widened), (8, 1));
+        assert_eq!((stats.probe_passes, stats.widened), (1, 1));
     }
 
     /// The attribute is honoured as an action and does NOT remove the character

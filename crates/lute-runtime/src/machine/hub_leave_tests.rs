@@ -317,6 +317,31 @@ fn a_transfer_into_a_hub_body_from_outside_is_refused_at_load() {
     );
 }
 
+/// S4 review P2: a declaration's body start ends no range, so landing at
+/// the end of the declaration's segment is no exemption — the reviewer's
+/// lore artifact (entry `e`'s body is the hub's option body) is refused at
+/// load instead of reaching `run_body`'s assertion.
+#[test]
+fn a_body_start_inside_a_hub_body_is_refused_at_load() {
+    let art = json!({ "kind": "lore", "commands": [
+        { "kind": "entry", "family": "declaration", "position": pos(0), "id": "e",
+          "body": pos(2) },
+        hub(1, "h", &[("a", 2, false)], None, 3),
+        leave(2, 3, 1),
+        line(3, "after"),
+    ] });
+    let mut m = Machine::new(&art, Seed::default(), Script::default());
+    assert_eq!(
+        m.run()
+            .map_err(|e| e.to_string())
+            .expect_err("refused at load"),
+        "malformed `entry` record at 001-0100: its `body` goes to 001-0300, inside a hub \
+         option or `<return>` body it is not in; a body is entered only through its `hub` \
+         record"
+    );
+    assert!(m.driver().lines.is_empty());
+}
+
 /// The end of an option body is the next option's start (bodies are laid
 /// out consecutively): a transfer there from inside the option ends it and
 /// is no entry into the next body.

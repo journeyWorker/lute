@@ -430,6 +430,7 @@ impl Code {
                 field,
                 value,
                 required,
+                ..
             } in fields
             {
                 let target = match value {
@@ -545,10 +546,13 @@ impl Code {
     /// entered only through its `hub` record. A transfer from outside a body
     /// to a record inside it would run the body without a hub visit, so a
     /// leave from it would reach no visit to end; it is refused, naming the
-    /// record and field. A transfer to the end of a range around it is not an
-    /// entry, even where that address starts the next body (consecutive
-    /// option bodies, a branch converging at the end of an option): reaching
-    /// it ends the range ([`Machine::run_range`]).
+    /// record and field. A transfer within the running range to the end of a
+    /// range around it is not an entry, even where that address starts the
+    /// next body (consecutive option bodies, a branch converging at the end
+    /// of an option): reaching it ends the range ([`Machine::run_range`]). A
+    /// declaration's body start ([`TransferRole::BodyStart`]) ends no range —
+    /// the body runs as its own — so it never lands inside a hub body (S4
+    /// review P2).
     fn body_entries(&self, bodies: &[(usize, usize, usize)]) -> Result<(), String> {
         if bodies.is_empty() {
             return Ok(());
@@ -563,15 +567,19 @@ impl Code {
                 .copied()
                 .find(|&s| s > j)
                 .unwrap_or(self.commands.len());
-            for Transfer { field, value, .. } in fields {
+            for Transfer {
+                field, value, role, ..
+            } in fields
+            {
                 let Some(Json::String(target)) = value else {
                     continue;
                 };
                 let to = self.resolve(target);
-                let ends_a_range = to == segment_end
-                    || bodies
-                        .iter()
-                        .any(|&(s, e, _)| (s..e).contains(&j) && e == to);
+                let ends_a_range = role == TransferRole::InRange
+                    && (to == segment_end
+                        || bodies
+                            .iter()
+                            .any(|&(s, e, _)| (s..e).contains(&j) && e == to));
                 let enters = !ends_a_range
                     && bodies
                         .iter()
@@ -730,6 +738,20 @@ struct Transfer<'a> {
     /// The executor reads it unconditionally ([`required_target`]): absent
     /// or not a position string, the record is malformed.
     required: bool,
+    role: TransferRole,
+}
+
+/// What a [`Transfer`] starts.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TransferRole {
+    /// Control moves within the running range: a jump, a menu's option,
+    /// `return` or `converge`, a match arm. Reaching the end of a range
+    /// around it ends that range.
+    InRange,
+    /// A declaration's body: a quest objective, handler, entry or beat runs
+    /// it as its own range, never as the end of the range around the
+    /// declaration (S4 review P2).
+    BodyStart,
 }
 
 /// Every control transfer `cmd` makes — the one list the load check walks
@@ -740,15 +762,22 @@ struct Transfer<'a> {
 /// [`Machine::do_hub`]'s loop (its options, `return` and `converge` all point
 /// forward).
 fn transfers(cmd: &Json) -> Option<Vec<Transfer<'_>>> {
-    fn field<'a>(field: &'static str, of: &'a Json, required: bool) -> Transfer<'a> {
+    fn field<'a>(
+        field: &'static str,
+        of: &'a Json,
+        required: bool,
+        role: TransferRole,
+    ) -> Transfer<'a> {
         // `options[].target` names the `target` key of each option.
         let key = field.rsplit('.').next().unwrap_or(field);
         Transfer {
             field,
             value: of.get(key),
             required,
+            role,
         }
     }
+    use TransferRole::{BodyStart, InRange};
     let each = |key: &str| {
         cmd.get(key)
             .and_then(Json::as_array)
@@ -757,29 +786,29 @@ fn transfers(cmd: &Json) -> Option<Vec<Transfer<'_>>> {
     };
     let mut out = Vec::new();
     match cmd.get("kind").and_then(Json::as_str).unwrap_or("") {
-        "jump" => out.push(field("target", cmd, true)),
+        "jump" => out.push(field("target", cmd, true, InRange)),
         "choice" | "hub" => {
             for option in each("options") {
-                out.push(field("options[].target", option, true));
+                out.push(field("options[].target", option, true, InRange));
             }
-            out.push(field("return", cmd, false));
-            out.push(field("converge", cmd, true));
+            out.push(field("return", cmd, false, InRange));
+            out.push(field("converge", cmd, true, InRange));
         }
         "match" => {
             for arm in each("arms") {
-                out.push(field("arms[].target", arm, true));
+                out.push(field("arms[].target", arm, true, InRange));
             }
-            out.push(field("otherwise", cmd, false));
-            out.push(field("converge", cmd, true));
+            out.push(field("otherwise", cmd, false, InRange));
+            out.push(field("converge", cmd, true, InRange));
         }
         // Segment starts: the body a quest objective, handler, entry or
         // beat runs, after its declaration.
         "quest" => {
             for objective in each("objectives") {
-                out.push(field("objectives[].body", objective, false));
+                out.push(field("objectives[].body", objective, false, BodyStart));
             }
         }
-        "on" | "entry" | "beat" => out.push(field("body", cmd, true)),
+        "on" | "entry" | "beat" => out.push(field("body", cmd, true, BodyStart)),
         "accept" | "actor" | "assert" | "barrier" | "bg" | "camera" | "cg" | "end" | "line"
         | "music" | "plugin" | "retract" | "sequence" | "set" | "sfx" | "vfx" | "video" => {}
         _ => return None,

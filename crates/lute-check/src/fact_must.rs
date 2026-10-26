@@ -328,9 +328,11 @@ fn same(a: &Flow, b: &Flow) -> bool {
 struct MustHead;
 
 impl crate::loop_walk::HeadLattice<Facts> for MustHead {
-    fn meet(&self, entry: &Facts, back: Facts) -> Facts {
+    fn meet(&self, entry: &Facts, _head: &Facts, back: Option<Facts>) -> Facts {
         let mut head = entry.clone();
-        head.retain(|f| back.contains_key(f));
+        if let Some(back) = back {
+            head.retain(|f| back.contains_key(f));
+        }
         head
     }
 

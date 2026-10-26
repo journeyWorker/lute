@@ -663,8 +663,11 @@ impl Walk<'_, '_> {
 struct AssignHead;
 
 impl crate::loop_walk::HeadLattice<Flow> for AssignHead {
-    fn meet(&self, entry: &Flow, back: Flow) -> Flow {
-        intersect_flows(vec![entry.clone(), back])
+    fn meet(&self, entry: &Flow, _head: &Flow, back: Option<Flow>) -> Flow {
+        match back {
+            Some(back) => intersect_flows(vec![entry.clone(), back]),
+            None => entry.clone(),
+        }
     }
 
     fn same(&self, a: &Flow, b: &Flow) -> bool {
