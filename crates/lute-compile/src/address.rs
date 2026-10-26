@@ -385,6 +385,9 @@ struct DirectiveTag(String);
 /// above the scope's highest authored one (`+10`, `{:04}`), in source order
 /// — the order `lute tag` writes them in, even where a `<timeline>` plays
 /// its clips in another. A call emitted twice from one source keeps one code.
+/// A component's calls arrive already numbered over the whole component
+/// source (`normalize::backfill_component_directive_codes`), before its
+/// arguments fold a `<match>` away.
 fn assign_directive_text_ids(cmds: &mut [Command], prefix: &str) {
     use crate::ir::PluginCmd;
     fn owner(p: &PluginCmd) -> (String, DirectiveTag) {

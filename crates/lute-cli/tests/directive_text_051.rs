@@ -667,3 +667,70 @@ fn a_text_state_declaration_is_refused() {
         "{diags:#?}"
     );
 }
+
+/// A scene `intro` importing `components/card.component.lute` (`component`)
+/// with `body`.
+fn with_card(tag: &str, component: &str, body: &str) -> lute_scratch::ScratchDir {
+    let doc = format!(
+        "---\nkind: scene\nid: intro\ncomponents: [../components/card.component.lute]\n---\n\n\
+         ## Shot 1.\n\n{body}\n"
+    );
+    project(
+        tag,
+        &[
+            ("scenes/intro.lute", &doc),
+            ("components/card.component.lute", component),
+        ],
+    )
+}
+
+/// S6 review #1: a component's untagged directive calls take their codes
+/// from the whole component source, before its arguments fold a `<match>`
+/// — the codes `lute tag` writes into the component file.
+#[test]
+fn component_directive_codes_survive_folded_matches_and_tagging() {
+    let component = "---\ncomponent: card\nparams:\n  mode: string\n---\n\n## Card\n\n\
+                     <match subject=\"@mode\">\n<when is=\"a\">\n::banner{title=\"First\"}\n\
+                     </when>\n<otherwise>\n::banner{title=\"Second\"}\n</otherwise>\n</match>\n";
+    let dir = with_card(
+        "dt-comp-fold",
+        component,
+        "::use{component=\"card\" instance=\"one\" mode=\"b\"}",
+    );
+    assert!(check(&dir).is_empty(), "{:#?}", check(&dir));
+    let before = line_ids(&commands(&dir, "scenes/intro.lute"));
+    assert_eq!(before, ["intro.card#one~banner~0020~title"]);
+    let out = lute(&dir, &["tag", "components/card.component.lute"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let tagged = std::fs::read_to_string(dir.join("components/card.component.lute")).unwrap();
+    assert!(
+        tagged.contains("::banner{code=\"0020\" title=\"Second\"}"),
+        "{tagged}"
+    );
+    assert_eq!(line_ids(&commands(&dir, "scenes/intro.lute")), before);
+}
+
+/// S6 review #5: a `{{@param}}` in a component's `text` attribute is bound
+/// at expansion — a literal argument spliced, as in a content line — never
+/// read as a host def.
+#[test]
+fn component_params_bind_inside_text_attributes() {
+    let component = "---\ncomponent: card\nparams:\n  mode: string\n---\n\n## Card\n\n\
+                     ::banner{title=\"Mode {{@mode}} at {{run.gold}}\"}\n";
+    let dir = with_card(
+        "dt-comp-param",
+        component,
+        "::use{component=\"card\" instance=\"one\" mode=\"fast\"}",
+    );
+    assert!(check(&dir).is_empty(), "{:#?}", check(&dir));
+    let cmds = commands(&dir, "scenes/intro.lute");
+    let banner = plugins(&cmds)[0];
+    assert_eq!(banner["fields"]["title"], "Mode fast at {{run.gold}}");
+    let kinds: Vec<&str> = banner["localized"]["title"]["placeholders"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| p["kind"].as_str().unwrap())
+        .collect();
+    assert_eq!(kinds, ["path"]);
+}

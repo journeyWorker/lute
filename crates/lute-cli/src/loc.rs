@@ -582,6 +582,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
             &input.components,
             &cast,
             &folded.env.domains,
+            input.snapshot(),
             &folded.env.state,
             &folded.env.occasion_scopes,
         );

@@ -499,8 +499,10 @@ pub fn lower_directive(
                 }
                 // 0.51.0 §5.3 (Review051b F5): the implicit identity `code`
                 // of a directive with `text` attributes is owned but is no
-                // field — it reaches the artifact only in `localized`.
-                if a.key == DIRECTIVE_TEXT_CODE_ATTR
+                // field — it reaches the artifact only in `localized` — and
+                // neither is a component call's back-filled one.
+                if (a.key == DIRECTIVE_TEXT_CODE_ATTR
+                    || a.key == crate::normalize::COMPONENT_CODE_ATTR)
                     && decl.is_some_and(DirectiveDecl::has_text_attr)
                 {
                     continue;
@@ -571,15 +573,24 @@ pub fn lower_directive(
                         .collect()
                 })
                 .unwrap_or_default();
-            let text_identity = text_decl.map(|_| TextIdentity {
-                code: dir
-                    .attrs
+            // An untagged component call carries its source-order back-fill
+            // (`normalize::backfill_component_directive_codes`); an authored
+            // code wins.
+            let code_attr = |key: &str| {
+                dir.attrs
                     .iter()
-                    .find(|a| a.key == DIRECTIVE_TEXT_CODE_ATTR)
+                    .find(|a| a.key == key)
                     .and_then(|a| match &a.value {
                         AttrValue::Str(s) => Some(s.trim().to_string()),
                         _ => None,
-                    }),
+                    })
+            };
+            let text_identity = text_decl.map(|_| TextIdentity {
+                code: if dir.attrs.iter().any(|a| a.key == DIRECTIVE_TEXT_CODE_ATTR) {
+                    code_attr(DIRECTIVE_TEXT_CODE_ATTR)
+                } else {
+                    code_attr(crate::normalize::COMPONENT_CODE_ATTR)
+                },
                 at: dir.span.byte_start,
             });
             Command::Plugin(PluginCmd {

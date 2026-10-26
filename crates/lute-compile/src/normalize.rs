@@ -20,7 +20,7 @@ use lute_check::occasion_bind::OccasionScopes;
 use lute_check::ComponentSet;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::schema::CastMember;
-use lute_manifest::snapshot::Domain;
+use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::Type;
 use lute_syntax::ast::{
     classify_interp, interp_from_inner, Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode,
@@ -85,12 +85,13 @@ pub(crate) const AUTHORED_ATTR: &str = "__authored";
 /// member: its record is compiler-injected, never an authored decision.
 pub(crate) const TARGET_USE_ATTR: &str = "__targetUse";
 
-/// The internal attr carrying a component line's SOURCE-ORDER back-filled
-/// `code` (ashen N7). [`expand_use`] stamps it on every untagged line of the
-/// cloned body BEFORE binding and folding; the lowering reads it when no
-/// authored `code` exists. It is deliberately not `code`: the line is still
-/// untagged (`lute loc` keeps reporting it so), it only no longer depends on
-/// which arms a call site's arguments fold away.
+/// The internal attr carrying a component line's — or `text` directive
+/// call's (0.51.0 §5.3) — SOURCE-ORDER back-filled `code` (ashen N7).
+/// [`expand_use`] stamps it on every untagged line and call of the cloned
+/// body BEFORE binding and folding; the lowering reads it when no authored
+/// `code` exists. It is deliberately not `code`: the line is still untagged
+/// (`lute loc` keeps reporting it so), it only no longer depends on which
+/// arms a call site's arguments fold away.
 pub const COMPONENT_CODE_ATTR: &str = "__code";
 
 /// Give every untagged line of a component body the code `lute tag` would
@@ -130,6 +131,197 @@ fn backfill_component_codes(body: &mut [Node]) {
     });
 }
 
+/// [`backfill_component_codes`] for the calls of `text` directives
+/// (0.51.0 §5.3): the codes `lute tag` writes into the component file —
+/// per tag, in source order, above the tag's highest authored code, `+10`
+/// (lute-check `tag.rs` `tag_directive_scope`). A call with any `code`
+/// attribute is tagged and keeps it.
+fn backfill_component_directive_codes(body: &mut [Node], snapshot: &CapabilitySnapshot) {
+    let is_text = |d: &Directive| {
+        snapshot
+            .directive(&d.tag)
+            .is_some_and(lute_manifest::schema::DirectiveDecl::has_text_attr)
+    };
+    let code_of = |d: &Directive| {
+        d.attrs
+            .iter()
+            .find(|a| a.key == lute_manifest::schema::DIRECTIVE_TEXT_CODE_ATTR)
+            .map(|a| a.value.clone())
+    };
+    let mut calls: Vec<(usize, String, Option<AttrValue>)> = Vec::new();
+    visit_directives(body, &mut |d| {
+        if is_text(d) {
+            calls.push((d.span.byte_start, d.tag.clone(), code_of(d)));
+        }
+    });
+    calls.sort_by_key(|(at, ..)| *at);
+    let mut max: BTreeMap<&str, u64> = BTreeMap::new();
+    for (_, tag, code) in &calls {
+        let cur = max.entry(tag.as_str()).or_insert(0);
+        if let Some(AttrValue::Str(s)) = code {
+            if let Ok(n) = s.trim().parse::<u64>() {
+                *cur = (*cur).max(n);
+            }
+        }
+    }
+    let mut filled: BTreeMap<usize, String> = BTreeMap::new();
+    for (at, tag, code) in &calls {
+        if code.is_some() {
+            continue;
+        }
+        let cur = max.entry(tag.as_str()).or_insert(0);
+        // Overflow fails closed for this call only, as `tag.rs` does.
+        let Some(next) = cur.checked_add(10) else {
+            continue;
+        };
+        *cur = next;
+        filled.insert(*at, format!("{next:04}"));
+    }
+    if filled.is_empty() {
+        return;
+    }
+    visit_directives(body, &mut |d| {
+        if !is_text(d) || code_of(d).is_some() {
+            return;
+        }
+        if let Some(code) = filled.get(&d.span.byte_start) {
+            d.attrs.push(Attr {
+                key: COMPONENT_CODE_ATTR.to_string(),
+                value: AttrValue::Str(code.clone()),
+                value_span: d.span,
+                span: d.span,
+            });
+        }
+    });
+}
+
+/// Every directive call of `nodes`, at any depth and in timeline clips.
+fn visit_directives(nodes: &mut [Node], f: &mut dyn FnMut(&mut Directive)) {
+    for node in nodes {
+        match node {
+            Node::Directive(d) => f(d),
+            Node::Timeline(t) => {
+                for track in &mut t.tracks {
+                    for clip in &mut track.clips {
+                        if let ClipNode::Directive(d) = &mut clip.node {
+                            f(d);
+                        }
+                    }
+                }
+            }
+            Node::Branch(b) => {
+                for c in &mut b.choices {
+                    visit_directives(&mut c.body, f);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies_mut() {
+                    visit_directives(b, f);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &mut m.arms {
+                    let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                    visit_directives(body, f);
+                }
+            }
+            Node::Objective(o) => visit_directives(&mut o.body, f),
+            Node::On(o) => visit_directives(&mut o.body, f),
+            Node::Line(_) | Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}
+        }
+    }
+}
+
+/// 0.51.0 §5.4: bind each `{{@param}}` of the `text` attributes of the
+/// `text` directive calls in `nodes` as a content line's text binds it
+/// ([`bind_text`]): a literal argument (a speaker or kind-typed param's
+/// display text, `names`, first) spliced, its hint applied; a `@ref`
+/// argument rebound to the caller's ref. Every other marker is kept.
+fn bind_text_attrs(
+    nodes: &mut [Node],
+    snapshot: &CapabilitySnapshot,
+    args: &BTreeMap<String, AttrValue>,
+    names: &BTreeMap<String, AttrValue>,
+) {
+    visit_directives(nodes, &mut |d| {
+        let Some(decl) = snapshot.directive(&d.tag).filter(|d| d.has_text_attr()) else {
+            return;
+        };
+        for a in &mut d.attrs {
+            if !decl.text_attrs().any(|t| t.name == a.key) {
+                continue;
+            }
+            if let AttrValue::Str(s) = &a.value {
+                if s.contains("{{") {
+                    a.value = AttrValue::Str(bind_attr_text(s, a.value_span, args, names));
+                }
+            }
+        }
+    });
+}
+
+/// One `text` attribute value (at `span`) with its `{{@param}}` markers
+/// bound ([`bind_text_attrs`]).
+fn bind_attr_text(
+    text: &str,
+    span: Span,
+    args: &BTreeMap<String, AttrValue>,
+    names: &BTreeMap<String, AttrValue>,
+) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut copied = 0;
+    for (s, e) in interp_markers(text) {
+        let interp = interp_from_inner(&text[s + 2..e - 2], span);
+        let value = (interp.kind == InterpKind::Ref)
+            .then(|| interp.raw.strip_prefix('@'))
+            .flatten()
+            .and_then(|p| names.get(p).or_else(|| args.get(p)));
+        let bound = match value {
+            Some(AttrValue::Ref(slot)) => rebound_marker(&slot.raw, &interp),
+            Some(AttrValue::Str(v)) => literal_text(&interp, v),
+            Some(AttrValue::BoolTrue) => "true".to_string(),
+            None => continue,
+        };
+        out.push_str(&text[copied..s]);
+        out.push_str(&bound);
+        copied = e;
+    }
+    out.push_str(&text[copied..]);
+    out
+}
+
+/// `{{<referent>[:hint]}}`: `interp` rebound to the caller's ref `referent`,
+/// keeping its hint (dsl 0.24.0 §4).
+fn rebound_marker(referent: &str, interp: &Interp) -> String {
+    match interp.hint_text() {
+        Some(hint) => format!("{{{{{referent}:{hint}}}}}"),
+        None => format!("{{{{{referent}}}}}"),
+    }
+}
+
+/// The text a literal argument `arg` splices for `interp`: its decoded value
+/// (lute 0.47.1 §3), or, under a hint, the form the hint renders.
+fn literal_text(interp: &Interp, arg: &str) -> String {
+    // lute 0.47.1 §3: what is spliced is the argument's decoded value, so
+    // its `{{` escapes are judged on that — a `\\` pair before `{{` is one
+    // backslash there (`p="\\{{x}}"` passes a literal `{{x}}`).
+    let s = decode_opener_runs(arg);
+    // dsl 0.24.0 §4: no placeholder survives a literal splice to carry the
+    // hint, so it applies here — `ordinal` / `ordinalWord` / `cardinalWord`
+    // on a number literal renders its word, `plural` (dsl 0.27.0 §7) its
+    // form, and a text hint the literal's text (its fallback forms: the
+    // spliced literal is text, not a member with forms).
+    let shown = s.trim();
+    let formatted = interp.format.as_deref().and_then(|f| {
+        match shown.parse::<f64>() {
+            Ok(n) => lute_manifest::text::format_number(f, interp.forms.as_deref(), n, shown),
+            Err(_) => None,
+        }
+        .or_else(|| lute_manifest::text::format_text(f, &s, None, None))
+    });
+    formatted.unwrap_or(s)
+}
+
 /// Every content line of `nodes`, at any depth, in source order.
 fn visit_lines(nodes: &mut [Node], f: &mut dyn FnMut(&mut Line)) {
     for node in nodes {
@@ -167,11 +359,13 @@ fn visit_lines(nodes: &mut [Node], f: &mut dyn FnMut(&mut Line)) {
 
 /// What a `::use` expands against: the imported components, the host's
 /// declared cast (dsl 0.24.0 §4: a `speaker` param renders the member's name)
-/// and its domains (dsl 0.27.0 §7: a kind-typed param renders its label).
+/// and its domains (dsl 0.27.0 §7: a kind-typed param renders its label),
+/// and its capability snapshot (0.51.0 §5: which directives take `text`).
 struct Components<'a> {
     set: &'a ComponentSet,
     cast: &'a BTreeMap<String, CastMember>,
     domains: &'a BTreeMap<String, Domain>,
+    snapshot: &'a CapabilitySnapshot,
 }
 
 /// Per-owner component instance allocation. Explicit keys are independent of
@@ -192,12 +386,14 @@ struct UseIdentityState {
 /// binding (§13.2), the §6.4 folds, and the `when=`/`into=` desugars are
 /// inherited by construction, with zero duplicated logic. `targets`: the
 /// members `occasion.target` names in each kind or `for=` beat of the
-/// document ([`expand_target_uses`]).
+/// document ([`expand_target_uses`]); `snapshot`: the host's, under which
+/// every expanded component body is read.
 pub fn normalize_document(
     doc: &mut Document,
     components: &ComponentSet,
     cast: &BTreeMap<String, CastMember>,
     domains: &BTreeMap<String, Domain>,
+    snapshot: &CapabilitySnapshot,
     schema: &lute_check::StateView,
     targets: &OccasionScopes,
 ) -> Vec<Diagnostic> {
@@ -205,6 +401,7 @@ pub fn normalize_document(
         set: components,
         cast,
         domains,
+        snapshot,
     };
     let mut diags = Vec::new();
     // One ordinal counter per identity scope (see `COMPONENT_SCOPE_ATTR`):
@@ -947,6 +1144,7 @@ fn expand_use(
         .flat_map(|s| s.body.iter().cloned())
         .collect();
     backfill_component_codes(&mut body);
+    backfill_component_directive_codes(&mut body, components.snapshot);
     // dsl 0.24.0 §4: `{{@p}}` over a `speaker` param renders the cast
     // member's NAME, and (dsl 0.27.0 §7) over a kind-typed param the kind's
     // label; every other position (attrs, match subjects) binds the id below.
@@ -960,6 +1158,9 @@ fn expand_use(
         visit_lines(&mut body, &mut |l| bind_text(l, &names));
     }
     bind_component_body(&mut body, &args, &def.params, &mut |l| bind_text(l, &args));
+    // 0.51.0 §5.4: a `text` attribute's `{{@p}}` binds as a line's text
+    // does, before lowering makes its placeholders.
+    bind_text_attrs(&mut body, components.snapshot, &args, &names);
     // Nested `::use` in the body expands recursively (acyclic per checker);
     // this expansion is the nested uses' host, so they count from 1 afresh.
     normalize_nodes(
@@ -1067,44 +1268,17 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
         let at = out.len();
         match bound(&interp).cloned() {
             Some(AttrValue::Ref(slot)) => {
-                out.push_str("{{");
-                out.push_str(&slot.raw);
                 // dsl 0.24.0 §4: the rebound marker keeps its hint.
-                if let Some(hint) = interp.hint_text() {
-                    out.push(':');
-                    out.push_str(&hint);
-                }
-                out.push_str("}}");
+                out.push_str(&rebound_marker(&slot.raw, &interp));
                 interp.kind = classify_interp(&slot.raw);
                 interp.raw = slot.raw;
                 kept.push((interp, at, out.len()));
             }
             Some(AttrValue::Str(s)) => {
-                // lute 0.47.1 §3: what is spliced is the argument's decoded
-                // value, so its `{{` escapes are judged on that — a `\\`
-                // pair before `{{` is one backslash there (`p="\\{{x}}"`
-                // passes a literal `{{x}}`).
-                let s = decode_opener_runs(&s);
-                // dsl 0.24.0 §4: no placeholder survives a literal splice
-                // to carry the hint, so it applies here — `ordinal` /
-                // `ordinalWord` / `cardinalWord` on a number literal
-                // renders its word, `plural` (dsl 0.27.0 §7) its form, and
-                // a text hint the literal's text (its fallback forms: the
-                // spliced literal is text, not a member with forms).
-                let shown = s.trim();
-                let formatted = interp.format.as_deref().and_then(|f| {
-                    match shown.parse::<f64>() {
-                        Ok(n) => {
-                            lute_manifest::text::format_number(f, interp.forms.as_deref(), n, shown)
-                        }
-                        Err(_) => None,
-                    }
-                    .or_else(|| lute_manifest::text::format_text(f, &s, None, None))
-                });
                 // dsl 0.37.0 §3.6: an argument is literal text — its
                 // inline punctuation is escaped so it can never become
                 // modifier syntax (or close an authored span).
-                let lit = escape_inline_literal(formatted.as_deref().unwrap_or(&s));
+                let lit = escape_inline_literal(&literal_text(&interp, &s));
                 out.push_str(&lit);
                 // dsl 0.26.0 §3.1: a `{{…}}` inside a string argument is
                 // an interpolation exactly as in direct text — it keeps
@@ -1386,6 +1560,7 @@ mod tests {
             &comps,
             &Default::default(),
             &Default::default(),
+            &Default::default(),
             &lute_check::StateView::default(),
             &Default::default(),
         );
@@ -1452,6 +1627,7 @@ episode: 1
             &comps,
             &Default::default(),
             &Default::default(),
+            &Default::default(),
             &lute_check::StateView::default(),
             &Default::default(),
         );
@@ -1488,6 +1664,7 @@ components: [greet.component.lute]
         let diags = normalize_document(
             &mut doc,
             &comps,
+            &Default::default(),
             &Default::default(),
             &Default::default(),
             &lute_check::StateView::default(),
@@ -1575,6 +1752,7 @@ episode: 1
             &Default::default(),
             &Default::default(),
             &Default::default(),
+            &Default::default(),
             &lute_check::StateView::from(schema),
             &Default::default(),
         );
@@ -1652,6 +1830,7 @@ components: [greet.component.lute]
         let diags = normalize_document(
             &mut doc,
             &comps,
+            &Default::default(),
             &Default::default(),
             &Default::default(),
             &lute_check::StateView::default(),
@@ -1746,6 +1925,7 @@ kind: quest
             &comps,
             &Default::default(),
             &Default::default(),
+            &Default::default(),
             &lute_check::StateView::default(),
             &Default::default(),
         );
@@ -1788,6 +1968,7 @@ kind: quest
         let diags = normalize_document(
             &mut doc,
             &comps,
+            &Default::default(),
             &Default::default(),
             &Default::default(),
             &lute_check::StateView::default(),

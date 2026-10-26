@@ -201,6 +201,7 @@ pub(crate) fn trace_pipeline(
         &input.components,
         &cast,
         &folded.env.domains,
+        input.snapshot(),
         &folded.env.state,
         &folded.env.occasion_scopes,
     );
