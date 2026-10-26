@@ -1014,96 +1014,225 @@ fn patch_numbers(file: &Path, text: String, errs: &mut Vec<LoadError>) -> String
     patched
 }
 
-/// 0.51.0 §5.1: report every `text` type of the export file `text` outside
-/// the one place it is admitted — the `type:` of an entry of a directive's
-/// `attrs:` — as [`LoadError::Parse`] at the type. A `stampAttrs` file is
-/// left to assembly, which refuses a `text` stamp beside a structured one;
-/// a host token's type and an occasion payload field's are their own closed
-/// sets, whose decoders refuse `text` themselves.
-fn refuse_text_types(file: &Path, text: &str, errs: &mut Vec<LoadError>) {
-    use crate::types::YamlKey;
-    fn has_text(ty: &yaml_serde::Value) -> bool {
-        match ty {
-            yaml_serde::Value::String(s) => s == "text",
-            yaml_serde::Value::Mapping(m) => {
-                m.get("list").is_some_and(has_text)
-                    || m.get("map").is_some_and(|kv| {
-                        kv.get("key").is_some_and(has_text) || kv.get("value").is_some_and(has_text)
-                    })
-            }
-            _ => false,
+/// One type an export file declares, with where it is written.
+struct TypeSite<'a> {
+    /// From the file's root to the type's value.
+    path: Vec<crate::types::YamlKey>,
+    ty: &'a Type,
+    /// The type of a directive's own attribute: `text` itself is admitted
+    /// there, never nested in another type (0.51.0 §5.1).
+    attr_of_directive: bool,
+}
+
+/// 0.51.0 §5.1: every type position of a decoded export file. A file kind
+/// whose types another decoder or assembly judges declares none here: an
+/// occasion `payload:` and a host token's `type` are closed sets their own
+/// decoders word; a `stampAttrs` entry is refused at assembly, beside a
+/// structured stamp. `raw` is the file as YAML, for the spelling a type
+/// position was written in.
+trait DeclaredTypes {
+    fn declared_types<'a>(&'a self, raw: &yaml_serde::Value) -> Vec<TypeSite<'a>>;
+}
+
+fn key(k: &str) -> crate::types::YamlKey {
+    crate::types::YamlKey::Key(k.to_string())
+}
+
+fn item(i: usize) -> crate::types::YamlKey {
+    crate::types::YamlKey::Item(i)
+}
+
+/// The `type:` of each entry of an attribute or field list under `at`.
+fn typed_entries<'a>(
+    at: &[crate::types::YamlKey],
+    tys: impl Iterator<Item = &'a Type>,
+    attr_of_directive: bool,
+) -> impl Iterator<Item = TypeSite<'a>> {
+    let at = at.to_vec();
+    tys.enumerate().map(move |(j, ty)| {
+        let mut path = at.clone();
+        path.extend([item(j), key("type")]);
+        TypeSite {
+            path,
+            ty,
+            attr_of_directive,
         }
+    })
+}
+
+impl DeclaredTypes for DirectivesFile {
+    fn declared_types<'a>(&'a self, _: &yaml_serde::Value) -> Vec<TypeSite<'a>> {
+        self.directives
+            .iter()
+            .enumerate()
+            .flat_map(|(i, d)| {
+                let at = [key("directives"), item(i), key("attrs")];
+                typed_entries(&at, d.attrs.iter().map(|a| &a.ty), true).collect::<Vec<_>>()
+            })
+            .collect()
     }
-    fn walk(v: &yaml_serde::Value, path: &mut Vec<YamlKey>, out: &mut Vec<Vec<YamlKey>>) {
-        match v {
-            yaml_serde::Value::Mapping(m) => {
-                for (k, child) in m {
-                    let Some(key) = k.as_str() else { continue };
-                    // An occasion `payload:` has its own type grammar, whose
-                    // decoder names `text` as no payload type.
-                    if key == "payload" {
-                        continue;
+}
+
+impl DeclaredTypes for StateFile {
+    fn declared_types<'a>(&'a self, _: &yaml_serde::Value) -> Vec<TypeSite<'a>> {
+        self.state_shapes
+            .iter()
+            .flatten()
+            .enumerate()
+            .flat_map(|(i, s)| {
+                let at = [key("stateShapes"), item(i), key("fields")];
+                typed_entries(&at, s.fields.iter().map(|f| &f.ty), false).collect::<Vec<_>>()
+            })
+            .collect()
+    }
+}
+
+impl DeclaredTypes for BridgeFile {
+    fn declared_types<'a>(&'a self, _: &yaml_serde::Value) -> Vec<TypeSite<'a>> {
+        self.bridge
+            .iter()
+            .enumerate()
+            .flat_map(|(i, b)| {
+                let at = [key("bridgeCapabilities"), item(i), key("result")];
+                typed_entries(&at, b.result.iter().map(|f| &f.ty), false).collect::<Vec<_>>()
+            })
+            .collect()
+    }
+}
+
+impl DeclaredTypes for DefsFile {
+    fn declared_types<'a>(&'a self, raw: &yaml_serde::Value) -> Vec<TypeSite<'a>> {
+        let mut out = Vec::new();
+        for (i, d) in self.defs.iter().enumerate() {
+            out.push(TypeSite {
+                path: vec![key("defs"), item(i), key("type")],
+                ty: &d.ty,
+                attr_of_directive: false,
+            });
+            // `params:` maps each name to its type, or lists `{ name, type }`.
+            let params = vec![key("defs"), item(i), key("params")];
+            let written = site_value(raw, &params);
+            for p in &d.params {
+                let mut path = params.clone();
+                match written {
+                    Some(yaml_serde::Value::Sequence(items)) => {
+                        let Some(j) = items
+                            .iter()
+                            .position(|e| e.get("name").and_then(|n| n.as_str()) == Some(&p.name))
+                        else {
+                            continue;
+                        };
+                        path.extend([item(j), key("type")]);
                     }
-                    path.push(YamlKey::Key(key.to_string()));
-                    if key == "type" && has_text(child) {
-                        out.push(path.clone());
-                    } else if let (true, Some(shorthand)) = (key == "params", child.as_mapping()) {
-                        for (name, ty) in shorthand {
-                            let Some(name) = name.as_str() else { continue };
-                            path.push(YamlKey::Key(name.to_string()));
-                            if has_text(ty) {
-                                out.push(path.clone());
-                            }
-                            walk(ty, path, out);
-                            path.pop();
-                        }
-                    }
-                    if !(key == "params" && child.is_mapping()) {
-                        walk(child, path, out);
-                    }
-                    path.pop();
+                    _ => path.push(key(&p.name)),
+                }
+                out.push(TypeSite {
+                    path,
+                    ty: &p.ty,
+                    attr_of_directive: false,
+                });
+            }
+        }
+        out
+    }
+}
+
+impl DeclaredTypes for FrontmatterFile {
+    fn declared_types<'a>(&'a self, _: &yaml_serde::Value) -> Vec<TypeSite<'a>> {
+        self.frontmatter
+            .iter()
+            .enumerate()
+            .map(|(i, d)| TypeSite {
+                path: vec![key("frontmatter"), item(i), key("schema")],
+                ty: &d.schema,
+                attr_of_directive: false,
+            })
+            .collect()
+    }
+}
+
+impl DeclaredTypes for AssetKindsFile {
+    fn declared_types<'a>(&'a self, _: &yaml_serde::Value) -> Vec<TypeSite<'a>> {
+        let mut out = Vec::new();
+        for (i, k) in self.asset_kinds.iter().enumerate() {
+            for (j, s) in k.segments.iter().enumerate() {
+                if let Some(ty) = &s.ty {
+                    out.push(TypeSite {
+                        path: vec![
+                            key("assetKinds"),
+                            item(i),
+                            key("segments"),
+                            item(j),
+                            key("type"),
+                        ],
+                        ty,
+                        attr_of_directive: false,
+                    });
                 }
             }
-            yaml_serde::Value::Sequence(items) => {
-                for (i, item) in items.iter().enumerate() {
-                    path.push(YamlKey::Item(i));
-                    walk(item, path, out);
-                    path.pop();
-                }
-            }
-            yaml_serde::Value::Tagged(t) => walk(&t.value, path, out),
-            _ => {}
         }
+        out
     }
-    let Ok(value) = yaml_serde::from_str::<yaml_serde::Value>(text) else {
+}
+
+impl DeclaredTypes for RewardKindsFile {
+    fn declared_types<'a>(&'a self, _: &yaml_serde::Value) -> Vec<TypeSite<'a>> {
+        self.reward_kinds
+            .iter()
+            .flat_map(|(name, k)| {
+                let at = [key("rewardKinds"), key(name), key("attrs")];
+                typed_entries(&at, k.attrs.iter().map(|a| &a.ty), false).collect::<Vec<_>>()
+            })
+            .collect()
+    }
+}
+
+/// Export file kinds that declare no type this check judges (see
+/// [`DeclaredTypes`]).
+macro_rules! no_declared_types {
+    ($($file:ty),* $(,)?) => {$(
+        impl DeclaredTypes for $file {
+            fn declared_types<'a>(&'a self, _: &yaml_serde::Value) -> Vec<TypeSite<'a>> {
+                Vec::new()
+            }
+        }
+    )*};
+}
+
+no_declared_types!(
+    ProvidersFile,
+    EnumsFile,
+    EventsFile,
+    StampAttrsFile,
+    OccasionsFile,
+    LintsFile,
+    CastFile,
+    HostTokensFile,
+);
+
+/// 0.51.0 §5.1: report every declared type of the export file `f` (YAML
+/// source `text`) holding `text` outside the one place it is admitted — the
+/// type of a directive's own attribute, bare — as [`LoadError::Parse`] at
+/// the type. Only type positions are judged: a literal `default:` is data.
+fn refuse_text_types<F: DeclaredTypes>(file: &Path, text: &str, f: &F, errs: &mut Vec<LoadError>) {
+    let Ok(raw) = yaml_serde::from_str::<yaml_serde::Value>(text) else {
         return;
     };
-    if value.get("stampAttrs").is_some() || value.get("hostTokens").is_some() {
-        return;
-    }
-    let mut sites = Vec::new();
-    walk(&value, &mut Vec::new(), &mut sites);
-    for site in sites {
-        // `directives[i].attrs[j].type: text` is the admitted place; a
-        // nested `{ list: text }` there is not.
-        let admitted = matches!(
-            site.as_slice(),
-            [YamlKey::Key(d), YamlKey::Item(_), YamlKey::Key(a), YamlKey::Item(_), YamlKey::Key(t)]
-                if d == "directives" && a == "attrs" && t == "type"
-        ) && site_value(&value, &site).and_then(yaml_serde::Value::as_str)
-            == Some("text");
-        if admitted {
+    for site in f.declared_types(&raw) {
+        let admitted = site.attr_of_directive && *site.ty == Type::Text;
+        if admitted || !site.ty.contains_text() {
             continue;
         }
-        let mut steps: Vec<_> = site.iter().map(YamlKey::step).collect();
+        let mut steps: Vec<_> = site.path.iter().map(crate::types::YamlKey::step).collect();
         steps.push(crate::yaml_text::YamlStep::Value);
         let at = crate::yaml_text::yaml_span(text, &steps)
             .map(|s| crate::yaml_text::line_col(text, s.byte_start));
         let place: Vec<String> = site
+            .path
             .iter()
             .map(|k| match k {
-                YamlKey::Key(k) => k.clone(),
-                YamlKey::Item(i) => format!("[{i}]"),
+                crate::types::YamlKey::Key(k) => k.clone(),
+                crate::types::YamlKey::Item(i) => format!("[{i}]"),
             })
             .collect();
         errs.push(LoadError::Parse {
@@ -1738,11 +1867,12 @@ fn read_manifest(
 }
 
 /// Read a single YAML file OR every `*.yaml`/`*.yml` in a dir (sorted byte-wise),
-/// deserialize each to `F`, and hand it — with its [`Source`] in package `pkg` —
-/// to `merge`.
+/// deserialize each to `F`, refuse its misplaced `text` types
+/// ([`refuse_text_types`]), and hand it — with its [`Source`] in package
+/// `pkg` — to `merge`.
 fn read_kind<F, M>(pkg: &Path, path: &Path, errs: &mut Vec<LoadError>, mut merge: M)
 where
-    F: serde::de::DeserializeOwned,
+    F: serde::de::DeserializeOwned + DeclaredTypes,
     M: FnMut(F, &Source, &mut Vec<LoadError>),
 {
     for file in yaml_files(path, errs) {
@@ -1757,9 +1887,9 @@ where
             }
         };
         let s = patch_numbers(&file, s, errs);
-        refuse_text_types(&file, &s, errs);
         match yaml_serde::from_str::<F>(&s) {
             Ok(f) => {
+                refuse_text_types(&file, &s, &f, errs);
                 let src = Source {
                     pkg,
                     file: &file,

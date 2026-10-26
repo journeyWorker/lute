@@ -734,3 +734,77 @@ fn component_params_bind_inside_text_attributes() {
         .collect();
     assert_eq!(kinds, ["path"]);
 }
+
+/// S6 review #2: only a declared type is judged — a literal `default:`
+/// that happens to hold a `type: text` entry is data, not a type.
+#[test]
+fn a_literal_default_holding_type_text_is_not_a_type() {
+    let plugin = format!("{PLUGIN}  state: state/\n");
+    let dir = project(
+        "dt-default-type",
+        &[
+            ("plugins/acme.ui/plugin.yaml", &plugin),
+            (
+                "plugins/acme.ui/state/s.yaml",
+                "stateShapes:\n  - name: tags\n    fields:\n      - name: labels\n        \
+                 type: { map: { key: string, value: string } }\n        \
+                 default: { type: text }\n        required: false\n",
+            ),
+            ("scenes/intro.lute", &scene("intro", "@mira: Hi.")),
+        ],
+    );
+    let out = text(&lute(&dir, &["check", "--project", "."]));
+    assert!(!out.contains("E-PLUGIN-PARSE"), "{out}");
+    assert!(check(&dir).is_empty(), "{out}");
+}
+
+/// S6 review #3: a frontmatter declaration's `schema:` is a type position,
+/// bare or nested, as is a def's parameter in either spelling.
+#[test]
+fn a_text_frontmatter_schema_is_refused() {
+    let plugin = format!("{PLUGIN}  frontmatter: frontmatter/\n  defs: defs/\n");
+    let dir = project(
+        "dt-frontmatter",
+        &[
+            ("plugins/acme.ui/plugin.yaml", &plugin),
+            (
+                "plugins/acme.ui/frontmatter/f.yaml",
+                "frontmatter:\n  - { key: heading, schema: text }\n  - key: tags\n    \
+                 schema: { list: text }\n",
+            ),
+            (
+                "plugins/acme.ui/defs/d.yaml",
+                "defs:\n  - name: greet\n    type: string\n    params: { who: text }\n    \
+                 cel: \"'hi'\"\n  - name: wave\n    type: string\n    params:\n      \
+                 - { name: who, type: { list: text } }\n    cel: \"'hi'\"\n",
+            ),
+            ("scenes/intro.lute", &scene("intro", "@mira: Hi.")),
+        ],
+    );
+    let out = text(&lute(&dir, &["check", "--project", "."]));
+    for (site, message) in [
+        (
+            "frontmatter/f.yaml:2:29",
+            "`frontmatter[0].schema` declares the type `text`, which is admitted only as the \
+             type of a directive attribute",
+        ),
+        (
+            "frontmatter/f.yaml:4:13",
+            "`frontmatter[1].schema` declares the type `text`",
+        ),
+        (
+            "defs/d.yaml:4:20",
+            "`defs[0].params.who` declares the type `text`",
+        ),
+        (
+            "defs/d.yaml:9:28",
+            "`defs[1].params[0].type` declares the type `text`",
+        ),
+    ] {
+        assert!(
+            out.lines()
+                .any(|l| l.contains(site) && l.contains("[E-PLUGIN-PARSE]") && l.contains(message)),
+            "{site}: {message}\n{out}"
+        );
+    }
+}
