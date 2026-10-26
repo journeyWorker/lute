@@ -5,12 +5,13 @@
  * `raises`/`localized` and locale discovery. Over the compiled `raise-queue`
  * fixture (see `compileRaiseQueue`).
  */
-import { Deferred, Effect, Exit, Layer, Option, SubscriptionRef } from "effect"
+import { Deferred, Effect, Exit, Layer, Option, Ref, SubscriptionRef } from "effect"
 import { describe, expect, it } from "@effect/vitest"
 import * as LuteBun from "../../runtime/src/bun.js"
 import { BundleSource } from "../../runtime/src/BundleSource.js"
 import * as Errors from "../../runtime/src/Errors.js"
 import type * as Contract from "../../runtime/src/generated/Contract.js"
+import * as InputLog from "../../runtime/src/InputLog.js"
 import * as RuntimeSession from "../../runtime/src/Session.js"
 import { bundleLocales } from "../src/cues/index.js"
 import { NothingToRollback, PlayerSession, layer as sessionLayer } from "../src/session/index.js"
@@ -31,13 +32,24 @@ type Start = { readonly seed: Contract.Seed } | { readonly snapshot: Contract.Sn
 const overSession = <A, E>(
   use: (session: PlayerSessionShape, runtime: RuntimeSession.SessionShape) => Effect.Effect<A, E>,
   start: Start = { seed },
-  lineage?: SessionLineage
+  lineage?: SessionLineage,
+  log?: Layer.Layer<InputLog.InputLog>
 ) => Effect.flatMap(compileRaiseQueue, (bundle) => {
   const player = sessionLayer({ bindings, ...("seed" in start ? { seed: start.seed } : {}), ...(lineage === undefined ? {} : { lineage }) })
   return Effect.scoped(Effect.gen(function* () {
     return yield* use(yield* PlayerSession, yield* RuntimeSession.Session)
-  })).pipe(Effect.provide(player.pipe(Layer.provideMerge(LuteBun.session({ bundle, ...start })))))
+  })).pipe(Effect.provide(player.pipe(Layer.provideMerge(LuteBun.session({ bundle, ...start, ...(log === undefined ? {} : { log }) })))))
 })
+
+/** An in-memory input log whose `append` fails while `failing.on` holds. */
+const flakyLog = (failing: { on: boolean }): Layer.Layer<InputLog.InputLog> => Layer.effect(
+  InputLog.InputLog,
+  Effect.map(Ref.make<ReadonlyArray<InputLog.LogEntry>>([]), (entries) => ({
+    reset: (start) => Ref.set(entries, [start]),
+    append: (entry) => failing.on ? Effect.fail(new Errors.InputLogError({ message: "the log store is full" })) : Ref.update(entries, (logged) => [...logged, entry]),
+    entries: Ref.get(entries)
+  }))
+)
 
 /** How often each answering scene played (each counts itself). */
 const plays = (runtime: RuntimeSession.SessionShape) => Effect.gen(function* () {
@@ -65,8 +77,8 @@ const choose = (session: PlayerSessionShape, option: string) => Effect.gen(funct
 })
 
 const failure = <A, E>(exit: Exit.Exit<A, E>) => Option.getOrUndefined(Exit.findErrorOption(exit))
-const hall = { occasion: "cutscene", target: "scene.hall", document: "porch.lute", position: "001-0300" }
-const yard = { occasion: "cutscene", target: "scene.yard", document: "porch.lute", position: "001-0400" }
+const hall = { occasion: "cutscene", target: "scene.hall", document: "porch.lute", position: "001-0400" }
+const yard = { occasion: "cutscene", target: "scene.yard", document: "porch.lute", position: "001-0500" }
 const none = { halls: 0, yards: 0, cellars: 0, vaults: 0, galleries: 0 }
 
 describe("the pending raise queue in the session (0.51.0 §4.6)", () => {
@@ -216,7 +228,7 @@ describe("the director drains the queue (0.51.0 §4.6)", () => {
       yield* h.action({ type: "newGame" })
       yield* settle(h)
       expect((yield* h.view).story).toBe("idle")
-      expect(lineText(h)).toEqual(["The porch is quiet.", "The hall.", "The yard."])
+      expect(lineText(h)).toEqual(["The porch is quiet.", "You step in.", "The hall.", "The yard."])
       expect(seen).toEqual([{ ...none, halls: 1, yards: 1, pending: 0 }])
       expect(h.screens.at(-1)).toEqual({ _tag: "Idle", options: [{ label: "Visit" }] })
       expect(raisesLogged(yield* h.director.snapshot)).toEqual(["visit", "cutscene scene.hall", "cutscene scene.yard"])
@@ -268,6 +280,41 @@ describe("the director drains the queue (0.51.0 §4.6)", () => {
       ])
       expect("localized" in plain).toBe(false)
     }))
+  })
+
+  it.effect("a plugin call later in the batch follows a locale change made while a line waits", () => {
+    const calls: Array<PluginCall> = []
+    return overDirector(() => ({ bindings, choices: ["in"], typing: true, host: { plugin: { playScene: (call) => Effect.sync(() => { calls.push(call) }) } } }), (h) => Effect.gen(function* () {
+      yield* h.action({ type: "newGame" })
+      for (let i = 0; i < 50 && !lineText(h).includes("You step in."); i++) yield* h.action({ type: "advance" })
+      // The line before the call types; the call has not run yet.
+      expect((yield* h.view).story).toBe("typing")
+      expect(calls).toEqual([])
+      yield* h.action({ type: "setSettings", settings: { locale: "ko" } })
+      yield* settle(h)
+      expect(calls.map((call) => call.localized)).toEqual([{ title: "Ada님, 환영합니다", texts: "홀 텍스트", promptTexts: "홀 프롬프트" }, undefined])
+    }))
+  })
+})
+
+describe("a raise whose input log fails (0.51.0 §4.6)", () => {
+  it.effect("was not applied: it stays at the head of the queue and goes once the log works again", () => {
+    const failing = { on: false }
+    return overSession((session, runtime) => Effect.gen(function* () {
+      yield* session.begin
+      yield* choose(session, "in")
+      const owed = (yield* session.snapshot).pendingRaises
+      failing.on = true
+      expect(failure(yield* Effect.exit(session.deliverRaise))).toBeInstanceOf(Errors.InputLogError)
+      expect((yield* session.snapshot).pendingRaises).toEqual(owed)
+      expect(yield* plays(runtime)).toEqual(none)
+      failing.on = false
+      expect(yield* session.deliverRaise).toBeDefined()
+      expect(yield* session.deliverRaise).toBeDefined()
+      expect(yield* session.deliverRaise).toBeUndefined()
+      expect(raisesLogged(yield* session.snapshot)).toEqual(["visit", "cutscene scene.hall", "cutscene scene.yard"])
+      expect(yield* plays(runtime)).toEqual({ ...none, halls: 1, yards: 1 })
+    }), { seed }, undefined, flakyLog(failing))
   })
 })
 

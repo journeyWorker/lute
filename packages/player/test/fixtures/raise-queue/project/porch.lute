@@ -11,6 +11,7 @@ once: false
 @narrator{code="0010"}: The porch is quiet.
 <branch id="door" prompt="Which way?">
   <choice id="in" text="Go in">
+    @narrator{code="0015"}: You step in.
     ::playScene{code="0020" scene="hall" title="Welcome, {{run.guest}}" texts="Hall texts" promptTexts="Hall prompt"}
     ::playScene{scene="yard"}
   </choice>

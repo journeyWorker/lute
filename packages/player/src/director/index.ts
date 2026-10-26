@@ -299,22 +299,24 @@ export const make = Effect.fn("Lute.Player.Director.make")(function* (options: D
     const resolved = yield* factory.fromOutput(output, read, locale)
     const localized = { output, read, locale, cues: resolved }
     batchCues = localized
-    // A line cue takes the batch's cue at its index for the locale current when
-    // it starts (`fromOutput` returns one cue per event, in order), then keeps it.
+    // A line or plugin cue takes the batch's cue at its index for the locale
+    // current when it starts (`fromOutput` returns one cue per event, in
+    // order), then keeps it: a line's text, a plugin call's `localized`.
     const cues = resolved.map((cue, index): Cue => {
-      if (cue.kind !== "line") return cue
+      if (cue.kind !== "line" && cue.kind !== "plugin") return cue
       let pinned: Cue | undefined
       const current = (): Cue => pinned ??= localized.cues[index] ?? cue
-      return {
+      const deferred = {
         kind: cue.kind,
         timing: cue.timing,
         stage: cue.stage,
         files: cue.files,
         describe: cue.describe,
-        get line() { return current().line },
-        execute: (ctx) => Effect.suspend(() => current().execute(ctx)),
-        complete: (ctx) => Effect.suspend(() => current().complete(ctx))
+        execute: (ctx: CueContext) => Effect.suspend(() => current().execute(ctx)),
+        complete: (ctx: CueContext) => Effect.suspend(() => current().complete(ctx))
       }
+      // A plugin cue has no line: reading it must not pin the cue early.
+      return cue.kind === "plugin" ? { ...deferred, line: undefined } : { ...deferred, get line() { return current().line } }
     })
     const files = cues.flatMap((cue) => cue.files)
     const inputPoint = (yield* options.session.current).logLength

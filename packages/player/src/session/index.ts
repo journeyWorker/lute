@@ -86,8 +86,10 @@ export interface PlayerSessionShape {
    * `raiseOccasion` input, at once under the session lock, so a raise is
    * delivered exactly once. The send takes no rollback checkpoint: a raise
    * belongs to the rollback step of the player input that caused it. A raise
-   * the runtime rejects is logged and dropped, and the next one is tried.
-   * `undefined` when the queue is empty or the runtime does not wait at `idle`.
+   * the runtime rejects is logged and dropped, and the next one is tried; one
+   * whose input log fails was not applied, so it stays at the head and the
+   * call fails with the `InputLogError`. `undefined` when the queue is empty
+   * or the runtime does not wait at `idle`.
    */
   readonly deliverRaise: Effect.Effect<Output | undefined, Errors.InputLogError>
   readonly backlog: SubscriptionRef.SubscriptionRef<ReadonlyArray<BacklogEntry>>
@@ -254,7 +256,11 @@ export const layer = (
         pending = rest
         const sent = yield* Effect.result(submit(raiseInput(head), false))
         if (Result.isSuccess(sent)) return sent.success
-        if (sent.failure._tag === "InputLogError") return yield* Effect.fail(sent.failure)
+        // Its input log failed, so the runtime did not apply it: still owed.
+        if (sent.failure._tag === "InputLogError") {
+          pending = [head, ...pending]
+          return yield* Effect.fail(sent.failure)
+        }
         yield* Effect.logWarning("the runtime refused a declared raise; it is dropped", sent.failure, head)
       }
       return undefined
