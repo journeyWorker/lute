@@ -216,6 +216,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-HUB-NO-EXIT", DiagnosticClass::SourceError),
         ("E-IDENTITY-TEMPLATE", DiagnosticClass::SourceError),
         ("E-INERT-TITLE", DiagnosticClass::SourceError),
+        ("E-INTERP-BRACE", DiagnosticClass::SourceError),
         ("E-INTERP-DEF", DiagnosticClass::SourceError),
         ("E-INTERP-UNTERMINATED", DiagnosticClass::SourceError),
         ("E-INTO-TARGET", DiagnosticClass::SourceError),

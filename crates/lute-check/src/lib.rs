@@ -42,6 +42,7 @@ pub mod fact_write;
 pub mod fix;
 pub mod gates;
 pub mod inject;
+pub(crate) mod label_grammar;
 pub mod logic_attrs;
 pub mod loop_walk;
 pub mod lore;

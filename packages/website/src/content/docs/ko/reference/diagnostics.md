@@ -778,6 +778,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 명세: [dsl 0.37.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
+### E-INTERP-BRACE
+
+줄 텍스트의 `{{…}}` 마커 바로 앞에 리터럴 `{`가 홀수 개 연달아 있어, 컴파일된 텍스트에서 마커와 구별되지 않습니다. 둘 사이에 문자를 하나 넣거나, 중괄호를 문자열 상태 경로로 보여 주세요.
+
+명세: [dsl 0.52.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
+
 ### E-INTERP-DEF
 
 `{{@def}}` 보간이 하나의 독립된 표현식으로 인라인될 수 없습니다 — 본문에 확장 순환이 있거나, `$`를 읽거나, 파싱에 실패합니다.
@@ -1676,9 +1682,9 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 ### E-STRING-ESCAPE
 
-따옴표로 묶인 속성 값이 정의된 네 가지 이스케이프(`\"`, `\\`, `\n`, `\t`) 외의 백슬래시 이스케이프를 사용합니다.
+따옴표로 묶인 속성 값이 정의된 네 가지 이스케이프(`\"`, `\\`, `\n`, `\t`) 외의 백슬래시 이스케이프를 사용하거나, 레이블 문법을 따르지 않는 값에 `\{{`(리터럴 `{{`)를 씁니다. 레이블 문법을 따르는 값은 `<choice text>`, `prompt`, 플러그인 `text` 속성뿐입니다.
 
-명세: [dsl §4.4](/ko/spec/)
+명세: [dsl §4.4](/ko/spec/), [dsl 0.52.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-SUBQUEST-REARM
 

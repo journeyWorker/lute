@@ -659,6 +659,58 @@ fn escaped_and_unterminated_interp() {
     assert!(diags.iter().any(|d| d.code == "E-INTERP-UNTERMINATED"));
 }
 
+/// 0.52.0 §3.1 (#139): an odd run of literal `{` directly before a marker is
+/// `E-INTERP-BRACE` at the marker, in a line and in `parse_inline_text`; an
+/// even run and a separated brace are clean.
+#[test]
+fn odd_brace_run_before_a_marker_is_refused() {
+    let src = "## Shot 1.\n@narrator: S }}{\\{{{{run.a}}} E\n";
+    let (_, diags) = parse(src);
+    let brace: Vec<_> = diags
+        .iter()
+        .filter(|d| d.code == "E-INTERP-BRACE")
+        .collect();
+    assert_eq!(brace.len(), 1, "{diags:?}");
+    let at = src.find("{{run.a}}").expect("marker");
+    assert_eq!(
+        (brace[0].span.byte_start, brace[0].span.byte_end),
+        (at, at + "{{run.a}}".len())
+    );
+    assert_eq!(
+        brace[0].message,
+        "a literal `{` directly before `{{run.a}}` cannot be told apart from the marker in \
+         compiled text (lute 0.47.1 §3): put a character between them (`{ {{run.a}}`), or show \
+         the brace from a string state path (`{{run.lbrace}}{{run.a}}`, with `run.lbrace` \
+         declared `{ type: string, default: \"{\" }`)"
+    );
+    // A modifier boundary does not end the run; the message quotes the
+    // marker as written.
+    let (_, diags) = parse("## Shot 1.\n@narrator: x{:pause{s=0.5}{{ run.a }}\n");
+    let brace = diags
+        .iter()
+        .find(|d| d.code == "E-INTERP-BRACE")
+        .expect("a modifier boundary keeps the run");
+    assert!(
+        brace.message.contains("before `{{ run.a }}`"),
+        "{}",
+        brace.message
+    );
+    // A translation runs the same parser.
+    let (_, diags) = crate::parse_inline_text("S }}{\\{{{{run.a}}} E");
+    assert!(
+        diags.iter().any(|d| d.code == "E-INTERP-BRACE"),
+        "{diags:?}"
+    );
+    for clean in [
+        "@narrator: S \\{{{{run.a}}} E",
+        "@narrator: S { {{run.a}} E",
+        "@narrator: S {{run.lbrace}}{{run.a}} E",
+    ] {
+        let (_, diags) = parse(&format!("## Shot 1.\n{clean}\n"));
+        assert!(diags.is_empty(), "{clean}: {diags:?}");
+    }
+}
+
 #[test]
 fn interp_inner_whitespace_is_trimmed() {
     let (doc, diags) = parse("## Shot 1.\n@marina: You have {{ run.coins }} left.\n");

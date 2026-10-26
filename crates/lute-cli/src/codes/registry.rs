@@ -657,6 +657,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.37.0 §3.1"],
     },
     Code {
+        code: "E-INTERP-BRACE",
+        summary: "A `{{…}}` marker in line text directly follows an odd run of literal `{`, which compiled text cannot tell apart from the marker. Put a character between them, or show the brace from a string state path.",
+        spec: &["dsl 0.52.0 §3.1"],
+    },
+    Code {
         code: "E-INTERP-DEF",
         summary: "A `{{@def}}` interpolation cannot inline into one standalone expression — its body has an expansion cycle, reads `$`, or fails to parse.",
         spec: &[],
@@ -1453,8 +1458,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-STRING-ESCAPE",
-        summary: r#"A quoted attribute value uses a backslash escape other than the four defined ones (`\"`, `\\`, `\n`, `\t`)."#,
-        spec: &["dsl §4.4"],
+        summary: r#"A quoted attribute value uses a backslash escape other than the four defined ones (`\"`, `\\`, `\n`, `\t`), or `\{{` (a literal `{{`) in a value that does not take the label grammar — only a `<choice text>`, a `prompt` and a plugin `text` attribute do."#,
+        spec: &["dsl §4.4", "dsl 0.52.0 §3.2"],
     },
     Code {
         code: "E-SUBQUEST-REARM",

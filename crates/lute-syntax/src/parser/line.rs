@@ -1,8 +1,8 @@
 use super::{
     attrs, interp_from_inner, is_ident_byte, leading_ws, CelKind, Fixit, InlineAttr,
     InlineModifier, InlineNode, Interp, Layer, Line, Node, Parser, TextEdit,
-    E_CONTENT_LINE_BRACKET, E_INTERP_UNTERMINATED, E_LEGACY_CONTENT_SIGIL, E_TEXT_ESCAPE,
-    E_TEXT_MODIFIER, E_UNCLASSIFIED,
+    E_CONTENT_LINE_BRACKET, E_INTERP_BRACE, E_INTERP_UNTERMINATED, E_LEGACY_CONTENT_SIGIL,
+    E_TEXT_ESCAPE, E_TEXT_MODIFIER, E_UNCLASSIFIED,
 };
 
 impl Parser<'_> {
@@ -266,6 +266,20 @@ impl Parser<'_> {
             );
         }
         flush(self, &mut nodes, &mut plain_start, j);
+        // 0.52.0 §3.1: the whole text's nodes, once (a modifier's own call
+        // has a terminator and sees only its span).
+        if terminator.is_none() {
+            if let Some(marker) = crate::line_text::brace_before_marker(&nodes) {
+                let source = format!("{{{{{}}}}}", marker.source);
+                self.emit_o(
+                    E_INTERP_BRACE,
+                    interp_brace_message(&source),
+                    marker.span.byte_start,
+                    marker.span.byte_end,
+                    Layer::Content,
+                );
+            }
+        }
         (nodes, j)
     }
 
@@ -392,6 +406,17 @@ impl Parser<'_> {
 }
 fn is_inline_name_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
+}
+
+/// The `E-INTERP-BRACE` message for the marker whose source is `marker`
+/// (0.52.0 §3.1). Both spellings it names check clean and render.
+fn interp_brace_message(marker: &str) -> String {
+    format!(
+        "a literal `{{` directly before `{marker}` cannot be told apart from the marker in \
+         compiled text (lute 0.47.1 §3): put a character between them (`{{ {marker}`), or show \
+         the brace from a string state path (`{{{{run.lbrace}}}}{marker}`, with `run.lbrace` \
+         declared `{{ type: string, default: \"{{\" }}`)"
+    )
 }
 
 fn decode_inline_text(raw: &str) -> String {

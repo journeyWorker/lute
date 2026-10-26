@@ -778,6 +778,12 @@ A body `# ` heading: it is no document title. Put the value in frontmatter `titl
 
 Spec: [dsl 0.37.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
 
+### E-INTERP-BRACE
+
+A `{{…}}` marker in line text directly follows an odd run of literal `{`, which compiled text cannot tell apart from the marker. Put a character between them, or show the brace from a string state path.
+
+Spec: [dsl 0.52.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
+
 ### E-INTERP-DEF
 
 A `{{@def}}` interpolation cannot inline into one standalone expression — its body has an expansion cycle, reads `$`, or fails to parse.
@@ -1672,9 +1678,9 @@ A streaming continuation's template is not a scene with at least one section.
 
 ### E-STRING-ESCAPE
 
-A quoted attribute value uses a backslash escape other than the four defined ones (`\"`, `\\`, `\n`, `\t`).
+A quoted attribute value uses a backslash escape other than the four defined ones (`\"`, `\\`, `\n`, `\t`), or `\{{` (a literal `{{`) in a value that does not take the label grammar — only a `<choice text>`, a `prompt` and a plugin `text` attribute do.
 
-Spec: [dsl §4.4](/spec/)
+Spec: [dsl §4.4](/spec/), [dsl 0.52.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-SUBQUEST-REARM
 
