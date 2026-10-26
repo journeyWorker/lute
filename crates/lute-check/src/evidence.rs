@@ -559,6 +559,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
                 },
             },
         ),
+        ("W-OCCASION-NEVER-RAISED", DiagnosticClass::SourceError),
         (
             "W-OTHERWISE-DEAD",
             DiagnosticClass::Analysis {

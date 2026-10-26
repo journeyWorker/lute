@@ -224,6 +224,25 @@ emitted, and the record says it was ignored.
 {"kind":"accept","quest":"second","grant":{"quest":"first","instance":1,"index":1,"kind":"OFFER_QUEST"}}
 ```
 
+Since 0.51 a directive or reward kind may declare `effects.raises`: the
+occasions the host raises after the call's presentation ends (`presentationEnd`)
+or after the grant settles. The `plugin` record (the halted one included) and
+the `grant` record carry them as `raises: [{ "occasion", "target"? }]`, in
+declaration order, omitted when there are none. `target` is written whole
+(`scene.chapter2`) and absent for an untargeted occasion; a call in a beat that
+passes `occasion.target` names the member the beat runs for, with the
+occasion's domain prefix (the IR records the reference as
+`scene.occasion.target`). The runtime raises nothing and emits no record of its
+own for a raise: the host sends each one as a `raiseOccasion` input once the
+runtime is idle, in record order and list order. A raise the occasion's gate
+refuses is the host's to report. The reference player keeps these in a pending
+raise queue (`player/custom-hosts`).
+
+```json
+{"kind":"plugin","position":"001-0200","tag":"playScene","attrs":{"scene":"chapter2"},"raises":[{"occasion":"cutscene","target":"scene.chapter2"}],"external":true,"unresolvedEffects":[]}
+{"kind":"grant","quest":"first","instance":1,"index":0,"reward":{"kind":"CUTSCENE","target":"chapter3","amount":1},"raises":[{"occasion":"cutscene","target":"scene.chapter3"}]}
+```
+
 Rendered text keeps every host-token marker (`{{playerName}}`, and any other
 token a plugin declares in `hostTokens`) verbatim: the runtime never substitutes
 a host token, for any token, and the host or presenter does. The IR placeholder

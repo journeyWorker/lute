@@ -217,7 +217,12 @@ fn bundle_after_draws_a_scenario_edge() {
     );
     let owned = project(&[("witnesses.lute", WITNESSES)]);
     let docs = owned.views();
-    let (graph, _) = assemble_graph(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
+    let (graph, _) = assemble_graph(
+        &docs,
+        &scene_key_set(&docs),
+        &quest_id_set(&docs),
+        &lute_check::raises::RaiseAnchors::default(),
+    );
     let from = NodeId::Beat("witnesses.maren".into());
     let to = NodeId::Beat("witnesses.marenConfronted".into());
     assert!(
@@ -269,7 +274,12 @@ fn a_visited_when_conjunct_is_an_unanchored_hint() {
     );
     let owned = project(&[("witnesses.lute", &gated)]);
     let docs = owned.views();
-    let (graph, _) = assemble_graph(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
+    let (graph, _) = assemble_graph(
+        &docs,
+        &scene_key_set(&docs),
+        &quest_id_set(&docs),
+        &lute_check::raises::RaiseAnchors::default(),
+    );
     assert!(graph.edges.is_empty(), "{:#?}", graph.edges);
     assert_eq!(
         when_visited_unanchored(&docs, &graph),
@@ -285,6 +295,11 @@ fn a_visited_when_conjunct_is_an_unanchored_hint() {
     );
     let owned = project(&[("witnesses.lute", &either)]);
     let docs = owned.views();
-    let (graph, _) = assemble_graph(&docs, &scene_key_set(&docs), &quest_id_set(&docs));
+    let (graph, _) = assemble_graph(
+        &docs,
+        &scene_key_set(&docs),
+        &quest_id_set(&docs),
+        &lute_check::raises::RaiseAnchors::default(),
+    );
     assert!(when_visited_unanchored(&docs, &graph).is_empty());
 }

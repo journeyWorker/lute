@@ -6,8 +6,10 @@
 //! `::retract` / `::assert` / `::accept` written first in the owner's grant
 //! point (§5.4): a quest's completion (before its `questComplete`
 //! handlers), its failure (`outcome="failed"`, before `questFailed`), or an
-//! objective's completion. [`quest_grants`] resolves one quest's rewards
-//! into [`GrantEffect`]s in grant order; [`GrantTable`] holds a whole root's,
+//! objective's completion. [`reward_grant_sites`] lists one quest's granted
+//! rewards once each, at their grant points (0.51.0 §4.5: a raises-only
+//! reward included); [`quest_grants`], built on it, resolves them into
+//! [`GrantEffect`]s in grant order; [`GrantTable`] holds a whole root's,
 //! built once per pass from the root's [`ProjectDoc`]s — each document's
 //! rewards resolve against the reward vocabulary it was checked against
 //! ([`ProjectDoc::reward_kinds`]). A reward's `when=` is carried as the
@@ -218,45 +220,49 @@ fn bind(fact: &FactEffect, target: Option<&str>) -> Option<FactPattern> {
     })
 }
 
-/// Every effect `quest`'s rewards apply — its objectives' (top-level
-/// `<objective>` children, the rewards the checker judges) and its own — in
-/// grant order. A reward whose `outcome=` is illegal (`E-REWARD-ATTR`)
-/// applies nothing.
-pub fn quest_grants<'d>(quest: &'d Quest, kinds: &RewardKinds) -> Vec<GrantEffect<'d>> {
+/// One granted `<reward>` whose kind declares `effects` (0.51.0 §4.5,
+/// Review051b F2): where it grants and its place in grant order
+/// (`order.effect` is 0 — the reward's own effects are numbered by the
+/// consumer). A reward is one site however many effects its kind declares,
+/// `raises` included.
+#[derive(Clone, Copy, Debug)]
+pub struct RewardGrantSite<'d, 'k> {
+    pub quest: &'d Quest,
+    pub objective: Option<&'d Objective>,
+    pub point: GrantPoint,
+    pub order: GrantOrder,
+    pub reward: &'d Reward,
+    pub effects: &'k RewardEffects,
+}
+
+/// Each `<reward>` of `quest` whose kind in `kinds` (its document's
+/// vocabulary, [`ProjectDoc::reward_kinds`]) declares `effects`, once, in
+/// grant order: its top-level objectives' rewards (granted at the
+/// objective's completion; one with any `outcome=` grants nothing), then
+/// its own — without `outcome` at its completion, `outcome="failed"` at its
+/// failure, any other `outcome=` (`E-REWARD-ATTR`) never.
+pub fn reward_grant_sites<'d, 'k>(
+    quest: &'d Quest,
+    kinds: &'k RewardKinds,
+) -> Vec<RewardGrantSite<'d, 'k>> {
     let mut out = Vec::new();
     let mut push = |objective: Option<&'d Objective>,
                     point: GrantPoint,
-                    (rank, owner, index): (u8, usize, usize),
+                    (rank, owner, reward_ix): (u8, usize, usize),
                     reward: &'d Reward| {
-        let Some(effects) = kind_effects(kinds, reward) else {
-            return;
-        };
-        let facts = reward_facts(effects, reward);
-        let accepts = reward_accepts(effects, reward);
-        let effects = facts
-            .writes()
-            .map(|(p, assert)| Effect::Fact {
-                pattern: p.clone(),
-                assert,
-            })
-            .chain(
-                accepts
-                    .into_iter()
-                    .map(|(quest, from_target)| Effect::Accept { quest, from_target }),
-            );
-        for (effect_ix, effect) in effects.enumerate() {
-            out.push(GrantEffect {
+        if let Some(effects) = kind_effects(kinds, reward) {
+            out.push(RewardGrantSite {
                 quest,
                 objective,
                 point,
                 order: GrantOrder {
                     rank,
                     owner,
-                    reward: index,
-                    effect: effect_ix,
+                    reward: reward_ix,
+                    effect: 0,
                 },
                 reward,
-                effect,
+                effects,
             });
         }
     };
@@ -278,6 +284,45 @@ pub fn quest_grants<'d>(quest: &'d Quest, kinds: &RewardKinds) -> Vec<GrantEffec
             Some(_) => continue,
         };
         push(None, point, (1, 0, index), r);
+    }
+    out
+}
+
+/// Every effect `quest`'s rewards apply — its objectives' (top-level
+/// `<objective>` children, the rewards the checker judges) and its own — in
+/// grant order: per [`reward_grant_sites`] site, its retracts, asserts and
+/// accepts. A reward whose `outcome=` is illegal (`E-REWARD-ATTR`) applies
+/// nothing; a reward kind's `raises` is no fact or accept effect
+/// ([`crate::raises::RaiseTable`] reads the sites).
+pub fn quest_grants<'d>(quest: &'d Quest, kinds: &RewardKinds) -> Vec<GrantEffect<'d>> {
+    let mut out = Vec::new();
+    for site in reward_grant_sites(quest, kinds) {
+        let facts = reward_facts(site.effects, site.reward);
+        let accepts = reward_accepts(site.effects, site.reward);
+        let effects = facts
+            .writes()
+            .map(|(p, assert)| Effect::Fact {
+                pattern: p.clone(),
+                assert,
+            })
+            .chain(
+                accepts
+                    .into_iter()
+                    .map(|(quest, from_target)| Effect::Accept { quest, from_target }),
+            );
+        for (effect_ix, effect) in effects.enumerate() {
+            out.push(GrantEffect {
+                quest,
+                objective: site.objective,
+                point: site.point,
+                order: GrantOrder {
+                    effect: effect_ix,
+                    ..site.order
+                },
+                reward: site.reward,
+                effect,
+            });
+        }
     }
     out
 }
@@ -490,5 +535,97 @@ mod tests {
         assert_eq!(facts(grants.at(GrantPoint::QuestComplete)), pair("ana"));
         assert_eq!(facts(grants.at(GrantPoint::QuestFailed)), pair("bo"));
         assert!(grants.at(GrantPoint::Objective).is_empty());
+    }
+
+    fn kind(name: &str, effects: &str) -> (String, RewardKindDecl) {
+        (
+            name.to_string(),
+            RewardKindDecl {
+                name: name.into(),
+                target: None,
+                attrs: Vec::new(),
+                credits: None,
+                effects: Some(yaml_serde::from_str(effects).expect("effects")),
+            },
+        )
+    }
+
+    /// 0.51.0 §4.5 (Review051b F2): one grant site per reward whose kind
+    /// declares effects — a raises-only kind included, a kind with asserts,
+    /// an accept and a raise once — at 0.50's grant points; `quest_grants`,
+    /// built on the sites, keeps 0.50's effect order and lists no raise.
+    #[test]
+    fn reward_grant_sites_are_one_per_reward_at_its_grant_point() {
+        let kinds: RewardKinds = [
+            kind(
+                "SHOW",
+                "{ raises: [{ occasion: cutscene, target: \"@target\" }] }",
+            ),
+            kind(
+                "MIX",
+                "{ asserts: [\"met(@target)\"], accepts: [second], raises: [{ occasion: \
+                 cutscene, target: \"@target\" }] }",
+            ),
+        ]
+        .into_iter()
+        .collect();
+        let (doc, _) = lute_syntax::parse(
+            "---\nkind: quest\nid: q\n---\n\n<quest id=\"q\" title=\"Q\" start=\"true\">\n  \
+             <objective id=\"a\" title=\"A\" done=\"true\">\n    \
+             <reward kind=\"SHOW\" target=\"mira\"/>\n    \
+             <reward kind=\"SHOW\" target=\"never\" outcome=\"failed\"/>\n  </objective>\n  \
+             <reward kind=\"MIX\" target=\"ana\"/>\n  \
+             <reward kind=\"BADGE\"/>\n  \
+             <reward kind=\"SHOW\" target=\"bo\" outcome=\"failed\"/>\n  \
+             <reward kind=\"SHOW\" target=\"cy\" outcome=\"later\"/>\n</quest>\n",
+        );
+        let quest = &doc.quests[0];
+        /// A site's grant point, kind, target and `(rank, owner, reward)`.
+        type Site<'a> = (GrantPoint, &'a str, Option<&'a str>, (u8, usize, usize));
+        let sites: Vec<Site<'_>> = reward_grant_sites(quest, &kinds)
+            .iter()
+            .map(|s| {
+                (
+                    s.point,
+                    s.reward.kind.as_str(),
+                    s.reward.target.as_deref(),
+                    (s.order.rank, s.order.owner, s.order.reward),
+                )
+            })
+            .collect();
+        assert_eq!(
+            sites,
+            [
+                (GrantPoint::Objective, "SHOW", Some("mira"), (0, 0, 0)),
+                (GrantPoint::QuestComplete, "MIX", Some("ana"), (1, 0, 0)),
+                (GrantPoint::QuestFailed, "SHOW", Some("bo"), (1, 0, 2)),
+            ]
+        );
+        let effects: Vec<(GrantPoint, GrantOrder, Option<String>, bool)> =
+            quest_grants(quest, &kinds)
+                .iter()
+                .map(|g| {
+                    let accepted = g.accepted().map(str::to_string);
+                    (g.point, g.order, accepted, g.fact().is_some())
+                })
+                .collect();
+        let order = |effect| GrantOrder {
+            rank: 1,
+            owner: 0,
+            reward: 0,
+            effect,
+        };
+        assert_eq!(
+            effects,
+            [
+                (GrantPoint::QuestComplete, order(0), None, true),
+                (
+                    GrantPoint::QuestComplete,
+                    order(1),
+                    Some("second".to_string()),
+                    false,
+                ),
+            ]
+        );
     }
 }

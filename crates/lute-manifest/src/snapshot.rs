@@ -78,6 +78,11 @@ pub struct CapabilitySnapshot {
     /// "shape-only" (any identifier is an occasion). GUARDED in
     /// [`capability_version`] exactly like `rewardKinds`.
     pub occasions: BTreeMap<String, OccasionDecl>,
+    /// The plugin that declares each of [`Self::occasions`] — what a message
+    /// about an occasion's contract names (0.51.0 `W-OCCASION-NEVER-RAISED`).
+    /// Not part of the resolved capability surface, so NOT folded into the
+    /// version (the `inactive` precedent).
+    pub occasion_owners: BTreeMap<String, String>,
     /// Plugin-declared cast (dsl 0.23.0 §7 `cast:`), keyed by speaker id.
     /// Empty = speakers stay shape-only; populated, a speaker outside it is
     /// `E-CAST-UNKNOWN`. GUARDED in [`capability_version`] like `occasions`.

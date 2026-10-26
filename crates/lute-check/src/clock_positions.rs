@@ -897,7 +897,8 @@ struct RaiseModel<'c> {
     clock: &'c ClockDecl,
     start: ClockAt,
     /// `None`: the clock does not raise the occasion — the engine may raise
-    /// it at any position.
+    /// it at any position — or a declared raise reaches the answerer
+    /// (0.51.0 §4.4), which may deliver it at any position too.
     rule: Option<RaiseRule>,
     /// The project's `terminal:` when it closes the last `dayEnd`.
     closed_end: Option<String>,
@@ -907,13 +908,17 @@ struct RaiseModel<'c> {
 
 impl<'c> RaiseModel<'c> {
     /// The model of `when` (and `prev`, a guard whose positions it must
-    /// cover too) for `occasion`, in `folded`'s schema. `None` without a
-    /// clock, when `when` reads no clock path, or past [`MAX_POSITIONS`].
+    /// cover too) for `occasion`, in `folded`'s schema. `declared`: some
+    /// declared raise reaches the answerer ([`crate::raises::RaiseTable::reaches`]), so the
+    /// occasion counts as raised at every position — only schedule-only
+    /// claims go; the `when` is still judged. `None` without a clock, when
+    /// `when` reads no clock path, or past [`MAX_POSITIONS`].
     fn new(
         when: &str,
         prev: Option<&str>,
         occasion: &str,
         folded: &'c FoldedEnv,
+        declared: bool,
     ) -> Option<(Self, Formula)> {
         let schema = &folded.env.state;
         let clock = schema.clock()?;
@@ -948,7 +953,7 @@ impl<'c> RaiseModel<'c> {
             None => Formula::Const(Some(true)),
         };
         let all = positions(clock, schema, &[&when, &prev], false)?;
-        let rule = RaiseRule::of(clock, occasion);
+        let rule = RaiseRule::of(clock, occasion).filter(|_| !declared);
         let outside = folded
             .occasions
             .get(occasion)
@@ -1059,14 +1064,17 @@ struct Unraised {
 }
 
 /// [`W_BEAT_UNRAISED`] across one project root: `docs` parallel to
-/// `foldeds`. A beat on an occasion the clock raises whose `when` can hold
-/// only where the clock does not raise it ([`RaiseRule`]), or only at the
-/// last `dayEnd` when the project's `terminal:` holds with `clock.ended`.
-/// A scene a `chapters:` chain waits on is left to `W-CHAPTER-STALL`.
+/// `foldeds`, `raises` built from them. A beat on an occasion the clock
+/// raises whose `when` can hold only where the clock does not raise it
+/// ([`RaiseRule`]), or only at the last `dayEnd` when the project's
+/// `terminal:` holds with `clock.ended`. A beat some declared raise reaches
+/// may be raised anywhere (0.51.0 §4.4), so it is never this warning's. A
+/// scene a `chapters:` chain waits on is left to `W-CHAPTER-STALL`.
 /// Anchored at the beat's `on`.
 pub fn check_project_unraised(
     docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
+    raises: &crate::raises::RaiseTable<'_>,
 ) -> Vec<(PathBuf, Diagnostic)> {
     let mut out = Vec::new();
     for pb in crate::beats::project_beats(docs, foldeds) {
@@ -1078,7 +1086,8 @@ pub fn check_project_unraised(
         {
             continue;
         }
-        let Some((model, _)) = RaiseModel::new(when, None, pb.on, pb.folded) else {
+        let declared = raises.reaches_any(&pb);
+        let Some((model, _)) = RaiseModel::new(when, None, pb.on, pb.folded, declared) else {
             continue;
         };
         let Some(u) = model.unraised(pb.on) else {
@@ -1116,16 +1125,20 @@ pub fn check_project_unraised(
 /// `None` for the first. It stops when no raise of `occasion` meets the
 /// `when` ([`RaiseModel::unraised`]), or when the scene before it may play
 /// at a raise after which the occasion is still raised but never again
-/// where the `when` holds — a window that closes. On a clock that never
-/// ends, only arrivals a full week before the model's end are judged
-/// (past it every atom repeats).
+/// where the `when` holds — a window that closes. `declared`: a declared
+/// raise reaches the scene (0.51.0 §4.4), so the occasion is raised at
+/// every position — the schedule claims none, the window is still judged.
+/// On a clock that never ends, only arrivals a full week before the
+/// model's end are judged (past it every atom repeats).
 pub(crate) fn chapter_window(
     when: &str,
     prev: Option<(&str, Option<&str>)>,
     occasion: &str,
     folded: &FoldedEnv,
+    declared: bool,
 ) -> Option<(String, String)> {
-    let (model, prev_when) = RaiseModel::new(when, prev.and_then(|(_, w)| w), occasion, folded)?;
+    let (model, prev_when) =
+        RaiseModel::new(when, prev.and_then(|(_, w)| w), occasion, folded, declared)?;
     if let Some(u) = model.unraised(occasion) {
         let fix = if u.at_start {
             format!(
@@ -1442,7 +1455,9 @@ pub fn check_project_advance_cascades(
         }
         let can_repeat = match pb.when.as_deref().map(str::trim) {
             None | Some("") => true,
-            Some(raw) => match RaiseModel::new(raw, None, pb.on, pb.folded) {
+            // A cascade is a claim that the clock's own raises re-trigger
+            // the beat; a declared raise adds none (0.51.0 §4.4 scope).
+            Some(raw) => match RaiseModel::new(raw, None, pb.on, pb.folded, false) {
                 Some((model, _)) => {
                     let by = match spec {
                         lute_ir::AdvanceSpec::Slot => Advance::Slots(1),

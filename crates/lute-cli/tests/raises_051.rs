@@ -147,6 +147,14 @@ fn an_answered_target_is_clean() {
     assert_eq!(check(&dir), Vec::<String>::new());
 }
 
+/// 0.51.0 §4.5: `chapter2` answers the `raisedBy: declared` `cutscene`, so a
+/// project in which no declared raise reaches it warns there.
+const CHAPTER2_NEVER_RAISED: &str = "scenes/chapter2.lute:4:1 [W-OCCASION-NEVER-RAISED] scene \
+     `chapter2` answers `cutscene` for `scene.chapter2`, which `acme.stage` declares `raisedBy: \
+     declared`, but no `effects.raises` in the project raises it — add a `raises` entry to the \
+     directive or reward kind that leads here, or drop `raisedBy: declared` if the host raises \
+     `cutscene` on its own";
+
 #[test]
 fn a_target_no_scene_answers_is_refused_with_a_did_you_mean() {
     let dir = project(
@@ -161,7 +169,8 @@ fn a_target_no_scene_answers_is_refused_with_a_did_you_mean() {
             "scenes/intro.lute:8:20 [E-RAISES-TARGET] `::playScene{scene=\"chapter3\"}` raises \
              `cutscene` for `scene.chapter3`, but no scene or beat answers it — did you mean \
              `scene.chapter2`?"
-                .to_string()
+                .to_string(),
+            CHAPTER2_NEVER_RAISED.to_string(),
         ]
     );
 }
@@ -206,11 +215,12 @@ fn a_def_value_folds_to_a_static_target() {
 }
 
 /// An attribute with no value and no `default:` raises nothing: no
-/// diagnostic beyond what the call already gets.
+/// diagnostic beyond what the call already gets — and, raising nothing,
+/// it leaves `chapter2` unreached (0.51.0 §4.5).
 #[test]
 fn an_unbound_target_raises_nothing() {
     let dir = project("raises-unbound", "", "::cue\n", &[]);
-    assert_eq!(check(&dir), Vec::<String>::new());
+    assert_eq!(check(&dir), vec![CHAPTER2_NEVER_RAISED.to_string()]);
 }
 
 /// `occasion.target` is the one dynamic target: the runtime binds it, so
@@ -250,6 +260,7 @@ fn a_target_outside_the_domain_is_refused() {
             "scenes/intro.lute:9:1 [E-RAISES-TARGET] `::showLost` raises `cutscene` for \
              `scene.lost`, but `lost` is no `cutsceneId` member"
                 .to_string(),
+            CHAPTER2_NEVER_RAISED.to_string(),
         ]
     );
 }
@@ -338,6 +349,7 @@ fn equal_layout_documents_each_get_their_diagnostic() {
         vec![
             format!("scenes/intro.lute:8:20 {message}"),
             format!("scenes/outro.lute:8:20 {message}"),
+            CHAPTER2_NEVER_RAISED.to_string(),
         ]
     );
 }
@@ -371,7 +383,8 @@ fn a_typed_default_is_a_static_target() {
         vec![
             "scenes/intro.lute:8:1 [E-RAISES-TARGET] `::ring` raises `bell` for `7` (the \
              attribute's declared `default:`), but no scene or beat answers it"
-                .to_string()
+                .to_string(),
+            CHAPTER2_NEVER_RAISED.to_string(),
         ]
     );
 }

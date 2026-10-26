@@ -152,6 +152,13 @@ impl<D: Driver> Machine<D> {
             .get("stamps")
             .and_then(Json::as_object)
             .filter(|s| !s.is_empty());
+        // 0.51.0 §4.6: the call's declared raises (`occasion.target` bound
+        // above), omitted when it declares none.
+        let raises = cmd
+            .get("raises")
+            .and_then(Json::as_array)
+            .filter(|r| !r.is_empty())
+            .map(|r| Json::Array(r.clone()));
         let (answer, host) = if reads.is_empty() {
             (None, crate::session::Writes::default())
         } else {
@@ -203,6 +210,9 @@ impl<D: Driver> Machine<D> {
                 if let Some(stamps) = stamps {
                     rec["stamps"] = Json::Object(stamps.clone());
                 }
+                if let Some(raises) = raises.clone() {
+                    rec["raises"] = raises;
+                }
                 self.driver.emit(rec);
                 return false;
             }
@@ -224,6 +234,11 @@ impl<D: Driver> Machine<D> {
         rec.insert("attrs".into(), attrs);
         if let Some(stamps) = stamps {
             rec.insert("stamps".into(), Json::Object(stamps.clone()));
+        }
+        // 0.51.0 §4.6: the declared raises, `occasion.target` bound — the
+        // host raises them after the presentation ends.
+        if let Some(raises) = raises {
+            rec.insert("raises".into(), raises);
         }
         rec.insert("external".into(), Json::Bool(true));
         rec.insert("unresolvedEffects".into(), json!(unresolved));
@@ -570,7 +585,8 @@ fn fact_record(f: &Json) -> (String, Vec<String>) {
 const TARGET: &str = lute_manifest::semantics::beats::OCCASION_TARGET;
 
 /// Whether a plugin record writes through `occasion.target`: an effect path
-/// `F[occasion.target]`, a fact argument or a field given it.
+/// `F[occasion.target]`, a fact argument, a field given it, or a declared
+/// raise for it (0.51.0 §4.6).
 fn mentions_target(cmd: &Json) -> bool {
     let paths = cmd
         .get("effects")
@@ -592,6 +608,28 @@ fn mentions_target(cmd: &Json) -> bool {
             .get("fields")
             .and_then(Json::as_object)
             .is_some_and(|f| f.values().any(|v| v.as_str() == Some(TARGET)))
+        || raises_of(cmd)
+            .filter_map(|r| r.get("target").and_then(Json::as_str))
+            .any(|t| bound_raise_target(t, "").is_some())
+}
+
+/// A plugin record's declared raises (0.51.0 §4.6).
+fn raises_of(cmd: &Json) -> impl Iterator<Item = &Json> {
+    cmd.get("raises")
+        .and_then(Json::as_array)
+        .into_iter()
+        .flatten()
+}
+
+/// A raise target that reads `occasion.target` — the reference, a domain
+/// prefix applied (`scene.occasion.target`) — with `member` in its place;
+/// `None` for a static target.
+fn bound_raise_target(target: &str, member: &str) -> Option<String> {
+    if target == TARGET {
+        return Some(member.to_string());
+    }
+    let prefix = target.strip_suffix(TARGET)?.strip_suffix('.')?;
+    Some(format!("{prefix}.{member}"))
 }
 
 /// The record with every write through `occasion.target` naming `member`.
@@ -630,6 +668,18 @@ fn bind_target(cmd: &Json, member: &str) -> Json {
         for v in fields.values_mut() {
             if v.as_str() == Some(TARGET) {
                 *v = Json::String(member.to_string());
+            }
+        }
+    }
+    for r in cmd
+        .get_mut("raises")
+        .and_then(Json::as_array_mut)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(t) = r.get_mut("target") {
+            if let Some(bound) = t.as_str().and_then(|s| bound_raise_target(s, member)) {
+                *t = Json::String(bound);
             }
         }
     }

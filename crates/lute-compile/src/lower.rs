@@ -14,7 +14,8 @@ use lute_syntax::ast::{Assert, Attr, AttrValue, Directive, InlineNode, Line, Ret
 use crate::ir::{
     placeholder_from_interp, AcceptCmd, ActorCmd, AssertCmd, BgCmd, CameraCmd, CelPairExt, CgCmd,
     Command, Effect, EffectSource, EndCmd, FactRecord, JumpCmd, LineCmd, MusicCmd, PluginCmd,
-    RetractCmd, Role, Segment, SequenceCmd, SetCmd, SfxCmd, Stamp, Timing, VfxCmd, VideoCmd,
+    RaiseRecord, RetractCmd, Role, Segment, SequenceCmd, SetCmd, SfxCmd, Stamp, Timing, VfxCmd,
+    VideoCmd,
 };
 use crate::normalize::{COMPONENT_BEGIN, COMPONENT_END};
 use lute_ir::CelPair;
@@ -529,6 +530,15 @@ pub fn lower_directive(
             let facts = decl
                 .map(|d| lute_check::directive_facts::call_facts(d, dir))
                 .unwrap_or_default();
+            // 0.51.0 §4.6: the declared `effects.raises`, each target
+            // resolved as the checker's raise table resolves it (authored,
+            // then the attribute's `default:`); an unbound one is not written.
+            let raises = decl
+                .map(|d| lute_check::raises::call_raises(d, &snapshot.occasions, &dir.attrs))
+                .unwrap_or_default()
+                .into_iter()
+                .map(RaiseRecord::from)
+                .collect();
             Command::Plugin(PluginCmd {
                 position: String::new(),
                 tag: dir.tag.clone(),
@@ -541,6 +551,7 @@ pub fn lower_directive(
                 retracts: fact_records(&facts.retracts),
                 asserts: fact_records(&facts.asserts),
                 stamp,
+                raises,
             })
         }
     })

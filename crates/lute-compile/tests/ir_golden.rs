@@ -285,6 +285,7 @@ fn stamped_camera_and_set_and_plugin_passthrough() {
         retracts: vec![],
         asserts: vec![],
         stamp: Stamp::default(),
+        raises: vec![],
     });
     assert_eq!(
         j(&other),
@@ -635,6 +636,7 @@ fn reward_entry_scalar_serializes_per_spec() {
         retracts: vec![],
         asserts: vec![],
         accepts: vec![],
+        raises: vec![],
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
@@ -657,6 +659,7 @@ fn reward_entry_range_serializes_amount_min_and_max() {
         retracts: vec![],
         asserts: vec![],
         accepts: vec![],
+        raises: vec![],
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
@@ -682,6 +685,7 @@ fn reward_entry_on_failed_serializes_only_when_quest_level() {
         retracts: vec![],
         asserts: vec![],
         accepts: vec![],
+        raises: vec![],
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
@@ -710,6 +714,7 @@ fn reward_entry_effects_follow_credits() {
         retracts: vec![fact("rival", "mira")],
         asserts: vec![fact("met", "mira")],
         accepts: vec!["second".into()],
+        raises: vec![],
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
@@ -1164,6 +1169,7 @@ fn every_kind_has_its_spec_family() {
                 retracts: vec![],
                 asserts: vec![],
                 stamp: stamp(),
+                raises: vec![],
             }),
             "plugin",
             "plugin",

@@ -1963,9 +1963,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-BEAT-UNRAISED
 
-비트가 시계의 `raise:` 맵이 raise하는 계기에 응답하는데, 그 `when`은 시계가 그 계기를 raise하지 않는 곳에서만 참이 될 수 있습니다. 하루의 마지막 슬롯이 아닌 슬롯을 위한 `dayEnd` 비트나, 실행이 시작된 날의 뒤쪽 슬롯을 위한 `dayStart` 비트가 그렇습니다. 또는 마지막 `dayEnd`에서만 참이 될 수 있는데, 시계를 끝내는 advance는 `clock.ended`가 참이 된 뒤에 그것을 raise하므로, `clock.ended`와 함께 참이 되는 `terminal:`이 이미 게임을 끝낸 뒤입니다. 그래서 그 비트는 재생되지 않습니다. 그것이 참이 되는 곳에서 raise되는 계기에 응답하게 하거나 `when`을 바꾸세요. 마지막 `dayEnd`라면 시계가 끝나기 전에 raise하거나, 그 비트가 재생된 뒤에만 참이 되도록 `terminal:`을 쓰세요. 실행이 시작되는 위치에서 참이 되는 비트도 경고됩니다. 거기서는 어떤 `advance:`도 멈추지 않으므로 시계가 slot 계기도 `dayStart`도 raise하지 않지만, 엔진이 실행을 시작할 때 그 계기를 raise한다면 비트는 재생됩니다. 그렇다면 시계에 `raiseAtStart: true`를 선언하세요. 경고가 사라집니다. 그렇지 않다면 그것이 참이 되는 곳에서 raise되는 계기에 응답하게 하세요.
+비트가 시계의 `raise:` 맵이 raise하는 계기에 응답하는데, 그 `when`은 시계가 그 계기를 raise하지 않는 곳에서만 참이 될 수 있습니다. 하루의 마지막 슬롯이 아닌 슬롯을 위한 `dayEnd` 비트나, 실행이 시작된 날의 뒤쪽 슬롯을 위한 `dayStart` 비트가 그렇습니다. 또는 마지막 `dayEnd`에서만 참이 될 수 있는데, 시계를 끝내는 advance는 `clock.ended`가 참이 된 뒤에 그것을 raise하므로, `clock.ended`와 함께 참이 되는 `terminal:`이 이미 게임을 끝낸 뒤입니다. 그래서 그 비트는 재생되지 않습니다. 그것이 참이 되는 곳에서 raise되는 계기에 응답하게 하거나 `when`을 바꾸세요. 마지막 `dayEnd`라면 시계가 끝나기 전에 raise하거나, 그 비트가 재생된 뒤에만 참이 되도록 `terminal:`을 쓰세요. 실행이 시작되는 위치에서 참이 되는 비트도 경고됩니다. 거기서는 어떤 `advance:`도 멈추지 않으므로 시계가 slot 계기도 `dayStart`도 raise하지 않지만, 엔진이 실행을 시작할 때 그 계기를 raise한다면 비트는 재생됩니다. 그렇다면 시계에 `raiseAtStart: true`를 선언하세요. 경고가 사라집니다. 그렇지 않다면 그것이 참이 되는 곳에서 raise되는 계기에 응답하게 하세요. 선언된 raise(지시문이나 보상 종류의 `effects.raises`가 그 계기를 그 비트의 대상으로, 또는 비트가 `target:`을 선언하지 않았다면 어떤 대상으로든 raise하는 것)가 닿는 비트는 어느 위치에서든 raise될 수 있으므로 보고하지 않습니다.
 
-명세: [dsl 0.28.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md)
+명세: [dsl 0.28.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.51.0 §4.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 ### W-BINDING-MISSING
 
 선언되었거나 사용된 프로젝트 스테이징 값, cast 구성원, 에셋 또는 flow 참조에 플레이어 바인딩이 없습니다.
@@ -2010,9 +2010,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-CHAPTER-STALL
 
-프로젝트 `chapters:`의 체인에 나열된 장면의 자체 `when:`이 영영 거짓으로 남을 수 있습니다. 이야기가 끝내 쓰지 않을 수도 있는 state를 읽거나, 닫히는 시계 창을 읽는 경우입니다. 체인의 계기가 raise되는 어느 순간에도 맞지 않는 `when`(실행이 시작된 날이 필요한 `dayStart` 체인의 장면. 단, 엔진이 거기서 raise하므로 시계가 `raiseAtStart: true`를 선언했다면 제외)이나, 앞 장면이 늦게 재생된 뒤로는 이후 어떤 raise도 맞추지 못하는 `when`(끝나는 시계의 마지막 날의 슬롯)이 여기에 해당합니다. 그리고 다음 장면의 `after:`(체인이 쓴 것이든 장면이 직접 쓴 것이든)가 그 장면을 기다리므로, 장이 거기서 멈출 수 있습니다. 이후의 raise가 여전히 맞추는 시계 조건은 체인을 늦출 뿐이고, 다른 `owner: engine` state에 대한 조건은 엔진이 참으로 만들 몫이라 둘 다 보고하지 않습니다. 멈추는 것은 체인뿐입니다. `chapters:` 밖의 장면에 직접 쓴 `after:`는 그 자체가 "그 장면을 기다린다"는 진술이므로 경고하지 않습니다. 그 장면을 건너뛰어도 된다면 다음 장면이 그 앞 장면을 따르게 하세요(`after: visited("<앞 장면>")`; 건너뛸 수 있는 장면은 우선순위가 높아서 조건이 맞으면 여전히 먼저 재생됩니다). 반드시 재생되어야 한다면 이야기가 그 조건을 참으로 만들도록 하거나, 그 `when`이 이후의 raise에서도 참이 되게 하세요.
+프로젝트 `chapters:`의 체인에 나열된 장면의 자체 `when:`이 영영 거짓으로 남을 수 있습니다. 이야기가 끝내 쓰지 않을 수도 있는 state를 읽거나, 닫히는 시계 창을 읽는 경우입니다. 체인의 계기가 raise되는 어느 순간에도 맞지 않는 `when`(실행이 시작된 날이 필요한 `dayStart` 체인의 장면. 단, 엔진이 거기서 raise하므로 시계가 `raiseAtStart: true`를 선언했다면 제외)이나, 앞 장면이 늦게 재생된 뒤로는 이후 어떤 raise도 맞추지 못하는 `when`(끝나는 시계의 마지막 날의 슬롯)이 여기에 해당합니다. 그리고 다음 장면의 `after:`(체인이 쓴 것이든 장면이 직접 쓴 것이든)가 그 장면을 기다리므로, 장이 거기서 멈출 수 있습니다. 이후의 raise가 여전히 맞추는 시계 조건은 체인을 늦출 뿐이고, 다른 `owner: engine` state에 대한 조건은 엔진이 참으로 만들 몫이라 둘 다 보고하지 않습니다. 멈추는 것은 체인뿐입니다. `chapters:` 밖의 장면에 직접 쓴 `after:`는 그 자체가 "그 장면을 기다린다"는 진술이므로 경고하지 않습니다. 그 장면을 건너뛰어도 된다면 다음 장면이 그 앞 장면을 따르게 하세요(`after: visited("<앞 장면>")`; 건너뛸 수 있는 장면은 우선순위가 높아서 조건이 맞으면 여전히 먼저 재생됩니다). 반드시 재생되어야 한다면 이야기가 그 조건을 참으로 만들도록 하거나, 그 `when`이 이후의 raise에서도 참이 되게 하세요. 선언된 raise(`effects.raises`)가 닿는 장면은 어느 위치에서든 raise될 수 있습니다. 시계의 일정만이 맞추지 못하는 `when`은 보고하지 않지만, 앞 장면 이후의 모든 위치에서 이미 지나 버린 `when`은 여전히 보고합니다.
 
-명세: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.29.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md)
+명세: [dsl 0.28.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.29.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.29.0.md), [dsl 0.51.0 §4.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### W-CODE-AFTER-END
 
@@ -2157,6 +2157,12 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 필수 목표가 같은 문서 비트들의 선언된 시계 창 안에서만 완료될 수 있는데 그 창이 모두 닫힐 수 있고, 목표에 `until=`이나 `by=` 기한이 없어 방치될 수 있습니다. 다시 열리는 퀘스트(run·season 계층, `rearm=`)나 다른 문서의 비트가 완료할 수 있는 목표는 보고하지 않습니다. 경로 탐색은 하지 않습니다.
 
 명세: [dsl 0.31.0 §3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.31.0.md), [dsl 0.41.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.41.0.md)
+
+### W-OCCASION-NEVER-RAISED
+
+장면이나 항목, 묶음 비트가 `raisedBy: declared`로 선언된 계기 — 호스트가 지시문이나 보상 종류의 `effects.raises`로만 raise하는 계기 — 에 응답하는데, 프로젝트의 어떤 선언된 raise도 거기에 닿지 않습니다(그 `target:`으로도, `occasion.target`으로도, `target:`을 선언하지 않았다면 어떤 대상으로도 그 계기를 raise하지 않음). 그래서 재생되지 않습니다. 그곳으로 이어지는 지시문이나 보상 종류에 `raises` 항목을 추가하거나, 호스트가 그 계기를 스스로 raise한다면 `raisedBy: declared`를 지우세요. 프로젝트 시계의 `raise:` 맵이 raise하는 계기는 선언된 raise 밖에서 raise되므로 보고하지 않습니다. 그 계기를 raise하는 `lute play`/`lute test` 단계는 raise가 아닙니다(테스트는 게임이 아니라 테스트를 증명합니다). 프로젝트 전체 `check`에서만 보고합니다.
+
+명세: [dsl 0.51.0 §4.5](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### W-OTHERWISE-DEAD
 

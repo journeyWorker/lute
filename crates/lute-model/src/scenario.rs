@@ -18,6 +18,9 @@ pub fn project_docs(group: &DocGroup) -> Vec<ProjectDoc<'_>> {
 #[derive(Debug)]
 pub struct RootScenario {
     pub graph: lute_check::connectivity::ConnGraph,
+    /// 0.51.0 §4.5: the declared raises reaching each answerer — what the
+    /// node envelope names (`raised by …`).
+    pub raises: lute_check::raises::RaiseAnchors,
     pub reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
     /// Each node's ROUTE envelope ([`envelope::propagate`]); its whole
     /// envelope also holds [`Self::envelope_d`] — read it with
@@ -60,8 +63,10 @@ pub fn assemble_root_scenario(
     let key_set = lute_check::connectivity::scene_key_set(&project_docs);
     let quest_ids = lute_check::connectivity::quest_id_set(&project_docs);
     let beat_keys = lute_check::connectivity::bundle_beat_key_set(&project_docs);
+    let foldeds: Vec<&lute_check::FoldedEnv> = group_full.iter().map(|(_, _, f)| f).collect();
+    let raises = lute_check::raises::RaiseAnchors::of(&project_docs, &foldeds);
     let (mut graph, _) =
-        lute_check::connectivity::assemble_graph(&project_docs, &key_set, &quest_ids);
+        lute_check::connectivity::assemble_graph(&project_docs, &key_set, &quest_ids, &raises);
     let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(&project_docs);
     let fp = compute_conn_fixpoint(
         &project_docs,
@@ -139,6 +144,7 @@ pub fn assemble_root_scenario(
     let (route_envs, tainted) = envelope::propagate(&graph, &per_doc);
     RootScenario {
         graph,
+        raises,
         reach: fp.reach,
         route_envs,
         tainted,

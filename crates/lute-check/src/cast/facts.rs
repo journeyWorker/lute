@@ -49,6 +49,9 @@ pub fn occasions_before(
                 .map(|x| (i, x.span.byte_start, x.on.as_ref().map(|(o, _)| o.as_str()))),
         }
     };
+    // 0.51.0 §4.5: a `[raises]` edge orders its raiser before the answerer
+    // too — here it only adds `W-CAST-ABSENT` may-warnings, never removes
+    // one. `Accept` stays excluded, as in 0.50.
     let orders = |from: &NodeId, to: &NodeId| {
         graph.orders(from, to)
             && graph.edge_kinds_for(from, to).is_some_and(|ks| {
@@ -59,6 +62,7 @@ pub fn occasions_before(
                             | EdgeKind::Completed
                             | EdgeKind::Active
                             | EdgeKind::Start
+                            | EdgeKind::Raises
                     )
                 })
             })

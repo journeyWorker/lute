@@ -205,8 +205,11 @@ pub(crate) fn bundle_beat<'d>(
 /// beat) with no `after` whose `when` has top-level `visited('<id>')`
 /// conjuncts naming a node of the graph — each such conjunct gates the beat
 /// but draws no edge. `lute scenario` lists these on its unanchored list and
-/// suggests moving them to `after=` / `after:`. The ids come in source
-/// order; an unparseable `when` (the per-file check's) contributes nothing.
+/// suggests moving them to `after=` / `after:`. Only `Absent` nodes are
+/// unanchored: a beat a declared raise anchors (0.51.0 §4.5,
+/// [`PrereqState::Anchored`]) has its `[raises]` edges and is not listed.
+/// The ids come in source order; an unparseable `when` (the per-file
+/// check's) contributes nothing.
 pub fn when_visited_unanchored(
     docs: &[ProjectDoc<'_>],
     graph: &ConnGraph,

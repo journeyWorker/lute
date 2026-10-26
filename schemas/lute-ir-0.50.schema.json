@@ -1856,6 +1856,13 @@
             "type": "string"
           },
           "description": "0.50.0 §5.5: the quest ids the reward kind's `effects.accepts` resolves to, applied at the grant after the facts through the `::accept` path; absent when none."
+        },
+        "raises": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/raiseRecord"
+          },
+          "description": "0.51.0 §4.6: the occasions the reward kind's `effects.raises` declares, `@target` bound to `target` (an unbound one is not written), stamped at compile. Descriptive: the host raises each once the grant settles; the runtime raises nothing. Absent when none."
         }
       },
       "additionalProperties": true,
@@ -1883,6 +1890,23 @@
       ],
       "additionalProperties": false,
       "description": "0.50.0 §5.5: one fact a reward's effects write — the `relation` + `args` shape of an `assert` / `retract` record (\"_\" a retract wildcard)."
+    },
+    "raiseRecord": {
+      "type": "object",
+      "properties": {
+        "occasion": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string",
+          "description": "the target the occasion is raised for, written whole (`scene.chapter2`); `occasion.target` when the call reads it in a beat (the runtime binds it on the emitted record). Absent for an untargeted occasion."
+        }
+      },
+      "required": [
+        "occasion"
+      ],
+      "additionalProperties": false,
+      "description": "0.51.0 §4.6: one declared raise — an occasion a plugin call or a granted reward promises the host raises (`effects.raises`), resolved at compile (an `@attr` bound to the attribute's compiled value or its declared `default:`, a domain prefix applied)."
     },
     "objectiveEntry": {
       "type": "object",
@@ -3468,6 +3492,13 @@
         },
         "stamps": {
           "$ref": "#/$defs/stamps"
+        },
+        "raises": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/raiseRecord"
+          },
+          "description": "0.51.0 §4.6: the occasions the call's `effects.raises` declares, in list order, each target resolved (authored, then the attribute's `default:`; an unbound one is not written). Descriptive: the host raises each after the presentation ends; absent when none."
         }
       },
       "additionalProperties": true,

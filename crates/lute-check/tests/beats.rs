@@ -486,7 +486,12 @@ fn project(texts: &[(&str, &str)], snapshot: CapabilitySnapshot) -> Project {
         .collect();
     let key_set = scene_key_set(&views);
     let quest_ids = quest_id_set(&views);
-    let (graph, _) = assemble_graph(&views, &key_set, &quest_ids);
+    let (graph, _) = assemble_graph(
+        &views,
+        &key_set,
+        &quest_ids,
+        &lute_check::raises::RaiseAnchors::default(),
+    );
     let lifecycle = unreachable_quest_ids(&views, &results);
     let ambiguous = ambiguous_quest_ids(&views);
     let (reach, _) = check_reachability(&graph, &quest_ids, &ambiguous, &lifecycle);

@@ -649,6 +649,7 @@ pub fn assemble_snapshot(
             }
             oc_owner.insert(oc.name.clone(), ap.id.clone());
             snap.occasions.insert(oc.name.clone(), oc.clone());
+            snap.occasion_owners.insert(oc.name.clone(), ap.id.clone());
         }
         // dsl 0.23.0 §7: cast members merge like occasions — one owner per id.
         for c in &pkg.cast {

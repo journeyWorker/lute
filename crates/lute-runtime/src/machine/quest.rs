@@ -86,6 +86,10 @@ struct RewardRec {
     retracts: Vec<(String, Vec<String>)>,
     asserts: Vec<(String, Vec<String>)>,
     accepts: Vec<String>,
+    /// 0.51.0 §4.6: `RewardEntry.raises` as compiled (`@target` bound),
+    /// copied onto the `grant` record — the host raises them once the grant
+    /// settles; the runtime raises nothing.
+    raises: Vec<Json>,
 }
 
 /// dsl 0.16.0 §3 D-D: which lifecycle transition is firing declarative
@@ -1034,6 +1038,9 @@ impl<D: Driver> Machine<D> {
             if matches!(event, GrantEvent::Failed) {
                 rec.insert("onFailed".into(), Json::Bool(true));
             }
+            if !r.raises.is_empty() {
+                rec.insert("raises".into(), Json::Array(r.raises.clone()));
+            }
             self.driver.emit(Json::Object(rec));
             // 0.50.0 §5.3: then this reward's effects — retracts, asserts,
             // accepts — through the one assert/retract and accept paths,
@@ -1242,6 +1249,11 @@ fn parse_reward(code: &Code, r: &Json) -> RewardRec {
             .filter_map(Json::as_str)
             .map(str::to_string)
             .collect(),
+        raises: r
+            .get("raises")
+            .and_then(Json::as_array)
+            .cloned()
+            .unwrap_or_default(),
     }
 }
 

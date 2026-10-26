@@ -1476,6 +1476,11 @@ fn stamp_reward_kinds(commands: &mut [Command], snapshot: &CapabilitySnapshot) {
                     .into_iter()
                     .map(|(quest, _)| quest)
                     .collect();
+                // 0.51.0 §4.6: `@target` bound as for `accepts`.
+                r.raises = lute_check::raises::reward_raises(effects, &snapshot.occasions, target)
+                    .into_iter()
+                    .map(ir::RaiseRecord::from)
+                    .collect();
             }
         }
     }

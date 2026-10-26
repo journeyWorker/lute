@@ -357,7 +357,9 @@ fn project_in(
         .collect();
     let key_set = scene_key_set(&views);
     let quest_ids = quest_id_set(&views);
-    let (graph, _) = assemble_graph(&views, &key_set, &quest_ids);
+    let folded_refs: Vec<&FoldedEnv> = foldeds.iter().collect();
+    let raises = lute_check::raises::RaiseAnchors::of(&views, &folded_refs);
+    let (graph, _) = assemble_graph(&views, &key_set, &quest_ids, &raises);
     let lifecycle = unreachable_quest_ids(&views, &results);
     let ambiguous = ambiguous_quest_ids(&views);
     let (reach, _) = check_reachability(&graph, &quest_ids, &ambiguous, &lifecycle);
@@ -369,7 +371,6 @@ fn project_in(
         .into_iter()
         .flat_map(|(_, a)| vocab.asserted_facts(&a));
     let may = MaySet::build(&vocab, facts, &stable_seeds(&views, &vocab));
-    let folded_refs: Vec<&FoldedEnv> = foldeds.iter().collect();
     let must = compute_must(&views, &folded_refs, &graph, &vocab, &may);
     let env = FactEnv::new(may, must.slots);
     let ladder = lute_check::beats::presence_ladder(&views, &folded_refs);
@@ -815,6 +816,65 @@ fn changed_on_takes_assume_away_after_the_occasion_in_check_project() {
         out[2].1
     );
     assert!(with_code(&out[3].1, ABSENT).is_empty(), "{:?}", out[3].1);
+}
+
+/// [`battle_snapshot`] plus `campfire`, an occasion only declared raises
+/// raise, and `::cueCamp`, which declares it raises `campfire`.
+fn campfire_snapshot() -> CapabilitySnapshot {
+    let mut snap = battle_snapshot();
+    snap.occasions.insert(
+        "campfire".into(),
+        OccasionDecl {
+            name: "campfire".into(),
+            select: OccasionSelect::First,
+            raised_by: lute_manifest::schema::RaisedBy::Declared,
+            ..Default::default()
+        },
+    );
+    let cue: lute_manifest::schema::DirectiveDecl =
+        yaml_serde::from_str("name: cueCamp\neffects: { raises: [{ occasion: campfire }] }")
+            .expect("directive");
+    snap.directives.insert("cueCamp".into(), cue);
+    snap
+}
+
+/// 0.51.0 §4.5: `occasions_before` follows a `[raises]` edge — the camp a
+/// battle scene raises comes after the battle, so `assume` no longer covers
+/// Tomas there; without the raise, nothing orders the camp after it.
+#[test]
+fn a_raise_edge_orders_its_answerer_after_the_raisers_occasion() {
+    let march = battle_scene(
+        "a.march",
+        "on: hubVisit\n",
+        &format!("::assert{{recruited(tomas)}}\n{TOMAS}: Before the battle."),
+    );
+    let field = |call: &str| {
+        battle_scene(
+            "a.field",
+            "on: battleEnd\nafter: 'visited(\"a.march\")'\n",
+            &format!("{TOMAS}: After the battle.\n{call}"),
+        )
+    };
+    let camp = battle_scene("a.camp", "on: campfire\n", &format!("{TOMAS}: Days later."));
+    let camp_absent = |field: &str| {
+        let out = project_in(
+            campfire_snapshot,
+            &[
+                ("march.lute", &march),
+                ("field.lute", field),
+                ("camp.lute", &camp),
+            ],
+        );
+        for (_, ds) in &out {
+            assert_clean_vocab(ds);
+        }
+        absent_said(&camp, &out[2].1)
+            .into_iter()
+            .map(str::to_string)
+            .collect::<Vec<_>>()
+    };
+    assert_eq!(camp_absent(&field("::cueCamp")), ["Days later."]);
+    assert!(camp_absent(&field("")).is_empty());
 }
 
 /// ER C2 (0.25 prerelease): a guard that needs a `fell` fact — which only

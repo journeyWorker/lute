@@ -728,16 +728,22 @@ fn root_dot(root: &Path, scenario: &RootScenario, facts: Option<&crate::FactGrap
     // `active`-only edges are dashed: the prerequisite is the weaker "reached
     // `active`" claim, not "completed". An edge justified by `completed`
     // (or `visited`) — including one ALSO justified by `active` — stays solid,
-    // since the stronger justification is what a reader may rely on. Walk
-    // order is `graph.edges`' own `BTreeMap`/`BTreeSet` order, so the output
-    // is byte-deterministic.
+    // since the stronger justification is what a reader may rely on. 0.51.0
+    // §4.5: an edge a declared raise draws is solid and labelled `raises`.
+    // Walk order is `graph.edges`' own `BTreeMap`/`BTreeSet` order, so the
+    // output is byte-deterministic.
     for (from, targets) in &scenario.graph.edges {
         for to in targets {
-            let active_only = scenario
-                .graph
-                .edge_kinds_for(from, to)
-                .is_some_and(|kinds| kinds.iter().all(|k| *k == EdgeKind::Active));
-            let style = if active_only { " [style=dashed]" } else { "" };
+            let kinds = scenario.graph.edge_kinds_for(from, to);
+            let active_only = kinds.is_some_and(|ks| ks.iter().all(|k| *k == EdgeKind::Active));
+            let raises = kinds.is_some_and(|ks| ks.contains(&EdgeKind::Raises));
+            let style = if active_only {
+                " [style=dashed]"
+            } else if raises {
+                " [label=\"raises\"]"
+            } else {
+                ""
+            };
             s.push_str(&format!(
                 "  {} -> {}{};\n",
                 dot_quote(&from.to_string()),

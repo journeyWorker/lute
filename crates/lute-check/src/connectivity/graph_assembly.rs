@@ -6,6 +6,7 @@ use super::{
     graph_sources::{accept_sources, detect_conn_cycles, start_sources, top_conjuncts, topo_sort},
     identity::{bundle_beat_after, bundle_beat_key_set},
 };
+use crate::raises::RaiseAnchors;
 use crate::ProjectDoc;
 
 use crate::meta::meta_key_span;
@@ -16,10 +17,13 @@ use lute_syntax::ast::{Node, Quest};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
+/// The project's prerequisite graph. `raises` holds the root's raise anchors
+/// ([`crate::raises::RaiseTable::anchors`]; empty without declared raises).
 pub fn assemble_graph(
     docs: &[ProjectDoc<'_>],
     key_set: &BTreeMap<String, Vec<(PathBuf, Span)>>,
     _quest_ids: &BTreeSet<String>,
+    raises: &RaiseAnchors,
 ) -> (ConnGraph, Vec<(PathBuf, Diagnostic)>) {
     let by_path: BTreeMap<&Path, &ProjectDoc<'_>> =
         docs.iter().map(|item| (item.path, item)).collect();
@@ -146,6 +150,33 @@ pub fn assemble_graph(
             },
         );
     }
+    // 0.51.0 §4.5: a scene or bundle beat without `after:` answering a
+    // `raisedBy: declared` occasion is anchored by the nodes whose declared
+    // raises reach it — set before the pass below, so a quest that raises
+    // becomes a node there. One whose `after:` is written keeps it as its
+    // declared route (the quest rule).
+    for (node, from) in raises.iter() {
+        if !nodes
+            .get(node)
+            .is_some_and(|info| matches!(info.prereq, PrereqState::Absent))
+        {
+            continue;
+        }
+        let mut sources: Vec<NodeId> = Vec::new();
+        for f in from {
+            let graphed = nodes.contains_key(&f.source)
+                || matches!(&f.source, NodeId::Quest(id) if decls.first.contains_key(id.as_str()));
+            if graphed && !sources.contains(&f.source) {
+                sources.push(f.source.clone());
+            }
+        }
+        if let Some(info) = nodes.get_mut(node).filter(|_| !sources.is_empty()) {
+            info.prereq = PrereqState::Anchored(vec![Anchor {
+                kind: EdgeKind::Raises,
+                from: sources,
+            }]);
+        }
+    }
     let sources: Vec<NodeId> = nodes
         .values()
         .filter_map(|info| match &info.prereq {
@@ -212,11 +243,12 @@ pub fn assemble_graph(
         }
     }
     // Synthesized edges go in after every authored one — subquest, then
-    // `start`, then `::accept`. A subquest or `::accept` edge goes in only
-    // where it closes no cycle: a source downstream of the quest it anchors
-    // (a scene whose `after` needs the quest) cannot be the quest's way in,
-    // and an anchor is no `after` clause for `E-CONN-CYCLE` to report. Such
-    // an anchor stays on the node; reachability reads it `Unknown`. A child
+    // `start`, then `::accept`, then raises. A subquest, `::accept` or raise
+    // edge goes in only where it closes no cycle: a source downstream of
+    // the node it anchors (a scene whose `after` needs the quest, a scene
+    // that raises its own occasion again) cannot be the node's way in, and
+    // an anchor is no `after` clause for `E-CONN-CYCLE` to report. Such an
+    // anchor stays on the node; reachability reads it `Unknown`. A child
     // that declares its own `after` still hangs off its parent (dsl 0.25.0
     // §4). dsl 0.49.0 §6.1: every `start` edge is drawn; one that closes a
     // cycle (a self-read included) is a back edge, which orders nothing.
@@ -233,7 +265,7 @@ pub fn assemble_graph(
             add_edge(&mut edges, &mut edge_kinds, from, &to, EdgeKind::Subquest);
         }
     }
-    for kind in [EdgeKind::Start, EdgeKind::Accept] {
+    for kind in [EdgeKind::Start, EdgeKind::Accept, EdgeKind::Raises] {
         for info in nodes.values() {
             let PrereqState::Anchored(anchors) = &info.prereq else {
                 continue;
@@ -247,7 +279,7 @@ pub fn assemble_graph(
                     continue;
                 }
                 let closes = reaches(&edges, &back_edges, &info.id, from);
-                if closes && kind == EdgeKind::Accept {
+                if closes && kind != EdgeKind::Start {
                     continue;
                 }
                 let drawn = edges.get(from).is_some_and(|t| t.contains(&info.id));

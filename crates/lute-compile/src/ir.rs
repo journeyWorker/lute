@@ -1461,6 +1461,29 @@ pub struct FactRecord {
     pub args: Vec<String>,
 }
 
+/// 0.51.0 §4.6 (#170): one occasion a plugin call or a granted reward
+/// declares the host raises (`effects.raises`), resolved at compile: an
+/// `@attr` bound to the attribute's compiled value (its declared `default:`
+/// when omitted), a domain prefix applied (`scene.chapter2`). `target` is
+/// omitted for an untargeted occasion; a value reading `occasion.target`
+/// keeps it, and the runtime binds it. Descriptive: the runtime raises
+/// nothing.
+#[derive(Clone, Debug, Serialize)]
+pub struct RaiseRecord {
+    pub occasion: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target: Option<String>,
+}
+
+impl From<lute_check::raises::WireRaise> for RaiseRecord {
+    fn from(r: lute_check::raises::WireRaise) -> Self {
+        RaiseRecord {
+            occasion: r.occasion,
+            target: r.target,
+        }
+    }
+}
+
 /// Plugin-directive passthrough (plan spec-gap note 1): `kind: "plugin"`,
 /// the authored tag, and its attrs typed via the manifest `AttrDecl`s.
 #[derive(Clone, Debug, Serialize)]
@@ -1486,6 +1509,11 @@ pub struct PluginCmd {
     pub asserts: Vec<FactRecord>,
     #[serde(flatten)]
     pub stamp: Stamp,
+    /// 0.51.0 §4.6: the occasions the call's `effects.raises` names, in list
+    /// order (skip-if-empty, appended last: an artifact without them is
+    /// byte-identical).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub raises: Vec<RaiseRecord>,
 }
 
 /// `<quest>` declaration head (dsl 0.2.0 §6.3, IR addendum §3.1). A
@@ -1962,6 +1990,11 @@ pub struct RewardEntry {
     /// applied after the facts through `::accept`'s path.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub accepts: Vec<String>,
+    /// 0.51.0 §4.6: the occasions the kind's `effects.raises` names,
+    /// `@target` bound to `target` (one left unbound is not written).
+    /// Stamped at compile; the host raises them once the grant settles.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub raises: Vec<RaiseRecord>,
 }
 
 impl RewardEntry {
@@ -2001,6 +2034,7 @@ impl RewardEntry {
             retracts: Vec::new(),
             asserts: Vec::new(),
             accepts: Vec::new(),
+            raises: Vec::new(),
         }
     }
 }

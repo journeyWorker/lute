@@ -291,6 +291,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "raise",
     "raiseAtStart",
     "raisedWhen",
+    "raises",
     "rate",
     "raw",
     "rearm",
@@ -912,10 +913,22 @@ mod tests {
             retracts: vec![],
             asserts: vec![],
             accepts: vec![],
+            raises: vec![],
         };
         let without = quest(plain.clone());
         assert!(without.ids.contains(QUEST_REWARDS.as_str()));
         assert!(!without.ids.contains(REWARD_EFFECTS.as_str()));
+        // 0.51.0 §4.6: a declared raise is descriptive — the runtime acts on
+        // nothing, so a raises-only reward needs no effects id either.
+        let raises_only = quest(RewardEntry {
+            raises: vec![crate::ir::RaiseRecord {
+                occasion: "cutscene".into(),
+                target: Some("scene.chapter2".into()),
+            }],
+            ..plain.clone()
+        });
+        assert!(raises_only.ids.contains(QUEST_REWARDS.as_str()));
+        assert!(!raises_only.ids.contains(REWARD_EFFECTS.as_str()));
         for with in [
             RewardEntry {
                 accepts: vec!["second".into()],

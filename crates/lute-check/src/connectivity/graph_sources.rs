@@ -107,7 +107,11 @@ pub(crate) fn start_source(
 /// to run). 0.50.0 §5.4: a quest whose reward's kind `accepts` it is a
 /// source too (the grant runs at its completion, failure or an objective's
 /// completion). A lore entry's `::accept` anchors nothing (the entry is no
-/// source until a `start` reads it); a quest never anchors itself.
+/// source until a `start` reads it); a quest never anchors itself. 0.51.0
+/// §4.5: a declared raise has the same kinds of source
+/// ([`crate::raises::RaiseTable`], each reward once through
+/// [`crate::reward_effects::reward_grant_sites`]), resolved into
+/// [`crate::raises::RaiseAnchors`] before [`crate::connectivity::assemble_graph`] runs.
 pub(crate) fn accept_sources<'a>(
     docs: &'a [ProjectDoc<'a>],
     nodes: &BTreeMap<NodeId, NodeInfo>,

@@ -1,5 +1,6 @@
-//! 0.51.0 §4.3, §4.5 (#170): declared occasion raises — the project raise
-//! table and the per-call target check.
+//! 0.51.0 §4.3–§4.6 (#170): declared occasion raises — the project raise
+//! table, the per-call target check, the graph's raise anchors, the
+//! never-raised warning and the artifact's resolved raises.
 //!
 //! A directive's or reward kind's `effects.raises` (0.51.0 §4.1) promises
 //! that the host raises an occasion after the call's presentation ends, or
@@ -9,36 +10,42 @@
 //! own capability snapshot and each reward against its own
 //! [`crate::ProjectDoc::reward_kinds`]. The sources are `accept_sources`'
 //! kinds — a scene's shots, a lore bundle beat, a quest's body and each of
-//! its rewards once — plus a lore entry's body (a raise that anchors
-//! nothing); a call inside a component body counts at each `::use`, in the
-//! body the expansion builds (arguments bound, param-scoped `<match>`es
-//! folded), stopping at a `::use` cycle; a component file itself is no host.
-//! No synthetic node is created.
+//! its rewards once ([`crate::reward_effects::reward_grant_sites`]) — plus
+//! a lore entry's body (a raise that anchors nothing); a call inside a
+//! component body counts at each `::use`, in the body the expansion builds
+//! (arguments bound, param-scoped `<match>`es folded), stopping at a `::use`
+//! cycle; a component file itself is no host. No synthetic node is created.
 //!
 //! A target resolves by one rule (§4.3): the call's authored attribute value
 //! (an `@def` folds to its constant), else the attribute's declared
 //! `default:`, else it is unbound and the raise does not happen. A value
 //! reading `occasion.target` is the one dynamic target; a reward binds its
-//! quoted `target=`. [`check_project_raise_targets`] reports
-//! [`E_RAISES_TARGET`] for a resolved target outside the occasion's domain or
-//! answered by no scene or beat; [`RaiseTable::reaches`] is the one answerer
-//! rule every consumer shares.
+//! quoted `target=`. The compiler records the same resolution
+//! ([`call_raises`], [`reward_raises`]). [`RaiseTable::reaches`] is the one
+//! answerer rule every consumer shares: [`check_project_raise_targets`]
+//! ([`E_RAISES_TARGET`]), the graph's raise anchors ([`RaiseTable::anchors`]),
+//! [`check_project_never_raised`] ([`W_OCCASION_NEVER_RAISED`]) and the
+//! clock analyses, for which a reached answerer may be raised at any
+//! position (§4.4). A declared raise is a may-edge: it adds no fact, write
+//! or Must claim anywhere (§4.5 "Soundness").
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::relations::KindShape;
 use lute_manifest::schema::{
-    DirectiveDecl, OccasionDecl, OccasionTarget, RaiseDecl, RaiseTargetDecl,
+    DirectiveDecl, OccasionDecl, OccasionTarget, RaiseDecl, RaiseTargetDecl, RaisedBy,
+    RewardEffects,
 };
 use lute_manifest::semantics::beats::OCCASION_TARGET;
 use lute_manifest::types::Literal;
 use lute_syntax::ast::{Arm, Attr, AttrValue, ClipNode, Directive, Node, Quest, Reward};
 
-use crate::beats::{project_beats, ProjectBeat};
+use crate::beats::{project_beats, ProjectBeat, ProjectBeatKind};
 use crate::cel_expand::DefTable;
 use crate::check::FoldedEnv;
+use crate::clock_positions::RaiseRule;
 use crate::component_effects::{bind_component_body, fold_component_matches, use_args_for};
 use crate::connectivity::{bundle_id, scene_key, NodeId};
 use crate::meta::{resolve_doc_kind, DocKind};
@@ -171,6 +178,161 @@ impl<'d> RaiseTable<'d> {
                 RaiseTarget::Unbound => false,
             }
     }
+
+    /// Whether some declared raise reaches `beat` ([`Self::reaches`]) — the
+    /// clock analyses' "raised at every position" (§4.4).
+    pub fn reaches_any(&self, beat: &ProjectBeat<'_>) -> bool {
+        self.sites.iter().any(|s| Self::reaches(s, beat))
+    }
+
+    /// The raise anchors of the root this table was built from (`docs`
+    /// parallel to `foldeds`; 0.51.0 §4.5 "Anchors"): for each scene or
+    /// bundle beat answering an occasion only declared raises raise
+    /// ([`declared_only`]), the source node of every raise reaching it, in
+    /// table order. A lore entry's raise has no source and anchors nothing;
+    /// [`crate::connectivity::assemble_graph`] keeps the sources that are
+    /// graph nodes and leaves a node that declares `after:` as it is.
+    pub fn anchors(&self, docs: &[ProjectDoc<'_>], foldeds: &[&FoldedEnv]) -> RaiseAnchors {
+        let mut by_node: BTreeMap<NodeId, Vec<RaiseFrom>> = BTreeMap::new();
+        if self.sites.is_empty() {
+            return RaiseAnchors { by_node };
+        }
+        for beat in &project_beats(docs, foldeds) {
+            let node = match beat.kind {
+                ProjectBeatKind::Scene => NodeId::Scene(beat.id.clone()),
+                ProjectBeatKind::Bundle => NodeId::Beat(beat.id.clone()),
+                ProjectBeatKind::Entry => continue,
+            };
+            if !declared_only(beat.folded, beat.on) {
+                continue;
+            }
+            for site in self.sites.iter().filter(|s| Self::reaches(s, beat)) {
+                let Some(source) = &site.source else {
+                    continue;
+                };
+                let from = by_node.entry(node.clone()).or_default();
+                if !from
+                    .iter()
+                    .any(|f| &f.source == source && f.shown == site.shown)
+                {
+                    from.push(RaiseFrom {
+                        source: source.clone(),
+                        shown: site.shown.clone(),
+                    });
+                }
+            }
+        }
+        RaiseAnchors { by_node }
+    }
+}
+
+/// Whether only declared raises raise `occasion` (0.51.0 §4.4): it is
+/// declared `raisedBy: declared` and the project clock's `raise:` map does
+/// not raise it ([`RaiseRule::of`]) — a clock-raised occasion is raised
+/// outside any declared raise, so it draws no anchor and no
+/// [`W_OCCASION_NEVER_RAISED`].
+fn declared_only(folded: &FoldedEnv, occasion: &str) -> bool {
+    folded
+        .occasions
+        .get(occasion)
+        .is_some_and(|o| o.raised_by == RaisedBy::Declared)
+        && folded
+            .env
+            .state
+            .clock()
+            .is_none_or(|clock| RaiseRule::of(clock, occasion).is_none())
+}
+
+/// One declared raise that reaches an answerer node: the node whose run
+/// makes it and the call or reward as messages show it.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RaiseFrom {
+    pub source: NodeId,
+    pub shown: String,
+}
+
+/// Every raise anchor of one project root ([`RaiseTable::anchors`]), by
+/// answerer node. Empty for a root without declared raises.
+#[derive(Clone, Debug, Default)]
+pub struct RaiseAnchors {
+    by_node: BTreeMap<NodeId, Vec<RaiseFrom>>,
+}
+
+impl RaiseAnchors {
+    /// The anchors of one root, its raise table built for them alone (a
+    /// caller that runs no other raise pass).
+    pub fn of(docs: &[ProjectDoc<'_>], foldeds: &[&FoldedEnv]) -> Self {
+        RaiseTable::build(docs, foldeds).anchors(docs, foldeds)
+    }
+
+    /// Each anchored answerer with the raises that reach it.
+    pub fn iter(&self) -> impl Iterator<Item = (&NodeId, &[RaiseFrom])> {
+        self.by_node.iter().map(|(n, from)| (n, from.as_slice()))
+    }
+
+    /// The raises that reach `node`, empty when none does.
+    pub fn of_node(&self, node: &NodeId) -> &[RaiseFrom] {
+        self.by_node.get(node).map_or(&[], Vec::as_slice)
+    }
+}
+
+/// A document answers an occasion only declared raises raise, and no
+/// declared raise reaches it (0.51.0 §4.5, whole-project `check`).
+pub const W_OCCASION_NEVER_RAISED: &str = "W-OCCASION-NEVER-RAISED";
+
+/// [`W_OCCASION_NEVER_RAISED`] over one resolved project root (`docs`
+/// parallel to `foldeds`, `table` built from them): every scene, entry or
+/// bundle beat answering a `raisedBy: declared` occasion the clock does not
+/// raise ([`declared_only`]) that no site of `table` reaches
+/// ([`RaiseTable::reaches`]), at its `on`. A `lute play`/`lute test` step
+/// is no raise: a test proves a test, not the game.
+pub fn check_project_never_raised(
+    docs: &[ProjectDoc<'_>],
+    foldeds: &[&FoldedEnv],
+    table: &RaiseTable<'_>,
+) -> Vec<(PathBuf, Diagnostic)> {
+    let declared = foldeds.iter().any(|f| {
+        f.occasions
+            .values()
+            .any(|o| o.raised_by == RaisedBy::Declared)
+    });
+    if !declared {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    for beat in project_beats(docs, foldeds) {
+        if !declared_only(beat.folded, beat.on) || table.reaches_any(&beat) {
+            continue;
+        }
+        let target = beat
+            .target
+            .map(|t| format!(" for `{t}`"))
+            .unwrap_or_default();
+        let declarer = beat
+            .folded
+            .snapshot
+            .occasion_owners
+            .get(beat.on)
+            .map_or_else(|| "its plugin".to_string(), |p| format!("`{p}`"));
+        out.push((
+            beat.path.to_path_buf(),
+            crate::reachability::diag(
+                W_OCCASION_NEVER_RAISED,
+                Severity::Warning,
+                format!(
+                    "{} answers `{}`{target}, which {declarer} declares `raisedBy: declared`, but \
+                     no `effects.raises` in the project raises it — add a `raises` entry to the \
+                     directive or reward kind that leads here, or drop `raisedBy: declared` if \
+                     the host raises `{}` on its own",
+                    beat.name(),
+                    beat.on,
+                    beat.on
+                ),
+                beat.anchor,
+            ),
+        ));
+    }
+    out
 }
 
 /// The walk of one document's raise sources.
@@ -321,8 +483,14 @@ impl<'d> Walk<'_, 'd> {
             let Some(occasion) = folded.occasions.get(&raise.occasion) else {
                 continue;
             };
+            let defs = DefTable {
+                bodies: &folded.def_bodies,
+                params: &folded.env.def_params,
+            };
+            let fold_ref =
+                |raw: &str| crate::def_inline::constant_attr(raw, &defs, &folded.env.state);
             let (target, origin, value_span, written) =
-                self.directive_target(raise, occasion, decl, &d.attrs);
+                directive_target(raise, occasion, decl, &d.attrs, &fold_ref);
             let shown = match (&written, within) {
                 (Some(attr), None) => format!("`::{}{{{attr}}}`", d.tag),
                 (Some(attr), Some(w)) => format!(
@@ -352,134 +520,24 @@ impl<'d> Walk<'_, 'd> {
         }
     }
 
-    /// A directive raise's target (§4.3), with where its value sits and the
-    /// attribute as the call writes it (`scene="chapter2"`). A call in a
-    /// component body arrives already bound to its `::use`'s arguments.
-    fn directive_target(
-        &self,
-        raise: &RaiseDecl,
-        occasion: &OccasionDecl,
-        decl: &DirectiveDecl,
-        attrs: &[Attr],
-    ) -> (RaiseTarget, TargetOrigin, Option<Span>, Option<String>) {
-        let attr = match &raise.target {
-            None => return (RaiseTarget::Untargeted, TargetOrigin::Literal, None, None),
-            Some(RaiseTargetDecl::Literal(t)) => {
-                return (
-                    RaiseTarget::Static(t.clone()),
-                    TargetOrigin::Literal,
-                    None,
-                    None,
-                );
-            }
-            Some(RaiseTargetDecl::Attr(attr)) => attr,
-        };
-        let Some(written) = attrs.iter().find(|a| &a.key == attr) else {
-            // Review051b F6: any declared `default:` is the value, spelled as
-            // an authored one would be (`7`, `true`, `chapter2`); only no
-            // default leaves the target unbound.
-            let default = decl
-                .attrs
-                .iter()
-                .find(|a| &a.name == attr)
-                .and_then(|a| a.default.as_ref());
-            return match default {
-                Some(Literal::Str(v)) => (
-                    static_target(occasion, v),
-                    TargetOrigin::Default,
-                    None,
-                    None,
-                ),
-                Some(other) => (
-                    static_target(occasion, &lute_manifest::types::lit_str(other)),
-                    TargetOrigin::Default,
-                    None,
-                    None,
-                ),
-                None => (RaiseTarget::Unbound, TargetOrigin::Default, None, None),
-            };
-        };
-        let shown = Some(match &written.value {
-            AttrValue::Str(v) => format!("{attr}=\"{v}\""),
-            AttrValue::Ref(slot) => format!("{attr}={}", slot.raw.trim()),
-            AttrValue::BoolTrue => attr.clone(),
-        });
-        let target = match &written.value {
-            AttrValue::Str(v) if v == OCCASION_TARGET => RaiseTarget::Dynamic,
-            AttrValue::Str(v) => static_target(occasion, v),
-            AttrValue::Ref(slot) => {
-                let folded = self.folded;
-                let defs = DefTable {
-                    bodies: &folded.def_bodies,
-                    params: &folded.env.def_params,
-                };
-                crate::def_inline::constant_attr(&slot.raw, &defs, &folded.env.state)
-                    .map_or(RaiseTarget::Unbound, |v| static_target(occasion, &v))
-            }
-            AttrValue::BoolTrue => static_target(occasion, "true"),
-        };
-        (
-            target,
-            TargetOrigin::Authored,
-            Some(written.value_span),
-            shown,
-        )
-    }
-
-    /// Each reward of `quest` (its own and its top-level objectives'), once,
-    /// whose kind declares raises — the grant points 0.50.0 §5.4 admits (an
-    /// `outcome=` other than `failed`, or any on an objective reward, grants
-    /// nothing).
+    /// Each reward of `quest` once whose kind declares raises, at the grant
+    /// points 0.50.0 §5.4 admits ([`crate::reward_effects::reward_grant_sites`]).
     fn rewards(&mut self, quest: &Quest, source: Option<&NodeId>, item: &ProjectDoc<'d>) {
-        let objective_rewards = quest
-            .body
-            .iter()
-            .filter_map(|n| match n {
-                Node::Objective(o) => Some(o),
-                _ => None,
-            })
-            .flat_map(|o| o.rewards.iter().filter(|r| r.outcome.is_none()));
-        let quest_rewards = quest
-            .rewards
-            .iter()
-            .filter(|r| matches!(r.outcome.as_deref(), None | Some("failed")));
-        for reward in objective_rewards.chain(quest_rewards) {
-            self.reward(reward, source, item);
+        for site in crate::reward_effects::reward_grant_sites(quest, item.reward_kinds) {
+            self.reward(site.reward, site.effects, source);
         }
     }
 
-    fn reward(&mut self, reward: &Reward, source: Option<&NodeId>, item: &ProjectDoc<'d>) {
-        let Some(effects) = crate::reward_effects::kind_effects(item.reward_kinds, reward) else {
-            return;
-        };
+    fn reward(&mut self, reward: &Reward, effects: &RewardEffects, source: Option<&NodeId>) {
         let folded: &'d FoldedEnv = self.folded;
         for raise in &effects.raises {
             let Some(occasion) = folded.occasions.get(&raise.occasion) else {
                 continue;
             };
-            let (target, origin, span) = match &raise.target {
-                None => (
-                    RaiseTarget::Untargeted,
-                    TargetOrigin::Literal,
-                    reward.kind_span,
-                ),
-                Some(RaiseTargetDecl::Literal(t)) => (
-                    RaiseTarget::Static(t.clone()),
-                    TargetOrigin::Literal,
-                    reward.kind_span,
-                ),
-                Some(RaiseTargetDecl::Attr(_)) => match &reward.target {
-                    Some(t) => (
-                        static_target(occasion, t),
-                        TargetOrigin::Authored,
-                        reward.target_span.unwrap_or(reward.kind_span),
-                    ),
-                    None => (
-                        RaiseTarget::Unbound,
-                        TargetOrigin::Authored,
-                        reward.kind_span,
-                    ),
-                },
+            let (target, origin) = reward_target(raise, occasion, reward.target.as_deref());
+            let span = match origin {
+                TargetOrigin::Authored => reward.target_span.unwrap_or(reward.kind_span),
+                TargetOrigin::Literal | TargetOrigin::Default => reward.kind_span,
             };
             self.push(RaiseSite {
                 path: self.path,
@@ -510,28 +568,197 @@ impl<'d> Walk<'_, 'd> {
     }
 }
 
+/// A directive raise's target (§4.3), with where its value sits and the
+/// attribute as the call writes it (`scene="chapter2"`): the call's
+/// authored value, else the attribute's declared `default:`, else unbound.
+/// `fold_ref` folds an `@def` value to its constant (the checker's
+/// `def_inline::constant_attr`; the compiler's values arrive folded). A call
+/// in a component body arrives already bound to its `::use`'s arguments.
+fn directive_target(
+    raise: &RaiseDecl,
+    occasion: &OccasionDecl,
+    decl: &DirectiveDecl,
+    attrs: &[Attr],
+    fold_ref: &dyn Fn(&str) -> Option<String>,
+) -> (RaiseTarget, TargetOrigin, Option<Span>, Option<String>) {
+    let attr = match &raise.target {
+        None => return (RaiseTarget::Untargeted, TargetOrigin::Literal, None, None),
+        Some(RaiseTargetDecl::Literal(t)) => {
+            return (
+                RaiseTarget::Static(t.clone()),
+                TargetOrigin::Literal,
+                None,
+                None,
+            );
+        }
+        Some(RaiseTargetDecl::Attr(attr)) => attr,
+    };
+    let Some(written) = attrs.iter().find(|a| &a.key == attr) else {
+        // Review051b F6: any declared `default:` is the value, spelled as
+        // an authored one would be (`7`, `true`, `chapter2`); only no
+        // default leaves the target unbound.
+        let default = decl
+            .attrs
+            .iter()
+            .find(|a| &a.name == attr)
+            .and_then(|a| a.default.as_ref());
+        return match default {
+            Some(Literal::Str(v)) => (
+                static_target(occasion, v),
+                TargetOrigin::Default,
+                None,
+                None,
+            ),
+            Some(other) => (
+                static_target(occasion, &lute_manifest::types::lit_str(other)),
+                TargetOrigin::Default,
+                None,
+                None,
+            ),
+            None => (RaiseTarget::Unbound, TargetOrigin::Default, None, None),
+        };
+    };
+    let shown = Some(match &written.value {
+        AttrValue::Str(v) => format!("{attr}=\"{v}\""),
+        AttrValue::Ref(slot) => format!("{attr}={}", slot.raw.trim()),
+        AttrValue::BoolTrue => attr.clone(),
+    });
+    let target = match &written.value {
+        AttrValue::Str(v) if v == OCCASION_TARGET => RaiseTarget::Dynamic,
+        AttrValue::Str(v) => static_target(occasion, v),
+        AttrValue::Ref(slot) => {
+            fold_ref(&slot.raw).map_or(RaiseTarget::Unbound, |v| static_target(occasion, &v))
+        }
+        AttrValue::BoolTrue => static_target(occasion, "true"),
+    };
+    (
+        target,
+        TargetOrigin::Authored,
+        Some(written.value_span),
+        shown,
+    )
+}
+
+/// A reward raise's target: its literal, or the reward's quoted `target=`
+/// for `@target` (unbound without one — the 0.49.0 §3.3 rule `accepts`
+/// follows).
+fn reward_target(
+    raise: &RaiseDecl,
+    occasion: &OccasionDecl,
+    target: Option<&str>,
+) -> (RaiseTarget, TargetOrigin) {
+    match (&raise.target, target) {
+        (None, _) => (RaiseTarget::Untargeted, TargetOrigin::Literal),
+        (Some(RaiseTargetDecl::Literal(t)), _) => {
+            (RaiseTarget::Static(t.clone()), TargetOrigin::Literal)
+        }
+        (Some(RaiseTargetDecl::Attr(_)), Some(t)) => {
+            (static_target(occasion, t), TargetOrigin::Authored)
+        }
+        (Some(RaiseTargetDecl::Attr(_)), None) => (RaiseTarget::Unbound, TargetOrigin::Authored),
+    }
+}
+
+/// One raise as the artifact records it (0.51.0 §4.6): the occasion and the
+/// target it is raised for, `None` for an untargeted occasion. A dynamic
+/// target keeps the `occasion.target` reference with the occasion's domain
+/// prefix applied, as any value gets it (`scene.occasion.target`); the
+/// runtime binds the reference to the member the beat runs for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct WireRaise {
+    pub occasion: String,
+    pub target: Option<String>,
+}
+
+impl WireRaise {
+    /// `None` for an unbound target: the raise does not happen.
+    fn of(name: &str, occasion: &OccasionDecl, target: RaiseTarget) -> Option<Self> {
+        let target = match target {
+            RaiseTarget::Untargeted => None,
+            RaiseTarget::Static(t) => Some(t),
+            RaiseTarget::Dynamic => Some(prefixed(occasion, OCCASION_TARGET)),
+            RaiseTarget::Unbound => return None,
+        };
+        Some(WireRaise {
+            occasion: name.to_string(),
+            target,
+        })
+    }
+}
+
+/// The raises one directive call records, in list order — `decl`'s
+/// `effects.raises` on an occasion of `occasions`, each target resolved as
+/// [`RaiseTable::build`] resolves it (authored, then `default:`), an unbound
+/// one left out. `attrs` are the call's, every `@def` already folded.
+pub fn call_raises(
+    decl: &DirectiveDecl,
+    occasions: &BTreeMap<String, OccasionDecl>,
+    attrs: &[Attr],
+) -> Vec<WireRaise> {
+    let Some(effects) = decl.effects.as_ref() else {
+        return Vec::new();
+    };
+    effects
+        .raises
+        .iter()
+        .filter_map(|raise| {
+            let occasion = occasions.get(&raise.occasion)?;
+            let (target, ..) = directive_target(raise, occasion, decl, attrs, &|_| None);
+            WireRaise::of(&raise.occasion, occasion, target)
+        })
+        .collect()
+}
+
+/// The raises one granted reward records, in list order: `effects.raises`
+/// on an occasion of `occasions`, `@target` bound to the reward's quoted
+/// `target=` (left out without one).
+pub fn reward_raises(
+    effects: &RewardEffects,
+    occasions: &BTreeMap<String, OccasionDecl>,
+    target: Option<&str>,
+) -> Vec<WireRaise> {
+    effects
+        .raises
+        .iter()
+        .filter_map(|raise| {
+            let occasion = occasions.get(&raise.occasion)?;
+            WireRaise::of(
+                &raise.occasion,
+                occasion,
+                reward_target(raise, occasion, target).0,
+            )
+        })
+        .collect()
+}
+
 /// A resolved value as the target the occasion is raised for: a domain
 /// occasion's prefix applied (`chapter2` → `scene.chapter2`), the value
 /// itself for a shape-only target.
 fn static_target(occasion: &OccasionDecl, value: &str) -> RaiseTarget {
-    RaiseTarget::Static(match &occasion.target {
+    RaiseTarget::Static(prefixed(occasion, value))
+}
+
+/// `value` with a domain occasion's prefix applied.
+fn prefixed(occasion: &OccasionDecl, value: &str) -> String {
+    match &occasion.target {
         OccasionTarget::Domain { prefix, .. } => format!("{prefix}.{value}"),
         OccasionTarget::Shape(_) => value.to_string(),
-    })
+    }
 }
 
 /// [`E_RAISES_TARGET`] over one resolved project root (`docs` parallel to
-/// `foldeds`, whole-project `check`): each static target of a declared raise
-/// (a dynamic `occasion.target` is the runtime's, an unbound one raises
-/// nothing) must lie in the occasion's domain — its `members:` when listed,
-/// else its entity kind (a value from an attribute or a reward's `target=`
-/// outside the kind is already refused there) — and be answered by some
-/// scene or beat ([`RaiseTable::reaches`]). One diagnostic per site.
+/// `foldeds`, `table` built from them; whole-project `check`): each static
+/// target of a declared raise (a dynamic `occasion.target` is the
+/// runtime's, an unbound one raises nothing) must lie in the occasion's
+/// domain — its `members:` when listed, else its entity kind (a value from
+/// an attribute or a reward's `target=` outside the kind is already refused
+/// there) — and be answered by some scene or beat ([`RaiseTable::reaches`]).
+/// One diagnostic per site.
 pub fn check_project_raise_targets(
     docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
+    table: &RaiseTable<'_>,
 ) -> Vec<(PathBuf, Diagnostic)> {
-    let table = RaiseTable::build(docs, foldeds);
     if table.sites.is_empty() {
         return Vec::new();
     }
