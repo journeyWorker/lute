@@ -402,7 +402,7 @@ The index carries the document table plus the **union** of every artifact's `ent
 ```json
 {
   "irVersion": "0.10.0",
-  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
   "requiredSemantics": [
     "lute.core/1",
     "lute.quest.lifecycle/1"
@@ -645,7 +645,7 @@ Since 0.22.0 the surface also carries `defs` (each named condition's `name`, `ty
 
 ```json
 {
-  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
   "textModifiers": {
     "core": [
       {
@@ -1153,26 +1153,24 @@ Row kinds are `line`, `choice` (an option label, `key` `{branchOrHubId}.{choiceI
 kind,file,line,lineId,code,speaker,key,text,sourceFile,sourceLine,sourceHash
 ```
 
-Since 0.51 there is a fourth kind, `directive`: one row per [`text` attribute](/language/dialogue-and-cast/#localizable-directive-text-since-051) of a plugin directive, in document order (a directive's attributes in declaration order). Its `key` is `{tag}.{attr}`, its `lineId` is `{prefix}~{tag}~{code}~{attr}`, and its `code` is the directive's authored `code`. As for a line, `lineId` is reproducible only when `code` is authored; otherwise it is `null` (JSON) or empty (CSV), so run `lute tag` first. The JSON row carries `kind`, `file`, `line`, `lineId`, `code`, `key`, `text`, `source` and `sourceHash`. In CSV the existing columns are used, with `kind` `directive`, `code` and `key` filled and `speaker` empty; no column is added:
+Since 0.51 there is a fourth kind, `directive`: one row per [`text` attribute](/language/dialogue-and-cast/#localizable-directive-text-since-051) of a plugin directive, in document order (a directive's attributes in declaration order). Its `key` is `{tag}.{attr}`, its `lineId` is `{prefix}~{tag}~{code}~{attr}`, and its `code` is the directive's authored `code`. As for a line, `lineId` is reproducible only when `code` is authored; otherwise it is `null` (JSON) or empty (CSV), and the stderr advisory counts them (`N directive texts untagged — run lute tag`). The JSON row carries `kind`, `file`, `line`, `lineId`, `code`, `key`, `text`, `source` and `sourceHash`. In CSV the existing columns are used, with `kind` `directive`, `code` and `key` filled and `speaker` empty; no column is added. The `::banner` of [`docs/examples/flow-and-text`](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text) (`lute loc export --project docs/examples/flow-and-text`):
 
-<!-- rerun-after-S8 -->
 ```json
 {
-  "kind": "directive",
-  "file": "scenes/intro.lute",
-  "line": 3,
-  "lineId": "intro~banner~0010~title",
   "code": "0010",
+  "file": "docs/examples/flow-and-text/scenes/hall.lute",
   "key": "banner.title",
-  "text": "Welcome to the hall, {{userName}}",
+  "kind": "directive",
+  "line": 18,
+  "lineId": "hall~banner~0010~title",
   "source": null,
-  "sourceHash": "sha256:…"
+  "sourceHash": "sha256:fde24517faf3…",
+  "text": "Welcome to the hall, {{userName}}"
 }
 ```
 
-<!-- rerun-after-S8 -->
 ```text
-directive,scenes/intro.lute,3,intro~banner~0010~title,0010,,banner.title,"Welcome to the hall, {{userName}}",,,sha256:…
+directive,docs/examples/flow-and-text/scenes/hall.lute,18,hall~banner~0010~title,0010,,banner.title,"Welcome to the hall, {{userName}}",,,sha256:fde24517faf3…
 ```
 
 (The hash is shortened here.)
@@ -1215,7 +1213,7 @@ $ lute loc report [--project <DIR>] [--json]
 
 Word-count and line-count report per document and per speaker — a production-planning view over the same content lines. Choice labels are counted (`choices`) but their words are not; branch/hub prompts are counted (`prompts`, since 0.47 — report version `0.47.0.loc-report`) and their words are included in the document and project word totals (they have no speaker). `--json` emits the report as JSON instead of human table lines. Exit **0** on success, **2** on I/O.
 
-Since 0.51 a directive's `text` attributes count like prompts: their words join the document and project word totals (they have no speaker), and a count `directiveTexts` appears in the JSON and in the human output only when it is nonzero.
+Since 0.51 a directive's `text` attributes count like prompts: their words join the document and project word totals (they have no speaker). In the JSON a document and `totals` carry `directiveTexts` only when it is nonzero; the human table gains a `directive texts` column, and its summary a `N directive text(s)` count, only when the project has any.
 
 ## --explain
 

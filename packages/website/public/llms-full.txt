@@ -700,7 +700,7 @@ $ lute compile my-scene.lute
   "kind": "scene",
   "lute": "0.50.0",
   "irVersion": "0.50.0",
-  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
   "requiredSemantics": [
     "lute.core/1"
   ],
@@ -1014,7 +1014,7 @@ CEL conditions (standard CEL profile):
     now() -> int
     visited(string) -> bool
   relation arguments: use list form, e.g. holds('inParty', ['elena', '_']); single quotes are required inside double-quoted attributes
-capabilitySnapshot: babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a
+capabilitySnapshot: 529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae
 permissions: unrestricted (authoring/compile-time restrictions; not runtime sandbox enforcement)
 directives (13):
   actor: character: string (required), anchor: domain:anchor, action: domain:action, emotion: domain:emotion, costume: domain:costume   [reads.onStage usesAnchor mayExitCharacter writes.characterState]
@@ -3356,7 +3356,7 @@ defs:
 | `<branch id>` | A menu. The pick is recorded in `scene.choices.<id>`, which clears when the scene ends. At least one choice must be unguarded (`E-BRANCH-ALL-GUARDED`). Optional `prompt=` and `timeout="N"`. |
 | `<choice id text>` | `text=` is what the player sees. `when=` guard. `into="run.x"` writes `true`, or `value=` for numeric (`int`/`double`) and enum paths, so later scenes can read it. The IR's `choice` and `hub` records name the path a pick lands in as `selectionKey` (`scene.choices.greet`). |
 | `<hub id>` | Re-presents eligible choices until an `exit`. `once` removes a choice after one take. It needs an unguarded `exit`, or every choice `once` (`E-HUB-NO-EXIT`). Each pick sets `scene.visited.<hub>.<choice>`. Optional `prompt=` (0.23.0) is the question shown with the options; an empty one is `E-BRANCH-PROMPT`. |
-| `::jump{to when}` | A forward-only jump to a `::label{name}` in the same document (labels share one document-wide namespace; a repeated name is `E-LABEL-DUP`). A section heading or `{#id}` is not a target (`E-JUMP-UNDEFINED`). A backward jump is `E-JUMP-BACKWARD`. Without `when`, the content after it is dead (`W-CODE-AFTER-JUMP`). `::label` emits no record and takes no `when=`. Since 0.26.0 `lute trace` and `lute test` follow a taken jump to its label (the trace shows `<jump -> outro>`), as `lute play` does. |
+| `::jump{to when max}` | A jump to a `::label{name}` in the same document (labels share one document-wide namespace; a repeated name is `E-LABEL-DUP`). It goes forward. Since 0.51, `max="N"` (a literal integer from 1 to 99) lets it go back to an earlier label at most N times, then control falls through ([Bounded jumps](#bounded-jumps-declared-raises-directive-text--pair-lints-051)). A backward jump without `max` is `E-JUMP-BACKWARD`; `max` on a forward jump is `E-JUMP-MAX`. A section heading or `{#id}` is not a target (`E-JUMP-UNDEFINED`). Without `when`, and without `max`, the content after it is dead (`W-CODE-AFTER-JUMP`). `::label` emits no record and takes no `when=`. Since 0.26.0 `lute trace` and `lute test` follow a taken jump to its label (the trace shows `<jump -> outro>`), as `lute play` does. |
 | `::end{reason}` | Ends the scene. In `lute play` it ends only the presentation (or quest handler) it runs in; the playthrough goes on. Content after it in the same body is `W-CODE-AFTER-END`. |
 | `::accept{quest}` | Takes up an accept-driven quest (no `start`, or a child with `activate="accept"`). `at="nextRun"` (0.24.0) queues it until right after the next `newRun` reset; any other `at` is `E-ACCEPT-TARGET`. Takes `when=` (0.26.0). See [Quests](#quests). |
 
@@ -4334,6 +4334,77 @@ custom:
 
 → [Plugin manifests](/plugins/manifests/) · [CLI](/tooling/cli/) · [Linting](/tooling/linting/)
 
+## Bounded jumps, declared raises, directive text & pair lints (0.51)
+
+A `::jump` goes back to an earlier `::label` when it carries `max`, the most times it may be taken. After `max` takes, control falls through. `max` is a literal integer from 1 to 99 (`E-JUMP-MAX` otherwise, and on a forward jump). A loop stays inside one body (`E-JUMP-LOOP-SCOPE`), is entered only at its head label (`E-JUMP-INTO-LOOP`), and nests rather than overlaps (`E-JUMP-LOOP-CROSS`). A loop that must re-offer a menu until an `exit` choice is a `<hub>`.
+
+```lute
+::label{name="attempt"}
+::tryLock{door="vault"}
+<match subject="scene.lock.vault.won">
+  <when is="false">
+    @mira: Again!
+    ::jump{to="attempt" max="2"}
+  </when>
+  <when is="true">
+    @mira: It clicks open.
+  </when>
+</match>
+@theo: That's enough for today.
+```
+
+A directive or reward kind can declare the occasions the **host** raises after the call or the grant. An occasion marked `raisedBy: declared` is raised only through a declared `raises`; `lute scenario` draws a `[raises]` edge from the raiser to every scene or beat that answers it, and `W-OCCASION-NEVER-RAISED` warns when nothing raises it. A declared raise is possible, never guaranteed: it adds no fact, write or Must claim.
+
+```yaml
+# plugins/acme.stage/occasions/o.yaml
+occasions:
+  cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
+# plugins/acme.stage/directives/d.yaml
+directives:
+  - name: playScene
+    attrs:
+      - { name: scene, required: true, type: { entity: cutsceneId } }
+    effects:
+      raises: [{ occasion: cutscene, target: "@scene" }]
+# plugins/acme.stage/rewardkinds/r.yaml
+rewardKinds:
+  CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }
+```
+
+The `target` of a raise is `@<attr>` on a directive, `@target` on a reward kind, or a literal (`scene.chapter2`). `E-PLUGIN-RAISES` (assembly) and `E-RAISES-TARGET` (project) check it.
+
+An attribute typed `text` is localizable player-visible text. A directive that has one takes `code=`, and its translation key is `{prefix}~{tag}~{code}~{attr}`; `lute tag` writes the missing codes, and `lute loc export` / `import` / `report` handle the text as `kind: "directive"` rows.
+
+```yaml
+directives:
+  - name: banner
+    attrs:
+      - { name: title,    required: true, type: text }
+      - { name: subtitle, type: text }
+```
+
+```lute
+::banner{code="0010" title="Welcome to the hall, {{userName}}"}
+```
+
+A `pair` lint finds an opener that is never closed, a close with no opener, an opener inside an open pair, and rows not allowed `inside` a pair. `scope: body` (default) pairs siblings of one body; `scope: section` pairs rows in document order at any depth.
+
+```yaml
+custom:
+  - id: group-balanced
+    target: pair
+    open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'
+    scope: body
+    level: error
+    message: "::group begin/end"
+```
+
+`list`, `map` and `record` attribute types stay refused (structured authoring is not supported yet): give each field its own attribute, use a `text` attribute for player-visible text, or write a list of options as `<choice>` elements.
+
+→ [Directives](/language/directives/) · [Plugin manifests](/plugins/manifests/) · [Linting](/tooling/linting/) · [Porting a content set](/guides/porting-a-content-set/)
+
 ## Compiled artifact
 
 `lute compile` writes the execution IR. The envelope carries `kind`, `lute`, `irVersion`,
@@ -4609,7 +4680,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-MISSING-ATTR` | A required attribute is missing: `::actor` without `character`, `::cg` / `::video` without `assetId`, `::sequence` without `name`. |
 | `E-MONO-POV` / `E-MONO-NO-POV` | A `{mono}` line's speaker is neither the point of view nor in `monoSpeakers:`, or no `pov:` resolves at all (the document's, else the project's `defaults.pov`). |
 | `E-TEXT-MODIFIER` / `E-TEXT-ESCAPE` | An inline modifier is malformed: unclosed, a positional value (`:pause{0.5}` for `:pause{s=0.5}`), attributes on a text style; or an unknown `\` escape. |
-| `E-LABEL-DUP` / `E-JUMP-UNDEFINED` / `E-JUMP-BACKWARD` | Two `::label`s share a name; a `::jump` names no label in the document (a section is not one); a `::jump` points backward. |
+| `E-LABEL-DUP` / `E-JUMP-UNDEFINED` / `E-JUMP-BACKWARD` | Two `::label`s share a name; a `::jump` names no label in the document (a section is not one); a `::jump` points backward without `max` (since 0.51, `max="N"` allows N takes). |
 | `E-REWARD-DUP` | Two rewards of one quest share an `id`. |
 | `E-AUTHOR-CASE` | An authored key contains `_`. Write it in lowerCamelCase. |
 | `E-UNDECLARED` / `E-UNDECLARED-REF` | The state path, or the `@def`, is not declared, or its schema is not imported. |
@@ -4653,6 +4724,9 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-DISPLAY-NAME-DUP` | 0.26.0, whole-project `check` and `lute lint`. Two speakers are shown with the same display name: two cast `name:`s, a cast name and a `::use{… name="…"}` string, or two such strings. Rename one, or mark an intended role name `sharedName: true` on the cast entries. |
 | `E-PLUGIN-STAMP-SURFACE` | 0.50. A `stampAttrs` `on:` names something that is not `line`, `branch`, `hub`, `choice` or a stampable directive of the resolved profile (a typo, `jump`/`label`/`clear`, or a directive of an inactive plugin). Fix the name, or `depends:` on the plugin that declares the directive. |
 | `E-DIAGNOSTICS-CONFIG` | 0.50. A `diagnostics:` entry in `lute.project.yaml` is malformed or illegal: an `E-*` or `L-*` code, an unknown code, a bad level, or bad `paths`. Only `W-*` codes can be re-levelled. |
+| `E-JUMP-MAX` / `E-JUMP-LOOP-SCOPE` / `E-JUMP-INTO-LOOP` / `E-JUMP-LOOP-CROSS` | 0.51. `max` is not a literal integer from 1 to 99 or sits on a forward jump; a loop leaves its body or spans an `<on>`/`<objective>`; a forward jump enters a loop after its head; two loops overlap without nesting. |
+| `E-PLUGIN-RAISES` / `E-RAISES-TARGET` / `W-OCCASION-NEVER-RAISED` | 0.51. A `raises` entry names an unknown occasion or a target of the wrong shape; a resolved raise target is outside the domain or answered by no scene or beat; a `raisedBy: declared` occasion has an answerer that nothing raises. |
+| `E-LINE-CODE-RESERVED` / `E-LINE-ID-DUP` | 0.51. A `code` contains `~`; two localization units share one final `lineId`. |
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. An entry that can be read again in a run (a lookup entry, no `once`, a `once` shorter than the run, `spentBy`, `for`) `::set`s, `::retract`s or calls an effect-only directive that writes: its writes apply on the first read in a run only. Use `<beat … once="false">` for a repeating write, `once="run"`, or a `when="!entry.<id>.read"` guard. `::assert` is exempt. |
 | `E-COMPONENT-ARG` | A `::use` argument does not fit its param, or names none. Since 0.26.0 also `@@x:` for a param that is not a `speaker` param, or outside a component. |
 | `E-UNKNOWN-ATTR` | An attribute the directive does not declare. Since 0.26.0 also `when=` on a directive that lowers to a built-in record (the core staging directives such as `::bg` and `::sfx`, `::end`, `::label`, a plugin `lower:` record), and a plugin attribute named `when`. |
@@ -5551,14 +5625,14 @@ What Lute does **not** know:
 Ink and Yarn Spinner are flows: text runs down the page, and a divert or a jump sends it anywhere,
 back up included. Lute splits that job in two:
 
-- **Inside a scene** the text runs forward only. Menus are `<branch>` (asked once) and `<hub>`
+- **Inside a scene** the text runs forward, with one way back: a counted `::jump … max` loop. Menus are `<branch>` (asked once) and `<hub>`
   (asked again until the player leaves), and state picks between lines with `<match>` and `when=`.
 - **Between scenes** nothing diverts. The engine raises an **occasion** ("the next chapter", "the
   player talks to Tilly"), and every scene says which occasion it answers. Order comes from
   `after:`, `priority:` and the manifest's `chapters:`. [Connect scenes into a
   story](/getting-started/connect-scenes/) walks through it.
 
-Because no path can jump backward or loop on its own, the checker can follow every path through
+Because every loop is counted and well-nested, and nothing else jumps backward, the checker can follow every path through
 a scene, which is what lets it prove that none of them dead-ends.
 
 ## The map
@@ -5569,7 +5643,8 @@ a scene, which is what lets it prove that none of them dead-ends.
 | `= stitch` | — | a `## heading` section inside the scene (a section is not a jump target) |
 | `-> knot`, to the next part of the story | `<<jump Node>>` | another scene that answers an occasion (`on:`), ordered by `after:` or `chapters:` |
 | `-> knot`, back to a menu the player returns to | `<<jump>>` back to a hub node | a `<hub>`: after each choice it asks again, until an `exit` choice |
-| `-> label`, to a labelled gather further down | — | `::jump{to="label"}` to a `::label{name="label"}` further down, forward only |
+| `-> label`, to a labelled gather further down | — | `::jump{to="label"}` to a `::label{name="label"}` further down |
+| `-> label`, back to an earlier gather, repeated | `<<jump>>` back to the start of a retry | `::jump{to="label" max="3"}` to an earlier `::label`, at most `max` times (0.51); see [Loops and back-diverts](#loops-and-back-diverts) |
 | `* [choice]`, once only | `-> option <<once>>` | a hub `<choice … once>`; a `<branch>` asks only once anyway |
 | `+ [choice]`, sticky | `-> option` | a plain `<choice>` in a `<hub>` |
 | `- gather` | the lines after the options | the lines after `</branch>`, which run whichever choice was taken |
@@ -5783,12 +5858,40 @@ occasion presents the next one. Ink's `{cond: -> a | -> b}` is two scenes on the
 each with a `when:`; when the two conditions cannot both hold, the checker accepts them at the
 same priority. [Connect scenes into a story](/getting-started/connect-scenes/) builds exactly this.
 
-Inside a scene, `::jump{to="…"}` jumps forward to a `::label{name="…"}` later in the same
-document. It never jumps backward: a menu the player comes back to is a `<hub>`, and a scene that
-plays again answers its occasion again. A `## heading` section is not a jump target — not even
+Inside a scene, `::jump{to="…"}` jumps to a `::label{name="…"}` in the same document. Without
+`max` it only goes forward; a menu the player comes back to is a `<hub>`, and a scene that plays
+again answers its occasion again. A `## heading` section is not a jump target — not even
 one with a `{#id}` suffix, which is stable identity metadata only — so put a `::label` under the
 heading you want to reach. Neither is a choice id (Ink's labelled choice `* (inside)`): a choice
 id names the pick, not a place in the text.
+
+### Loops and back-diverts
+
+Since 0.51, Ink's `-> label` back to an earlier gather and Yarn's `<<jump Node>>` back to the start
+of a retry have a spelling: `::jump{to="…" max="N"}` to an earlier `::label`, taken at most `N`
+times (a literal 1 to 99), after which control falls through:
+
+```lute
+::label{name="again"}
+@narrator: The latch is stuck.
+<branch id="try">
+  <choice id="pull" text="Pull it">
+    ::jump{to="again" max="3"}
+  </choice>
+  <choice id="leave" text="Leave it">
+    @narrator: You leave it.
+  </choice>
+</branch>
+```
+
+The limits are where Lute differs from a free divert. A loop is always counted: a divert that
+repeats until a condition changes has no spelling, because the bound is a literal from 1 to 99
+(an `@ref`, `0` or a larger number is `E-JUMP-MAX`). The label must be in the same body as the jump
+or in a body around it, through `<choice>` and `<match>` arm bodies only, so a loop cannot leave a
+`<hub>` option, an `<on>` or `<objective>`, or a section (`E-JUMP-LOOP-SCOPE`); a loop is entered
+only at its label (`E-JUMP-INTO-LOOP`); and loops nest, never overlap (`E-JUMP-LOOP-CROSS`). A jump
+back to a different scene is still an occasion, not a jump. When the player decides when to stop —
+"ask again until I leave" — use a `<hub>`; see [a hub, or a loop](/language/choices-and-hubs/#a-hub-or-a-loop).
 
 `visited('<scene id>')` asks whether a scene has ever been presented. It is true or false, not
 a count, and it covers the whole save: it stays true after a new run starts.
@@ -5901,7 +6004,7 @@ in conditions:
 ```
 $ lute check flow.lute
 flow.lute:12:1: error [E-UNKNOWN-DIRECTIVE] unknown directive `::goto` — did you mean `::jump{to="…"}`? It jumps forward to a `::label{name="…"}`
-flow.lute:13:12: error [E-JUMP-BACKWARD] `::jump` targets label `top`, which is not forward of this `::jump` in document order — `::jump` only jumps forward; to offer choices again, use a `<hub>` (it asks until an `exit` choice is taken)
+flow.lute:13:12: error [E-JUMP-BACKWARD] `::jump` targets label `top`, which is not forward of this `::jump` in document order — `::jump` only jumps forward unless it carries `max`: `::jump{to="top" max="3"}` repeats at most 3 times; to offer choices again, use a `<hub>` (it asks until an `exit` choice is taken)
 flow.lute:18:12: error [E-JUMP-UNDEFINED] `::jump` targets `Gallery`, which no `::label` in this document declares — `Gallery` is the `## Gallery` heading, not a label; a `::jump` target is a `::label{name="…"}` later in this document, so put `::label{name="Gallery"}` under that heading
 failed: flow.lute (3 error(s), 0 warning(s))
 $ lute check cond.lute
@@ -5943,6 +6046,12 @@ lute lint  --project docs/examples/plugin-surfaces
 
 The plugin manifest vocabulary is on [Plugin manifests](/plugins/manifests/). This page collects the
 port recipes around it.
+
+Since 0.51 the guide also covers the problems that issues #159, #165, #170, #172 and #176 reported:
+[retry loops](#retry-loops-with-a-bounded-jump), [scenes that a directive or a reward raises](#scenes-that-a-directive-or-a-reward-raises),
+[directive text that players read](#text-in-a-directive-that-players-read), [balance rules](#balance-rules-with-pair) and
+[structured attribute values](#structured-values-are-not-supported-yet). The runnable project for these is
+[`docs/examples/flow-and-text/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text).
 
 ## Columns become stamps on the surface they belong to
 
@@ -6459,8 +6568,318 @@ lints:
     options: { keys: { plain: [L1, R1], timed: [T1] } }
 ```
 
-Balance rules (an opener that must be closed) are not `node` lints; a `pair` target is planned for a
-later release. See [Linting](/tooling/linting/) for the rest of `lute.lint.yaml`.
+### Balance rules with `pair`
+
+A balance rule is a rule about an opener that must be closed: `::group{mode="begin"}` and
+`::group{mode="end"}`, a window that opens and closes. It is a `target: pair` lint (since 0.51), in the same
+places as a `node` lint. A `pair` rule declares `open` and `close` predicates over the same `node` row, an
+optional `inside` predicate, and a `scope`; it has no `when`. A `pair` rule with a `when`, or any other rule
+with `open`, `close`, `inside` or `scope`, is `E-PLUGIN-PARSE` in a plugin's `lints:` and `E-LINT-CONFIG` in
+`lute.lint.yaml`.
+
+```yaml
+lints:
+  - id: group-balanced
+    target: pair
+    open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'   # optional
+    scope: body                                                    # body (default) | section
+    level: error
+    message: "::group begin/end"
+```
+
+```lute
+::group{mode="begin"}
+@mira: Look at this.
+@tomas: And this.
+::group{mode="end"}
+```
+
+That pair is balanced. Each scope runs one pass with one open slot:
+
+- **`scope: body`** (the default) pairs the direct children of each body, in order: the rows that are
+  siblings. **`scope: section`** pairs every row of one section or declaration in document order, at every
+  depth, so an `open` in one `<choice>` and a `close` in its sibling pair up. `section` is document order,
+  not paths.
+- A row for which `close` holds while a pair is open closes it. A row that satisfies both `open` and `close`
+  is a close while a pair is open, and an open otherwise.
+- A row for which `open` holds while a pair is open is a **nested open**: the outer pair stays open. A row
+  for which `close` holds with no pair open is an **unopened close**. At the end of the scope, an open pair
+  is an **unclosed open**.
+- With `inside`, every row strictly between an open and its close for which `inside` is false is an
+  **inside fault**. In `body` scope only siblings count, not their descendants.
+
+Each finding carries the rule's code and level, sits on the offending row, and appends a fixed phrase to
+the rule's `message`: ` — opened here, with no close in this body` (`in this section` for `section` scope),
+` — a close with no open pair in this body`, ` — opened again while the pair from line N is still open`, and
+` — not allowed inside the pair opened at line N`. A nested open and an inside fault name the open row as a
+related location.
+
+An `inside` violation: the `::bg` between the markers is not a line, `::actor` or `::sfx`, so the rule above
+reports it as not allowed inside the pair opened at line 1.
+
+```lute
+::group{mode="begin"}
+@mira: Look at this.
+::bg{location="street" time="night"}
+::group{mode="end"}
+```
+
+A pair can span a branch. With `scope: section`, a begin before a `<branch>` and an end after it pair
+up, and so would a begin inside one `<choice>` and an end inside the next, which a `body` rule would report
+as an unclosed open and an unopened close:
+
+```yaml
+lints:
+  - id: window-balanced
+    target: pair
+    open:   'node.tag == "window" && "mode" in node.attrs && node.attrs["mode"] == "open"'
+    close:  'node.tag == "window" && "mode" in node.attrs && node.attrs["mode"] == "close"'
+    scope: section
+    level: error
+    message: "::window open/close"
+```
+
+```lute
+::window{mode="open"}
+<branch id="buy" prompt="Buy something?">
+  <choice id="yes" text="Yes">
+    @shopkeeper: Here you go.
+  </choice>
+  <choice id="no" text="No">
+    @shopkeeper: Next time.
+  </choice>
+</branch>
+::window{mode="close"}
+```
+
+The guard rule of the node lints holds here too: write `"mode" in node.attrs && …`, because a missing key in an
+unguarded predicate is `E-LINT-EXPR` and stops that rule for the document. Each row costs at most three
+predicate calls per `pair` rule. See [Linting](/tooling/linting/) for the rest of `lute.lint.yaml`.
+
+## Retry loops with a bounded `::jump`
+
+A sheet row like "play the minigame, and offer it again if the player fails, at most twice" is a loop. Before
+0.51 `::jump` could only go forward, so an importer unrolled the loop or hid it in a passthrough directive that no
+analysis could see. Since 0.51 a `::jump` that carries `max` may target an **earlier** `::label`:
+
+```lute
+::label{name="attempt"}
+::tryLock{door="vault"}
+<match subject="scene.lock.vault.won">
+  <when is="false">
+    @mira: Again!
+    ::jump{to="attempt" max="2"}
+  </when>
+  <when is="true">
+    @mira: It clicks open.
+  </when>
+</match>
+@theo: That's enough for today.
+```
+
+`::tryLock` is a blocking bridge call that writes `scene.lock.vault.won` from the host's answer. `max` is the
+number of times the jump may be taken: after `max` takes it is not taken and control falls through to the next
+node, so this loop asks at most three times (once, then two retries).
+
+- **`max` is a literal integer from 1 to 99.** An `@ref`, `0`, a negative number or a number above 99 is
+  `E-JUMP-MAX`, since a loop bound is static. `max="two"` is only `E-ATTR-TYPE`. `max` on a jump that goes forward
+  is `E-JUMP-MAX` too, because it means nothing there. A backward jump without `max` stays `E-JUMP-BACKWARD`, and
+  its message now names `max` and the `<hub>` for offering choices again.
+- **`when=` and `max` combine:** the jump is taken while `when` holds and takes remain.
+- **A loop stays in one body.** The label must be in the jump's own body, or in a body that encloses it through
+  `<choice>` bodies of a `<branch>` or `<match>` arms only. A label outside the `<hub>` option the jump is in, or a
+  region that contains an `<on>` or `<objective>`, is `E-JUMP-LOOP-SCOPE`.
+- **A loop is entered only at its head.** A forward jump from outside to a label inside the loop after its head is
+  `E-JUMP-INTO-LOOP`. A forward jump to the head, and a jump out of the loop, are fine.
+- **Loops nest, they never cross.** Two loops either nest or are disjoint, or it is `E-JUMP-LOOP-CROSS` at the later
+  jump. Two bounded jumps may share one head, each with its own counter.
+
+A nested loop counts for itself. The inner counter returns to 0 every time control reaches the inner head from
+outside the inner loop, so an inner `max="2"` inside an outer `max="1"` runs the inner body three times in each of
+the two rounds:
+
+```lute
+::label{name="round"}
+@theo: A new round.
+::label{name="knock"}
+@theo: Knock.
+::jump{to="knock" max="2"}
+@theo: Round done.
+::jump{to="round" max="1"}
+```
+
+Between two takes, control moves only forward, so a region of nesting depth *d* runs at most the product of
+(`max` + 1) over its enclosing jumps: every walk ends without the player's help, and the analyses stay finite.
+
+Every flow analysis joins the states of all jumps that reach a label, forward and backward, and iterates a loop head
+until it is stable. A read after a label that a jump skipped a `::set` to is `E-MAYBE-UNSET`, a jump past a
+re-entrance is `W-STAGE-ABSENT`, and a bounded jump does not end its body (`W-CODE-AFTER-JUMP` stays quiet; its
+exhaustion falls through). That also fixes two gaps for forward jumps, so a document that jumps over a write may gain
+an `E-MAYBE-UNSET` it did not have in 0.50.
+
+For play and tests: counters are local to one walk and rebuilt by replay, so the runtime snapshot needs nothing
+new. A `<branch>` reached again in a later iteration is a new menu, and a scripted `choose:` list for it is
+consumed one decision per presentation (`choose: { retry: [yes, yes, no] }` drives three iterations). A `<hub>`
+inside a loop starts each visit at its first presentation, and a `once` choice taken on an earlier visit stays
+spent. `lute trace` prints `<jump -> attempt (again 1/2)>` and `<jump -> attempt not taken (2/2 used)>`. The
+reference runtime re-checks the loops at load and refuses an artifact whose backward transfers are not
+well-nested bounded jumps. A `::label` inside a component is compiled once per `::use` instance, so each
+instance loops on its own label (#207).
+
+Use a loop for "the same stretch again, a bounded number of times". Use a `<hub>` to offer a menu again until the
+player takes an `exit` choice.
+
+## Scenes that a directive or a reward raises
+
+A sheet row "play cutscene X" does not run the cutscene. The host does, by raising an occasion that the scene
+answers. Lute does not raise occasions (that is a host duty), so before 0.51 the scene that answered it had no
+edge from the row that caused it, and the scenario graph could not order them. Since 0.51 a directive or a
+reward kind declares the occasions the host raises in answer to it, and an occasion can say that only declared
+raises ever raise it:
+
+```yaml
+# plugins/acme.flow/occasions/occasions.yaml
+occasions:
+  cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
+# plugins/acme.flow/directives/flow.yaml
+directives:
+  - name: playScene
+    attrs:
+      - { name: scene, required: true, type: { entity: cutsceneId } }
+    effects:
+      raises: [{ occasion: cutscene, target: "@scene" }]
+# plugins/acme.flow/rewardkinds/rewards.yaml
+rewardKinds:
+  CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }
+```
+
+```lute check-in-project="docs/examples/flow-and-text/scenes/chapter2.lute"
+---
+kind: scene
+id: chapter2
+on: cutscene
+target: scene.chapter2
+---
+```
+
+`::playScene{scene="chapter2"}` in a scene, or a `<reward kind="CUTSCENE" target="chapter2"/>` in a quest, now
+raises `cutscene` for `scene.chapter2`.
+
+- **`effects.raises`** is a non-empty list of `{ occasion, target? }`, beside `writes`/`asserts`/`retracts` on a
+  directive and `asserts`/`retracts`/`accepts` on a reward kind. A reward kind may declare only `raises`. The
+  `target` is `@<attr>` on a directive (a declared attribute), `@target` on a reward kind (the reward's `target=`), or
+  a literal target written whole (`scene.chapter2`); it is absent only for an occasion declared without a target.
+- **`raisedBy: declared`** on an occasion says the host raises it only where a declared `raises` says so. Without it
+  a declared raise is recorded and checked but draws no graph edge.
+- A shape fault is `E-PLUGIN-PARSE` at load. A directive that has a `lower:` compiles to a record that carries no
+  effects, so its `raises` could never reach the host: `E-PLUGIN-INVALID-DIRECTIVE`. At assembly, `E-PLUGIN-RAISES`
+  checks the occasion (with a did-you-mean) and the target's shape and type against it. The occasion may come from
+  another plugin, which then belongs in `depends:`.
+- In `check --project`, `E-RAISES-TARGET` checks each resolved target: a member of the entity kind, and answered by
+  some scene or beat. The value is the call's attribute, else the attribute's `default:`; a target with no value
+  raises nothing, and one that reads `occasion.target` is dynamic and not judged.
+- `W-OCCASION-NEVER-RAISED` warns at a scene or beat that answers a `raisedBy: declared` occasion that no
+  `effects.raises` in the project reaches. A `lute play` step that raises it is not a source, and an occasion the
+  project clock raises is never warned about. Re-level it in `lute.project.yaml` `diagnostics:` like any `W-*` code.
+
+Every analysis reads a declared raise as **possible, never guaranteed**: the host may refuse it at the occasion's
+gate, so a raise adds no fact, write or must-claim in the answering scene. `lute scenario` and
+`lute scenario reach` draw a `[raises]` edge from the raiser to every answering scene and beat, and a scene that
+declares `after:` keeps `after:` as its route. (`lute impact` reads the semantic model graph and follows neither
+`[raises]` nor `[accept]` edges; #210.) The [flow-and-text example](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text):
+
+```console
+$ lute scenario --project docs/examples/flow-and-text
+project root: docs/examples/flow-and-text
+  topological layers:
+    layer 0: scene(hall), scene(lock), quest(finale)
+    layer 1: scene(chapter2)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(lock) -> scene(chapter2) [raises]
+    quest(finale) -> scene(chapter2) [raises]
+```
+
+The host performs the raise. After the presentation that ran the call ends, it sends each raise as a
+`raiseOccasion` input once the runtime is idle, in record order. For a reward it does so after settling the grant.
+The compiled `plugin` and `grant` records carry the resolved `raises`, and `lute play` prints
+`  → raises cutscene scene.chapter2` on those lines. The reference player performs them for you, keeps the pending
+ones in saves and rollback points, and a custom host does the same (see [Custom hosts](/player/custom-hosts/)).
+`lute play` does not raise by itself: a script raises the occasion as its next step.
+
+## Text in a directive that players read
+
+A staged banner, a toast or a chapter title is text a player reads, so it must be translatable. Declare such an
+attribute `type: text`:
+
+```yaml
+directives:
+  - name: banner
+    attrs:
+      - { name: title,    required: true, type: text }
+      - { name: subtitle, type: text }
+      - { name: style,    type: { enum: [toast, card] } }
+```
+
+```lute
+::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
+```
+
+- A `text` value is a quoted string in the choice-label grammar: `{{…}}` interpolations of state paths, `@def`s and
+  host tokens, each checked as in a label. A literal `{{` cannot be written in it yet (`\{{` is `E-STRING-ESCAPE`
+  in a quoted attribute; #211). An `@ref` value is `E-ATTR-TYPE`.
+- `text` is admitted only on an attribute of a directive that stays a `plugin` record: no `lower:` and no
+  `bridge:`. It cannot have a `default:`, and it is not a type for stamps, plugin options, payloads or reward-kind
+  attributes. A directive with a `text` attribute cannot declare an attribute named `code`. Each fault is
+  `E-PLUGIN-PARSE` at the attribute, and a scoped stamp named `code` on such a directive is
+  `E-PLUGIN-RESERVED-STAMP-ATTR`.
+- **`code=`** is the identity of such a directive, as on a line. The `lineId` of each text attribute is
+  `{prefix}~{tag}~{code}~{attr}`: `hall~banner~0010~title`. `~` is reserved for these ids, so a `code` that contains it
+  is `E-LINE-CODE-RESERVED` and a `lineId` template that contains it is `E-IDENTITY-TEMPLATE`. Two `::banner` calls
+  in one scope with the same `code` are `E-DUP-LINE-CODE`, and two units anywhere in the project with one final
+  `lineId` are `E-LINE-ID-DUP`. `code=` on a directive without a `text` attribute is `E-UNKNOWN-ATTR`.
+- **`lute tag`** writes `code="…"` into every untagged directive that has a `text` attribute, in the order the
+  compiler back-fills; a component is tagged under the snapshots of its users, and users that disagree are
+  `E-COMPONENT-TEXT-DIRECTIVE`. With `identity.requireStable`, `W-LINE-CODE-UNTAGGED` reports one without a code.
+
+The translation round trip is the one lines already use, and a text attribute is one more row kind:
+
+```sh
+lute tag scenes
+lute loc export --project . -o export/en.json
+# copy it to export/ko.json (the file stem is the locale) and translate the "text" values,
+# keeping every {{…}} marker
+lute loc import export/ko.json -o loc/ko.json          # the locale bundle
+lute compile scenes/hall.lute --project . --locale-bundle loc/ko.json
+```
+
+An exported row is `{ "kind": "directive", "lineId": "hall~banner~0010~title", "key": "banner.title", … }`. Its
+`lineId` is `null` until the directive has a `code`, so run `lute tag` first. `lute loc report` counts directive
+texts (`directiveTexts`) with the prompts. In the compiled `plugin` record, `fields.title` keeps the source text,
+markers as authored, and `localized.title` carries `{ lineId, placeholders, texts }` with the translations merged in. A missing
+locale is `W-L10N-MISSING` and a changed source is `W-L10N-STALE`, as for a line. The runtime renders the markers
+(a host token stays verbatim), and the reference player's `PluginCall.localized` gives a host handler each text in the
+player's locale.
+
+## Structured values are not supported yet
+
+A column that holds a list or a record (a tag list, a voice-asset map keyed by language) does not fit a directive
+attribute. `list`, `map` and `record` attribute and stamp types stay refused with `E-PLUGIN-INVALID-DIRECTIVE`,
+because no `.lute` value can satisfy them. Structured authoring (#176) is **deferred, not covered**: there is no
+spelling in 0.51 for generic enum-list metadata such as `::tagged{tags=…}`, and none for a voice-asset map keyed by
+language. One voice key per line, resolved without a locale, is not a per-language asset map.
+
+Where a scalar decomposition fits, use it:
+
+| The row has | Write |
+|---|---|
+| a few named fields | one attribute per field; scope a stamp to the surface with `on:` |
+| text a player reads, in several languages | one `text` attribute |
+| a list that really is a set of options | `<choice>` elements |
+
+The refusal message says the same: give each field its own attribute, use a `text` attribute for player-visible
+text, or write a list of options as `<choice>` elements. For a stamp the `text` clause is omitted, since a stamp cannot be `text`.
 
 ## What the tool catches, and what it does not
 
@@ -6479,6 +6898,13 @@ later release. See [Linting](/tooling/linting/) for the rest of `lute.lint.yaml`
 | A warning flood in an imported subtree | `diagnostics:` with `paths:`, counted in the summary |
 | A speaker shown off stage | `W-STAGE-ABSENT`, unless the importer emits the staging row |
 | A structural or dependent-value rule | a `node` lint |
+| A loop the checker could not see | `::jump{max}` with `E-JUMP-MAX`, `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP`, `E-JUMP-LOOP-CROSS` |
+| A scene that nothing raises | `W-OCCASION-NEVER-RAISED`; a mistyped raise target is `E-RAISES-TARGET` |
+| A raise of an occasion no plugin declares | `E-PLUGIN-RAISES`, with a did-you-mean |
+| Player-visible directive text that cannot be translated | `type: text`, `lute tag` and `lute loc` |
+| Two translation units with one id | `E-LINE-ID-DUP`; `~` in a `code` is `E-LINE-CODE-RESERVED` |
+| An opener that is never closed | a `pair` lint |
+| A list or record column | refused; use scalar decompositions |
 
 What Lute does **not** know:
 
@@ -6488,6 +6914,10 @@ What Lute does **not** know:
   host forgets, the marker stays in the text.
 - **Whether a quiet subtree is correct.** `off` hides a warning; it does not fix the row. Keep the
   `paths:` globs narrow, and delete the entry when the review is done.
+- **Whether the host performs a declared raise.** A `raises` entry is a promise about the host, never a guarantee
+  that the scene plays: the occasion's gate may refuse it.
+- **Whether a translation is right.** `W-L10N-STALE` says the source changed after the export; it does not read the
+  translation.
 
 # Frontmatter & profiles
 
@@ -7390,6 +7820,22 @@ entities:
 
 The hints are `ordinal`, `ordinalWord`, `cardinalWord` and `plural` for an `int` or `double` (or an `int` host token), and `capitalize`, `start` and `indefinite` for text. Any other — `{{run.floor:roman}}`, a misspelt `{{run.day:ordinalword}}` — is `E-CEL-PROFILE`. A numeric hint on a string, enum or bool path or def, or on a `string` or `enum` host token such as `{{userName}}`, is `E-REF-TYPE`, and so is a text hint on an `int`, `double`, or bool, or on an `int` host token.
 
+## Localizable directive text (since 0.51)
+
+A plugin directive can carry text that a translator must see, such as a banner title. Its [manifest](/plugins/manifests/) declares the attribute with `type: text`. A `text` attribute is admitted only on a directive that compiles to a `plugin` record (no `lower:`, no `bridge:`), and it takes no `default:`. Each `text` attribute is one translatable unit, the way a choice label is:
+
+```lute
+::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
+```
+
+- **Value grammar.** A `text` value is a quoted string in the same grammar as a `<choice>` label: `{{…}}` interpolations of state paths, `@def`s and [host tokens](#host-tokens) with their modifiers. A literal `{{` cannot be written in a quoted attribute value yet (`\{{` is `E-STRING-ESCAPE` there, as in a choice label; #211). [Inline text modifiers](#inline-text-modifiers) are not parsed in it. Each interpolation is checked as a label's is. An `@ref` value (`title=@greeting`) is `E-ATTR-TYPE`: a `@def` value has no translation of its own.
+- **`code=`.** A directive with at least one `text` attribute takes `code="…"` as a content line does: a string, trimmed. On any other directive `code` stays `E-UNKNOWN-ATTR`. A directive that declares its own attribute named `code` beside a `text` attribute is refused when the plugin loads.
+- **`lineId`.** The id of a `text` attribute is `{prefix}~{tag}~{code}~{attr}`, for example `intro~banner~0010~title`. It does not go through the `lineId` template, and position is never identity. `~` is the separator, so a `code` containing `~` is `E-LINE-CODE-RESERVED` and an identity template whose literal text contains `~` is `E-IDENTITY-TEMPLATE`. As a backstop, whole-project `lute check` reports two units with the same final `lineId` — a line, option, prompt or directive text — as `E-LINE-ID-DUP`, since a `lineId` keys one translation. Two `::banner` calls in one scope sharing a `code` are `E-DUP-LINE-CODE`.
+- **Back-fill.** An untagged directive gets the next code in its scope, counted per directive tag, as a line does; in a component the codes are counted over the whole component source. [`lute tag`](/tooling/cli/#tag) writes `code="…"` into every untagged directive that has a `text` attribute. A component is tagged under the snapshots of the documents that use it, and when those users resolve its text directives differently it is `E-COMPONENT-TEXT-DIRECTIVE`. With `identity.requireStable`, such a directive without `code` is `W-LINE-CODE-UNTAGGED`.
+- **Artifact.** The record's `fields.<attr>` keeps the source-language string with its `{{…}}` markers as authored, so a host that ignores localization reads what it read before. The `lineId` and the placeholders ride in `localized.<attr>`, and `code` itself is written to neither `fields` nor `stamps`. A directive without `text` attributes compiles exactly as in 0.50.
+
+The strings are exported, translated and merged with [`lute loc export`, `lute loc import` and `lute compile --locale-bundle`](/tooling/cli/#loc-export): run `lute tag` first, because a directive's `lineId` can be reproduced from the source only when its `code` is authored.
+
 ## Inline text modifiers
 
 A line's text may mark up part of itself for presentation — a styled word, a pause, a slowed
@@ -7501,7 +7947,7 @@ accepts.
 ## Core vocabulary
 
 `lute.core` declares thirteen directives — ten staging leaves, the walk terminator `::end`, and the
-forward jump pair `::jump` / `::label` — with these canonical attributes:
+jump pair `::jump` / `::label` — with these canonical attributes:
 
 | Directive | Attributes |
 |---|---|
@@ -7516,7 +7962,7 @@ forward jump pair `::jump` / `::label` — with these canonical attributes:
 | `::video` | `assetId` (required), `display` (`show`\|`hide`, default `show`) |
 | `::sequence` | `name` (required, domain `sequence`) — a reference to a cinematic the engine owns; `wait` defaults to `true` |
 | `::end` | `reason` (optional, free-form) — terminates the walk; control flow, not staging (below) |
-| `::jump` | `to` (required) — jumps forward to a `::label`; control flow (below) |
+| `::jump` | `to` (required) — jumps to a `::label`, forward or (with `max`, 1–99) backward a bounded number of times; control flow (below) |
 | `::label` | `name` (required) — names a position for `::jump`; emits no record (below) |
 
 ```lute
@@ -7913,11 +8359,13 @@ reported dead and `W-CODE-AFTER-END` could not exist. Shipping `::end` as a new 
 also the honest version signal — an engine that does not implement the IR minor that introduced it
 (`0.8.0`) must refuse the artifact rather than fall through a record it does not recognise.
 
-## `::jump` and `::label` — forward jumps
+## `::jump` and `::label` — forward and bounded backward jumps
 
-`::label{name="…"}` names a position; `::jump{to="…"}` continues the walk there. A jump only goes
-**forward** in document order, so the walk stays a DAG — to offer choices again, use a
-[`<hub>`](/language/choices-and-hubs/). Labels share one namespace per document; a section's
+`::label{name="…"}` names a position; `::jump{to="…"}` continues the walk there. A jump without
+`max` only goes **forward** in document order, so the walk stays a DAG; with `max` (since 0.51) it
+may go backward a bounded number of times (see [Bounded backward jumps](#bounded-backward-jumps--max)).
+To offer choices again until the player leaves, use a [`<hub>`](/language/choices-and-hubs/).
+Labels share one namespace per document; a section's
 `{#id}` is identity metadata, not a label, and a `::jump` cannot target it. `::jump` takes
 `when=`, and a guarded jump is taken only while its condition holds:
 
@@ -7946,13 +8394,87 @@ state:
 {"kind": "jump", "family": "control", "position": "001-0300", "target": "001-0700"}
 ```
 
-A `to` that names no `::label` in the document is `E-JUMP-UNDEFINED`; a label at or above the jump
-is `E-JUMP-BACKWARD`. Content after an unguarded `::jump` in the same body never runs and is
-`W-CODE-AFTER-JUMP`. To jump to a line, put a `::label` immediately before it.
+A `to` that names no `::label` in the document is `E-JUMP-UNDEFINED`. A label at or above the jump
+is `E-JUMP-BACKWARD` unless the jump carries `max` (below); the message names the spelling —
+`::jump{to="again" max="3"}` repeats at most 3 times, and to offer choices again you use a `<hub>`.
+Content after an unguarded `::jump` in the same body never runs and is `W-CODE-AFTER-JUMP`. To jump
+to a line, put a `::label` immediately before it.
 
 Neither `::jump` nor `::label` carries a stamp (a plugin stamp or a timing key such as `wait` is
 `E-UNKNOWN-ATTR`; see [Directives that carry no stamp](#directives-that-carry-no-stamp)): put the
 attribute on the line or directive before the jump, or after the label.
+
+### Bounded backward jumps — `max`
+
+Since 0.51, a `::jump` may target an **earlier** `::label` when it carries `max`, the number of times
+the jump may be taken. After `max` takes the jump is not taken, and control falls through to the
+node after it. `max` is a literal integer from 1 to 99; `lute.core` declares it on `::jump` as an
+`int`:
+
+```lute
+::label{name="attempt"}
+::tryLock{door="vault"}
+<match subject="scene.lock.vault.won">
+  <when is="false">
+    @mira: Again!
+    ::jump{to="attempt" max="2"}
+  </when>
+  <when is="true">
+    @mira: It clicks open.
+  </when>
+</match>
+@theo: That's enough for today.
+```
+
+`::tryLock` is a blocking bridge call that writes `scene.lock.vault.won` (the
+[flow-and-text example](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text),
+`scenes/lock.lute`). The lock is tried at most three times: the first pass and two repeats. If the
+third attempt still fails, the jump is exhausted and `@theo` speaks. `when=` and `max` combine — the
+jump is taken while its `when` holds *and* takes remain. `max` is not a stamp carrier: `::jump` still
+carries no stamp, so `max` is the only attribute added.
+
+- **Counter.** Each bounded jump has its own counter, local to one walk (one presentation, one quest
+  handler or objective segment, one entry or beat body), starting at 0. When control reaches the
+  jump (and its `when` holds), a counter below `max` is incremented and control moves to the label;
+  otherwise control falls through.
+- **Reset.** A jump's counter returns to 0 whenever control arrives at its label from **outside the
+  loop**: by falling through into the label, by a forward jump, or by a bounded jump that is not
+  inside this loop. Taking the jump itself, or another bounded jump inside the loop, does not reset
+  it. So an inner loop gets its full `max` again on every iteration of the outer loop.
+- **Exhaustion.** After `max` takes the jump is simply not taken; nothing is reported. A `max` that
+  is never reached, or a `when` that never holds, is not an error.
+- **Shared labels.** Two or more bounded jumps may target the same label. Each has its own counter
+  and its own loop.
+
+The **loop** of a bounded jump is every node from its label to the jump, in document order; the
+label is the loop's **head**. To keep every loop well-nested and entered only at its head, the
+checker enforces these rules:
+
+| Rule | Code |
+|---|---|
+| `max` is a literal integer from 1 to 99 — not an `@ref`, not `0`, not negative, not above 99; and `max` on a forward jump means nothing | `E-JUMP-MAX` |
+| The label is in the jump's own body or in a body that encloses it, and every body in between is a `<choice>` body of a `<branch>` or an arm body of a `<match>`. The loop may not leave a `<hub>` option body or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section, and contains no `<on>` or `<objective>` | `E-JUMP-LOOP-SCOPE` |
+| A forward jump from outside a loop may not land strictly inside it after its head; a loop is entered only at its head | `E-JUMP-INTO-LOOP` |
+| Two loops nest or are disjoint; they may not overlap without nesting (loops with the same head nest) | `E-JUMP-LOOP-CROSS` |
+
+A jump from inside a loop to a label after it (an exit) and a forward jump from before the loop to
+its head are both legal. A bounded jump inside a component body is checked in the component's own
+document, and each expanded instance has its own counters and its own labels: the compiler names a
+label per `::use` instance, so a component used twice loops, or jumps forward, inside each instance
+(#207).
+
+Loops cannot make a walk run forever. Between two takes of bounded jumps control moves only
+forward, so it is bounded by the walk's length; a loop's counter resets only when its head is
+entered from outside, so by induction over the nesting a loop nested inside `d` bounded jumps runs
+at most the product of `(max + 1)` over those jumps. Every walk ends without player cooperation,
+and the checker can still follow every path. The reference runtime does not take the compiler's
+word for it: at load it refuses an artifact with a backward transfer other than a bounded `jump`,
+or with loops that cross (see the [runtime contract](/tooling/runtime-contract/#051-additions)).
+
+Flow analyses see the loops too. Definite assignment and stage tracking join the states of every
+jump that reaches a label, so a write that a jump skips is not assumed at the label: a read after it
+is `E-MAYBE-UNSET`, and a line there whose speaker a skipped `::actor` would have shown is
+`W-STAGE-ABSENT`. A loop head is iterated to a fixed point.
 
 ## Reserved directives
 
@@ -8709,6 +9231,40 @@ its choices must be `once` (so the eligible set provably empties and auto-exit f
 satisfies neither is `E-HUB-NO-EXIT`. Because a hub reduces at build time to one finite option
 table plus its arms, its runtime re-presentation adds no unbounded computation — totality is
 preserved.
+
+## A hub, or a loop
+
+Both ask the player again, but they answer different questions. Since 0.51 a bounded
+[`::jump{to="…" max="…"}`](/language/directives/#bounded-backward-jumps--max) can send the walk back
+to an earlier `::label`, so a `<branch>` can be asked more than once.
+
+- **Use a `<hub>`** when the player decides when to leave: a conversation with several topics, a
+  menu that stays until an `exit` choice is taken, with `once` choices that drop out and a
+  `<return>` block between visits. The player's cooperation ends it, and the checker proves it can
+  end ([No dead ends](#no-dead-ends)).
+- **Use a loop** when the *game* decides how often: a retry after a failed minigame, "try again
+  (at most three times)", a prompt repeated a fixed number of times. The bound is a literal `max`
+  from 1 to 99; the walk ends without the player's cooperation.
+
+```lute
+::label{name="retry"}
+<branch id="again" prompt="The lock is still stuck.">
+  <choice id="push" text="Push harder">
+    @mira: It won't budge.
+    ::jump{to="retry" max="2"}
+  </choice>
+  <choice id="leave" text="Give up">
+    @mira: Fine. Another way, then.
+  </choice>
+</branch>
+```
+
+Here `push` sends the walk back to the label, and after two takes the third `push` falls through
+past the `<branch>`. A `<branch>` reached again is a new menu, and its `presentation` stays `0`. A
+`<hub>` inside a loop starts each visit at presentation 0, but a `once` choice taken on an earlier
+visit stays spent: its memory is the scene's visit record (`scene.visited.<hub>.<choice>`), so the
+hub offers only what is left. A loop may sit inside a hub option body (put the `::label` inside that
+option), but a loop cannot jump out of a hub option from inside it: `E-JUMP-LOOP-SCOPE`.
 
 ## Plugin stamps on `<branch>`, `<hub>` and `<choice>`
 
@@ -14261,7 +14817,25 @@ A quest joins the graph by declaring `follows` (even `follows=""`; graph metadat
 - **`json`** (`--json`) — each edge is `{"from":…,"to":…,"kinds":[…]}`; `kinds` is an array for the same reason.
 - **`dot`** (`--format dot`) — an edge justified **only** by `active` atoms renders `[style=dashed]`; anything carrying a `visited` or `completed` atom stays solid, because the stronger claim is what a reader should see.
 
-The kind is presentational and analytical, never structural: the DAG shape is identical either way, since an `active` edge constrains ordering exactly as a `completed` edge does. Besides the three atom kinds, an edge may be an anchor that no `after` formula wrote: `[accept]` from a unit that `::accept`s a quest, `[subquest]` from a parent quest to its child, and `[start]` from a source its `start` reads (dsl 0.24.0, 0.25.0).
+The kind is presentational and analytical, never structural: the DAG shape is identical either way, since an `active` edge constrains ordering exactly as a `completed` edge does. Besides the three atom kinds, an edge may be an anchor that no `after` formula wrote: `[accept]` from a unit that `::accept`s a quest, `[subquest]` from a parent quest to its child, and `[start]` from a source its `start` reads (dsl 0.24.0, 0.25.0); since 0.51, `[raises]` from the node whose directive call or reward raises an occasion to the scene or beat that answers it ([below](#edges-that-declared-raises-draw)).
+
+### Edges that declared raises draw
+
+A directive or reward kind can declare that the host raises an occasion in answer to it ([`effects.raises`](/plugins/manifests/#declared-occasion-raises), 0.51). When the occasion is declared `raisedBy: declared`, the graph reads that declaration as the only way the occasion is raised, so a scene or bundle beat that answers it is **anchored** to the nodes that raise it:
+
+- **Sources.** A raise comes from the scene whose shots contain the call, the lore bundle beat whose body contains it, or the quest whose body contains it or that grants the reward. A call in a lore entry's body is a raise (it counts for `E-RAISES-TARGET` and `W-OCCASION-NEVER-RAISED`) but anchors nothing, as an entry's `::accept` anchors nothing. A call inside a component body counts at each `::use` site.
+- **Which answerer a raise reaches.** One rule serves the anchors, `W-OCCASION-NEVER-RAISED` and `E-RAISES-TARGET`'s "no scene or beat answers it": the raise names the answerer's `on:` occasion, and the occasion is untargeted, or the answerer declares no `target:` (it answers every target), or the raise's target is `occasion.target` (it stands for every answerer), or its static target equals the answerer's `target:`.
+- **The anchor.** A scene or bundle beat that answers a `raisedBy: declared` occasion, declares no `after:`, and has at least one raise source that is a graph node gets one anchor with every reaching source as an alternative. A node that declares `after:` keeps `after:` as its declared route, and no `[raises]` edge is drawn to it.
+- **The edge.** It is drawn `source -> answerer`: `lute scenario` text prints `scene(intro) -> scene(chapter2) [raises]`, `--json` gives `"kinds": ["raises"]`, and `--format dot` draws a solid edge labelled `raises`. `lute scenario reach` follows it and prints the anchor as `[raises] quest(finale) || scene(lock)`, and the `scenario` node envelope names the raise (`` raised by `::playScene` in scene `intro` ``). `lute impact` reads the semantic model graph, which draws neither `[accept]` nor `[raises]` edges, so it does not follow them (#210). An edge that would close a cycle is not drawn, so a scene that raises its own occasion again is never `E-CONN-CYCLE`; since that edge's source may then be ordered after the node it anchors, reachability repeats to a fixed point in that case.
+
+A declared raise is a host promise, not a proof, so it is a **may-edge** and no Must or guaranteed claim rests on it:
+
+- An anchored node starts where an entry node does: a raiser's unconditional `::set` or `::assert` is neither in the answerer's guaranteed-write envelope nor a fact that must hold there. The scenario node envelope lists such a writer as "not provably before this node", because a raise's sources are alternatives.
+- A `[raises]` edge does not gate a quest's start and does not join start-cycle detection.
+- [Cast presence](/language/dialogue-and-cast/#the-cast) may follow `[raises]` edges, which can only add `W-CAST-ABSENT` may-warnings, never remove one.
+- [Reachability](/connectivity/reachability/) reads such an anchor as it reads every anchor: `Unreachable` becomes `Unknown`, because a declared raise is a host promise, not a proof.
+
+A scene or beat that answers a `raisedBy: declared` occasion that no declared raise reaches is `W-OCCASION-NEVER-RAISED` ([reachability](/connectivity/reachability/#occasions-that-nothing-raises)).
 
 ### Bundle beats
 
@@ -14420,6 +14994,16 @@ A plugin reward kind can declare [effects](/language/quests-and-scenes/#reward-e
 - A reward that **accepts** a quest draws `quest(first) -> quest(second) [accept]`, the edge a scene's `::accept` draws. An accept-driven quest named only by a reward `accepts` is reachable, and draws no `W-QUEST-NEVER-ACCEPTED`. That warning's message now reads "… but no `::accept` or reward `accepts` in the project names it …".
 - **Start cycles are unchanged.** `[accept]` anchors, a reward accept's included, do not gate a quest's start: the engine may accept a quest outside any `::accept`, and accept deadlocks are out of scope. A cycle of accept-driven quests that accept each other only through rewards never draws `E-QUEST-START-CYCLE` or `E-QUEST-START-SELF`.
 - `lute scenario knowledge` and `lute lore` name the producer of a reward-asserted fact: `` met(mira) — produced by reward BADGE of quest `firstVisit` ``.
+
+## Occasions that nothing raises
+
+An occasion declared `raisedBy: declared` is raised by the host only through a directive's or reward kind's [declared `raises`](/plugins/manifests/#declared-occasion-raises) (0.51). A scene or bundle beat that answers such an occasion, with no `after:`, is anchored to the nodes whose raises reach it, and the graph draws a `[raises]` edge from each (see [the scene graph](/connectivity/scene-graph/#edges-that-declared-raises-draw)).
+
+- **Reachability reads the anchor as it reads every anchor.** For an anchored node, `Unreachable` reads `Unknown`: a declared raise is a host promise, not a proof.
+- **`W-OCCASION-NEVER-RAISED`** (warning, project-wide) is the analogue of `W-QUEST-NEVER-ACCEPTED`. It is reported at the `on:` of each scene or beat that answers a `raisedBy: declared` occasion (for a target, or targetless) that no declared raise reaches: `` scene `chapter2` answers `cutscene` for `scene.chapter2`, which `acme.stage` declares `raisedBy: declared`, but no `effects.raises` in the project raises it — add a `raises` entry to the directive or reward kind that leads here, or drop `raisedBy: declared` if the host raises `cutscene` on its own ``.
+- **The clock is not a declared raise.** An occasion the project clock raises (its `raise:` map) is raised outside any declared raise, so for it `raisedBy: declared` draws no anchor and `W-OCCASION-NEVER-RAISED` stays silent.
+- **A play step is no source.** A `lute play` or `lute test` step that raises the occasion does not count: a test proves a test, not the game.
+- **Clock analyses count declared raises.** A declared raise of a clock-mapped occasion may deliver it at any clock position, not only where the clock's `raise:` map schedules it. For a scene or beat that some declared raise reaches, the checker therefore no longer claims the occasion is raised only at the scheduled positions: schedule-only claims such as `W-BEAT-UNRAISED` ("never plays") do not fire for it. A genuine `when`-window failure is still reported: `W-CHAPTER-STALL` can still fire for a chain whose next scene's `when` has expired at every position. Answerers that no declared raise reaches are judged as before.
 
 ## Evidence in 0.34.0
 
@@ -14911,7 +15495,7 @@ The index carries the document table plus the **union** of every artifact's `ent
 ```json
 {
   "irVersion": "0.10.0",
-  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
   "requiredSemantics": [
     "lute.core/1",
     "lute.quest.lifecycle/1"
@@ -14977,6 +15561,8 @@ scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `na
 ```
 
 A merged translation whose stored `sourceHash` (see [`loc import`](#loc-import)) differs from the hash of the record's current source text is `W-L10N-STALE`, one per `(lineId, locale)` pair: the line, option label or prompt changed after the export the translator worked from. The message names the lineId and the locale and says to re-export with `lute loc export` and update the translation. The translation is still merged. Like every warning it is promoted by `--deny W-L10N-STALE` or `--deny-warnings`, in a single-document compile and in the project compile. A `schemaVersion: 1` bundle carries no hashes and gets no stale check.
+
+Since 0.51 the bundle also reaches a directive's [localizable text](/language/dialogue-and-cast/#localizable-directive-text-since-051): a bundle entry keyed by the `lineId` of a `text` attribute is merged into `localized.<attr>.texts` of its `plugin` record, as a line's translation goes into `texts`. `W-L10N-MISSING` and `W-L10N-STALE` apply to these entries with the same wording and the same `--deny` promotion, one per `(lineId, locale)` pair. `E-L10N-MODIFIERS` does not apply to them, because a `text` value has no inline modifiers. A document compiled without `--locale-bundle`, or without `text` attributes, is byte-identical to before.
 
 ### `--stream` — compile a scene from a live body
 
@@ -15152,7 +15738,7 @@ Since 0.22.0 the surface also carries `defs` (each named condition's `name`, `ty
 
 ```json
 {
-  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
   "textModifiers": {
     "core": [
       {
@@ -15184,6 +15770,8 @@ Back-fill a stable `code` into every untagged `:line`, and a missing `instance` 
 - **Default (no `--renumber`)** back-fills missing codes and instance keys and writes the files.
 - **`--renumber`** is the dangerous mode: it renumbers every line's `code` in clean document order instead (`0010`/`0020`/… per speaker per scope) — a drafting tool, refused for a document whose frontmatter declares `codesLocked:` (published codes are `lineId`/`voiceKey` identity; missing component instance keys are still added) or that has structural errors. **Without `--commit` it writes nothing** and prints what `--commit` would do — one line per changed code, `<path>:<line>: <old or (none)> -> <new>`, one line per file that would get instance keys, each refusal as `--commit` would print it — then `lute: would renumber <N> line(s) in <M> of <T> file(s); pass --commit to apply`. Exit **0**, or **1** when a file is refused (as `--commit` would). **`--renumber --commit`** applies it.
 - **`--check`** writes nothing and exits **1** when the selected mode would change any file, else **0** (a refusal is still **1**). `--commit` without `--renumber`, or together with `--check`, is `E-CLI-USAGE`.
+
+Since 0.51 `lute tag` also back-fills a `code` into every untagged directive that has a [`text` attribute](/language/dialogue-and-cast/#localizable-directive-text-since-051), in the order the compiler uses, so the directive's `lineId` (`{prefix}~{tag}~{code}~{attr}`) becomes reproducible from the source. `codesLocked:` applies to these codes as it does to line codes.
 
 `--json` prints the `0.48.0.tag` report: `{mode: "tag"|"renumber", applied, files: [{path, changed, lines, instances, refused?, renumbered?: [{line, from, to}]}]}` — `applied` is `true` only when files were written, `lines` counts the codes added or renumbered, `instances` the instance keys added, `refused` carries the refusal message, and `renumbered` appears only in renumber mode, with `from` `null` for a line that had no code.
 
@@ -15658,6 +16246,28 @@ Row kinds are `line`, `choice` (an option label, `key` `{branchOrHubId}.{choiceI
 kind,file,line,lineId,code,speaker,key,text,sourceFile,sourceLine,sourceHash
 ```
 
+Since 0.51 there is a fourth kind, `directive`: one row per [`text` attribute](/language/dialogue-and-cast/#localizable-directive-text-since-051) of a plugin directive, in document order (a directive's attributes in declaration order). Its `key` is `{tag}.{attr}`, its `lineId` is `{prefix}~{tag}~{code}~{attr}`, and its `code` is the directive's authored `code`. As for a line, `lineId` is reproducible only when `code` is authored; otherwise it is `null` (JSON) or empty (CSV), and the stderr advisory counts them (`N directive texts untagged — run lute tag`). The JSON row carries `kind`, `file`, `line`, `lineId`, `code`, `key`, `text`, `source` and `sourceHash`. In CSV the existing columns are used, with `kind` `directive`, `code` and `key` filled and `speaker` empty; no column is added. The `::banner` of [`docs/examples/flow-and-text`](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text) (`lute loc export --project docs/examples/flow-and-text`):
+
+```json
+{
+  "code": "0010",
+  "file": "docs/examples/flow-and-text/scenes/hall.lute",
+  "key": "banner.title",
+  "kind": "directive",
+  "line": 18,
+  "lineId": "hall~banner~0010~title",
+  "source": null,
+  "sourceHash": "sha256:fde24517faf3…",
+  "text": "Welcome to the hall, {{userName}}"
+}
+```
+
+```text
+directive,docs/examples/flow-and-text/scenes/hall.lute,18,hall~banner~0010~title,0010,,banner.title,"Welcome to the hall, {{userName}}",,,sha256:fde24517faf3…
+```
+
+(The hash is shortened here.)
+
 ## loc import
 
 ```console
@@ -15686,6 +16296,8 @@ Input is exactly what `export` writes, in either format (`.csv` → CSV, anythin
 
 (Hashes shortened here.) `sourceHashes` holds each row's `sourceHash` per lineId **and** locale (two locales may be translated from different exports); it is always written, `{}` when no row carried a hash. Every map is sorted, so the bundle is byte-stable: importing the same inputs twice produces identical bytes. `compile --locale-bundle` still reads a `schemaVersion: 1` bundle (no `sourceHashes`, no stale check). An unparseable input, a `lineId` appearing twice within one locale, or an empty locale tag is `E-LOCALE-BUNDLE`, reported with the offending file and row. A row with **no** `lineId` is skipped rather than rejected — an untagged line simply has no stable identity yet — and a single stderr summary counts them.
 
+Since 0.51 `loc import` accepts rows of `kind: "directive"` and keys the bundle by their `lineId` like every other row; an unknown `kind` is still refused. A directive row with no `lineId` (no authored `code`) is skipped like any untagged row.
+
 ## loc report
 
 ```console
@@ -15693,6 +16305,8 @@ $ lute loc report [--project <DIR>] [--json]
 ```
 
 Word-count and line-count report per document and per speaker — a production-planning view over the same content lines. Choice labels are counted (`choices`) but their words are not; branch/hub prompts are counted (`prompts`, since 0.47 — report version `0.47.0.loc-report`) and their words are included in the document and project word totals (they have no speaker). `--json` emits the report as JSON instead of human table lines. Exit **0** on success, **2** on I/O.
+
+Since 0.51 a directive's `text` attributes count like prompts: their words join the document and project word totals (they have no speaker). In the JSON a document and `totals` carry `directiveTexts` only when it is nonzero; the human table gains a `directive texts` column, and its summary a `N directive text(s)` count, only when the project has any.
 
 ## --explain
 
@@ -16192,6 +16806,21 @@ Its transcript is the example in [The transcript](#the-transcript).
 - A `facts:` entry is a ground atom of a declared, non-derived relation at its arity, with members of its closed argument domains. A **reserved** relation is allowed — the engine is exactly who asserts one.
 - A single `choose:` decision answers every presentation of its branch or hub. A list for a **hub** is one visit sequence, replayed at each presentation. A list of two or more for a **branch** is consumed one entry per presentation, in order, across the whole playthrough — so a scene that plays on three nights can decide differently each night. When the list runs out, the walk halts incomplete (exit 3) and says so.
 - A decision the menu does not offer at that moment halts the walk with an error (exit 1): a choice whose guard is false, or a `once` hub option already taken (`E-TRACE-CHOICE`, as in `lute trace`).
+
+#### Scripted decisions in a loop (0.51)
+
+A bounded backward `::jump{to="…" max="N"}` ([directives](/language/directives/#bounded-backward-jumps--max)) makes a `<branch>` or a `<hub>` inside the loop present more than once in a single scene. The lists above apply per presentation:
+
+- A **branch** reached again in a later iteration is a new menu (a new `awaitChoice` request), and its list is consumed one decision per presentation. `choose: { retry: [yes, yes, no] }` drives three iterations: two `yes` picks that take the jump back, then a `no` that leaves the loop. If the loop is exhausted first, the remaining entries are simply unused; if the list runs out while the walk still asks, the walk halts incomplete (exit 3), as above.
+- A **hub** inside a loop starts each visit at presentation 0, and its list is per visit, as in 0.49 — each time the loop brings the walk back to the hub, the list is replayed from its first entry. A `once` option taken on an earlier visit stays spent, so a list that names it again halts with `E-TRACE-CHOICE` (exit 1).
+
+```yaml
+choose: { retry: [yes, yes, no] }   # a <branch id="retry"> inside a ::jump{max="3"} loop
+steps:
+  - occasion: lockPicked
+```
+
+A save at a choice inside a loop's second iteration resumes to the same transcript: the loop counters are walk-local and are rebuilt by replaying the answers already given, so the runtime snapshot gains no field.
 
 ### Occasion steps
 
@@ -17791,6 +18420,7 @@ The human transcript names every step, lists its candidates with their verdicts,
 - `→ <id>` names the winner — one `→` line per beat on a `select: sequence` step — and `+ <id> (also)` each `also` beat that follows it. With no winner the line reads `→ (no eligible beat — the occasion passes)`, `→ (no eligible main beat)` when only `also` beats play, or `→ (pick: none — the list closes; nothing presented)`.
 - The presented beat's own transcript follows, written the way the source reads: content lines as `@speaker: text`, keeping their delivery (`@wren{mono}: …`, `@maud{as="Barkeep"}: …`) and rendering interpolation as an engine would — `{{user.deaths:ordinal}}` as `2nd`, a path typed against an enum with `labels:` as its member's label (dsl 0.24.0 §1, §4), `{{occasion.target}}` as the raised member's cast `name:` (dsl 0.26.0 §5); a line whose `when=` is false as `skip @maud "You again." — when: false`, and a guarded write that did not apply as `skip set run.aff += 1 — when: false` — since dsl 0.26.0 every other directive with a false `when=` the same way: `skip ::give{item="potion"} — when: false`, `skip assert metWren(wren) — when: false`, and `skip ::use{component="…" …} — when: false` for a `::use` that plays none of its expansion; staging directives as authored — `::bg{location="parlor"}`, `::actor{character="maud" anchor="left"}`, `::vfx{type=…}`, and a plugin's own directive by its own name — while compiler-injected staging (preloads, pose resets, the `::bg` auto-hide) is left out; a plugin directive the reference player cannot run adds `(plugin call, not invoked)`, and one whose bridge result a `bridges:` answer decided adds `(bridge answered: passed=true, margin=3)` (`(bridge unanswered: passed, margin)` where it halted the walk); a `::end` as written, followed by `(this presentation ends; the play goes on)` — or `(this presentation ends)` in the step that ends the game, whose note follows; decisions as `▷ choice <id>: … ← chosen: <id>` (or `▷ hub <id>: …`), where the menu marks the chosen option `[table]`, an option whose guard is false `piano✗`, and a `once` option already taken `table(spent)`; state writes as `set <path> = <value>`, a scene's `::accept` as `quest <id> accepted` — `quest <id> accepted (queued: applies after the next newRun)` for `at="nextRun"` — (JSON: an `{"kind": "accept", "quest": "<id>"}` record in `presented.commands`), and an entry's `entry <id> (first read)` — or `entry <id> (re-read: effects skipped)`, with each skipped effect marked `(skipped: re-read)`. A bundle beat's `beat` record is not printed; the `→` or `+` line already names it. Several presented beats follow one another in presentation order. Quest transitions come last — those the presentations caused, then those the step's occasion judged: `<quest>.<objective> done`, `<quest>.<objective> failed (by)` or `failed (until)` for a missed deadline, `quest <id> -> <state>` — a failure naming its reason, `failed (by)`, `(until)`, `(fail)`, `(cascade)` or `(superseded)` (dsl 0.24.0 §2) — and reward grants — `grant <quest> <KIND> <amount>`, followed by `(credits <path> = <value>)` when the reward kind credits state (a whole number without a decimal point: `= 50`). In JSON both land in the step's `quests`.
 - A write that a plugin directive's declared `effects:` made (dsl 0.27.0 §4) prints under the call like any other write, naming the call it came from: `set scene.check.sneak.passed = false  (effect of ::check)`, `assert holding(brassKey)  (effect of ::give)`, `retract holding(lamp)  (effect of ::give)` — retractions first, then the call's asserts. In `--json` the record carries `"effectOf": "<tag>"`.
+- Since 0.51 a plugin call or a grant whose declaration has `effects.raises` ends its line with `  → raises <occasion> <target>` per declared raise (`::playScene{scene="chapter2"}        (plugin call, not invoked)  → raises cutscene scene.chapter2`, `grant[#1 i0] finale CUTSCENE 1 -> chapter2  → raises cutscene scene.chapter2`). `lute play` does not raise the occasion itself: the script's next step does, as a host does. In `--json` the `plugin` record carries `"raises": [{ "occasion", "target"? }]`.
 - `--ir` prints the lowered records instead: each staging record as `::<kind>{…}` in its IR form (`::bg{location="parlor"}` for that `::bg`, `::actor{character="lise" posReset=true}` for a pose reset), the ones the compiler injected included and marked `(injected: <by>)`, and a bundle beat's `beat` record as a `beat` line. `--ir` changes only what is printed: `transcriptContains` / `transcriptLacks` always judge the content lines, and `--json` carries every record either way.
 - An `engine:` step lists its writes: `set <path> = <value>`, `assert <atom>`, `retract <atom>` — `retract <atom> (did not hold)` when it was not a fact — and since dsl 0.26.0 `quest <id> accepted (engine)` for each `accept:` — or, for a quest already active, complete or failed, `note: quest <id> is already active — engine accept ignored`, which changes nothing.
 - A `newRun` step prints `run.* state, run-tier facts and once: run reset`, then `; prev.run.* holds the ended run (<n> values)` when the ended run left any `run.*` value to snapshot, then each snapshotted value, `prev.run.<path> = <value>` (dsl 0.24.0), then `quest <id> -> unset (tier: run; was <status>)` for each run-tier quest that had left `unset` — with a `note:` after an accept-driven one that was active with no objective done or failed — then `quest <id> accepted (queued at="nextRun")` for each queued acceptance, then its seed's writes.
@@ -19300,6 +19930,32 @@ const hud = Effect.gen(function* () {
 Keep the numeric position for ordering, and use `ClockView.slot` and
 `ClockView.weekdayLabel` for display text.
  
+## 0.51 additions
+
+Every 0.51 IR change is additive: a project that uses none of the new keys compiles to byte-identical artifacts, with one exception: `capabilitySnapshot` changes once for every artifact, because the core `::jump` now declares `max`. Every other new key (`effects.raises`, `raisedBy`, `type: text`) folds into the hash only for a snapshot that declares it. The contract schemas are renamed to the `-0.51` line.
+
+**Bounded backward jump.** A `jump` command gains an optional `max` (an integer from 1 to 99), omitted when the jump has none; a jump without `max` is byte-identical to 0.50 and still goes only forward. With `max`, the jump may target an earlier label and is taken at most `max` times; after that it is not taken and control falls through to the next command.
+
+- **New semantic id `lute.core.boundedJump/1`** (module `core`, behaviour "bounded backward jumps"). An artifact lists it in `requiredSemantics` (provenance `bounded jump`) **only** when some `jump` command has `max`. An engine that ignores `max` either loops without bound or never loops, so the id is meaning-changing: an engine that does not list it in `supportedIds` refuses such an artifact at semantic negotiation, before playback. The registry goes from 16 to 17 ids.
+- **Counters.** Each bounded jump has a counter local to one walk (one presentation, one quest handler or objective segment, one entry or beat body), starting at 0. When control reaches the jump (and its `when` holds, if any) with the counter below `max`, the counter is incremented and control moves to the target; otherwise control falls through. The counter returns to 0 whenever control reaches the jump's target from **outside the jump's region**, which is the span from the target to the jump in the command stream: by falling through into the label, by a forward jump, or by a bounded jump that is not inside the region. A take of the jump itself, or of a bounded jump inside its region, does not reset it. Two bounded jumps sharing a head do not reset each other. A loop never spans an `<on>` or `<objective>` boundary, so a region is always inside one range of commands.
+- **Termination.** Between two takes control moves only forward, so a walk is bounded by the nesting of its loops; a region of nesting depth *d* runs at most Π(max + 1) times over its enclosing jumps. The reference runtime does not trust the compiler for this: at load it re-checks every control transfer of every record (a `jump`'s `target`; a choice or hub option's `target`, a hub's `return`, `converge`; a match arm's `target`, `otherwise`, `converge`; an objective's, handler's, entry's or beat's `body`). A transfer to the record itself or to an earlier one is refused unless it is a `jump` with `max` in a well-nested region; two bounded loops that overlap without nesting, a `max` outside 1..=99, and a required target that is missing or not a position are refused too. `Runtime::load` names the record (`` malformed `jump` record at 001-0200: its `target` goes back to 001-0100, a cycle that never ends (only a `jump` with `max` may go back) ``), and `lute run`/`lute trace` print the same fault. The runaway-step guard still counts steps since the range started or since the last taken bounded jump.
+- **Component labels.** A `::label` inside a component expansion is named per `::use` instance in the compiled stream, and that instance's jumps target its own labels, so a component used twice loops (or jumps forward) inside each instance (#207).
+- **No snapshot change.** Counters are walk-local and rebuilt by the same replay that rebuilds a hub's presentation. The runtime `Snapshot` and the event schema keep their shape; only the version string moves to `0.51`. A `<branch>` reached again in a later iteration is a new `awaitChoice` with a new `request`, and its `presentation` stays `0`; a `<hub>` inside a loop starts each visit at presentation 0.
+- **Trace.** The driver's `jump` observation gains the take number and `max`, and an exhausted observation when the jump is not taken. `lute trace` prints them as explanation, not as a static claim.
+
+**Declared raises.** A `plugin` command gains an optional resolved `raises: [{ occasion, target?, dynamic? }]` and `RewardEntry` gains the same `raises`, each omitted when empty and written last (`RewardEntry.raises` after `credits`, `retracts`, `asserts` and `accepts`). `@attr` is bound to the attribute's compiled value (else its declared `default:`) and the occasion's domain prefix is applied (`scene.chapter2`); an unbound target writes no entry. A target that reads `occasion.target` is written as the reference with the domain prefix (`scene.occasion.target`) and marked `"dynamic": true`; the runtime binds only a marked raise, and refuses at load a marked raise whose target is not `occasion.target` with the occasion's declared prefix, that has no target, or that is on an untargeted occasion. A reward's raises are stamped by the reward kind's `effects.raises`, with `@target` bound as for `accepts`; they are never dynamic.
+
+- The **emitted `plugin` record** (also the halted variant) and the **`grant` record** carry `raises`, with `occasion.target` bound and the `dynamic` mark dropped, omitted when empty. The `record` payload is untyped in the event schema, so only the record catalogue changes. The grant's effect records (`retract`, `assert`, `accept` with their `grant` key) are unchanged, and a raise gets no record of its own, because the runtime raises nothing. `lute run`'s conformance records keep `raises`.
+- **Descriptive, no semantic id.** The runtime does not act on `raises`, and plugin vocabulary is versioned by `capabilitySnapshot`. A reward whose kind declares only `raises` keeps `lute.quest.rewardEffects/1` out of `requiredSemantics`: that id is still collected only for `retracts`, `asserts` and `accepts`.
+- **Host duty.** A host that performs raises sends each one as a `raiseOccasion` input after the presentation that ran the call ends (`presentationEnd`) and the runtime is idle, or after the output carrying the `grant` record has been applied. It keeps its own pending queue across saves, because the runtime replays only the undelivered suffix of an output (see [Custom hosts](/player/custom-hosts/#declared-raises)).
+
+**Localized directive text.** A `plugin` command gains an optional `localized` map, keyed by attribute name (`{ "<attr>": { "lineId", "placeholders"?, "texts"? } }`), for each attribute typed [`text`](/plugins/manifests/#localizable-text-attributes-type-text); `lineId` is `{prefix}~{tag}~{code}~{attr}`, and `placeholders` and `texts` are omitted when empty. `fields.<attr>` keeps the source-language string with its `{{…}}` markers as authored, so a host that ignores localization reads what it read before; the 0.50 stamps of the call stay in `stamps`. `texts` (locale tag → translated text) is filled by `lute compile --locale-bundle`, as for a line. A directive without `text` attributes is byte-identical to 0.50.
+
+- **Runtime.** For a `plugin` command with `localized`, the runtime renders each `text` attribute's markers once and writes the rendered source into the record's `attrs.<attr>`, and the rendered translations into the record's `localized: { <attr>: { lineId, texts } }`, as it does for a line. Host-token markers stay verbatim. The bridge await's `attrs` carry the same rendered values. `lute run`'s conformance records drop `localized`, as they drop a line's translations.
+- **Descriptive, no semantic id.** Engines MAY read `raises` and `localized`.
+
+**What an engine or host must do.** Widen the version gate to `0.51`; list `lute.core.boundedJump/1` in `supportedIds` to accept an artifact with a bounded loop; optionally perform declared raises and read `localized`. The `capabilitySnapshot` of every artifact moves once, so an engine that pins a snapshot hash updates it. See [Localized text](#localized-text) for the `texts` model.
+
 ## 0.50 additions
 
 Every 0.50 IR change is additive: a project that uses none of the new keys compiles to byte-identical artifacts (`capabilitySnapshot` included). The contract schemas are renamed to the `-0.50` line.
@@ -20237,6 +20893,8 @@ while (pc < artifact.commands.length) {
 }
 ```
 
+Since 0.51 the `jump` case above is the unbounded form. A `jump` with `max` keeps a per-walk counter and takes the jump only while it is below `max`, otherwise falling through (`next = null`); see [0.51 additions](#051-additions).
+
 The full scene and quest command set is twenty-three kinds: `line`, `bg`,
 `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, `sequence`, `set`,
 `assert`, `retract`, `choice`, `match`, `hub`, `jump`, `end`, `barrier`,
@@ -21079,6 +21737,32 @@ trace complete: 1 decision; choices 1/2 (enter)
 
 A test of the same walk asserts what play sees — `transcriptContains: ["@narrator: The treasure hall."]`, `transcriptLacks: ["@narrator: A guard waves you back."]`, `state: { run.gold: 10 }` — and passes.
 
+### Loop steps (0.51)
+
+A bounded backward `::jump{to="…" max="N"}` ([directives](/language/directives/#bounded-backward-jumps--max)) shows in the transcript at every visit. A take prints the take number and the bound — `<jump -> retry (again 1/2)>` — and, once the `N` takes are used, the jump is **not taken** and the walk falls through to the next node: `<jump -> retry not taken (2/2 used)>`. The driver's `jump` observation carries the same facts: the take number and `max` for a take, and an `exhausted` observation for the fall-through. A branch reached again in each iteration is a new menu, and a `--choice` list for it is consumed one decision per presentation, so three entries drive three iterations. A latch scene with `::label{name="retry"}` before `<branch id="again">` and `::jump{to="retry" max="2"}` in its `push` choice, answered `--choice again=push,push,push`:
+
+```console
+$ lute trace scenes/latch.lute --project . --choice again=push,push,push
+trace: scenes/latch.lute  (seeds: 0 paths, 0 facts; 3 selections)
+  ## The latch
+    <label>
+    @mira  The latch sticks.
+  <branch again>   eligible: push, leave   -> push
+    <jump -> retry (again 1/2)>
+    <label>
+    @mira  The latch sticks.
+  <branch again>   eligible: push, leave   -> push
+    <jump -> retry (again 2/2)>
+    <label>
+    @mira  The latch sticks.
+  <branch again>   eligible: push, leave   -> push
+    <jump -> retry not taken (2/2 used)>
+    @mira  Let's go.
+trace complete: 3 decisions; choices 1/2 (again)
+```
+
+Like the rest of the transcript this is an explanation of the walk the mocks drove, not a static claim — it never says a loop is, or is not, reachable in a real playthrough.
+
 ## Bridge answers
 
 A plugin directive that calls a host service writes its result into `scene.*` slots through `bridgeResult` effects. Trace calls no service: since 0.24.0 an unanswered call leaves those slots **unknown** — never the state shape's default — so a guard over one halts the walk incomplete with a hint naming the answer to give. In the town gate from [Playing a story](/tooling/play/#answering-bridge-calls), `::check` writes `scene.check.<key>.passed` and `.margin`:
@@ -21408,8 +22092,8 @@ Every custom entry has the same shape as a plugin rule:
 | key | required | meaning |
 | --- | --- | --- |
 | `id` | yes | Project-local bare rule id. |
-| `target` | yes | `line`, `section`, `scene`, `speaker`, `group`, `project`, or `node` (since 0.50). |
-| `when` | yes | A CEL assertion over the target row and `options`; it fires when `true`. |
+| `target` | yes | `line`, `section`, `scene`, `speaker`, `group`, `project`, `node` (since 0.50), or `pair` (since 0.51). |
+| `when` | yes, except for `pair` | A CEL assertion over the target row and `options`; it fires when `true`. A `pair` rule takes `open` and `close` instead and refuses `when` (see [`pair` lints](#pair-lints-since-051)). |
 | `level` | no | `off`, `hint`, `info`, `warn`, or `error`. |
 | `message` | yes | Finding text. `{path.to.field}` interpolates a metric or option path; a number renders trimmed (no trailing `.0`) and rounded to at most two decimals, so a ratio of `3.3333…` reads `3.33`. `{expr:%}` renders shares as rounded percentages. |
 | `options` | no | Defaults exposed to `when` and the message. |
@@ -21541,6 +22225,114 @@ lints:
 ```
 
 For a rule whose dependent attribute, discriminator or marker is missing (`preceding` without `interaction`, a marker without `kind`, a parent without `menuType`) there is no finding and no `E-LINT-EXPR`. An unguarded variant (`node.attrs["mode"]` without the membership test) on a node without `mode` reports `E-LINT-EXPR`, which is why the guard is there.
+
+## `pair` lints (since 0.51)
+
+`target: pair` (valid in plugin `lints:` exports and `lute.lint.yaml` `custom:` rules) checks that two kinds of node come in balanced pairs: a `begin` with its `end`, an open with its close. It is for markers a plugin writes as two directives, which neither `node` rules nor the metric tables can pair up.
+
+```yaml
+lints:
+  - id: group-balanced
+    target: pair
+    open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'   # optional
+    scope: body                                                    # body (default) | section
+    level: error
+    message: "::group begin/end"
+```
+
+| key | required | meaning |
+| --- | --- | --- |
+| `open` | yes | A lint-CEL predicate over the [`node` row](#node-lints-since-050): holds for a node that opens a pair. |
+| `close` | yes | The same, for a node that closes it. |
+| `inside` | no | A predicate every node strictly between an open and its close must satisfy. |
+| `scope` | no | `body` (default) or `section`; see below. |
+
+`open`, `close` and `inside` read the same `node` row as a `node` rule (`kind`, `tag`, `speaker`, `attrs` as authored, `index`, `first`, `last`, `depth`, `prev`, `next`, `parent`, `preceding`, `section`), plus the `scene` and `options` bindings and the string members. A missing key keeps CEL semantics (`E-LINT-EXPR`), so guard every index as in the [recipes](#recipes); the error names the rule and the predicate (`` rule `g2`: `open`: missing key `kind` ``). The loader enforces the shape: on `pair`, `open` and `close` are required and `when` is refused (`` rule `g3`: `when` is refused on `target: pair`, which states `open` and `close` instead ``); on every other target `open`, `close`, `inside` and `scope` are refused; a key written as `null` is refused rather than read as absent (`` `open` is null; give it a value or leave it out ``). A fault is `E-PLUGIN-PARSE` in a plugin's `lints:` and `E-LINT-CONFIG` in `lute.lint.yaml` `custom:`.
+
+### Evaluation
+
+A rule keeps **one open slot** per scope and makes one pass over the scope's nodes in document order:
+
+- **`scope: body`** (the default): each body's direct children, in order — siblings only. Every body (a section, a `<choice>`, a `<match>` arm) is its own scope.
+- **`scope: section`**: every node of one section or top-level declaration in document order, at every depth — the unit at which `node.preceding` resets. It is document order, not paths: an `open` in one `<choice>` pairs with a `close` in its sibling.
+
+For each node:
+
+- a node for which `close` holds while a pair is open **closes** it. A node that satisfies both `open` and `close` is a close while a pair is open, and an open otherwise;
+- a node for which `open` holds while a pair is open is a **nested open**, and the outer pair stays open;
+- a node for which `close` holds with no pair open is an **unopened close**;
+- with `inside`, every node strictly between an open and its close for which `inside` is false is an **inside fault** (in `body` scope only the siblings count, not their descendants);
+- at the end of the scope, a pair still open is an **unclosed open**.
+
+A finding carries the rule's code and level, anchors at the offending node, and appends one fixed phrase to the rendered `message`:
+
+| fault | appended phrase |
+| --- | --- |
+| unclosed open | `` — opened here, with no close in this body `` (`in this section` for `scope: section`) |
+| unopened close | `` — a close with no open pair in this body `` |
+| nested open | `` — opened again while the pair from line N is still open `` |
+| inside fault | `` — not allowed inside the pair opened at line N `` |
+
+A nested-open and an inside finding also name the open node as `related`.
+
+Take the rule above with this body, where the `::group` is never closed:
+
+```lute
+::group{mode="begin"}
+@narrator: The crowd gathers.
+@narrator: Nobody speaks.
+```
+
+`group-balanced` reports `::group begin/end — opened here, with no close in this body` at the `begin` (its code is `L-ACME-FLOW-GROUP-BALANCED` when the `acme.flow` plugin exports it, `L-GROUP-BALANCED` as a `lute.lint.yaml` `custom:` rule). A stray `::group{mode="end"}` with no begin reads `::group begin/end — a close with no open pair in this body`, and a second `begin` before the `end` reads `::group begin/end — opened again while the pair from line N is still open`.
+
+### An `inside` rule
+
+`inside` limits what may sit between the markers. With the `inside` predicate above (a line, `::actor` or `::sfx`), any other directive between the markers is a fault:
+
+```lute
+::group{mode="begin"}
+@narrator: The crowd gathers.
+::bg{assetId="street.night"}
+::group{mode="end"}
+```
+
+The `::bg` is reported as `::group begin/end — not allowed inside the pair opened at line 1`, with the `begin` as `related`.
+
+### A `section`-scope pair
+
+Under `scope: body`, a `begin` before a `<branch>` and its `end` inside a choice sit in different bodies: the `begin` is an unclosed open and the `end` an unopened close. `scope: section` pairs them across the branch, in document order:
+
+```yaml
+lints:
+  - id: fx-balanced
+    target: pair
+    open:   'node.tag == "fx" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
+    close:  'node.tag == "fx" && "mode" in node.attrs && node.attrs["mode"] == "end"'
+    scope: section
+    level: warn
+    message: "::fx begin/end"
+```
+
+```lute
+::fx{mode="begin"}
+<branch id="ask">
+  <choice id="stay" text="Stay">
+    @narrator: You stay.
+    ::fx{mode="end"}
+  </choice>
+  <choice id="go" text="Go">
+    @narrator: You go.
+  </choice>
+</branch>
+```
+
+Here the pair is balanced in document order, so there is no finding. A section's slot resets at the next `##` heading or declaration, so a `begin` left open there is an unclosed open (`in this section`).
+
+### Where it runs, and cost
+
+`pair` rules run in the same node walk as `node` rules, in `lute lint` and in the language server, with each rule evaluated at its node and nothing stored per node; the walk runs when a `node` or a `pair` rule is active. The first `E-LINT-EXPR` in a rule's predicates stops that rule for the document, as for a `node` rule. The state machine's own overhead is linear: at most three predicate calls per `pair` rule per node, and constant slot work. What a predicate does is not claimed linear: `size()` of a long string, for example, is counted by character, so a predicate that reads N characters at each of N nodes costs N². The work counters report which is which: `pair_evals` (predicate invocations) and `pair_slots` (slot opens, closes and frame pushes), and `eval_chars` for the characters a string operation scans. A `pair` rule changes no IR, event, snapshot or `capabilitySnapshot`, and carries no semantic id.
 
 ## Metric tables
 
@@ -21705,7 +22497,7 @@ A plugin rule is data only when it asserts over these fixed, core-computed metri
 tables. If the rule needs another metric, traversal, ordering rule, or evaluation
 primitive, that is a core change—not a YAML extension. Structural predicates
 (what a node is, what surrounds it, which attributes the author wrote) are the
-[`node` target](#node-lints-since-050), and balance checks (`pair`) are 0.51. Plugin lint declarations
+[`node` target](#node-lints-since-050), and balance checks are the [`pair` target](#pair-lints-since-051) (0.51). Plugin lint declarations
 are advisory and are excluded from both the capability snapshot and
 `capabilitySnapshot`.
 
@@ -22218,7 +23010,7 @@ An option's value is the active profile's, otherwise its declared `default:`. An
 
 ## Export files
 
-Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, and shape refs; since dsl 0.26.0 a directive attribute may also be typed `{ entity: <kind> }`, [below](#engine-ids-typed-by-an-entity-kind)). State paths use **structured segments**, never `$name` interpolation. A *directive attribute* or `stampAttrs` entry cannot be typed `list`, `map` or `record` at its top level (since 0.49): an attribute value is written as one scalar, so no `.lute` value could satisfy it, and the plugin load fails with `E-PLUGIN-INVALID-DIRECTIVE`, naming the attribute (``stamp attribute `tags` `` for a stamp) and suggesting a `string` parsed in the host or one attribute per field. Plugin `options:`, frontmatter keys, state shapes and bridge results keep these types, because YAML can write them.
+Each export kind has a normative schema. All are typed by one small manifest type system (`bool` / `int` / `double` / `string`, `enum`, `list`, `record`, `map`, plus `enumFromOption`, `providerRef`, `slotId`, `assetKind`, `domain`, and shape refs; since dsl 0.26.0 a directive attribute may also be typed `{ entity: <kind> }`, [below](#engine-ids-typed-by-an-entity-kind); since 0.51 a directive attribute may be typed `text`, [below](#localizable-text-attributes-type-text)). State paths use **structured segments**, never `$name` interpolation. A *directive attribute* or `stampAttrs` entry cannot be typed `list`, `map` or `record` at its top level (since 0.49): an attribute value is written as one scalar, so no `.lute` value could satisfy it, and the plugin load fails with `E-PLUGIN-INVALID-DIRECTIVE`, naming the attribute (``stamp attribute `tags` `` for a stamp). Since 0.51 the message ends with this hint: `` … so no `.lute` value can satisfy a `list`, `map` or `record` (structured attribute values are not supported yet): where it fits, give each field its own attribute (a stamp can be scoped to its surfaces with `on:`), use a `text` attribute for player-visible text in several languages, or write a list of options as `<choice>` elements ``. For a stamp the `text` clause is omitted, because a stamp cannot be `text`. Structured authoring itself (enum-list metadata such as `::tagged{tags=…}`, language-keyed voice-asset maps) is deferred: 0.51 gives it no spelling, so use the scalar decompositions the hint names. Plugin `options:`, frontmatter keys, state shapes and bridge results keep these types, because YAML can write them.
 
 - `directives/*.yaml` — `::name` directive declarations (see [Bridge](/plugins/bridge/)).
 - `state/*.yaml` — reusable typed record shapes (`stateShapes:`) and structured path templates (`stateTemplates:`); one file may hold both (since 0.24.0; before, the second was dropped).
@@ -22281,7 +23073,7 @@ occasions:
 ```
 
 An occasion takes these keys, and no others: `select`, `target`, `description`, `judge`,
-`raisedWhen`, `payload`, `outsideRun`.
+`raisedWhen`, `payload`, `outsideRun`, and (since 0.51) `raisedBy`.
 
 An occasion's `select:` says what the engine presents when it is raised. `first` (the default) presents the single winning beat, plus any eligible [`also`](/language/beats/#side-remarks-with-also) beat after it. `all` offers every eligible beat and the player picks one. `sequence` (dsl 0.23.0) presents every eligible beat in selection order, such as an evening routine followed by the day's event (see [Composing an occasion](/language/beats/#composing-an-occasion)). A beat's `also: true` on an `all` or `sequence` occasion is `E-BEAT-ATTR`. When a world event of the same name is also declared under `events:`, every raise of the occasion fires that event after the beats, before the occasion judges its `on=` objectives (see [Occasions](/language/beats/#occasions)).
 
@@ -22299,6 +23091,8 @@ An occasion's **`raisedWhen:`** (dsl 0.27.0 §4) says when the engine may raise 
 An occasion's **`payload:`** declares the typed values each raise hands its beats, a map from field to a type of the manifest type system above (`copies: int`): a gacha pull says how many copies came with the hero drawn. Beats read them as `occasion.payload.<field>`, and so do an `<objective on=>` of that occasion and an `<on event=>` handler named like it (see [Occasion payloads](/language/beats/#occasion-payloads)). Every raise gives every field: a `lute play` step that leaves one out is a usage error naming it, `lute trace` and `lute test` halt incomplete on a line that reads a field the mock does not seed, and a clock `raise:` naming an occasion with a payload is `E-CLOCK-DECL`.
 
 An occasion's **`outsideRun: true`** marks a moment that lives outside any run, a title screen or a gallery between runs: the engine raises it even after the project's [`terminal:`](/state/schemas/#the-end-of-the-game-terminal) holds, and the checker does not judge its beats under `!terminal`. The compiled artifact lists such occasions under `outsideRun`.
+
+An occasion's **`raisedBy: declared`** (0.51) says the host raises the occasion only where a directive's or a reward kind's [declared `raises`](#declared-occasion-raises) names it. The only value is `declared`; leaving the key out keeps the default, where the host may raise the occasion at any time. A `raisedBy: declared` occasion that no `raises` entry can reach draws `W-OCCASION-NEVER-RAISED` at the scene or beat that answers it. An occasion the project [clock](/language/clock/) raises is raised outside any declared raise, so `raisedBy: declared` draws no anchor for it and `W-OCCASION-NEVER-RAISED` stays silent. Any other `raisedBy` value is `E-PLUGIN-PARSE`. The key changes `capabilitySnapshot` only for a snapshot that declares it.
 
 Occasions are part of the capability snapshot, so they fold into `capabilitySnapshot`. Declaring a domain restamps, and so does adding or changing its `members:` list; an occasion that only ever says `target: true` or `false` keeps the stamp it had under 0.21.0. Likewise, `select: sequence` and `raisedWhen` change the stamp only for a snapshot that declares them.
 
@@ -22495,6 +23289,36 @@ A value outside the kind is `E-BAD-ENUM`, with a did-you-mean. An attribute type
 
 A value that reaches the attribute through a component param is checked at the `::use` argument, or at the param's `default:` (see [Engine ids through a param](/language/components-and-extends/#engine-ids-through-a-param)). `lute refs --project <DIR> --attr give.item` lists every value with the documents and lines that use it, so a lead sees who gives what before merging several authors' work.
 
+### Localizable text attributes: `type: text`
+
+Since 0.51 a directive attribute may be typed **`text`**: player-visible text that can be translated, so it is addressed and localized the way a dialogue line is.
+
+```yaml
+directives:
+  - name: banner
+    attrs:
+      - { name: title,    required: true, type: text }
+      - { name: subtitle, type: text }
+      - { name: style,    type: { enum: [toast, card] } }
+```
+
+`text` is admitted **only** as the type of a directive attribute (`attrs:`) of a directive that compiles to a `plugin` record: one with no `lower:` of any kind and no `bridge:`. The plugin load fails with `E-PLUGIN-PARSE`, at the attribute, for:
+
+- `text` on a directive with `lower:` (a staging record or a builtin) or with `bridge:`: `` `title` of `::banner` is `text`, but `::banner` lowers to the `actor` record, which carries no localized text — declare it `string`, or drop `lower:` so the call stays a `plugin` record ``;
+- `text` with a `default:`, because an untranslatable source text has nothing to translate;
+- `text` anywhere else the type grammar is read: a stamp (`stampAttrs`, refused at assembly beside the structured-type refusal), plugin `options:`, an occasion `payload:`, a reward kind's `attrs:`, bridge results, or `{ list: text }`. Each place keeps its own invalid-type diagnostic, which names the one place `text` is admitted. A [host token](#host-interpolation-tokens-hosttokens) cannot be `text` either: its type is `string`, `int` or an enum;
+- a directive with a `text` attribute that also declares an attribute named `code`, because `code` is the identity attribute of such a directive.
+
+A stamp scoped with `on: [banner]` and named `code` is shadowed by that core attribute: `E-PLUGIN-RESERVED-STAMP-ATTR`. A cross-cutting stamp named `code` keeps applying to other directives; on a directive with a `text` attribute the core `code` is matched first, as a line's own `code` is.
+
+In a document, a `text` value is a quoted string in the choice-label grammar: `{{…}}` interpolations of state paths, `@def`s and host tokens, with their modifiers; inline markup is not parsed. A literal `{{` cannot be written in a quoted attribute value yet (`\{{` is `E-STRING-ESCAPE` there, as in a choice label; #211). An `@ref` value is `E-ATTR-TYPE`: `` `title` of `::banner` is localizable `text`, written as a quoted string; a `@def` value has no translation of its own ``. The directive then takes `code=` (a string) as a content line does, on any directive with at least one `text` attribute; on any other directive `code` stays `E-UNKNOWN-ATTR`, and the message says why.
+
+```lute
+::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
+```
+
+The localization id of each `text` attribute is `{prefix}~{tag}~{code}~{attr}` (`intro~banner~0010~title` above, in `scenes/intro.lute`), and a `code` containing `~` is `E-LINE-CODE-RESERVED` (`` `code="a~1"` contains `~`, which is reserved for directive text identities ``). Two calls of one directive with `text` attributes sharing a `code` in one scope are `E-DUP-LINE-CODE`, and two units of the project that compile to one `lineId` are `E-LINE-ID-DUP` (`lute check --project`). `lute tag` writes the missing `code=` values (for a component, under the snapshots of the documents that use it; users that disagree on its text directives are `E-COMPONENT-TEXT-DIRECTIVE`), `lute loc export` lists one `directive` row per `text` attribute, and `lute loc import` and `lute loc report` take them. The compiled `plugin` record keeps the source string in `fields.<attr>` and adds a `localized` map ([Runtime contract](/tooling/runtime-contract/#051-additions)); a host without localization reads `fields` as before. A directive with no `text` attribute compiles byte-identically to 0.50, and `text` changes `capabilitySnapshot` only for a snapshot that declares it. (The whole-project quest-reference pass does not read `text` values yet; #212.)
+
 ### Reward target contracts
 
 A reward kind's `target:` says what a `<reward target="…">` value names, and since dsl 0.26.0 §2.5 the checker holds rewards to it:
@@ -22538,7 +23362,7 @@ rewardKinds:
   OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
 ```
 
-`effects` takes `asserts`, `retracts` and `accepts`, and no other key. An empty `effects: {}` is `E-PLUGIN-PARSE` ("declares no effect"). Each `asserts` / `retracts` entry is the same fact pattern a [directive's effects](#facts-a-directive-asserts-or-retracts) use, `relation(arg, …)`.
+`effects` takes `asserts`, `retracts`, `accepts` and (since 0.51) [`raises`](#declared-occasion-raises), and no other key. An empty `effects: {}` is `E-PLUGIN-PARSE` ("declares no effect"; the message lists `raises:` among the keys), while `effects: { raises: [...] }` alone is a valid block. Each `asserts` / `retracts` entry is the same fact pattern a [directive's effects](#facts-a-directive-asserts-or-retracts) use, `relation(arg, …)`.
 
 - **`writes` is not admitted.** A reward's state write is `credits:`, so `effects.writes` is `E-PLUGIN-KEY`, and its message adds `` — a reward's state write is `credits:` ``.
 - **Pattern arguments** are members, `true` / `false`, `@target`, and `_` (in `retracts` only). Any other `@name` is `E-PLUGIN-PARSE`: `` reward kind `BADGE` effect `met(@rarity)` reads `@rarity`; a reward kind's effects read only `@target` (a `<reward>` takes no other attribute) ``. A reward kind's own `attrs:` cannot be authored on `<reward>`, so there is nothing else to read.
@@ -22547,6 +23371,69 @@ rewardKinds:
 - `@target` is bound to the reward's quoted `target=`. A `<reward>` with no `target=` applies no effect for a pattern that reads it, with no extra diagnostic; a kind with `target: { required: true }` already reports `E-REWARD-TARGET` there.
 
 The checker judges each `<reward>` of such a kind with its `@target` bound. A fact pattern is held to exactly what an `::assert` / `::retract` of it is (relation declared, arity, argument kinds and members), with the same codes, at the reward's `kind=`; each message is prefixed `` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): ``. An `accepts` id is judged by `::accept`'s rule: `E-ACCEPT-TARGET` for an unknown id (with a did-you-mean), for a quest that has `start`, and for an auto-activating child. It is reported at the reward's `target=` value when the id came from `@target`, otherwise at `kind=`: `` `<reward kind="OFFER_QUEST" target="secnd">` accepts quest `secnd` (its kind's `effects.accepts`), but no quest in the project declares that id — did you mean `second`? ``. What the effects mean at the grant, and how analyses read them, is in [Quests & scenes](/language/quests-and-scenes/). A kind without `effects:` hashes as it did before.
+
+### Declared occasion raises
+
+Since 0.51 a directive's `effects:` and a reward kind's `effects:` may declare the occasions the **host** raises in answer to the call or the grant. Lute does not execute a raise: raising occasions is a host duty. A declared raise is a promise about what the host does, and it lets the checker connect the call to the scene or beat that answers the occasion.
+
+```yaml
+# plugins/acme.stage/occasions/o.yaml
+occasions:
+  cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
+```
+
+```yaml
+# plugins/acme.stage/directives/d.yaml
+directives:
+  - name: playScene
+    attrs:
+      - { name: scene, required: true, type: { entity: cutsceneId } }
+    effects:
+      raises: [{ occasion: cutscene, target: "@scene" }]
+```
+
+```yaml
+# plugins/acme.stage/rewardkinds/r.yaml
+rewardKinds:
+  CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }
+```
+
+```lute
+--- # scenes/chapter2.lute
+kind: scene
+id: chapter2
+on: cutscene
+target: scene.chapter2
+---
+```
+
+- **`effects.raises`** is a non-empty list of `{ occasion, target? }` entries, and no other keys. It sits beside `writes`, `asserts` and `retracts` on a directive, and beside `asserts`, `retracts` and `accepts` on a reward kind. A reward kind that declares only `raises` keeps the `lute.quest.rewardEffects/1` semantic id out of `requiredSemantics`.
+- **`target`** is one of: absent (only for an occasion declared without a target); `@<attr>` on a directive, naming one of its declared attributes; `@target` on a reward kind, the reward's `target=`; or a literal target written whole (`scene.chapter2`), as a beat writes it. A kind with `target: { forbidden: true }` cannot raise for `@target`.
+- **`raisedBy: declared`** on the occasion makes the host raise it only through declared raises (see [the occasion keys](#export-files) above). Without it, a declared raise of the occasion is recorded in the artifact and checked, but draws no graph edge.
+
+**Load faults** (`E-PLUGIN-PARSE`, at the entry): `raises: []`; an entry that is not a mapping with `occasion` and an optional `target`; a `target` that is neither `@<name>` nor a dotted target; on a directive, an `@<name>` that names no declared attribute; on a reward kind, any `@<name>` other than `@target`, or `@target` on a kind with `target: { forbidden: true }`; an unknown `raisedBy` value.
+
+A directive whose lowering has no carrier for raises, which is any `lower:` (a staging record or a builtin), cannot declare `effects.raises`. It is `E-PLUGIN-INVALID-DIRECTIVE`, at the `raises` key: `` directive `::playVideo` lowers to the `video` record, which carries no effects (only a `plugin` record does), so its `effects.raises` could never reach the host — drop `lower:` so the call stays a `plugin` record, or raise the occasion from a passthrough directive ``. This is the boundary `effects.writes` already has on record lowerings.
+
+**Assembly.** Occasions may come from another plugin, so the occasion is looked up when the plugins assemble. A refused entry is `E-PLUGIN-RAISES` and is dropped, and its siblings still land:
+
+| Fault | Message shape |
+|---|---|
+| the occasion is not in the snapshot | `` directive `::playScene` (`acme.stage`) raises occasion `cutscne`, which no active plugin declares (a plugin raising another plugin's occasion lists it in `depends:`) — did you mean `cutscene`? `` (when the occasion exists in an installed but inactive plugin, the message names that plugin instead) |
+| a `target` on an untargeted occasion, or none on a targeted one | `` … raises `cutscene` without a target, but `cutscene` is raised for a target (`scene.<cutsceneId>`) — add `target: "@<attr>"` `` |
+| for a domain occasion `{ prefix, entity }`, an `@attr` whose declared type is not `{ entity: <entity> }` (on a reward kind: whose `target:` contract is not `{ entity: <entity> }`) | `` … raises `cutscene` for `@scene`, which is typed `string`; the target of `cutscene` is a `cutsceneId` member, so type the attribute `{ entity: cutsceneId }` `` |
+| a literal target outside the occasion's domain shape (`<prefix>.<member>`; `members:` when listed) | `` … raises `cutscene` for `room.office`, but its targets are `scene.<cutsceneId>` `` |
+
+**Per call and per grant.** The project pass (`lute check --project`) reports `E-RAISES-TARGET` at the call's attribute value for an `@attr` target, at the directive head for a literal, and at the reward's `target=` (or `kind=`). A resolved target is the call's authored value, else the attribute's declared `default:`; only a target with neither is unbound, and an unbound target suppresses the raise with no extra diagnostic (`required` already reports). For each resolved target:
+
+- a domain target `<prefix>.<value>` that is not a member of the project's kind (or of the occasion's `members:`) is `E-RAISES-TARGET`, with a did-you-mean;
+- a target that **no** scene or beat answers (no document with `on:` that occasion and that target, or no `target:`) is `E-RAISES-TARGET`: `` `::playScene{scene="chaptr2"}` raises `cutscene` for `scene.chaptr2`, but no scene or beat answers it — did you mean `scene.chapter2`? ``.
+
+An `@def` attribute value folds to a constant like every attribute value, so it is a static target, and a call inside a component body is resolved at each `::use` with its arguments bound. The only dynamic target is a value that reads `occasion.target`, in a call inside a beat. It is not judged here; in the graph it stands for every scene or beat that answers the occasion.
+
+**What the host does.** After the presentation that ran a directive call ends (`presentationEnd`), the host raises each listed occasion for its resolved target, in record order and list order, as a `raiseOccasion` input once the runtime is idle. After the output that carries a reward's `grant` record has been applied, it does the same for the reward kind's raises. The occasion's own gate (`raisedWhen`) may still refuse a raise: that refusal is the host's to report, so Lute reads a declared raise as *possible*, never as guaranteed. It adds no fact, write or Must claim anywhere, and every analysis reads it as a may-edge. See [the scene graph](/connectivity/scene-graph/#edges-that-declared-raises-draw) and the host duties in [Custom hosts](/player/custom-hosts/#declared-raises).
+
+The compiled `plugin` record and the `grant` record carry the resolved `raises` list (`{ occasion, target? }`), with `@attr` bound to the attribute's value and the domain prefix applied (`scene.chapter2`); a target that reads `occasion.target` is written `scene.occasion.target` with `"dynamic": true`, and the runtime binds it to the member the beat runs for. The field is omitted when empty, so a manifest without `raises` leaves every artifact and `capabilitySnapshot` as it was. The [W-OCCASION-NEVER-RAISED](/connectivity/reachability/#occasions-that-nothing-raises) warning flags a scene or beat that answers a `raisedBy: declared` occasion no declared raise reaches.
 
 ### Cast
 
@@ -23210,6 +24097,43 @@ The normative release proposal is
 
 Historical behavior remains attributed to its introducing proposals below;
 this index does not rewrite those citations.
+
+## What is current at 0.51.0
+
+The table below is the area-by-area index as of 0.50.0. 0.51.0 ("flow and text") adds four
+features on top of it, with no new keyword and no new element. The normative text is
+[0.51.0.md](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md).
+
+- **Bounded backward jump** (§3). `::jump{to max}` may target an earlier `::label` at most `max` times
+  (a literal integer from 1 to 99); after that control falls through. A loop stays inside one body,
+  is entered only at its head label, and nests without crossing another loop. Every flow analysis
+  joins the states of all jumps at a label and iterates a loop head to a fixed point, so a read after
+  a label that a jump skipping a write reaches is `E-MAYBE-UNSET`, and a line there can be
+  `W-STAGE-ABSENT`. New codes `E-JUMP-MAX`, `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP`,
+  `E-JUMP-LOOP-CROSS`. IR: `jump.max` and the semantic id `lute.core.boundedJump/1`; the reference
+  runtime re-checks the loop topology at load. A label in a component is compiled per `::use`
+  instance (#207).
+- **Declared occasion raises** (§4). A directive or reward kind declares `effects.raises`, and an
+  occasion may be `raisedBy: declared`. The scenario graph draws a `[raises]` edge from the raiser to the
+  scenes and beats that answer it (`lute impact` follows neither `[raises]` nor `[accept]`, #210). A
+  declared raise is a host promise and is possible, never guaranteed. New codes `E-PLUGIN-RAISES`,
+  `E-RAISES-TARGET`, `W-OCCASION-NEVER-RAISED`. IR: `raises`. The reference player keeps the raises it
+  has not sent yet in its save (`pendingRaises`).
+- **Localizable directive text** (§5). An attribute typed `text` is localizable; its directive takes
+  `code=`, with the identity `{prefix}~{tag}~{code}~{attr}`. `lute tag` and `lute loc export` / `import` /
+  `report` handle it. New codes `E-LINE-CODE-RESERVED`, `E-LINE-ID-DUP`, `E-COMPONENT-TEXT-DIRECTIVE`.
+  IR: `localized`.
+- **`target: pair` lints** (§6). `open`, `close` and optional `inside` predicates find unclosed,
+  unopened, nested and misplaced pairs, in `body` or `section` scope.
+
+Structured attribute values (#176: `list`, `map`, `record`) are deferred, not covered; the refusal stays and its
+message names the scalar decompositions (§7).
+
+**0.51.0 supersedes a 0.1.0 non-goal.** The
+[0.1.0 proposal](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md) (§14) lists
+backward diverts as a non-goal. A bounded, well-nested loop keeps every analysis finite and termination
+provable, so 0.51.0 allows it. The older proposals and the history sections of this page are not
+rewritten.
 
 ## What is current at 0.50.0
 

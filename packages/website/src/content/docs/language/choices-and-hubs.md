@@ -295,7 +295,7 @@ to an earlier `::label`, so a `<branch>` can be asked more than once.
   (at most three times)", a prompt repeated a fixed number of times. The bound is a literal `max`
   from 1 to 99; the walk ends without the player's cooperation.
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::label{name="retry"}
 <branch id="again" prompt="The lock is still stuck.">
   <choice id="push" text="Push harder">
@@ -310,9 +310,10 @@ to an earlier `::label`, so a `<branch>` can be asked more than once.
 
 Here `push` sends the walk back to the label, and after two takes the third `push` falls through
 past the `<branch>`. A `<branch>` reached again is a new menu, and its `presentation` stays `0`. A
-`<hub>` inside a loop starts each visit fresh, with its `once` choices available again.
-A loop may sit inside a hub option body (put the `::label` inside that option), but a
-loop cannot jump out of a hub option from inside it: `E-JUMP-LOOP-SCOPE`.
+`<hub>` inside a loop starts each visit at presentation 0, but a `once` choice taken on an earlier
+visit stays spent: its memory is the scene's visit record (`scene.visited.<hub>.<choice>`), so the
+hub offers only what is left. A loop may sit inside a hub option body (put the `::label` inside that
+option), but a loop cannot jump out of a hub option from inside it: `E-JUMP-LOOP-SCOPE`.
 
 ## Plugin stamps on `<branch>`, `<hub>` and `<choice>`
 

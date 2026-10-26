@@ -216,7 +216,7 @@ For a rule whose dependent attribute, discriminator or marker is missing (`prece
 
 `target: pair` (valid in plugin `lints:` exports and `lute.lint.yaml` `custom:` rules) checks that two kinds of node come in balanced pairs: a `begin` with its `end`, an open with its close. It is for markers a plugin writes as two directives, which neither `node` rules nor the metric tables can pair up.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 lints:
   - id: group-balanced
     target: pair
@@ -235,7 +235,7 @@ lints:
 | `inside` | no | A predicate every node strictly between an open and its close must satisfy. |
 | `scope` | no | `body` (default) or `section`; see below. |
 
-`open`, `close` and `inside` read the same `node` row as a `node` rule (`kind`, `tag`, `speaker`, `attrs` as authored, `index`, `first`, `last`, `depth`, `prev`, `next`, `parent`, `preceding`, `section`), plus the `scene` and `options` bindings and the string members. A missing key keeps CEL semantics (`E-LINT-EXPR`), so guard every index as in the [recipes](#recipes). The loader enforces the shape: on `pair`, `open` and `close` are required and `when` is refused; on every other target `open`, `close`, `inside` and `scope` are refused. A fault is `E-PLUGIN-PARSE` in a plugin's `lints:` and `E-LINT-CONFIG` in `lute.lint.yaml` `custom:`.
+`open`, `close` and `inside` read the same `node` row as a `node` rule (`kind`, `tag`, `speaker`, `attrs` as authored, `index`, `first`, `last`, `depth`, `prev`, `next`, `parent`, `preceding`, `section`), plus the `scene` and `options` bindings and the string members. A missing key keeps CEL semantics (`E-LINT-EXPR`), so guard every index as in the [recipes](#recipes); the error names the rule and the predicate (`` rule `g2`: `open`: missing key `kind` ``). The loader enforces the shape: on `pair`, `open` and `close` are required and `when` is refused (`` rule `g3`: `when` is refused on `target: pair`, which states `open` and `close` instead ``); on every other target `open`, `close`, `inside` and `scope` are refused; a key written as `null` is refused rather than read as absent (`` `open` is null; give it a value or leave it out ``). A fault is `E-PLUGIN-PARSE` in a plugin's `lints:` and `E-LINT-CONFIG` in `lute.lint.yaml` `custom:`.
 
 ### Evaluation
 
@@ -265,19 +265,19 @@ A nested-open and an inside finding also name the open node as `related`.
 
 Take the rule above with this body, where the `::group` is never closed:
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::group{mode="begin"}
 @narrator: The crowd gathers.
 @narrator: Nobody speaks.
 ```
 
-`group-balanced` (code `L-GROUP-BALANCED`) reports `::group begin/end — opened here, with no close in this body` at the `begin`. A stray `::group{mode="end"}` with no begin reads `::group begin/end — a close with no open pair in this body`, and a second `begin` before the `end` reads `::group begin/end — opened again while the pair from line N is still open`.
+`group-balanced` reports `::group begin/end — opened here, with no close in this body` at the `begin` (its code is `L-ACME-FLOW-GROUP-BALANCED` when the `acme.flow` plugin exports it, `L-GROUP-BALANCED` as a `lute.lint.yaml` `custom:` rule). A stray `::group{mode="end"}` with no begin reads `::group begin/end — a close with no open pair in this body`, and a second `begin` before the `end` reads `::group begin/end — opened again while the pair from line N is still open`.
 
 ### An `inside` rule
 
 `inside` limits what may sit between the markers. With the `inside` predicate above (a line, `::actor` or `::sfx`), any other directive between the markers is a fault:
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::group{mode="begin"}
 @narrator: The crowd gathers.
 ::bg{assetId="street.night"}
@@ -290,7 +290,7 @@ The `::bg` is reported as `::group begin/end — not allowed inside the pair ope
 
 Under `scope: body`, a `begin` before a `<branch>` and its `end` inside a choice sit in different bodies: the `begin` is an unclosed open and the `end` an unopened close. `scope: section` pairs them across the branch, in document order:
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 lints:
   - id: fx-balanced
     target: pair
@@ -301,7 +301,7 @@ lints:
     message: "::fx begin/end"
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::fx{mode="begin"}
 <branch id="ask">
   <choice id="stay" text="Stay">

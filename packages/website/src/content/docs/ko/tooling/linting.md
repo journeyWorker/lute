@@ -188,7 +188,7 @@ lints:
 
 `target: pair`(플러그인 `lints:` export와 `lute.lint.yaml`의 `custom:` 규칙에서 유효)는 두 종류의 노드가 짝을 이루어 균형을 맞추는지 검사합니다. `begin`과 그에 맞는 `end`, 즉 open과 close입니다. 플러그인이 디렉티브 두 개로 표시하는 마커를 위한 것이며, `node` 규칙이나 메트릭 표로는 이런 짝을 맞출 수 없습니다.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 lints:
   - id: group-balanced
     target: pair
@@ -207,7 +207,7 @@ lints:
 | `inside` | 아니요 | open과 그 close 사이에 엄격히 놓인 모든 노드가 만족해야 하는 술어입니다. |
 | `scope` | 아니요 | `body`(기본값) 또는 `section`입니다. 아래를 참고하세요. |
 
-`open`, `close`, `inside`는 `node` 규칙과 같은 `node` 행(`kind`, `tag`, `speaker`, 작성된 그대로의 `attrs`, `index`, `first`, `last`, `depth`, `prev`, `next`, `parent`, `preceding`, `section`)과 `scene`, `options` binding, 문자열 멤버를 읽습니다. 없는 키는 CEL 의미를 유지하므로(`E-LINT-EXPR`) [레시피](#레시피)처럼 모든 인덱스를 가드하세요. 로더가 형태를 강제합니다. `pair`에서는 `open`과 `close`가 필수이고 `when`은 거부되며, 다른 모든 대상에서는 `open`, `close`, `inside`, `scope`가 거부됩니다. 위반은 플러그인 `lints:`에서는 `E-PLUGIN-PARSE`, `lute.lint.yaml`의 `custom:`에서는 `E-LINT-CONFIG`입니다.
+`open`, `close`, `inside`는 `node` 규칙과 같은 `node` 행(`kind`, `tag`, `speaker`, 작성된 그대로의 `attrs`, `index`, `first`, `last`, `depth`, `prev`, `next`, `parent`, `preceding`, `section`)과 `scene`, `options` binding, 문자열 멤버를 읽습니다. 없는 키는 CEL 의미를 유지하므로(`E-LINT-EXPR`) [레시피](#레시피)처럼 모든 인덱스를 가드하세요. 오류는 규칙과 술어를 알려 줍니다(`` rule `g2`: `open`: missing key `kind` ``). 로더가 형태를 강제합니다. `pair`에서는 `open`과 `close`가 필수이고 `when`은 거부되며(`` rule `g3`: `when` is refused on `target: pair`, which states `open` and `close` instead ``), 다른 모든 대상에서는 `open`, `close`, `inside`, `scope`가 거부됩니다. `null`로 쓴 키는 없는 것으로 읽지 않고 거부합니다(`` `open` is null; give it a value or leave it out ``). 위반은 플러그인 `lints:`에서는 `E-PLUGIN-PARSE`, `lute.lint.yaml`의 `custom:`에서는 `E-LINT-CONFIG`입니다.
 
 ### 평가
 
@@ -237,19 +237,19 @@ lints:
 
 위 규칙에 다음 body를 적용해 보겠습니다. `::group`이 닫히지 않습니다.
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::group{mode="begin"}
 @narrator: The crowd gathers.
 @narrator: Nobody speaks.
 ```
 
-`group-balanced`(코드 `L-GROUP-BALANCED`)는 `begin`에서 `::group begin/end — opened here, with no close in this body`를 보고합니다. begin 없는 `::group{mode="end"}`는 `::group begin/end — a close with no open pair in this body`, `end` 전에 나온 두 번째 `begin`은 `::group begin/end — opened again while the pair from line N is still open`으로 읽힙니다.
+`group-balanced`는 `begin`에서 `::group begin/end — opened here, with no close in this body`를 보고합니다(코드는 `acme.flow` 플러그인이 내보낼 때 `L-ACME-FLOW-GROUP-BALANCED`, `lute.lint.yaml`의 `custom:` 규칙일 때 `L-GROUP-BALANCED`입니다). begin 없는 `::group{mode="end"}`는 `::group begin/end — a close with no open pair in this body`, `end` 전에 나온 두 번째 `begin`은 `::group begin/end — opened again while the pair from line N is still open`으로 읽힙니다.
 
 ### `inside` 규칙
 
 `inside`는 마커 사이에 놓일 수 있는 것을 제한합니다. 위의 `inside` 술어(줄, `::actor`, `::sfx`)에서는 마커 사이의 다른 디렉티브가 모두 위반입니다.
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::group{mode="begin"}
 @narrator: The crowd gathers.
 ::bg{assetId="street.night"}
@@ -262,7 +262,7 @@ lints:
 
 `scope: body`에서는 `<branch>` 앞의 `begin`과 choice 안의 `end`가 서로 다른 body에 있습니다. `begin`은 닫히지 않은 open, `end`는 열리지 않은 close가 됩니다. `scope: section`은 문서 순서로 branch를 가로질러 둘을 짝짓습니다.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 lints:
   - id: fx-balanced
     target: pair
@@ -273,7 +273,7 @@ lints:
     message: "::fx begin/end"
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::fx{mode="begin"}
 <branch id="ask">
   <choice id="stay" text="Stay">

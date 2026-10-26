@@ -286,7 +286,7 @@ entities:
 
 0.51부터 디렉티브 속성은 **`text`**로 타입을 지정할 수 있습니다. 번역할 수 있는 플레이어 노출 텍스트로, 대사 줄과 같은 방식으로 주소가 매겨지고 현지화됩니다.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 directives:
   - name: banner
     attrs:
@@ -304,13 +304,13 @@ directives:
 
 `on: [banner]`로 한정되고 이름이 `code`인 스탬프는 그 코어 속성에 가려져 `E-PLUGIN-RESERVED-STAMP-ATTR`가 됩니다. 이름이 `code`인 교차 스탬프는 다른 디렉티브에는 계속 적용되며, `text` 속성이 있는 디렉티브에서는 줄의 자체 `code`처럼 코어 `code`가 먼저 매칭됩니다.
 
-문서에서 `text` 값은 선택지 라벨 문법의 따옴표 문자열입니다. 상태 경로, `@def`, 호스트 토큰의 `{{…}}` 보간(수정자 포함)과 리터럴 중괄호를 위한 `\{{`를 쓸 수 있고, 인라인 마크업은 파싱하지 않습니다. `@ref` 값은 `E-ATTR-TYPE`입니다. 그러면 디렉티브는 내용 줄처럼 `code=`(문자열)를 받으며, 이는 `text` 속성이 하나 이상 있는 디렉티브에서 허용됩니다. 다른 디렉티브에서 `code`는 계속 `E-UNKNOWN-ATTR`입니다.
+문서에서 `text` 값은 선택지 라벨 문법의 따옴표 문자열입니다. 상태 경로, `@def`, 호스트 토큰의 `{{…}}` 보간(수정자 포함)을 쓸 수 있고, 인라인 마크업은 파싱하지 않습니다. 리터럴 `{{`는 아직 따옴표 속성 값에 쓸 수 없습니다(선택지 라벨에서처럼 그 자리의 `\{{`는 `E-STRING-ESCAPE`입니다. #211). `@ref` 값은 `E-ATTR-TYPE`입니다: `` `title` of `::banner` is localizable `text`, written as a quoted string; a `@def` value has no translation of its own ``. 그러면 디렉티브는 내용 줄처럼 `code=`(문자열)를 받으며, 이는 `text` 속성이 하나 이상 있는 디렉티브에서 허용됩니다. 다른 디렉티브에서 `code`는 계속 `E-UNKNOWN-ATTR`이며, 메시지가 그 이유를 알려 줍니다.
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
 ```
 
-각 `text` 속성의 현지화 id는 `{prefix}~{tag}~{code}~{attr}`(위에서는 `intro~banner~0010~title`)이며, `~`가 들어간 `code`는 `E-LINE-CODE-RESERVED`입니다. `lute tag`는 빠진 `code=` 값을 써 넣고, `lute loc export`는 `text` 속성마다 `directive` 행 하나를 내보내며, `lute loc import`와 `lute loc report`가 이를 받습니다. 컴파일된 `plugin` 레코드는 원문 문자열을 `fields.<attr>`에 유지하고 `localized` 맵을 추가합니다([런타임 계약](/ko/tooling/runtime-contract/#051-추가-사항)). 현지화를 모르는 호스트는 전처럼 `fields`를 읽습니다. `text` 속성이 없는 디렉티브는 0.50과 바이트 단위로 같게 컴파일되며, `text`는 선언한 스냅숏의 `capabilitySnapshot`만 바꿉니다.
+각 `text` 속성의 현지화 id는 `{prefix}~{tag}~{code}~{attr}`(위의 `scenes/intro.lute`에서는 `intro~banner~0010~title`)이며, `~`가 들어간 `code`는 `E-LINE-CODE-RESERVED`입니다(`` `code="a~1"` contains `~`, which is reserved for directive text identities ``). `text` 속성이 있는 같은 디렉티브의 두 호출이 한 범위에서 `code`를 공유하면 `E-DUP-LINE-CODE`, 프로젝트의 두 단위가 같은 `lineId`로 컴파일되면 `E-LINE-ID-DUP`입니다(`lute check --project`). `lute tag`는 빠진 `code=` 값을 써 넣고(컴포넌트는 그것을 쓰는 문서들의 스냅숏으로 태그하며, 사용자들의 텍스트 디렉티브가 서로 다르면 `E-COMPONENT-TEXT-DIRECTIVE`입니다), `lute loc export`는 `text` 속성마다 `directive` 행 하나를 내보내며, `lute loc import`와 `lute loc report`가 이를 받습니다. 컴파일된 `plugin` 레코드는 원문 문자열을 `fields.<attr>`에 유지하고 `localized` 맵을 추가합니다([런타임 계약](/ko/tooling/runtime-contract/#051-추가-사항)). 현지화를 모르는 호스트는 전처럼 `fields`를 읽습니다. `text` 속성이 없는 디렉티브는 0.50과 바이트 단위로 같게 컴파일되며, `text`는 선언한 스냅숏의 `capabilitySnapshot`만 바꿉니다. (프로젝트 전체의 퀘스트 참조 검사는 아직 `text` 값을 읽지 않습니다. #212.)
 
 ### 보상 대상 계약
 
@@ -369,13 +369,13 @@ rewardKinds:
 
 0.51부터 디렉티브의 `effects:`와 보상 종류의 `effects:`는 호출이나 지급에 대한 응답으로 **호스트**가 발생시키는 occasion을 선언할 수 있습니다. Lute는 raise를 실행하지 않습니다. occasion을 발생시키는 것은 호스트의 일입니다. 선언된 raise는 호스트가 무엇을 하는지에 대한 약속이며, 체커가 호출을 그 occasion에 응답하는 씬이나 비트와 연결할 수 있게 해 줍니다.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 # plugins/acme.stage/occasions/o.yaml
 occasions:
   cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
 ```
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 # plugins/acme.stage/directives/d.yaml
 directives:
   - name: playScene
@@ -385,13 +385,13 @@ directives:
       raises: [{ occasion: cutscene, target: "@scene" }]
 ```
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 # plugins/acme.stage/rewardkinds/r.yaml
 rewardKinds:
   CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 --- # scenes/chapter2.lute
 kind: scene
 id: chapter2
@@ -412,7 +412,7 @@ raise를 실을 곳이 없는 낮춤, 즉 어떤 `lower:`(스테이징 레코드
 
 | 오류 | 메시지 형태 |
 |---|---|
-| occasion이 스냅숏에 없음 | `` directive `::playScene` (`acme.stage`) raises occasion `cutscne`, which no active plugin declares — did you mean `cutscene`? `` (다른 플러그인의 occasion을 raise하는 플러그인은 그것을 `depends:`에 나열해야 하며, 설치되었지만 비활성인 플러그인에 occasion이 있으면 메시지가 그렇게 알려 줍니다) |
+| occasion이 스냅숏에 없음 | `` directive `::playScene` (`acme.stage`) raises occasion `cutscne`, which no active plugin declares (a plugin raising another plugin's occasion lists it in `depends:`) — did you mean `cutscene`? `` (설치되었지만 비활성인 플러그인에 occasion이 있으면 메시지가 대신 그 플러그인을 알려 줍니다) |
 | 대상 없는 occasion에 `target`이 있거나, 대상이 있는 occasion에 없음 | `` … raises `cutscene` without a target, but `cutscene` is raised for a target (`scene.<cutsceneId>`) — add `target: "@<attr>"` `` |
 | 도메인 occasion `{ prefix, entity }`에서 선언된 타입이 `{ entity: <entity> }`가 아닌 `@attr`(보상 종류에서는 `target:` 계약이 `{ entity: <entity> }`가 아님) | `` … raises `cutscene` for `@scene`, which is typed `string`; the target of `cutscene` is a `cutsceneId` member, so type the attribute `{ entity: cutsceneId }` `` |
 | occasion의 도메인 형태(`<prefix>.<member>`, `members:`가 있으면 그 목록) 밖의 리터럴 대상 | `` … raises `cutscene` for `room.office`, but its targets are `scene.<cutsceneId>` `` |
@@ -426,7 +426,7 @@ raise를 실을 곳이 없는 낮춤, 즉 어떤 `lower:`(스테이징 레코드
 
 **호스트가 하는 일.** 디렉티브 호출을 실행한 프레젠테이션이 끝난 뒤(`presentationEnd`), 호스트는 런타임이 idle이 되면 나열된 각 occasion을 해석된 대상에 대해 레코드 순서와 목록 순서대로 `raiseOccasion` 입력으로 발생시킵니다. 보상의 `grant` 레코드를 담은 출력이 적용된 뒤에는 보상 종류의 raise도 같은 식으로 발생시킵니다. occasion 자체의 게이트(`raisedWhen`)가 raise를 거부할 수 있으며, 그 거부를 보고하는 것은 호스트의 몫이므로 Lute는 선언된 raise를 보장이 아닌 *가능*으로만 읽습니다. 어디에도 팩트, 쓰기, Must 주장을 더하지 않으며, 모든 분석은 이를 may 엣지로 읽습니다. [씬 그래프](/ko/connectivity/scene-graph/#선언된-raise가-그리는-엣지)와 [커스텀 호스트](/ko/player/custom-hosts/#선언된-raise)의 호스트 책무를 참고하세요.
 
-컴파일된 `plugin` 레코드와 `grant` 레코드는 해석된 `raises` 목록(`{ occasion, target? }`)을 담습니다. `@attr`은 속성 값으로 바인딩되고 도메인 접두사가 적용되며(`scene.chapter2`), 비어 있으면 필드를 생략하므로 `raises`가 없는 매니페스트는 모든 아티팩트와 `capabilitySnapshot`을 그대로 둡니다.
+컴파일된 `plugin` 레코드와 `grant` 레코드는 해석된 `raises` 목록(`{ occasion, target? }`)을 담습니다. `@attr`은 속성 값으로 바인딩되고 도메인 접두사가 적용됩니다(`scene.chapter2`). `occasion.target`을 읽는 대상은 `"dynamic": true`와 함께 `scene.occasion.target`으로 쓰이고, 런타임이 비트가 실행되는 멤버로 바인딩합니다. 비어 있으면 필드를 생략하므로 `raises`가 없는 매니페스트는 모든 아티팩트와 `capabilitySnapshot`을 그대로 둡니다. 어떤 선언된 raise도 닿지 않는 `raisedBy: declared` occasion에 응답하는 씬이나 비트는 [W-OCCASION-NEVER-RAISED](/ko/connectivity/reachability/#raise되지-않는-occasion) 경고를 받습니다.
 
 ### 캐스트
 

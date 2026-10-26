@@ -523,7 +523,7 @@ lints:
 쓰거나 다른 target의 규칙에 `open`, `close`, `inside`, `scope`를 쓰면 플러그인 `lints:`에서는 `E-PLUGIN-PARSE`,
 `lute.lint.yaml`에서는 `E-LINT-CONFIG`입니다.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 lints:
   - id: group-balanced
     target: pair
@@ -535,7 +535,7 @@ lints:
     message: "::group begin/end"
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::group{mode="begin"}
 @mira: Look at this.
 @tomas: And this.
@@ -562,7 +562,7 @@ lints:
 `inside` 위반의 예입니다. 마커 사이의 `::bg`는 줄도 `::actor`도 `::sfx`도 아니므로 위의 규칙은 1행에서 열린 쌍 안에는
 허용되지 않는다고 보고합니다.
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::group{mode="begin"}
 @mira: Look at this.
 ::bg{location="street" time="night"}
@@ -573,7 +573,7 @@ lints:
 `<choice>` 안의 begin과 다음 `<choice>` 안의 end도 짝이 됩니다. `body` 규칙이라면 이를 닫히지 않은 open과 열린 적 없는
 close로 보고합니다.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 lints:
   - id: window-balanced
     target: pair
@@ -584,7 +584,7 @@ lints:
     message: "::window open/close"
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::window{mode="open"}
 <branch id="buy" prompt="Buy something?">
   <choice id="yes" text="Yes">
@@ -607,7 +607,7 @@ lints:
 있어서 임포터가 루프를 풀어 쓰거나, 어떤 분석도 볼 수 없는 passthrough 디렉티브에 숨겼습니다. 0.51부터는 `max`가 있는
 `::jump`가 **앞선** `::label`을 가리킬 수 있습니다.
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::label{name="attempt"}
 ::tryLock{door="vault"}
 <match subject="scene.lock.vault.won">
@@ -640,7 +640,7 @@ lints:
 중첩된 루프는 각자 셉니다. 안쪽 카운터는 제어가 안쪽 루프 바깥에서 안쪽 머리에 도착할 때마다 0으로 돌아가므로,
 바깥 `max="1"` 안의 안쪽 `max="2"`는 두 라운드마다 안쪽 본문을 세 번씩 실행합니다.
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::label{name="round"}
 @theo: A new round.
 ::label{name="knock"}
@@ -659,10 +659,12 @@ lints:
 `W-CODE-AFTER-JUMP`가 조용합니다. 앞으로 가는 점프의 틈 두 곳도 함께 고쳐지므로, 쓰기를 건너뛰는 점프가 있는 문서는 0.50에
 없던 `E-MAYBE-UNSET`을 새로 받을 수 있습니다.
 
-플레이와 테스트에서: 카운터는 한 번의 walk에 국한되고 리플레이로 다시 만들어지므로 저장에 새로 필요한 것이 없습니다. 이후
+플레이와 테스트에서: 카운터는 한 번의 walk에 국한되고 리플레이로 다시 만들어지므로 런타임 스냅숏에 새로 필요한 것이 없습니다. 이후
 반복에서 다시 닿은 `<branch>`는 새 메뉴이며, 그 `choose:` 목록은 제시마다 결정 하나씩 소비됩니다(`choose: { retry: [yes,
-yes, no] }`가 세 번의 반복을 이끕니다). 루프 안의 `<hub>`는 방문마다 첫 제시에서 시작합니다. `lute trace`는
-`jump → attempt (again 1/2)`와 `jump → attempt not taken (2/2 used)`를 출력합니다.
+yes, no] }`가 세 번의 반복을 이끕니다). 루프 안의 `<hub>`는 방문마다 첫 제시에서 시작하며, 앞선 방문에서 고른 `once`
+선택지는 계속 소진된 상태입니다. `lute trace`는 `<jump -> attempt (again 1/2)>`와 `<jump -> attempt not taken (2/2 used)>`를
+출력합니다. 참조 런타임은 적재 시 루프를 다시 검사해, 뒤로 가는 이동이 잘 중첩된 한정 점프가 아닌 아티팩트를 거부합니다.
+컴포넌트 안의 `::label`은 `::use` 인스턴스마다 따로 컴파일되므로 각 인스턴스는 자기 라벨에서 루프를 돕니다(#207).
 
 "같은 구간을 한도 안에서 다시"에는 루프를 쓰고, 플레이어가 `exit` 선택지를 고를 때까지 메뉴를 다시 보여 줄 때는 `<hub>`를
 쓰세요.
@@ -674,7 +676,7 @@ occasion을 raise하는 것은 호스트의 일이고 Lute는 raise하지 않으
 오는 엣지가 없어서 시나리오 그래프가 둘의 순서를 알 수 없었습니다. 0.51부터 디렉티브나 보상 kind는 자신에 답해 호스트가
 raise하는 occasion을 선언하고, occasion은 선언된 raise로만 raise된다고 말할 수 있습니다.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 # plugins/acme.flow/occasions/occasions.yaml
 occasions:
   cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
@@ -690,7 +692,7 @@ rewardKinds:
   CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute check-in-project="docs/examples/flow-and-text/scenes/chapter2.lute"
 ---
 kind: scene
 id: chapter2
@@ -719,14 +721,20 @@ target: scene.chapter2
   `lute.project.yaml`의 `diagnostics:`에서 다른 `W-*`처럼 수준을 바꿀 수 있습니다.
 
 모든 분석은 선언된 raise를 **가능하지만 보장은 아님**으로 읽습니다. occasion의 게이트가 호스트의 raise를 거절할 수 있으므로
-raise는 응답하는 장면에 팩트, 쓰기, must 주장을 더하지 않습니다. `lute scenario`, `lute impact`, `lute scenario reach`는
+raise는 응답하는 장면에 팩트, 쓰기, must 주장을 더하지 않습니다. `lute scenario`와 `lute scenario reach`는
 raise하는 쪽에서 응답하는 모든 장면과 비트로 `[raises]` 엣지를 그리며, `after:`를 선언한 장면은 `after:`를 자신의 경로로
-유지합니다.
+유지합니다. (`lute impact`는 시맨틱 모델 그래프를 읽으므로 `[raises]`도 `[accept]`도 따라가지 않습니다. #210.)
+[flow-and-text 예제](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text)에서는 다음과 같습니다.
 
-<!-- rerun-after-S8 -->
 ```console
-scene(lock) -> scene(chapter2) [raises]
-quest(finale) -> scene(chapter2) [raises]
+$ lute scenario --project docs/examples/flow-and-text
+project root: docs/examples/flow-and-text
+  topological layers:
+    layer 0: scene(hall), scene(lock), quest(finale)
+    layer 1: scene(chapter2)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(lock) -> scene(chapter2) [raises]
+    quest(finale) -> scene(chapter2) [raises]
 ```
 
 raise는 호스트가 수행합니다. 호출을 실행한 제시가 끝난 뒤 런타임이 한가해지면, 호스트가 각 raise를 레코드 순서대로
@@ -740,7 +748,7 @@ occasion을 raise합니다.
 
 연출되는 배너, 토스트, 챕터 제목은 플레이어가 읽는 텍스트이므로 번역할 수 있어야 합니다. 그런 속성은 `type: text`로 선언합니다.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 directives:
   - name: banner
     attrs:
@@ -749,12 +757,12 @@ directives:
       - { name: style,    type: { enum: [toast, card] } }
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
 ```
 
 - `text` 값은 선택지 라벨 문법의 따옴표 친 문자열입니다. 상태 경로, `@def`, 호스트 토큰의 `{{…}}` 보간은 라벨과 똑같이
-  검사되고, 리터럴 중괄호는 `\{{`로 씁니다. `@ref` 값은 `E-ATTR-TYPE`입니다.
+  검사됩니다. 리터럴 `{{`는 아직 쓸 수 없습니다(따옴표 속성에서 `\{{`는 `E-STRING-ESCAPE`입니다. #211). `@ref` 값은 `E-ATTR-TYPE`입니다.
 - `text`는 `plugin` 레코드로 남는 디렉티브의 속성에만 허용됩니다. `lower:`도 `bridge:`도 없어야 합니다. `default:`를 가질 수
   없고, 스탬프, 플러그인 옵션, 페이로드, 보상 kind 속성의 타입으로도 쓸 수 없습니다. `text` 속성이 있는 디렉티브는 `code`라는
   이름의 속성을 선언할 수 없습니다. 각 오류는 그 속성에서 `E-PLUGIN-PARSE`이고, 그런 디렉티브에 범위를 지정한 `code` 스탬프는
@@ -765,6 +773,7 @@ directives:
   `E-DUP-LINE-CODE`, 프로젝트 어디서든 두 단위의 최종 `lineId`가 같으면 `E-LINE-ID-DUP`입니다. `text` 속성이 없는 디렉티브의
   `code=`는 `E-UNKNOWN-ATTR`입니다.
 - **`lute tag`**는 `text` 속성이 있고 코드가 없는 모든 디렉티브에, 컴파일러가 채우는 순서 그대로 `code="…"`를 씁니다.
+  컴포넌트는 그 사용자들의 스냅숏으로 태그하며, 사용자들이 서로 다르면 `E-COMPONENT-TEXT-DIRECTIVE`입니다.
   `identity.requireStable`이면 코드 없는 디렉티브를 `W-LINE-CODE-UNTAGGED`가 보고합니다.
 
 번역 왕복은 줄이 이미 쓰는 것과 같으며, 텍스트 속성은 행 종류가 하나 늘 뿐입니다.

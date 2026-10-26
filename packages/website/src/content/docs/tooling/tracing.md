@@ -263,20 +263,29 @@ A test of the same walk asserts what play sees — `transcriptContains: ["@narra
 
 ### Loop steps (0.51)
 
-A bounded backward `::jump{to="…" max="N"}` ([directives](/language/directives/#bounded-backward-jumps--max)) shows in the transcript at every visit. A take prints the take number and the bound — `jump → attempt (again 1/2)` — and, once the `N` takes are used, the jump is **not taken** and the walk falls through to the next node: `jump → attempt not taken (2/2 used)`. The driver's `jump` observation carries the same facts: the take number and `max` for a take, and an `exhausted` observation for the fall-through. A branch reached again in each iteration is a new menu, and a `--choice` list for it is consumed one decision per presentation, so three entries drive three iterations. A latch scene with `::jump{to="retry" max="2"}` in the `push` choice of `<branch again>`, answered `--choice again=push,push,push`:
+A bounded backward `::jump{to="…" max="N"}` ([directives](/language/directives/#bounded-backward-jumps--max)) shows in the transcript at every visit. A take prints the take number and the bound — `<jump -> retry (again 1/2)>` — and, once the `N` takes are used, the jump is **not taken** and the walk falls through to the next node: `<jump -> retry not taken (2/2 used)>`. The driver's `jump` observation carries the same facts: the take number and `max` for a take, and an `exhausted` observation for the fall-through. A branch reached again in each iteration is a new menu, and a `--choice` list for it is consumed one decision per presentation, so three entries drive three iterations. A latch scene with `::label{name="retry"}` before `<branch id="again">` and `::jump{to="retry" max="2"}` in its `push` choice, answered `--choice again=push,push,push`:
 
-<!-- rerun-after-S8 -->
 ```console
 $ lute trace scenes/latch.lute --project . --choice again=push,push,push
+trace: scenes/latch.lute  (seeds: 0 paths, 0 facts; 3 selections)
+  ## The latch
+    <label>
+    @mira  The latch sticks.
   <branch again>   eligible: push, leave   -> push
-    jump → retry (again 1/2)
+    <jump -> retry (again 1/2)>
+    <label>
+    @mira  The latch sticks.
   <branch again>   eligible: push, leave   -> push
-    jump → retry (again 2/2)
+    <jump -> retry (again 2/2)>
+    <label>
+    @mira  The latch sticks.
   <branch again>   eligible: push, leave   -> push
-    jump → retry not taken (2/2 used)
+    <jump -> retry not taken (2/2 used)>
+    @mira  Let's go.
+trace complete: 3 decisions; choices 1/2 (again)
 ```
 
-(The block shows the loop lines only: the `trace:` header, the lines of the scene and the final `trace complete:` summary are left out.) Like the rest of the transcript this is an explanation of the walk the mocks drove, not a static claim — it never says a loop is, or is not, reachable in a real playthrough.
+Like the rest of the transcript this is an explanation of the walk the mocks drove, not a static claim — it never says a loop is, or is not, reachable in a real playthrough.
 
 ## Bridge answers
 

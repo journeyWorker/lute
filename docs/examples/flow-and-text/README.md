@@ -19,8 +19,6 @@ cargo build -p lute-cli
 
 > **This project needs the 0.51 toolchain.** It uses `::jump{max}`, `effects.raises`, `raisedBy`,
 > `type: text` with `code=` on a directive, and `target: pair`, none of which an older `lute` loads.
-> It was written from the 0.51.0 spec before those features were implemented, and it is **verified
-> after S8 lands** (the release's last implementation slice): until then nothing here has been run.
 > The guide that explains every recipe is
 > [Porting a content set](https://lute-lang.vercel.app/guides/porting-a-content-set/).
 
@@ -63,14 +61,21 @@ cargo build -p lute-cli
 
 The scenario graph shows the raises as edges (the two raisers are the scene's `::playScene` and the quest's reward):
 
-<!-- rerun-after-S8 -->
 ```console
-scene(lock) -> scene(chapter2) [raises]
-quest(finale) -> scene(chapter2) [raises]
+$ lute scenario --project docs/examples/flow-and-text
+project root: docs/examples/flow-and-text
+  topological layers:
+    layer 0: scene(hall), scene(lock), quest(finale)
+    layer 1: scene(chapter2)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(lock) -> scene(chapter2) [raises]
+    quest(finale) -> scene(chapter2) [raises]
 ```
 
-`lute trace scenes/lock.lute --project .` explains each take of the loop as `jump → attempt (again 1/2)`
-and the exhausted jump as `jump → attempt not taken (2/2 used)`. `lute play` appends
+`lute trace scenes/lock.lute --project . --mock <file>`, with a mock that answers `tryLock` three times
+(`bridges: { tryLock: [ { won: false }, { won: false }, { won: false } ] }`), explains each take of the loop as
+`<jump -> attempt (again 1/2)>` and the exhausted jump as `<jump -> attempt not taken (2/2 used)>`. Without a
+mock the trace stops at the first `::tryLock` (exit 3, the bridge result is unknown). `lute play` appends
 `  → raises cutscene scene.chapter2` to the `::playScene` record's line and to the `CUTSCENE` grant line, but it
 does not raise the occasion itself: the play script raises `cutscene` as its next step, as a host does.
 

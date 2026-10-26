@@ -324,7 +324,7 @@ A value that reaches the attribute through a component param is checked at the `
 
 Since 0.51 a directive attribute may be typed **`text`**: player-visible text that can be translated, so it is addressed and localized the way a dialogue line is.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 directives:
   - name: banner
     attrs:
@@ -342,13 +342,13 @@ directives:
 
 A stamp scoped with `on: [banner]` and named `code` is shadowed by that core attribute: `E-PLUGIN-RESERVED-STAMP-ATTR`. A cross-cutting stamp named `code` keeps applying to other directives; on a directive with a `text` attribute the core `code` is matched first, as a line's own `code` is.
 
-In a document, a `text` value is a quoted string in the choice-label grammar: `{{…}}` interpolations of state paths, `@def`s and host tokens, with their modifiers, and `\{{` for a literal brace; inline markup is not parsed. An `@ref` value is `E-ATTR-TYPE`. The directive then takes `code=` (a string) as a content line does, on any directive with at least one `text` attribute; on any other directive `code` stays `E-UNKNOWN-ATTR`.
+In a document, a `text` value is a quoted string in the choice-label grammar: `{{…}}` interpolations of state paths, `@def`s and host tokens, with their modifiers; inline markup is not parsed. A literal `{{` cannot be written in a quoted attribute value yet (`\{{` is `E-STRING-ESCAPE` there, as in a choice label; #211). An `@ref` value is `E-ATTR-TYPE`: `` `title` of `::banner` is localizable `text`, written as a quoted string; a `@def` value has no translation of its own ``. The directive then takes `code=` (a string) as a content line does, on any directive with at least one `text` attribute; on any other directive `code` stays `E-UNKNOWN-ATTR`, and the message says why.
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
 ```
 
-The localization id of each `text` attribute is `{prefix}~{tag}~{code}~{attr}` (`intro~banner~0010~title` above), and a `code` containing `~` is `E-LINE-CODE-RESERVED`. `lute tag` writes the missing `code=` values, `lute loc export` lists one `directive` row per `text` attribute, and `lute loc import` and `lute loc report` take them. The compiled `plugin` record keeps the source string in `fields.<attr>` and adds a `localized` map ([Runtime contract](/tooling/runtime-contract/#051-additions)); a host without localization reads `fields` as before. A directive with no `text` attribute compiles byte-identically to 0.50, and `text` changes `capabilitySnapshot` only for a snapshot that declares it.
+The localization id of each `text` attribute is `{prefix}~{tag}~{code}~{attr}` (`intro~banner~0010~title` above, in `scenes/intro.lute`), and a `code` containing `~` is `E-LINE-CODE-RESERVED` (`` `code="a~1"` contains `~`, which is reserved for directive text identities ``). Two calls of one directive with `text` attributes sharing a `code` in one scope are `E-DUP-LINE-CODE`, and two units of the project that compile to one `lineId` are `E-LINE-ID-DUP` (`lute check --project`). `lute tag` writes the missing `code=` values (for a component, under the snapshots of the documents that use it; users that disagree on its text directives are `E-COMPONENT-TEXT-DIRECTIVE`), `lute loc export` lists one `directive` row per `text` attribute, and `lute loc import` and `lute loc report` take them. The compiled `plugin` record keeps the source string in `fields.<attr>` and adds a `localized` map ([Runtime contract](/tooling/runtime-contract/#051-additions)); a host without localization reads `fields` as before. A directive with no `text` attribute compiles byte-identically to 0.50, and `text` changes `capabilitySnapshot` only for a snapshot that declares it. (The whole-project quest-reference pass does not read `text` values yet; #212.)
 
 ### Reward target contracts
 
@@ -407,13 +407,13 @@ The checker judges each `<reward>` of such a kind with its `@target` bound. A fa
 
 Since 0.51 a directive's `effects:` and a reward kind's `effects:` may declare the occasions the **host** raises in answer to the call or the grant. Lute does not execute a raise: raising occasions is a host duty. A declared raise is a promise about what the host does, and it lets the checker connect the call to the scene or beat that answers the occasion.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 # plugins/acme.stage/occasions/o.yaml
 occasions:
   cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
 ```
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 # plugins/acme.stage/directives/d.yaml
 directives:
   - name: playScene
@@ -423,13 +423,13 @@ directives:
       raises: [{ occasion: cutscene, target: "@scene" }]
 ```
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 # plugins/acme.stage/rewardkinds/r.yaml
 rewardKinds:
   CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 --- # scenes/chapter2.lute
 kind: scene
 id: chapter2
@@ -450,7 +450,7 @@ A directive whose lowering has no carrier for raises, which is any `lower:` (a s
 
 | Fault | Message shape |
 |---|---|
-| the occasion is not in the snapshot | `` directive `::playScene` (`acme.stage`) raises occasion `cutscne`, which no active plugin declares — did you mean `cutscene`? `` (a plugin that raises another plugin's occasion lists it in `depends:`; the message says so when the occasion exists in an installed but inactive plugin) |
+| the occasion is not in the snapshot | `` directive `::playScene` (`acme.stage`) raises occasion `cutscne`, which no active plugin declares (a plugin raising another plugin's occasion lists it in `depends:`) — did you mean `cutscene`? `` (when the occasion exists in an installed but inactive plugin, the message names that plugin instead) |
 | a `target` on an untargeted occasion, or none on a targeted one | `` … raises `cutscene` without a target, but `cutscene` is raised for a target (`scene.<cutsceneId>`) — add `target: "@<attr>"` `` |
 | for a domain occasion `{ prefix, entity }`, an `@attr` whose declared type is not `{ entity: <entity> }` (on a reward kind: whose `target:` contract is not `{ entity: <entity> }`) | `` … raises `cutscene` for `@scene`, which is typed `string`; the target of `cutscene` is a `cutsceneId` member, so type the attribute `{ entity: cutsceneId }` `` |
 | a literal target outside the occasion's domain shape (`<prefix>.<member>`; `members:` when listed) | `` … raises `cutscene` for `room.office`, but its targets are `scene.<cutsceneId>` `` |
@@ -464,7 +464,7 @@ An `@def` attribute value folds to a constant like every attribute value, so it 
 
 **What the host does.** After the presentation that ran a directive call ends (`presentationEnd`), the host raises each listed occasion for its resolved target, in record order and list order, as a `raiseOccasion` input once the runtime is idle. After the output that carries a reward's `grant` record has been applied, it does the same for the reward kind's raises. The occasion's own gate (`raisedWhen`) may still refuse a raise: that refusal is the host's to report, so Lute reads a declared raise as *possible*, never as guaranteed. It adds no fact, write or Must claim anywhere, and every analysis reads it as a may-edge. See [the scene graph](/connectivity/scene-graph/#edges-that-declared-raises-draw) and the host duties in [Custom hosts](/player/custom-hosts/#declared-raises).
 
-The compiled `plugin` record and the `grant` record carry the resolved `raises` list (`{ occasion, target? }`), with `@attr` bound to the attribute's value and the domain prefix applied (`scene.chapter2`); the field is omitted when empty, so a manifest without `raises` leaves every artifact and `capabilitySnapshot` as it was.
+The compiled `plugin` record and the `grant` record carry the resolved `raises` list (`{ occasion, target? }`), with `@attr` bound to the attribute's value and the domain prefix applied (`scene.chapter2`); a target that reads `occasion.target` is written `scene.occasion.target` with `"dynamic": true`, and the runtime binds it to the member the beat runs for. The field is omitted when empty, so a manifest without `raises` leaves every artifact and `capabilitySnapshot` as it was. The [W-OCCASION-NEVER-RAISED](/connectivity/reachability/#occasions-that-nothing-raises) warning flags a scene or beat that answers a `raisedBy: declared` occasion no declared raise reaches.
 
 ### Cast
 

@@ -53,15 +53,18 @@ description: Lute 언어와 실행 계약이 현재 버전 0.50.0에서 강제�
 - **한도 있는 뒤로 가는 점프**(§3). `::jump{to max}`는 앞선 `::label`로 최대 `max`번(1~99의 정수 리터럴) 되돌아갈 수
   있고, 그 뒤에는 다음 노드로 넘어갑니다. 루프는 한 본문 안에 머물고, 머리 레이블로만 진입하며, 다른 루프와
   교차하지 않고 중첩됩니다. 모든 흐름 분석은 레이블에서 모든 점프의 상태를 합류시키고 루프 머리를 고정점까지 반복합니다.
-  새 코드 `E-JUMP-MAX`, `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP`, `E-JUMP-LOOP-CROSS`. IR: `jump.max`와 semantic id
-  `lute.core.boundedJump/1`.
+  그래서 쓰기를 건너뛰는 점프가 닿는 레이블 뒤의 읽기는 `E-MAYBE-UNSET`이고, 그 자리의 대사는 `W-STAGE-ABSENT`가 될 수
+  있습니다. 새 코드 `E-JUMP-MAX`, `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP`, `E-JUMP-LOOP-CROSS`. IR: `jump.max`와 semantic id
+  `lute.core.boundedJump/1`. 참조 런타임은 적재 시 루프 구조를 다시 검사합니다. 컴포넌트 안의 레이블은 `::use`
+  인스턴스마다 따로 컴파일됩니다(#207).
 - **선언된 occasion raise**(§4). 디렉티브나 보상 kind가 `effects.raises`를 선언하고, occasion은 `raisedBy: declared`일 수
-  있습니다. 시나리오 그래프는 던지는 쪽에서 그 occasion에 응답하는 장면과 비트로 `[raises]` 엣지를 그립니다. 선언된
-  raise는 호스트의 약속이며 가능할 뿐 보장이 아닙니다. 새 코드 `E-PLUGIN-RAISES`, `E-RAISES-TARGET`,
-  `W-OCCASION-NEVER-RAISED`. IR: `raises`.
+  있습니다. 시나리오 그래프는 던지는 쪽에서 그 occasion에 응답하는 장면과 비트로 `[raises]` 엣지를 그립니다(`lute impact`는
+  `[raises]`도 `[accept]`도 따라가지 않습니다. #210). 선언된 raise는 호스트의 약속이며 가능할 뿐 보장이 아닙니다. 새 코드
+  `E-PLUGIN-RAISES`, `E-RAISES-TARGET`, `W-OCCASION-NEVER-RAISED`. IR: `raises`. 참조 플레이어는 아직 보내지 않은 raise를
+  세이브에 담습니다(`pendingRaises`).
 - **번역할 수 있는 디렉티브 텍스트**(§5). `text` 타입 속성은 번역할 수 있으며, 그 디렉티브는 `code=`를 받고 식별자는
   `{prefix}~{tag}~{code}~{attr}`입니다. `lute tag`와 `lute loc export` / `import` / `report`가 이를 다룹니다. 새 코드
-  `E-LINE-CODE-RESERVED`, `E-LINE-ID-DUP`. IR: `localized`.
+  `E-LINE-CODE-RESERVED`, `E-LINE-ID-DUP`, `E-COMPONENT-TEXT-DIRECTIVE`. IR: `localized`.
 - **`target: pair` lint**(§6). `open`, `close`, 선택적인 `inside` 술어로 닫히지 않은, 열린 적 없는, 중첩된, 자리가 잘못된
   쌍을 `body` 또는 `section` 범위에서 찾습니다.
 

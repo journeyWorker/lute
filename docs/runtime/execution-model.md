@@ -331,8 +331,22 @@ without bound or never loops, so it is gated by the semantic id
   jump inside its region, does not reset it.
 - **Termination.** Between two takes control moves only forward, so a region of
   nesting depth *d* is traversed at most Π(max_k + 1) times over its enclosing
-  jumps. The runaway step guard counts steps since the range started or since
-  the last taken bounded backward jump, so a defect cycle still trips it.
+  jumps. The reference runtime checks this at load rather than trusting the
+  compiler: `Code::loop_table` walks every control transfer of every record
+  (`jump.target`; choice and hub `options[].target`, `hub.return`, `converge`;
+  match `arms[].target`, `otherwise`, `converge`; `quest.objectives[].body`;
+  `on`/`entry`/`beat` `body`) and refuses a transfer to the record itself or an
+  earlier one unless it is a `jump` with `max` in a well-nested region, two
+  bounded loops that overlap without nesting, a `max` outside 1..99, and a
+  required target that is missing or not a position string.
+  `ExecProject::from_index` (so `Runtime::load` and play) refuses such a
+  document, and a machine over a refused stream runs nothing. The runaway step
+  guard still counts steps since the range started or since the last taken
+  bounded backward jump.
+- **Component labels.** A `::label` inside a component expansion is compiled
+  as `<instance scope path>::<name>`, and a jump emitted in that expansion
+  targets the same instance's label, so two `::use` instances of one component
+  each loop (or jump forward) on their own labels (#207).
 - **Replay and saves.** Counters are walk-local and are rebuilt when a suspended
   input is resumed by replaying it from its pre-input world with the answers
   already given, as a hub's `presentation` is. The snapshot shape does not
@@ -344,8 +358,10 @@ without bound or never loops, so it is gated by the semantic id
 - **Trace.** The driver's `jump` observation carries the take number and `max`
   (`{ "kind": "jump", "position", "taken": n, "max": m }`) and, when a bounded
   jump is not taken, an exhausted observation
-  (`{ "kind": "jump", "position", "exhausted": true }`). `lute trace` prints
-  `jump → attempt (again 1/2)` and `jump → attempt not taken (2/2 used)`. This is
+  (`{ "kind": "jump", "position", "exhausted": true, "max": m }`). `lute trace`
+  prints `<jump -> attempt (again 1/2)>` and
+  `<jump -> attempt not taken (2/2 used)>` (JSON: `"bounded": { "take", "max",
+  "outcome": "again" }` or `{ "max", "outcome": "notTaken" }`). This is
   explanation, not a static claim.
 
 ## Command records

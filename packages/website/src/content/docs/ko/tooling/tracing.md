@@ -262,20 +262,29 @@ trace complete: 1 decision; choices 1/2 (enter)
 
 ### 루프 단계 (0.51)
 
-한정된 뒤로 가는 `::jump{to="…" max="N"}`([디렉티브](/ko/language/directives/#한정된-뒤로-점프--max) 참고)는 방문할 때마다 트랜스크립트에 나타납니다. 실행된 점프는 몇 번째인지와 한계를 출력하며 — `jump → attempt (again 1/2)` — `N`번을 다 쓰고 나면 점프는 **실행되지 않고** 걷기는 다음 노드로 이어집니다: `jump → attempt not taken (2/2 used)`. 드라이버의 `jump` 관찰도 같은 사실을 담습니다. 실행된 점프에는 번호와 `max`가, 이어지는 경우에는 `exhausted` 관찰이 붙습니다. 반복할 때마다 다시 도달한 branch는 새 메뉴이며, 그 `--choice` 목록은 제시마다 결정 하나씩 소비되므로 항목 세 개가 반복 세 번을 이끕니다. `<branch again>`의 `push` 선택지에 `::jump{to="retry" max="2"}`가 있는 latch 장면에 `--choice again=push,push,push`로 답하면:
+한정된 뒤로 가는 `::jump{to="…" max="N"}`([디렉티브](/ko/language/directives/#한정된-뒤로-점프--max) 참고)는 방문할 때마다 트랜스크립트에 나타납니다. 실행된 점프는 몇 번째인지와 한계를 출력하며 — `<jump -> retry (again 1/2)>` — `N`번을 다 쓰고 나면 점프는 **실행되지 않고** 걷기는 다음 노드로 이어집니다: `<jump -> retry not taken (2/2 used)>`. 드라이버의 `jump` 관찰도 같은 사실을 담습니다. 실행된 점프에는 번호와 `max`가, 이어지는 경우에는 `exhausted` 관찰이 붙습니다. 반복할 때마다 다시 도달한 branch는 새 메뉴이며, 그 `--choice` 목록은 제시마다 결정 하나씩 소비되므로 항목 세 개가 반복 세 번을 이끕니다. `<branch id="again">` 앞에 `::label{name="retry"}`가 있고 그 `push` 선택지에 `::jump{to="retry" max="2"}`가 있는 latch 장면에 `--choice again=push,push,push`로 답하면:
 
-<!-- rerun-after-S8 -->
 ```console
 $ lute trace scenes/latch.lute --project . --choice again=push,push,push
+trace: scenes/latch.lute  (seeds: 0 paths, 0 facts; 3 selections)
+  ## The latch
+    <label>
+    @mira  The latch sticks.
   <branch again>   eligible: push, leave   -> push
-    jump → retry (again 1/2)
+    <jump -> retry (again 1/2)>
+    <label>
+    @mira  The latch sticks.
   <branch again>   eligible: push, leave   -> push
-    jump → retry (again 2/2)
+    <jump -> retry (again 2/2)>
+    <label>
+    @mira  The latch sticks.
   <branch again>   eligible: push, leave   -> push
-    jump → retry not taken (2/2 used)
+    <jump -> retry not taken (2/2 used)>
+    @mira  Let's go.
+trace complete: 3 decisions; choices 1/2 (again)
 ```
 
-(이 블록은 루프 줄만 보여 줍니다. `trace:` 머리글, 장면의 나머지 줄, 마지막 `trace complete:` 요약은 생략했습니다.) 트랜스크립트의 나머지와 마찬가지로 이것은 mock이 이끈 걷기에 대한 설명이지 정적 주장이 아닙니다. 실제 플레이에서 루프가 도달 가능한지 아닌지를 말해 주지 않습니다.
+트랜스크립트의 나머지와 마찬가지로 이것은 mock이 이끈 걷기에 대한 설명이지 정적 주장이 아닙니다. 실제 플레이에서 루프가 도달 가능한지 아닌지를 말해 주지 않습니다.
 
 ## 브리지 응답
 

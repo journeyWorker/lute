@@ -1413,13 +1413,16 @@ custom:
 
 `::jump`는 `max`를 가지면 앞선 `::label`로 되돌아갈 수 있습니다. `max`는 점프를 따라갈 수 있는 최대 횟수이고, `max`번 따라간 뒤에는 다음 노드로 넘어갑니다. `max`는 1~99의 정수 리터럴이어야 하며(그 밖의 값과 앞으로 가는 점프의 `max`는 `E-JUMP-MAX`), 루프는 한 본문 안에 머물고(`E-JUMP-LOOP-SCOPE`), 머리 label로만 진입하며(`E-JUMP-INTO-LOOP`), 겹치지 않고 중첩됩니다(`E-JUMP-LOOP-CROSS`). 메뉴를 `exit` 선택지가 선택될 때까지 다시 보여 줄 때는 `<hub>`를 씁니다.
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::label{name="attempt"}
-::minigame{level="2"}
-<match subject="run.won">
+::tryLock{door="vault"}
+<match subject="scene.lock.vault.won">
   <when is="false">
     @mira: Again!
     ::jump{to="attempt" max="2"}
+  </when>
+  <when is="true">
+    @mira: It clicks open.
   </when>
 </match>
 @theo: That's enough for today.
@@ -1427,7 +1430,7 @@ custom:
 
 디렉티브나 보상 kind는 호출이나 부여 뒤에 **호스트**가 던지는 occasion을 선언할 수 있습니다. `raisedBy: declared`인 occasion은 선언된 `raises`로만 던져집니다. `lute scenario`는 던지는 쪽에서 그 occasion에 응답하는 모든 장면과 비트로 `[raises]` 엣지를 그리고, 아무것도 던지지 않으면 `W-OCCASION-NEVER-RAISED`가 경고합니다. 선언된 raise는 가능할 뿐 보장이 아니며 팩트, 쓰기, Must 주장을 더하지 않습니다.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 # plugins/acme.stage/occasions/o.yaml
 occasions:
   cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
@@ -1447,7 +1450,7 @@ raise의 `target`은 디렉티브에서는 `@<attr>`, 보상 kind에서는 `@tar
 
 `text` 타입 속성은 번역할 수 있는 플레이어용 텍스트입니다. `text` 속성이 있는 디렉티브는 `code=`를 받고, 번역 키는 `{prefix}~{tag}~{code}~{attr}`입니다. `lute tag`가 빠진 코드를 채우고, `lute loc export` / `import` / `report`가 그 텍스트를 `kind: "directive"` 행으로 다룹니다.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 directives:
   - name: banner
     attrs:
@@ -1455,13 +1458,13 @@ directives:
       - { name: subtitle, type: text }
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::banner{code="0010" title="Welcome to the hall, {{userName}}"}
 ```
 
 `pair` lint는 닫히지 않은 여는 요소, 열린 적 없는 닫는 요소, 이미 열린 쌍 안에서 다시 열린 요소, 쌍 안에 `inside`가 허용하지 않는 행을 찾습니다. `scope: body`(기본)는 한 본문의 형제끼리, `scope: section`은 깊이와 상관없이 문서 순서대로 행을 짝짓습니다.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 custom:
   - id: group-balanced
     target: pair

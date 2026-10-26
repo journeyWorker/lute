@@ -1396,13 +1396,16 @@ custom:
 
 A `::jump` goes back to an earlier `::label` when it carries `max`, the most times it may be taken. After `max` takes, control falls through. `max` is a literal integer from 1 to 99 (`E-JUMP-MAX` otherwise, and on a forward jump). A loop stays inside one body (`E-JUMP-LOOP-SCOPE`), is entered only at its head label (`E-JUMP-INTO-LOOP`), and nests rather than overlaps (`E-JUMP-LOOP-CROSS`). A loop that must re-offer a menu until an `exit` choice is a `<hub>`.
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::label{name="attempt"}
-::minigame{level="2"}
-<match subject="run.won">
+::tryLock{door="vault"}
+<match subject="scene.lock.vault.won">
   <when is="false">
     @mira: Again!
     ::jump{to="attempt" max="2"}
+  </when>
+  <when is="true">
+    @mira: It clicks open.
   </when>
 </match>
 @theo: That's enough for today.
@@ -1410,7 +1413,7 @@ A `::jump` goes back to an earlier `::label` when it carries `max`, the most tim
 
 A directive or reward kind can declare the occasions the **host** raises after the call or the grant. An occasion marked `raisedBy: declared` is raised only through a declared `raises`; `lute scenario` draws a `[raises]` edge from the raiser to every scene or beat that answers it, and `W-OCCASION-NEVER-RAISED` warns when nothing raises it. A declared raise is possible, never guaranteed: it adds no fact, write or Must claim.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 # plugins/acme.stage/occasions/o.yaml
 occasions:
   cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
@@ -1430,7 +1433,7 @@ The `target` of a raise is `@<attr>` on a directive, `@target` on a reward kind,
 
 An attribute typed `text` is localizable player-visible text. A directive that has one takes `code=`, and its translation key is `{prefix}~{tag}~{code}~{attr}`; `lute tag` writes the missing codes, and `lute loc export` / `import` / `report` handle the text as `kind: "directive"` rows.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 directives:
   - name: banner
     attrs:
@@ -1438,13 +1441,13 @@ directives:
       - { name: subtitle, type: text }
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::banner{code="0010" title="Welcome to the hall, {{userName}}"}
 ```
 
 A `pair` lint finds an opener that is never closed, a close with no opener, an opener inside an open pair, and rows not allowed `inside` a pair. `scope: body` (default) pairs siblings of one body; `scope: section` pairs rows in document order at any depth.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 custom:
   - id: group-balanced
     target: pair

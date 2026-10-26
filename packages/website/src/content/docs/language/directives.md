@@ -482,22 +482,27 @@ the jump may be taken. After `max` takes the jump is not taken, and control fall
 node after it. `max` is a literal integer from 1 to 99; `lute.core` declares it on `::jump` as an
 `int`:
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::label{name="attempt"}
-::minigame{level="2"}                     # a blocking bridge call that writes run.won
-<match subject="run.won">
+::tryLock{door="vault"}
+<match subject="scene.lock.vault.won">
   <when is="false">
     @mira: Again!
     ::jump{to="attempt" max="2"}
+  </when>
+  <when is="true">
+    @mira: It clicks open.
   </when>
 </match>
 @theo: That's enough for today.
 ```
 
-The minigame runs at most three times: the first pass and two repeats. If the third attempt still
-fails, the jump is exhausted and `@theo` speaks. `when=` and `max` combine — the jump is taken while
-its `when` holds *and* takes remain. `max` is not a stamp carrier: `::jump` still carries no stamp,
-so `max` is the only attribute added.
+`::tryLock` is a blocking bridge call that writes `scene.lock.vault.won` (the
+[flow-and-text example](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text),
+`scenes/lock.lute`). The lock is tried at most three times: the first pass and two repeats. If the
+third attempt still fails, the jump is exhausted and `@theo` speaks. `when=` and `max` combine — the
+jump is taken while its `when` holds *and* takes remain. `max` is not a stamp carrier: `::jump` still
+carries no stamp, so `max` is the only attribute added.
 
 - **Counter.** Each bounded jump has its own counter, local to one walk (one presentation, one quest
   handler or objective segment, one entry or beat body), starting at 0. When control reaches the
@@ -525,13 +530,22 @@ checker enforces these rules:
 
 A jump from inside a loop to a label after it (an exit) and a forward jump from before the loop to
 its head are both legal. A bounded jump inside a component body is checked in the component's own
-document, and each expanded instance has its own counters.
+document, and each expanded instance has its own counters and its own labels: the compiler names a
+label per `::use` instance, so a component used twice loops, or jumps forward, inside each instance
+(#207).
 
 Loops cannot make a walk run forever. Between two takes of bounded jumps control moves only
 forward, so it is bounded by the walk's length; a loop's counter resets only when its head is
 entered from outside, so by induction over the nesting a loop nested inside `d` bounded jumps runs
 at most the product of `(max + 1)` over those jumps. Every walk ends without player cooperation,
-and the checker can still follow every path.
+and the checker can still follow every path. The reference runtime does not take the compiler's
+word for it: at load it refuses an artifact with a backward transfer other than a bounded `jump`,
+or with loops that cross (see the [runtime contract](/tooling/runtime-contract/#051-additions)).
+
+Flow analyses see the loops too. Definite assignment and stage tracking join the states of every
+jump that reaches a label, so a write that a jump skips is not assumed at the label: a read after it
+is `E-MAYBE-UNSET`, and a line there whose speaker a skipped `::actor` would have shown is
+`W-STAGE-ABSENT`. A loop head is iterated to a fixed point.
 
 ## Reserved directives
 

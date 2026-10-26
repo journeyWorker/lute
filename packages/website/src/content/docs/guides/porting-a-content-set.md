@@ -552,7 +552,7 @@ optional `inside` predicate, and a `scope`; it has no `when`. A `pair` rule with
 with `open`, `close`, `inside` or `scope`, is `E-PLUGIN-PARSE` in a plugin's `lints:` and `E-LINT-CONFIG` in
 `lute.lint.yaml`.
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 lints:
   - id: group-balanced
     target: pair
@@ -564,7 +564,7 @@ lints:
     message: "::group begin/end"
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::group{mode="begin"}
 @mira: Look at this.
 @tomas: And this.
@@ -594,7 +594,7 @@ related location.
 An `inside` violation: the `::bg` between the markers is not a line, `::actor` or `::sfx`, so the rule above
 reports it as not allowed inside the pair opened at line 1.
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::group{mode="begin"}
 @mira: Look at this.
 ::bg{location="street" time="night"}
@@ -605,7 +605,7 @@ A pair can span a branch. With `scope: section`, a begin before a `<branch>` and
 up, and so would a begin inside one `<choice>` and an end inside the next, which a `body` rule would report
 as an unclosed open and an unopened close:
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 lints:
   - id: window-balanced
     target: pair
@@ -616,7 +616,7 @@ lints:
     message: "::window open/close"
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::window{mode="open"}
 <branch id="buy" prompt="Buy something?">
   <choice id="yes" text="Yes">
@@ -639,7 +639,7 @@ A sheet row like "play the minigame, and offer it again if the player fails, at 
 0.51 `::jump` could only go forward, so an importer unrolled the loop or hid it in a passthrough directive that no
 analysis could see. Since 0.51 a `::jump` that carries `max` may target an **earlier** `::label`:
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::label{name="attempt"}
 ::tryLock{door="vault"}
 <match subject="scene.lock.vault.won">
@@ -675,7 +675,7 @@ A nested loop counts for itself. The inner counter returns to 0 every time contr
 outside the inner loop, so an inner `max="2"` inside an outer `max="1"` runs the inner body three times in each of
 the two rounds:
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::label{name="round"}
 @theo: A new round.
 ::label{name="knock"}
@@ -694,11 +694,14 @@ re-entrance is `W-STAGE-ABSENT`, and a bounded jump does not end its body (`W-CO
 exhaustion falls through). That also fixes two gaps for forward jumps, so a document that jumps over a write may gain
 an `E-MAYBE-UNSET` it did not have in 0.50.
 
-For play and tests: counters are local to one walk and rebuilt by replay, so a save needs nothing new. A `<branch>`
-reached again in a later iteration is a new menu, and a scripted `choose:` list for it is consumed one decision per
-presentation (`choose: { retry: [yes, yes, no] }` drives three iterations). A `<hub>` inside a loop starts each
-visit at its first presentation. `lute trace` prints `jump → attempt (again 1/2)` and
-`jump → attempt not taken (2/2 used)`.
+For play and tests: counters are local to one walk and rebuilt by replay, so the runtime snapshot needs nothing
+new. A `<branch>` reached again in a later iteration is a new menu, and a scripted `choose:` list for it is
+consumed one decision per presentation (`choose: { retry: [yes, yes, no] }` drives three iterations). A `<hub>`
+inside a loop starts each visit at its first presentation, and a `once` choice taken on an earlier visit stays
+spent. `lute trace` prints `<jump -> attempt (again 1/2)>` and `<jump -> attempt not taken (2/2 used)>`. The
+reference runtime re-checks the loops at load and refuses an artifact whose backward transfers are not
+well-nested bounded jumps. A `::label` inside a component is compiled once per `::use` instance, so each
+instance loops on its own label (#207).
 
 Use a loop for "the same stretch again, a bounded number of times". Use a `<hub>` to offer a menu again until the
 player takes an `exit` choice.
@@ -711,7 +714,7 @@ edge from the row that caused it, and the scenario graph could not order them. S
 reward kind declares the occasions the host raises in answer to it, and an occasion can say that only declared
 raises ever raise it:
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 # plugins/acme.flow/occasions/occasions.yaml
 occasions:
   cutscene: { select: first, target: { prefix: scene, entity: cutsceneId }, raisedBy: declared }
@@ -727,7 +730,7 @@ rewardKinds:
   CUTSCENE: { target: { entity: cutsceneId, required: true }, effects: { raises: [{ occasion: cutscene, target: "@target" }] } }
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute check-in-project="docs/examples/flow-and-text/scenes/chapter2.lute"
 ---
 kind: scene
 id: chapter2
@@ -757,14 +760,20 @@ raises `cutscene` for `scene.chapter2`.
   project clock raises is never warned about. Re-level it in `lute.project.yaml` `diagnostics:` like any `W-*` code.
 
 Every analysis reads a declared raise as **possible, never guaranteed**: the host may refuse it at the occasion's
-gate, so a raise adds no fact, write or must-claim in the answering scene. `lute scenario`, `lute impact` and
+gate, so a raise adds no fact, write or must-claim in the answering scene. `lute scenario` and
 `lute scenario reach` draw a `[raises]` edge from the raiser to every answering scene and beat, and a scene that
-declares `after:` keeps `after:` as its route:
+declares `after:` keeps `after:` as its route. (`lute impact` reads the semantic model graph and follows neither
+`[raises]` nor `[accept]` edges; #210.) The [flow-and-text example](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text):
 
-<!-- rerun-after-S8 -->
 ```console
-scene(lock) -> scene(chapter2) [raises]
-quest(finale) -> scene(chapter2) [raises]
+$ lute scenario --project docs/examples/flow-and-text
+project root: docs/examples/flow-and-text
+  topological layers:
+    layer 0: scene(hall), scene(lock), quest(finale)
+    layer 1: scene(chapter2)
+  edges (prerequisite -> dependent) [atom kind(s)]:
+    scene(lock) -> scene(chapter2) [raises]
+    quest(finale) -> scene(chapter2) [raises]
 ```
 
 The host performs the raise. After the presentation that ran the call ends, it sends each raise as a
@@ -779,7 +788,7 @@ ones in saves and rollback points, and a custom host does the same (see [Custom 
 A staged banner, a toast or a chapter title is text a player reads, so it must be translatable. Declare such an
 attribute `type: text`:
 
-```yaml unverified="0.51 feature; verified after S1-S8 land"
+```yaml
 directives:
   - name: banner
     attrs:
@@ -788,12 +797,13 @@ directives:
       - { name: style,    type: { enum: [toast, card] } }
 ```
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
 ```
 
 - A `text` value is a quoted string in the choice-label grammar: `{{…}}` interpolations of state paths, `@def`s and
-  host tokens, each checked as in a label, and `\{{` for a literal brace. An `@ref` value is `E-ATTR-TYPE`.
+  host tokens, each checked as in a label. A literal `{{` cannot be written in it yet (`\{{` is `E-STRING-ESCAPE`
+  in a quoted attribute; #211). An `@ref` value is `E-ATTR-TYPE`.
 - `text` is admitted only on an attribute of a directive that stays a `plugin` record: no `lower:` and no
   `bridge:`. It cannot have a `default:`, and it is not a type for stamps, plugin options, payloads or reward-kind
   attributes. A directive with a `text` attribute cannot declare an attribute named `code`. Each fault is
@@ -805,7 +815,8 @@ directives:
   in one scope with the same `code` are `E-DUP-LINE-CODE`, and two units anywhere in the project with one final
   `lineId` are `E-LINE-ID-DUP`. `code=` on a directive without a `text` attribute is `E-UNKNOWN-ATTR`.
 - **`lute tag`** writes `code="…"` into every untagged directive that has a `text` attribute, in the order the
-  compiler back-fills. With `identity.requireStable`, `W-LINE-CODE-UNTAGGED` reports one without a code.
+  compiler back-fills; a component is tagged under the snapshots of its users, and users that disagree are
+  `E-COMPONENT-TEXT-DIRECTIVE`. With `identity.requireStable`, `W-LINE-CODE-UNTAGGED` reports one without a code.
 
 The translation round trip is the one lines already use, and a text attribute is one more row kind:
 

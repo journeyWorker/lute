@@ -491,14 +491,14 @@ entities:
 
 플러그인 디렉티브는 배너 제목처럼 번역가가 봐야 하는 텍스트를 담을 수 있습니다. 해당 [매니페스트](/ko/plugins/manifests/)가 속성을 `type: text`로 선언합니다. `text` 속성은 `plugin` 레코드로 컴파일되는 디렉티브(`lower:`도 `bridge:`도 없음)에서만 허용되며 `default:`를 가질 수 없습니다. 각 `text` 속성은 선택지 라벨처럼 번역 단위 하나입니다:
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
 ```
 
-- **값 문법.** `text` 값은 `<choice>` 라벨과 같은 문법의 따옴표 문자열입니다. 상태 경로, `@def`, [호스트 토큰](#호스트-토큰)의 `{{…}}` 보간과 그 수식자, 그리고 리터럴 중괄호를 위한 `\{{`를 쓸 수 있습니다. [인라인 텍스트 수식자](#인라인-텍스트-수식자)는 파싱되지 않습니다. 각 보간은 라벨의 보간과 똑같이 검사됩니다. `@ref` 값(`title=@greeting`)은 `E-ATTR-TYPE`입니다. `@def` 값에는 자체 번역이 없기 때문입니다.
+- **값 문법.** `text` 값은 `<choice>` 라벨과 같은 문법의 따옴표 문자열입니다. 상태 경로, `@def`, [호스트 토큰](#호스트-토큰)의 `{{…}}` 보간과 그 수식자를 쓸 수 있습니다. 리터럴 `{{`는 아직 따옴표 속성 값에 쓸 수 없습니다(선택지 라벨에서처럼 그 자리의 `\{{`는 `E-STRING-ESCAPE`입니다. #211). [인라인 텍스트 수식자](#인라인-텍스트-수식자)는 파싱되지 않습니다. 각 보간은 라벨의 보간과 똑같이 검사됩니다. `@ref` 값(`title=@greeting`)은 `E-ATTR-TYPE`입니다. `@def` 값에는 자체 번역이 없기 때문입니다.
 - **`code=`.** `text` 속성이 하나 이상 있는 디렉티브는 콘텐츠 줄처럼 `code="…"`를 받습니다(공백을 제거한 문자열). 그 밖의 디렉티브에서 `code`는 계속 `E-UNKNOWN-ATTR`입니다. `text` 속성 옆에 `code`라는 이름의 속성을 직접 선언하는 디렉티브는 플러그인을 로드할 때 거부됩니다.
 - **`lineId`.** `text` 속성의 id는 `{prefix}~{tag}~{code}~{attr}`이며 예는 `intro~banner~0010~title`입니다. `lineId` 템플릿을 거치지 않고, 위치는 절대 정체성이 아닙니다. `~`가 구분자이므로 `~`를 포함한 `code`는 `E-LINE-CODE-RESERVED`이고, 리터럴 텍스트에 `~`가 들어간 identity 템플릿은 `E-IDENTITY-TEMPLATE`입니다. 안전장치로 프로젝트 전체 `lute check`는 최종 `lineId`가 같은 두 단위(줄, 선택지, 프롬프트, 디렉티브 텍스트)를 `E-LINE-ID-DUP`으로 보고합니다. `lineId` 하나는 번역 하나를 가리키기 때문입니다. 한 범위에서 두 `::banner` 호출이 `code`를 공유하면 `E-DUP-LINE-CODE`입니다.
-- **백필.** 태그 없는 디렉티브는 줄과 마찬가지로 범위 안에서 디렉티브 태그별로 센 다음 코드를 받습니다. [`lute tag`](/ko/tooling/cli/#tag)는 `text` 속성이 있는 태그 없는 디렉티브마다 `code="…"`를 기록합니다. `identity.requireStable`이 켜져 있으면 `code`가 없는 그런 디렉티브는 `W-LINE-CODE-UNTAGGED`입니다.
+- **백필.** 태그 없는 디렉티브는 줄과 마찬가지로 범위 안에서 디렉티브 태그별로 센 다음 코드를 받으며, 컴포넌트에서는 컴포넌트 소스 전체에 걸쳐 셉니다. [`lute tag`](/ko/tooling/cli/#tag)는 `text` 속성이 있는 태그 없는 디렉티브마다 `code="…"`를 기록합니다. 컴포넌트는 그것을 쓰는 문서들의 스냅숏으로 태그하며, 사용자들이 그 텍스트 디렉티브를 서로 다르게 해석하면 `E-COMPONENT-TEXT-DIRECTIVE`입니다. `identity.requireStable`이 켜져 있으면 `code`가 없는 그런 디렉티브는 `W-LINE-CODE-UNTAGGED`입니다.
 - **아티팩트.** 레코드의 `fields.<attr>`는 `{{…}}` 마커를 작성한 그대로 둔 원본 언어 문자열을 유지하므로, 지역화를 무시하는 호스트는 이전과 같은 값을 읽습니다. `lineId`와 플레이스홀더는 `localized.<attr>`에 실리며, `code` 자체는 `fields`에도 `stamps`에도 기록되지 않습니다. `text` 속성이 없는 디렉티브는 0.50과 똑같이 컴파일됩니다.
 
 문자열은 [`lute loc export`, `lute loc import`, `lute compile --locale-bundle`](/ko/tooling/cli/#loc-export)로 내보내고 번역해 병합합니다. 디렉티브의 `lineId`는 `code`가 작성되어 있을 때만 소스에서 재현할 수 있으므로 먼저 `lute tag`를 실행하세요.

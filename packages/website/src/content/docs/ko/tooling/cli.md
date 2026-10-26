@@ -377,7 +377,7 @@ lute compile: no lute.project.yaml at or above . — pass the project directory 
 ```json
 {
   "irVersion": "0.10.0",
-  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
   "requiredSemantics": [
     "lute.core/1",
     "lute.quest.lifecycle/1"
@@ -600,7 +600,7 @@ $ lute context <FILE> [--project <DIR>] [--providers <DIR>] [--permission-profil
 
 ```json
 {
-  "capabilitySnapshot": "babc470773a644da19930785b89f402d4b8116530bd6b16533110de4b2a7a80a",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
   "textModifiers": {
     "core": [
       {
@@ -1107,26 +1107,24 @@ $ lute loc export [--project <DIR>] [--format csv] [-o, --output <PATH>]
 kind,file,line,lineId,code,speaker,key,text,sourceFile,sourceLine,sourceHash
 ```
 
-0.51부터 네 번째 종류 `directive`가 있습니다. 플러그인 디렉티브의 [`text` 속성](/ko/language/dialogue-and-cast/#지역화-가능한-디렉티브-텍스트-051부터)마다 한 행이며, 문서 순서(디렉티브의 속성은 선언 순서)를 따릅니다. `key`는 `{tag}.{attr}`, `lineId`는 `{prefix}~{tag}~{code}~{attr}`, `code`는 디렉티브에 작성된 `code`입니다. 줄과 마찬가지로 `lineId`는 `code`가 작성되어 있을 때만 재현할 수 있고, 그렇지 않으면 `null`(JSON) 또는 빈 값(CSV)이므로 먼저 `lute tag`를 실행하세요. JSON 행에는 `kind`, `file`, `line`, `lineId`, `code`, `key`, `text`, `source`, `sourceHash`가 들어갑니다. CSV는 기존 열을 그대로 쓰며 `kind`는 `directive`, `code`와 `key`는 채워지고 `speaker`는 비어 있습니다. 열은 추가되지 않습니다:
+0.51부터 네 번째 종류 `directive`가 있습니다. 플러그인 디렉티브의 [`text` 속성](/ko/language/dialogue-and-cast/#지역화-가능한-디렉티브-텍스트-051부터)마다 한 행이며, 문서 순서(디렉티브의 속성은 선언 순서)를 따릅니다. `key`는 `{tag}.{attr}`, `lineId`는 `{prefix}~{tag}~{code}~{attr}`, `code`는 디렉티브에 작성된 `code`입니다. 줄과 마찬가지로 `lineId`는 `code`가 작성되어 있을 때만 재현할 수 있고, 그렇지 않으면 `null`(JSON) 또는 빈 값(CSV)이며 stderr 안내가 그 수를 셉니다(`N directive texts untagged — run lute tag`). JSON 행에는 `kind`, `file`, `line`, `lineId`, `code`, `key`, `text`, `source`, `sourceHash`가 들어갑니다. CSV는 기존 열을 그대로 쓰며 `kind`는 `directive`, `code`와 `key`는 채워지고 `speaker`는 비어 있습니다. 열은 추가되지 않습니다. [`docs/examples/flow-and-text`](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text)의 `::banner`입니다(`lute loc export --project docs/examples/flow-and-text`):
 
-<!-- rerun-after-S8 -->
 ```json
 {
-  "kind": "directive",
-  "file": "scenes/intro.lute",
-  "line": 3,
-  "lineId": "intro~banner~0010~title",
   "code": "0010",
+  "file": "docs/examples/flow-and-text/scenes/hall.lute",
   "key": "banner.title",
-  "text": "Welcome to the hall, {{userName}}",
+  "kind": "directive",
+  "line": 18,
+  "lineId": "hall~banner~0010~title",
   "source": null,
-  "sourceHash": "sha256:…"
+  "sourceHash": "sha256:fde24517faf3…",
+  "text": "Welcome to the hall, {{userName}}"
 }
 ```
 
-<!-- rerun-after-S8 -->
 ```text
-directive,scenes/intro.lute,3,intro~banner~0010~title,0010,,banner.title,"Welcome to the hall, {{userName}}",,,sha256:…
+directive,docs/examples/flow-and-text/scenes/hall.lute,18,hall~banner~0010~title,0010,,banner.title,"Welcome to the hall, {{userName}}",,,sha256:fde24517faf3…
 ```
 
 (해시는 줄여 표기했습니다.)
@@ -1169,7 +1167,7 @@ $ lute loc report [--project <DIR>] [--json]
 
 문서별 및 화자별 단어 수와 줄 수를 보고합니다. 같은 콘텐츠 줄을 대상으로 하는 제작 계획용 뷰입니다. 선택지 라벨은 개수(`choices`)만 세고 단어는 세지 않습니다. branch/hub 프롬프트는 개수(`prompts`, 0.47부터 — 보고서 버전 `0.47.0.loc-report`)를 세고, 그 단어는 문서 및 프로젝트 단어 합계에 포함됩니다(화자는 없습니다). `--json`은 사람이 읽는 표 대신 JSON으로 보고서를 출력합니다. 성공 시 **0**, I/O 오류 시 **2**입니다.
 
-0.51부터 디렉티브의 `text` 속성은 프롬프트처럼 집계됩니다. 그 단어는 문서 및 프로젝트 단어 합계에 포함되며(화자는 없습니다), `directiveTexts` 개수는 0이 아닐 때만 JSON과 사람이 읽는 출력에 나타납니다.
+0.51부터 디렉티브의 `text` 속성은 프롬프트처럼 집계됩니다. 그 단어는 문서 및 프로젝트 단어 합계에 포함됩니다(화자는 없습니다). JSON에서는 문서와 `totals`에 `directiveTexts`가 0이 아닐 때만 들어가고, 사람이 읽는 표에는 프로젝트에 하나라도 있을 때만 `directive texts` 열이, 요약에는 `N directive text(s)` 개수가 붙습니다.
 
 ## --explain
 

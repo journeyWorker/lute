@@ -281,7 +281,7 @@ title: The lighthouse
   세 번)", 정해진 횟수만 반복되는 프롬프트가 해당합니다. 한계는 1부터 99까지의 리터럴 `max`이며, 플레이어의
   협조 없이도 보행이 끝납니다.
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::label{name="retry"}
 <branch id="again" prompt="The lock is still stuck.">
   <choice id="push" text="Push harder">
@@ -296,8 +296,9 @@ title: The lighthouse
 
 여기서 `push`는 보행을 라벨로 되돌리고, 두 번 실행된 뒤 세 번째 `push`는 `<branch>` 뒤로 이어집니다. 다시
 도달한 `<branch>`는 새 메뉴이며 `presentation`은 `0`으로 유지됩니다. 루프 안의 `<hub>`는 방문마다
-새로 시작하므로 `once` 선택지를 다시 쓸 수 있습니다. 루프는 허브 옵션 본문 안에 둘 수 있지만(그 옵션 안에
-`::label`을 두세요), 허브 옵션 안에서 그 바깥으로 되돌아가는 루프는 `E-JUMP-LOOP-SCOPE`입니다.
+제시 0에서 시작하지만, 앞선 방문에서 고른 `once` 선택지는 계속 소진된 상태입니다. 그 기억이 장면의 방문 기록
+(`scene.visited.<hub>.<choice>`)이므로 허브는 남은 선택지만 내놓습니다. 루프는 허브 옵션 본문 안에 둘 수
+있지만(그 옵션 안에 `::label`을 두세요), 허브 옵션 안에서 그 바깥으로 되돌아가는 루프는 `E-JUMP-LOOP-SCOPE`입니다.
 
 ## `<branch>`, `<hub>`, `<choice>`의 플러그인 스탬프
 

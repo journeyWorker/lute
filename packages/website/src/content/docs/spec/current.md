@@ -54,16 +54,22 @@ features on top of it, with no new keyword and no new element. The normative tex
 - **Bounded backward jump** (§3). `::jump{to max}` may target an earlier `::label` at most `max` times
   (a literal integer from 1 to 99); after that control falls through. A loop stays inside one body,
   is entered only at its head label, and nests without crossing another loop. Every flow analysis
-  joins the states of all jumps at a label and iterates a loop head to a fixed point. New codes
-  `E-JUMP-MAX`, `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP`, `E-JUMP-LOOP-CROSS`. IR: `jump.max` and the
-  semantic id `lute.core.boundedJump/1`.
+  joins the states of all jumps at a label and iterates a loop head to a fixed point, so a read after
+  a label that a jump skipping a write reaches is `E-MAYBE-UNSET`, and a line there can be
+  `W-STAGE-ABSENT`. New codes `E-JUMP-MAX`, `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP`,
+  `E-JUMP-LOOP-CROSS`. IR: `jump.max` and the semantic id `lute.core.boundedJump/1`; the reference
+  runtime re-checks the loop topology at load. A label in a component is compiled per `::use`
+  instance (#207).
 - **Declared occasion raises** (§4). A directive or reward kind declares `effects.raises`, and an
   occasion may be `raisedBy: declared`. The scenario graph draws a `[raises]` edge from the raiser to the
-  scenes and beats that answer it. A declared raise is a host promise and is possible, never
-  guaranteed. New codes `E-PLUGIN-RAISES`, `E-RAISES-TARGET`, `W-OCCASION-NEVER-RAISED`. IR: `raises`.
+  scenes and beats that answer it (`lute impact` follows neither `[raises]` nor `[accept]`, #210). A
+  declared raise is a host promise and is possible, never guaranteed. New codes `E-PLUGIN-RAISES`,
+  `E-RAISES-TARGET`, `W-OCCASION-NEVER-RAISED`. IR: `raises`. The reference player keeps the raises it
+  has not sent yet in its save (`pendingRaises`).
 - **Localizable directive text** (§5). An attribute typed `text` is localizable; its directive takes
   `code=`, with the identity `{prefix}~{tag}~{code}~{attr}`. `lute tag` and `lute loc export` / `import` /
-  `report` handle it. New codes `E-LINE-CODE-RESERVED`, `E-LINE-ID-DUP`. IR: `localized`.
+  `report` handle it. New codes `E-LINE-CODE-RESERVED`, `E-LINE-ID-DUP`, `E-COMPONENT-TEXT-DIRECTIVE`.
+  IR: `localized`.
 - **`target: pair` lints** (§6). `open`, `close` and optional `inside` predicates find unclosed,
   unopened, nested and misplaced pairs, in `body` or `section` scope.
 

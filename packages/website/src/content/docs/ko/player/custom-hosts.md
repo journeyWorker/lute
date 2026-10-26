@@ -319,11 +319,11 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 
 참조 플레이어는 세션 셸의 **대기 raise 큐**로 이를 수행합니다:
 
-- **적재.** 출력이 적용될 때 그 레코드의 `raises`가 레코드 순서와 목록 순서대로 큐에 추가되며, 각 항목에는 출처(`document`, `position`, 출력의 입력 로그 인덱스)가 붙습니다. 시작(`newRun`, `toStart`, lineage 복원)의 출력도 다른 출력처럼 정확히 한 번 적재됩니다.
-- **비우는 경계.** 디렉터는 연출이 정착되는 경계, 즉 출력을 적용한 batch가 정착되고 런타임이 idle이 된 뒤에, 그리고 호스트 `idle`과 바인딩의 idle 흐름 **전에** 큐를 비웁니다. 각 단계는 큐의 맨 앞을 꺼내 세션 락 아래에서 `raiseOccasion` 입력으로 보내므로 raise는 정확히 한 번 전달됩니다. 런타임이 거부한 raise는 로그에 남기고 버리며 재시도하지 않습니다. raise의 출력이 또 다른 raise를 적재할 수 있으며, 큐가 빌 때까지 계속 비운 다음 idle 흐름이 실행됩니다.
+- **적재.** 출력이 적용될 때 그 레코드의 `raises`가 레코드 순서와 목록 순서대로 큐에 추가되며, 각 항목은 `PendingRaise { occasion, target?, document, position?, logIndex }`입니다(`grant` 레코드에는 `position`이 없고, `logIndex`는 그 레코드를 실은 출력의 입력 로그 항목입니다). 시작(`newRun`, `toStart`, lineage 복원)의 출력도 다른 출력처럼 정확히 한 번 적재됩니다.
+- **비우는 경계.** 디렉터는 idle 흐름에서 큐를 비웁니다. batch, 불러오기, 롤백이 `idle`에 정착한 뒤(batch 정착과 같은 차례), 호스트 `idle`과 바인딩의 idle 흐름 **전에**입니다. batch fiber 안에서 비우지 않으므로, 남은 raise가 있는 채로 `idle`에 도착한 불러오기나 롤백도 큐를 비웁니다. `ended`에서는 비우지 않습니다. 각 단계는 큐의 맨 앞을 꺼내 세션 락 아래에서 중단 없이 `raiseOccasion` 입력으로 보내므로 raise는 정확히 한 번 전달됩니다. 런타임이 거부한 raise는 로그에 남기고 버리며 재시도하지 않습니다. 입력 로그 기록이 실패하면 런타임 세션은 로그를 쓴 뒤에만 진행하므로 맨 앞 항목을 큐에 되돌립니다. raise의 출력이 또 다른 raise를 적재할 수 있으며, 큐가 빌 때까지 계속 비운 다음 idle 흐름이 실행됩니다.
 - **플레이어 입력당 롤백 한 단계.** 체크포인트는 플레이어 입력을 제출하기 전에 찍는 기존 체크포인트이며, 이제 대기 큐도 함께 담습니다. 자동 선언 raise는 기록에 추가하지 않는 경로로 보내므로 자체 체크포인트를 만들지 않습니다. `rollback(1)`은 플레이어 입력과 그 입력이 일으킨 모든 raise를 되돌립니다. 그 raise 중 없든 일부든 전부든 전달된 상태였더라도 `rollback(1)`은 큐를 그 입력 이전 상태로 복원하고, 입력을 다시 재생하면 raise가 다시 만들어져 각각 한 번씩 전달됩니다. (`begin`의 `flow.newGame` raise는 이전처럼 자체 체크포인트를 가집니다.)
 - **시작.** 수락된 `newRun`, `toStart`, lineage 교체는 새 시작 출력을 적재하기 전에 이전 대기 raise를 비웁니다. 거부된 것은 큐를 그대로 둡니다.
-- **저장.** 런타임은 출력의 아직 전달되지 않은 뒷부분만 재생하므로, 저장 전에 전달된 raise는 재개된 출력에서 다시 만들 수 없습니다. 따라서 큐는 플레이어 상태의 일부입니다. `SaveRuntime`에 `pendingRaises`가 추가되고, 각 롤백 지점은 자신의 플레이어 입력 이전의 큐를 기록하며, `restore`와 `rollback`이 이를 복원합니다. 선언된 raise가 없는 프로젝트의 저장은 `pendingRaises: []`를 씁니다. 저장 형식은 `"0.51"`이므로 모든 마이너와 마찬가지로 `"0.50"` 저장은 거부됩니다. 런타임 `Contract.Snapshot`은 바뀌지 않습니다.
+- **저장.** 런타임은 출력의 아직 전달되지 않은 뒷부분만 재생하므로, 저장 전에 전달된 raise는 재개된 출력에서 다시 만들 수 없습니다. 따라서 큐는 플레이어 상태의 일부입니다. `SaveRuntime`에 필수 필드 `pendingRaises`가 추가되어 저장 코덱이 이를 쓰고 읽으며, 각 롤백 지점은 자신의 플레이어 입력 이전의 큐를 기록하고, `restore`와 `rollback`이 이를 복원합니다(복원된 raise는 이야기가 다시 idle이 되면 보냅니다). 선언된 raise가 없는 프로젝트의 저장은 `pendingRaises: []`를 씁니다. 저장 형식은 `"0.51"`로 바뀌므로 모든 마이너와 마찬가지로 `"0.50"` 저장은 거부됩니다. 런타임 `Contract.Snapshot`은 바뀌지 않습니다.
 
 자체 세션을 구성하는 호스트도 같은 책무를 집니다. 위의 정착 시점 뒤에 각 선언된 raise를 한 번씩 전달하고, 저장과 롤백을 거쳐 자체 대기 큐를 유지하며, 런타임이 거부한 raise는 버립니다.
 
@@ -349,12 +349,12 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
-  "runtime": { "snapshot": "<runtime snapshot>", "log": [], "backlog": [] },
+  "runtime": { "snapshot": "<runtime snapshot>", "log": [], "backlog": [], "pendingRaises": [] },
   "thumbnail": "data:image/png;base64,..."
 }
 ```
 
-런타임 스냅숏에는 `world.stage`와 필요한 경우 `continuation.stage`가 포함되고, 플레이어는 deterministic input log와 backlog를 추가합니다. 프로필은 `profileVersion`(릴리스 라인, `"0.50"`), project fingerprint, `readLines`, settings을 사용합니다. 슬롯 키(`save:quick`, `save:auto`, `save:1`…)에는 namespace가 없습니다. 각 저장이 project fingerprint를 담고 있어 다른 프로젝트의 저장은 거절되며, 프로필은 `profile:<project>`에 저장됩니다. 게임이 다른 데이터도 저장한다면 플레이어에게 별도(또는 접두사를 붙인) store를 주세요. 다른 프로젝트나 형식 버전이면 `SaveIncompatible`, 손상된 데이터면 `SaveCorrupt`를 반환합니다.
+런타임 스냅숏에는 `world.stage`와 필요한 경우 `continuation.stage`가 포함되고, 플레이어는 deterministic input log와 backlog, 그리고 (0.51) 아직 보내지 않은 선언된 raise를 추가합니다. 프로필은 `profileVersion`(릴리스 라인, `"0.50"`), project fingerprint, `readLines`, settings을 사용합니다. 슬롯 키(`save:quick`, `save:auto`, `save:1`…)에는 namespace가 없습니다. 각 저장이 project fingerprint를 담고 있어 다른 프로젝트의 저장은 거절되며, 프로필은 `profile:<project>`에 저장됩니다. 게임이 다른 데이터도 저장한다면 플레이어에게 별도(또는 접두사를 붙인) store를 주세요. 다른 프로젝트나 형식 버전이면 `SaveIncompatible`, 손상된 데이터면 `SaveCorrupt`를 반환합니다.
 
 0.47부터 프로필은 기록된 **lineage**도 담습니다(아래 회차 간 모델 참고). 다른 `profileVersion`의 프로필도 거절되지 않습니다. 읽기 기록과 settings은 유지되고 lineage는 없습니다.
 
@@ -378,7 +378,7 @@ locale은 마운트 옵션이 아니라 설정(`settings.locale`)입니다. 불�
 
 대사와 백로그 항목은 컴파일된 artifact가 아니라 런타임의 `line` 레코드에서 번역을 읽습니다. 이 레코드의 `texts`와 `localeSegments`는 모든 `{{…}}` 마커가 이미 값으로 바뀌어 있습니다. 번역의 마커는 원본 line에서 참조 대상이 같은 마커(`{{ }}` 안의 텍스트, 앞뒤 공백 제외)에 대해 렌더링한 값을 받으므로 번역자가 마커 순서를 바꿔도 됩니다. 원본 line에 없는 마커는 쓴 그대로 남고, 번역에도 리터럴 `{{`를 `\{{`로 쓸 수 있습니다(lute 0.47.1). 레코드는 디코딩된 텍스트를 담으며, placeholder를 직접 치환하는 엔진은 IR의 이스케이프된 보간 읽기 규칙을 적용해야 합니다([현지화 텍스트](/ko/tooling/runtime-contract/#현지화-텍스트) 참고). 선택지 라벨은 0.46과 같습니다(`{{…}}` 마커를 렌더링하지 않음).
 
-지시문의 `text` 속성(0.51, [`type: text`](/ko/plugins/manifests/#현지화-가능한-텍스트-속성-type-text))도 같은 규칙을 따릅니다. 런타임이 각 마커를 한 번 렌더링해 렌더링된 원문을 레코드의 `attrs.<attr>`에, 렌더링된 번역을 `localized: { <attr>: { lineId, texts } }`에 씁니다. `PluginCall.localized?`는 각 `text` 속성을 플레이어의 현재 locale로 담은 `Readonly<Record<string, string>>`(`localized.<attr>.texts[locale]`, 없으면 `attrs.<attr>`)이므로, plugin 핸들러는 레코드를 읽지 않고도 알맞은 언어를 보여 줄 수 있습니다. 호스트 토큰 마커는 대사 줄처럼 그대로 남습니다. locale 탐색은 각 명령의 `texts`와 `promptTexts`, 각 선택지의 `texts`, 그리고 `plugin` 명령의 경우 모든 `localized.<attr>.texts`의 키만 읽으며 `fields`나 `stamps` 맵은 읽지 않으므로, `texts`나 `promptTexts`라는 이름의 속성이 잘못 읽히지 않고, 지시문 텍스트만 번역한 locale도 목록에 포함됩니다.
+지시문의 `text` 속성(0.51, [`type: text`](/ko/plugins/manifests/#현지화-가능한-텍스트-속성-type-text))도 같은 규칙을 따릅니다. 런타임이 각 마커를 한 번 렌더링해 렌더링된 원문을 레코드의 `attrs.<attr>`에, 렌더링된 번역을 `localized: { <attr>: { lineId, texts } }`에 씁니다. `PluginCall.localized?`는 각 `text` 속성을 플레이어의 현재 locale로 담은 `Readonly<Record<string, string>>`(`localized.<attr>.texts[locale]`, 없으면 `attrs.<attr>`)이므로, plugin 핸들러는 레코드를 읽지 않고도 알맞은 언어를 보여 줄 수 있습니다. cue factory는 `plugin` cue를 대사 cue처럼 미뤄 두므로 locale은 호출이 실행될 때의 것입니다. batch의 앞 대사가 아직 타이핑되는 동안 바꾼 locale은 뒤의 호출에 반영됩니다. 호스트 토큰 마커는 대사 줄처럼 그대로 남습니다. locale 탐색은 각 명령의 `texts`와 `promptTexts`, 각 선택지의 `texts`, 그리고 `plugin` 명령의 경우 모든 `localized.<attr>.texts`의 키만 읽으며 `fields`나 `stamps` 맵은 읽지 않으므로, `texts`나 `promptTexts`라는 이름의 속성이 잘못 읽히지 않고, 지시문 텍스트만 번역한 locale도 목록에 포함됩니다.
 
 ## 롤백과 기록
 

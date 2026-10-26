@@ -250,14 +250,16 @@ Ink의 `{cond: -> a | -> b}`는 같은 계기에 응답하는 장면 두 개이�
 `<<jump Node>>`에 쓸 표기가 생겼습니다. 앞선 `::label`로 가는 `::jump{to="…" max="N"}`이며, 최대 `N`번(1부터
 99까지의 리터럴) 실행되고 그 뒤에는 제어가 다음으로 이어집니다:
 
-```lute unverified="0.51 feature; verified after S1-S8 land"
+```lute
 ::label{name="again"}
 @narrator: The latch is stuck.
 <branch id="try">
   <choice id="pull" text="Pull it">
     ::jump{to="again" max="3"}
   </choice>
-  <choice id="leave" text="Leave it"/>
+  <choice id="leave" text="Leave it">
+    @narrator: You leave it.
+  </choice>
 </branch>
 ```
 
@@ -373,11 +375,11 @@ ok: text.lute (7 warning(s))
 
 디렉티브처럼 쓴 divert, 뒤로 가는 점프, 점프 대상으로 쓴 섹션 제목, 조건 안의 Ink·Yarn 습관:
 
-<!-- lute-diagnostics unverified="0.51 feature; verified after S1-S8 land" -->
+<!-- lute-diagnostics unverified="byte-exact lute check output; the did-you-mean and E-CEL-TYPE reasons are composed outside the file that declares their code, and E-JUMP-UNDEFINED matches two literals" -->
 ```
 $ lute check flow.lute
 flow.lute:12:1: error [E-UNKNOWN-DIRECTIVE] unknown directive `::goto` — did you mean `::jump{to="…"}`? It jumps forward to a `::label{name="…"}`
-flow.lute:13:12: error [E-JUMP-BACKWARD] `::jump` targets label `top`, which is not forward of this `::jump` in document order — `::jump` only jumps forward unless it carries `max`: `::jump{to="again" max="3"}` repeats at most 3 times; to offer choices again, use a `<hub>` (it asks until an `exit` choice is taken)
+flow.lute:13:12: error [E-JUMP-BACKWARD] `::jump` targets label `top`, which is not forward of this `::jump` in document order — `::jump` only jumps forward unless it carries `max`: `::jump{to="top" max="3"}` repeats at most 3 times; to offer choices again, use a `<hub>` (it asks until an `exit` choice is taken)
 flow.lute:18:12: error [E-JUMP-UNDEFINED] `::jump` targets `Gallery`, which no `::label` in this document declares — `Gallery` is the `## Gallery` heading, not a label; a `::jump` target is a `::label{name="…"}` later in this document, so put `::label{name="Gallery"}` under that heading
 failed: flow.lute (3 error(s), 0 warning(s))
 $ lute check cond.lute
