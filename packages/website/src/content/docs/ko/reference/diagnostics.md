@@ -756,9 +756,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-GRAMMAR-NOT-ADMITTED
 
-문서가 해당 맥락에서 그 문서 종류의 문법이 금지하는 구성을 사용했습니다 — 예를 들어 씬 안의 `<quest>`, 퀘스트 본문 안의 `<hub>`/`<timeline>`, 로어 `<entry>` 안의 연출/선택지 등입니다.
+문서가 해당 맥락에서 그 문서 종류의 문법이 금지하는 구성을 사용했습니다 — 예를 들어 씬 안의 `<quest>`, 퀘스트 최상위의 `<on>`/`<objective>` 이외의 모든 것(퀘스트는 핸들러와 목표 본문만 실행합니다), 퀘스트 어디서든 `<hub>`/`<timeline>`, 로어 `<entry>` 안의 연출/선택지 등입니다.
 
-명세: [dsl 0.2.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.2.0 §6.7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.19.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md)
+명세: [dsl 0.2.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.2.0 §6.7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.19.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md), [dsl 0.52.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-HUB-NO-EXIT
 
@@ -838,7 +838,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-JUMP-LOOP-SCOPE
 
-`max`가 있는 `::jump{to max}`가 자신이 실행되는 본문 밖의 레이블로 되돌아갑니다. 루프는 `<branch>`의 `<choice>` 본문과 `<match>` 갈래만 지날 수 있고, `<hub>` 선택지나 `<return>` 본문, `<on>`·`<objective>` 본문, 퀘스트, 엔트리, 비트, 섹션을 벗어날 수 없습니다. 또 퀘스트 최상위의 `<on>`이나 `<objective>`를 가로지를 수도 없습니다. 각각 따로 실행되기 때문입니다.
+`max`가 있는 `::jump{to max}`가 자신이 실행되는 본문 밖의 레이블로 되돌아갑니다. 루프는 `<branch>`의 `<choice>` 본문과 `<match>` 갈래만 지날 수 있고, `<hub>` 선택지나 `<return>` 본문, `<on>`·`<objective>` 본문, 퀘스트, 엔트리, 비트, 섹션을 벗어날 수 없습니다.
 
 명세: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 

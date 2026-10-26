@@ -756,9 +756,9 @@ A document's frontmatter key, declared by an active plugin, holds a value whose 
 
 ### E-GRAMMAR-NOT-ADMITTED
 
-A document uses a construct its document kind's grammar forbids in that context — such as a `<quest>` in a scene, `<hub>`/`<timeline>` in a quest body, or staging/choices in a lore `<entry>`.
+A document uses a construct its document kind's grammar forbids in that context — such as a `<quest>` in a scene, anything but `<on>`/`<objective>` at a quest's top level (a quest runs only its handlers and objective bodies), `<hub>`/`<timeline>` anywhere in a quest, or staging/choices in a lore `<entry>`.
 
-Spec: [dsl 0.2.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.2.0 §6.7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.19.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md)
+Spec: [dsl 0.2.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.2.0 §6.7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.19.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md), [dsl 0.52.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-HUB-NO-EXIT
 
@@ -838,7 +838,7 @@ Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/pr
 
 ### E-JUMP-LOOP-SCOPE
 
-A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section. A loop also may not span an `<on>` or `<objective>` at a quest's top level, because each runs on its own.
+A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section.
 
 Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 

@@ -42,7 +42,7 @@ pub const E_NEXT_BACKWARD: &str = "E-JUMP-BACKWARD";
 pub const E_JUMP_MAX: &str = "E-JUMP-MAX";
 
 /// `E-JUMP-LOOP-SCOPE` (dsl 0.51.0 §3.2): a loop leaves the inline bodies
-/// its jump is in, or its region spans an `<on>`/`<objective>`.
+/// its jump is in.
 pub const E_JUMP_LOOP_SCOPE: &str = "E-JUMP-LOOP-SCOPE";
 
 /// `E-JUMP-INTO-LOOP` (dsl 0.51.0 §3.2): a forward jump from outside a loop
@@ -210,14 +210,6 @@ struct Body<'d> {
     parent: Option<usize>,
 }
 
-/// An `<on>` or `<objective>`: a separate runtime range a loop region may not
-/// span (dsl 0.51.0 §3.2).
-struct Separate<'d> {
-    pos: u64,
-    what: String,
-    body: &'d str,
-}
-
 /// One label's DEFINING position — first occurrence only; a repeat is
 /// `E-LABEL-DUP` at the repeat's own span and never overwrites the table.
 struct LabelSite {
@@ -255,7 +247,6 @@ struct Collector<'d> {
     dups: Vec<Diagnostic>,
     nexts: Vec<NextSite<'d>>,
     bodies: Vec<Body<'d>>,
-    separate: Vec<Separate<'d>>,
 }
 
 impl<'d> Collector<'d> {
@@ -366,21 +357,11 @@ impl<'d> Collector<'d> {
                     }
                 }
                 Node::On(o) => {
-                    self.separate.push(Separate {
-                        pos: self.pos,
-                        what: format!("`<on event=\"{}\">`", o.event),
-                        body: "handler's",
-                    });
                     self.tick();
                     let inner = self.open(BodyKind::On(&o.event), Some(body));
                     self.walk(&o.body, inner);
                 }
                 Node::Objective(o) => {
-                    self.separate.push(Separate {
-                        pos: self.pos,
-                        what: format!("`<objective id=\"{}\">`", o.id),
-                        body: "objective's",
-                    });
                     self.tick();
                     let inner = self.open(BodyKind::Objective(&o.id), Some(body));
                     self.walk(&o.body, inner);
@@ -589,32 +570,15 @@ pub fn check_next_labels(doc: &Document) -> LabelPass {
         }
     }
 
-    // Scope: the loop stays inside one inline body chain and spans no
-    // separately run `<on>`/`<objective>`.
+    // Scope: the loop stays inside one inline body chain. A region cannot
+    // span a quest's `<on>`/`<objective>`: that needs a `::label` at the
+    // quest's top level, which admission refuses (dsl 0.52.0 §4).
     let mut scoped: Vec<(&NextSite, LoopRegion)> = Vec::new();
     for (next, label) in bounded {
         if let Some(left) = c.left_body(next.body, label.body) {
             diags.push(diag(
                 E_JUMP_LOOP_SCOPE,
                 left.leave_message(&next.render(), next.to),
-                next.span,
-            ));
-            continue;
-        }
-        if let Some(over) = c
-            .separate
-            .iter()
-            .find(|s| label.pos < s.pos && s.pos < next.pos)
-        {
-            diags.push(diag(
-                E_JUMP_LOOP_SCOPE,
-                format!(
-                    "`{}` loops back over {}, which runs on its own; put the loop inside the {} \
-                     body or before it",
-                    next.render(),
-                    over.what,
-                    over.body
-                ),
                 next.span,
             ));
             continue;
@@ -815,7 +779,6 @@ fn collect(doc: &Document) -> Collector<'_> {
         dups: Vec::new(),
         nexts: Vec::new(),
         bodies: Vec::new(),
-        separate: Vec::new(),
     };
     for shot in &doc.sections {
         let body = c.open(BodyKind::Section(&shot.heading), None);

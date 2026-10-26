@@ -858,12 +858,13 @@ fn quest_doc_compiles_to_quest_artifact() {
             .is_some_and(|s| s.starts_with("rescueHalsin."))));
 }
 
-/// A checker-admitted DIRECT quest-body-level content line + `::set` (dsl
-/// 0.2.0 §6.3/§6.7 — sibling to `<objective>`/`<on>`, not nested inside
-/// either) is LOWERED as an ordinary record in the SAME per-quest stream —
-/// NEVER silently dropped (IR addendum §3 preamble note).
+/// dsl 0.52.0 §4 (#208): content directly inside `<quest>` (a sibling of
+/// `<objective>`/`<on>`, not nested in either) never runs — a quest runs only
+/// its handler and objective bodies — so the checker refuses it and the D6
+/// gate compiles nothing. On 0.51 the line and the `::set` were lowered into
+/// records no run reached.
 #[test]
-fn direct_quest_body_content_is_lowered_not_dropped() {
+fn direct_quest_body_content_is_refused_not_compiled() {
     const SRC: &str = r#"---
 kind: quest
 state:
@@ -876,24 +877,13 @@ state:
 <objective id="reachGrove" done="run.act"/>
 </quest>
 "#;
-    let art = compile(&input(SRC)).expect("compiles");
-    let j = serde_json::to_value(&art).unwrap();
-    let cmds = j["commands"].as_array().unwrap();
-    let narrator_line = cmds
+    let diags = compile(&input(SRC)).expect_err("refused");
+    let refused: Vec<u32> = diags
         .iter()
-        .find(|c| c["kind"] == "line" && c["text"] == "A quest begins.")
-        .expect("direct quest-body content-line record");
-    assert_eq!(
-        narrator_line["lineId"]
-            .as_str()
-            .map(|s| s.starts_with("rescueHalsin.")),
-        Some(true)
-    );
-    assert!(
-        cmds.iter()
-            .any(|c| c["kind"] == "set" && c["path"] == "run.act"),
-        "direct quest-body `::set` must lower, not drop: {cmds:#?}"
-    );
+        .filter(|d| d.code == "E-GRAMMAR-NOT-ADMITTED")
+        .map(|d| d.span.line)
+        .collect();
+    assert_eq!(refused, [8, 9], "{diags:#?}");
 }
 
 /// F5 (final review P1): an EMPTY `<on>` body's `body` target is a REQUIRED
@@ -902,12 +892,13 @@ state:
 /// in the pass-2 document-order walk. Before the fix, `walk_quest` bound the
 /// fresh label immediately after pushing the `on` record; with an empty
 /// body `walk_seq` emits nothing, so the label silently attached to the
-/// NEXT emitted record (here, the `::set`) — the handler would run the
-/// WRONG content when `questComplete` actually fires. The objective arm
-/// already guards this (`obj_labels` is `None` for an empty body); `<on>`
-/// must match: the empty-on's `body` addr is the quest unit's past-end,
-/// `"001-0400"` (quest + on + set = 3 records, `addr_of(1, 3)`), not the
-/// `set` record's own addr, and not a dangling `@n` symbolic label.
+/// NEXT emitted record (here, the `::set` of the objective body after it) —
+/// the handler would run the WRONG content when `questComplete` actually
+/// fires. The objective arm already guards this (`obj_labels` is `None` for
+/// an empty body); `<on>` must match: the empty-on's `body` addr is the
+/// quest unit's past-end, `"001-0400"` (quest + on + set = 3 records,
+/// `addr_of(1, 3)`), not the `set` record's own addr, and not a dangling
+/// `@n` symbolic label.
 #[test]
 fn empty_on_body_targets_unit_past_end_not_following_content() {
     const SRC: &str = r#"---
@@ -920,7 +911,9 @@ state:
 <objective id="reachGrove" done="run.act"/>
 <on event="questComplete">
 </on>
+<objective id="after" done="run.act">
 ::set{run.act = true}
+</objective>
 </quest>
 "#;
     let art = compile(&input(SRC)).expect("compiles");

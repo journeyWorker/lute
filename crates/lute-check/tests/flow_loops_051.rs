@@ -158,14 +158,16 @@ fn a_handler_after_an_unguarded_jump_still_checks_its_reads() {
     );
 }
 
-/// S2 review (S2Review051 P2): a handler that writes and then jumps to a
-/// quest-level label leaves its body on that route: the write is in its
-/// completion envelope.
+/// S2 review (S2Review051 P2): a handler that writes and then jumps out of
+/// its body leaves it on that route: the write is in its completion
+/// envelope. On 0.51 the label sat at the quest's top level; dsl 0.52.0 §4
+/// refuses that, so it sits in a later objective's body.
 #[test]
 fn a_handler_jumping_out_keeps_its_writes_in_the_completion_envelope() {
     let text = quest(
         "<objective id=\"o\" title=\"O\" done=\"run.f\"/>\n<on event=\"questComplete\">\n\
-         ::set{run.x = 1}\n::jump{to=\"after\"}\n</on>\n::label{name=\"after\"}",
+         ::set{run.x = 1}\n::jump{to=\"after\"}\n</on>\n\
+         <objective id=\"p\" title=\"P\" done=\"run.f\">\n::label{name=\"after\"}\n</objective>",
     );
     assert!(check(&input_for(&text)).ok, "{:?}", diags(&text));
     let input = input_for(&text);

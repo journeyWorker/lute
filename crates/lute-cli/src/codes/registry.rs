@@ -638,8 +638,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-GRAMMAR-NOT-ADMITTED",
-        summary: "A document uses a construct its document kind's grammar forbids in that context — such as a `<quest>` in a scene, `<hub>`/`<timeline>` in a quest body, or staging/choices in a lore `<entry>`.",
-        spec: &["dsl 0.2.0 §3.3", "dsl 0.2.0 §6.7", "dsl 0.19.0 §4"],
+        summary: "A document uses a construct its document kind's grammar forbids in that context — such as a `<quest>` in a scene, anything but `<on>`/`<objective>` at a quest's top level (a quest runs only its handlers and objective bodies), `<hub>`/`<timeline>` anywhere in a quest, or staging/choices in a lore `<entry>`.",
+        spec: &["dsl 0.2.0 §3.3", "dsl 0.2.0 §6.7", "dsl 0.19.0 §4", "dsl 0.52.0 §4"],
     },
     Code {
         code: "E-HUB-NO-EXIT",
@@ -708,7 +708,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-JUMP-LOOP-SCOPE",
-        summary: "A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section. A loop also may not span an `<on>` or `<objective>` at a quest's top level, because each runs on its own.",
+        summary: "A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section.",
         spec: &["dsl 0.51.0 §3.2"],
     },
     Code {

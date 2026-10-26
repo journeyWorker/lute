@@ -1013,13 +1013,11 @@ fn component_attr(d: &Directive) -> String {
 /// targets for non-empty objective bodies via `em.fresh()` — the quest
 /// record must be the FIRST record, IR addendum §3.1), then walks the WHOLE
 /// `quest.body` in document order — `<objective>`/`<on>` bind their
-/// pre-allocated/fresh label and recurse into `walk_seq` for their body;
-/// direct content (`Line`/`Directive`/`Set`/`Branch`/`Match`, dsl 0.2.0 §6.3,
-/// §6.7 — the checker admits them directly in a quest body and folds their
-/// `<branch>` decls) lowers via the SAME primitives a scene body uses (IR
-/// addendum §3 preamble note) — NEVER dropped, no new record types.
-/// `<hub>`/`<timeline>` are forbidden everywhere in a quest doc (§6.7); the
-/// checker gates them out (D6), so those arms are unreachable here.
+/// pre-allocated/fresh label and recurse into `walk_seq` for their body.
+/// Nothing else sits at a quest's top level: a quest runs only its handler
+/// and objective bodies, so the checker refuses any other node there (dsl
+/// 0.52.0 §4; `<hub>`/`<timeline>` everywhere in a quest, dsl 0.2.0 §6.7)
+/// and gates the document out (D6), so those arms are unreachable here.
 pub fn walk_quest(
     em: &mut Emitter,
     quest: &Quest,
@@ -1127,11 +1125,9 @@ pub fn walk_quest(
 
     // Pass 2: real document-order walk. Each objective-body / on-arm body is
     // an INDEPENDENT, temporally-disconnected trigger (not "one of N
-    // alternatives now" like a branch/match arm) — it starts from a FRESH
-    // `StageState::default()`, discarded afterward (no join, no carry into
-    // the top-level thread). Direct top-level content threads `state`
-    // sequentially with its top-level siblings, exactly like a scene body.
-    let mut state = StageState::default();
+    // alternatives now" like a branch/match arm) — `walk_body` starts it from
+    // a FRESH `StageState::default()`, discarded afterward. Nothing else sits
+    // at a quest's top level (dsl 0.52.0 §4, gated by the checker, D6).
     cx.reached = true;
     let mut obj_idx = 0usize;
     // Empty-`<on>`-body labels (F5, final review P1): `OnCmd.body` is a
@@ -1146,7 +1142,7 @@ pub fn walk_quest(
     // `address::assign_addresses` resolves them all to that same
     // `addr_of(shot, recs.len())` past-end address.
     let mut empty_on_labels: Vec<Label> = Vec::new();
-    for (i, node) in quest.body.iter().enumerate() {
+    for node in &quest.body {
         match node {
             Node::Objective(o) => {
                 if let Some(label) = obj_labels[obj_idx] {
@@ -1174,38 +1170,18 @@ pub fn walk_quest(
                     walk_body(em, &on.body, cx, diags);
                 }
             }
-            // Component sentinels, labels and jumps: the one path `walk_seq`
-            // takes too (#207: component labels scoped per instance).
-            Node::Directive(d) if is_flow_directive(d) => {
-                state = walk_flow_directive(em, node, d, &quest.body[i + 1..], state, cx);
-            }
-            // Fact args are ground — nothing authored, `lower_node`'s
-            // wildcard skips them; lowering to `Command::Assert`/`Retract`
-            // is Task 14.
             Node::Line(_)
             | Node::Directive(_)
             | Node::Set(_)
             | Node::Assert(_)
-            | Node::Retract(_) => {
-                let look = if classify_node(node, cx.snapshot).is_actor() {
-                    reachable_after(&quest.body[i + 1..], &[])
-                } else {
-                    Vec::new()
-                };
-                state = emit_primitive(em, node, state, &look, cx, None);
-            }
-            Node::Branch(b) => {
-                let cont = reachable_after(&quest.body[i + 1..], &[]);
-                state = walk_branch(em, b, state, cx, &cont, diags);
-            }
-            Node::Match(m) => {
-                let cont = reachable_after(&quest.body[i + 1..], &[]);
-                state = walk_match(em, m, state, cx, &cont, diags);
-            }
-            Node::Timeline(_) | Node::Hub(_) => {
+            | Node::Retract(_)
+            | Node::Branch(_)
+            | Node::Match(_)
+            | Node::Timeline(_)
+            | Node::Hub(_) => {
                 unreachable!(
-                    "dsl 0.2.0 §6.7: <hub>/<timeline> are forbidden everywhere \
-                     in a quest doc — the checker gates this out (D6)"
+                    "dsl 0.52.0 §4: a quest's top level admits only <on>/<objective> \
+                     — the checker gates this out (D6)"
                 )
             }
         }

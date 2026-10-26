@@ -1517,10 +1517,11 @@ fn member_envs(env: &Env) -> Vec<(Vec<String>, Env)> {
 /// into `schema` in document order, threading the episode-wide `seen` id set
 /// (branch + hub ids share it) so `E-DUP-BRANCH` fires exactly once per duplicate.
 /// Recurses into nested bodies (a branch/hub may live inside a match arm or
-/// another choice body). A `<branch>` is ALSO admitted directly inside a quest
-/// body (dsl 0.2.0 §6.7), reached via `<quest>` top level or an `<on>`/
-/// `<objective>` arm — `doc.quests` is folded here too so a quest `<branch>`
-/// gets the SAME `E-CHOICE-DUP`/implicit-decl treatment a scene one gets
+/// another choice body). A `<branch>` is ALSO admitted inside a quest's
+/// `<on>`/`<objective>` bodies (dsl 0.2.0 §6.7; at the quest's top level it is
+/// an admission error, dsl 0.52.0 §4) — `doc.quests` is folded here too so a
+/// quest `<branch>` gets the SAME `E-CHOICE-DUP`/implicit-decl treatment a
+/// scene one gets
 /// (`<hub>` is never legal in a quest doc, dsl 0.2.0 §6.7 — grammar admission
 /// rejects it separately, so it is never reached from a quest walk in
 /// practice, but the recursion below tolerates it structurally regardless).
