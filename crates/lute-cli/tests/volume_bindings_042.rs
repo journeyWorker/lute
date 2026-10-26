@@ -37,7 +37,7 @@ fn check(tag: &str, declared: bool, volumes: &str) -> (i32, String) {
     write(
         &dir,
         "player.bindings.yaml",
-        &format!("bindingsVersion: \"0.50\"\ncanvas: {{width: 1920, height: 1080}}\n{volumes}"),
+        &format!("bindingsVersion: \"0.51\"\ncanvas: {{width: 1920, height: 1080}}\n{volumes}"),
     );
     let out = Command::new(BIN)
         .arg("check")

@@ -683,7 +683,7 @@ fn jump_scene(tag: &str, with_max: bool) -> (lute_scratch::ScratchDir, PathBuf, 
         &dir,
         "scene.lute",
         &format!(
-            "---\nkind: scene\nluteVersion: \"0.50.0\"\nid: loop\ntitle: T\n---\n\n## Shot \
+            "---\nkind: scene\nluteVersion: \"0.51.0\"\nid: loop\ntitle: T\n---\n\n## Shot \
              1.\n\n{jump}@narrator: Done.\n"
         ),
     );

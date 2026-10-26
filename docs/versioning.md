@@ -10,13 +10,13 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.50.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.50.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.50.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.50.schema.json`](../schemas/lute-ir-0.50.schema.json)). Before 1.0, consuming engines gate on exact major.minor; from 1.0, they gate on MAJOR only. |
-| **Event** | `eventVersion` in runtime outputs; `snapshotVersion` in snapshots | `0.50.0` | A change to the runtime input, output or snapshot JSON ([event contract](runtime/event-contract.md), [`schemas/lute-events-0.50.schema.json`](../schemas/lute-events-0.50.schema.json), [`schemas/lute-snapshot-0.50.schema.json`](../schemas/lute-snapshot-0.50.schema.json)). Before 1.0, hosts gate on exact major.minor. |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.51.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.51.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.51.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.51.schema.json`](../schemas/lute-ir-0.51.schema.json)). Before 1.0, consuming engines gate on exact major.minor; from 1.0, they gate on MAJOR only. |
+| **Event** | `eventVersion` in runtime outputs; `snapshotVersion` in snapshots | `0.51.0` | A change to the runtime input, output or snapshot JSON ([event contract](runtime/event-contract.md), [`schemas/lute-events-0.51.schema.json`](../schemas/lute-events-0.51.schema.json), [`schemas/lute-snapshot-0.51.schema.json`](../schemas/lute-snapshot-0.51.schema.json)). Before 1.0, hosts gate on exact major.minor. |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
-| **Player packages** | [`packages/player`](../packages/player) and [`packages/player-web`](../packages/player-web) | `0.50.0` | Renderer-free core and browser player released in lockstep with the toolchain; their public contracts are documented under [`packages/website/src/content/docs/player/`](../packages/website/src/content/docs/player/). |
+| **Player packages** | [`packages/player`](../packages/player) and [`packages/player-web`](../packages/player-web) | `0.51.0` | Renderer-free core and browser player released in lockstep with the toolchain; their public contracts are documented under [`packages/website/src/content/docs/player/`](../packages/website/src/content/docs/player/). |
 
 
 The axes are **independent in meaning**: a toolchain release need not advance
@@ -1294,3 +1294,28 @@ and snapshot shapes are unchanged; the schema files move to the `0.50` line,
 an engine that does not implement `lute.quest.rewardEffects/1` refuses an
 artifact that needs it. See the
 [`0.50.0` proposal](proposals/scenario-dsl/0.50.0.md).
+
+**`0.51.0` aligns every visible axis at `0.51.0`; the language, its static
+semantics, the IR, the plugin manifests, lint, the runtime and the player all
+earn it.** The release adds flow and text without a new keyword or element.
+`::jump{to max}` may target an earlier `::label` at most `max` times (1 to
+99): a bounded loop inside one body, entered only at its head, nested without
+crossing. Every flow analysis joins the states of all jumps at a label and
+iterates a loop head to a fixed point, which also closes two forward-jump gaps
+(a read after a label a skipping jump reaches is `E-MAYBE-UNSET`, a line there
+can be `W-STAGE-ABSENT`); the IR gains `jump.max` and the semantic id
+`lute.core.boundedJump/1`. A directive or reward kind may declare
+`effects.raises` and an occasion `raisedBy: declared`, which `lute scenario`
+draws as `[raises]` edges; `plugin` and `grant` records carry the resolved
+`raises`, and the reference player performs them when idle and keeps the
+pending ones in saves and rollback points. A directive attribute typed `text`
+is localizable (`code=`, `{prefix}~{tag}~{code}~{attr}` ids, `lute loc`), and
+the runtime renders it into `attrs` and `localized`. Lint gains `target: pair`.
+Every report id is unchanged. Because the core `jump` declares `max`, every
+artifact's `capabilitySnapshot` moves once. The Event and snapshot shapes are
+unchanged; the schema files move to the `0.51` line, `bindingsVersion` becomes
+`"0.51"`, and player saves (now carrying `pendingRaises`) and profiles read
+`"0.51"`. Engines and hosts gated on `0.50` must widen their gates to `0.51`;
+an engine that does not implement `lute.core.boundedJump/1` refuses an
+artifact that needs it, and a custom host performs declared raises itself. See
+the [`0.51.0` proposal](proposals/scenario-dsl/0.51.0.md).

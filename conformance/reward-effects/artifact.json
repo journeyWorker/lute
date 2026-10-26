@@ -1,7 +1,7 @@
 {
   "kind": "quest",
-  "lute": "0.50.0",
-  "irVersion": "0.50.0",
+  "lute": "0.51.0",
+  "irVersion": "0.51.0",
   "capabilitySnapshot": "ac1baeb778d880c74daa833a2bd54cec38bfd1ee315499bd7994c27482b996bf",
   "requiredSemantics": [
     "lute.core/1",

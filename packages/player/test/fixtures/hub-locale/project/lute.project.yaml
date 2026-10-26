@@ -4,6 +4,6 @@ profiles:
   harbor:
     plugins: { harbor.occasions: true }
 defaults:
-  luteVersion: "0.50.0"
+  luteVersion: "0.51.0"
   contentLang: en
   uses: [world.schema.yaml]

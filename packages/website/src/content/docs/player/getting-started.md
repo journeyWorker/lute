@@ -20,7 +20,7 @@ The bundle directory must contain `project.index.json` and all referenced artifa
 Create `player.bindings.yaml` beside `lute.project.yaml`. It maps compiled staging ids to files and supplies the canvas and named effects. Paths are relative to `assetsBase` (default `assets/`). A minimal file is:
 
 ```yaml
-bindingsVersion: "0.50"
+bindingsVersion: "0.51"
 canvas: { width: 1280, height: 720 }
 volumes: { silent: 0, quiet: 0.25, normal: 0.5, loud: 0.75, full: 1 }
 backgrounds:
@@ -43,7 +43,7 @@ Whole-project `lute check` validates the schema, domain and cast keys, reference
 Install the exact 0.49 packages:
 
 ```console
-bun add @lute-lang/player-web@0.50.0 @lute-lang/player@0.50.0 @lute-lang/runtime@0.50.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
+bun add @lute-lang/player-web@0.51.0 @lute-lang/player@0.51.0 @lute-lang/runtime@0.51.0 effect@4.0.2 @effect/platform-browser@4.0.2 pixi.js@8.22.0 @pixi/sound@6.0.1
 ```
 
 `@lute-lang/player` declares `@lute-lang/runtime` and `effect` as peer dependencies, so the page installs them once and every package shares one `effect`.
@@ -148,7 +148,7 @@ Either way the cue ends with the actors visible (alpha 1, no mask) in the new fr
 The title screen's heading is `ui.title.text` when the bindings set it; without it the title draws no heading (player-web never shows a placeholder name). `ui.title.background` and `ui.title.music` are optional: without them the title has no backdrop and plays no music.
 
 ```yaml
-bindingsVersion: "0.50"
+bindingsVersion: "0.51"
 ui:
   title: { text: "The Signal at Low Tide", background: ui/title.png, music: ui/title.wav }
 ```

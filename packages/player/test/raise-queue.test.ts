@@ -24,7 +24,7 @@ import type { Harness, Options } from "./director/support.js"
 import { compileRaiseQueue } from "./fixtures.js"
 
 const canvas = { width: 1920, height: 1080 }
-const bindings: Bindings = { bindingsVersion: "0.50", canvas, flow: { newGame: { occasion: "visit" } } }
+const bindings: Bindings = { bindingsVersion: "0.51", canvas, flow: { newGame: { occasion: "visit" } } }
 const seed: Contract.Seed = { derive: true }
 type Start = { readonly seed: Contract.Seed } | { readonly snapshot: Contract.Snapshot }
 

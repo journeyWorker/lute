@@ -6,7 +6,7 @@ import { join } from "node:path"
 import { withHarness, record, flush } from "./support.js"
 
 const cases = sessionCases()
-const noFlow = { bindingsVersion: "0.50" as const, canvas: { width: 1920, height: 1080 } }
+const noFlow = { bindingsVersion: "0.51" as const, canvas: { width: 1920, height: 1080 } }
 const timed = () => compileBundle(join(sessionRoot, "timed-choice", "project"))
 const drain = <A extends { readonly action: (action: { readonly type: "advance" }) => Effect.Effect<void>; readonly view: Effect.Effect<{ readonly story: string }> }>(h: A) => Effect.gen(function* () {
   for (let i = 0; i < 100; i++) {

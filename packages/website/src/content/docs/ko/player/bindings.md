@@ -6,7 +6,7 @@ description: Lute 0.41 player.bindings.yaml의 모든 섹션, 효과 카탈로�
 `player.bindings.yaml`은 선택 사항이며 `lute.project.yaml` 옆에 둡니다. 프로젝트 전체 `lute check`(`lute check --project <DIR>`, 문서 피연산자 없음)가 컴파일 후 읽습니다. 프로젝트 fingerprint나 런타임 실행에는 영향을 주지 않습니다. 상대 경로는 `assetsBase` 아래에서 해석하며 기본값은 이 파일 옆의 `assets/`입니다.
 
 ```yaml
-bindingsVersion: "0.50"
+bindingsVersion: "0.51"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }
@@ -63,7 +63,7 @@ flow:
 
 ## `bindingsVersion`
 
-`bindingsVersion`은 `luteVersion` 규칙을 따릅니다. 값은 `"MAJOR.MINOR"`이며, **툴체인 라인**은 툴체인 버전의 `MAJOR.MINOR`입니다(Lute 0.50.x에서는 `"0.50"`).
+`bindingsVersion`은 `luteVersion` 규칙을 따릅니다. 값은 `"MAJOR.MINOR"`이며, **툴체인 라인**은 툴체인 버전의 `MAJOR.MINOR`입니다(Lute 0.51.x에서는 `"0.51"`).
 
 - 값이 툴체인 라인과 다르면 프로젝트 전체 `lute check`가 그 값 위치에 `W-BINDINGS-VERSION-STALE`을 보고합니다. 더 오래된 라인이면 툴체인 라인으로 올리라고 안내하며 `lute fix`가 이를 수행합니다. 더 새로운 라인이면 스탬프를 낮추지 말고 툴체인을 업그레이드하라고 안내합니다. `MAJOR.MINOR` 형식이 아닌 값(예: `"0.47.0"`)은 다시 스탬프하라고 안내합니다.
 - 선언한 라인보다 새로운 섹션은 그 섹션 키 위치의 `E-BINDINGS-VERSION`이며, 필요한 라인을 알려 줍니다. 예: `` `ui.ended` needs bindingsVersion "0.46" or newer; this file declares "0.45" ``. 값이 `MAJOR.MINOR` 형식이 아니면 섹션을 검사하지 않습니다.

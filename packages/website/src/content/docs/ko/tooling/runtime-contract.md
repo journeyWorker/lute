@@ -11,7 +11,7 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)에 있습니다.
 `lute.engine.yaml` 매트릭스 형식은
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix)에
-[`schemas/lute-ir-0.50.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.50.schema.json)
+[`schemas/lute-ir-0.51.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.51.schema.json)
 (JSON Schema draft 2020-12)입니다.
 
 ## 런타임 이벤트 계약과 `lute-runtime`
@@ -411,14 +411,14 @@ Lute의 정적 분석도 한계를 정직하게 드러냅니다 — 도달 가�
 
 모든 호스트는 플레이백 세션을 열기 전에 다음 순서로 협상합니다.
 
-1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.50` 엔진은 `0.50.*` 아티팩트만 받아들이고 `0.49.*` 및 `0.51.*`는 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
+1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.51` 엔진은 `0.51.*` 아티팩트만 받아들이고 `0.50.*` 및 `0.52.*`는 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
 2. **의미 캐퍼빌리티 게이트.** 변경할 수 없는 `lute.engine.yaml` 매트릭스를 로드하고 모든 아티팩트의 `requiredSemantics` ID를 `supportedIds`와 비교합니다. `engine`, `irVersion`, 고유한 `supportedIds`는 필수이며, `version`과 `description`은 설명용입니다. 전체 레지스트리는 [0.33.0 제안서 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry)에 있습니다.
 
 매트릭스 예시는 다음과 같습니다.
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.50.0"
+irVersion: "0.51.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -434,7 +434,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 ID가 누락되면 플레이백 전에 종료 코드 **2**와 함께
 `E-ENGINE-SEMANTICS`로 거부합니다. 명령, 조건, 에셋 또는 브리지는 실행되지 않습니다.
 형식이 잘못된 매트릭스에는 `E-ENGINE-MATRIX`를 사용합니다. 매트릭스의 정확한
-major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.50.0` 매트릭스에 대한
+major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.51.0` 매트릭스에 대한
 `0.41.*` 아티팩트)에는 `E-ENGINE-IR-VERSION`을 사용합니다. 알 수 없는 아티팩트 또는
 레지스트리 ID에는 `E-SEMANTICS-UNKNOWN`을 사용합니다. `lute run`은 제거된 0.36 필드를
 여전히 담은 아티팩트를 `E-IR-REMOVED-FIELD`로 거부합니다.
