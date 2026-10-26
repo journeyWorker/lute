@@ -852,6 +852,95 @@ fn an_occasion_target_raise_is_bound_in_the_record() {
     assert_eq!(plugin["attrs"]["scene"], "chapter2");
 }
 
+/// S5 re-review: load refuses a `dynamic` raise that is not the
+/// `occasion.target` reference as the compiler writes it — the occasion's
+/// domain prefix applied — or that has no target, so binding never rewrites
+/// another target to a bare member. The compiled bundle loads.
+#[test]
+fn load_refuses_a_malformed_dynamic_raise() {
+    use lute_runtime::index::Bundle;
+    use lute_runtime::Runtime;
+
+    let dir = project(
+        "raises-dynamic-load",
+        &[(
+            "scenes/visit.lute",
+            &scene(
+                "visitor",
+                "on: visit\ntarget: \"kind:cutsceneId\"\n",
+                "@narrator: V.\n\n::playScene{scene=occasion.target}",
+            ),
+        )],
+    );
+    let out = lute(&dir, &["compile", "--project", ".", "-o", "bundle"]);
+    assert!(out.status.success(), "{}", text(&out));
+    let read = |rel: &str| json(&std::fs::read_to_string(dir.join("bundle").join(rel)).unwrap());
+    let index = read("project.index.json");
+    let artifacts: std::collections::BTreeMap<String, serde_json::Value> = index["documents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|doc| {
+            let artifact = doc["artifact"].as_str().unwrap().to_string();
+            (artifact.clone(), read(&artifact))
+        })
+        .collect();
+    let bundle = Bundle::new(artifacts, index);
+    Runtime::load(bundle.clone()).unwrap();
+    let with_raise = |raise: &str| {
+        let mut b = bundle.clone();
+        let artifact = b.artifacts.values_mut().next().unwrap();
+        let plugin = artifact["commands"]
+            .as_array_mut()
+            .unwrap()
+            .iter_mut()
+            .find(|c| c["kind"] == "plugin")
+            .unwrap();
+        plugin["raises"] = json(&format!("[{raise}]"));
+        Runtime::load(b).map(|_| ())
+    };
+    for (raise, why) in [
+        (
+            r#"{"occasion":"cutscene","target":"scene.other","dynamic":true}"#,
+            "its target `scene.other` is not `scene.occasion.target`",
+        ),
+        (
+            r#"{"occasion":"cutscene","target":"occasion.target","dynamic":true}"#,
+            "its target `occasion.target` is not `scene.occasion.target`",
+        ),
+        (
+            r#"{"occasion":"cutscene","dynamic":true}"#,
+            "it has no target",
+        ),
+        (
+            r#"{"occasion":"begin","target":"occasion.target","dynamic":true}"#,
+            "`begin` takes no target",
+        ),
+        (
+            r#"{"occasion":"unknown","target":"other","dynamic":true}"#,
+            "its target `other` is not `occasion.target` with a domain prefix or none",
+        ),
+    ] {
+        let r = with_raise(raise).expect_err(raise);
+        assert_eq!(r.code, "E-RUNTIME-IR-VERSION", "{raise}: {}", r.message);
+        assert!(
+            r.message
+                .contains("scenes/visit.lute: malformed `plugin` record at"),
+            "{raise}: {}",
+            r.message
+        );
+        assert!(r.message.contains(why), "{raise}: {}", r.message);
+    }
+    // A static target is never bound, so it is not checked; an undeclared
+    // occasion's reference is accepted with any prefix.
+    for raise in [
+        r#"{"occasion":"cutscene","target":"scene.other"}"#,
+        r#"{"occasion":"unknown","target":"scene.occasion.target","dynamic":true}"#,
+    ] {
+        with_raise(raise).unwrap_or_else(|r| panic!("{raise}: {}", r.message));
+    }
+}
+
 /// S5 review: only the compiler's `dynamic` mark makes a target bound. A
 /// literal target that merely reads `….occasion.target` (a shape-only
 /// occasion admits any dotted target) is static: recorded as written with no

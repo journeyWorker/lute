@@ -407,11 +407,22 @@ impl ExecProject {
             .collect();
         // dsl 0.51.0 §3.7: a document whose control flow can cycle (a
         // backward transfer that is not a bounded jump, crossing loops, a bad
-        // `max`) is refused at load.
-        let faults: Vec<String> = codes
-            .iter()
-            .filter_map(|(d, c)| c.fault.as_ref().map(|f| format!("{d}: {f}")))
-            .collect();
+        // `max`) is refused at load; §4.6: so is a record whose `dynamic`
+        // raise is not the occasion's `occasion.target` reference.
+        let mut faults = Vec::new();
+        for (d, c) in &codes {
+            let raises = c
+                .commands
+                .iter()
+                .filter_map(|cmd| crate::machine::dynamic_raise_fault(cmd, &occasions));
+            faults.extend(
+                c.fault
+                    .iter()
+                    .cloned()
+                    .chain(raises)
+                    .map(|f| format!("{d}: {f}")),
+            );
+        }
         if !faults.is_empty() {
             return Err((2, faults));
         }

@@ -1938,7 +1938,27 @@
         "occasion"
       ],
       "additionalProperties": false,
-      "description": "0.51.0 §4.6: one declared raise — an occasion a plugin call or a granted reward promises the host raises (`effects.raises`), resolved at compile (an `@attr` bound to the attribute's compiled value or its declared `default:`, a domain prefix applied)."
+      "if": {
+        "properties": {
+          "dynamic": {
+            "const": true
+          }
+        },
+        "required": [
+          "dynamic"
+        ]
+      },
+      "then": {
+        "properties": {
+          "target": {
+            "pattern": "^([^.]+\\.)*occasion\\.target$"
+          }
+        },
+        "required": [
+          "target"
+        ]
+      },
+      "description": "0.51.0 §4.6: one declared raise — an occasion a plugin call or a granted reward promises the host raises (`effects.raises`), resolved at compile (an `@attr` bound to the attribute's compiled value or its declared `default:`, a domain prefix applied). A `dynamic` raise has a target, the `occasion.target` reference with or without a prefix; that the prefix is the occasion's declared one is checked at load (the runtime refuses the bundle)."
     },
     "objectiveEntry": {
       "type": "object",

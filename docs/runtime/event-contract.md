@@ -233,7 +233,8 @@ declaration order, omitted when there are none. `target` is written whole
 passes `occasion.target` names the member the beat runs for, with the
 occasion's domain prefix (the IR records the reference as
 `scene.occasion.target` with `dynamic: true`, which the emitted record drops;
-a raise without the mark is never bound). The runtime raises nothing and emits no record of its
+a raise without the mark is never bound, and load refuses a marked raise whose
+target is not that reference with the occasion's declared prefix). The runtime raises nothing and emits no record of its
 own for a raise: the host sends each one as a `raiseOccasion` input once the
 runtime is idle, in record order and list order. A raise the occasion's gate
 refuses is the host's to report. The reference player keeps these in a pending

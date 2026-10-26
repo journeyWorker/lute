@@ -4,6 +4,7 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use lute_manifest::schema::{OccasionDecl, OccasionTarget};
 use serde_json::{json, Value as Json};
 
 use super::format::value_to_json;
@@ -624,6 +625,56 @@ fn raises_of(cmd: &Json) -> impl Iterator<Item = &Json> {
 /// to read `….occasion.target` is not bound.
 fn is_dynamic(raise: &Json) -> bool {
     raise.get("dynamic").and_then(Json::as_bool) == Some(true)
+}
+
+/// 0.51.0 §4.6: why a record's `dynamic` raise is malformed, if one is. The
+/// compiler marks only the `occasion.target` reference with the occasion's
+/// domain prefix applied (`scene.occasion.target`; bare for a shape-only
+/// target), so load refuses any other marked target, a marked raise without
+/// one, and a mark on an untargeted occasion — binding would otherwise
+/// rewrite an arbitrary target to a bare member. An occasion `occasions`
+/// does not declare has no known prefix: its reference passes with any
+/// prefix or none. A static raise is never bound and is not checked.
+pub(crate) fn dynamic_raise_fault(
+    cmd: &Json,
+    occasions: &BTreeMap<String, OccasionDecl>,
+) -> Option<String> {
+    raises_of(cmd).filter(|r| is_dynamic(r)).find_map(|r| {
+        let occasion = r.get("occasion").and_then(Json::as_str).unwrap_or("");
+        let why = match (
+            r.get("target").and_then(Json::as_str),
+            occasions.get(occasion).map(|d| &d.target),
+        ) {
+            (_, Some(OccasionTarget::Shape(false))) => format!("`{occasion}` takes no target"),
+            (None, _) => "it has no target".to_string(),
+            (Some(target), Some(declared)) => {
+                let expected = match declared {
+                    OccasionTarget::Domain { prefix, .. } => format!("{prefix}.{TARGET}"),
+                    OccasionTarget::Shape(_) => TARGET.to_string(),
+                };
+                if target == expected {
+                    return None;
+                }
+                format!("its target `{target}` is not `{expected}`")
+            }
+            (Some(target), None) => {
+                let prefixed = |p: &str| p.strip_suffix('.').is_some_and(|p| !p.is_empty());
+                if target
+                    .strip_suffix(TARGET)
+                    .is_some_and(|p| p.is_empty() || prefixed(p))
+                {
+                    return None;
+                }
+                format!("its target `{target}` is not `{TARGET}` with a domain prefix or none")
+            }
+        };
+        let kind = cmd.get("kind").and_then(Json::as_str).unwrap_or("?");
+        let position = cmd.get("position").and_then(Json::as_str).unwrap_or("?");
+        Some(format!(
+            "malformed `{kind}` record at {position}: its raise of `{occasion}` is marked \
+             `dynamic` but {why}"
+        ))
+    })
 }
 
 /// A dynamic raise target — the reference, a domain prefix applied

@@ -81,6 +81,7 @@ use crate::datalog::Fact;
 use crate::eval::Read;
 use crate::{MockSet, UnresolvedAtom, Value};
 pub use format::{value_to_json, value_to_string};
+pub(crate) use plugin::dynamic_raise_fault;
 pub use plugin::BridgeReads;
 
 /// The bounded step outcome of the dispatcher.

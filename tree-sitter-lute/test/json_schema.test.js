@@ -760,6 +760,34 @@ describe("generated IR index schema", () => {
   });
 });
 
+// 0.51.0 §4.6 (S5 re-review): a `dynamic` raise has a target, the
+// `occasion.target` reference with or without a prefix; the runtime's load
+// checks the prefix is the occasion's declared one.
+describe("IR raise records", () => {
+  test("a dynamic raise needs the reference as its target", () => {
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.50.schema.json`, "utf8"));
+    const ajv = new (Ajv2020)({ allErrors: true, strict: false });
+    ajv.addSchema(ir);
+    const raise = ajv.compile({ $ref: `${ir.$id}#/$defs/raiseRecord` });
+    for (const ok of [
+      { occasion: "cutscene", target: "scene.occasion.target", dynamic: true },
+      { occasion: "bell", target: "occasion.target", dynamic: true },
+      { occasion: "cutscene", target: "scene.other" },
+      { occasion: "cutscene", target: "scene.other", dynamic: false },
+      { occasion: "idle" },
+    ]) {
+      expect(raise(ok), `${JSON.stringify(ok)}: ${JSON.stringify(raise.errors)}`).toBe(true);
+    }
+    for (const bad of [
+      { occasion: "cutscene", target: "scene.other", dynamic: true },
+      { occasion: "cutscene", target: ".occasion.target", dynamic: true },
+      { occasion: "cutscene", dynamic: true },
+    ]) {
+      expect(raise(bad), JSON.stringify(bad)).toBe(false);
+    }
+  });
+});
+
 // 0.50.0 §3.5: `<choice>` options carry the plugin stamps they author; the
 // option `$defs` are closed, so the schema must name `stamps`.
 describe("IR option stamps", () => {
