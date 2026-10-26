@@ -602,6 +602,123 @@ pub fn voice_key_collisions(docs: &[IndexInput<'_>]) -> Vec<VoiceKeyCollision> {
         .collect()
 }
 
+/// `E-LINE-ID-DUP` (0.51.0 §5.3): two localization units with one final
+/// `lineId` — the backstop for every identity shape, custom templates
+/// without `{prefix}` included.
+pub const E_LINE_ID_DUP: &str = "E-LINE-ID-DUP";
+
+/// What a localization unit is (`E-LINE-ID-DUP`'s wording).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum UnitKind {
+    Line,
+    Option,
+    Prompt,
+    DirectiveText,
+}
+
+impl UnitKind {
+    /// The author's name for the unit.
+    pub fn noun(self) -> &'static str {
+        match self {
+            UnitKind::Line => "line",
+            UnitKind::Option => "choice option",
+            UnitKind::Prompt => "prompt",
+            UnitKind::DirectiveText => "directive text",
+        }
+    }
+}
+
+/// One localization unit: its document, kind and record `addr`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct UnitSite {
+    pub doc: String,
+    pub kind: UnitKind,
+    pub addr: String,
+}
+
+/// A `lineId` a later unit (`unit`) shares with an earlier one (`first`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LineIdDup {
+    pub line_id: String,
+    pub first: UnitSite,
+    pub unit: UnitSite,
+}
+
+impl LineIdDup {
+    /// The diagnostic message, naming the first unit at `first_at` (a
+    /// `path:line` when the caller can place it, else its document).
+    pub fn message(&self, first_at: &str) -> String {
+        format!(
+            "lineId `{}` of this {} is also the lineId of the {} at {first_at} — a lineId keys \
+             one translation",
+            self.line_id,
+            self.unit.kind.noun(),
+            self.first.kind.noun()
+        )
+    }
+}
+
+/// Every unit of `docs` (lines, choice and hub options, prompts, directive
+/// texts; in `docs` order, then record order) whose final `lineId` an
+/// earlier unit already carries. Units expanded from one component at
+/// several `::use` sites differ by their instance segment, so they never
+/// meet here.
+pub fn line_id_duplicates(docs: &[IndexInput<'_>]) -> Vec<LineIdDup> {
+    let mut first: BTreeMap<&str, UnitSite> = BTreeMap::new();
+    let mut dups = Vec::new();
+    for d in docs {
+        let mut units: Vec<(&str, UnitKind, &str)> = Vec::new();
+        for c in &d.artifact.commands {
+            match c {
+                Command::Line(l) => units.push((&l.line_id, UnitKind::Line, &l.position)),
+                Command::Choice(ch) => {
+                    for o in &ch.options {
+                        units.push((&o.line_id, UnitKind::Option, &ch.position));
+                    }
+                    if let Some(id) = &ch.prompt_line_id {
+                        units.push((id, UnitKind::Prompt, &ch.position));
+                    }
+                }
+                Command::Hub(h) => {
+                    for o in &h.options {
+                        units.push((&o.line_id, UnitKind::Option, &h.position));
+                    }
+                    if let Some(id) = &h.prompt_line_id {
+                        units.push((id, UnitKind::Prompt, &h.position));
+                    }
+                }
+                Command::Plugin(p) => {
+                    for text in p.localized.values() {
+                        units.push((&text.line_id, UnitKind::DirectiveText, &p.position));
+                    }
+                }
+                _ => {}
+            }
+        }
+        for (line_id, kind, addr) in units {
+            if line_id.is_empty() {
+                continue;
+            }
+            let site = UnitSite {
+                doc: d.path.clone(),
+                kind,
+                addr: addr.to_string(),
+            };
+            match first.get(line_id) {
+                Some(earlier) => dups.push(LineIdDup {
+                    line_id: line_id.to_string(),
+                    first: earlier.clone(),
+                    unit: site,
+                }),
+                None => {
+                    first.insert(line_id, site);
+                }
+            }
+        }
+    }
+    dups
+}
+
 /// The document's canonical node key (see [`IndexDocument::key`]). A scene's
 /// key is [`SceneMeta::id`] verbatim — the shared canonical scene key
 /// ([`lute_check::meta::canonical_scene_key`], dsl 0.15.0 §2) already

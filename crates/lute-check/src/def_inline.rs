@@ -230,6 +230,14 @@ struct Cx<'a> {
 }
 
 impl Cx<'_> {
+    /// 0.51.0 §5.2: a `text` attribute's interpolations, as a label's.
+    fn text_interps(&mut self, d: &lute_syntax::ast::Directive) {
+        let snapshot = self.input.snapshot();
+        for (attr, text) in crate::directives::text_values(d, snapshot) {
+            self.interps(&lute_syntax::scan_label_interps(text, attr.value_span));
+        }
+    }
+
     fn nodes(&mut self, nodes: &[Node]) {
         for node in nodes {
             match node {
@@ -239,7 +247,10 @@ impl Cx<'_> {
                 }
                 Node::Directive(d) if d.tag == "use" => self.use_args(d),
                 Node::Directive(d) if d.is_accept() => {}
-                Node::Directive(d) => self.attrs(&d.attrs, &AttrSite::Directive(&d.tag)),
+                Node::Directive(d) => {
+                    self.attrs(&d.attrs, &AttrSite::Directive(&d.tag));
+                    self.text_interps(d);
+                }
                 Node::Branch(b) => {
                     self.attrs(&b.attrs, &AttrSite::Element(StampSurface::Branch));
                     for c in &b.choices {
@@ -273,6 +284,7 @@ impl Cx<'_> {
                         for clip in &track.clips {
                             if let ClipNode::Directive(d) = &clip.node {
                                 self.attrs(&d.attrs, &AttrSite::Directive(&d.tag));
+                                self.text_interps(d);
                             }
                         }
                     }

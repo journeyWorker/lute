@@ -18,7 +18,7 @@
 //! the one report (`0.48.0.tag` / `0.48.0.fix`), or the error envelope on an
 //! I/O failure.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -201,13 +201,15 @@ pub fn run_tag(opts: &TagOptions<'_>) -> ExitCode {
     let mut failure: Option<CliError> = None;
     let mut records: Vec<TagFile> = Vec::new();
     let (mut changed, mut units) = (0, 0);
+    let cache = lute_load::InputCache::default();
     for file in &files {
         let scope = if single {
             Scope::Single
         } else {
             Scope::Tree(file)
         };
-        match tag_file(file, opts, write_files, scope) {
+        let text_tags = text_directive_tags(&cache, file);
+        match tag_file(file, opts, write_files, scope, &text_tags) {
             Ok((outcome, record)) => {
                 if outcome == Outcome::Changed {
                     changed += 1;
@@ -274,17 +276,38 @@ pub fn run_tag(opts: &TagOptions<'_>) -> ExitCode {
     )
 }
 
+/// 0.51.0 §5.3: the tags of the directives with a `text` attribute in the
+/// capability snapshot `file` is checked against (its project's, with the
+/// document's own `plugins:`) — the calls `lute tag` gives a `code`. Empty
+/// when the document cannot be read (tagging then reports it).
+fn text_directive_tags(cache: &lute_load::InputCache, file: &Path) -> BTreeSet<String> {
+    let project = crate::project::resolve_project(file, None);
+    lute_load::build_input_with(cache, file, None, project.as_deref(), None)
+        .map(|built| {
+            built
+                .input
+                .snapshot()
+                .directives
+                .values()
+                .filter(|d| d.has_text_attr())
+                .map(|d| d.name.clone())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 fn tag_file(
     file: &Path,
     opts: &TagOptions<'_>,
     write_files: bool,
     scope: Scope<'_>,
+    text_tags: &BTreeSet<String>,
 ) -> Result<(Outcome, TagFile), CliError> {
     let text = read(file)?;
     let mut record = TagFile::new(file, opts.renumber);
 
     if opts.renumber {
-        let outcome = match lute_check::retag_document(&text) {
+        let outcome = match lute_check::retag_document(&text, text_tags) {
             lute_check::RetagOutcome::LockedInstances { text: out, added } => {
                 record.changed = true;
                 record.instances = added;
@@ -372,7 +395,7 @@ fn tag_file(
         return Ok((outcome, record));
     }
 
-    let tagged = lute_check::tag_document(&text);
+    let tagged = lute_check::tag_document(&text, text_tags);
     if tagged.added == 0 {
         scope.say_unchanged("already tagged");
         return Ok((Outcome::Unchanged, record));

@@ -150,6 +150,7 @@ pub(crate) fn validate_components(
         body_diags.extend(crate::match_check::check_line_codes_with_policy(
             &body,
             require_stable,
+            Some(snapshot),
         ));
         // Task 7e, the THIRD instance of the same class as Task 7b's
         // (content-line attrs) and Task 7c's (duplicate line codes):

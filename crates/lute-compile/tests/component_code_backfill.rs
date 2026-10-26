@@ -75,7 +75,7 @@ fn a_component_line_keeps_its_source_code_whatever_the_argument_form() {
     );
 
     // `lute tag` on the component writes that same code: tagging renames nothing.
-    let tagged = lute_check::tag_document(FIRE);
+    let tagged = lute_check::tag_document(FIRE, &std::collections::BTreeSet::new());
     assert!(
         tagged
             .text

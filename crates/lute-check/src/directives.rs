@@ -231,6 +231,25 @@ pub fn check_directive(
             }
         }
         let Some(adecl) = decl.attrs.iter().find(|a| a.name == attr.key) else {
+            // 0.51.0 §5.2: a directive with a `text` attribute takes the
+            // identity attribute `code`, as a content line does — a quoted
+            // string, matched before any stamp of that name.
+            if attr.key == lute_manifest::schema::DIRECTIVE_TEXT_CODE_ATTR && decl.has_text_attr() {
+                if matches!(attr.value, AttrValue::Str(_)) {
+                    diags.extend(crate::content_line::reserved_code(attr, Layer::Staging));
+                } else {
+                    diags.push(diag(
+                        "E-ATTR-TYPE",
+                        Severity::Error,
+                        format!(
+                            "`code` of `{owner}` is the localization identity of its `text` \
+                             attributes, written as a quoted string (`code=\"0010\"`)"
+                        ),
+                        attr.value_span,
+                    ));
+                }
+                continue;
+            }
             // 0.49.0 §4.1: a directive with no stamp carrier
             // (`UNSTAMPED_DIRECTIVES`) would drop a core timing key or a
             // plugin stamp, so both are refused before the two fallbacks
@@ -301,8 +320,18 @@ pub fn check_directive(
                             decl.attrs.iter().map(|a| format!("`{}`", a.name)).collect();
                         format!("; its attributes are {}", names.join(", "))
                     };
+                    // 0.51.0 §5.2: `code` is admitted only beside `text`.
+                    let why = if attr.key == lute_manifest::schema::DIRECTIVE_TEXT_CODE_ATTR {
+                        format!(
+                            "; `code` is the localization identity of a directive with a \
+                             `text` attribute, and `::{}` declares none",
+                            dir.tag
+                        )
+                    } else {
+                        String::new()
+                    };
                     format!(
-                        "`::{}` has no attribute `{}`{near}{listed}",
+                        "`::{}` has no attribute `{}`{near}{listed}{why}",
                         dir.tag, attr.key
                     )
                 },
@@ -510,6 +539,26 @@ pub(crate) fn scoped_elsewhere_message(
     )
 }
 
+/// 0.51.0 §5.2: the authored values of `dir`'s `text` attributes (quoted
+/// strings in the choice-label grammar), with their attributes. A `@ref` or
+/// bare value is `E-ATTR-TYPE` and has no text.
+pub fn text_values<'a>(
+    dir: &'a Directive,
+    snapshot: &'a CapabilitySnapshot,
+) -> impl Iterator<Item = (&'a Attr, &'a str)> {
+    let decl = snapshot.directive(&dir.tag).filter(|d| d.has_text_attr());
+    dir.attrs.iter().filter_map(move |a| {
+        let text = match &a.value {
+            AttrValue::Str(s) => s.as_str(),
+            _ => return None,
+        };
+        decl?
+            .text_attrs()
+            .any(|t| t.name == a.key)
+            .then_some((a, text))
+    })
+}
+
 /// `a`, `a and b`, `a, b and c`.
 pub(crate) fn and_list(items: &[String]) -> String {
     match items.split_last() {
@@ -581,6 +630,8 @@ pub(crate) fn attr_ref_type(
                 .iter()
                 .find(|a| a.name == key)
                 .map(|a| a.ty.clone())
+                // 0.51.0 §5.2: a `@ref` on `text` is `E-ATTR-TYPE` already.
+                .filter(|ty| *ty != Type::Text)
                 .or_else(|| timing_ref_decl(tag, key).map(|a| a.ty))
         }
         AttrSite::Element(surface) => snapshot.stamp_attrs.get(surface, key).map(|a| a.ty.clone()),
@@ -686,8 +737,21 @@ pub(crate) fn check_attr_value(
     domains: &BTreeMap<String, Domain>,
     diags: &mut Vec<Diagnostic>,
 ) {
-    // CEL-valued attributes are resolved in T4.3, not here.
+    // CEL-valued attributes are resolved in T4.3, not here — except on a
+    // `text` attribute, which takes no `@ref` at all (0.51.0 §5.2).
     if matches!(attr.value, AttrValue::Ref(_)) {
+        if adecl.ty == Type::Text {
+            diags.push(diag(
+                "E-ATTR-TYPE",
+                Severity::Error,
+                format!(
+                    "`{}` of `{owner}` is localizable `text`, written as a quoted string; a \
+                     `@def` value has no translation of its own",
+                    attr.key
+                ),
+                attr.value_span,
+            ));
+        }
         return;
     }
 
@@ -1156,6 +1220,7 @@ fn describe(ty: &Type) -> &'static str {
         Type::Int => "an integer",
         Type::Double => "a double",
         Type::Str => "a string",
+        Type::Text => "localizable text, written as a quoted string",
         Type::List(_) => "a list",
         Type::Record(_) => "a record",
         Type::Map { .. } => "a map",

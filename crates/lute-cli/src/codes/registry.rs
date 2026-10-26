@@ -63,8 +63,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-ATTR-TYPE",
-        summary: "An attribute's value does not match its declared type — for example a non-numeric `duration`/`zoom`/`shake`, a non-boolean flag, a bare identifier where a quoted string is required, or a value naming no member of its provider, domain, or entity kind.",
-        spec: &[],
+        summary: "An attribute's value does not match its declared type — for example a non-numeric `duration`/`zoom`/`shake`, a non-boolean flag, a bare identifier where a quoted string is required, or a value naming no member of its provider, domain, or entity kind. A `text` attribute (or the `code` beside one) is a quoted string: an `@ref` value is refused, since a `@def` has no translation of its own.",
+        spec: &["dsl 0.51.0 §5.2"],
     },
     Code {
         code: "E-AUTHOR-CASE",
@@ -488,8 +488,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-DUP-LINE-CODE",
-        summary: "Two content lines from the same speaker share the same `:line` `code=`, though a (speaker, code) pair must be unique — it is the voice-key/i18n identity join key.",
-        spec: &["dsl §12"],
+        summary: "Two content lines from the same speaker share the same `:line` `code=`, though a (speaker, code) pair must be unique — it is the voice-key/i18n identity join key. Likewise two calls of one directive with `text` attributes in one identity scope sharing `code=`: a (directive, code) pair is the localization identity of its `text` attributes.",
+        spec: &["dsl §12", "dsl 0.51.0 §5.3"],
     },
     Code {
         code: "E-DUP-TRACK",
@@ -643,8 +643,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-IDENTITY-TEMPLATE",
-        summary: "A project's `identity.lineId`/`identity.voiceKey` template names an unknown `{token}`, or resolves to an empty string.",
-        spec: &["dsl 0.8.0 §9"],
+        summary: "A project's `identity.lineId`/`identity.voiceKey` template names an unknown `{token}`, or resolves to an empty string, or the `lineId` template's literal text contains `~`, which is reserved for directive text identities (`{prefix}~{tag}~{code}~{attr}`).",
+        spec: &["dsl 0.8.0 §9", "dsl 0.51.0 §5.3"],
     },
     Code {
         code: "E-INERT-TITLE",
@@ -735,6 +735,16 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-LEGACY-CONTENT-SIGIL",
         summary: "A content line uses the old `:` speaker sigil, which `@` replaced — write `@speaker{…}: text` instead.",
         spec: &["dsl §7.1"],
+    },
+    Code {
+        code: "E-LINE-CODE-RESERVED",
+        summary: "A `code=` on a content line or on a directive with `text` attributes contains `~`, the separator of a directive text identity (`{prefix}~{tag}~{code}~{attr}`); `lute tag` never writes one.",
+        spec: &["dsl 0.51.0 §5.3"],
+    },
+    Code {
+        code: "E-LINE-ID-DUP",
+        summary: "Two localization units of the project — lines, choice and hub options, prompts, directive texts — compile to one final `lineId` (reported at the later unit, the first one related), as a `lineId` template without `{prefix}` can produce across documents. A `lineId` keys one translation, so `lute loc import` and `--locale-bundle` could not tell them apart. Whole-project `check` and `compile --project`.",
+        spec: &["dsl 0.51.0 §5.3"],
     },
     Code {
         code: "E-LINT-CONFIG",
@@ -988,8 +998,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-INVALID-DIRECTIVE",
-        summary: "A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one); or a directive attribute or `stampAttrs` entry is typed `list`, `map` or `record`, which no authored attribute value can satisfy; or a directive whose `lower:` builds a staging record or runs a builtin hook declares `effects.raises`, which no such lowering carries to the host (only a `plugin` record does) — the raises are dropped.",
-        spec: &["dsl 0.49.0 §3.2", "dsl 0.51.0 §4.2"],
+        summary: "A plugin directive declaration uses a `semantics:` flag outside the closed vocabulary, declares the same attribute name more than once, or declares an attribute `default:` that is not a value of the attribute's `type` (an integer defaulting a `double` is one); or a directive attribute or `stampAttrs` entry is typed `list`, `map` or `record`, which no authored attribute value can satisfy (structured values are not supported yet: give each field its own attribute, use a `text` attribute for player-visible text in several languages, or write a list of options as `<choice>` elements); or a `stampAttrs` entry is typed `text`; or a directive whose `lower:` builds a staging record or runs a builtin hook declares `effects.raises`, which no such lowering carries to the host (only a `plugin` record does) — the raises are dropped.",
+        spec: &["dsl 0.49.0 §3.2", "dsl 0.51.0 §4.2", "dsl 0.51.0 §5.1", "dsl 0.51.0 §7"],
     },
     Code {
         code: "E-PLUGIN-IO",
@@ -1028,8 +1038,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-PARSE",
-        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect (none of `asserts:`, `retracts:`, `accepts:` or `raises:`), a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, a raise targets an `@attr` other than `@target`, or a kind with `target: { forbidden: true }` reads `@target` (a raise for `@target` included), or an `effects.raises` list is empty, an entry is not a mapping of `occasion` and optional `target`, its `target` is neither `@<attr>` nor a dotted target, or (on a directive) its `@<attr>` names no attribute of the directive, or an occasion's `raisedBy` is not `declared`, or a `hostTokens` name is not an identifier (letters, digits and `_`, not starting with a digit) or its `type` is not `string`, `int` or `{ enum: [...] }`.",
-        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1", "dsl 0.50.0 §5.1", "dsl 0.51.0 §4.1", "dsl 0.51.0 §4.2"],
+        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect (none of `asserts:`, `retracts:`, `accepts:` or `raises:`), a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, a raise targets an `@attr` other than `@target`, or a kind with `target: { forbidden: true }` reads `@target` (a raise for `@target` included), or an `effects.raises` list is empty, an entry is not a mapping of `occasion` and optional `target`, its `target` is neither `@<attr>` nor a dotted target, or (on a directive) its `@<attr>` names no attribute of the directive, or an occasion's `raisedBy` is not `declared`, or a `hostTokens` name is not an identifier (letters, digits and `_`, not starting with a digit) or its `type` is not `string`, `int` or `{ enum: [...] }`, or a `type: text` sits anywhere but a directive attribute (a plugin option, an occasion payload, a reward-kind attribute, a bridge result, a state shape, a nested `{ list: text }`), or a directive's `text` attribute is on a directive with `lower:` or `bridge:` (no localized text would reach the host), declares a `default:` (which has no translation), or sits beside a declared attribute named `code` (the identity attribute of a directive with `text` attributes).",
+        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1", "dsl 0.50.0 §5.1", "dsl 0.51.0 §4.1", "dsl 0.51.0 §4.2", "dsl 0.51.0 §5.1"],
     },
     Code {
         code: "E-PLUGIN-RAISES",
@@ -1043,8 +1053,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-RESERVED-STAMP-ATTR",
-        summary: "A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp. Also a `stampAttrs` entry scoped with `on:` to a surface that owns an attribute of the same name (`prompt` on `branch`, `text` on `choice`, `code` on `line`, a directive's own attribute), so the stamp could never be read there.",
-        spec: &["plugin §14", "dsl 0.50.0 §3.2"],
+        summary: "A non-core plugin's `stampAttrs` export or a directive's `attrs` declares an attribute name (`at`/`duration`/`delay`/`wait`/`timeline`/`timing`/`provenance`/`source`) that the core stamp already owns. Plugin stamps compile under the record's nested `stamps` object, but these names stay reserved: they would read as the core stamp. Also a `stampAttrs` entry scoped with `on:` to a surface that owns an attribute of the same name (`prompt` on `branch`, `text` on `choice`, `code` on `line`, a directive's own attribute, `code` on a directive with a `text` attribute), so the stamp could never be read there.",
+        spec: &["plugin §14", "dsl 0.50.0 §3.2", "dsl 0.51.0 §5.1"],
     },
     Code {
         code: "E-PLUGIN-STAMP-SURFACE",
@@ -1388,8 +1398,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-STATE-DECL",
-        summary: "A `state:` declaration is malformed: a non-string key, an unknown or incomplete `type:` (including an `enum` not nested under `type:`), a bad `default:`/`per:` shape, or `state:` itself is not a map.",
-        spec: &["dsl 0.8.0 §4"],
+        summary: "A `state:` declaration is malformed: a non-string key, an unknown or incomplete `type:` (including an `enum` not nested under `type:`), a `type: text` (the type of a plugin directive attribute only), a bad `default:`/`per:` shape, or `state:` itself is not a map.",
+        spec: &["dsl 0.8.0 §4", "dsl 0.51.0 §5.1"],
     },
     Code {
         code: "E-STATE-DECL-CONFLICT",
@@ -1598,8 +1608,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-UNKNOWN-ATTR",
-        summary: "A content line, directive or logic element carries an attribute key that the content-line grammar, the directive's own declaration or the element's fixed attribute table does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to; on `<branch>`, `<hub>` and `<choice>` the message also lists the stamps scoped to that element.",
-        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1", "dsl 0.50.0 §3.4"],
+        summary: "A content line, directive or logic element carries an attribute key that the content-line grammar, the directive's own declaration or the element's fixed attribute table does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to; on `<branch>`, `<hub>` and `<choice>` the message also lists the stamps scoped to that element. `code=` on a directive without a `text` attribute names why: `code` is the localization identity of a directive with one.",
+        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1", "dsl 0.50.0 §3.4", "dsl 0.51.0 §5.2"],
     },
     Code {
         code: "E-UNKNOWN-DIRECTIVE",
@@ -1858,8 +1868,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-LINE-CODE-UNTAGGED",
-        summary: "With `identity.requireStable`, a content line has no explicit per-speaker `code` and compiler allocation is being used; run `lute tag` to write one.",
-        spec: &["dsl 0.36.0 §2.2"],
+        summary: "With `identity.requireStable`, a content line (or a call of a directive with `text` attributes) has no explicit `code` and compiler allocation is being used; run `lute tag` to write one.",
+        spec: &["dsl 0.36.0 §2.2", "dsl 0.51.0 §5.3"],
     },
     Code {
         code: "W-LUTE-VERSION-STALE",

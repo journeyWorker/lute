@@ -506,6 +506,12 @@ pub fn inline_ref_placeholders(
                     fill(&mut o.placeholders);
                 }
             }
+            // 0.51.0 §5.4: a `text` attribute's placeholders, as a label's.
+            Command::Plugin(p) => {
+                for text in p.localized.values_mut() {
+                    fill(&mut text.placeholders);
+                }
+            }
             _ => {}
         }
     }
@@ -558,6 +564,12 @@ pub fn type_occasion_target_placeholders(commands: &mut [Command], scene_kind: O
             Command::Hub(h) => {
                 for o in &mut h.options {
                     fix(&mut o.placeholders, &kind);
+                }
+            }
+            // 0.51.0 §5.4: a `text` attribute's placeholders, as a label's.
+            Command::Plugin(p) => {
+                for text in p.localized.values_mut() {
+                    fix(&mut text.placeholders, &kind);
                 }
             }
             _ => {}

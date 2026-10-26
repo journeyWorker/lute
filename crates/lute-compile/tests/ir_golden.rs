@@ -286,6 +286,8 @@ fn stamped_camera_and_set_and_plugin_passthrough() {
         asserts: vec![],
         stamp: Stamp::default(),
         raises: vec![],
+        localized: Default::default(),
+        text_identity: None,
     });
     assert_eq!(
         j(&other),
@@ -1170,6 +1172,8 @@ fn every_kind_has_its_spec_family() {
                 asserts: vec![],
                 stamp: stamp(),
                 raises: vec![],
+                localized: BTreeMap::new(),
+                text_identity: None,
             }),
             "plugin",
             "plugin",

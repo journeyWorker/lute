@@ -1507,6 +1507,11 @@ pub struct PluginCmd {
     /// dsl 0.27.0 §4: the facts the call asserts, applied after `retracts`.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub asserts: Vec<FactRecord>,
+    /// 0.51.0 §5.4: each `text` attribute's localization, keyed by attribute
+    /// name (skip-if-empty: a directive without `text` attributes is
+    /// byte-identical). Descriptive, no semantic id.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub localized: BTreeMap<String, LocalizedText>,
     #[serde(flatten)]
     pub stamp: Stamp,
     /// 0.51.0 §4.6: the occasions the call's `effects.raises` names, in list
@@ -1514,6 +1519,37 @@ pub struct PluginCmd {
     /// byte-identical).
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub raises: Vec<RaiseRecord>,
+    /// 0.51.0 §5.3: where the call's directive text identity comes from —
+    /// its authored `code` and its source position — for the addressing
+    /// pass. Never serialized: the code reaches the artifact only inside
+    /// `localized.<attr>.lineId`.
+    #[serde(skip)]
+    pub text_identity: Option<TextIdentity>,
+}
+
+/// 0.51.0 §5.4: one `text` attribute's localization. `fields.<attr>` keeps
+/// the source-language string, `{{…}}` markers as authored.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalizedText {
+    /// `{prefix}~{tag}~{code}~{attr}`, outside the `lineId` template.
+    pub line_id: String,
+    /// The value's `{{…}}` interpolations, as an option label's.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub placeholders: Vec<Placeholder>,
+    /// Translations by locale, filled by the locale merge.
+    #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+    pub texts: BTreeMap<String, String>,
+}
+
+/// 0.51.0 §5.3: the identity inputs of a call with `text` attributes.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TextIdentity {
+    /// The authored `code`, trimmed; `None` when the call is untagged.
+    pub code: Option<String>,
+    /// The call's source byte offset: an untagged call's back-filled code
+    /// follows source order, as `lute tag` writes it.
+    pub at: usize,
 }
 
 /// `<quest>` declaration head (dsl 0.2.0 §6.3, IR addendum §3.1). A

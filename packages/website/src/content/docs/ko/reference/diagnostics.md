@@ -87,7 +87,9 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-ATTR-TYPE
 
-속성 값이 선언된 타입과 맞지 않습니다. 예를 들어 숫자가 아닌 `duration`/`delay`, 불리언이 아닌 플래그, 인용된 문자열이 필요한 자리의 맨 식별자, 또는 공급자·도메인·엔티티 종류의 구성원을 가리키지 않는 값입니다.
+속성 값이 선언된 타입과 맞지 않습니다. 예를 들어 숫자가 아닌 `duration`/`delay`, 불리언이 아닌 플래그, 인용된 문자열이 필요한 자리의 맨 식별자, 또는 공급자·도메인·엔티티 종류의 구성원을 가리키지 않는 값입니다. 0.51.0부터 `text` 속성(과 그 옆의 `code`)은 인용된 문자열입니다: `@def`에는 자체 번역이 없으므로 `@ref` 값은 거부됩니다(`` `title` of `::banner` is localizable `text`, written as a quoted string; a `@def` value has no translation of its own ``).
+
+명세: [dsl 0.51.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-AUTHOR-CASE
 
@@ -579,9 +581,9 @@ diff 한쪽을 읽거나 안전하게 임시 materialize하거나 완전한 프�
 
 ### E-DUP-LINE-CODE
 
-같은 화자의 콘텐츠 줄 두 개가 동일한 `:line` `code=`를 공유했지만, (화자, 코드) 쌍은 고유해야 합니다 — 이는 voiceKey/번역 식별 조인 키입니다.
+같은 화자의 콘텐츠 줄 두 개가 동일한 `:line` `code=`를 공유했지만, (화자, 코드) 쌍은 고유해야 합니다 — 이는 voiceKey/번역 식별 조인 키입니다. 0.51.0부터는 `text` 속성이 있는 같은 디렉티브의 호출 두 개가 한 식별 범위에서 `code=`를 공유하는 경우도 같은 코드입니다. (디렉티브, 코드) 쌍이 그 `text` 속성들의 현지화 식별자입니다: `` `::banner` calls at lines N and M share `code="0010"`; a (directive, code) pair is the localization identity of its `text` attributes ``.
 
-명세: [dsl §12](/ko/spec/)
+명세: [dsl §12](/ko/spec/), [dsl 0.51.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-DUP-TRACK
 
@@ -760,9 +762,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-IDENTITY-TEMPLATE
 
-프로젝트의 `identity.lineId`/`identity.voiceKey` 템플릿이 알 수 없는 `{token}`을 지정했거나, 빈 문자열로 귀결됩니다.
+프로젝트의 `identity.lineId`/`identity.voiceKey` 템플릿이 알 수 없는 `{token}`을 지정했거나, 빈 문자열로 귀결됩니다. 0.51.0부터는 `lineId` 템플릿의 리터럴 텍스트에 `~`가 있는 경우도 같은 코드입니다. `~`는 디렉티브 텍스트 식별자(`{prefix}~{tag}~{code}~{attr}`)의 구분자로 예약되어 있습니다.
 
-명세: [dsl 0.8.0 §9](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md)
+명세: [dsl 0.8.0 §9](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md), [dsl 0.51.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-INERT-TITLE
 
@@ -869,6 +871,18 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 콘텐츠 줄이 `@`로 대체된 예전 `:` 화자 기호를 사용합니다 — `@speaker{…}: text` 형식으로 쓰십시오.
 
 명세: [dsl §7.1](/ko/spec/)
+
+### E-LINE-CODE-RESERVED
+
+콘텐츠 줄이나 `text` 속성이 있는 디렉티브의 `code=`에 `~`가 있습니다. `~`는 디렉티브 텍스트 식별자(`{prefix}~{tag}~{code}~{attr}`)의 구분자입니다: `` `code="a~1"` contains `~`, which is reserved for directive text identities ``. `lute tag`는 이런 코드를 쓰지 않습니다.
+
+명세: [dsl 0.51.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+
+### E-LINE-ID-DUP
+
+프로젝트의 현지화 단위(줄, 선택지와 허브 옵션, 프롬프트, 디렉티브 텍스트) 두 개가 같은 최종 `lineId`로 컴파일되었습니다. 나중 단위에서 보고하고 처음 단위를 관련 위치로 붙입니다: `` lineId `intro.mira_0010` of this line is also the lineId of the line at scenes/intro2.lute:8 — a lineId keys one translation ``. `{prefix}`가 없는 `lineId` 템플릿이 문서 사이에서 만들 수 있습니다. `lineId` 하나는 번역 하나의 키이므로 `lute loc import`와 `--locale-bundle`이 둘을 구별할 수 없습니다. 프로젝트 전체 `check`와 `compile --project`에서 보고합니다.
+
+명세: [dsl 0.51.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-LINT-CONFIG
 
@@ -1134,9 +1148,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-INVALID-DIRECTIVE
 
-플러그인 디렉티브 선언이 닫힌 어휘 밖의 `semantics:` 플래그를 사용했거나, 같은 속성 이름을 두 번 이상 선언했거나, 속성의 `type`에 속하지 않는 값을 `default:`로 선언했습니다(`double` 속성의 정수 기본값은 허용됩니다). 또한 속성 값은 스칼라 하나로 쓰므로(문자열, 숫자, bool, enum 또는 엔티티 멤버, provider 또는 asset id) 최상위 타입이 `list`, `map`, `record`인 디렉티브 속성이나 `stampAttrs` 항목은 어떤 `.lute` 값으로도 만족할 수 없어 플러그인 로드 시 거부됩니다. 메시지가 속성 이름을 알려 줍니다: `string`으로 선언해 호스트에서 파싱하거나, 필드마다 속성 하나로 나누세요. 0.51.0부터는 `lower:`가 스테이징 레코드를 만들거나 builtin 훅을 실행하는 디렉티브가 `effects.raises`를 선언한 경우도 이 코드입니다. 그런 lowering은 효과를 호스트에 전달하지 못하므로(`plugin` 레코드만 전달합니다) 그 raise는 버려집니다: `lower:`를 지워 호출이 `plugin` 레코드로 남게 하거나, passthrough 디렉티브에서 occasion을 raise하세요.
+플러그인 디렉티브 선언이 닫힌 어휘 밖의 `semantics:` 플래그를 사용했거나, 같은 속성 이름을 두 번 이상 선언했거나, 속성의 `type`에 속하지 않는 값을 `default:`로 선언했습니다(`double` 속성의 정수 기본값은 허용됩니다). 또한 속성 값은 스칼라 하나로 쓰므로(문자열, 숫자, bool, enum 또는 엔티티 멤버, provider 또는 asset id) 최상위 타입이 `list`, `map`, `record`인 디렉티브 속성이나 `stampAttrs` 항목은 어떤 `.lute` 값으로도 만족할 수 없어 플러그인 로드 시 거부됩니다. 0.51.0부터 메시지는 구조화된 값이 아직 지원되지 않는다고 말하고, 맞는 경우 스칼라로 나누는 방법을 알려 줍니다: 필드마다 속성 하나(스탬프는 `on:`으로 표면을 정할 수 있음), 여러 언어로 보이는 텍스트는 `text` 속성, 선택지 목록은 `<choice>` 요소. 스탬프의 메시지에는 `text` 안내가 없습니다(스탬프는 `text`일 수 없습니다). `text` 타입 `stampAttrs` 항목도 이 코드입니다. 0.51.0부터는 `lower:`가 스테이징 레코드를 만들거나 builtin 훅을 실행하는 디렉티브가 `effects.raises`를 선언한 경우도 이 코드입니다. 그런 lowering은 효과를 호스트에 전달하지 못하므로(`plugin` 레코드만 전달합니다) 그 raise는 버려집니다: `lower:`를 지워 호출이 `plugin` 레코드로 남게 하거나, passthrough 디렉티브에서 occasion을 raise하세요.
 
-명세: [dsl 0.49.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.51.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+명세: [dsl 0.49.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.51.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-PLUGIN-IO
 
@@ -1180,7 +1194,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 플러그인 export 파일이 올바른 YAML이 아니거나 키의 값 모양이 틀렸습니다(줄과 그 키가 받는 모양을 알려 줍니다). 또는 디렉티브의 `effects.writes`/`effects.asserts`/`effects.retracts` 항목이 해당 디렉티브가 선언하지 않은 속성을 가리킵니다(또는 assert가 `_`를 사용합니다). 0.50.0부터는 다음 원인도 같은 코드입니다. `stampAttrs` 항목: `on:`이 문자열 목록이 아니거나 비어 있음(`` stamp attribute `X` has an empty `on:` — list the surfaces it applies to, or omit `on:` for every directive and content line ``), `on:`에 같은 표면이 두 번 나옴(`` stamp attribute `X` lists `bg` twice in `on:` ``), `on:` 없는 `required: true`(`` stamp attribute `X` is `required: true` but has no `on:`; a stamp required on every record is not a column — name its surfaces with `on: […]` ``). 호스트 토큰: 허용되지 않는 타입이나 키, 식별자가 아닌 토큰 이름(`` host token `player-name` is not an identifier (letters, digits and `_`, not starting with a digit) ``). 보상 kind `effects`: 빈 `effects: {}`("declares no effect"), `@target` 외의 `@name` 인자(`` reward kind `BADGE` effect `met(@rarity)` reads `@rarity`; a reward kind's effects read only `@target` (a `<reward>` takes no other attribute) ``), 인자가 `@target` 또는 리터럴 quest id(식별자)가 아닌 `accepts` 항목, `target: { forbidden: true }`인데 `@target`을 읽는 효과. 0.51.0부터는 `effects.raises` 목록이 비어 있거나, 항목이 `occasion`과 선택적 `target`의 매핑이 아니거나, `target`이 `@<attr>`도 점으로 이은 대상도 아니거나, 디렉티브에서 `@<attr>`이 그 디렉티브의 속성을 가리키지 않거나, 보상 종류의 raise가 `@target` 이외의 `@attr`을 대상으로 하거나(`target: { forbidden: true }`인 종류의 `@target` raise 포함), occasion의 `raisedBy`가 `declared`가 아닌 경우도 같은 코드입니다. 보상 종류의 "declares no effect" 메시지는 `raises:`도 나열합니다.
 
-명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.51.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+0.51.0부터 `type: text`가 디렉티브 속성이 아닌 곳(플러그인 옵션, occasion payload, 보상 종류 속성, bridge 결과, state shape, 중첩된 `{ list: text }`)에 있거나, 디렉티브의 `text` 속성이 `lower:` 또는 `bridge:`가 있는 디렉티브에 있거나(현지화된 텍스트가 호스트에 닿지 않음), `default:`를 선언했거나(기본값에는 번역이 없음), `code`라는 선언된 속성 옆에 있는 경우(`code`는 `text` 속성이 있는 디렉티브의 식별 속성)도 이 코드입니다: `` `title` of `::banner` is `text`, but `::banner` lowers to the `actor` record, which carries no localized text — declare it `string`, or drop `lower:` so the call stays a `plugin` record ``.
+
+명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.51.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-PLUGIN-RAISES
 
@@ -1198,9 +1214,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-PLUGIN-RESERVED-STAMP-ATTR
 
-코어가 아닌 플러그인의 `stampAttrs` export 또는 디렉티브의 `attrs`가 코어 stamp가 이미 소유한 속성 이름(`at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`)을 선언했습니다. 0.50.0부터는 범위가 정해진 스탬프(`on:`)가 그 표면 자신의 속성과 같은 이름이라 읽을 수 없게 되는 경우도 같은 코드입니다: `` stamp attribute `prompt` (`acme.stage`) is scoped to `branch`, but `prompt` is an attribute of `<branch>` itself, so the stamp could never be read ``. 표면 자신의 속성은 디렉티브의 선언된 `attrs`(`::jump`은 `when`도), `line`의 알려진 속성과 가드 `when`, `branch`의 `id`/`prompt`/`timeout`/`default`, `hub`의 `id`/`prompt`, `choice`의 `id`/`text`/`when`/`into`/`value`/`once`/`exit`(그리고 이름이 바뀌거나 제거된 `label`/`as`/`persist`)입니다. 범위 없는(교차) 항목은 이 규칙을 받지 않으며 표면 자신의 선언이 우선합니다.
+코어가 아닌 플러그인의 `stampAttrs` export 또는 디렉티브의 `attrs`가 코어 stamp가 이미 소유한 속성 이름(`at`/`duration`/`delay`/`wait`/`timeline`/`provenance`/`source`)을 선언했습니다. 0.50.0부터는 범위가 정해진 스탬프(`on:`)가 그 표면 자신의 속성과 같은 이름이라 읽을 수 없게 되는 경우도 같은 코드입니다: `` stamp attribute `prompt` (`acme.stage`) is scoped to `branch`, but `prompt` is an attribute of `<branch>` itself, so the stamp could never be read ``. 표면 자신의 속성은 디렉티브의 선언된 `attrs`(`::jump`은 `when`도, 0.51.0부터 `text` 속성이 있는 디렉티브는 `code`도), `line`의 알려진 속성과 가드 `when`, `branch`의 `id`/`prompt`/`timeout`/`default`, `hub`의 `id`/`prompt`, `choice`의 `id`/`text`/`when`/`into`/`value`/`once`/`exit`(그리고 이름이 바뀌거나 제거된 `label`/`as`/`persist`)입니다. 범위 없는(교차) 항목은 이 규칙을 받지 않으며 표면 자신의 선언이 우선합니다.
 
-명세: [plugin §14](/ko/spec/), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+명세: [plugin §14](/ko/spec/), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.51.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-PLUGIN-STAMP-SURFACE
 
@@ -1600,9 +1616,9 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 ### E-STATE-DECL
 
-`state:` 선언이 잘못되었습니다: 문자열이 아닌 키, 알 수 없거나 불완전한 `type:`(`type:` 아래에 중첩되지 않은 `enum` 포함), 잘못된 `default:`/`per:` 형태, 또는 `state:` 자체가 맵이 아닙니다.
+`state:` 선언이 잘못되었습니다: 문자열이 아닌 키, 알 수 없거나 불완전한 `type:`(`type:` 아래에 중첩되지 않은 `enum` 포함), `type: text`(플러그인 디렉티브 속성 전용 타입), 잘못된 `default:`/`per:` 형태, 또는 `state:` 자체가 맵이 아닙니다.
 
-명세: [dsl 0.8.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md)
+명세: [dsl 0.8.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.8.0.md), [dsl 0.51.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-STATE-DECL-CONFLICT
 
@@ -1834,7 +1850,9 @@ CEL 슬롯, `::set` 대상, 또는 규칙 가드가 어떤 스키마에도 선�
 
 콘텐츠 줄이나 디렉티브, 또는 `<branch>`/`<hub>`/`<choice>`가 콘텐츠 줄 문법 또는 해당 표면의 선언이 인식하지 못하는 속성 키를 가지고 있습니다. 스탬프를 실을 레코드가 없는 디렉티브(`::jump`, `::label`, `::clear`)에 타이밍 키(`wait`/`duration`/`delay`)나 플러그인 스탬프를 쓴 경우도 포함합니다. 그 값은 버려지기 때문입니다. 0.50.0부터 키가 `on:`으로 다른 표면에 범위가 정해진 플러그인 스탬프이면, 그 표면의 속성 목록 대신 스탬프가 적용되는 곳을 알려 줍니다: `` `::bg` has no attribute `voiceAssetId`: it is a stamp of `acme.stage` for content lines only ``, `` `<branch>` has no attribute `optionKey`: it is a stamp of `acme.stage` for `<choice>` only ``. 그렇지 않으면 기존 메시지를 쓰되, 로직 태그(`<branch>`/`<hub>`/`<choice>`)의 속성 목록에는 그 표면이 허용하는 스탬프가 포함됩니다: `` `<choice>` has no attribute `cue`; its attributes are `id`, `text`, `when`, `into`, `value` and the stamps `optionKey` (`acme.stage`) ``.
 
-명세: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+0.51.0부터 `text` 속성이 없는 디렉티브의 `code=`는 이유를 알려 줍니다: `` `::bg` has no attribute `code`; its attributes are …; `code` is the localization identity of a directive with a `text` attribute, and `::bg` declares none ``.
+
+명세: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.51.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### E-UNKNOWN-DIRECTIVE
 
@@ -2130,9 +2148,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-LINE-CODE-UNTAGGED
 
-콘텐츠 라인에 명시적인 화자별 `code`가 없어 컴파일러 할당을 사용하고 있습니다.
+콘텐츠 라인(0.51.0부터는 `text` 속성이 있는 디렉티브 호출도)에 명시적인 `code`가 없어 컴파일러 할당을 사용하고 있습니다. `lute tag`로 기록하세요.
 
-명세: [dsl 0.36.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md)
+명세: [dsl 0.36.0 §2.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.36.0.md), [dsl 0.51.0 §5.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
 ### W-LUTE-VERSION-STALE
 

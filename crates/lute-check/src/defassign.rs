@@ -548,6 +548,21 @@ impl Walk<'_, '_> {
             let available = guarded.as_ref().unwrap_or(&f.available);
             check_use_arg_reads(d, cx, available, &mut self.diags, &mut self.reads);
         }
+        // 0.51.0 §5.2: a `text` attribute's `{{path}}` is read when the call
+        // runs — after its own `when` guard proves, as a choice label's.
+        if let Some(snapshot) = cx.snapshot {
+            let available = guarded.as_ref().unwrap_or(&f.available);
+            for (attr, text) in crate::directives::text_values(d, snapshot) {
+                check_label_reads(
+                    text,
+                    cx,
+                    available,
+                    attr.value_span,
+                    &mut self.diags,
+                    &mut self.reads,
+                );
+            }
+        }
         if d.tag == lute_manifest::core::JUMP_DIRECTIVE {
             self.jump(d, guarded, flow);
             return;
@@ -1293,7 +1308,16 @@ fn walk_timeline(
                 ClipNode::Directive(d) if d.tag == "use" => {
                     check_use_arg_reads(d, cx, &flow.available, diags, reads);
                 }
-                ClipNode::Directive(_) => {}
+                ClipNode::Directive(d) => {
+                    // 0.51.0 §5.2: a clip's `text` attribute reads as a call's.
+                    for (attr, text) in cx
+                        .snapshot
+                        .into_iter()
+                        .flat_map(|s| crate::directives::text_values(d, s))
+                    {
+                        check_label_reads(text, cx, &flow.available, attr.value_span, diags, reads);
+                    }
+                }
             }
         }
     }

@@ -1011,7 +1011,8 @@ fn assemble_one(
 }
 
 /// #176: a directive attribute declared `list`/`map`/`record` is refused as
-/// `E-PLUGIN-INVALID-DIRECTIVE`, naming the directive and the attribute.
+/// `E-PLUGIN-INVALID-DIRECTIVE`, naming the directive and the attribute. The
+/// hint (0.51.0 §7) offers the scalar decompositions, `text` included.
 #[test]
 fn a_structured_directive_attr_type_is_refused() {
     for ty in structured_types() {
@@ -1030,8 +1031,10 @@ fn a_structured_directive_attr_type_is_refused() {
                     "directive `::tagged` declares attribute `tags` as `{shown}`; an attribute \
                      value is written as one scalar (string, number, bool, an enum or entity \
                      member, a provider or asset id), so no `.lute` value can satisfy a `list`, \
-                     `map` or `record` — declare it `string` and parse it in the host, or split \
-                     it into one attribute per field"
+                     `map` or `record` (structured attribute values are not supported yet): \
+                     where it fits, give each field its own attribute (a stamp can be scoped to \
+                     its surfaces with `on:`), use a `text` attribute for player-visible text in \
+                     several languages, or write a list of options as `<choice>` elements"
                 ),
             }]
         );
@@ -1039,7 +1042,8 @@ fn a_structured_directive_attr_type_is_refused() {
 }
 
 /// #176: a `stampAttrs` entry declared `list`/`map`/`record` is refused the
-/// same way and never merged; a scalar sibling still merges.
+/// same way and never merged; a scalar sibling still merges. A stamp cannot
+/// be `text`, so its hint has no `text` clause (0.51.0 §7).
 #[test]
 fn a_structured_stamp_attr_type_is_refused() {
     for ty in structured_types() {
@@ -1062,17 +1066,95 @@ fn a_structured_stamp_attr_type_is_refused() {
         assert_eq!(errs.len(), 1, "{errs:?}");
         assert_eq!(errs[0].code(), "E-PLUGIN-INVALID-DIRECTIVE");
         let msg = errs[0].to_string();
-        assert!(
-            msg.starts_with(&format!(
+        assert_eq!(
+            msg,
+            format!(
                 "plugin `arcia.minigame` declares stamp attribute `tags` as `{}`; an attribute \
-                 value is written as one scalar",
+                 value is written as one scalar (string, number, bool, an enum or entity member, \
+                 a provider or asset id), so no `.lute` value can satisfy a `list`, `map` or \
+                 `record` (structured attribute values are not supported yet): where it fits, \
+                 give each field its own attribute (a stamp can be scoped to its surfaces with \
+                 `on:`), or write a list of options as `<choice>` elements",
                 lute_manifest::types::type_str(&ty)
-            )),
-            "{msg}"
+            )
         );
         assert!(!snap.stamp_attrs.contains("tags"));
         assert!(snap.stamp_attrs.contains("bonusId"));
     }
+}
+
+/// 0.51.0 §5.1: a declaration that never came from a file is judged at
+/// assembly — `text` on a builtin-lowered or bridge directive, with a
+/// `default:`, or beside a declared `code` (`E-PLUGIN-PARSE`); a `text` stamp
+/// is refused beside the structured types (`E-PLUGIN-INVALID-DIRECTIVE`).
+#[test]
+fn text_attrs_and_stamps_are_judged_at_assembly() {
+    let mut p = plugin_with_directive("acme.ui", "banner");
+    p.directives[0].layer = None;
+    p.directives[0].attrs = vec![
+        AttrDecl {
+            name: "title".into(),
+            required: false,
+            ty: Type::Text,
+            default: Some(lute_manifest::types::Literal::Str("hi".into())),
+        },
+        AttrDecl {
+            name: "code".into(),
+            required: false,
+            ty: Type::Str,
+            default: None,
+        },
+    ];
+    let mut bridged = p.directives[0].clone();
+    bridged.name = "ask".into();
+    bridged.attrs.truncate(1);
+    bridged.attrs[0].default = None;
+    bridged.lower = Lowering::Passthrough;
+    bridged.bridge = Some(lute_manifest::schema::BridgeRef {
+        service: "chat".into(),
+        operation: "ask".into(),
+    });
+    p.directives.push(bridged);
+    p.stamp_attrs = cross_cutting(vec![AttrDecl {
+        name: "note".into(),
+        required: false,
+        ty: Type::Text,
+        default: None,
+    }]);
+    let (snap, errs) = assemble_one(p);
+    let shown: Vec<(&str, String)> = errs.iter().map(|e| (e.code(), e.to_string())).collect();
+    for (code, needle) in [
+        (
+            "E-PLUGIN-PARSE",
+            "`title` of `::banner` is `text`, but `::banner` lowers through the builtin `n` \
+             hook, which carries no localized text",
+        ),
+        (
+            "E-PLUGIN-PARSE",
+            "`title` of `::banner` is `text` with `default: \"hi\"`",
+        ),
+        (
+            "E-PLUGIN-PARSE",
+            "directive `::banner` declares an attribute `code` beside its `text` attribute \
+             `title`",
+        ),
+        (
+            "E-PLUGIN-PARSE",
+            "`title` of `::ask` is `text`, but `::ask` is a bridge call (`bridge:`), whose \
+             signature carries no localized text",
+        ),
+        (
+            "E-PLUGIN-INVALID-DIRECTIVE",
+            "plugin `acme.ui` declares stamp attribute `note` as `text`; `text` is admitted \
+             only in the `attrs:` of a directive that compiles to a `plugin` record",
+        ),
+    ] {
+        assert!(
+            shown.iter().any(|(c, m)| *c == code && m.contains(needle)),
+            "{code}: {needle}\n{shown:#?}"
+        );
+    }
+    assert!(!snap.stamp_attrs.contains("note"));
 }
 
 /// A clean `stampAttrs` export merges into the snapshot AND moves

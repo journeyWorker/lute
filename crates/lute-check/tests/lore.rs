@@ -325,7 +325,7 @@ fn each_entry_is_its_own_line_code_scope() {
 #[test]
 fn tag_restarts_the_counter_per_entry() {
     let src = lore("<entry id=\"a\">\n@n: a\n@n: b\n</entry>\n<entry id=\"b\">\n@n: c\n</entry>\n");
-    let out = lute_check::tag_document(&src);
+    let out = lute_check::tag_document(&src, &std::collections::BTreeSet::new());
     assert_eq!(out.added, 3);
     assert!(
         out.text

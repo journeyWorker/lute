@@ -358,6 +358,23 @@ pub fn run(
         );
         return ExitCode::FAILURE;
     }
+    // 0.51.0 §5.3: a lineId keys one translation across the project.
+    let dups = lute_compile::index::line_id_duplicates(&inputs);
+    if !dups.is_empty() {
+        for dup in &dups {
+            eprintln!(
+                "lute compile: error [{}] {}: {}",
+                lute_compile::index::E_LINE_ID_DUP,
+                dup.unit.doc,
+                dup.message(&dup.first.doc)
+            );
+        }
+        eprintln!(
+            "lute compile: {} duplicate lineId(s); no output written",
+            dups.len()
+        );
+        return ExitCode::FAILURE;
+    }
     let unions = crate::bundle::collect_index_unions(&model);
     let index = match build_index(lute_compile::LUTE_IR_VERSION, &inputs, &unions) {
         Ok(index) => index,

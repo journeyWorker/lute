@@ -67,6 +67,30 @@ fn err(code: &str, message: String, span: Span) -> Diagnostic {
     }
 }
 
+/// 0.51.0 §5.3: a code (on a content line or a directive with a `text`
+/// attribute) keys a `lineId`, and `~` is the separator of a directive text
+/// identity, so a code may not contain it.
+pub const E_LINE_CODE_RESERVED: &str = "E-LINE-CODE-RESERVED";
+
+/// [`E_LINE_CODE_RESERVED`] for the `code` attribute `attr`, at its value,
+/// in `layer` (the content line's or the directive's).
+pub(crate) fn reserved_code(attr: &Attr, layer: Layer) -> Option<Diagnostic> {
+    let AttrValue::Str(code) = &attr.value else {
+        return None;
+    };
+    code.contains('~').then(|| {
+        let mut d = err(
+            E_LINE_CODE_RESERVED,
+            format!(
+                "`code=\"{code}\"` contains `~`, which is reserved for directive text identities"
+            ),
+            attr.value_span,
+        );
+        d.layer = layer;
+        d
+    })
+}
+
 /// Validate a content line's attributes: unknown keys, the delivery bare-flag
 /// exclusivity + narrator-forbids-delivery rules (dsl 0.2.2 §D7, carried
 /// forward from 0.1.0 §12.1), and the `emotion`/`action` domain-typed values
@@ -277,6 +301,8 @@ pub fn check_content_line_attrs(
                     }
                 }
             }
+            // 0.51.0 §5.3: `~` separates a directive text identity.
+            "code" => diags.extend(reserved_code(attr, Layer::Content)),
             _ => {}
         }
     }

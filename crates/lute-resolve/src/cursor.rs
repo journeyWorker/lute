@@ -652,6 +652,7 @@ pub fn type_label(ty: &Type) -> String {
         Type::Int => "int".to_string(),
         Type::Double => "double".to_string(),
         Type::Str => "string".to_string(),
+        Type::Text => "text".to_string(),
         Type::Enum(members) => format!("enum [{}]", members.join(", ")),
         Type::List(inner) => format!("list<{}>", type_label(inner)),
         Type::Record(_) => "record".to_string(),

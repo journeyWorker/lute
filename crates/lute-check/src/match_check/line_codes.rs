@@ -27,41 +27,147 @@ use super::{diag, Arm, AttrValue, BTreeSet, Diagnostic, Document, Line, Node, Se
 /// identity scope. Document order, deterministic (the caller's final
 /// `(byte_start, code)` sort settles ties).
 pub fn check_line_codes(doc: &Document) -> Vec<Diagnostic> {
-    check_line_codes_with_policy(doc, false)
+    check_line_codes_with_policy(doc, false, None)
 }
 
 /// Check line identity under the governing project's stable-identity policy.
+/// With `snapshot`, the codes of directives with a `text` attribute are
+/// checked too, per directive tag (0.51.0 §5.3), in the same scopes.
 pub(crate) fn check_line_codes_with_policy(
     doc: &Document,
     require_stable: bool,
+    snapshot: Option<&lute_manifest::snapshot::CapabilitySnapshot>,
 ) -> Vec<Diagnostic> {
     let mut diags = Vec::new();
-
-    let mut scene_lines: Vec<&Line> = Vec::new();
-    for shot in &doc.sections {
-        collect_lines(&shot.body, &mut scene_lines);
-    }
-    check_dup_line_codes(&scene_lines, require_stable, &mut diags);
-
+    let scope = |bodies: &mut dyn Iterator<Item = &Vec<Node>>, diags: &mut Vec<Diagnostic>| {
+        let mut lines: Vec<&Line> = Vec::new();
+        let mut directives: Vec<&lute_syntax::ast::Directive> = Vec::new();
+        for body in bodies {
+            collect_lines(body, &mut lines);
+            if let Some(snapshot) = snapshot {
+                let has_text = |tag: &str| {
+                    snapshot
+                        .directive(tag)
+                        .is_some_and(lute_manifest::schema::DirectiveDecl::has_text_attr)
+                };
+                collect_text_directives(body, &has_text, &mut directives);
+            }
+        }
+        check_dup_line_codes(&lines, require_stable, diags);
+        check_dup_directive_codes(&directives, require_stable, diags);
+    };
+    scope(&mut doc.sections.iter().map(|s| &s.body), &mut diags);
     for quest in &doc.quests {
-        let mut quest_lines: Vec<&Line> = Vec::new();
-        collect_lines(&quest.body, &mut quest_lines);
-        check_dup_line_codes(&quest_lines, require_stable, &mut diags);
+        scope(&mut std::iter::once(&quest.body), &mut diags);
     }
-
     for entry in &doc.entries {
-        let mut entry_lines: Vec<&Line> = Vec::new();
-        collect_lines(&entry.body, &mut entry_lines);
-        check_dup_line_codes(&entry_lines, require_stable, &mut diags);
+        scope(&mut std::iter::once(&entry.body), &mut diags);
     }
-
     for beat in &doc.beats {
-        let mut beat_lines: Vec<&Line> = Vec::new();
-        collect_lines(&beat.body, &mut beat_lines);
-        check_dup_line_codes(&beat_lines, require_stable, &mut diags);
+        scope(&mut std::iter::once(&beat.body), &mut diags);
     }
-
     diags
+}
+
+/// 0.51.0 §5.3: every repeated `(tag, code)` pair among `directives` (one
+/// identity scope, document order) is `E-DUP-LINE-CODE` at the later call;
+/// with `require_stable`, a call without `code` is `W-LINE-CODE-UNTAGGED`.
+fn check_dup_directive_codes(
+    directives: &[&lute_syntax::ast::Directive],
+    require_stable: bool,
+    diags: &mut Vec<Diagnostic>,
+) {
+    let mut seen: std::collections::BTreeMap<(&str, String), u32> =
+        std::collections::BTreeMap::new();
+    for d in directives {
+        let Some(attr) = d
+            .attrs
+            .iter()
+            .find(|a| a.key == lute_manifest::schema::DIRECTIVE_TEXT_CODE_ATTR)
+        else {
+            if require_stable {
+                diags.push(diag(
+                    "W-LINE-CODE-UNTAGGED",
+                    Severity::Warning,
+                    format!(
+                        "`::{}` has `text` attributes but no `code`; run `lute tag` to allocate \
+                         one",
+                        d.tag
+                    ),
+                    d.span,
+                ));
+            }
+            continue;
+        };
+        let AttrValue::Str(code) = &attr.value else {
+            continue;
+        };
+        let code = code.trim().to_string();
+        if let Some(first) = seen.get(&(d.tag.as_str(), code.clone())) {
+            diags.push(diag(
+                "E-DUP-LINE-CODE",
+                Severity::Error,
+                format!(
+                    "`::{}` calls at lines {first} and {} share `code=\"{code}\"`; a (directive, \
+                     code) pair is the localization identity of its `text` attributes",
+                    d.tag, d.span.line
+                ),
+                d.span,
+            ));
+        } else {
+            seen.insert((d.tag.as_str(), code), d.span.line);
+        }
+    }
+}
+
+/// Every directive `has_text` admits (by tag: one with a `text` attribute)
+/// under `nodes`, in document order, nested bodies and timeline clips
+/// included (0.51.0 §5.3).
+pub(crate) fn collect_text_directives<'a>(
+    nodes: &'a [Node],
+    has_text: &dyn Fn(&str) -> bool,
+    out: &mut Vec<&'a lute_syntax::ast::Directive>,
+) {
+    let has_text_d = |d: &lute_syntax::ast::Directive| has_text(&d.tag);
+    for node in nodes {
+        match node {
+            Node::Directive(d) if has_text_d(d) => out.push(d),
+            Node::Timeline(t) => {
+                for track in &t.tracks {
+                    for clip in &track.clips {
+                        if let lute_syntax::ast::ClipNode::Directive(d) = &clip.node {
+                            if has_text_d(d) {
+                                out.push(d);
+                            }
+                        }
+                    }
+                }
+            }
+            Node::Branch(b) => {
+                for choice in &b.choices {
+                    collect_text_directives(&choice.body, has_text, out);
+                }
+            }
+            Node::Match(m) => {
+                for arm in &m.arms {
+                    let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
+                    collect_text_directives(body, has_text, out);
+                }
+            }
+            Node::Hub(h) => {
+                for b in h.bodies() {
+                    collect_text_directives(b, has_text, out);
+                }
+            }
+            Node::Objective(o) => collect_text_directives(&o.body, has_text, out),
+            Node::On(o) => collect_text_directives(&o.body, has_text, out),
+            Node::Line(_)
+            | Node::Directive(_)
+            | Node::Set(_)
+            | Node::Assert(_)
+            | Node::Retract(_) => {}
+        }
+    }
 }
 
 /// Flag every repeated `(speaker, code)` pair WITHIN `lines` — the caller

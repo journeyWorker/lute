@@ -122,7 +122,7 @@ pub(crate) use exhaustive::{
 pub(crate) use interval::{Interval, NumCoverage};
 pub use line_codes::check_line_codes;
 pub(crate) use line_codes::check_line_codes_with_policy;
-pub(crate) use line_codes::collect_lines;
+pub(crate) use line_codes::{collect_lines, collect_text_directives};
 pub use pattern::is_pattern_literals;
 use pattern::{
     arm_coverage, bad_range_message, domain_members_display, foreign_literal_message, parse_expr,

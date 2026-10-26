@@ -45,7 +45,7 @@ mod vocabulary;
 pub use directives::{
     AttrDecl, BridgeRef, DirectiveDecl, DirectiveEffects, DirectiveState, FactEffect,
     FactEffectArg, Lowering, OpBy, RaiseDecl, RaiseTargetDecl, SlotDecl, WriteDecl, WriteValue,
-    BUILTIN_LOWERING_HOOKS, WRITE_OPS,
+    BUILTIN_LOWERING_HOOKS, DIRECTIVE_TEXT_CODE_ATTR, WRITE_OPS,
 };
 pub use files::{
     BridgeFile, DefsFile, DirectivesFile, EnumDecl, EnumsFile, EventsFile, FrontmatterDecl,

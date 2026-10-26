@@ -1891,6 +1891,34 @@
       "additionalProperties": false,
       "description": "0.50.0 §5.5: one fact a reward's effects write — the `relation` + `args` shape of an `assert` / `retract` record (\"_\" a retract wildcard)."
     },
+    "localizedText": {
+      "type": "object",
+      "properties": {
+        "lineId": {
+          "type": "string",
+          "description": "`{prefix}~{tag}~{code}~{attr}` (0.51.0 §5.3), outside the `lineId` template; `~` appears in no other localization id."
+        },
+        "placeholders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/placeholder"
+          },
+          "description": "the value's `{{…}}` interpolations, as an option label's; absent when none."
+        },
+        "texts": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "translations by locale, filled by the `--locale-bundle` merge; absent when none."
+        }
+      },
+      "required": [
+        "lineId"
+      ],
+      "additionalProperties": false,
+      "description": "0.51.0 §5.4: one `text` attribute's localization on a `plugin` record."
+    },
     "raiseRecord": {
       "type": "object",
       "properties": {
@@ -3480,6 +3508,13 @@
             "additionalProperties": false
           },
           "description": "dsl 0.27.0 §4: the ground facts the call asserts (its directive's declared effects.asserts, @attr substituted), applied after `retracts`; absent when none."
+        },
+        "localized": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/localizedText"
+          },
+          "description": "0.51.0 §5.4: each `text` attribute's localization, keyed by attribute name. `fields.<attr>` keeps the source-language string, `{{…}}` markers as authored. Descriptive (no semantic id); absent when the directive has no authored `text` attribute."
         },
         "timing": {
           "$ref": "#/$defs/timing"

@@ -1775,7 +1775,8 @@ fn type_label(append_unset: bool, ty: &Type) -> (String, Option<Vec<String>>) {
         Type::Bool => ("bool".to_string(), None),
         Type::Int => ("int".to_string(), None),
         Type::Double => ("double".to_string(), None),
-        Type::Str => ("string".to_string(), None),
+        // `text` (0.51.0 §5.1) is a string at the value level.
+        Type::Str | Type::Text => ("string".to_string(), None),
         Type::Enum(members) => {
             let mut domain = members.clone();
             // Only a real implicit branch slot's (or quest state's) domain gains

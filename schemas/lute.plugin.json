@@ -199,7 +199,7 @@
         "attrs": {
           "type": "array",
           "items": {
-            "$ref": "#/definitions/attrDecl"
+            "$ref": "#/definitions/directiveAttrDecl"
           }
         },
         "semantics": {
@@ -221,6 +221,35 @@
         "lower": {
           "$ref": "#/definitions/lowering",
           "description": "Optional (0.24.0): absent means the generic `kind: \"plugin\"` passthrough."
+        }
+      }
+    },
+    "directiveAttrDecl": {
+      "description": "schema.rs::AttrDecl of a directive's own `attrs:` — the one place `type: text` is admitted (0.51.0 §5.1: localizable player-visible text, on a directive with no `lower:` and no `bridge:`, without `default:`; the loader judges those).",
+      "type": "object",
+      "required": [
+        "name",
+        "type"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "required": {
+          "type": "boolean"
+        },
+        "type": {
+          "oneOf": [
+            {
+              "$ref": "#/definitions/type"
+            },
+            {
+              "const": "text"
+            }
+          ]
+        },
+        "default": {
+          "$ref": "#/definitions/literal"
         }
       }
     },

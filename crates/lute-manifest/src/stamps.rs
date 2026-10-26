@@ -148,6 +148,12 @@ impl StampSurface {
                 if tag == crate::core::JUMP_DIRECTIVE {
                     own.push("when");
                 }
+                // 0.51.0 §5.1: a directive with a `text` attribute owns the
+                // identity attribute `code`, so a scoped `code` stamp on it
+                // is shadowed (`E-PLUGIN-RESERVED-STAMP-ATTR`).
+                if decl.has_text_attr() {
+                    own.push(crate::schema::DIRECTIVE_TEXT_CODE_ATTR);
+                }
                 own
             }
         })

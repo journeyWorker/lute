@@ -13,6 +13,10 @@ pub enum Type {
     Int,
     Double,
     Str,
+    /// 0.51.0 §5.1: localizable player-visible text, a string in the
+    /// choice-label grammar. Admitted only as the type of a directive
+    /// attribute of a directive that compiles to a `plugin` record.
+    Text,
     Enum(Vec<String>),
     List(Box<Type>),
     Record(Vec<Field>),
@@ -134,12 +138,26 @@ pub struct FromAttr {
     pub slot_type: Option<String>,
 }
 
+impl Type {
+    /// 0.51.0 §5.1: whether `text` occurs anywhere in this type, nested in a
+    /// `list`, `map` or `record` included.
+    pub fn contains_text(&self) -> bool {
+        match self {
+            Type::Text => true,
+            Type::List(inner) => inner.contains_text(),
+            Type::Map { key, value } => key.contains_text() || value.contains_text(),
+            Type::Record(fields) => fields.iter().any(|f| f.ty.contains_text()),
+            _ => false,
+        }
+    }
+}
+
 pub fn type_accepts(ty: &Type, lit: &Literal) -> bool {
     match (ty, lit) {
         (Type::Bool, Literal::Bool(_)) => true,
         (Type::Int, Literal::Int(_)) => true,
         (Type::Double, Literal::Double(_)) => true,
-        (Type::Str, Literal::Str(_)) => true,
+        (Type::Str | Type::Text, Literal::Str(_)) => true,
         (Type::Enum(members), Literal::Str(s)) => members.iter().any(|m| m == s),
         (Type::List(inner), Literal::List(items)) => items.iter().all(|i| type_accepts(inner, i)),
         (Type::Record(fields), Literal::Map(m)) => {
@@ -201,6 +219,7 @@ pub fn type_str(ty: &Type) -> String {
         Type::Int => "int".to_string(),
         Type::Double => "double".to_string(),
         Type::Str => "string".to_string(),
+        Type::Text => "text".to_string(),
         Type::Enum(members) => format!("enum({})", members.join("|")),
         Type::List(inner) => format!("list<{}>", type_str(inner)),
         Type::Record(fields) => format!(
@@ -258,6 +277,7 @@ enum TypeDef {
     Double,
     #[serde(rename = "string")]
     Str,
+    Text,
     Enum(Vec<String>),
     List(Box<TypeDef>),
     Record(Vec<FieldDef>),
@@ -296,6 +316,7 @@ impl From<TypeDef> for Type {
             TypeDef::Int => Type::Int,
             TypeDef::Double => Type::Double,
             TypeDef::Str => Type::Str,
+            TypeDef::Text => Type::Text,
             TypeDef::Enum(m) => Type::Enum(m),
             TypeDef::List(inner) => Type::List(Box::new((*inner).into())),
             TypeDef::Record(fields) => Type::Record(fields.into_iter().map(Field::from).collect()),
@@ -321,6 +342,7 @@ impl From<&Type> for TypeDef {
             Type::Int => TypeDef::Int,
             Type::Double => TypeDef::Double,
             Type::Str => TypeDef::Str,
+            Type::Text => TypeDef::Text,
             Type::Enum(m) => TypeDef::Enum(m.clone()),
             Type::List(inner) => TypeDef::List(Box::new((&**inner).into())),
             Type::Record(fields) => TypeDef::Record(fields.iter().map(FieldDef::from).collect()),

@@ -1128,7 +1128,7 @@ fn state_type_str(is_implicit: bool, ty: &Type) -> (String, Option<Vec<String>>)
         Type::Bool => ("bool".to_string(), None),
         Type::Int => ("int".to_string(), None),
         Type::Double => ("double".to_string(), None),
-        Type::Str => ("string".to_string(), None),
+        Type::Str | Type::Text => ("string".to_string(), None),
         Type::Enum(members) => {
             let mut domain = members.clone();
             if is_implicit {
@@ -1161,6 +1161,8 @@ pub(crate) fn attr_type_str(ty: &Type) -> (String, Option<Vec<String>>) {
         Type::Int => ("int".to_string(), None),
         Type::Double => ("double".to_string(), None),
         Type::Str => ("string".to_string(), None),
+        // 0.51.0 §5.1: authored as a quoted string, localized by `code`.
+        Type::Text => ("text".to_string(), None),
         Type::Enum(members) => ("enum".to_string(), Some(members.clone())),
         Type::List(inner) => (format!("list<{}>", attr_type_str(inner).0), None),
         Type::Record(_) => ("record".to_string(), None),

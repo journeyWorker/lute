@@ -451,6 +451,12 @@ fn payload_type(field: &str, v: &yaml_serde::Value) -> Result<Type, String> {
                 "<kind>"
             };
             format!("payload field `{field}` is typed `{name}` without its argument — write `{field}: {{ {name}: {arg} }}`")
+        } else if name == "text" {
+            // 0.51.0 §5.1: a payload value is the host's, never translated.
+            format!(
+                "payload field `{field}` has the type `text`, which is admitted only as the type \
+                 of a directive attribute; {PAYLOAD_TYPE_FORMS}"
+            )
         } else if MULTI.contains(&name) {
             format!("payload field `{field}` cannot be a `{name}`; {PAYLOAD_TYPE_FORMS}")
         } else {

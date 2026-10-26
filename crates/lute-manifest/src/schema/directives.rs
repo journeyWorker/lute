@@ -25,6 +25,31 @@ pub struct DirectiveDecl {
     pub lower: Lowering,
 }
 
+/// 0.51.0 §5.3: the identity attribute of a directive with a `text`
+/// attribute. Not declared: the core owns it, as on a content line.
+pub const DIRECTIVE_TEXT_CODE_ATTR: &str = "code";
+
+impl DirectiveDecl {
+    /// 0.51.0 §5.1: the attributes typed `text`, in declaration order.
+    pub fn text_attrs(&self) -> impl Iterator<Item = &AttrDecl> {
+        self.attrs.iter().filter(|a| a.ty == Type::Text)
+    }
+
+    /// Whether any attribute is typed `text`: the directive then takes the
+    /// identity attribute [`DIRECTIVE_TEXT_CODE_ATTR`] (0.51.0 §5.2).
+    pub fn has_text_attr(&self) -> bool {
+        self.text_attrs().next().is_some()
+    }
+
+    /// Whether `key` is an attribute the directive owns: one it declares,
+    /// or the implicit identity `code` of a directive with a `text`
+    /// attribute (0.51.0 §5.3, Review051b F5).
+    pub fn owns_attr(&self, key: &str) -> bool {
+        self.attrs.iter().any(|a| a.name == key)
+            || (key == DIRECTIVE_TEXT_CODE_ATTR && self.has_text_attr())
+    }
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct AttrDecl {

@@ -374,6 +374,7 @@ fn type_name(ty: &Type) -> &'static str {
         Type::Int => "int",
         Type::Double => "double",
         Type::Str => "str",
+        Type::Text => "text",
         Type::Enum(_) => "enum",
         Type::List(_) => "list",
         Type::Record(_) => "record",

@@ -586,7 +586,10 @@ pub fn assemble_snapshot(
                 continue;
             }
             let owner = crate::validate::AttrOwner::Stamp(ap.id.clone());
-            if let Some(me) = crate::validate::structured_attr(owner, &a.decl) {
+            // 0.51.0 §5.1: nor can a stamp be `text`.
+            let refusal = crate::validate::structured_attr(owner, &a.decl)
+                .or_else(|| crate::validate::text_stamp(&ap.id, &a.decl));
+            if let Some(me) = refusal {
                 errs.push(AssembleError::InvalidDirective {
                     plugin: ap.id.clone(),
                     directive: a.decl.name.clone(),

@@ -446,6 +446,30 @@ fn load_package(
     let mut errs = Vec::new();
     let manifest_path = dir.join("plugin.yaml");
     let (manifest, manifest_text) = read_manifest(&manifest_path)?;
+    // 0.51.0 §5.1: an option is set in YAML, never localized.
+    for (i, o) in manifest.options.iter().enumerate() {
+        if !o.ty.contains_text() {
+            continue;
+        }
+        use crate::yaml_text::YamlStep;
+        let steps = [
+            YamlStep::Key("options"),
+            YamlStep::Item(i),
+            YamlStep::Key("type"),
+            YamlStep::Value,
+        ];
+        errs.push(LoadError::Parse {
+            file: manifest_path.display().to_string(),
+            at: crate::yaml_text::yaml_span(&manifest_text, &steps)
+                .map(|s| crate::yaml_text::line_col(&manifest_text, s.byte_start)),
+            msg: format!(
+                "option `{}` declares the type `text`, which is admitted only as the type of a \
+                 directive attribute (an `attrs:` entry of a directive that compiles to a \
+                 `plugin` record) — declare it `string`",
+                o.name
+            ),
+        });
+    }
 
     let mut out = LoadedPlugin {
         manifest: manifest.clone(),
@@ -522,6 +546,34 @@ fn load_package(
                         e.push(LoadError::Parse {
                             file: file.display().to_string(),
                             at: effect_error_line(text, &d.name, &me.message()),
+                            msg: me.message(),
+                        });
+                    }
+                    // 0.51.0 §5.1: a `text` attribute no localized text can
+                    // ride, at the attribute (a declared `code` at its own).
+                    for me in crate::validate::text_attr_faults(d) {
+                        let attr = match &me {
+                            crate::validate::ManifestError::TextAttr {
+                                fault: crate::validate::TextFault::CodeAttr,
+                                ..
+                            } => crate::schema::DIRECTIVE_TEXT_CODE_ATTR,
+                            crate::validate::ManifestError::TextAttr { attr, .. } => attr.as_str(),
+                            _ => continue,
+                        };
+                        let at = d.attrs.iter().position(|a| a.name == attr).and_then(|j| {
+                            use crate::yaml_text::YamlStep;
+                            let steps = [
+                                YamlStep::Key("directives"),
+                                YamlStep::Item(i),
+                                YamlStep::Key("attrs"),
+                                YamlStep::Item(j),
+                            ];
+                            crate::yaml_text::yaml_span(text, &steps)
+                                .map(|s| crate::yaml_text::line_col(text, s.byte_start))
+                        });
+                        e.push(LoadError::Parse {
+                            file: file.display().to_string(),
+                            at,
                             msg: me.message(),
                         });
                     }
@@ -960,6 +1012,122 @@ fn patch_numbers(file: &Path, text: String, errs: &mut Vec<LoadError>) -> String
         });
     }
     patched
+}
+
+/// 0.51.0 §5.1: report every `text` type of the export file `text` outside
+/// the one place it is admitted — the `type:` of an entry of a directive's
+/// `attrs:` — as [`LoadError::Parse`] at the type. A `stampAttrs` file is
+/// left to assembly, which refuses a `text` stamp beside a structured one;
+/// a host token's type and an occasion payload field's are their own closed
+/// sets, whose decoders refuse `text` themselves.
+fn refuse_text_types(file: &Path, text: &str, errs: &mut Vec<LoadError>) {
+    use crate::types::YamlKey;
+    fn has_text(ty: &yaml_serde::Value) -> bool {
+        match ty {
+            yaml_serde::Value::String(s) => s == "text",
+            yaml_serde::Value::Mapping(m) => {
+                m.get("list").is_some_and(has_text)
+                    || m.get("map").is_some_and(|kv| {
+                        kv.get("key").is_some_and(has_text) || kv.get("value").is_some_and(has_text)
+                    })
+            }
+            _ => false,
+        }
+    }
+    fn walk(v: &yaml_serde::Value, path: &mut Vec<YamlKey>, out: &mut Vec<Vec<YamlKey>>) {
+        match v {
+            yaml_serde::Value::Mapping(m) => {
+                for (k, child) in m {
+                    let Some(key) = k.as_str() else { continue };
+                    // An occasion `payload:` has its own type grammar, whose
+                    // decoder names `text` as no payload type.
+                    if key == "payload" {
+                        continue;
+                    }
+                    path.push(YamlKey::Key(key.to_string()));
+                    if key == "type" && has_text(child) {
+                        out.push(path.clone());
+                    } else if let (true, Some(shorthand)) = (key == "params", child.as_mapping()) {
+                        for (name, ty) in shorthand {
+                            let Some(name) = name.as_str() else { continue };
+                            path.push(YamlKey::Key(name.to_string()));
+                            if has_text(ty) {
+                                out.push(path.clone());
+                            }
+                            walk(ty, path, out);
+                            path.pop();
+                        }
+                    }
+                    if !(key == "params" && child.is_mapping()) {
+                        walk(child, path, out);
+                    }
+                    path.pop();
+                }
+            }
+            yaml_serde::Value::Sequence(items) => {
+                for (i, item) in items.iter().enumerate() {
+                    path.push(YamlKey::Item(i));
+                    walk(item, path, out);
+                    path.pop();
+                }
+            }
+            yaml_serde::Value::Tagged(t) => walk(&t.value, path, out),
+            _ => {}
+        }
+    }
+    let Ok(value) = yaml_serde::from_str::<yaml_serde::Value>(text) else {
+        return;
+    };
+    if value.get("stampAttrs").is_some() || value.get("hostTokens").is_some() {
+        return;
+    }
+    let mut sites = Vec::new();
+    walk(&value, &mut Vec::new(), &mut sites);
+    for site in sites {
+        // `directives[i].attrs[j].type: text` is the admitted place; a
+        // nested `{ list: text }` there is not.
+        let admitted = matches!(
+            site.as_slice(),
+            [YamlKey::Key(d), YamlKey::Item(_), YamlKey::Key(a), YamlKey::Item(_), YamlKey::Key(t)]
+                if d == "directives" && a == "attrs" && t == "type"
+        ) && site_value(&value, &site).and_then(yaml_serde::Value::as_str)
+            == Some("text");
+        if admitted {
+            continue;
+        }
+        let mut steps: Vec<_> = site.iter().map(YamlKey::step).collect();
+        steps.push(crate::yaml_text::YamlStep::Value);
+        let at = crate::yaml_text::yaml_span(text, &steps)
+            .map(|s| crate::yaml_text::line_col(text, s.byte_start));
+        let place: Vec<String> = site
+            .iter()
+            .map(|k| match k {
+                YamlKey::Key(k) => k.clone(),
+                YamlKey::Item(i) => format!("[{i}]"),
+            })
+            .collect();
+        errs.push(LoadError::Parse {
+            file: file.display().to_string(),
+            at,
+            msg: format!(
+                "`{}` declares the type `text`, which is admitted only as the type of a \
+                 directive attribute (an `attrs:` entry of a directive that compiles to a \
+                 `plugin` record) — declare it `string`",
+                place.join(".").replace(".[", "[")
+            ),
+        });
+    }
+}
+
+/// The node `path` names in `value`.
+fn site_value<'a>(
+    value: &'a yaml_serde::Value,
+    path: &[crate::types::YamlKey],
+) -> Option<&'a yaml_serde::Value> {
+    path.iter().try_fold(value, |v, k| match k {
+        crate::types::YamlKey::Key(k) => v.get(k.as_str()),
+        crate::types::YamlKey::Item(i) => v.get(*i),
+    })
 }
 
 /// The export entry `path` lies in, as the `(kind, name)` the package's
@@ -1589,6 +1757,7 @@ where
             }
         };
         let s = patch_numbers(&file, s, errs);
+        refuse_text_types(&file, &s, errs);
         match yaml_serde::from_str::<F>(&s) {
             Ok(f) => {
                 let src = Source {

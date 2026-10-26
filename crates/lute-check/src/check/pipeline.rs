@@ -715,6 +715,7 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     let line_code_diags = crate::match_check::check_line_codes_with_policy(
         &doc,
         input.snapshot().identity_require_stable,
+        Some(input.snapshot()),
     );
     let mut instance_diags = Vec::new();
     for shot in &doc.sections {

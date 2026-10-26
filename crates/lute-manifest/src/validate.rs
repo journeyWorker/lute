@@ -227,6 +227,34 @@ pub enum ManifestError {
         attr: String,
         ty: String,
     },
+    /// 0.51.0 §5.1: a directive attribute typed `text` that no localized
+    /// text could carry, or a `code` attribute beside one.
+    TextAttr {
+        directive: String,
+        attr: String,
+        fault: TextFault,
+    },
+    /// 0.51.0 §5.1: a `stampAttrs` entry typed `text`; a stamp has no
+    /// identity of its own to key a translation on.
+    TextStamp {
+        plugin: String,
+        attr: String,
+    },
+}
+
+/// Why a `text` attribute is refused ([`ManifestError::TextAttr`]).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TextFault {
+    /// The directive lowers to a staging record or a builtin hook, which
+    /// carries no localized text.
+    Lowered(StagingLowering),
+    /// The directive is a bridge call (`bridge:`).
+    Bridge,
+    /// The attribute declares a `default:`, which has no translation.
+    Default(String),
+    /// The directive also declares an attribute named `code` (`attr` names
+    /// the `text` attribute).
+    CodeAttr,
 }
 
 /// Who declares an attribute [`ManifestError::StructuredAttr`] names.
@@ -258,13 +286,15 @@ impl ManifestError {
             | ManifestError::DuplicateAttr { .. }
             | ManifestError::AttrDefaultType { .. }
             | ManifestError::StructuredAttr { .. }
+            | ManifestError::TextStamp { .. }
             | ManifestError::RaisesWithoutCarrier { .. } => "E-PLUGIN-INVALID-DIRECTIVE",
             ManifestError::UnknownLowerRecord { .. } => "E-LOWER-RECORD-UNKNOWN",
             ManifestError::LowerRecordField { .. } => "E-LOWER-RECORD-FIELD",
             ManifestError::EffectWrite { .. }
             | ManifestError::EffectFact { .. }
             | ManifestError::RewardEffect { .. }
-            | ManifestError::EffectRaise { .. } => "E-PLUGIN-PARSE",
+            | ManifestError::EffectRaise { .. }
+            | ManifestError::TextAttr { .. } => "E-PLUGIN-PARSE",
         }
     }
 
@@ -366,10 +396,68 @@ impl std::fmt::Display for ManifestError {
                     f,
                     " as `{ty}`; an attribute value is written as one scalar (string, \
                      number, bool, an enum or entity member, a provider or asset id), so no \
-                     `.lute` value can satisfy a `list`, `map` or `record` — declare it `string` \
-                     and parse it in the host, or split it into one attribute per field"
-                )
+                     `.lute` value can satisfy a `list`, `map` or `record` (structured \
+                     attribute values are not supported yet): where it fits, give each field \
+                     its own attribute (a stamp can be scoped to its surfaces with `on:`), "
+                )?;
+                // 0.51.0 §7: a stamp cannot be `text` (§5.1), so its hint
+                // does not offer one.
+                if matches!(owner, AttrOwner::Directive(_)) {
+                    f.write_str(
+                        "use a `text` attribute for player-visible text in several languages, ",
+                    )?;
+                }
+                f.write_str("or write a list of options as `<choice>` elements")
             }
+            ManifestError::TextAttr {
+                directive,
+                attr,
+                fault,
+            } => match fault {
+                TextFault::Lowered(lowering) => {
+                    write!(
+                        f,
+                        "`{attr}` of `::{directive}` is `text`, but `::{directive}` "
+                    )?;
+                    match lowering {
+                        StagingLowering::Record(record) => {
+                            write!(f, "lowers to the `{record}` record")?;
+                        }
+                        StagingLowering::Builtin(hook) => {
+                            write!(f, "lowers through the builtin `{hook}` hook")?;
+                        }
+                    }
+                    write!(
+                        f,
+                        ", which carries no localized text — declare it `string`, or drop \
+                         `lower:` so the call stays a `plugin` record"
+                    )
+                }
+                TextFault::Bridge => write!(
+                    f,
+                    "`{attr}` of `::{directive}` is `text`, but `::{directive}` is a bridge \
+                     call (`bridge:`), whose signature carries no localized text — declare it \
+                     `string`, or drop `bridge:` so the call stays a `plugin` record"
+                ),
+                TextFault::Default(default) => write!(
+                    f,
+                    "`{attr}` of `::{directive}` is `text` with `default: {default}`; a \
+                     default is not authored source, so it has no `code` and no translation — \
+                     drop `default:`"
+                ),
+                TextFault::CodeAttr => write!(
+                    f,
+                    "directive `::{directive}` declares an attribute `code` beside its `text` \
+                     attribute `{attr}`; `code` is the identity attribute of a directive with \
+                     `text` attributes (it keys their translations) — rename the attribute"
+                ),
+            },
+            ManifestError::TextStamp { plugin, attr } => write!(
+                f,
+                "plugin `{plugin}` declares stamp attribute `{attr}` as `text`; `text` is \
+                 admitted only in the `attrs:` of a directive that compiles to a `plugin` \
+                 record, whose `code` keys its translations — declare the stamp `string`"
+            ),
         }
     }
 }
@@ -410,6 +498,7 @@ pub fn validate_directive(d: &DirectiveDecl) -> Vec<ManifestError> {
             errs.push(e);
         }
     }
+    errs.extend(text_attr_faults(d));
     if let Lowering::Record { record, fields } = &d.lower {
         validate_record_lowering(d, record, fields, &mut errs);
     }
@@ -436,6 +525,55 @@ pub fn raises_without_carrier(d: &DirectiveDecl) -> Option<StagingLowering> {
         Lowering::Builtin { name, .. } => Some(StagingLowering::Builtin(name.clone())),
         Lowering::Passthrough => None,
     }
+}
+
+/// 0.51.0 §5.1: the load faults of `d`'s `text` attributes — on a directive
+/// with `lower:` or `bridge:`, with a `default:`, or beside a declared
+/// `code`. The loader reports them at their file and line
+/// ([`crate::loader`]); assembly re-runs them for a declaration that never
+/// came from a file.
+pub fn text_attr_faults(d: &DirectiveDecl) -> Vec<ManifestError> {
+    let mut errs = Vec::new();
+    let fault = |attr: &str, fault| ManifestError::TextAttr {
+        directive: d.name.clone(),
+        attr: attr.to_string(),
+        fault,
+    };
+    for a in d.text_attrs() {
+        let lowered = match &d.lower {
+            Lowering::Record { record, .. } => Some(StagingLowering::Record(record.clone())),
+            Lowering::Builtin { name, .. } => Some(StagingLowering::Builtin(name.clone())),
+            Lowering::Passthrough => None,
+        };
+        if let Some(lowering) = lowered {
+            errs.push(fault(&a.name, TextFault::Lowered(lowering)));
+        } else if d.bridge.is_some() {
+            errs.push(fault(&a.name, TextFault::Bridge));
+        }
+        if let Some(default) = &a.default {
+            errs.push(fault(
+                &a.name,
+                TextFault::Default(crate::types::lit_str(default)),
+            ));
+        }
+    }
+    let declares_code = d
+        .attrs
+        .iter()
+        .any(|a| a.name == crate::schema::DIRECTIVE_TEXT_CODE_ATTR);
+    if let Some(first) = d.text_attrs().next().filter(|_| declares_code) {
+        errs.push(fault(&first.name, TextFault::CodeAttr));
+    }
+    errs
+}
+
+/// 0.51.0 §5.1: [`ManifestError::TextStamp`] when the `stampAttrs` entry `a`
+/// of `plugin` is typed `text`.
+pub fn text_stamp(plugin: &str, a: &crate::schema::AttrDecl) -> Option<ManifestError> {
+    (a.ty == Type::Text).then(|| ManifestError::TextStamp {
+        plugin: plugin.to_string(),
+        attr: a.name.clone(),
+    })
 }
 
 /// 0.49.0 §3.2: [`ManifestError::StructuredAttr`] when `a`'s top-level type is
