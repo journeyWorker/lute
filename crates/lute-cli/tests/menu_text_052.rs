@@ -4,14 +4,15 @@
 //! translations (on v0.51.0 its options carry no text). #212: whole-project
 //! `check` reads every label-grammar value for quest references — a
 //! directive `text` attribute and a prompt (on v0.51.0 the `::banner` read is
-//! clean) — and the single-file note follows the same set.
+//! clean) — and the single-file note follows the same set. A prompt's marker
+//! is a read of the bridge result it shows (S5 review).
 
 use std::collections::BTreeMap;
 use std::path::Path;
 use std::process::{Command, Output};
 
 use lute_runtime::index::Bundle;
-use lute_runtime::runtime::{Await, Input, Seed};
+use lute_runtime::runtime::{Await, Input, Output as Stepped, Seed, State};
 use lute_runtime::Runtime;
 use serde_json::{json, Value as Json};
 
@@ -83,6 +84,30 @@ fn ok(out: &Output) {
 
 fn read(path: &Path) -> Json {
     serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+}
+
+/// The runtime over the compiled bundle in `out`, read back as a host reads it.
+fn load(out: &Path) -> Runtime {
+    let index = read(&out.join("project.index.json"));
+    let artifacts: BTreeMap<String, Json> = index["documents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|doc| {
+            let artifact = doc["artifact"].as_str().unwrap().to_string();
+            (artifact.clone(), read(&out.join(&artifact)))
+        })
+        .collect();
+    Runtime::load(Bundle::new(artifacts, index)).unwrap()
+}
+
+/// `visit` raised on `state`.
+fn visit(runtime: &Runtime, state: State) -> (State, Stepped) {
+    let input: Input =
+        serde_json::from_value(json!({ "type": "raiseOccasion", "occasion": "visit" })).unwrap();
+    runtime
+        .step(state, input)
+        .unwrap_or_else(|(_, rejected)| panic!("{} {}", rejected.code, rejected.message))
 }
 
 /// The awaiting menu `lute play --events` prints for an unscripted branch.
@@ -162,24 +187,9 @@ fn a_ko_translation_of_a_label_and_a_prompt_renders_by_marker() {
             "work/bundle.json",
         ],
     ));
-    let out = dir.join("out");
-    let index = read(&out.join("project.index.json"));
-    let artifacts: BTreeMap<String, Json> = index["documents"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|doc| {
-            let artifact = doc["artifact"].as_str().unwrap().to_string();
-            (artifact.clone(), read(&out.join(&artifact)))
-        })
-        .collect();
-    let runtime = Runtime::load(Bundle::new(artifacts, index)).unwrap();
+    let runtime = load(&dir.join("out"));
     let (state, _) = runtime.begin(Seed::default()).unwrap();
-    let input: Input =
-        serde_json::from_value(json!({ "type": "raiseOccasion", "occasion": "visit" })).unwrap();
-    let (_, output) = runtime
-        .step(state, input)
-        .unwrap_or_else(|(_, rejected)| panic!("{} {}", rejected.code, rejected.message));
+    let (_, output) = visit(&runtime, state);
     let Await::Choice { menu, .. } = output.await_ else {
         panic!("an awaitChoice: {:?}", output.await_);
     };
@@ -266,4 +276,46 @@ fn a_directive_without_text_attributes_is_not_scanned() {
         ],
     );
     assert!(quest_refs(&dir).is_empty());
+}
+
+/// `::ask` writes its bridge result `answer` to `run.answer`.
+const ASK: &str = "directives:\n  - name: ask\n    effects:\n      writes:\n        - { scope: \
+                   run, path: [answer], value: { fromBridgeResult: answer } }\n";
+
+/// A bridge result whose only reader is a `<branch>`/`<hub>` prompt is a
+/// result content reads: the await requests it (before, the prompt's
+/// `promptPlaceholders` were no read, and `results` left it out).
+#[test]
+fn a_prompt_reads_the_bridge_result_it_shows() {
+    for prompt_owner in [
+        "<branch id=\"b\" prompt=\"You said {{run.answer}}.\">\n  <choice id=\"c\" text=\"C\">\n    \
+         @narrator: c\n  </choice>\n</branch>",
+        "<hub id=\"h\" prompt=\"You said {{run.answer}}.\">\n  <choice id=\"c\" text=\"C\" exit>\n    \
+         @narrator: c\n  </choice>\n</hub>",
+    ] {
+        let body = format!("::ask\n{prompt_owner}");
+        let source = format!("---\nkind: scene\nid: s\non: visit\n---\n## Shot 1.\n{body}\n");
+        let dir = project(
+            "menu-text-prompt-bridge",
+            &[
+                ("plugins/acme.ui/directives/ask.yaml", ASK),
+                (
+                    "world.schema.yaml",
+                    "state:\n  run.gold: { type: int, default: 5 }\n  run.answer: { type: string }\n",
+                ),
+                ("s.lute", &source),
+            ],
+        );
+        ok(&lute(&dir, &["compile", "--project", ".", "-o", "out"]));
+        let runtime = load(&dir.join("out"));
+        let (state, _) = runtime.begin(Seed::default()).unwrap();
+        let (state, _) = visit(&runtime, state);
+        let awaited = serde_json::to_value(state.current_await()).unwrap();
+        assert_eq!(awaited["type"], "awaitBridge", "{prompt_owner}\n{awaited}");
+        assert_eq!(
+            awaited["results"],
+            json!({ "answer": "string" }),
+            "{prompt_owner}\n{awaited}"
+        );
+    }
 }

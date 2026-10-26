@@ -586,8 +586,10 @@ impl<D: Driver> Machine<D> {
 /// Every state path `v` (an artifact, or any part of one) reads: each
 /// `path` leaf of an expression tree (an `expr` — conditions, `::set`
 /// values, match arms, `ref` placeholders with their def inlined) and each
-/// `path` placeholder of a `{{…}}`. Writes (`set` / effect `path`s) sit
-/// outside both and are not reads.
+/// `path` placeholder of a `{{…}}` — a line's, an option label's or a
+/// directive `text` attribute's `placeholders`, and a `<branch>`/`<hub>`
+/// prompt's `promptPlaceholders` (0.52.0 §6.2). Writes (`set` / effect
+/// `path`s) sit outside both and are not reads.
 fn ir_read_paths(v: &Json, in_expr: bool, out: &mut BTreeSet<String>) {
     match v {
         Json::Object(map) => {
@@ -596,7 +598,7 @@ fn ir_read_paths(v: &Json, in_expr: bool, out: &mut BTreeSet<String>) {
                     ("path", Json::String(p)) if in_expr => {
                         out.insert(p.clone());
                     }
-                    ("placeholders", Json::Array(items)) => {
+                    ("placeholders" | "promptPlaceholders", Json::Array(items)) => {
                         for ph in items {
                             if ph.get("kind").and_then(Json::as_str) == Some("path") {
                                 if let Some(p) = ph.get("path").and_then(Json::as_str) {
