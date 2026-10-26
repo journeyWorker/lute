@@ -125,6 +125,15 @@ pub(crate) fn validate_components(
         // per-field verdicts. Landed in `body_diags` so it inherits the
         // component re-anchoring below, matching the standalone check's code.
         body_diags.extend(crate::admission::check_component_toplevel(&body));
+        // 0.52.0 §3.2: `\{{` outside the label grammar, read on the body's
+        // own heads as authored and judged by this host's snapshot (the
+        // standalone check of the file judges it by its own).
+        body_diags.extend(crate::label_grammar::check_escaped_openers(
+            &def.body,
+            &def.text,
+            &lute_core_span::TextIndex::new(&def.text),
+            snapshot,
+        ));
         // Task 7c, the SAME class of gap as Task 7b's (the content-line attr
         // checker) one arm up: `check_line_codes` had exactly ONE callsite —
         // `check()` step 6, over the ROOT document — so a component body never

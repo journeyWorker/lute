@@ -215,6 +215,36 @@ fn a_spliced_argument_is_reported_at_the_use() {
     );
 }
 
+/// #221: a plain `{{` at the end of a `::use` argument swallowed the marker
+/// spliced after it (v0.51.0 checks clean, compiles `S \{{\{{run.a}} E` and
+/// renders `S {{{{run.a}} E`). It is `E-INTERP-BRACE` at the `::use`; the
+/// 0.47.1 spelling `\\{{` checks clean and renders a literal `{{`.
+#[test]
+fn issue_221_a_plain_opener_spliced_before_a_marker_is_refused() {
+    let dir = project(
+        "brace-221",
+        &[(
+            "s.lute",
+            &scene("::use{component=\"c\" instance=\"c\" p=\"{{\" q=\"{{run.a}}\"}"),
+        )],
+    );
+    assert_eq!(
+        check(&dir),
+        ["./s.lute:13:1: error [E-INTERP-BRACE] a `::use` argument ending in a plain `{{` merges \
+          with the `{{run.a}}` spliced after it, and the marker is lost: pass a literal `{{` in an \
+          argument as `\\\\{{` (lute 0.47.1)"]
+    );
+    let dir = project(
+        "brace-221-spelling",
+        &[(
+            "s.lute",
+            &scene("::use{component=\"c\" instance=\"c\" p=\"\\\\{{\" q=\"{{run.a}}\"}"),
+        )],
+    );
+    assert_eq!(check(&dir), Vec::<String>::new());
+    assert_eq!(rendered(&dir), ["S {{3 E"]);
+}
+
 /// The `options` of the first `choice` record.
 fn first_options(cmds: &[Value]) -> Vec<Value> {
     cmds.iter()
@@ -290,5 +320,83 @@ fn an_escaped_opener_outside_the_label_grammar_is_e_string_escape() {
                 .to_string(),
         ],
         "{diags:#?}"
+    );
+}
+
+/// Outside the label grammar a value has no markers: `\{{` inside a
+/// `{{…}}` of a plain string is `E-STRING-ESCAPE` too (as v0.51.0's lexer
+/// refused it), not shielded by the `{{`.
+#[test]
+fn an_escaped_opener_inside_braces_of_a_plain_value_is_refused() {
+    let dir = project(
+        "brace-escape-inner",
+        &[(
+            "s.lute",
+            &scene("::banner{title=\"t\" note=\"{{ \\{{ }}\"}"),
+        )],
+    );
+    let diags = check(&dir);
+    assert!(
+        diags
+            .iter()
+            .any(|d| d.starts_with("./s.lute:13:26: error [E-STRING-ESCAPE]")
+                && d.ends_with("`note` of `::banner` is not one")),
+        "{diags:#?}"
+    );
+}
+
+/// An imported component body is judged at its `::use` host too, under the
+/// host's snapshot: checking only the host still refuses `\{{` in the body's
+/// plain value and in a nested `::use` argument (v0.51.0's lexer refused
+/// both when the import parsed), and keeps it in the body's `text` attr.
+#[test]
+fn an_escaped_opener_in_an_imported_body_is_refused_at_the_host() {
+    let dir = project(
+        "brace-escape-import",
+        &[
+            (
+                "e.component.lute",
+                "---\ncomponent: e\ncomponents: [c.component.lute]\n---\n\n## E\n\n\
+                 ::banner{title=\"t \\{{ok}}\" note=\"\\{{literal}}\"}\n\
+                 ::use{component=\"c\" instance=\"n\" p=\"\\{{\" q=\"x\"}\n",
+            ),
+            (
+                "s.lute",
+                "---\nkind: scene\nid: s\ncomponents: [e.component.lute]\n---\n\n## S\n\n\
+                 ::use{component=\"e\" instance=\"a\"}\n",
+            ),
+        ],
+    );
+    let out = lute(&dir, &["check", "s.lute", "--project", "."]);
+    let report = text(&out);
+    assert_eq!(out.status.code(), Some(1), "{report}");
+    // Anchored at the `::use`, each with the body's own position related.
+    let escapes: Vec<&str> = report
+        .lines()
+        .filter(|l| l.contains("[E-STRING-ESCAPE]"))
+        .collect();
+    assert_eq!(escapes.len(), 4, "{report}");
+    assert!(
+        escapes[0]
+            .starts_with("s.lute:9:1: error [E-STRING-ESCAPE] component `e` (e.component.lute):")
+            && escapes[0].ends_with("`note` of `::banner` is not one"),
+        "{report}"
+    );
+    assert!(
+        escapes[1]
+            .trim_start()
+            .starts_with("e.component.lute:8:34: error [E-STRING-ESCAPE]"),
+        "{report}"
+    );
+    assert!(
+        escapes[2].starts_with("s.lute:9:1: error [E-STRING-ESCAPE] component `e`")
+            && escapes[2].contains("`p` of `::use` is not one; a `::use` argument passes"),
+        "{report}"
+    );
+    assert!(
+        escapes[3]
+            .trim_start()
+            .starts_with("e.component.lute:9:37: error [E-STRING-ESCAPE]"),
+        "{report}"
     );
 }

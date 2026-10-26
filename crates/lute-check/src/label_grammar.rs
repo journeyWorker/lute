@@ -17,7 +17,6 @@ use std::fmt;
 use lute_core_span::{Diagnostic, Layer, Severity, Span, TextIndex};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{Arm, ClipNode, Document, Node};
-use lute_syntax::line_text::{interp_sites, InterpSite};
 
 /// The node head a quoted attribute value is written on.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -214,9 +213,10 @@ impl Walk<'_> {
                 .checked_sub(1)
                 .and_then(|i| self.source.as_bytes().get(i))
                 == Some(&b'"');
-            let escaped =
-                interp_sites(attr.raw_value).any(|site| matches!(site, InterpSite::Escaped { .. }));
-            if !quoted || !escaped || takes_label_grammar(owner, attr.key, self.snapshot) {
+            if !quoted
+                || !has_escaped_opener(attr.raw_value)
+                || takes_label_grammar(owner, attr.key, self.snapshot)
+            {
                 continue;
             }
             self.diags.push(Diagnostic {
@@ -233,6 +233,26 @@ impl Walk<'_> {
             });
         }
     }
+}
+
+/// Whether the quoted value `raw` (escapes undecoded) holds `\{{`, read by
+/// the lexer's own escape pairs: a backslash escapes the byte after it, so
+/// an odd run before `{{` is one, wherever it sits — inside a `{{…}}` too
+/// (outside the label grammar a value has no markers).
+fn has_escaped_opener(raw: &str) -> bool {
+    let b = raw.as_bytes();
+    let mut j = 0;
+    while j < b.len() {
+        if b[j] == b'\\' {
+            if b.get(j + 1) == Some(&b'{') && b.get(j + 2) == Some(&b'{') {
+                return true;
+            }
+            j += 2;
+        } else {
+            j += 1;
+        }
+    }
+    false
 }
 
 /// The `E-STRING-ESCAPE` message for `\{{` in `attr` of `owner`, a value
@@ -253,6 +273,19 @@ fn escaped_opener_message(owner: AttrOwner<'_>, attr: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_escaped_opener_is_read_by_the_lexer_pairs() {
+        assert!(has_escaped_opener("a \\{{x}}"));
+        assert!(has_escaped_opener("\\\\\\{{x"));
+        // After a `{{…}}` or an unterminated `{{`: no marker shields it
+        // outside the label grammar.
+        assert!(has_escaped_opener("{{ \\{{ }}"));
+        assert!(has_escaped_opener("{{ \\{{"));
+        assert!(!has_escaped_opener("\\\\{{x}}"));
+        assert!(!has_escaped_opener("\\{x \\\"{{"));
+        assert!(!has_escaped_opener("a\\"));
+    }
 
     #[test]
     fn owners_display_as_written() {

@@ -1235,6 +1235,7 @@ fn hub_choice_use_expands_component_records_with_source_stamp() {
             beat: None,
             body: comp_body,
             src: std::path::PathBuf::from("test://greet"),
+            text: String::new(),
         },
     );
     let comps = lute_check::ComponentSet {
