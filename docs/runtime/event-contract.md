@@ -207,8 +207,13 @@ encoding (lute 0.47.1, see [execution-model.md](./execution-model.md)) is
 read, not shown, and `\{{` in a translation stays a literal `{{`, as in the
 source. Grant records
 carry `quest`, `instance`, optional `objective`, `index`, `reward` and the
-machine's remaining fields; `instance` is the settlement key. The host
-settles the grant, not the runtime.
+machine's remaining fields; `instance` is the settlement key. Since 0.52 the
+`reward` object carries `attrs` (the reward entry's reward-kind attributes,
+omitted when empty). The host settles the grant, not the runtime.
+
+```json
+{"index":0,"instance":1,"kind":"grant","objective":"pay","quest":"first","reward":{"amount":1,"attrs":{"rarity":"gold"},"kind":"BADGE","target":"mira"}}
+```
 
 Since 0.50 a reward kind may declare effects, and each effect emits the record
 its command would (`assert`, `retract`, `accept`) with one more key, `grant`:
@@ -357,16 +362,30 @@ await is serialized as `continuation.stage`, and `stage()` returns it.
 | `halted` | `kind`, `message`, optional `site` | None; restore an earlier snapshot to continue. |
 
  A choice menu carries `construct` (`branch` or `hub`), `id`, `document`,
-`position`, `presentation`, optional `prompt`, `timeout` and `default`, and
-ordered options with `id`, `verdict` (`open`, `closed` or `spent`), `exit` and
-`once`. Hubs omit `timeout` and `default`.
+`position`, `presentation`, optional `prompt`, `promptTexts`, `timeout` and
+`default`, and ordered options with `id`, `text`, optional `texts`, `verdict`
+(`open`, `closed` or `spent`), `exit` and `once`. Hubs omit `timeout` and
+`default`.
+
+Since 0.52 the menu text is rendered: the runtime renders each option label
+and the prompt at every presentation with the line renderer (markers by value,
+`\{{` read as a literal `{{`, each translation by marker as a line's `texts`
+are) and sets `text` (always), `texts` (locale → text, omitted when empty),
+`prompt` (when the branch or hub has one) and `promptTexts` (omitted when
+empty). A host token and a marker whose path is unset keep their written text,
+and menu text never halts. A host shows these instead of the IR's strings,
+which keep their markers. The pending `Await` is part of the `Snapshot`, so the
+snapshot schema carries the same fields:
+
+```json
+{"construct":"branch","document":"scenes/gate.lute","id":"toll","options":[{"exit":false,"id":"pay","once":false,"text":"Pay 5 gold","verdict":"open"},{"exit":false,"id":"code","once":false,"text":"Say {{open}}","verdict":"open"}],"position":"001-0100","presentation":0,"prompt":"You have 5 gold."}
+```
 
 Plugin stamps on a `<branch>`, `<hub>` or `<choice>` (0.50) are not part of the
-menu. The runtime never reads stamps and the menu keeps this shape. A host that
-does not use the reference player reads them from the IR `choice` or `hub`
-record at the menu's address (`document`, `position`): the record's `stamps`
-and each option's `stamps` (omitted when absent), the same place it reads
-option `text`, `texts` and `prompt`.
+menu. The runtime never reads stamps. A host that does not use the reference
+player reads them from the IR `choice` or `hub` record at the menu's address
+(`document`, `position`): the record's `stamps` and each option's `stamps`
+(omitted when absent).
 An undecided guard never becomes an `unknown` menu verdict: it halts as
 `incomplete`. Request ids are unsigned integers, incremented for each await
 and never reused within a state lineage. Restoring preserves the pending id.
@@ -384,6 +403,11 @@ and rebuilt by the same replay: the `Snapshot` does not hold them, and a save at
 a choice await in a later iteration resumes to the same transcript. A `<branch>`
 reached again in a later iteration is a new `awaitChoice` with a new request
 id; its `presentation` stays `0`.
+
+A `jump` with `leaves` (0.52) ends the hub visits it leaves at once: no
+`<return>` body runs and the menu is not presented again, so no further
+`awaitChoice` for that visit follows. The leave is walk-local, as a loop counter
+is; the `Snapshot` holds nothing for it.
 
 ## Rejections and halts
 

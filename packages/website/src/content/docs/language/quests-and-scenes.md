@@ -45,6 +45,20 @@ graph. Since 0.21.0, `visited(…)` is also an ordinary condition function — s
 A quest document declares `kind: quest` and carries `uses:` for the schema it gates on. Its body is
 one or more `<quest>` declarations — quests forbid `<hub>`, `<timeline>`, and `#`/`##` headings.
 
+A quest runs only its `<on>` handler bodies and its `<objective>` bodies, so since 0.52 (#208) those
+two, and its `<reward>`s, are the only things directly inside `<quest>`. A content line, a directive,
+`::set`, `::label`, `::jump`, `<branch>`, `<match>`, `::assert` or `::retract` at the quest's top
+level is `E-GRAMMAR-NOT-ADMITTED`; put it in the `<on event=…>` or `<objective>` whose moment it
+belongs to:
+
+<!-- lute-diagnostics -->
+```
+q.lute:6:3: error [E-GRAMMAR-NOT-ADMITTED] a content line at the top level of `<quest id="toll">` never runs — a quest runs only its `<on>` handlers and `<objective>` bodies: move it into the `<on event=…>` or `<objective>` whose moment it belongs to
+```
+
+On 0.51 such content compiled to records no run reached, except content after the last body, which
+played by fallthrough as part of that body. Move it into that body.
+
 ```lute
 <quest id="rescueHalsinGrove" tier="run" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
   <objective id="reachGrove" title="Reach the Emerald Grove" done="run.region == 'grove'"/>
@@ -242,6 +256,19 @@ self-closing (`<objective …/>`); a body — a log line, a per-objective `::set
 objective is `done` (or any one of them, under [`complete="any"`](#alternatives-completeany)).
 Objective completion is monotonic — once `done`, it stays recorded.
 
+#### Objective titles are plain text
+
+A quest UI shows an objective's `title` as written; nothing renders it. So since 0.52 a `{{` in an
+`<objective title>` — a marker, escaped or not — is `E-OBJECTIVE-TITLE-INTERP`. Write the words as
+plain text, and show a value that changes in a line:
+
+<!-- lute-diagnostics -->
+```
+q.lute:7:30: error [E-OBJECTIVE-TITLE-INTERP] `<objective id="pay">`'s `title` is shown as written — a quest UI does not render `{{run.gold}}` — so it takes no `{{…}}`: write the words as plain text (`title="Pay the toll"`), and show a value that changes in a line
+```
+
+A quest's own `title=` was never interpolated and is unchanged.
+
 ### `<reward>` ids
 
 A `<reward>` (a direct child of `<quest>` or `<objective>`) may carry an optional `id`: a bounded
@@ -290,8 +317,8 @@ rewardKinds:
   OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
 ```
 
-`@target` is the reward's quoted `target=`. It is the only name an effect can read, because a
-`<reward>` takes no other attribute. `writes` is not an effect: a reward's state write is `credits:`.
+`@target` is the reward's quoted `target=`. Since 0.52 an effect may also read `@<attr>`, an
+attribute the kind declares (below). `writes` is not an effect: a reward's state write is `credits:`.
 
 The [plugin-surfaces example](https://github.com/journeyWorker/lute/tree/main/docs/examples/plugin-surfaces) declares those three kinds and grants them:
 
@@ -368,6 +395,47 @@ guard testing it draws no `W-FACT-GUARANTEED` or `E-ARM-DEAD`. A reward's retrac
 from what is guaranteed. The consequences are on
 [facts and Datalog](/state/facts-and-datalog/#facts-produced-by-reward-effects) and
 [reachability](/connectivity/reachability/#edges-that-reward-effects-draw).
+
+#### Reward-kind attributes
+
+A reward kind may declare **`attrs:`** in its manifest, the way a directive declares its attributes.
+Since 0.52 (#201) a `<reward>` of that kind authors them, and the kind's effects read them as
+`@<attr>`:
+
+```yaml
+rewardKinds:
+  BADGE:
+    target: { entity: person, required: true }
+    attrs:
+      - { name: rarity, type: { enum: [common, rare, gold] }, default: common }
+    effects: { asserts: ["badge(@target, @rarity)"] }
+```
+
+```lute
+<objective id="pay" done="run.gold > 2">
+  <reward kind="BADGE" target="mira" rarity="gold"/>
+</objective>
+```
+
+- **Checked like a directive's attributes.** The value is a quoted literal (a bare flag is `true`
+  for a `bool`), typed by its declaration with the directive codes: `rarity="silver"` is `E-BAD-ENUM`
+  (`` `silver` is not a valid value for `rarity` of `<reward kind="BADGE">` (expected one of: common,
+  rare, gold) ``), a `required: true` attribute left out is `E-MISSING-ATTR`, and an `@ref` value is
+  `E-REWARD-ATTR`, since a reward's attributes are static data the engine grants against.
+- **Unknown attributes.** `E-UNKNOWN-ATTR` lists what the kind declares:
+  `` `<reward>` has no attribute `rarety` — did you mean `rarity`?; its attributes are `id`, `kind`, `target`, `amount`, `when`, `outcome`, and kind `BADGE` declares `rarity` ``.
+- **Effects.** `@rarity` binds to the authored value, else the declared `default:`; an attribute
+  with neither is unbound, and an effect that reads it is not applied, as for a missing `target=`.
+  The checker judges the bound facts as above (`badge(mira, gold)`).
+- **Artifact and grant.** The compiled reward carries `attrs` (each authored attribute and each
+  default not authored, typed), and the runtime's `grant` record copies it onto `reward`:
+
+```json
+{"index":0,"instance":1,"kind":"grant","objective":"pay","quest":"first","reward":{"amount":1,"attrs":{"rarity":"gold"},"kind":"BADGE","target":"mira"}}
+```
+
+A reward of a kind with no `attrs:` compiles and grants exactly as before. The declaration rules
+are on the [manifests](/plugins/manifests/#reward-kind-attributes) page.
 
 ### Quests meet scenes and occasions
 
@@ -973,7 +1041,7 @@ path in `state:` is `E-QUEST-RESERVED-DECL`, and writing one with `::set` is
 `lute trace`, and `lute test` agree on the values, and `lute run --json` carries `failedBy` on the
 failing `quest` record.
 
-Since 0.49.0 whole-project `lute check` resolves every such read, not only the ones in a condition: a `{{ quest.<id>.state }}` interpolation in a line or a choice label, an interpolation argument, and a def's `cel:` body in `defs:` each report `E-QUEST-REF-UNKNOWN` (``quest.nope.state references quest nope, which no project quest defines``) when no project quest has that id.
+Since 0.49.0 whole-project `lute check` resolves every such read, not only the ones in a condition: a `{{ quest.<id>.state }}` interpolation in a line or a choice label, an interpolation argument, and a def's `cel:` body in `defs:` each report `E-QUEST-REF-UNKNOWN` (``quest.nope.state references quest nope, which no project quest defines``) when no project quest has that id. Since 0.52 (#212) the same pass reads every value that takes the [label grammar](/language/dialogue-and-cast/#labels-and-prompts): a `<branch>`/`<hub>` prompt and a plugin directive's `text` attribute too, so `::banner{… subtitle="{{quest.finalle.state}}"}` reports as the same read in a line does.
 
 ### `quest.<id>.activatedAt`
 

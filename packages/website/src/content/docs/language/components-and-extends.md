@@ -148,6 +148,20 @@ as a literal `{{` (lute 0.47.1), so the text shows `To you, {{userName}}!` and h
 The escape is judged on the decoded value — an odd run of backslashes before `{{` makes it literal —
 so `to="\\\\{{userName}}"` passes one backslash and keeps the placeholder.
 
+A single backslash (`p="\{{"`) is `E-STRING-ESCAPE` at the argument, since a `::use` argument does
+not take the label grammar, and the message names `\\{{`. Since 0.52 an argument that ends in a
+plain `{{` right before a marker in the component line (`p="{{"` spliced into `S {{@p}}{{@q}} E` with
+`q="{{run.a}}"`) is `E-INTERP-BRACE` at the `::use` (#221): the two would fuse into the escaped
+opener `\{{`, and the marker would be lost from the text:
+
+<!-- lute-diagnostics -->
+```
+./scenes/s.lute:9:1: error [E-INTERP-BRACE] a `::use` argument ending in a plain `{{` merges with the `{{run.a}}` spliced after it, and the marker is lost: pass a literal `{{` in an argument as `\\{{` (lute 0.47.1)
+```
+
+An argument ending in an odd run of `{` before a marker is `E-INTERP-BRACE` at the `::use` too, with
+the line-text message ([Literal `{{`](/language/dialogue-and-cast/#inline-text-modifiers)).
+
 ### Component body rules
 
 A component body is **presentational**: lines, staging directives, and `@param` refs only. It may

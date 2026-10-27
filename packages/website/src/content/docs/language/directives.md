@@ -475,6 +475,27 @@ Neither `::jump` nor `::label` carries a stamp (a plugin stamp or a timing key s
 `E-UNKNOWN-ATTR`; see [Directives that carry no stamp](#directives-that-carry-no-stamp)): put the
 attribute on the line or directive before the jump, or after the label.
 
+### Which bodies a jump may cross
+
+Some bodies run as a **range** of their own, entered only when their moment comes: a `<hub>` option
+body and a hub `<return>` body, an `<on>` and an `<objective>` body, a lore `<entry>` and a `<beat>`.
+A document's top level is one range too (every section of a scene together, so a forward jump from
+one section to the next is legal). `<choice>` bodies of a `<branch>` and `<match>` arms are laid
+out inline and are not ranges. Since 0.52:
+
+- A jump to a label in its own range, or in an enclosing one past only hub option and `<return>`
+  bodies, is legal. Out of a hub it **leaves the hub**: the visit ends, no `<return>` runs and the
+  menu is not presented again (#216; see
+  [Leaving a hub](/language/choices-and-hubs/#leaving-a-hub-with-jump)). The compiled `jump` carries
+  `leaves`, the number of hub bodies it leaves, and the artifact requires the semantic id
+  `lute.core.hubLeave/1`.
+- Any other jump enters a range from outside it — a sibling option's body, an option body from
+  before the hub, another `<objective>` or `<on>` body — and is `E-JUMP-INTO-BODY`. The message names
+  the body and what to do instead: `` `::jump{to="mid"}` enters the body of `<objective id="p">`,
+  which runs only when that objective completes — jump to a label in the same body (to end a body
+  early, jump to a label at its end) ``. On 0.51 a jump between two objective bodies checked clean
+  and only ended its own body, whatever the label looked like it promised.
+
 ### Bounded backward jumps — `max`
 
 Since 0.51, a `::jump` may target an **earlier** `::label` when it carries `max`, the number of times
@@ -524,7 +545,7 @@ checker enforces these rules:
 | Rule | Code |
 |---|---|
 | `max` is a literal integer from 1 to 99 — not an `@ref`, not `0`, not negative, not above 99; and `max` on a forward jump means nothing | `E-JUMP-MAX` |
-| The label is in the jump's own body or in a body that encloses it, and every body in between is a `<choice>` body of a `<branch>` or an arm body of a `<match>`. The loop may not leave a `<hub>` option body or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section, and contains no `<on>` or `<objective>` | `E-JUMP-LOOP-SCOPE` |
+| The label is in the jump's own body or in a body that encloses it, and every body in between is a `<choice>` body of a `<branch>` or an arm body of a `<match>`. The loop may not leave a `<hub>` option body or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section (a loop around a quest's `<on>`/`<objective>` bodies would need a `::label` at the quest's top level, which is `E-GRAMMAR-NOT-ADMITTED` since 0.52) | `E-JUMP-LOOP-SCOPE` |
 | A forward jump from outside a loop may not land strictly inside it after its head; a loop is entered only at its head | `E-JUMP-INTO-LOOP` |
 | Two loops nest or are disjoint; they may not overlap without nesting (loops with the same head nest) | `E-JUMP-LOOP-CROSS` |
 

@@ -82,6 +82,31 @@ const hud = Effect.gen(function* () {
 Keep the numeric position for ordering, and use `ClockView.slot` and
 `ClockView.weekdayLabel` for display text.
  
+## 0.52 additions
+
+Every 0.52 IR change is additive: a project that uses none of the new constructs compiles to byte-identical artifacts, `capabilitySnapshot` included. The contract schemas are renamed to the `-0.52` line. One event shape changes: the `awaitChoice` menu carries rendered text.
+
+**A jump that leaves a hub.** A `jump` command gains an optional `leaves` (an integer ≥ 1): the number of hub option or `<return>` bodies between the jump and its target's body, written only when the jump leaves at least one ([Leaving a hub](/language/choices-and-hubs/#leaving-a-hub-with-jump)). A bounded jump never carries it.
+
+- **New semantic id `lute.core.hubLeave/1`** (module `core`, behaviour "jumps that leave a hub", provenance `hub leave`), collected **only** by an artifact with a `jump` that carries `leaves`. An engine that ran the 0.51 behaviour would present the hub again, so it refuses such an artifact at semantic negotiation. The registry goes from 17 to 18 ids.
+- **Runtime.** The jump ends its range at once; the hub visit around it ends (no `<return>` body runs, the menu is not presented again), and with `leaves = n` the `n` innermost hub visits end and control continues at the target. A quest segment and the top-level range never receive a leave.
+- **Load checks.** The reference runtime refuses, at load, a `leaves` that does not reach the target exactly: removing the `n` innermost range bodies around the jump must leave the target's body innermost, and each removed body must be a hub option or `<return>` range (this refuses an undercount, an overcount and a sibling body). A `jump` with both `max` and `leaves` is refused, and so is a transfer into a hub option or `<return>` body from outside it (such a body is entered only through its `hub` record). Compiled artifacts never have these. Where an inner hub is the last laid-out non-exit option of an outer hub with no `<return>`, `leaves: 1` and `leaves: 2` both reach the same address and run differently (the outer hub presents again, or does not): `leaves` is authoritative.
+- **No snapshot change.** The leave is walk-local; the `hub` record per presentation, `scene.choices.*`, `scene.visited.*`, `once` and replay are unchanged.
+
+**Rendered menu text.** The runtime renders each option label and the prompt at every presentation with the line renderer (`{{…}}` markers by value, the lute 0.47.1 reading of `\{{` and backslash runs, translations by marker as a line's `texts` are). The `awaitChoice` menu carries the result: `prompt` (now set when the branch or hub has one) and `promptTexts` (locale → text, omitted when empty), and on each option `text` (always) and `texts` (omitted when empty). A host token and a marker whose path is unset keep their written text; menu text never halts the walk. The `hub` presentation record's `prompt` is the rendered prompt. Because the pending `Await` is part of the `Snapshot`, the snapshot schema changes too. A host shows the menu's text instead of rendering the IR's (see [Custom hosts](/player/custom-hosts/)).
+
+- **`promptPlaceholders`.** A `choice` or `hub` command with a prompt that holds a marker gains `promptPlaceholders`, built as an option's `placeholders` are. It adds no semantic id; its expressions add the same expression-derived requirements an option label's do (a prompt that reads a temporal def requires `lute.knowledge.temporal/1`), and a `path` placeholder is a content read (a bridge result only a prompt shows is still requested in `awaitBridge.results`).
+
+**Reward-kind attributes.** `RewardEntry` gains `attrs`: each authored [reward-kind attribute](/plugins/manifests/#reward-kind-attributes) and each declared `default:` not authored, typed as a `plugin` record's `fields`, written last and only when non-empty. The effects bound from them land in the existing `retracts`/`asserts`/`raises`. The `grant` record's `reward` copies `attrs` (only when non-empty). Descriptive, no semantic id: a host reads `attrs` by the reward kind's contract, which `capabilityVersion` pins.
+
+```json
+{"index":0,"instance":1,"kind":"grant","objective":"pay","quest":"first","reward":{"amount":1,"attrs":{"rarity":"gold"},"kind":"BADGE","target":"mira"}}
+```
+
+**32-bit targets.** List indexing, a `countDistinct` column and the weekday label convert their `int` operands without truncation on every target (the wasm32 runtime in the reference player-web agrees with native), and `lute lint`'s list index does the same (#198).
+
+**What an engine or host must do.** Widen the version gate to `0.52`; list `lute.core.hubLeave/1` in `supportedIds` to accept an artifact with a leaving jump, and end the hub visits it leaves; show menu option text and prompts from the `awaitChoice` menu; optionally read `promptPlaceholders` and reward `attrs`.
+
 ## 0.51 additions
 
 Every 0.51 IR change is additive: a project that uses none of the new keys compiles to byte-identical artifacts, with one exception: `capabilitySnapshot` changes once for every artifact, because the core `::jump` now declares `max`. Every other new key (`effects.raises`, `raisedBy`, `type: text`) folds into the hash only for a snapshot that declares it. The contract schemas are renamed to the `-0.51` line.
@@ -1127,7 +1152,9 @@ does not have stays as written. The record holds decoded text (lute 0.47.1:
 no encoding backslashes), and a translation may write `\{{`, which stays a
 literal `{{` there as in the source. Show a runtime line from its record, not from the
 artifact's templates. `lute run --json`, the conformance record, leaves them
-out like the other delivery fields. Option labels and prompts are not rendered.
+out like the other delivery fields. Option labels and prompts are rendered too, since 0.52: the
+`awaitChoice` menu carries each option's `text` and `texts` and the menu's `prompt` and
+`promptTexts`, rendered the same way (see [0.52 additions](#052-additions)).
 
 ## The runtime docs
 

@@ -271,6 +271,32 @@ disclosures, beats/scenes, and downstream facts/state. Each item includes a
 target-to-item reason chain; each link has an edge, reason, file, line, and
 source span.
 
+Since 0.52 (#210) the closure also follows the two anchor edges [`lute scenario`](#scenario) draws:
+an [`[accept]`](/connectivity/scene-graph/#edge-kinds) edge from a unit that `::accept`s a quest,
+labelled `accepts`, and a
+[`[raises]`](/connectivity/scene-graph/#edges-that-declared-raises-draw) edge from a declared raise to
+the scene or beat that answers it, labelled `raises`. An `accepts` link is `proven`. A `raises` link is
+`proven` when at least one raise site behind it names its target statically, and `heuristic` when
+every one reads `occasion.target`. In a project where scenes `a` and `b` both `::accept{quest="q"}`:
+
+```console
+$ lute impact --project . --node scene:a
+downstream
+  state:quest.q.state [proven]
+    - accepts: scene(a) accepts quest(q) (scenes/a.lute:1)
+    - writes: quest lifecycle state (quests/q.lute:6)
+lines
+  line:a.narrator_0010 [proven]
+    - contains: scene contains line (scenes/a.lute:8)
+objectives
+  objective:q.o [proven]
+    - accepts: scene(a) accepts quest(q) (scenes/a.lute:1)
+    - contains: quest contains objective (quests/q.lute:7)
+quests
+  quest:q [proven]
+    - accepts: scene(a) accepts quest(q) (scenes/a.lute:1)
+```
+
 `--json` has this shape (empty groups remain present):
 
 ```json
@@ -571,6 +597,12 @@ $ lute scenario [--project <DIR>] [--providers <DIR>] [--format text|dot] [--jso
 ```
 
 Read-only reporting over the connectivity layer. With no subcommand, prints the assembled node/edge graph. `reach --node <NODE>` reports a node's [reachability verdict](/connectivity/reachability/); `envelope --node <NODE>` (or `envelope --node quest:<id>`) prints the [Guaranteed/Possible tables](/connectivity/envelopes/) plus the [guaranteed facts](/connectivity/envelopes/#guaranteed-facts) at the node's entry (dsl 0.20.0; `envelope.guaranteedFacts` in `--json`, each `{fact, establishedBy}`). `<NODE>` is a scene's canonical key, a quest id, or a [bundle beat](/tooling/play/#bundle-beats)'s canonical `<document id>.<beat id>`. A bare id is looked up among all three; when it names more than one kind, the command refuses and asks for an explicit `scene:`, `quest:` or `beat:` prefix, which always selects that kind. Exit **0** on success, **2** on I/O or an unresolvable or ambiguous node id.
+
+The envelope's `written by:` list names the writers that are provably before the node; a writer
+reached only through an alternative edge is listed after it, as `also written, but not provably
+before this node:`. Since 0.52 (#209) that covers `[accept]` edges as well as `[raises]` edges: of
+several scenes that each `::accept` a quest, any one may be the one that accepted it, so none is
+provably before it (see [envelopes](/connectivity/envelopes/#writers-on-alternative-edges)).
 
 `--format` (`text` or `dot`) and `--json` select the output shape of the bare graph view; `--json` replaces 0.47's `--format json` with the same report and version (`0.43.0.scenario*`), and `--json` together with `--format` is `E-CLI-USAGE`:
 
@@ -1005,7 +1037,7 @@ $ lute test [<PATH>]… [--project <DIR>] [--providers <DIR>] [--permission-prof
             [--coverage] [--no-derive] [--deny <CODE>]… [--deny-warnings] [--json]
 ```
 
-Run the project's scenario tests. With no operand, every `*.test.yaml` under the project directory (`--project`, else discovered from the current directory) traces its scene or quest — or presents a lore document's entries or one of its bundle beats — against the declared mocks and asserts the declared expectations, and every `*.play.yaml` there that carries an `expect:` (on a step or at the top level) is played exactly as [`lute play`](#play) plays it and judged by its own expectations (dsl 0.22.0). Operands select scripts instead: each `<PATH>` is a script file (`*.test.yaml` or `*.play.yaml`), or a directory walked for `*.test.yaml` and expectation `*.play.yaml`; any other file is exit **2**. Each script resolves against its nearest project at or below the project directory (`--project` is the walk root, as in [Project and discovery](#project-and-discovery)), as `lute trace` resolves one document, and standard error says so once per project — `lute: note: scenario tests use project . (nearest lute.project.yaml); pass --project to choose another`; with no manifest above the document the trace is core-only. `--json` emits the machine-readable report; `--providers` pins a snapshot directory; `--permission-profile` applies its ceiling; `--deny`/`--deny-warnings` promote every check verdict a test consults (each traced document's check and each play's compile gate), so a denied warning fails that test. `--no-derive` turns derivation off for every test and play, overriding their own `derive:` keys (see [trace](#trace)). Exit **0** when every test and play passes, **1** on a failure, **2** on I/O or a malformed test file.
+Run the project's scenario tests. With no operand, every `*.test.yaml` under the project directory (`--project`, else discovered from the current directory) traces its scene or quest — or presents a lore document's entries or one of its bundle beats — against the declared mocks and asserts the declared expectations, and every `*.play.yaml` there that carries an `expect:` (on a step or at the top level) is played exactly as [`lute play`](#play) plays it and judged by its own expectations (dsl 0.22.0). Operands select scripts instead: each `<PATH>` is a script file (`*.test.yaml` or `*.play.yaml`), or a directory walked for `*.test.yaml` and expectation `*.play.yaml`; any other file is exit **2**. Each script resolves against its nearest project at or below the project directory (`--project` is the walk root, as in [Project and discovery](#project-and-discovery)), as `lute trace` resolves one document. When `lute test` discovered the project (no `--project`), standard error says so once per project — `lute: note: scenario tests use project . (nearest lute.project.yaml); pass --project to choose another`; with `--project` it prints no note (since 0.52, #214), as other commands do. With no manifest above the document the trace is core-only. `--json` emits the machine-readable report; `--providers` pins a snapshot directory; `--permission-profile` applies its ceiling; `--deny`/`--deny-warnings` promote every check verdict a test consults (each traced document's check and each play's compile gate), so a denied warning fails that test. `--no-derive` turns derivation off for every test and play, overriding their own `derive:` keys (see [trace](#trace)). Exit **0** when every test and play passes, **1** on a failure, **2** on I/O or a malformed test file.
 
 Each test and play prints one `PASS`/`FAIL` line naming its file and what it ran, a failure followed by its misses, then a summary:
 

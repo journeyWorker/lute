@@ -1047,7 +1047,9 @@ state:
 | `<reward id kind amount target when outcome/>` | Data for the engine, which pays it. Content cannot read a reward, so do not also `::set` the same currency in an `<on>` handler: it would be paid twice. `amount` is an integer or a range `N..M`. `outcome="failed"` grants on failure (before 0.28.0: `on=`). An optional `id` names the reward for engines and source maps; it is unique among the quest's rewards, its objectives' included (`E-REWARD-DUP`). `lute run`, `lute play`, `lute trace`, and `lute test` print the `grant`; when the kind declares `credits:` (below) they also add a scalar amount to that path, and a `::set` of that path in the quest's `<on>` or objective bodies is `W-REWARD-DOUBLE-CREDIT`. |
 | `<on event>` | `questActive`, `questComplete`, `questFailed`, or a plugin world event. An optional `when=` guards it. With `target=` (0.24.0) it runs only when the same-named occasion is raised for that target (never for a plain `event:` step). A `questFailed` handler on a quest that can never fail (no `fail`, no required objective with a `by=` deadline, no required subquest objective that can fail, no parent quest) is `W-QUEST-HANDLER-DEAD`. An `::accept` in a handler is applied by `lute trace` / `lute test` as by `lute play` (0.26.0). |
 
-Quest documents have no `#`/`##` headings, `<hub>`, or `<timeline>`. Other documents read a quest
+Quest documents have no `#`/`##` headings, `<hub>`, or `<timeline>`, and since 0.52 nothing but
+`<on>`, `<objective>` and `<reward>` sits directly inside `<quest>` (`E-GRAMMAR-NOT-ADMITTED`). An
+`<objective title>` is plain text: a `{{` in it is `E-OBJECTIVE-TITLE-INTERP`. Other documents read a quest
 through `<match subject="quest.regular.state">` or `when="quest.regular.state == 'complete'"`. The state
 is always assigned, so `quest.regular.state == 'unset'` means "not taken up yet".
 
@@ -1463,6 +1465,44 @@ custom:
 
 → [Directives](/language/directives/) · [Plugin manifests](/plugins/manifests/) · [Linting](/tooling/linting/) · [Porting a content set](/guides/porting-a-content-set/)
 
+## Literal braces, hub leaves, menu text & reward attributes (0.52)
+
+`\{{` writes a literal `{{` in line text and, since 0.52, in every value that takes the label grammar: a `<choice text>`, a `prompt` and a plugin `text` attribute. Elsewhere in a quoted value it is `E-STRING-ESCAPE`, and a `::use` argument passes `\\{{`. A literal `{` right before a marker (`{\{{{{run.a}}`) is `E-INTERP-BRACE`: write `{ {{run.a}}` instead.
+
+A forward `::jump` from a hub option or `<return>` to a label after the hub leaves the hub: no `<return>`, no menu again. A jump into a body that runs on its own (another option, an `<on>` or `<objective>` body, an entry, a beat) is `E-JUMP-INTO-BODY`.
+
+```lute
+<hub id="desk">
+  <choice id="take" text="Take it">
+    @narrator: Taking it.
+    ::jump{to="after"}
+  </choice>
+  <choice id="leave" text="Leave" exit>
+    @narrator: Leaving.
+  </choice>
+</hub>
+::label{name="after"}
+@narrator: After the hub.
+```
+
+A prompt's `{{…}}` is checked like a label's, and the runtime renders labels and prompts onto the `awaitChoice` menu (`text`, `texts`, `prompt`, `promptTexts`): a host shows those. Each hub option is judged from the stage every earlier pick can leave, so a character one option sends off is `W-STAGE-ABSENT` in another.
+
+A reward kind's `attrs:` are written on `<reward>` and read by its effects as `@<attr>`; the grant record carries them in `reward.attrs`.
+
+```yaml
+rewardKinds:
+  BADGE:
+    target: { entity: person, required: true }
+    attrs: [ { name: rarity, type: { enum: [common, rare, gold] }, default: common } ]
+    effects: { asserts: ["badge(@target, @rarity)"] }
+```
+
+```lute
+<reward kind="BADGE" target="mira" rarity="gold"/>
+```
+
+→ [Choices & hubs](/language/choices-and-hubs/) · [Dialogue & cast](/language/dialogue-and-cast/#labels-and-prompts) · [Quests & scenes](/language/quests-and-scenes/) · [Plugin manifests](/plugins/manifests/#reward-kind-attributes)
+
 ## Compiled artifact
 
 `lute compile` writes the execution IR. The envelope carries `kind`, `lute`, `irVersion`,
@@ -1760,7 +1800,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-DEF-DECL` | A def is malformed: its type cannot be inferred, it has `params:` without `type:`, or it has an unknown key. |
 | `E-OBJECTIVE-MISSING-DONE` / `E-OBJECTIVE-QUEST-DONE` | An objective has no `done`, or has both `quest=` and `done=`. |
 | `E-QUEST-TIER-MIX` | A subquest's `tier` differs from its parent's. Give both the same tier: a mixed tree locks for good once a new run resets only one side. |
-| `E-GRAMMAR-NOT-ADMITTED` | The construct is not allowed in this kind, for example `<branch>` in an entry or a heading in a quest. |
+| `E-GRAMMAR-NOT-ADMITTED` | The construct is not allowed in this kind, for example `<branch>` in an entry or a heading in a quest. Since 0.52 also anything but `<on>`, `<objective>` and `<reward>` directly inside `<quest>` (a quest runs only those bodies): move it into the body whose moment it belongs to. |
 | `E-BEAT-ATTR` | A beat key is malformed or has no `on`, `when` reads `scene.*`, a scene's or bundle beat's `target` is on an untargeted occasion or any `target` is outside its target domain (with a did-you-mean), an entry's `once` is not `run`, `user`, `day`, `week`, `slot`, or `season:<name>`, `once: day` / `week` / `slot` has no clock to count by (`week` also no `week:`), `spentBy` sits beside `once: false` or `share` (0.28.0), or `also` is not a bool, is on an entry, or is on a `select: all` / `sequence` occasion. So is a `<beat>` with no `id`, a `-` in its `id`, or no document `id:`, an objective `target=` that is malformed or has no `on`, and an `until=` without `on=`. 0.26.0: a `target="kind:K"` whose kind is not a closed kind inside the occasion's domain, or on an occasion no plugin declares with a domain. |
 | `E-OCCASION-UNKNOWN` | A plugin declares occasions and this one is not among them. |
 | `W-BEAT-PRIORITY-TIE` | Two beats on one `select: first` occasion, with the same (or no) target and equal priority, whose `when`s are not provably exclusive: file order picks the winner. Since 0.26.0 negations are normalized first (`!(x < 1)` is `x >= 1`), and the message says why the two are not exclusive (a flag that outlives `once: run`, a fact asserted elsewhere, the paths each reads). A kind-target beat never ties with the beat naming the member. |
@@ -1782,7 +1822,10 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-DISPLAY-NAME-DUP` | 0.26.0, whole-project `check` and `lute lint`. Two speakers are shown with the same display name: two cast `name:`s, a cast name and a `::use{… name="…"}` string, or two such strings. Rename one, or mark an intended role name `sharedName: true` on the cast entries. |
 | `E-PLUGIN-STAMP-SURFACE` | 0.50. A `stampAttrs` `on:` names something that is not `line`, `branch`, `hub`, `choice` or a stampable directive of the resolved profile (a typo, `jump`/`label`/`clear`, or a directive of an inactive plugin). Fix the name, or `depends:` on the plugin that declares the directive. |
 | `E-DIAGNOSTICS-CONFIG` | 0.50. A `diagnostics:` entry in `lute.project.yaml` is malformed or illegal: an `E-*` or `L-*` code, an unknown code, a bad level, or bad `paths`. Only `W-*` codes can be re-levelled. |
-| `E-JUMP-MAX` / `E-JUMP-LOOP-SCOPE` / `E-JUMP-INTO-LOOP` / `E-JUMP-LOOP-CROSS` | 0.51. `max` is not a literal integer from 1 to 99 or sits on a forward jump; a loop leaves its body or spans an `<on>`/`<objective>`; a forward jump enters a loop after its head; two loops overlap without nesting. |
+| `E-JUMP-MAX` / `E-JUMP-LOOP-SCOPE` / `E-JUMP-INTO-LOOP` / `E-JUMP-LOOP-CROSS` | 0.51. `max` is not a literal integer from 1 to 99 or sits on a forward jump; a loop leaves its body; a forward jump enters a loop after its head; two loops overlap without nesting. |
+| `E-JUMP-INTO-BODY` | 0.52. A `::jump` enters a body that runs as its own range (a hub option or `<return>`, an `<on>` or `<objective>`, an entry or a beat) from outside it. A jump out of hub bodies to a label after the hub is legal and leaves the hub. |
+| `E-INTERP-BRACE` | 0.52. A literal `{` (an odd run) sits right before a `{{…}}` marker in line text, or a `::use` argument ending in a plain `{{` is spliced before one. Put a character between them, or pass `\\{{`. |
+| `E-OBJECTIVE-TITLE-INTERP` | 0.52. An `<objective title>` holds `{{`; a title is shown as written. Write plain text. |
 | `E-PLUGIN-RAISES` / `E-RAISES-TARGET` / `W-OCCASION-NEVER-RAISED` | 0.51. A `raises` entry names an unknown occasion or a target of the wrong shape; a resolved raise target is outside the domain or answered by no scene or beat; a `raisedBy: declared` occasion has an answerer that nothing raises. |
 | `E-LINE-CODE-RESERVED` / `E-LINE-ID-DUP` | 0.51. A `code` contains `~`; two localization units share one final `lineId`. |
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. An entry that can be read again in a run (a lookup entry, no `once`, a `once` shorter than the run, `spentBy`, `for`) `::set`s, `::retract`s or calls an effect-only directive that writes: its writes apply on the first read in a run only. Use `<beat … once="false">` for a repeating write, `once="run"`, or a `when="!entry.<id>.read"` guard. `::assert` is exempt. |
