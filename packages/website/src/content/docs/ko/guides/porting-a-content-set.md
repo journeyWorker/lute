@@ -630,8 +630,8 @@ lints:
   가는 점프는 계속 `E-JUMP-BACKWARD`이며, 메시지는 이제 `max`와 선택지를 다시 보여 주는 `<hub>`를 알려 줍니다.
 - **`when=`과 `max`는 함께 쓸 수 있습니다.** `when`이 성립하고 횟수가 남아 있는 동안 점프합니다.
 - **루프는 한 본문 안에 머뭅니다.** 레이블은 점프와 같은 본문에 있거나, `<branch>`의 `<choice>` 본문과 `<match>` 갈래
-  본문만 거쳐 점프를 감싸는 본문에 있어야 합니다. 점프가 든 `<hub>` 옵션 밖의 레이블이거나 영역이 `<on>`이나
-  `<objective>`를 포함하면 `E-JUMP-LOOP-SCOPE`입니다.
+  본문만 거쳐 점프를 감싸는 본문에 있어야 합니다. 점프가 든 `<hub>` 옵션 밖의 레이블은
+  `E-JUMP-LOOP-SCOPE`입니다.
 - **루프는 머리에서만 진입합니다.** 바깥에서 출발해 머리 뒤, 루프 안의 레이블로 가는 앞으로 가는 점프는
   `E-JUMP-INTO-LOOP`입니다. 머리로 가는 앞으로 가는 점프와 루프 밖으로 나가는 점프는 괜찮습니다.
 - **루프는 중첩될 뿐 교차하지 않습니다.** 두 루프는 중첩되거나 서로소여야 하며, 아니면 나중 점프에서 `E-JUMP-LOOP-CROSS`입니다.
@@ -723,7 +723,7 @@ target: scene.chapter2
 모든 분석은 선언된 raise를 **가능하지만 보장은 아님**으로 읽습니다. occasion의 게이트가 호스트의 raise를 거절할 수 있으므로
 raise는 응답하는 장면에 팩트, 쓰기, must 주장을 더하지 않습니다. `lute scenario`와 `lute scenario reach`는
 raise하는 쪽에서 응답하는 모든 장면과 비트로 `[raises]` 엣지를 그리며, `after:`를 선언한 장면은 `after:`를 자신의 경로로
-유지합니다. (`lute impact`는 시맨틱 모델 그래프를 읽으므로 `[raises]`도 `[accept]`도 따라가지 않습니다. #210.)
+유지합니다. (0.52부터 `lute impact`도 `[raises]`와 `[accept]` 엣지를 따라갑니다. #210.)
 [flow-and-text 예제](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text)에서는 다음과 같습니다.
 
 ```console
@@ -762,7 +762,7 @@ directives:
 ```
 
 - `text` 값은 선택지 라벨 문법의 따옴표 친 문자열입니다. 상태 경로, `@def`, 호스트 토큰의 `{{…}}` 보간은 라벨과 똑같이
-  검사됩니다. 리터럴 `{{`는 아직 쓸 수 없습니다(따옴표 속성에서 `\{{`는 `E-STRING-ESCAPE`입니다. #211). `@ref` 값은 `E-ATTR-TYPE`입니다.
+  검사됩니다. `\{{`는 리터럴 `{{`를 씁니다(0.52부터, #211. 0.51에서는 `E-STRING-ESCAPE`였습니다). `@ref` 값은 `E-ATTR-TYPE`입니다.
 - `text`는 `plugin` 레코드로 남는 디렉티브의 속성에만 허용됩니다. `lower:`도 `bridge:`도 없어야 합니다. `default:`를 가질 수
   없고, 스탬프, 플러그인 옵션, 페이로드, 보상 kind 속성의 타입으로도 쓸 수 없습니다. `text` 속성이 있는 디렉티브는 `code`라는
   이름의 속성을 선언할 수 없습니다. 각 오류는 그 속성에서 `E-PLUGIN-PARSE`이고, 그런 디렉티브에 범위를 지정한 `code` 스탬프는

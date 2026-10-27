@@ -55,6 +55,22 @@ envelope for scene(narrator.s01ep02) (pre-entry — state available when control
 
 모든 메시지에는 "under your declared routes"라는 문구가 그대로 포함됩니다(A-hybrid 방식).
 
+## 대안 엣지 위의 작성자
+
+보장된 경로마다 그것을 쓴 곳(`written by:`)이 나열됩니다. 작성자는 노드보다 앞섬이 증명될 때만 셉니다. 대안 엣지 위의 씬(여기까지 이끌 수 있는 여럿 중 하나이며 그중 하나면 충분한 씬)은 `also written, but not provably before this node:` 아래에 따로 나열됩니다. 대안 엣지는 [`[raises]`](/ko/connectivity/scene-graph/#선언된-raise가-그리는-엣지) 엣지와, 0.52부터(#209) [`[accept]`](/ko/connectivity/scene-graph/#엣지-종류) 엣지입니다. 순서 종류(`after:` 원자, `[start]`)도 함께 가진 엣지는 계속 순서를 정합니다. 씬 `a`와 `b`가 각각 `::set{run.x = 1}`과 `::accept{quest="q"}`를 실행할 때:
+
+```console
+$ lute scenario --project . envelope --node quest:q
+envelope for quest(q) (pre-entry — state available when control REACHES this node, before its own writes):
+  Guaranteed (safe to read under your declared routes):
+    - run.x   written by: (nothing on a declared route reaching here — schema default only); also written, but not provably before this node: scene(a), scene(b)
+  Possible (set on SOME but not every declared route reaching this quest; the Guaranteed paths above are not repeated) -- inventory only: unlike a scene's, this list is not a set of warned read sites; a quest's guard reads are checked where they are written, not against this table:
+    (none)
+  note: this quest declares no `follows` attribute, so this is the defaults-only `D` table; declaring `follows` on quest:q would enrich this table with the full project-resolved envelope.
+```
+
+0.51에서는 두 씬 모두 `q`보다 앞서는 작성자로 나열되었습니다.
+
 ## 보장된 팩트
 
 스칼라 표 옆에서 엔벌로프는 **팩트 엔벌로프**(dsl 0.20.0)도 보유합니다. 이는 노드에 도달하는 *모든* 선언된 경로에서 성립하는 관계형 팩트입니다. 프로젝트 전체 `lute check`가 관계형 가드를 판정할 때 사용하는 must-set과 동일하며([프로젝트 전체 `lute check`가 관계형 가드를 분석하는 방식](/ko/state/facts-and-datalog/#프로젝트-전체-lute-check가-관계형-가드를-분석하는-방법) 참고), `after:`를 따라 `Guaranteed`와 같은 구조적 재귀로 전파됩니다 — `visited(A)`는 `A`가 끝날 때 성립하는 것을 기여하고, `&&`는 합집합을, `||`는 교집합을 취하며, `completed(Q)`/`active(Q)`는 아무것도 기여하지 않습니다. 단조 팩트만 장면 경계를 넘어갑니다. 즉, 철회될 수 없고, 다른 assert가 다른 값으로 같은 `key:`를 공유할 수 없으며, 해당 관계가 `reserved:`도 엔진 개방형도 아니어야 합니다. `tier: scene`/`tier: quest` 팩트는 경계를 넘지 않습니다. 각 팩트에는 이를 설정한 것이 — assert 위치, `facts:` 시드 또는 규칙 — 표시됩니다.

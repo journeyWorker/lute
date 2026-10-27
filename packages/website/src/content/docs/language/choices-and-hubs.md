@@ -319,7 +319,7 @@ Yarn](/guides/coming-from-ink-yarn/) ports an Ink knot the player keeps returnin
 
 ### Leaving a hub with `::jump`
 
-A forward [`::jump`](/language/directives/#jump-and-label--forward-jumps) from an option body (or
+A forward [`::jump`](/language/directives/#jump-and-label--forward-and-bounded-backward-jumps) from an option body (or
 from `<return>`) to a label after the hub **leaves the hub** (0.52, #216): the visit ends there, no
 `<return>` runs, and the menu is not presented again. A jump out of two nested hubs leaves both.
 

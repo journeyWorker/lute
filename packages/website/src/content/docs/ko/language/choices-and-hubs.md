@@ -4,7 +4,8 @@ description: 선택지 메커니즘 — 가드와 into= 실행 기록 축약 문
 ---
 
 `<choice>`는 [`<branch>`](/ko/language/branch-match-when/) 또는 `<hub>` 안에 있는 하나의 선택지입니다. 모든
-선택지에는 **`id`** (기록되는 키)와 **`text`** (보간될 수 있는 버튼 텍스트)가 필요합니다. 그 외에도 가드와
+선택지에는 **`id`** (기록되는 키)와 **`text`** (보간될 수 있는 버튼 텍스트)가 필요합니다. `text`는
+[라벨 문법](/ko/language/dialogue-and-cast/#라벨과-프롬프트)을 따르므로 `\{{`는 리터럴 `{{`를 씁니다. 그 외에도 가드와
 실행 기록 축약 문법을 담습니다.
 
 ## 가드
@@ -146,11 +147,53 @@ title: The number
   병합합니다. `prompt`는 원문 그대로입니다. 프롬프트와 선택지는 `{prefix}.{branch id}.…`
   네임스페이스를 공유하므로 `prompt=`가 있는 branch 안의 `<choice id="prompt">`는
   `E-CHOICE-DUP`입니다 — 선택지 이름을 바꾸세요. `prompt=`가 없으면 이 id도 쓸 수 있습니다.
+- 0.52부터 프롬프트는 옵션의 `text`처럼 라벨 문법을 따릅니다. `{{…}}` 마커는 라벨과 똑같이 검사되고
+  (선언되지 않은 경로는 `E-CEL-PROFILE`, 설정되지 않았을 수 있는 경로는 `E-MAYBE-UNSET`이며 옵션보다
+  먼저 읽힙니다), 마커가 있는 프롬프트는 옵션의 `placeholders`와 같은 방식으로 만든
+  **`promptPlaceholders`**를 `prompt` 옆에 담습니다.
 
 `<hub>`는 같은 형태의 `hub` 레코드로 컴파일됩니다. 여기에는 `id`, `selectionKey`
 (`scene.choices.<hubId>`), `once` 및 `exit` 플래그를 추가하는 항목들로 구성된 `options`,
-`converge`, 선택적인 `prompt`(branch와 같이 `promptLineId`, `promptTexts` 포함), 그리고 [`<return>`](#돌아오기-return) 블록이 있는 허브의 경우
+`converge`, 선택적인 `prompt`(branch와 같이 `promptLineId`, `promptTexts`, `promptPlaceholders` 포함), 그리고 [`<return>`](#돌아오기-return) 블록이 있는 허브의 경우
 해당 블록이 시작되는 `return` 위치가 들어 있습니다.
+
+### 메뉴는 렌더링된 텍스트를 보여 줍니다
+
+IR은 각 라벨과 프롬프트를 마커까지 작성한 그대로 담습니다. 0.52부터 런타임은 제시할 때마다 줄을
+렌더링하듯 이들을 렌더링하고 그 결과를 `awaitChoice` 메뉴에 싣습니다. 각 옵션의 **`text`**(와 번역
+**`texts`**), **`prompt`**와 **`promptTexts`**입니다. 호스트는 IR의 문자열이 아니라 이 값을 보여 줍니다.
+`run.gold`가 5인 다음 branch를 보세요:
+
+```lute check
+---
+kind: scene
+id: shop.toll
+title: The toll
+state:
+  run.gold: { type: int, default: 5 }
+---
+
+## Gate
+
+<branch id="toll" prompt="You have {{run.gold}} gold.">
+  <choice id="pay" text="Pay {{run.gold}} gold">
+    @narrator: Paid.
+  </choice>
+  <choice id="code" text="Say \{{open}}">
+    @narrator: The gate hums.
+  </choice>
+</branch>
+```
+
+프로젝트에서 `scenes/gate.lute`로 실행하면 `lute play --events`는 런타임이 기다리는 메뉴를 이렇게 보여 줍니다:
+
+```json
+{"construct":"branch","document":"scenes/gate.lute","id":"toll","options":[{"exit":false,"id":"pay","once":false,"text":"Pay 5 gold","verdict":"open"},{"exit":false,"id":"code","once":false,"text":"Say {{open}}","verdict":"open"}],"position":"001-0100","presentation":0,"prompt":"You have 5 gold."}
+```
+
+허브는 제시할 때마다 다시 렌더링하므로, 라벨은 마지막 옵션이 남긴 상태를 읽습니다. 호스트 토큰
+(`{{userName}}`)과 경로가 설정되지 않은 마커는 줄에서처럼 작성한 텍스트 그대로 남고, 메뉴 텍스트는
+보행을 멈추지 않습니다. 메뉴는 그대로 제시됩니다.
 
 ## 허브 재방문
 
@@ -218,8 +261,9 @@ title: The bar
 </hub>
 ```
 
-프롬프트는 허브 레코드의 `prompt` (`HubCmd`에 포함되며, 작성하지 않으면 생략됨)로 컴파일되고,
-`lute run` / `lute play`는 허브가 제시될 때마다 프롬프트를 출력합니다. 빈 프롬프트는 브랜치와
+프롬프트는 허브 레코드의 `prompt` (`HubCmd`에 포함되며, 작성하지 않으면 생략되고, 마커가 있으면
+`promptPlaceholders`도 함께)로 컴파일되고, `lute run` / `lute play`는 허브가 제시될 때마다 프롬프트를
+출력합니다. `awaitChoice` 메뉴에는 렌더링된 프롬프트가 실립니다. 빈 프롬프트는 브랜치와
 마찬가지로 `E-BRANCH-PROMPT`입니다. 브랜치 프롬프트처럼 번역할 수 있습니다. lineId는
 `{prefix}.{hub id}.prompt`(`promptLineId`, 여기서는 `bar.marina.chat.prompt`)이고 번역은
 `promptTexts`에 들어가며, 프롬프트가 있는 허브 안의 `<choice id="prompt">`는 `E-CHOICE-DUP`입니다.
@@ -260,6 +304,114 @@ title: The lighthouse
 [Ink 또는 Yarn에서 가져오기](/ko/guides/coming-from-ink-yarn/)에서는 플레이어가 계속 돌아오는 Ink knot를
 이 방식으로 포팅합니다.
 
+### `::jump`로 허브 떠나기
+
+옵션 본문(또는 `<return>`)에서 허브 뒤의 레이블로 가는 앞으로의
+[`::jump`](/ko/language/directives/#jump와-label--앞으로-이동과-한정된-뒤로-이동)는 **허브를 떠납니다**
+(0.52, #216). 방문은 거기서 끝나고 `<return>`은 실행되지 않으며 메뉴도 다시 제시되지 않습니다. 중첩된
+허브 두 개 밖으로 나가는 점프는 둘 다 떠납니다.
+
+```lute check
+---
+kind: scene
+id: office.desk
+title: The desk
+---
+
+## Office
+
+@narrator: Before the hub.
+<hub id="desk">
+  <choice id="take" text="Take it">
+    @narrator: Taking it, then jumping past the hub.
+    ::jump{to="after"}
+  </choice>
+  <choice id="leave" text="Leave" exit>
+    @narrator: Leaving.
+  </choice>
+</hub>
+::label{name="after"}
+@narrator: After the hub.
+```
+
+```console
+$ lute trace desk.lute --choice desk=take,leave
+trace: desk.lute  (seeds: 0 paths, 0 facts; 2 selections)
+  ## Office
+    @narrator  Before the hub.
+  <hub desk>   eligible: take, leave   -> take
+    @narrator  Taking it, then jumping past the hub.
+    <jump -> after>
+    <label>
+    @narrator  After the hub.
+trace complete: 1 decision; choices 1/2 (desk)
+```
+
+스크립트의 `leave`는 쓰이지 않습니다. `take`가 이미 허브를 떠났기 때문입니다. 컴파일된 `jump`는 떠나는
+허브 본문의 수인 **`leaves`**(여기서는 `"leaves": 1`)를 담고, 그런 점프가 있는 아티팩트는 semantic id
+`lute.core.hubLeave/1`을 요구합니다([런타임 계약](/ko/tooling/runtime-contract/) 참고).
+
+반대 방향으로는 점프할 수 없습니다. 옵션 본문, `<return>` 본문, `<on>`·`<objective>` 본문, 로어
+엔트리, 비트는 각자 자기 range로 실행되므로, 바깥에서 그 안으로 들어가는 점프는 `E-JUMP-INTO-BODY`입니다
+(0.52):
+
+<!-- lute-diagnostics unverified="verbatim lute check output; two format! literals in crates/lute-check/src/next_labels.rs match this text, so the scraper cannot pin it to one" -->
+```
+into.lute:11:16: error [E-JUMP-INTO-BODY] `::jump{to="mid"}` enters the body of hub `desk`'s option `take`, which runs only when that option is chosen — jump to a label in the same body, or after the hub
+```
+
+점프는 자기 본문 안에 머물거나 허브 옵션·`<return>` 본문을 바깥쪽으로 떠납니다. `<branch>`의
+`<choice>` 본문과 `<match>` 갈래는 인라인으로 실행되므로 예전처럼 가로질러 점프할 수 있습니다.
+
+### 옵션에서 무대에 있는 사람
+
+옵션은 앞선 선택이 어떤 순서로 이어진 뒤에든 실행될 수 있으므로, 0.52부터(#217) 검사기와 컴파일러는
+각 옵션을 **허브 머리**에서 판정합니다. 허브 머리는 진입 시의 무대에 `exit`이 아닌 모든 옵션(과
+`<return>`)이 남길 수 있는 무대를 합친 것으로, 더 이상 바뀌지 않을 때까지 반복합니다. 그래서 한 옵션이
+내보낸 캐릭터는 다른 모든 옵션에서 무대에 없을 수 있습니다:
+
+```lute check
+---
+kind: scene
+id: desk
+title: The desk
+enums:
+  action:
+    members: [show, hide]
+    exits: [hide]
+---
+
+## Desk
+
+@mira: Hi.
+<hub id="desk">
+  <choice id="send" text="Send her away">
+    ::actor{character="mira" action="hide"}
+  </choice>
+  <choice id="talk" text="Talk">
+    @mira: Still here.
+  </choice>
+  <choice id="leave" text="Leave" exit>
+    @narrator: Bye.
+  </choice>
+</hub>
+```
+
+<!-- lute-diagnostics unverified="verbatim lute check output; the second message splices ACTOR_LOWERING_HINT (crates/lute-check/src/inject.rs), whose span two literals match, so the scraper cannot pin it to one" -->
+```
+head.lute:16:5: warning [W-STAGE-ABSENT] `mira` already left on the declared exit at line 16 on a path that reaches here and has not been shown again, so this exit does nothing. Delete it, or show them again with an `::actor` before it
+head.lute:19:5: warning [W-STAGE-ABSENT] `mira` left the stage on an earlier declared exit (line 16) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` (or a plugin directive declared `lower: { record: actor, fields: { character: { fromAttr: character } } }`) before this point, or remove the earlier exit
+```
+
+그녀를 다시 보여 주는 `<return>`이 있으면 `talk`는 깨끗합니다. 옵션으로 돌아오는 모든 길이 그 블록을
+지나기 때문입니다. `exit` 옵션은 허브 머리에 반영되지 않으며, 허브 뒤의 무대는 허브 머리와 `exit` 옵션들의
+끝을 합친 것입니다. 컴파일러는 같은 상태가 요구하는 anchor와 preload를 주입합니다.
+
+경로가 합류하는 곳(허브, `<branch>`, `<match>` 뒤, 또는 레이블)에서는 모든 경로에서 무대에 있는 캐릭터가,
+경로마다 감정이나 포즈가 달라도 무대에 남습니다(#222). 캐릭터가 무대에 없을 수도 있는 상태가 되는 대신
+스프라이트만 알 수 없게 되므로, 다음 평범한 줄은 여전히 `auto-pose-reset`을 받고 그 캐릭터의 다음
+`::actor`는 처음 보여 줄 때와 같은 것을 주입합니다.
+
 ### 막다른 길 없음
 
 허브는 종료할 수 있음을 보장해야 합니다. **가드가 없는 `exit`** 선택지가 하나 이상 있거나, 모든
@@ -299,6 +451,7 @@ title: The lighthouse
 제시 0에서 시작하지만, 앞선 방문에서 고른 `once` 선택지는 계속 소진된 상태입니다. 그 기억이 장면의 방문 기록
 (`scene.visited.<hub>.<choice>`)이므로 허브는 남은 선택지만 내놓습니다. 루프는 허브 옵션 본문 안에 둘 수
 있지만(그 옵션 안에 `::label`을 두세요), 허브 옵션 안에서 그 바깥으로 되돌아가는 루프는 `E-JUMP-LOOP-SCOPE`입니다.
+앞으로의 점프는 가능하며, 그 점프는 [허브를 떠납니다](#jump로-허브-떠나기).
 
 ## `<branch>`, `<hub>`, `<choice>`의 플러그인 스탬프
 
@@ -343,4 +496,4 @@ stampAttrs:
 }
 ```
 
-스탬프는 설명용입니다. 런타임은 이를 읽지 않으며 `awaitChoice` 메뉴도 바뀌지 않습니다. 레퍼런스 플레이어의 `ChoiceView`는 메뉴 주소의 IR 기록에서 읽은 요소의 `stamps`와 각 옵션의 `stamps`를 담고, 없으면 생략하며, 프레젠터는 `showChoice`로 이를 받습니다. 레퍼런스 플레이어를 쓰지 않는 호스트는 옵션 텍스트를 읽듯 IR 기록에서 같은 필드를 읽습니다([런타임 계약](/ko/tooling/runtime-contract/) 참고).
+스탬프는 설명용입니다. 런타임은 이를 읽지 않으며 `awaitChoice` 메뉴에도 실리지 않습니다. 레퍼런스 플레이어의 `ChoiceView`는 메뉴 주소의 IR 기록에서 읽은 요소의 `stamps`와 각 옵션의 `stamps`를 담고, 없으면 생략하며, 프레젠터는 `showChoice`로 이를 받습니다. 레퍼런스 플레이어를 쓰지 않는 호스트는 IR 기록에서 같은 필드를 읽습니다([런타임 계약](/ko/tooling/runtime-contract/) 참고). 옵션 텍스트와 프롬프트는 이미 렌더링된 값으로 메뉴에서 가져옵니다.

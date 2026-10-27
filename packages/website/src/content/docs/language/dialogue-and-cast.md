@@ -71,7 +71,7 @@ A section's number is also the first segment of every record `position` in it (`
 first record of section 1). Positions and numbers follow source order, so they change when sections
 move; tools that need a section to keep its identity across edits read its `{#id}`, and report a
 section without one as having no stable identity. A section id is identity only: it is not a jump
-target — [`::jump`](/language/directives/#jump-and-label--forward-jumps) goes to a `::label`.
+target — [`::jump`](/language/directives/#jump-and-label--forward-and-bounded-backward-jumps) goes to a `::label`.
 
 ## Line attributes
 

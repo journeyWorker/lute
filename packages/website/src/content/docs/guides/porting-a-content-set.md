@@ -762,8 +762,8 @@ raises `cutscene` for `scene.chapter2`.
 Every analysis reads a declared raise as **possible, never guaranteed**: the host may refuse it at the occasion's
 gate, so a raise adds no fact, write or must-claim in the answering scene. `lute scenario` and
 `lute scenario reach` draw a `[raises]` edge from the raiser to every answering scene and beat, and a scene that
-declares `after:` keeps `after:` as its route. (`lute impact` reads the semantic model graph and follows neither
-`[raises]` nor `[accept]` edges; #210.) The [flow-and-text example](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text):
+declares `after:` keeps `after:` as its route. (Since 0.52 `lute impact` follows
+`[raises]` and `[accept]` edges too; #210.) The [flow-and-text example](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text):
 
 ```console
 $ lute scenario --project docs/examples/flow-and-text

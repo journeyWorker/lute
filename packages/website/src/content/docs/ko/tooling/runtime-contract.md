@@ -80,6 +80,31 @@ const hud = Effect.gen(function* () {
 정렬에는 숫자 위치를 사용하고, 표시 문자열에는 `ClockView.slot`과
 `ClockView.weekdayLabel`을 사용하세요.
  
+## 0.52 추가 사항
+
+0.52의 IR 변경은 모두 추가형입니다. 새 구성을 쓰지 않는 프로젝트는 `capabilitySnapshot`을 포함해 바이트 단위로 같은 아티팩트로 컴파일됩니다. 계약 스키마의 이름은 `-0.52` 계열로 바뀝니다. 이벤트 형태는 하나 바뀝니다. `awaitChoice` 메뉴가 렌더링된 텍스트를 담습니다.
+
+**허브를 떠나는 jump.** `jump` 명령은 선택적 `leaves`(1 이상의 정수)를 새로 가집니다. jump와 대상 본문 사이에 있는 허브 옵션·`<return>` 본문의 수이며, 허브를 하나 이상 떠날 때만 기록됩니다([허브 떠나기](/ko/language/choices-and-hubs/#jump로-허브-떠나기)). 한도 있는 jump에는 붙지 않습니다.
+
+- **새 semantic id `lute.core.hubLeave/1`**(모듈 `core`, 동작 "jumps that leave a hub", provenance `hub leave`). `leaves`가 있는 `jump`를 가진 아티팩트만 이 id를 수집합니다. 0.51 동작을 따르는 엔진은 허브를 다시 제시하게 되므로, semantic 협상에서 그런 아티팩트를 거부합니다. 레지스트리는 17개에서 18개 id가 됩니다.
+- **런타임.** jump는 자기 range를 즉시 끝내고, 그것을 감싼 허브 방문도 끝납니다(`<return>` 본문은 실행되지 않고 메뉴도 다시 제시되지 않습니다). `leaves = n`이면 가장 안쪽 `n`개의 허브 방문이 끝나고 제어는 대상으로 이어집니다. 퀘스트 세그먼트와 최상위 range는 leave를 받지 않습니다.
+- **로드 검사.** 레퍼런스 런타임은 대상에 정확히 이르지 않는 `leaves`를 로드 때 거부합니다. jump를 감싼 가장 안쪽 `n`개의 range 본문을 제거하면 대상의 본문이 가장 안쪽에 남아야 하고, 제거한 각 본문은 허브 옵션이나 `<return>` range여야 합니다(부족한 수, 넘치는 수, 형제 본문을 거부합니다). `max`와 `leaves`를 함께 가진 `jump`도, 바깥에서 허브 옵션·`<return>` 본문 안으로 들어가는 전이도 거부합니다(그런 본문은 `hub` 레코드를 통해서만 들어갑니다). 컴파일된 아티팩트에는 이런 것이 없습니다. 안쪽 허브가 `<return>` 없는 바깥 허브의 마지막으로 배치된 비-exit 옵션이면 `leaves: 1`과 `leaves: 2`가 같은 주소에 이르지만 다르게 실행됩니다(바깥 허브를 다시 제시하거나 하지 않거나). `leaves`가 기준입니다.
+- **스냅숏 변경 없음.** leave는 보행 지역적입니다. 제시마다의 `hub` 레코드, `scene.choices.*`, `scene.visited.*`, `once`, 재실행은 그대로입니다.
+
+**렌더링된 메뉴 텍스트.** 런타임은 제시할 때마다 줄 렌더러로 각 옵션 라벨과 프롬프트를 렌더링합니다(`{{…}}` 마커는 값으로, `\{{`와 백슬래시는 lute 0.47.1 읽기로, 번역은 줄의 `texts`처럼 마커별로). `awaitChoice` 메뉴는 그 결과를 담습니다. `prompt`(branch나 hub에 있으면 이제 설정됨)와 `promptTexts`(로케일 → 텍스트, 비어 있으면 생략), 각 옵션의 `text`(항상)와 `texts`(비어 있으면 생략)입니다. 호스트 토큰과 경로가 설정되지 않은 마커는 작성한 텍스트 그대로 남고, 메뉴 텍스트는 보행을 멈추지 않습니다. `hub` 제시 레코드의 `prompt`는 렌더링된 프롬프트입니다. 대기 중인 `Await`가 `Snapshot`에 들어가므로 스냅숏 스키마도 바뀝니다. 호스트는 IR의 문자열을 렌더링하는 대신 메뉴의 텍스트를 보여 줍니다([사용자 정의 호스트](/ko/player/custom-hosts/) 참고).
+
+- **`promptPlaceholders`.** 마커가 있는 프롬프트를 가진 `choice`·`hub` 명령은 옵션의 `placeholders`처럼 만든 `promptPlaceholders`를 담습니다. semantic id를 더하지 않습니다. 그 식은 옵션 라벨의 식과 같은 식 기반 요구 사항을 더하며(시간형 def를 읽는 프롬프트는 `lute.knowledge.temporal/1`을 요구), `path` 플레이스홀더는 콘텐츠 읽기입니다(프롬프트만 보여 주는 브리지 결과도 `awaitBridge.results`에서 요청됩니다).
+
+**보상 kind 속성.** `RewardEntry`는 `attrs`를 새로 가집니다. 작성한 각 [보상 kind 속성](/ko/plugins/manifests/#보상-kind-속성)과 작성하지 않은 각 `default:`를 `plugin` 레코드의 `fields`처럼 타입 적용해 맨 뒤에, 비어 있지 않을 때만 기록합니다. 이로부터 바인딩된 효과는 기존 `retracts`/`asserts`/`raises`에 들어갑니다. `grant` 레코드의 `reward`는 `attrs`를 복사합니다(비어 있지 않을 때만). 설명용이며 semantic id는 없습니다. 호스트는 `capabilityVersion`이 고정하는 보상 kind 계약에 따라 `attrs`를 읽습니다.
+
+```json
+{"index":0,"instance":1,"kind":"grant","objective":"pay","quest":"first","reward":{"amount":1,"attrs":{"rarity":"gold"},"kind":"BADGE","target":"mira"}}
+```
+
+**32비트 대상.** 목록 인덱스, `countDistinct` 열, 요일 레이블은 모든 대상에서 `int` 피연산자를 잘림 없이 변환하며(레퍼런스 player-web의 wasm32 런타임이 네이티브와 같습니다), `lute lint`의 목록 인덱스도 마찬가지입니다(#198).
+
+**엔진이나 호스트가 할 일.** 버전 게이트를 `0.52`로 넓힙니다. leave하는 jump가 있는 아티팩트를 받으려면 `supportedIds`에 `lute.core.hubLeave/1`을 넣고, 그 jump가 떠나는 허브 방문을 끝냅니다. 메뉴 옵션 텍스트와 프롬프트는 `awaitChoice` 메뉴에서 보여 줍니다. `promptPlaceholders`와 보상 `attrs`는 선택적으로 읽습니다.
+
 ## 0.51 추가 사항
 
 0.51의 IR 변경은 모두 추가형입니다. 새 키를 하나도 쓰지 않는 프로젝트는 바이트 단위로 같은 아티팩트로 컴파일되며, 예외가 하나 있습니다. 코어 `::jump`가 이제 `max`를 선언하므로 `capabilitySnapshot`은 모든 아티팩트에서 한 번 바뀝니다. 그 밖의 새 키(`effects.raises`, `raisedBy`, `type: text`)는 이를 선언한 스냅숏의 해시에만 접힙니다. 계약 스키마의 이름은 `-0.51` 계열로 바뀝니다.
@@ -755,7 +780,7 @@ while (pc < artifact.commands.length) {
 
 locale 맵은 비어 있으면 생략됩니다. 따라서 `--locale-bundle` 없이 컴파일한 아티팩트는 이전과 바이트 단위로 동일하고, 이를 무시하는 소비자는 계속 원본 언어를 렌더링합니다. `texts`(수정된 line이면 `localeSegments`도, 프롬프트는 `promptTexts`)에서 locale을 조회해 제시하고 `text`(`prompt`)로 대체하십시오. 컴파일러는 빌드 시 정확히 그런 누락에 대해 경고(`W-L10N-MISSING`)하므로 완전한 번들에는 대체할 부분이 남지 않습니다.
 
-런타임의 `line` 레코드(`--locale-bundle`로 컴파일한 번들에 대한 `lute-runtime` / `@lute-lang/runtime` 이벤트)는 이 맵을 렌더링해 줍니다(dsl 0.47.0). `{{…}}` 마커를 값으로 바꾼 `text`와 `segments`에 더해, line 명령에 `texts`와 `localeSegments`가 있으면 이를 함께 싣는데, 각 번역의 마커는 원본에서 참조 대상이 같은 마커(`{{ }}` 안의 텍스트를 앞뒤 공백을 빼고 비교하므로 `{{ user.voyages }}`와 `{{user.voyages}}`는 같음)에 대해 렌더링한 값으로 바뀝니다. 번역자는 마커 순서를 바꿔도 되고, 원본에 없는 마커는 쓴 그대로 남습니다. 레코드는 디코딩된 텍스트를 담으며(lute 0.47.1: 인코딩 백슬래시 없음), 번역에도 `\{{`를 쓸 수 있고 원본과 마찬가지로 리터럴 `{{`로 남습니다. 런타임 line은 아티팩트의 템플릿이 아니라 레코드로 보여 주십시오. 컨포먼스 레코드인 `lute run --json`은 다른 delivery 필드처럼 이를 생략합니다. 선택지 라벨과 프롬프트는 렌더링하지 않습니다.
+런타임의 `line` 레코드(`--locale-bundle`로 컴파일한 번들에 대한 `lute-runtime` / `@lute-lang/runtime` 이벤트)는 이 맵을 렌더링해 줍니다(dsl 0.47.0). `{{…}}` 마커를 값으로 바꾼 `text`와 `segments`에 더해, line 명령에 `texts`와 `localeSegments`가 있으면 이를 함께 싣는데, 각 번역의 마커는 원본에서 참조 대상이 같은 마커(`{{ }}` 안의 텍스트를 앞뒤 공백을 빼고 비교하므로 `{{ user.voyages }}`와 `{{user.voyages}}`는 같음)에 대해 렌더링한 값으로 바뀝니다. 번역자는 마커 순서를 바꿔도 되고, 원본에 없는 마커는 쓴 그대로 남습니다. 레코드는 디코딩된 텍스트를 담으며(lute 0.47.1: 인코딩 백슬래시 없음), 번역에도 `\{{`를 쓸 수 있고 원본과 마찬가지로 리터럴 `{{`로 남습니다. 런타임 line은 아티팩트의 템플릿이 아니라 레코드로 보여 주십시오. 컨포먼스 레코드인 `lute run --json`은 다른 delivery 필드처럼 이를 생략합니다. 0.52부터 선택지 라벨과 프롬프트도 같은 방식으로 렌더링됩니다. `awaitChoice` 메뉴가 각 옵션의 `text`와 `texts`, 메뉴의 `prompt`와 `promptTexts`를 담습니다([0.52 추가 사항](#052-추가-사항) 참고).
 
 ## 런타임 문서
 

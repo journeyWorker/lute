@@ -139,6 +139,19 @@ params:
 (`{{` 바로 앞 백슬래시가 홀수 개면 리터럴), `to="\\\\{{userName}}"`는 백슬래시 하나를 넘기고 플레이스홀더를
 유지합니다.
 
+백슬래시 하나(`p="\{{"`)는 인자에서 `E-STRING-ESCAPE`입니다. `::use` 인자는 라벨 문법을 따르지 않기
+때문이며, 메시지가 `\\{{`를 알려 줍니다. 0.52부터 컴포넌트 줄에서 마커 바로 앞에 끼워지는 인자가
+평범한 `{{`로 끝나면(`S {{@p}}{{@q}} E`에 `p="{{"`, `q="{{run.a}}"`) `::use`에서 `E-INTERP-BRACE`입니다
+(#221). 둘이 이스케이프된 여는 괄호 `\{{`로 합쳐져 마커가 텍스트에서 사라지기 때문입니다:
+
+<!-- lute-diagnostics -->
+```
+./scenes/s.lute:9:1: error [E-INTERP-BRACE] a `::use` argument ending in a plain `{{` merges with the `{{run.a}}` spliced after it, and the marker is lost: pass a literal `{{` in an argument as `\\{{` (lute 0.47.1)
+```
+
+마커 앞에서 홀수 개의 `{`로 끝나는 인자도 `::use`에서 `E-INTERP-BRACE`이며, 메시지는 줄 텍스트의 것과
+같습니다([리터럴 `{{`](/ko/language/dialogue-and-cast/#인라인-텍스트-수식자)).
+
 ### 컴포넌트 본문 규칙
 
 컴포넌트 본문은 **프레젠테이션용**입니다. 줄, 연출 디렉티브, `@param` ref만 포함할 수 있습니다. 본문은
