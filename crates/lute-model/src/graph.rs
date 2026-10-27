@@ -15,6 +15,7 @@ pub fn build(model: &ProjectModel) -> SemanticGraph {
         add_document(&mut graph, model, document, &project);
     }
     add_project_dependencies(&mut graph, model);
+    add_scenario_alternatives(&mut graph, model);
     crate::derivation::add_derivations(&mut graph, model);
     graph.rebuild_adjacency();
     graph
@@ -896,6 +897,85 @@ fn add_project_dependencies(g: &mut SemanticGraph, model: &ProjectModel) {
                 Evidence::Proven,
             );
         }
+    }
+}
+
+/// 0.52.0 §8.2 (#210): the `[accept]` and `[raises]` edges of each root's
+/// scenario graph ([`crate::RootScenario::graph`]), which `lute scenario`
+/// draws, as `accepts` / `raises` edges from the source node to the
+/// dependent one ([`conn_node_key`]), anchored where the source node is
+/// declared in this graph. An `accepts` edge is `Proven`. A `raises` edge is `Proven`
+/// when any resolved raise site backing it (its source and answering node,
+/// [`crate::RootScenario::raise_sites`]) has a target known without running
+/// — static or untargeted — else `Heuristic`: every backing site raises
+/// `occasion.target`, which stands for every answerer of the occasion.
+fn add_scenario_alternatives(g: &mut SemanticGraph, model: &ProjectModel) {
+    use lute_check::connectivity::EdgeKind;
+    use lute_check::raises::RaiseTarget;
+    for scenario in model.reconciled().scenarios.values() {
+        let conn = &scenario.graph;
+        for (source, deps) in &conn.edges {
+            let from = conn_node_key(source);
+            let declared = g.nodes.get(&from);
+            let file = declared.and_then(|n| n.file.clone());
+            let span = declared.and_then(|n| n.span);
+            for dep in deps {
+                let Some(kinds) = conn.edge_kinds_for(source, dep) else {
+                    continue;
+                };
+                if kinds.contains(&EdgeKind::Accept) {
+                    g.edge(
+                        from.clone(),
+                        conn_node_key(dep),
+                        "accepts",
+                        format!("{source} accepts {dep}"),
+                        file.clone(),
+                        span,
+                        Evidence::Proven,
+                    );
+                }
+                if kinds.contains(&EdgeKind::Raises) {
+                    let known = scenario.raise_sites.iter().any(|site| {
+                        &site.source == source
+                            && &site.answerer == dep
+                            && site.target != RaiseTarget::Dynamic
+                    });
+                    let (reason, evidence) = if known {
+                        (format!("{source} raises {dep}"), Evidence::Proven)
+                    } else {
+                        (
+                            format!(
+                                "{source} may raise {dep} (target `occasion.target`, every \
+                                 answerer)"
+                            ),
+                            Evidence::Heuristic,
+                        )
+                    };
+                    g.edge(
+                        from.clone(),
+                        conn_node_key(dep),
+                        "raises",
+                        reason,
+                        file.clone(),
+                        span,
+                        evidence,
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// The semantic node a scenario-graph node is (0.52.0 §8.2): a scene by its
+/// canonical key, a quest by id, a bundle beat by `<document id>.<beat id>`,
+/// a lore entry by id — the keys [`add_document`] mints.
+fn conn_node_key(id: &lute_check::connectivity::NodeId) -> NodeKey {
+    use lute_check::connectivity::NodeId;
+    match id {
+        NodeId::Scene(key) => NodeKey::new(NodeKind::Scene, key.clone()),
+        NodeId::Quest(id) => NodeKey::new(NodeKind::Quest, id.clone()),
+        NodeId::Beat(key) => NodeKey::new(NodeKind::Beat, key.clone()),
+        NodeId::Entry(id) => NodeKey::new(NodeKind::Entry, id.clone()),
     }
 }
 

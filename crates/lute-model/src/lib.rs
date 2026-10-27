@@ -31,7 +31,7 @@ pub use reconcile::{
 };
 pub use scenario::{
     assemble_root_scenario, node_cycle_degraded, project_docs, reach_claim, ReachClaim,
-    ReachVerdict, RootScenario,
+    ReachVerdict, ResolvedRaise, RootScenario,
 };
 
 pub use diff::{diff_models, ChangeKind, DiffError, SemanticChange, SemanticDiff};

@@ -19,7 +19,20 @@ pub struct TestOptions<'a> {
     pub json: bool,
     pub coverage: bool,
     pub no_derive: bool,
+    /// [`DiscoveryNote::Silent`] when `--project` was given.
+    pub note: DiscoveryNote,
     pub build: crate::play::Build<'a>,
+}
+
+/// Whether a scenario test announces the project it resolves its document
+/// against (0.52.0 §8.4): `lute test` announces it only when it discovered
+/// the project (no `--project`), as the file commands do
+/// ([`crate::project::discover_project`]). Resolution is the same either
+/// way: each test resolves against its nearest manifest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiscoveryNote {
+    Announce,
+    Silent,
 }
 
 /// Collect the scripts `operands` select (the project directory when none):
@@ -86,9 +99,10 @@ pub fn run_test(options: &TestOptions) -> ExitCode {
         json,
         coverage,
         no_derive,
+        note,
         build,
     } = options;
-    let (dir, json, coverage, no_derive) = (*dir, *json, *coverage, *no_derive);
+    let (dir, json, coverage, no_derive, note) = (*dir, *json, *coverage, *no_derive, *note);
     let providers = build.providers;
     let (test_files, play_files) = match select_scripts(dir, paths) {
         Ok(files) => files,
@@ -156,6 +170,7 @@ pub fn run_test(options: &TestOptions) -> ExitCode {
                     test_file,
                     build,
                     no_derive,
+                    note,
                     &shared,
                     coverage.then_some(&mut local),
                 )
@@ -548,7 +563,9 @@ fn witness_run(
 ) -> Option<TestResult> {
     let files = [script.to_path_buf()];
     let shared = Shared::for_tests(memo, &files, build).ok()?;
-    run_one_test(script, build, false, &shared, None).ok()
+    // A witness run announces as 0.51 did; only `lute test` knows whether
+    // its project was given (0.52.0 §8.4).
+    run_one_test(script, build, false, DiscoveryNote::Announce, &shared, None).ok()
 }
 
 /// Everything a witness test run decides, for comparing two runs: its
@@ -617,6 +634,7 @@ fn run_one_test(
     test_file: &Path,
     build: &crate::play::Build,
     no_derive: bool,
+    note: DiscoveryNote,
     shared: &Shared,
     cov: Option<&mut CoverageAccum>,
 ) -> Result<TestResult, ExitCode> {
@@ -838,10 +856,14 @@ fn run_one_test(
     }
 
     // 0.23.1: like `lute check <file>` and like the plays of this run, a
-    // scenario test without `--project` resolves its document against the
-    // nearest `lute.project.yaml` — announced once per project root.
+    // scenario test resolves its document against the nearest
+    // `lute.project.yaml` — announced once per project root, unless
+    // `--project` was given (0.52.0 §8.4).
     let discovered = nearest_manifest_dir(&lute_path);
-    if let Some(root) = &discovered {
+    if let Some(root) = discovered
+        .as_ref()
+        .filter(|_| note == DiscoveryNote::Announce)
+    {
         let shown = crate::cwd_relative(&root.display().to_string());
         stderr_line(StderrLine::Note(
             root.clone(),

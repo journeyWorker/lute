@@ -550,6 +550,14 @@ impl EdgeKind {
             EdgeKind::Raises => "raises",
         }
     }
+
+    /// 0.52.0 §8.1: an edge kind whose sources are alternatives — the
+    /// dependent is reached through ONE of them (a quest is accepted by one
+    /// `::accept` site, an occasion raised by one raiser), so no single
+    /// source is provably before it. [`Self::Accept`] and [`Self::Raises`].
+    pub fn is_alternative(self) -> bool {
+        matches!(self, EdgeKind::Accept | EdgeKind::Raises)
+    }
 }
 
 impl fmt::Display for EdgeKind {

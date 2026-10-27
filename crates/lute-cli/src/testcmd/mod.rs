@@ -166,7 +166,7 @@ pub(crate) use discovery::static_context_references;
 
 #[cfg(test)]
 pub(crate) use runner::witness_record;
-pub use runner::{run_test, TestOptions};
+pub use runner::{run_test, DiscoveryNote, TestOptions};
 pub(crate) use runner::{run_test_for_constraint, run_test_for_context};
 
 /// The complete legal top-level key set of a `*.test.yaml` (module docs).

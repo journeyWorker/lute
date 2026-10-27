@@ -493,4 +493,123 @@ mod tests {
             .flatten()
             .any(|item| item.key == "state:a"));
     }
+
+    /// A project whose `porter` scene (a kind beat on `visit`) makes the
+    /// declared raises `calls` of `cutscene`, which only declared raises
+    /// raise and `chapter2` answers for `scene.chapter2`.
+    fn raise_project(tag: &str, calls: &str) -> (lute_scratch::ScratchDir, ProjectModel) {
+        let dir = lute_scratch::ScratchDir::named(tag);
+        let write = |rel: &str, text: &str| {
+            let path = dir.join(rel);
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(path, text).unwrap();
+        };
+        write(
+            "lute.project.yaml",
+            "pluginsDir: plugins/\ndefaultProfile: game\nprofiles:\n  game:\n    plugins:\n      \
+             acme.stage: true\ndefaults:\n  contentLang: en\n  uses: [world.schema.yaml]\n",
+        );
+        write(
+            "plugins/acme.stage/plugin.yaml",
+            "id: acme.stage\nversion: 0.1.0\nkind: capability\ndepends:\n  - { id: lute.core, \
+             range: \"^0.0.1\" }\nexports:\n  directives: directives/\n  occasions: occasions/\n",
+        );
+        write(
+            "plugins/acme.stage/occasions/o.yaml",
+            "occasions:\n  cutscene: { target: { prefix: scene, entity: cutsceneId }, raisedBy: \
+             declared }\n  visit: { target: { prefix: scene, entity: cutsceneId } }\n",
+        );
+        write(
+            "plugins/acme.stage/directives/d.yaml",
+            "directives:\n  - name: playScene\n    attrs:\n      - { name: scene, type: { \
+             entity: cutsceneId }, default: chapter2 }\n    effects: { raises: [{ occasion: \
+             cutscene, target: \"@scene\" }] }\n",
+        );
+        write(
+            "world.schema.yaml",
+            "entities:\n  cutsceneId: { members: [porter, chapter2] }\n",
+        );
+        write(
+            "scenes/porter.lute",
+            &format!(
+                "---\nkind: scene\nid: porter\non: visit\ntarget: \"kind:cutsceneId\"\n---\n\n\
+                 ## Shot 1.\n\n@narrator: Porter.\n\n{calls}\n"
+            ),
+        );
+        write(
+            "scenes/chapter2.lute",
+            "---\nkind: scene\nid: chapter2\non: cutscene\ntarget: scene.chapter2\n---\n\n\
+             ## Shot 1.\n\n@narrator: Two.\n",
+        );
+        let model = ProjectModel::build_single_root(&dir, &crate::ModelOptions::default()).unwrap();
+        (dir, model)
+    }
+
+    /// `scene:chapter2` in `scene:porter`'s impact: its evidence and the
+    /// `raises` reasons of its explanation.
+    fn raised_chapter2(model: &ProjectModel) -> (Evidence, Vec<String>) {
+        let report = query(model, &ImpactTarget::parse("scene:porter").unwrap());
+        let item = report
+            .items
+            .values()
+            .flatten()
+            .find(|item| item.key == "scene:chapter2")
+            .unwrap_or_else(|| panic!("no scene:chapter2 in {}", human(&report)));
+        let reasons = item
+            .reasons
+            .iter()
+            .map(|r| format!("{}: {}", r.edge, r.reason))
+            .collect();
+        (item.evidence.clone(), reasons)
+    }
+
+    /// 0.52.0 §8.2 (Review052 F4): a `[raises]` edge every backing site of
+    /// which has a static target is `Proven`.
+    #[test]
+    fn a_static_raise_edge_is_proven() {
+        let (_dir, model) = raise_project("impact-raise-static", "::playScene");
+        assert_eq!(
+            raised_chapter2(&model),
+            (
+                Evidence::Proven,
+                vec!["raises: scene(porter) raises scene(chapter2)".to_string()]
+            )
+        );
+    }
+
+    /// A `[raises]` edge whose only backing site raises `occasion.target`
+    /// (standing for every answerer) is `Heuristic`.
+    #[test]
+    fn a_dynamic_only_raise_edge_is_heuristic() {
+        let (_dir, model) =
+            raise_project("impact-raise-dynamic", "::playScene{scene=occasion.target}");
+        assert_eq!(
+            raised_chapter2(&model),
+            (
+                Evidence::Heuristic,
+                vec![
+                    "raises: scene(porter) may raise scene(chapter2) (target `occasion.target`, \
+                     every answerer)"
+                        .to_string()
+                ]
+            )
+        );
+    }
+
+    /// A `[raises]` edge backed by a static and a dynamic site is `Proven`:
+    /// one static site suffices.
+    #[test]
+    fn a_mixed_raise_edge_is_proven() {
+        let (_dir, model) = raise_project(
+            "impact-raise-mixed",
+            "::playScene{scene=occasion.target}\n::playScene",
+        );
+        assert_eq!(
+            raised_chapter2(&model),
+            (
+                Evidence::Proven,
+                vec!["raises: scene(porter) raises scene(chapter2)".to_string()]
+            )
+        );
+    }
 }
