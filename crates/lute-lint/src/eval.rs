@@ -559,15 +559,11 @@ fn index_value<'e>(base: Ref<'e>, key: &Value) -> Result<Ref<'e>, EvalError> {
         |shown: String| EvalError::new(format!("list index {shown} out of bounds (size {len})"));
     let i = match key {
         Value::Int(n) => {
-            #[expect(
-                clippy::cast_possible_truncation,
-                reason = "an authored index: on a 32-bit target one past the isize range \
-                          truncates, as before"
-            )]
-            let i = *n as isize;
-            match usize::try_from(i) {
+            // The authored index names itself when out of bounds, past the
+            // target's `usize` included (#198).
+            match usize::try_from(*n) {
                 Ok(u) if u < len => u,
-                _ => return Err(out_of_bounds(i.to_string())),
+                _ => return Err(out_of_bounds(n.to_string())),
             }
         }
         Value::Double(n) if n.fract() == 0.0 && *n >= 0.0 => {
@@ -817,6 +813,24 @@ mod tests {
 
     fn run(raw: &str, env: &Env<'_>) -> Result<Value, EvalError> {
         eval(&parse_when(raw).expr, env)
+    }
+
+    // #198: an authored index past the target's `usize` is out of bounds
+    // and named as authored (`as isize` truncated 2³² to 0 on 32 bits).
+    #[test]
+    fn a_list_index_past_the_targets_usize_is_out_of_bounds_as_authored() {
+        let mut e = scenario_env();
+        e.bind("xs", Value::List(vec![Value::Int(10), Value::Int(20)]));
+        assert_eq!(run("xs[1]", &e), Ok(Value::Int(20)));
+        for (raw, shown) in [("xs[4294967296]", "4294967296"), ("xs[-1]", "-1")] {
+            assert_eq!(
+                run(raw, &e),
+                Err(EvalError::new(format!(
+                    "list index {shown} out of bounds (size 2)"
+                ))),
+                "{raw}"
+            );
+        }
     }
 
     // dsl 0.50.0 §8.2: `startsWith`, `endsWith`, `contains`, member form,

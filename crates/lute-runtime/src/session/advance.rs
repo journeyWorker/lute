@@ -256,19 +256,7 @@ pub fn run_advance<F: super::WalkDriver>(
         Advance::Slots(1) => "slot".to_string(),
         Advance::Slots(k) => k.to_string(),
         Advance::To { weekday, slot } => {
-            #[expect(
-                clippy::cast_possible_truncation,
-                clippy::cast_sign_loss,
-                reason = "the caller resolved the weekday (a label position or 0..week.length); \
-                          any other value casts as before and falls back to `weekday {wd}`"
-            )]
-            let wd = weekday.map(|wd| {
-                clock
-                    .week
-                    .as_ref()
-                    .and_then(|w| w.labels.get(wd as usize).cloned())
-                    .unwrap_or_else(|| format!("weekday {wd}"))
-            });
+            let wd = weekday.map(|wd| weekday_text(clock.week.as_ref(), wd));
             let sl = slot.and_then(|s| clock.slot_name(s)).map(str::to_string);
             format!(
                 "to {}",
@@ -615,4 +603,33 @@ pub fn run_advance<F: super::WalkDriver>(
         *passed = passed_raise(p, clock, by, raise, from, at);
     }
     (out, quests, stop)
+}
+
+/// The label an `advance: to` names for weekday `wd`; a weekday that names
+/// no label (negative or past the target's `usize` included) falls back to
+/// `weekday {wd}` on every target (#198).
+fn weekday_text(week: Option<&lute_manifest::clock::WeekDecl>, wd: i64) -> String {
+    week.zip(usize::try_from(wd).ok())
+        .and_then(|(w, i)| w.labels.get(i).cloned())
+        .unwrap_or_else(|| format!("weekday {wd}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::weekday_text;
+    use lute_manifest::clock::WeekDecl;
+
+    #[test]
+    fn a_weekday_past_the_targets_usize_falls_back_to_its_number() {
+        let week = WeekDecl {
+            length: 2,
+            first: 0,
+            labels: vec!["Mon".to_string(), "Tue".to_string()],
+        };
+        assert_eq!(weekday_text(Some(&week), 1), "Tue");
+        // 2³² truncates to 0 (`Mon`) where usize is 32 bits under `as`.
+        assert_eq!(weekday_text(Some(&week), 1 << 32), "weekday 4294967296");
+        assert_eq!(weekday_text(Some(&week), -1), "weekday -1");
+        assert_eq!(weekday_text(None, 0), "weekday 0");
+    }
 }
