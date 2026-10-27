@@ -164,38 +164,29 @@ fn a_loop_may_not_leave_its_section() {
 }
 
 #[test]
-fn a_quest_loop_stays_out_of_and_off_its_on_and_objective_bodies() {
-    // Spanning an `<objective>` at the quest's top level (R4).
-    let over = only(
-        &quest(
-            "::label{name=\"top\"}\n<objective id=\"o\" done=\"run.d\">\n  @a: go\n\
-             </objective>\n::jump{to=\"top\" max=\"2\"}\n",
-        ),
-        "E-JUMP-LOOP-SCOPE",
-    );
-    assert_eq!(
-        over,
-        "`::jump{to=\"top\" max=\"2\"}` loops back over `<objective id=\"o\">`, which runs on its \
-         own; put the loop inside the objective's body or before it"
-    );
-    // Spanning an `<on>`.
-    let on = only(
-        &quest(
-            "::label{name=\"top\"}\n<on event=\"questComplete\">\n  @a: done\n</on>\n\
-             ::jump{to=\"top\" max=\"2\"}\n",
-        ),
-        "E-JUMP-LOOP-SCOPE",
-    );
-    assert!(
-        on.contains("loops back over `<on event=\"questComplete\">`"),
-        "{on}"
-    );
-    assert!(on.contains("inside the handler's body"), "{on}");
-    // Leaving an objective body for a label at the quest's top level.
+fn a_quest_loop_stays_inside_its_on_and_objective_bodies() {
+    // 0.51's R4 (a region spanning an `<objective>` or `<on>` at the quest's
+    // top level) needs a top-level `::label`/`::jump`, which dsl 0.52.0 §4
+    // refuses: each is `E-GRAMMAR-NOT-ADMITTED`, and no loop is judged.
+    for between in [
+        "<objective id=\"o\" done=\"run.d\">\n  @a: go\n</objective>\n",
+        "<on event=\"questComplete\">\n  @a: done\n</on>\n",
+    ] {
+        let text = quest(&format!(
+            "::label{{name=\"top\"}}\n{between}::jump{{to=\"top\" max=\"2\"}}\n"
+        ));
+        assert_eq!(
+            codes(&text),
+            ["E-GRAMMAR-NOT-ADMITTED", "E-GRAMMAR-NOT-ADMITTED"],
+            "{text}"
+        );
+    }
+    // Leaving an objective body for a label in a handler before it.
     let leave = only(
         &quest(
-            "::label{name=\"top\"}\n<objective id=\"o\" done=\"run.d\">\n  @a: go\n  \
-             ::jump{to=\"top\" max=\"2\"}\n</objective>\n",
+            "<on event=\"questActive\">\n  ::label{name=\"top\"}\n  @a: hi\n</on>\n\
+             <objective id=\"o\" done=\"run.d\">\n  @a: go\n  ::jump{to=\"top\" max=\"2\"}\n\
+             </objective>\n",
         ),
         "E-JUMP-LOOP-SCOPE",
     );
@@ -203,10 +194,11 @@ fn a_quest_loop_stays_out_of_and_off_its_on_and_objective_bodies() {
         leave.contains("outside `<objective id=\"o\">` it is in"),
         "{leave}"
     );
-    // Leaving an `<on>` body.
+    // Leaving an `<on>` body for a label in an objective before it.
     let handler = only(
         &quest(
-            "::label{name=\"top\"}\n<on event=\"questComplete\">\n  @a: done\n  \
+            "<objective id=\"o\" done=\"run.d\">\n  ::label{name=\"top\"}\n  @a: go\n\
+             </objective>\n<on event=\"questComplete\">\n  @a: done\n  \
              ::jump{to=\"top\" max=\"2\"}\n</on>\n",
         ),
         "E-JUMP-LOOP-SCOPE",

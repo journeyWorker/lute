@@ -27,6 +27,10 @@ inputs through the public runtime API.
 - `bounded-jump` — a `<branch>` in a bounded loop presented again in the loop's second
   iteration (a new request); a snapshot at that await restores and resumes to the same
   outputs (dsl 0.51.0 §3.7: the loop counters are rebuilt by replay, not saved).
+- `hub-leave` — the #216 scene: `take` jumps past the hub, which ends the hub visit (the
+  scripted `leave` is never used); the branch after the hub is an input point after the
+  leave, where a snapshot restores and resumes to the same outputs (dsl 0.52.0 §5.3: the
+  leave is walk-local, the snapshot carries no field for it).
 
 The `E-RUNTIME-BUSY` rejection cannot be expressed by a play script and is
 intentionally omitted. A gate refusal (`E-OCCASION-GATE`) is not a session case

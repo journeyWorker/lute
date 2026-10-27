@@ -132,7 +132,7 @@ impl Func {
 }
 
 impl Expr {
-    /// Decode one `exprNode` (`schemas/lute-ir-0.51.schema.json`
+    /// Decode one `exprNode` (`schemas/lute-ir-0.52.schema.json`
     /// `$defs/exprNode`). A shape outside the schema decodes to
     /// [`Expr::Invalid`].
     pub(crate) fn decode(node: &Json) -> Expr {
@@ -254,7 +254,7 @@ pub(crate) fn host_int(v: &Json) -> Option<i64> {
     v.as_i64().filter(|n| (-INT_BOUND..=INT_BOUND).contains(n))
 }
 
-/// Whether `node` is exactly an `exprNode` of `schemas/lute-ir-0.51.schema.json`,
+/// Whether `node` is exactly an `exprNode` of `schemas/lute-ir-0.52.schema.json`,
 /// recursively: one variant's key set and no other key, each field of its
 /// schema type, `int` within `±2^53`, `op` in its arity's set. Stricter than
 /// [`Expr::decode`], which reads the IR the compiler wrote and tolerates
@@ -535,18 +535,12 @@ impl Eval<'_, '_> {
             return Value::Unknown;
         };
         match self.eval(key, atoms) {
-            Value::Int(n) if n >= 0 => {
-                #[expect(
-                    clippy::cast_possible_truncation,
-                    clippy::cast_sign_loss,
-                    reason = "a non-negative index (guarded); where usize is 32 bits one past \
-                              u32::MAX truncates, as before"
-                )]
-                let index = n as usize;
-                items
-                    .get(index)
-                    .map_or(Value::Unknown, |item| self.eval(item, atoms))
-            }
+            // An index past the target's `usize` (or negative) names no item,
+            // on every target (#198).
+            Value::Int(n) => usize::try_from(n)
+                .ok()
+                .and_then(|index| items.get(index))
+                .map_or(Value::Unknown, |item| self.eval(item, atoms)),
             _ => Value::Unknown,
         }
     }
@@ -563,13 +557,9 @@ impl Eval<'_, '_> {
                 if *i < 0 {
                     return Value::Error("countDistinct column must be non-negative".into());
                 }
-                #[expect(
-                    clippy::cast_possible_truncation,
-                    clippy::cast_sign_loss,
-                    reason = "a non-negative column (checked above); where usize is 32 bits one \
-                              past u32::MAX truncates, as before"
-                )]
-                let column = *i as usize;
+                // Past the target's `usize`, an out-of-range column, as natively
+                // for any column past a relation's arity (#198).
+                let column = usize::try_from(*i).unwrap_or(usize::MAX);
                 self.fact_query(f, rel, list, Some(column), atoms)
             }
             (Func::Holds | Func::Count, [_]) | (Func::CountDistinct, [_, _]) => {

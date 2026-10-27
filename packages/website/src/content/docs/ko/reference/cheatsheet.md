@@ -1066,7 +1066,8 @@ state:
 | `<reward id kind amount target when outcome/>` | 엔진이 지급하는 데이터입니다. 콘텐츠는 보상을 읽을 수 없으므로 같은 재화를 `<on>` 핸들러에서 `::set`으로 또 올리지 마세요. 두 번 지급됩니다. `amount`는 정수나 범위 `N..M`입니다. `outcome="failed"`는 실패 시에 지급합니다(0.28.0 전: `on=`). 선택 속성 `id="badge"`는 영문자로 시작하는 ASCII 토큰으로, 퀘스트 안(목표의 보상 포함)에서 유일해야 하며(`E-REWARD-DUP`) 소스 맵과 산출물 `RewardEntry.id`의 안정 키가 됩니다. 없으면 선언 순서로 대신합니다. `lute run`, `lute play`, `lute trace`, `lute test`는 `grant`를 출력하고, 보상 종류가 `credits:`(아래)를 선언했다면 스칼라 금액을 그 경로에 더합니다. 그 퀘스트의 `<on>`이나 목표 본문에서 같은 경로를 `::set`하면 `W-REWARD-DOUBLE-CREDIT`입니다. |
 | `<on event>` | `questActive`, `questComplete`, `questFailed`, 또는 플러그인의 월드 이벤트. `when=`으로 가드할 수 있습니다. `target=`(0.24.0)을 쓰면 같은 이름의 계기가 그 대상에 대해 발생할 때만 실행됩니다(일반 `event:` 스텝에서는 실행되지 않음). 결코 실패할 수 없는 퀘스트(`fail`도, `by=` 기한이 있는 필수 목표도, 실패할 수 있는 필수 하위 퀘스트 목표도, 부모 퀘스트도 없음)의 `questFailed` 핸들러는 `W-QUEST-HANDLER-DEAD`입니다. 핸들러 안의 `::accept`는 `lute trace` / `lute test`에서도 `lute play`처럼 적용됩니다(0.26.0). |
 
-퀘스트 문서에는 `##` 섹션, `<hub>`, `<timeline>`이 없습니다. 다른 문서는
+퀘스트 문서에는 `##` 섹션, `<hub>`, `<timeline>`이 없고, 0.52부터 `<quest>` 바로 안에는 `<on>`, `<objective>`, `<reward>`만
+올 수 있습니다(`E-GRAMMAR-NOT-ADMITTED`). `<objective title>`은 평문이며 그 안의 `{{`는 `E-OBJECTIVE-TITLE-INTERP`입니다. 다른 문서는
 `<match subject="quest.regular.state">`나 `when="quest.regular.state == 'complete'"`로 퀘스트를 읽습니다.
 상태는 항상 값이 있으므로 `quest.regular.state == 'unset'`은 "아직 받지 않음"을 뜻합니다.
 
@@ -1480,6 +1481,44 @@ custom:
 
 → [디렉티브](/ko/language/directives/) · [플러그인 매니페스트](/ko/plugins/manifests/) · [린팅](/ko/tooling/linting/) · [콘텐츠 세트 이식하기](/ko/guides/porting-a-content-set/)
 
+## 리터럴 중괄호, 허브 떠나기, 메뉴 텍스트, 보상 속성 (0.52)
+
+`\{{`는 줄 텍스트에서, 그리고 0.52부터 라벨 문법을 따르는 모든 값(`<choice text>`, `prompt`, 플러그인 `text` 속성)에서 리터럴 `{{`를 씁니다. 그 밖의 따옴표 값에서는 `E-STRING-ESCAPE`이고, `::use` 인자는 `\\{{`를 넘깁니다. 마커 바로 앞의 리터럴 `{`(`{\{{{{run.a}}`)는 `E-INTERP-BRACE`입니다. 대신 `{ {{run.a}}`로 쓰세요.
+
+허브 옵션이나 `<return>`에서 허브 뒤의 레이블로 가는 앞으로의 `::jump`는 허브를 떠납니다. `<return>`도, 메뉴의 재제시도 없습니다. 따로 실행되는 본문(다른 옵션, `<on>`·`<objective>` 본문, 엔트리, 비트)으로 들어가는 점프는 `E-JUMP-INTO-BODY`입니다.
+
+```lute
+<hub id="desk">
+  <choice id="take" text="Take it">
+    @narrator: Taking it.
+    ::jump{to="after"}
+  </choice>
+  <choice id="leave" text="Leave" exit>
+    @narrator: Leaving.
+  </choice>
+</hub>
+::label{name="after"}
+@narrator: After the hub.
+```
+
+프롬프트의 `{{…}}`는 라벨처럼 검사되고, 런타임은 라벨과 프롬프트를 렌더링해 `awaitChoice` 메뉴(`text`, `texts`, `prompt`, `promptTexts`)에 싣습니다. 호스트는 이 값을 보여 줍니다. 허브의 각 옵션은 앞선 선택이 남길 수 있는 무대에서 판정되므로, 한 옵션이 내보낸 캐릭터는 다른 옵션에서 `W-STAGE-ABSENT`입니다.
+
+보상 kind의 `attrs:`는 `<reward>`에 쓰고 효과가 `@<attr>`로 읽습니다. 지급 레코드는 이를 `reward.attrs`에 담습니다.
+
+```yaml
+rewardKinds:
+  BADGE:
+    target: { entity: person, required: true }
+    attrs: [ { name: rarity, type: { enum: [common, rare, gold] }, default: common } ]
+    effects: { asserts: ["badge(@target, @rarity)"] }
+```
+
+```lute
+<reward kind="BADGE" target="mira" rarity="gold"/>
+```
+
+→ [선택지와 허브](/ko/language/choices-and-hubs/) · [대사와 캐스트](/ko/language/dialogue-and-cast/#라벨과-프롬프트) · [퀘스트와 씬](/ko/language/quests-and-scenes/) · [플러그인 매니페스트](/ko/plugins/manifests/#보상-kind-속성)
+
 ## 산출물
 
 `lute compile`은 실행 IR을 씁니다. 봉투에는 `kind`, `lute`, `irVersion`, `capabilitySnapshot`, 정렬된
@@ -1759,7 +1798,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `E-DEF-DECL` | def 형식이 잘못되었습니다: 타입을 추론할 수 없거나, `type:` 없이 `params:`를 썼거나, 모르는 키가 있습니다. |
 | `E-OBJECTIVE-MISSING-DONE` / `E-OBJECTIVE-QUEST-DONE` | 목표에 `done`이 없거나, `quest=`와 `done=`을 함께 썼습니다. |
 | `E-QUEST-TIER-MIX` | 하위 퀘스트의 `tier`가 부모와 다릅니다. 둘의 등급을 맞추세요: 섞인 트리는 새 런이 한쪽만 초기화하면 영영 잠깁니다. |
-| `E-GRAMMAR-NOT-ADMITTED` | 이 kind에서 허용되지 않는 구문입니다. 예: 엔트리 안의 `<branch>`, 퀘스트 안의 제목. |
+| `E-GRAMMAR-NOT-ADMITTED` | 이 kind에서 허용되지 않는 구문입니다. 예: 엔트리 안의 `<branch>`, 퀘스트 안의 제목. 0.52부터 `<quest>` 바로 안의 `<on>`, `<objective>`, `<reward>` 이외의 것도 해당합니다(퀘스트는 그 본문만 실행합니다). 그 순간에 맞는 본문 안으로 옮기세요. |
 | `E-BEAT-ATTR` | 비트 키 형식이 잘못되었거나 `on`이 없거나, `when`이 `scene.*`를 읽거나, 대상 없는 계기에 씬이나 번들 비트의 `target`을 썼거나 대상이 대상 도메인 밖에 있거나(비슷한 이름 제안과 함께), 엔트리의 `once`가 `run`, `user`, `day`, `week`, `slot`, `season:<name>`이 아니거나, 시계가 없는데 `once: day` / `week` / `slot`을 썼거나(`week`는 `week:`도 필요), `spentBy`를 `once: false`나 `share`와 함께 썼거나(0.28.0), `also`가 bool이 아니거나 엔트리 또는 `select: all` / `sequence` 계기에 있습니다. `id`가 없거나 `id`에 `-`가 있거나 문서에 `id:`가 없는 `<beat>`, 형식이 잘못되었거나 `on`이 없는 목표의 `target=`, `on=` 없는 `until=`도 `E-BEAT-ATTR`입니다. 0.26.0: `target="kind:K"`의 종류가 계기 도메인 안의 닫힌 종류가 아니거나, 도메인을 가진 계기로 플러그인이 선언하지 않은 계기에 쓴 경우. |
 | `E-OCCASION-UNKNOWN` | 플러그인이 계기를 선언했는데 이 계기는 그중에 없습니다. |
 | `W-BEAT-PRIORITY-TIE` | 한 `select: first` 계기에서 대상이 같거나 둘 다 없고 priority도 같은 두 비트의 `when`이 서로 배타적임을 증명할 수 없습니다. 승자는 파일 순서로 정해집니다. 0.26.0부터 부정을 먼저 정규화하고(`!(x < 1)`은 `x >= 1`), 두 조건이 왜 배타적이지 않은지(`once: run`보다 오래 사는 플래그, 다른 곳에서 assert되는 팩트, 각자 읽는 경로) 말해 줍니다. 종류 대상 비트는 멤버를 지목한 비트와 동점이 되지 않습니다. |
@@ -1781,7 +1820,10 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-DISPLAY-NAME-DUP` | 0.26.0, 프로젝트 전체 `check`와 `lute lint`. 두 화자가 같은 표시 이름으로 보입니다: 캐스트 `name:` 둘, 캐스트 이름과 `::use{… name="…"}` 문자열, 또는 그런 문자열 둘. 하나를 바꾸거나, 의도한 역할 이름이면 캐스트 항목에 `sharedName: true`를 적으세요. |
 | `E-PLUGIN-STAMP-SURFACE` | 0.50. `stampAttrs`의 `on:`이 `line`, `branch`, `hub`, `choice`, 또는 해결된 프로필의 스탬프 가능한 디렉티브가 아닌 것을 지정합니다(오타, `jump`/`label`/`clear`, 비활성 플러그인의 디렉티브). 이름을 고치거나 그 디렉티브를 선언한 플러그인을 `depends:`에 넣으세요. |
 | `E-DIAGNOSTICS-CONFIG` | 0.50. `lute.project.yaml`의 `diagnostics:` 항목이 잘못되었거나 허용되지 않습니다: `E-*`나 `L-*` 코드, 알 수 없는 코드, 잘못된 level, 잘못된 `paths`. 단계를 바꿀 수 있는 것은 `W-*` 코드뿐입니다. |
-| `E-JUMP-MAX` / `E-JUMP-LOOP-SCOPE` / `E-JUMP-INTO-LOOP` / `E-JUMP-LOOP-CROSS` | 0.51. `max`가 1~99의 정수 리터럴이 아니거나 앞으로 가는 점프에 붙었습니다. 루프가 자기 본문을 벗어나거나 `<on>`/`<objective>`를 포함합니다. 앞으로 가는 점프가 루프의 머리 뒤로 들어갑니다. 두 루프가 중첩되지 않고 겹칩니다. |
+| `E-JUMP-MAX` / `E-JUMP-LOOP-SCOPE` / `E-JUMP-INTO-LOOP` / `E-JUMP-LOOP-CROSS` | 0.51. `max`가 1~99의 정수 리터럴이 아니거나 앞으로 가는 점프에 붙었습니다. 루프가 자기 본문을 벗어납니다. 앞으로 가는 점프가 루프의 머리 뒤로 들어갑니다. 두 루프가 중첩되지 않고 겹칩니다. |
+| `E-JUMP-INTO-BODY` | 0.52. `::jump`가 자기 range로 실행되는 본문(허브 옵션·`<return>`, `<on>`·`<objective>` 본문, 엔트리, 비트)으로 바깥에서 들어갑니다. 허브 본문에서 허브 뒤의 레이블로 나가는 점프는 허용되며 허브를 떠납니다. |
+| `E-INTERP-BRACE` | 0.52. 줄 텍스트에서 `{{…}}` 마커 바로 앞에 리터럴 `{`(홀수 개)가 있거나, 평범한 `{{`로 끝나는 `::use` 인자가 마커 앞에 끼워집니다. 둘 사이에 글자를 넣거나 `\\{{`를 넘기세요. |
+| `E-OBJECTIVE-TITLE-INTERP` | 0.52. `<objective title>`에 `{{`가 있습니다. 제목은 쓰인 그대로 보입니다. 평문으로 쓰세요. |
 | `E-PLUGIN-RAISES` / `E-RAISES-TARGET` / `W-OCCASION-NEVER-RAISED` | 0.51. `raises` 항목이 알 수 없는 occasion이나 잘못된 꼴의 target을 가리킵니다. 해석된 raise target이 도메인 밖이거나 어떤 장면·비트도 응답하지 않습니다. `raisedBy: declared` occasion에 응답하는 쪽이 있는데 아무것도 던지지 않습니다. |
 | `E-LINE-CODE-RESERVED` / `E-LINE-ID-DUP` | 0.51. `code`에 `~`가 있습니다. 두 로컬라이제이션 단위가 같은 최종 `lineId`를 가집니다. |
 | `W-ENTRY-WRITE-REREAD` | 0.26.0. 한 런에서 다시 읽힐 수 있는 엔트리(조회 엔트리, `once` 없음, 런보다 짧은 `once`, `spentBy`, `for`)가 `::set`, `::retract`, 또는 쓰기 효과만 가진 디렉티브를 씁니다: 쓰기는 한 런에서 처음 읽을 때만 적용됩니다. 반복되는 쓰기는 `<beat … once="false">`에, 아니면 `once="run"`이나 `when="!entry.<id>.read"` 가드를 쓰세요. `::assert`는 제외입니다. |

@@ -25,6 +25,7 @@ pub struct SemanticEntry {
 
 const CORE: SemanticId = SemanticId("lute.core/1");
 const BOUNDED_JUMP: SemanticId = SemanticId("lute.core.boundedJump/1");
+const HUB_LEAVE: SemanticId = SemanticId("lute.core.hubLeave/1");
 const STAGING: SemanticId = SemanticId("lute.staging/1");
 const TIMELINE: SemanticId = SemanticId("lute.timeline/1");
 const QUEST_LIFECYCLE: SemanticId = SemanticId("lute.quest.lifecycle/1");
@@ -51,6 +52,11 @@ pub const REGISTRY: &[SemanticEntry] = &[
         id: BOUNDED_JUMP,
         module: "core",
         behavior: "bounded backward jumps",
+    },
+    SemanticEntry {
+        id: HUB_LEAVE,
+        module: "core",
+        behavior: "jumps that leave a hub",
     },
     SemanticEntry {
         id: STAGING,
@@ -153,6 +159,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "assetId",
     "at",
     "atom",
+    "attrs",
     "authored",
     "beat",
     "body",
@@ -238,6 +245,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "labels",
     "last",
     "layout",
+    "leaves",
     "length",
     "lhs",
     "lineId",
@@ -286,6 +294,7 @@ pub const FIELD_TABLE: &[&str] = &[
     "priority",
     "prompt",
     "promptLineId",
+    "promptPlaceholders",
     "promptTexts",
     "provenance",
     "quest",
@@ -641,6 +650,8 @@ fn collect_command(out: &mut Collected, command: &Command) {
         }
         Command::Choice(c) => {
             out.add(CORE, Some(&c.position), "choice command");
+            // dsl 0.52.0 §6.2: a prompt's placeholders read as a label's.
+            scan_placeholders(out, &c.prompt_placeholders, Some(&c.position));
             for option in &c.options {
                 if let Some(pair) = &option.when {
                     scan_cel(out, pair, Some(&c.position), "choice option guard");
@@ -661,6 +672,7 @@ fn collect_command(out: &mut Collected, command: &Command) {
         }
         Command::Hub(c) => {
             out.add(CORE, Some(&c.position), "hub command");
+            scan_placeholders(out, &c.prompt_placeholders, Some(&c.position));
             for option in &c.options {
                 if let Some(pair) = &option.when {
                     scan_cel(out, pair, Some(&c.position), "hub option guard");
@@ -676,6 +688,11 @@ fn collect_command(out: &mut Collected, command: &Command) {
             // meaning — its own id.
             if c.max.is_some() {
                 out.add(BOUNDED_JUMP, Some(&c.position), "bounded jump");
+            }
+            // dsl 0.52.0 §5.2 (D5): an engine that ignores `leaves` presents
+            // the hub again instead of leaving it — its own id.
+            if c.leaves.is_some() {
+                out.add(HUB_LEAVE, Some(&c.position), "hub leave");
             }
         }
         Command::End(c) => {
@@ -817,35 +834,51 @@ mod tests {
     use lute_ir::{DocKind, EnumEntry, PrereqEdgeEntry};
 
     #[test]
-    fn registry_has_all_seventeen_ids() {
-        assert_eq!(REGISTRY.len(), 17);
+    fn registry_has_all_eighteen_ids() {
+        assert_eq!(REGISTRY.len(), 18);
         assert!(REGISTRY
             .iter()
             .all(|entry| is_registered(entry.id.as_str())));
+    }
+
+    fn with_jump(max: Option<u8>, leaves: Option<u32>) -> Collected {
+        let mut ir = test_ir();
+        ir.commands.push(Command::Jump(crate::ir::JumpCmd {
+            position: "001-0300".into(),
+            target: "001-0100".into(),
+            max,
+            leaves: leaves.map(|n| {
+                lute_check::next_labels::HubLeave::new(n).expect("a test count is at least 1")
+            }),
+        }));
+        collect(&ir)
     }
 
     /// dsl 0.51.0 §3.6: `lute.core.boundedJump/1` only when a `jump` carries
     /// `max`; a forward or converge jump needs only the core id.
     #[test]
     fn bounded_jumps_are_collected_only_when_present() {
-        let with = |max: Option<u8>| {
-            let mut ir = test_ir();
-            ir.commands.push(Command::Jump(crate::ir::JumpCmd {
-                position: "001-0300".into(),
-                target: "001-0100".into(),
-                max,
-            }));
-            collect(&ir)
-        };
-        let forward = with(None);
+        let forward = with_jump(None, None);
         assert!(forward.ids.contains(CORE.as_str()));
         assert!(!forward.ids.contains(BOUNDED_JUMP.as_str()));
-        let bounded = with(Some(2));
+        let bounded = with_jump(Some(2), None);
         assert!(bounded.ids.contains(BOUNDED_JUMP.as_str()));
         assert_eq!(
             bounded.provenance[BOUNDED_JUMP.as_str()][0].what,
             "bounded jump"
         );
+    }
+
+    /// dsl 0.52.0 §5.2: `lute.core.hubLeave/1` only when a `jump` carries
+    /// `leaves`.
+    #[test]
+    fn hub_leaves_are_collected_only_when_present() {
+        let stays = with_jump(None, None);
+        assert!(!stays.ids.contains(HUB_LEAVE.as_str()));
+        let leaves = with_jump(None, Some(2));
+        assert!(leaves.ids.contains(HUB_LEAVE.as_str()));
+        assert!(!leaves.ids.contains(BOUNDED_JUMP.as_str()));
+        assert_eq!(leaves.provenance[HUB_LEAVE.as_str()][0].what, "hub leave");
     }
 
     #[test]
@@ -921,6 +954,7 @@ mod tests {
             asserts: vec![],
             accepts: vec![],
             raises: vec![],
+            attrs: BTreeMap::new(),
         };
         let without = quest(plain.clone());
         assert!(without.ids.contains(QUEST_REWARDS.as_str()));
@@ -937,6 +971,14 @@ mod tests {
         });
         assert!(raises_only.ids.contains(QUEST_REWARDS.as_str()));
         assert!(!raises_only.ids.contains(REWARD_EFFECTS.as_str()));
+        // 0.52.0 §7.4: a reward's `attrs` are descriptive — no new id.
+        let attrs_only = quest(RewardEntry {
+            attrs: [("rarity".to_string(), serde_json::json!("gold"))]
+                .into_iter()
+                .collect(),
+            ..plain.clone()
+        });
+        assert_eq!(attrs_only.ids, without.ids);
         for with in [
             RewardEntry {
                 accepts: vec!["second".into()],
@@ -1046,8 +1088,8 @@ mod tests {
     fn test_ir() -> ExecutionIr {
         ExecutionIr {
             kind: DocKind::Scene,
-            lute: "0.51.0".into(),
-            ir_version: "0.51.0".into(),
+            lute: "0.52.0".into(),
+            ir_version: "0.52.0".into(),
             capability_snapshot: "cap".into(),
             identity_renames: vec![],
             required_semantics: vec![],

@@ -121,6 +121,11 @@ pub const BRANCH_ATTRS: &[&str] = &["id", "prompt", "timeout", "default"];
 /// `<hub>`'s attributes (dsl 0.10.0 §4, + `prompt`, dsl 0.23.0 §4).
 pub const HUB_ATTRS: &[&str] = &["id", "prompt"];
 
+/// `<reward>`'s own attributes (dsl 0.16.0 §2, + `id`, dsl 0.37.0 §3.5).
+/// A reward kind's `attrs:` join them on a `<reward>` of that kind (0.52.0
+/// §7.2) and may not reuse one of these names (§7.1).
+pub const REWARD_ATTRS: &[&str] = &["id", "kind", "target", "amount", "when", "outcome"];
+
 /// A `<choice>`'s attributes inside a `<branch>` (dsl 0.10.0 D-L).
 pub const BRANCH_CHOICE_ATTRS: &[&str] = &["id", "text", "when", "into", "value"];
 
@@ -246,15 +251,22 @@ fn build_core_snapshot() -> Result<CapabilitySnapshot, CoreLoadError> {
 static CORE: LazyLock<Result<CapabilitySnapshot, CoreLoadError>> =
     LazyLock::new(build_core_snapshot);
 
-/// Load the embedded `lute.core` snapshot.
+/// The embedded `lute.core` snapshot, borrowed for the program's lifetime
+/// (for a holder that borrows a snapshot, such as a project document set).
 ///
 /// The assets are part of this crate and are validated by the manifest tests;
 /// a failure here indicates a broken binary rather than author input.
-pub fn load_core_snapshot() -> CapabilitySnapshot {
+pub fn core_snapshot() -> &'static CapabilitySnapshot {
     match &*CORE {
-        Ok(snapshot) => snapshot.clone(),
+        Ok(snapshot) => snapshot,
         Err(error) => panic!("{error}"),
     }
+}
+
+/// Load the embedded `lute.core` snapshot (an owned copy of
+/// [`core_snapshot`]).
+pub fn load_core_snapshot() -> CapabilitySnapshot {
+    core_snapshot().clone()
 }
 
 /// Fallible form of [`load_core_snapshot`] for callers that need controlled

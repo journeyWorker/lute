@@ -242,7 +242,7 @@ export interface CueFactoryShape {
    * does not know is a defect.
    */
   readonly fromOutput: (output: Output, readLines: ReadonlySet<string>, locale: string) => Effect.Effect<ReadonlyArray<Cue>>
-  /** Resolve authored choice text for a runtime await, in `locale` (translation, else source). */
+  /** The runtime-rendered choice text of an await (option labels, prompt), in `locale` (translation, else source); stamps from the bundle. */
   readonly choiceView: (await_: ChoiceAwait, locale: string) => ChoiceView
 }
 export type CueFactoryWrapper = (base: CueFactoryShape) => CueFactoryShape

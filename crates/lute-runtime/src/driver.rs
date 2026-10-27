@@ -87,6 +87,8 @@ pub struct Menu<'a> {
     /// one (`0` first). A branch: always `0` — a branch presented again is a
     /// new visit, and its scripted cursor lives in the driver.
     pub presentation: usize,
+    /// The prompt rendered at this presentation (0.52.0 §6.3), when authored.
+    pub prompt: Option<MenuText>,
     pub options: &'a [MenuOption],
     /// Branch timeout in seconds, when authored.
     pub timeout: Option<u32>,
@@ -98,9 +100,22 @@ pub struct Menu<'a> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct MenuOption {
     pub id: String,
+    /// The label rendered at this presentation (0.52.0 §6.3).
+    pub text: MenuText,
     pub verdict: Verdict,
     pub exit: bool,
     pub once: bool,
+}
+
+/// A menu text — an option label or a prompt — rendered at one presentation
+/// as a line is (0.52.0 §6.3): the source text with its `{{…}}` markers
+/// rendered (an unknown marker or a host token keeps its verbatim text), and
+/// each translation with the values the source gave its markers.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct MenuText {
+    pub text: String,
+    /// Locale tag → rendered translation; empty when the IR carries none.
+    pub texts: BTreeMap<String, String>,
 }
 
 /// An option's eligibility at a presentation point.

@@ -1,0 +1,13 @@
+# dsl 0.52.0 §5.3 (#216): `take` jumps past the hub, which ends the hub
+# visit; the scripted `leave` is never used. The branch after the hub is an
+# input point after the leave: the session conformance tests snapshot and
+# restore there and resume to the same outputs.
+choose:
+  desk: [take, leave]
+  confirm: done
+steps:
+  - occasion: visit
+    expect: { winner: hub, state: { scene.visited.desk.take: true } }
+expect:
+  end: complete
+  transcriptContains: ["Taking it, then jumping past the hub.", "After the hub.", "Done."]

@@ -128,7 +128,7 @@ fn project_codes(kinds: &str, body: &str) -> Vec<(String, String)> {
     let folded = lute_check::fold_env(&doc, &input).0;
     let path = std::path::PathBuf::from("dex.lute");
     let meta = folded.typed.clone();
-    let view = ProjectDoc::new(path.as_path(), &doc, &meta, &folded.snapshot.reward_kinds);
+    let view = ProjectDoc::new(path.as_path(), &doc, &meta, &folded.snapshot);
     let docs = vec![view];
     lute_check::check_project_beats(
         &docs,

@@ -173,9 +173,9 @@ Lute가 출력하는 모든 진단에는 코드가 붙습니다. `E-` 코드는 
 
 ### E-BRANCH-PROMPT
 
-`<branch prompt>` 또는 `<hub prompt>` 값이 없거나 빈 문자열입니다. 프롬프트는 UI가 그대로 보여주는, 비어 있지 않은 문장이어야 합니다.
+`<branch prompt>` 또는 `<hub prompt>` 값이 없거나 빈 문자열입니다. 프롬프트는 UI가 보여주는, 비어 있지 않은 문장이어야 합니다. 프롬프트의 `{{…}}` 마커는 선택지 문구처럼 렌더링됩니다.
 
-명세: [dsl 0.11.1 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.11.1.md), [dsl 0.23.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md)
+명세: [dsl 0.11.1 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.11.1.md), [dsl 0.23.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.23.0.md), [dsl 0.52.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-BRANCH-TIMEOUT
 
@@ -756,9 +756,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-GRAMMAR-NOT-ADMITTED
 
-문서가 해당 맥락에서 그 문서 종류의 문법이 금지하는 구성을 사용했습니다 — 예를 들어 씬 안의 `<quest>`, 퀘스트 본문 안의 `<hub>`/`<timeline>`, 로어 `<entry>` 안의 연출/선택지 등입니다.
+문서가 해당 맥락에서 그 문서 종류의 문법이 금지하는 구성을 사용했습니다 — 예를 들어 씬 안의 `<quest>`, 퀘스트 최상위의 `<on>`/`<objective>` 이외의 모든 것(퀘스트는 핸들러와 목표 본문만 실행합니다), 퀘스트 어디서든 `<hub>`/`<timeline>`, 로어 `<entry>` 안의 연출/선택지 등입니다.
 
-명세: [dsl 0.2.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.2.0 §6.7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.19.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md)
+명세: [dsl 0.2.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.2.0 §6.7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.2.0.md), [dsl 0.19.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.19.0.md), [dsl 0.52.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-HUB-NO-EXIT
 
@@ -777,6 +777,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 본문의 `# ` 제목은 문서 제목이 아닙니다. 값을 프런트매터 `title:`에 적으세요. 문서 제목은 그것 하나뿐입니다.
 
 명세: [dsl 0.37.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.37.0.md)
+
+### E-INTERP-BRACE
+
+줄 텍스트의 `{{…}}` 마커 바로 앞에 리터럴 `{`가 홀수 개 연달아 있어, 컴파일된 텍스트에서 마커와 구별되지 않습니다. 또는 일반 `{{`로 끝나는 `::use` 인자가 마커 바로 앞에 끼워져 그 마커를 삼킵니다. 둘 사이에 문자를 하나 넣거나, 중괄호를 문자열 상태 경로로 보여 주세요. 인자 안의 리터럴 `{{`는 `\\{{`로 씁니다.
+
+명세: [dsl 0.52.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-INTERP-DEF
 
@@ -818,6 +824,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 명세: [dsl 0.12.0](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.12.0.md), [dsl 0.51.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
+### E-JUMP-INTO-BODY
+
+`::jump`가 따로 실행되는 본문 — `<hub>` 선택지 본문이나 `<return>` 본문, `<on>`·`<objective>` 본문, 엔트리, 비트 — 안의 레이블을 그 본문 밖에서 가리킵니다. 점프는 자기 본문 안에 머물거나, `<hub>` 선택지·`<return>` 본문을 떠나 그 바깥 본문(허브 뒤)의 레이블로 갑니다. `<branch>`의 `<choice>` 본문과 `<match>` 갈래는 바깥 본문의 일부이고, 씬의 섹션들은 하나의 본문입니다.
+
+명세: [dsl 0.52.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
+
 ### E-JUMP-INTO-LOOP
 
 루프(`::label`과 그 뒤에서 그 레이블로 되돌아가는 `::jump{to max}`) 밖의 앞으로 가는 `::jump`가 루프 안, 머리 레이블보다 뒤의 레이블에 도착합니다. 루프에는 머리 레이블로만 들어갈 수 있습니다.
@@ -832,7 +844,7 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-JUMP-LOOP-SCOPE
 
-`max`가 있는 `::jump{to max}`가 자신이 실행되는 본문 밖의 레이블로 되돌아갑니다. 루프는 `<branch>`의 `<choice>` 본문과 `<match>` 갈래만 지날 수 있고, `<hub>` 선택지나 `<return>` 본문, `<on>`·`<objective>` 본문, 퀘스트, 엔트리, 비트, 섹션을 벗어날 수 없습니다. 또 퀘스트 최상위의 `<on>`이나 `<objective>`를 가로지를 수도 없습니다. 각각 따로 실행되기 때문입니다.
+`max`가 있는 `::jump{to max}`가 자신이 실행되는 본문 밖의 레이블로 되돌아갑니다. 루프는 `<branch>`의 `<choice>` 본문과 `<match>` 갈래만 지날 수 있고, `<hub>` 선택지나 `<return>` 본문, `<on>`·`<objective>` 본문, 퀘스트, 엔트리, 비트, 섹션을 벗어날 수 없습니다.
 
 명세: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
 
@@ -990,7 +1002,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 디렉티브에 선언된 스키마가 요구하는 속성이 빠져 있습니다. 0.50.0부터는 `required: true`인 플러그인 스탬프(`on:`이 있는 항목만 가능)가 그 표면에 작성되지 않은 경우도 해당하며, 디렉티브와 콘텐츠 줄은 그 머리 span에서, `<branch>`/`<hub>`/`<choice>`는 요소 전체 span(`E-DUP-BRANCH`와 같은 span)에서 보고합니다. 컴포넌트 본문에서도 적용되고, `::use`로 삽입되는 줄은 컴포넌트에서 한 번만 검사합니다. 선언된 `default:`는 보지 않습니다(스탬프는 주입되지 않습니다). 메시지: `` `::bg` requires attribute `assetName` (a stamp of `acme.stage`) ``, `` this content line requires attribute `voiceAssetId` (a stamp of `acme.stage` for content lines) ``, `` `<choice id="goLeft">` requires attribute `optionKey` (a stamp of `acme.stage`) ``.
 
-명세: [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md)
+0.52.0부터 `<reward>`가 보상 종류에 `required: true`로 선언된 속성을 쓰지 않은 경우도 이 코드이며, `<reward>` 요소에서 보고합니다. 선언된 `default:`는 `required`를 채우지 않습니다: `` `<reward kind="SEALED">` requires attribute `seal` ``.
+
+명세: [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.52.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-MOCK-SUBJECT
 
@@ -1037,6 +1051,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 ### E-OBJECTIVE-QUEST-DONE
 
 `<objective>`가 `quest=` 하위 퀘스트 참조와 비어 있지 않은 `done=` 조건을 동시에 가지고 있는데, 이 둘은 함께 쓸 수 없습니다.
+
+### E-OBJECTIVE-TITLE-INTERP
+
+`<objective title>`에 `{{`가 있습니다(이스케이프 여부와 상관없이). 퀘스트 UI는 제목을 쓰인 그대로 보여주므로 제목에는 `{{…}}`를 쓸 수 없습니다. 제목은 평문으로 쓰고, 바뀌는 값은 대사로 보여주세요.
+
+명세: [dsl 0.52.0 §6.7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-OBJECTIVE-UNSATISFIABLE
 
@@ -1208,7 +1228,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 0.51.0부터 `lints/` 규칙의 키가 대상에 맞지 않는 경우(`target: pair`의 `when`, `open`이나 `close`가 없는 `pair` 규칙, 다른 대상의 `open`·`close`·`inside`·`scope`)도 이 코드입니다.
 
-명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.51.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+0.52.0부터 보상 종류의 `attrs:` 항목이 디렉티브 속성 선언 규칙을 어기면 이 코드이며, 그 항목의 줄에서 보고합니다: `<reward>`가 이미 가진 이름(`id`, `kind`, `target`, `amount`, `when`, `outcome`, `` reward kind `BADGE` declares attribute `amount`, which `<reward>` already has (…) — give it another name ``), 같은 이름의 반복(`` … declares attribute `rarity` more than once — keep one declaration ``), 선언한 타입이 아닌 `default:`(`` … declares attribute `rarity` as `string` with `default: 3`, which is not of type `string` — give a default of the declared type ``), `list`·`map`·`record` 타입. 또한 보상 종류의 `effects`는 이제 종류가 선언한 속성도 `@<attr>`로 읽으므로, 위의 `@target` 외 `@attr` 원인은 `@target`도 선언된 속성도 아닌 경우에만 해당하고 메시지가 바뀌었습니다: `` reward kind `BADGE` effect `badge(@rarty)` reads `@rarty`, but the kind declares no such attribute (declared: target, rarity); did you mean `@rarity`? ``(raise 대상도 같은 문장).
+
+명세: [dsl 0.27.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.27.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.27.0.md), [dsl 0.28.0 §7](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.28.0.md), [dsl 0.50.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.50.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.51.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §4.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.51.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.52.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md), [dsl 0.52.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-PLUGIN-RAISES
 
@@ -1473,7 +1495,9 @@ def를 호출하는 `@name(args)`에 def가 선언한 매개변수 타입과 맞
 
 `<reward>` 요소의 형식이 잘못되었습니다: 비어 있거나 없는 `kind`, 부호 있는 정수나 올바른 `N..M` 범위가 아닌 `amount=`, objective 수준 reward에 쓰인 `outcome=`이나 `"failed"`가 아닌 `outcome=` 값, 또는 따옴표로 감싼 id가 아닌 `target=`(IR에 실을 수 없는 `@ref`나 값 없는 `target`)입니다.
 
-명세: [dsl 0.16.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.16.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.49.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+0.52.0부터 보상 종류가 선언한 속성을 `@ref`로 쓴 경우도 이 코드입니다. 보상의 속성은 엔진이 지급에 쓰는 정적 데이터이므로 따옴표 값으로 씁니다: `` `<reward rarity=@r>`: a reward's attributes are static data the engine grants against — write a quoted value (`rarity="…"`) ``.
+
+명세: [dsl 0.16.0 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.16.0 §6](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.16.0.md), [dsl 0.49.0 §3.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.52.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-REWARD-DUP
 
@@ -1676,9 +1700,9 @@ state 경로를 읽는 지점에 도달하는 어떤 선언된 `after:` 경로�
 
 ### E-STRING-ESCAPE
 
-따옴표로 묶인 속성 값이 정의된 네 가지 이스케이프(`\"`, `\\`, `\n`, `\t`) 외의 백슬래시 이스케이프를 사용합니다.
+따옴표로 묶인 속성 값이 정의된 네 가지 이스케이프(`\"`, `\\`, `\n`, `\t`) 외의 백슬래시 이스케이프를 사용하거나, 레이블 문법을 따르지 않는 값에 `\{{`(리터럴 `{{`)를 씁니다. 레이블 문법을 따르는 값은 `<choice text>`, `prompt`, 플러그인 `text` 속성뿐입니다.
 
-명세: [dsl §4.4](/ko/spec/)
+명세: [dsl §4.4](/ko/spec/), [dsl 0.52.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-SUBQUEST-REARM
 
@@ -1864,7 +1888,9 @@ CEL 슬롯, `::set` 대상, 또는 규칙 가드가 어떤 스키마에도 선�
 
 0.51.0부터 `text` 속성이 없는 디렉티브의 `code=`는 이유를 알려 줍니다: `` `::bg` has no attribute `code`; its attributes are …; `code` is the localization identity of a directive with a `text` attribute, and `::bg` declares none ``.
 
-명세: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.51.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+0.52.0부터 `<reward>`는 보상 종류가 `attrs:`에 선언한 속성을 받습니다(디렉티브 속성처럼 타입을 검사합니다). 그런 종류의 `<reward>`에서는 메시지가 선언된 속성도 나열합니다: `` `<reward>` has no attribute `rarety` — did you mean `rarity`?; its attributes are `id`, `kind`, `target`, `amount`, `when`, `outcome`, and kind `BADGE` declares `rarity` ``. 속성을 선언하지 않은 종류나 알 수 없는 종류에서는 메시지가 그대로입니다.
+
+명세: [dsl 0.1.0 §7.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.1.0.md), [dsl 0.49.0 §4.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.50.0 §3.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.50.0.md), [dsl 0.51.0 §5.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.52.0 §7.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
 
 ### E-UNKNOWN-DIRECTIVE
 

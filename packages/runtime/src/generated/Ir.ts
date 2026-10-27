@@ -1,6 +1,6 @@
 // THIS FILE IS GENERATED — DO NOT EDIT.
 // Generator: packages/runtime/scripts/contract-codegen.ts
-// Source: schemas/lute-ir-0.51.schema.json
+// Source: schemas/lute-ir-0.52.schema.json
 
 import * as Schema from "effect/Schema";
 
@@ -666,7 +666,8 @@ export const rewardEntry = Schema.Struct({
   "retracts": Schema.optionalKey(Schema.Array(Schema.suspend(() => factRecord))),
   "asserts": Schema.optionalKey(Schema.Array(Schema.suspend(() => factRecord))),
   "accepts": Schema.optionalKey(Schema.Array(Schema.String)),
-  "raises": Schema.optionalKey(Schema.Array(Schema.suspend(() => raiseRecord)))
+  "raises": Schema.optionalKey(Schema.Array(Schema.suspend(() => raiseRecord))),
+  "attrs": Schema.optionalKey(Schema.Json)
 });
 export type rewardEntry = typeof rewardEntry.Type;
 
@@ -983,6 +984,7 @@ export const cmdChoice = Schema.Struct({
   "prompt": Schema.optionalKey(Schema.String),
   "promptLineId": Schema.optionalKey(Schema.String),
   "promptTexts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  "promptPlaceholders": Schema.optionalKey(Schema.Array(Schema.suspend(() => placeholder))),
   "timeout": Schema.optionalKey(Schema.Int
   .pipe(
     Schema.check(Schema.isGreaterThanOrEqualTo(1))
@@ -1027,6 +1029,7 @@ export const cmdHub = Schema.Struct({
   "prompt": Schema.optionalKey(Schema.String),
   "promptLineId": Schema.optionalKey(Schema.String),
   "promptTexts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  "promptPlaceholders": Schema.optionalKey(Schema.Array(Schema.suspend(() => placeholder))),
   "return": Schema.optionalKey(Schema.suspend(() => position)),
   "timing": Schema.optionalKey(Schema.suspend(() => timing)),
   "provenance": Schema.optionalKey(Schema.suspend(() => provenance)),
@@ -1044,6 +1047,10 @@ export const cmdJump = Schema.Struct({
   "position": Schema.suspend(() => position),
   "target": Schema.suspend(() => position),
   "max": Schema.optionalKey(Schema.Int
+  .pipe(
+    Schema.check(Schema.isGreaterThanOrEqualTo(1))
+  )),
+  "leaves": Schema.optionalKey(Schema.Int
   .pipe(
     Schema.check(Schema.isGreaterThanOrEqualTo(1))
   ))

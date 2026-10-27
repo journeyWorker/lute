@@ -1,5 +1,5 @@
 //! `lute-bench flow-loops`: the loop-head fixed point cost grid (dsl 0.51.0
-//! §3.4, §3.8).
+//! §3.4, §3.8) and the hub head axis (dsl 0.52.0 §5.4).
 //!
 //! Generated scenes, each a nest of bounded loops: every loop's region holds
 //! `R` nodes of its own — its head label, a show of `mira`, lines, her exit,
@@ -16,6 +16,14 @@
 //!
 //! A control point, the R = 100 document without a loop (a forward jump and
 //! its label instead), must record no head and no probe work in any walk.
+//!
+//! The `hub` axis: a nest of hubs of `R` non-exit options each (a show of
+//! `mira`, a line, her exit — so the hub head changes once) and one exit
+//! option, the next hub nested in the first option, to depth `D`; points
+//! R ∈ {8, 16, 32} at D = 1 and D ∈ {2, 3} at R = 8. Only the stage walks
+//! iterate a hub head. Each doubling of R costs ≤ 2.3× in work (gated);
+//! its time ratio is reported, not gated. Every point is within the product
+//! bound above, `Nₖ` the size of the depth-`k` hub.
 //!
 //! Each point runs the walks on the calling thread — `check()` (definite
 //! assignment, the stage fold, cast presence), the project fact pass
@@ -163,11 +171,24 @@ fn run(samples: usize, check: Check) -> Report {
     for d in [1, 2, 3] {
         points.push(measure("depth", 100, d, samples));
     }
+    for r in [8, 16, 32] {
+        points.push(measure("hub", r, 1, samples));
+    }
+    for d in [2, 3] {
+        points.push(measure("hub", 8, d, samples));
+    }
     let mut pass = points[0]
         .walks
         .iter()
         .all(|w| w.heads == 0 && w.probe_nodes == 0);
-    for (from, to) in [(1, 2), (2, 3)] {
+    // The region axis gates work and (with `--check both`) time; the hub
+    // axis gates work and reports time.
+    for (axis, from, to) in [
+        ("region", 1, 2),
+        ("region", 2, 3),
+        ("hub", 7, 8),
+        ("hub", 8, 9),
+    ] {
         let (a, b) = (&points[from], &points[to]);
         #[expect(
             clippy::cast_precision_loss,
@@ -176,7 +197,7 @@ fn run(samples: usize, check: Check) -> Report {
         let work = b.work as f64 / a.work as f64;
         let time = b.best_ms / a.best_ms;
         let ratio = Ratio {
-            axis: "region",
+            axis,
             from: label(a),
             to: label(b),
             bound: DOUBLING,
@@ -185,7 +206,8 @@ fn run(samples: usize, check: Check) -> Report {
             work_within: work <= DOUBLING,
             time_within: time <= DOUBLING,
         };
-        pass &= ratio.work_within && (check == Check::Work || ratio.time_within);
+        let time_gated = axis == "region" && check == Check::Both;
+        pass &= ratio.work_within && (!time_gated || ratio.time_within);
         ratios.push(ratio);
     }
     for p in &points {
@@ -195,7 +217,7 @@ fn run(samples: usize, check: Check) -> Report {
             .all(|w| w.widened == 0 && w.probe_nodes <= w.product_bound);
     }
     Report {
-        schema_version: "0.51.0.flow-loops",
+        schema_version: "0.52.0.flow-loops",
         samples,
         points,
         ratios,
@@ -247,7 +269,7 @@ fn input_for(text: &str) -> CheckInput {
 /// The inputs of the project fact pass over the one document, built once
 /// per point (outside the timed phases).
 struct FactPass {
-    docs: ProjectDocs,
+    docs: ProjectDocs<'static>,
     folded: lute_check::FoldedEnv,
     graph: lute_check::connectivity::ConnGraph,
     vocab: RootVocab,
@@ -261,7 +283,7 @@ impl FactPass {
         let (folded, _, _) = fold_env(&doc, input);
         let docs = ProjectDocs::parse(
             vec![(path.clone(), doc)],
-            &lute_manifest::core::load_core_snapshot(),
+            lute_manifest::core::core_snapshot(),
         );
         let views = docs.views();
         let key_set = scene_key_set(&views);
@@ -307,7 +329,11 @@ impl FactPass {
 }
 
 fn measure(axis: &'static str, r: usize, d: usize, samples: usize) -> Point {
-    let (text, region_nodes, sizes) = document(r, d);
+    let (text, region_nodes, sizes) = if axis == "hub" {
+        hub_document(r, d)
+    } else {
+        document(r, d)
+    };
     let input = input_for(&text);
     let checked = check(&input);
     assert!(
@@ -382,14 +408,7 @@ fn document(r: usize, d: usize) -> (String, usize, Vec<usize>) {
     /// The nodes of a region that are not its lines: label, show, exit,
     /// retract and jump.
     const FIXED: usize = 5;
-    let mut out = String::from(
-        "---\nkind: scene\nid: grid\nentities:\n  person: { members: [mira] }\n\
-         relations:\n  met: { args: [person], tier: run }\n\
-         state:\n  run.f: { type: bool, default: false }\n\
-         enums:\n  action:\n    members: [show, hide]\n    exits: [hide]\n  \
-         anchor:\n    members: [left, center, right]\n    default: center\n\
-         ---\n## Shot 1.\n::assert{met(mira)}\n::actor{character=\"mira\" action=\"show\"}\n",
-    );
+    let mut out = format!("{FRONT}{START}");
     let lines = r.saturating_sub(FIXED);
     let mut line = 0usize;
     let mut next_line = |out: &mut String| {
@@ -431,6 +450,52 @@ fn document(r: usize, d: usize) -> (String, usize, Vec<usize>) {
     (out, sizes[0], sizes)
 }
 
+/// The scene's start: `mira` met (so the presence walk admits her) and shown.
+const START: &str = "::assert{met(mira)}\n::actor{character=\"mira\" action=\"show\"}\n";
+
+/// The scene's front matter and heading, shared by both generators.
+const FRONT: &str = "---\nkind: scene\nid: grid\nentities:\n  person: { members: [mira] }\n\
+                     relations:\n  met: { args: [person], tier: run }\n\
+                     state:\n  run.f: { type: bool, default: false }\n\
+                     enums:\n  action:\n    members: [show, hide]\n    exits: [hide]\n  \
+                     anchor:\n    members: [left, center, right]\n    default: center\n\
+                     ---\n## Shot 1.\n";
+
+/// The `hub` axis scene of point `(r, d)`: a nest of `d` hubs of `r`
+/// non-exit options and one exit option, the next hub in the first option;
+/// as [`document`], the outermost hub's node count and each depth's.
+fn hub_document(r: usize, d: usize) -> (String, usize, Vec<usize>) {
+    use std::fmt::Write as _;
+
+    fn hub(out: &mut String, k: usize, r: usize, d: usize) {
+        writeln!(out, "<hub id=\"h{k}\">").expect("a String accepts writes");
+        for i in 0..r {
+            writeln!(out, "<choice id=\"o{i}\" text=\"Option {i}.\">")
+                .expect("a String accepts writes");
+            if i == 0 && k < d {
+                hub(out, k + 1, r, d);
+            }
+            writeln!(
+                out,
+                "::actor{{character=\"mira\" action=\"show\"}}\n@mira: Line {k}.{i}.\n\
+                 ::actor{{character=\"mira\" action=\"hide\"}}\n</choice>"
+            )
+            .expect("a String accepts writes");
+        }
+        out.push_str(
+            "<choice id=\"leave\" text=\"Leave.\" exit>\n@narrator: Bye.\n</choice>\n</hub>\n",
+        );
+    }
+
+    let mut out = format!("{FRONT}{START}");
+    hub(&mut out, 1, r, d);
+    out.push_str("@narrator: Done.\n");
+    // The hub node, three nodes per option, the exit option's line.
+    let own = 3 * r + 2;
+    let sizes: Vec<usize> = (1..=d).map(|k| own * (d - k + 1)).collect();
+    (out, sizes[0], sizes)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -444,5 +509,14 @@ mod tests {
         let (control, _, none) = document(100, 0);
         assert!(none.is_empty());
         assert!(!control.contains("max="));
+    }
+
+    #[test]
+    fn a_hub_holds_r_options_and_an_exit() {
+        let (text, outer, sizes) = hub_document(8, 2);
+        assert_eq!((outer, sizes), (52, vec![52, 26]));
+        assert_eq!(text.matches("<hub ").count(), 2);
+        assert_eq!(text.matches("<choice ").count(), 18);
+        assert_eq!(text.matches(" exit>").count(), 2);
     }
 }

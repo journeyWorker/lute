@@ -277,7 +277,7 @@ fn a_reward_kind_raise_reads_only_an_allowed_target() {
     assert!(
         got[0]
             .1
-            .contains("reward kind `SHOW` raises `cutscene` for `@scene`; a reward kind's raise targets `@target`"),
+            .contains("reward kind `SHOW` raises `cutscene` for `@scene`, but the kind declares no such attribute (declared: target)"),
         "{got:?}"
     );
     // 0.50's forbidden-target rule covers a raise.

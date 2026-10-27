@@ -480,9 +480,7 @@ fn project(texts: &[(&str, &str)], snapshot: CapabilitySnapshot) -> Project {
     let views: Vec<_> = docs
         .iter()
         .zip(&foldeds)
-        .map(|((path, doc), folded)| {
-            ProjectDoc::new(path, doc, &folded.typed, &folded.snapshot.reward_kinds)
-        })
+        .map(|((path, doc), folded)| ProjectDoc::new(path, doc, &folded.typed, &folded.snapshot))
         .collect();
     let key_set = scene_key_set(&views);
     let quest_ids = quest_id_set(&views);
@@ -539,7 +537,7 @@ impl Project {
             .iter()
             .zip(&self.foldeds)
             .map(|((path, doc), folded)| {
-                ProjectDoc::new(path, doc, &folded.typed, &folded.snapshot.reward_kinds)
+                ProjectDoc::new(path, doc, &folded.typed, &folded.snapshot)
             })
             .collect();
         check_project_beats(

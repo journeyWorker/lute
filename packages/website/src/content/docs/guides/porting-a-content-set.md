@@ -664,8 +664,8 @@ node, so this loop asks at most three times (once, then two retries).
   its message now names `max` and the `<hub>` for offering choices again.
 - **`when=` and `max` combine:** the jump is taken while `when` holds and takes remain.
 - **A loop stays in one body.** The label must be in the jump's own body, or in a body that encloses it through
-  `<choice>` bodies of a `<branch>` or `<match>` arms only. A label outside the `<hub>` option the jump is in, or a
-  region that contains an `<on>` or `<objective>`, is `E-JUMP-LOOP-SCOPE`.
+  `<choice>` bodies of a `<branch>` or `<match>` arms only. A label outside the `<hub>` option the jump is in is
+  `E-JUMP-LOOP-SCOPE`.
 - **A loop is entered only at its head.** A forward jump from outside to a label inside the loop after its head is
   `E-JUMP-INTO-LOOP`. A forward jump to the head, and a jump out of the loop, are fine.
 - **Loops nest, they never cross.** Two loops either nest or are disjoint, or it is `E-JUMP-LOOP-CROSS` at the later
@@ -762,8 +762,8 @@ raises `cutscene` for `scene.chapter2`.
 Every analysis reads a declared raise as **possible, never guaranteed**: the host may refuse it at the occasion's
 gate, so a raise adds no fact, write or must-claim in the answering scene. `lute scenario` and
 `lute scenario reach` draw a `[raises]` edge from the raiser to every answering scene and beat, and a scene that
-declares `after:` keeps `after:` as its route. (`lute impact` reads the semantic model graph and follows neither
-`[raises]` nor `[accept]` edges; #210.) The [flow-and-text example](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text):
+declares `after:` keeps `after:` as its route. (Since 0.52 `lute impact` follows
+`[raises]` and `[accept]` edges too; #210.) The [flow-and-text example](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text):
 
 ```console
 $ lute scenario --project docs/examples/flow-and-text
@@ -802,8 +802,8 @@ directives:
 ```
 
 - A `text` value is a quoted string in the choice-label grammar: `{{…}}` interpolations of state paths, `@def`s and
-  host tokens, each checked as in a label. A literal `{{` cannot be written in it yet (`\{{` is `E-STRING-ESCAPE`
-  in a quoted attribute; #211). An `@ref` value is `E-ATTR-TYPE`.
+  host tokens, each checked as in a label. `\{{` writes a literal `{{` (since 0.52, #211; on 0.51 it was
+  `E-STRING-ESCAPE`). An `@ref` value is `E-ATTR-TYPE`.
 - `text` is admitted only on an attribute of a directive that stays a `plugin` record: no `lower:` and no
   `bridge:`. It cannot have a `default:`, and it is not a type for stamps, plugin options, payloads or reward-kind
   attributes. A directive with a `text` attribute cannot declare an attribute named `code`. Each fault is

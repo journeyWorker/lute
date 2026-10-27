@@ -70,7 +70,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::schema::Lowering;
 use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
-use lute_syntax::ast::{Attr, AttrValue, Directive, Line, Node};
+use lute_syntax::ast::{Attr, AttrValue, Choice, Directive, Hub, Line, Node};
 
 /// A resolved declarative-lowering field. Only string and boolean record
 /// fields are bindable; absent or malformed sources stay absent.
@@ -264,6 +264,28 @@ pub struct SpriteState {
     pub pose: Option<String>,
     /// Current emotion sprite (`delighted`, `neutral`, …).
     pub emotion: Option<String>,
+    /// On stage on every route to here, with a sprite the routes disagree on
+    /// ([`StageState::join`], #222): the other fields are `None`, and an
+    /// `::actor` here injects what a fresh show does (anchor, preload).
+    pub unknown: bool,
+}
+
+impl SpriteState {
+    /// The sprite of a character present on every joined route: the one
+    /// they all agree on, else [`Self::unknown`].
+    fn merge<'s>(mut sprites: impl Iterator<Item = &'s SpriteState>) -> SpriteState {
+        let Some(first) = sprites.next() else {
+            return SpriteState::default();
+        };
+        if sprites.all(|s| s == first) {
+            first.clone()
+        } else {
+            SpriteState {
+                unknown: true,
+                ..SpriteState::default()
+            }
+        }
+    }
 }
 
 /// Explicit, typed scene state threaded through the reducer — the arch doc's
@@ -321,10 +343,11 @@ impl StageState {
     /// arms; dsl 0.22.0 §12), with the fact must-set discipline: the join
     /// claims only what holds on EVERY incoming path.
     ///
-    /// * `on_stage`: a character is present only if present in every arm with
-    ///   an identical `SpriteState`; differing or partial → dropped (that
-    ///   encodes `Unknown`: a later plain line assumes no pose — no false
-    ///   posReset — and a later `::actor` is a fresh show → anchor + preload).
+    /// * `on_stage`: a character is present only if present in every arm.
+    ///   Identical sprites carry; differing ones merge to an unknown sprite
+    ///   ([`SpriteState::unknown`], #222): presence-driven injections
+    ///   (`auto-pose-reset`) still follow, and a later `::actor` injects
+    ///   like a fresh show (anchor + preload), the conservative side.
     /// * `dirty` survives for a carried character if ANY arm marks it (a
     ///   redundant posReset beats a missing one — a `variant`/`dialogMotion`-
     ///   only line dirties without changing `SpriteState`).
@@ -345,13 +368,14 @@ impl StageState {
         for e in &mut exits {
             joined.diags.append(&mut e.diags);
         }
-        'chars: for (ch, sprite) in &first.on_stage {
+        'chars: for ch in first.on_stage.keys() {
             for e in &exits[1..] {
-                if e.on_stage.get(ch) != Some(sprite) {
+                if !e.on_stage.contains_key(ch) {
                     continue 'chars;
                 }
             }
-            joined.on_stage.insert(ch.clone(), sprite.clone());
+            let sprite = SpriteState::merge(exits.iter().filter_map(|e| e.on_stage.get(ch)));
+            joined.on_stage.insert(ch.clone(), sprite);
         }
         let kept: Vec<String> = joined.on_stage.keys().cloned().collect();
         for ch in kept {
@@ -389,7 +413,7 @@ impl StageState {
 
     /// This state without its diagnostics: a copy one route carries to a
     /// label (the diagnostics stay with the walk that raised them).
-    fn bare(&self) -> StageState {
+    pub(crate) fn bare(&self) -> StageState {
         StageState {
             on_stage: self.on_stage.clone(),
             dirty: self.dirty.clone(),
@@ -421,9 +445,11 @@ impl StageState {
 ///   jump without `max` leaves no fall-through, a guarded one falls through,
 ///   a bounded one is a back edge);
 /// - [`StageFlow::label`] joins the pending states into the fall-through
-///   state with [`StageState::join`], and at a loop head iterates the
 ///   region with the checker's fold run without emission until the head is
-///   stable — the one head-state function both walks call.
+///   stable — the one head-state function both walks call;
+/// - [`StageFlow::hub`] is the same iteration at a `<hub>` (dsl 0.52.0
+///   §5.4): the state at its options is the hub head, the fixed point of
+///   the hub's re-presentation edge.
 ///
 /// A walk's diagnostics collect in [`StageFlow::diags`] as it goes, so the
 /// states the routing copies and joins carry none. A `::use` body (the
@@ -444,6 +470,9 @@ pub struct StageFlow<'a> {
     probing: Option<String>,
     /// The component scopes entered, innermost last: each one's loops.
     scopes: Vec<crate::next_labels::LoopTable>,
+    /// How many hub option / `<return>` bodies the walk is inside: there an
+    /// unguarded `::end` ends the route ([`Self::ends`]).
+    hub_bodies: usize,
     /// The pending maps of the enclosing scopes.
     outer: Vec<BTreeMap<String, StageState>>,
     /// Each component's loops, computed once.
@@ -493,6 +522,7 @@ impl<'a> StageFlow<'a> {
             pending: BTreeMap::new(),
             probing: None,
             scopes: Vec::new(),
+            hub_bodies: 0,
             outer: Vec::new(),
             component_loops: BTreeMap::new(),
             using: Vec::new(),
@@ -615,39 +645,142 @@ impl<'a> StageFlow<'a> {
             state.map(|mut entry| {
                 let diags = std::mem::take(&mut entry.diags);
                 let region = &rest[..crate::loop_walk::region_len(rest, id)];
-                let mut head = self.head(id, entry, region);
+                let mut head = self.head(id, entry, HeadAt::Loop(region));
                 head.diags = diags;
                 head
             })
         } else {
             state
         };
-        if self.probing.is_none() {
-            LABEL_LOG.with(|log| {
-                if let Some(log) = log.borrow_mut().as_mut() {
-                    log.push(StageLabel {
-                        kind: self.kind,
-                        label: id.to_string(),
-                        state: state.as_ref().map(StageState::bare),
-                    });
-                }
-            });
-        }
+        self.log_label(id, state.as_ref());
         state
     }
 
-    /// The stable stage at loop head `id`: `join(entry, back edges)`,
-    /// iterated. Each probe pass folds `region` with the checker's fold,
-    /// emission off and a fresh pending map. Bound: 3 × the characters the
-    /// entry state and the region name, + 2 (each character moves at most
-    /// once between `on_stage`, `maybe_on_stage` and `exited`, plus
-    /// `bg`/`music`; a character neither names cannot reach the head). Top:
-    /// nobody on stage, every such character maybe on stage, `exited` as
-    /// reached, no `bg`/`music`.
-    fn head(&mut self, id: &str, entry: StageState, region: &[Node]) -> StageState {
+    /// Record the state bound at `label` for the agreement test (outside
+    /// probe passes, when recording).
+    fn log_label(&self, label: &str, state: Option<&StageState>) {
+        if self.probing.is_some() {
+            return;
+        }
+        LABEL_LOG.with(|log| {
+            if let Some(log) = log.borrow_mut().as_mut() {
+                log.push(StageLabel {
+                    kind: self.kind,
+                    label: label.to_string(),
+                    state: state.map(StageState::bare),
+                });
+            }
+        });
+    }
+
+    /// The hub head `H` of `hub` entered with `entry` (dsl 0.52.0 §5.4): the
+    /// stage at every option, the least fixed point of `H = join(entry,
+    /// back(H))`, where `back(H)` is the `<return>` body walked from `C(H)`,
+    /// the join of the non-exit option bodies that complete from `H`.
+    /// `C(H) = None` (no non-exit option completes) or a `<return>` that
+    /// never completes leaves no back edge. Probe passes run as at a loop
+    /// head ([`Self::label`]): the checker's fold, emission off, a fresh
+    /// pending map, the same bound and top; they count as a head in
+    /// [`crate::LoopWalkStats`]. The head is recorded as label `hub:<id>`.
+    /// `None`: no route reaches the hub.
+    ///
+    /// The caller then walks every option body from `H` once
+    /// ([`Self::enter_hub_body`]), the `<return>` body from
+    /// [`Self::completion`] of the non-exit ones when it is `Some`, and
+    /// continues after the hub with `join(H, [H, the exit options' exit
+    /// states])`.
+    pub fn hub(&mut self, hub: &Hub, entry: Option<StageState>) -> Option<StageState> {
+        let id = format!("hub:{}", attr_str(&hub.attrs, "id").unwrap_or_default());
+        let head = entry.map(|mut entry| {
+            let diags = std::mem::take(&mut entry.diags);
+            let mut head = self.head(&id, entry, HeadAt::Hub(hub));
+            head.diags = diags;
+            head
+        });
+        self.log_label(&id, head.as_ref());
+        head
+    }
+
+    /// One round of `hub` from head `h` in a probe pass: `back(h)`.
+    fn hub_round(&mut self, hub: &Hub, h: &StageState) -> Option<StageState> {
+        let mut emitted = Vec::new();
+        let mut completed = Vec::new();
+        for c in hub.choices.iter().filter(|c| !Self::exit_option(c)) {
+            let mut state = Some(h.bare());
+            self.enter_hub_body();
+            crate::check::injections::fold_injections(&c.body, &mut state, &mut emitted, self);
+            self.leave_hub_body();
+            completed.extend(state);
+        }
+        let mut back = Self::completion(completed);
+        if let (Some(r), true) = (&hub.on_return, back.is_some()) {
+            self.enter_hub_body();
+            crate::check::injections::fold_injections(&r.body, &mut back, &mut emitted, self);
+            self.leave_hub_body();
+        }
+        back
+    }
+
+    /// `C`: the join of the states the hub's non-exit option bodies
+    /// complete with; `None` when none completes (`StageState::join` of no
+    /// arms is its entry, so it cannot say "unreachable").
+    pub fn completion(completed: Vec<StageState>) -> Option<StageState> {
+        (!completed.is_empty()).then(|| StageState::join(&StageState::default(), completed))
+    }
+
+    /// `true` for a hub `<choice exit>`: its completion leaves the hub.
+    pub fn exit_option(c: &Choice) -> bool {
+        c.attrs
+            .iter()
+            .find(|a| a.key == "exit")
+            .and_then(|a| a.value.flag())
+            .unwrap_or(false)
+    }
+
+    /// Enter a hub option or `<return>` body ([`Self::leave_hub_body`]
+    /// leaves it).
+    pub fn enter_hub_body(&mut self) {
+        self.hub_bodies += 1;
+    }
+
+    /// Leave the body [`Self::enter_hub_body`] entered.
+    pub fn leave_hub_body(&mut self) {
+        self.hub_bodies = self.hub_bodies.saturating_sub(1);
+    }
+
+    /// `true` when `d` ends the route here: an `::end` inside a hub body,
+    /// which therefore does not complete (dsl 0.52.0 §5.4). Only there:
+    /// elsewhere both stage walks carry the state past an `::end` into the
+    /// enclosing joins, as before 0.52 (a global change would move
+    /// branch/match joins outside hubs).
+    pub fn ends(&self, d: &Directive) -> bool {
+        self.hub_bodies > 0 && d.tag == lute_manifest::core::END_DIRECTIVE
+    }
+
+    /// The stable stage at loop head `id`: `H₀ = entry`, `Hₙ₊₁ = join(Hₙ,
+    /// back(Hₙ))` — accumulated from the last head, never re-joined from
+    /// the entry alone, so the iteration only descends even though an
+    /// `::actor` of an unknown sprite injects like a fresh show (#222, the
+    /// S4 review's two-cycle): once a sprite is unknown at the head it stays
+    /// unknown. Each probe pass folds `regions` with the checker's fold,
+    /// emission off and a fresh pending map. Bound, a safety net only: 5 ×
+    /// the characters the entry state and the regions name, + 2 (each
+    /// character moves at most once from a known sprite to an unknown one,
+    /// off the stage, into `maybe_on_stage`, into `exited` and into `dirty`,
+    /// plus `bg`/`music`; a character neither names cannot reach the head).
+    /// Top: the last head's presence with unknown sprites and its `dirty`
+    /// (every iterate had them: presence only shrinks), every other such
+    /// character maybe on stage, `exited` as reached, no `bg`/`music`. A
+    /// loop head's region is the loop's; a hub head's (`id` = `hub:<id>`,
+    /// [`Self::hub`]) are the hub's bodies, and a pass is one
+    /// [`Self::hub_round`].
+    fn head(&mut self, id: &str, entry: StageState, at: HeadAt<'_>) -> StageState {
         use crate::loop_walk::head_fixpoint;
-        let characters = characters_of(&entry, region);
-        let bound = 3 * characters.len() + 2;
+        let characters = match at {
+            HeadAt::Loop(region) => characters_of(&entry, [region]),
+            HeadAt::Hub(hub) => characters_of(&entry, hub.bodies().map(Vec::as_slice)),
+        };
+        let bound = 5 * characters.len() + 2;
         let kind = self.kind;
         head_fixpoint(
             kind,
@@ -657,10 +790,20 @@ impl<'a> StageFlow<'a> {
                 let pending = std::mem::take(&mut self.pending);
                 let probing = self.probing.replace(id.to_string());
                 let diags = std::mem::take(&mut self.diags);
-                let mut state = Some(h.bare());
-                let mut emitted = Vec::new();
-                crate::check::injections::fold_injections(region, &mut state, &mut emitted, self);
-                let back = self.pending.remove(id);
+                let back = match at {
+                    HeadAt::Hub(hub) => self.hub_round(hub, h),
+                    HeadAt::Loop(region) => {
+                        let mut state = Some(h.bare());
+                        let mut emitted = Vec::new();
+                        crate::check::injections::fold_injections(
+                            region,
+                            &mut state,
+                            &mut emitted,
+                            self,
+                        );
+                        self.pending.remove(id)
+                    }
+                };
                 self.pending = pending;
                 self.probing = probing;
                 self.diags = diags;
@@ -671,13 +814,23 @@ impl<'a> StageFlow<'a> {
     }
 }
 
-/// The stage state's operations at a loop head (dsl 0.51.0 §3.4): the next
-/// head joins the entry with the back edges; the same stage, diagnostics
-/// ignored; top: nobody on stage, every one of `characters` maybe on stage,
-/// `exited` the union of every state the iteration reached, no `bg`/`music`.
+/// What a head iterates: a loop's region, or a hub's bodies.
+#[derive(Clone, Copy)]
+enum HeadAt<'n> {
+    Loop(&'n [Node]),
+    Hub(&'n Hub),
+}
+
+/// The stage state's operations at a head (dsl 0.51.0 §3.4, 0.52.0 §5.4):
+/// the next head joins the current head with the back edges (it only
+/// descends: presence shrinks, sprites turn unknown, `maybe_on_stage`,
+/// `exited` and `dirty` grow); the same stage, diagnostics ignored; top:
+/// the last head's presence with unknown sprites and its `dirty`, every
+/// other one of `characters` maybe on stage, `exited` the union of every
+/// state the iteration reached, no `bg`/`music`.
 struct StageHead {
     characters: BTreeSet<String>,
-    /// The `exited` of every head reached (each is `join(entry, back)`, so
+    /// The `exited` of every head reached (each is `join(head, back)`, so
     /// its `exited` is the union of both), collected as the meets run.
     seen: std::cell::RefCell<BTreeMap<String, Departure>>,
 }
@@ -692,13 +845,16 @@ impl StageHead {
 }
 
 impl crate::loop_walk::HeadLattice<StageState> for StageHead {
-    fn meet(&self, entry: &StageState, back: StageState) -> StageState {
-        let head = StageState::join(entry, vec![entry.bare(), back]);
+    fn meet(&self, _entry: &StageState, head: &StageState, back: Option<StageState>) -> StageState {
+        let Some(back) = back else {
+            return head.bare();
+        };
+        let next = StageState::join(head, vec![head.bare(), back]);
         let mut seen = self.seen.borrow_mut();
-        for (ch, how) in &head.exited {
+        for (ch, how) in &next.exited {
             seen.entry(ch.clone()).or_insert_with(|| how.clone());
         }
-        head
+        next
     }
 
     fn same(&self, a: &StageState, b: &StageState) -> bool {
@@ -710,8 +866,34 @@ impl crate::loop_walk::HeadLattice<StageState> for StageHead {
         for (ch, how) in &last.exited {
             exited.entry(ch.clone()).or_insert_with(|| how.clone());
         }
+        // Presence only shrinks along the iteration, so every iterate had
+        // the last head's: keep it (its sprite no longer known) and its
+        // pending pose resets.
+        let on_stage: BTreeMap<String, SpriteState> = last
+            .on_stage
+            .keys()
+            .map(|ch| {
+                let sprite = SpriteState {
+                    unknown: true,
+                    ..SpriteState::default()
+                };
+                (ch.clone(), sprite)
+            })
+            .collect();
         StageState {
-            maybe_on_stage: self.characters.clone(),
+            maybe_on_stage: self
+                .characters
+                .iter()
+                .filter(|ch| !on_stage.contains_key(*ch))
+                .cloned()
+                .collect(),
+            dirty: last
+                .dirty
+                .iter()
+                .filter(|ch| on_stage.contains_key(*ch))
+                .cloned()
+                .collect(),
+            on_stage,
             exited,
             ..StageState::default()
         }
@@ -760,9 +942,12 @@ pub fn take_stage_labels() -> Vec<StageLabel> {
     LABEL_LOG.with(|log| log.borrow_mut().take().unwrap_or_default())
 }
 
-/// The characters `entry` holds and `region` names (a line's speaker, an
+/// The characters `entry` holds and `regions` name (a line's speaker, an
 /// `::actor`'s `character`).
-fn characters_of(entry: &StageState, region: &[Node]) -> BTreeSet<String> {
+fn characters_of<'n>(
+    entry: &StageState,
+    regions: impl IntoIterator<Item = &'n [Node]>,
+) -> BTreeSet<String> {
     let mut out: BTreeSet<String> = entry
         .on_stage
         .keys()
@@ -770,17 +955,19 @@ fn characters_of(entry: &StageState, region: &[Node]) -> BTreeSet<String> {
         .chain(entry.exited.keys())
         .cloned()
         .collect();
-    crate::cast::visit(region, &mut |node| match node {
-        Node::Line(l) => {
-            out.insert(l.speaker.clone());
-        }
-        Node::Directive(d) => {
-            if let Some(c) = attr_str(&d.attrs, "character") {
-                out.insert(c);
+    for region in regions {
+        crate::cast::visit(region, &mut |node| match node {
+            Node::Line(l) => {
+                out.insert(l.speaker.clone());
             }
-        }
-        _ => {}
-    });
+            Node::Directive(d) => {
+                if let Some(c) = attr_str(&d.attrs, "character") {
+                    out.insert(c);
+                }
+            }
+            _ => {}
+        });
+    }
     out
 }
 
@@ -969,8 +1156,10 @@ fn lower_actor(
         return;
     }
 
-    // Already on stage ⇒ reposition / pose change, not a fresh show.
-    if state.on_stage.contains_key(&character) {
+    // Already on stage ⇒ reposition / pose change, not a fresh show — unless
+    // the routes here disagree on the sprite (#222): then the `::actor`
+    // injects what a fresh show does, and settles the sprite.
+    if state.on_stage.get(&character).is_some_and(|sp| !sp.unknown) {
         let mut mark_dirty = false;
         if let Some(sp) = state.on_stage.get_mut(&character) {
             if let Some(a) = field_str(fields, "anchor") {
@@ -1279,6 +1468,7 @@ fn stage_bookkeeping_show(
             anchor,
             pose: None,
             emotion,
+            unknown: false,
         },
     );
 }
@@ -2022,18 +2212,18 @@ mod tests {
         st
     }
 
-    /// dsl 0.51.0 §3.8 widening: a stage head that never stabilizes within
-    /// `3 × characters + 2` passes takes the top — nobody on stage, every
-    /// character maybe on stage, `exited` as reached.
+    /// S4 review P1: a back edge that would make the head alternate — it
+    /// takes `mira` off stage while she is on it at the head and returns
+    /// the entry otherwise — no longer does: the head accumulates from the
+    /// last one (`join(Hₙ, back(Hₙ))`), so once she may be off stage she
+    /// stays so, and the head stabilizes on the second pass. Re-joined from
+    /// the entry it alternated until the bound and took the top.
     #[test]
-    fn a_stage_head_that_never_stabilizes_takes_the_top() {
+    fn an_alternating_back_edge_stabilizes_once_the_head_descends() {
         use crate::loop_walk::{head_fixpoint, loop_walk_stats, reset_loop_walk_stats, WalkKind};
         reset_loop_walk_stats();
         let entry = staged("mira");
         let characters: BTreeSet<String> = ["mira".to_string(), "theo".to_string()].into();
-        let bound = 3 * characters.len() + 2;
-        // A back edge takes `mira` off stage while she is on it at the head
-        // and returns the entry otherwise: a head that never stabilizes.
         let gone = {
             let mut s = StageState::default();
             s.exited.insert("mira".into(), Departure::Exit { line: 3 });
@@ -2042,7 +2232,7 @@ mod tests {
         let head = head_fixpoint(
             WalkKind::Stage,
             entry.clone(),
-            bound,
+            5 * characters.len() + 2,
             |h| {
                 Some(if h.on_stage.contains_key("mira") {
                     gone.clone()
@@ -2053,11 +2243,51 @@ mod tests {
             &StageHead::new(characters.clone()),
         );
         assert!(head.on_stage.is_empty());
-        assert_eq!(head.maybe_on_stage, characters);
+        assert_eq!(head.maybe_on_stage, ["mira".to_string()].into());
         assert!(head.exited.contains_key("mira"));
+        let stats = loop_walk_stats(WalkKind::Stage);
+        assert_eq!((stats.probe_passes, stats.widened), (2, 0));
+    }
+
+    /// The widening top, a safety net only: a head still moving at the
+    /// bound keeps the presence and pending pose resets every iterate had
+    /// (presence only shrinks), with unknown sprites; every other character
+    /// is maybe on stage, `exited` as reached, no `bg`/`music`.
+    #[test]
+    fn a_stage_head_still_moving_at_the_bound_keeps_definite_presence() {
+        use crate::loop_walk::{head_fixpoint, loop_walk_stats, reset_loop_walk_stats, WalkKind};
+        reset_loop_walk_stats();
+        let mut entry = staged("mira");
+        entry.on_stage.insert("theo".into(), SpriteState::default());
+        entry.dirty.insert("mira".into());
+        let characters: BTreeSet<String> = ["mira".to_string(), "theo".to_string()].into();
+        // The back edge drops `theo`; one pass is not enough to see the head
+        // stable.
+        let back = {
+            let mut s = entry.bare();
+            s.on_stage.remove("theo");
+            s.exited.insert("theo".into(), Departure::Exit { line: 4 });
+            s
+        };
+        let head = head_fixpoint(
+            WalkKind::Stage,
+            entry.clone(),
+            1,
+            |_| Some(back.clone()),
+            &StageHead::new(characters.clone()),
+        );
+        assert_eq!(
+            head.on_stage.keys().collect::<Vec<_>>(),
+            ["mira"],
+            "{head:?}"
+        );
+        assert!(head.on_stage["mira"].unknown);
+        assert_eq!(head.dirty, ["mira".to_string()].into());
+        assert_eq!(head.maybe_on_stage, ["theo".to_string()].into());
+        assert!(head.exited.contains_key("theo"));
         assert_eq!((head.bg.clone(), head.music.clone()), (None, None));
         let stats = loop_walk_stats(WalkKind::Stage);
-        assert_eq!((stats.probe_passes, stats.widened), (8, 1));
+        assert_eq!((stats.probe_passes, stats.widened), (1, 1));
     }
 
     /// The attribute is honoured as an action and does NOT remove the character

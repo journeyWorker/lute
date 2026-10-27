@@ -29,32 +29,31 @@ fn print_must_facts(out: &mut String, facts: &[lute_check::fact_env::MustFact]) 
 /// graph — the writers whose writes provably happen BEFORE control reaches
 /// it, which is the only thing a PRE-ENTRY envelope may claim. `g.edges` is
 /// keyed `prerequisite -> dependent`, so this is a reverse walk. An edge
-/// whose only kind is [`EdgeKind::Raises`] is not crossed (0.51.0 §4.5,
-/// Review051b F4): a raise anchor's sources are alternatives — one of them
-/// ran — so none is provably before; an edge that also carries another kind
-/// is crossed as before.
+/// whose kinds are all alternatives ([`EdgeKind::is_alternative`]:
+/// `[accept]`, `[raises]`) is not crossed (0.51.0 §4.5, 0.52.0 §8.1): its
+/// sources are alternatives — one of them ran — so none is provably before;
+/// an edge that also carries an ordering kind is crossed as before.
 ///
 /// `node` itself is excluded unless a cycle puts it upstream of itself; that
 /// is deliberate — the tables are explicitly "before its own writes".
 ///
-/// [`EdgeKind::Raises`]: lute_check::connectivity::EdgeKind::Raises
+/// [`EdgeKind::is_alternative`]: lute_check::connectivity::EdgeKind::is_alternative
 fn ancestors_of(
     g: &lute_check::connectivity::ConnGraph,
     node: &lute_check::connectivity::NodeId,
 ) -> BTreeSet<lute_check::connectivity::NodeId> {
-    use lute_check::connectivity::EdgeKind;
     let mut rev: BTreeMap<
         &lute_check::connectivity::NodeId,
         Vec<&lute_check::connectivity::NodeId>,
     > = BTreeMap::new();
-    let raise_only = |prereq, dep| {
+    let alternative_only = |prereq, dep| {
         g.edge_kinds_for(prereq, dep)
-            .is_some_and(|ks| ks.iter().all(|k| *k == EdgeKind::Raises))
+            .is_some_and(|ks| ks.iter().all(|k| k.is_alternative()))
     };
     for (prereq, deps) in &g.edges {
         for dep in deps
             .iter()
-            .filter(|dep| g.orders(prereq, dep) && !raise_only(prereq, dep))
+            .filter(|dep| g.orders(prereq, dep) && !alternative_only(prereq, dep))
         {
             rev.entry(dep).or_default().push(prereq);
         }

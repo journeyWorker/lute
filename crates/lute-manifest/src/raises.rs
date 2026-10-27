@@ -14,6 +14,7 @@ use std::collections::BTreeMap;
 
 use crate::schema::{
     Lowering, OccasionDecl, OccasionTarget, RaiseDecl, RaiseTargetDecl, RewardTarget,
+    REWARD_TARGET_ATTR,
 };
 use crate::snapshot::CapabilitySnapshot;
 use crate::types::Type;
@@ -51,8 +52,9 @@ pub enum RaiseFault {
     /// No `target` on an occasion raised for one (`of`).
     MissingTarget(OccasionTarget),
     /// An `@attr` target of a domain occasion whose type is not the
-    /// domain's entity kind: `actual` is the attribute's declared type — on
-    /// a reward kind its `target:` contract, `None` when it declares none.
+    /// domain's entity kind: `actual` is the attribute's declared type — for
+    /// a reward kind's `@target` its `target:` contract — `None` when it
+    /// declares none.
     AttrType {
         attr: String,
         actual: Option<String>,
@@ -129,23 +131,21 @@ impl std::fmt::Display for RaiseError {
                 entity,
             } => {
                 write!(f, "`{occasion}` for `@{attr}`, ")?;
-                match (owner, actual) {
-                    (RaiseOwner::Directive(_), Some(ty)) => write!(f, "which is typed `{ty}`")?,
-                    (RaiseOwner::Directive(_), None) => write!(f, "which is not declared")?,
-                    (RaiseOwner::RewardKind(_), Some(c)) => {
-                        write!(f, "whose kind's `target:` contract is `{c}`")?;
-                    }
-                    (RaiseOwner::RewardKind(_), None) => {
-                        write!(f, "but the kind declares no `target:` contract")?;
-                    }
+                // A reward's `@target` is typed by its kind's `target:`
+                // contract; any other attribute, a directive's or a reward
+                // kind's (0.52.0 §7.3), by its declared type.
+                let contract =
+                    matches!(owner, RaiseOwner::RewardKind(_)) && attr == REWARD_TARGET_ATTR;
+                match (contract, actual) {
+                    (false, Some(ty)) => write!(f, "which is typed `{ty}`")?,
+                    (false, None) => write!(f, "which is not declared")?,
+                    (true, Some(c)) => write!(f, "whose kind's `target:` contract is `{c}`")?,
+                    (true, None) => write!(f, "but the kind declares no `target:` contract")?,
                 }
-                let fix = match owner {
-                    RaiseOwner::Directive(_) => {
-                        format!("type the attribute `{{ entity: {entity} }}`")
-                    }
-                    RaiseOwner::RewardKind(_) => {
-                        format!("declare the kind's `target: {{ entity: {entity} }}`")
-                    }
+                let fix = if contract {
+                    format!("declare the kind's `target: {{ entity: {entity} }}`")
+                } else {
+                    format!("type the attribute `{{ entity: {entity} }}`")
                 };
                 write!(
                     f,
@@ -191,8 +191,12 @@ fn contract_text(t: &RewardTarget) -> Option<String> {
 enum Binder<'a> {
     /// A directive's attributes.
     Directive(&'a [crate::schema::AttrDecl]),
-    /// A reward kind's `target:` contract.
-    RewardKind(Option<&'a RewardTarget>),
+    /// A reward kind: its `target:` contract (what `@target` binds) and its
+    /// `attrs:` (0.52.0 §7.3: typed as a directive's are).
+    RewardKind {
+        contract: Option<&'a RewardTarget>,
+        attrs: &'a [crate::schema::AttrDecl],
+    },
 }
 
 /// The fault of one raise, `None` when it lands.
@@ -225,18 +229,20 @@ fn judge(
     };
     match target {
         RaiseTargetDecl::Attr(attr) => {
+            let declared = |attrs: &[crate::schema::AttrDecl]| {
+                let ty = attrs.iter().find(|a| &a.name == attr).map(|a| &a.ty);
+                (
+                    matches!(ty, Some(Type::Entity(e)) if e == entity),
+                    ty.map(crate::types::type_str),
+                )
+            };
             let (typed, actual) = match binder {
-                Binder::Directive(attrs) => {
-                    let ty = attrs.iter().find(|a| &a.name == attr).map(|a| &a.ty);
-                    (
-                        matches!(ty, Some(Type::Entity(e)) if e == entity),
-                        ty.map(crate::types::type_str),
-                    )
-                }
-                Binder::RewardKind(contract) => (
+                Binder::Directive(attrs) => declared(attrs),
+                Binder::RewardKind { contract, .. } if attr == REWARD_TARGET_ATTR => (
                     contract.is_some_and(|c| c.entity.as_ref() == Some(entity)),
                     contract.and_then(contract_text),
                 ),
+                Binder::RewardKind { attrs, .. } => declared(attrs),
             };
             (!typed).then(|| RaiseFault::AttrType {
                 attr: attr.clone(),
@@ -299,7 +305,10 @@ pub(crate) fn check_raises(
         let Some(effects) = k.effects.as_mut().filter(|e| !e.raises.is_empty()) else {
             continue;
         };
-        let binder = Binder::RewardKind(contract);
+        let binder = Binder::RewardKind {
+            contract,
+            attrs: &k.attrs,
+        };
         effects.raises.retain(|r| {
             let Some(fault) = judge(r, &binder, occasions, inactive) else {
                 return true;

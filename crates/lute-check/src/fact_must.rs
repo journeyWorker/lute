@@ -328,9 +328,11 @@ fn same(a: &Flow, b: &Flow) -> bool {
 struct MustHead;
 
 impl crate::loop_walk::HeadLattice<Facts> for MustHead {
-    fn meet(&self, entry: &Facts, back: Facts) -> Facts {
+    fn meet(&self, entry: &Facts, _head: &Facts, back: Option<Facts>) -> Facts {
         let mut head = entry.clone();
-        head.retain(|f| back.contains_key(f));
+        if let Some(back) = back {
+            head.retain(|f| back.contains_key(f));
+        }
         head
     }
 
@@ -500,7 +502,8 @@ impl<'a> Root<'a> {
             // 0.50.0 §5.4: a reward's effects write like an `::assert` /
             // `::retract` in its grant point.
             for quest in &doc.quests {
-                for grant in crate::reward_effects::quest_grants(quest, item.reward_kinds) {
+                for grant in crate::reward_effects::quest_grants(quest, &item.snapshot.reward_kinds)
+                {
                     match grant.fact() {
                         Some((p, true)) => {
                             asserted.insert(p.relation.clone());
@@ -790,7 +793,7 @@ fn walk_doc(
         }
         w.body_base = base.clone();
         w.quest = Some(quest);
-        w.grants = QuestGrants::new(quest, item.reward_kinds);
+        w.grants = QuestGrants::new(quest, &item.snapshot.reward_kinds);
         // 0.50.0 §5.4: each lifecycle grant point transfers its grants once,
         // whether or not a handler follows. Its handlers each start from
         // that set, independently, less every fact a handler of the same

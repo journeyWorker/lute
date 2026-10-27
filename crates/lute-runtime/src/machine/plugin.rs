@@ -7,8 +7,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use lute_manifest::schema::{OccasionDecl, OccasionTarget};
 use serde_json::{json, Value as Json};
 
-use super::commands::texts_with;
-use super::format::{substitute_markers, value_to_json};
+use super::commands::texts_json;
+use super::format::value_to_json;
 use super::{addr, fold_op, Machine, Site};
 use crate::driver::{BridgeCall, BridgeReply, Driver, SiteKind};
 use crate::eval::Read;
@@ -399,19 +399,16 @@ impl<D: Driver> Machine<D> {
             if self.text_halts(placeholders, addr(cmd)) {
                 return None;
             }
-            let rendered = self.render_markers(&raw, placeholders);
+            let (rendered, _) = self.render_text(&raw, placeholders, text.get("texts"));
             if let Some(a) = attrs.as_deref_mut() {
-                a.insert(
-                    attr.clone(),
-                    Json::String(substitute_markers(&raw, &rendered, &mut 0)),
-                );
+                a.insert(attr.clone(), Json::String(rendered.text));
             }
             let mut entry = serde_json::Map::new();
             if let Some(id) = text.get("lineId") {
                 entry.insert("lineId".into(), id.clone());
             }
-            if let Some(t) = text.get("texts").filter(|t| !t.is_null()) {
-                entry.insert("texts".into(), texts_with(t, &raw, &rendered));
+            if text.get("texts").is_some_and(|t| !t.is_null()) {
+                entry.insert("texts".into(), texts_json(&rendered.texts));
             }
             out.insert(attr.clone(), Json::Object(entry));
         }
@@ -589,8 +586,10 @@ impl<D: Driver> Machine<D> {
 /// Every state path `v` (an artifact, or any part of one) reads: each
 /// `path` leaf of an expression tree (an `expr` — conditions, `::set`
 /// values, match arms, `ref` placeholders with their def inlined) and each
-/// `path` placeholder of a `{{…}}`. Writes (`set` / effect `path`s) sit
-/// outside both and are not reads.
+/// `path` placeholder of a `{{…}}` — a line's, an option label's or a
+/// directive `text` attribute's `placeholders`, and a `<branch>`/`<hub>`
+/// prompt's `promptPlaceholders` (0.52.0 §6.2). Writes (`set` / effect
+/// `path`s) sit outside both and are not reads.
 fn ir_read_paths(v: &Json, in_expr: bool, out: &mut BTreeSet<String>) {
     match v {
         Json::Object(map) => {
@@ -599,7 +598,7 @@ fn ir_read_paths(v: &Json, in_expr: bool, out: &mut BTreeSet<String>) {
                     ("path", Json::String(p)) if in_expr => {
                         out.insert(p.clone());
                     }
-                    ("placeholders", Json::Array(items)) => {
+                    ("placeholders" | "promptPlaceholders", Json::Array(items)) => {
                         for ph in items {
                             if ph.get("kind").and_then(Json::as_str) == Some("path") {
                                 if let Some(p) = ph.get("path").and_then(Json::as_str) {

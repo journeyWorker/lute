@@ -345,7 +345,7 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 
 ```json
 {
-  "saveVersion": "0.51",
+  "saveVersion": "0.52",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -374,9 +374,11 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 
 locale은 마운트 옵션이 아니라 설정(`settings.locale`)입니다. 불러온 번들의 **원본 locale**은 프로젝트 index의 `contentLang`(매니페스트의 `defaults.contentLang`)이고, 없으면 meta에 `contentLang`을 선언한 첫 artifact(`index.documents` 순서)의 값, 그것도 없으면 `"en"`입니다. **컴파일된 locale**은 artifact `texts`와 `promptTexts` 맵의 키이므로(`lute compile --locale-bundle`) 프롬프트만 번역한 locale도 포함됩니다. `Settings` 화면 모델의 `locales`는 원본 locale 다음에 컴파일된 locale(정렬, 중복 없음)이 옵니다. 새 프로필은 원본 locale로 시작하고, 번들에 없는 저장된 locale(`en-US` 프로젝트에서 0.46 프로필의 `"en"`)은 원본 텍스트를 읽으며 `Settings`는 원본 locale을 선택된 것으로 보여 줍니다.
 
-현재 locale에 대해 대사(`texts[locale]`, `localeSegments[locale]`), choice와 hub 선택지 라벨(`texts[locale]`), branch와 hub 프롬프트(`promptTexts[locale]`), 백로그는 번역을 읽고 없으면 원본 텍스트로 돌아갑니다. 화자 이름은 현지화하지 않습니다. `setSettings({ locale })`은 다음에 보이는 텍스트와 다음에 여는 백로그에 적용되며 새 게임이 필요 없습니다. cue factory는 호출마다 locale을 받습니다(`fromOutput(output, readLines, locale)`, `choiceView(await, locale)`). `cueFactory` wrapper나 직접 만든 factory도 그것을 받아 그대로 넘깁니다.
+현재 locale에 대해 대사(`texts[locale]`, `localeSegments[locale]`), choice와 hub 선택지 라벨(메뉴 옵션의 `texts[locale]`), branch와 hub 프롬프트(메뉴의 `promptTexts[locale]`), 백로그는 번역을 읽고 없으면 원본 텍스트로 돌아갑니다. 화자 이름은 현지화하지 않습니다. `setSettings({ locale })`은 다음에 보이는 텍스트와 다음에 여는 백로그에 적용되며 새 게임이 필요 없습니다. cue factory는 호출마다 locale을 받습니다(`fromOutput(output, readLines, locale)`, `choiceView(await, locale)`). `cueFactory` wrapper나 직접 만든 factory도 그것을 받아 그대로 넘깁니다.
 
-대사와 백로그 항목은 컴파일된 artifact가 아니라 런타임의 `line` 레코드에서 번역을 읽습니다. 이 레코드의 `texts`와 `localeSegments`는 모든 `{{…}}` 마커가 이미 값으로 바뀌어 있습니다. 번역의 마커는 원본 line에서 참조 대상이 같은 마커(`{{ }}` 안의 텍스트, 앞뒤 공백 제외)에 대해 렌더링한 값을 받으므로 번역자가 마커 순서를 바꿔도 됩니다. 원본 line에 없는 마커는 쓴 그대로 남고, 번역에도 리터럴 `{{`를 `\{{`로 쓸 수 있습니다(lute 0.47.1). 레코드는 디코딩된 텍스트를 담으며, placeholder를 직접 치환하는 엔진은 IR의 이스케이프된 보간 읽기 규칙을 적용해야 합니다([현지화 텍스트](/ko/tooling/runtime-contract/#현지화-텍스트) 참고). 선택지 라벨은 0.46과 같습니다(`{{…}}` 마커를 렌더링하지 않음).
+대사와 백로그 항목은 컴파일된 artifact가 아니라 런타임의 `line` 레코드에서 번역을 읽습니다. 이 레코드의 `texts`와 `localeSegments`는 모든 `{{…}}` 마커가 이미 값으로 바뀌어 있습니다. 번역의 마커는 원본 line에서 참조 대상이 같은 마커(`{{ }}` 안의 텍스트, 앞뒤 공백 제외)에 대해 렌더링한 값을 받으므로 번역자가 마커 순서를 바꿔도 됩니다. 원본 line에 없는 마커는 쓴 그대로 남고, 번역에도 리터럴 `{{`를 `\{{`로 쓸 수 있습니다(lute 0.47.1). 레코드는 디코딩된 텍스트를 담으며, placeholder를 직접 치환하는 엔진은 IR의 이스케이프된 보간 읽기 규칙을 적용해야 합니다([현지화 텍스트](/ko/tooling/runtime-contract/#현지화-텍스트) 참고).
+
+**메뉴 텍스트는 렌더링되어 옵니다(0.52).** 선택지 라벨과 프롬프트도 아티팩트가 아니라 런타임에서 같은 방식으로 옵니다. `awaitChoice` 메뉴는 각 옵션의 `text`와 `texts`, 메뉴의 `prompt`와 `promptTexts`를 담으며, 모든 `{{…}}` 마커는 그 제시 시점의 값으로 바뀌고(허브는 제시할 때마다 다시 렌더링합니다) `\{{`는 리터럴 `{{`로 읽힙니다. `choiceView`는 이 값을 읽습니다(`localizedText(option.texts, locale, option.text)`, 그리고 `menu.promptTexts` / `menu.prompt`). 스탬프는 계속 IR 명령에서 가져옵니다. 사용자 정의 호스트도 메뉴의 문자열을 보여 주십시오. IR의 `options[].text`와 `prompt`는 마커를 작성한 그대로 담습니다. 호스트 토큰(`{{userName}}`)은 줄에서처럼 호스트가 치환하도록 그대로 남습니다.
 
 지시문의 `text` 속성(0.51, [`type: text`](/ko/plugins/manifests/#현지화-가능한-텍스트-속성-type-text))도 같은 규칙을 따릅니다. 런타임이 각 마커를 한 번 렌더링해 렌더링된 원문을 레코드의 `attrs.<attr>`에, 렌더링된 번역을 `localized: { <attr>: { lineId, texts } }`에 씁니다. `PluginCall.localized?`는 각 `text` 속성을 플레이어의 현재 locale로 담은 `Readonly<Record<string, string>>`(`localized.<attr>.texts[locale]`, 없으면 `attrs.<attr>`)이므로, plugin 핸들러는 레코드를 읽지 않고도 알맞은 언어를 보여 줄 수 있습니다. cue factory는 `plugin` cue를 대사 cue처럼 미뤄 두므로 locale은 호출이 실행될 때의 것입니다. batch의 앞 대사가 아직 타이핑되는 동안 바꾼 locale은 뒤의 호출에 반영됩니다. 호스트 토큰 마커는 대사 줄처럼 그대로 남습니다. locale 탐색은 각 명령의 `texts`와 `promptTexts`, 각 선택지의 `texts`, 그리고 `plugin` 명령의 경우 모든 `localized.<attr>.texts`의 키만 읽으며 `fields`나 `stamps` 맵은 읽지 않으므로, `texts`나 `promptTexts`라는 이름의 속성이 잘못 읽히지 않고, 지시문 텍스트만 번역한 locale도 목록에 포함됩니다.
 
@@ -390,7 +392,7 @@ locale은 마운트 옵션이 아니라 설정(`settings.locale`)입니다. 불�
 
 ## ChoiceView와 복원된 자산
 
-`Presenter.showChoice`는 작성된 prompt와 locale별 option text, runtime
+`Presenter.showChoice`는 현재 locale의 렌더링된 prompt와 option text, runtime
 verdict, timeout, default, once, exit 정보를 담은 `ChoiceView`를 받습니다.
 0.50부터는 `<branch>`/`<hub>` 요소에 작성된 플러그인 스탬프(`ChoiceView.stamps`)와
 각 `<choice>`의 스탬프(`options[i].stamps`)도 담으며, 메뉴 주소의 IR 명령에서

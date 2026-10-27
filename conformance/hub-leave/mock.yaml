@@ -1,0 +1,12 @@
+# dsl 0.52.0 §5.3 (#216): a leaving jump ends the hub visits it leaves.
+# `desk`'s `leave` and `outer`'s `go` are never used; `stairs` presents
+# again after `landing` is left; the `door` guard is false, so `knock`
+# falls through and the hub presents again.
+choose:
+  desk: [take, leave]
+  outer: [enter, go]
+  inner: [run]
+  stairs: [climb, down]
+  landing: [rest]
+  table: [eat]
+  door: [knock, wait]

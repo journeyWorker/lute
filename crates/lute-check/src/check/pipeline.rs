@@ -177,6 +177,14 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
 
     // 1. Parse the DSL structure (done by the caller).
     let (mut doc, mut parse_diags) = parsed;
+    // 0.52.0 §3.2: `\{{` outside the label grammar, judged on the heads as
+    // authored, before any pass below splices nodes in.
+    parse_diags.extend(crate::label_grammar::check_escaped_openers(
+        &doc,
+        &input.text,
+        &idx,
+        input.snapshot(),
+    ));
     // `questTier` default, the keys `chapters:` derives and beat
     // templates (dsl 0.27.0 §6): ordinary beats before any pass reads them.
     parse_diags.extend(crate::desugar_document(&mut doc, input));

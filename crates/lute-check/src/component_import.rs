@@ -50,6 +50,9 @@ pub struct ComponentDef {
     pub beat: Option<crate::templates::BeatTemplate>,
     pub body: Document,
     pub src: PathBuf,
+    /// The file's text, which `body`'s spans index: a pass that reads a head
+    /// as authored ([`lute_syntax::authored_attrs`]) reads it here.
+    pub text: String,
 }
 
 /// The resolved set of a scene's `components:` imports (dsl §13): the component
@@ -88,6 +91,7 @@ struct ParsedComponent {
     beat: Option<crate::templates::BeatTemplate>,
     body: Document,
     src: PathBuf,
+    text: String,
 }
 
 /// Resolve a scene's `components:` imports (dsl §13) into a `name -> ComponentDef`
@@ -160,6 +164,7 @@ pub fn resolve_components(base_dir: &Path, components: &[String], at: Span) -> C
                 beat: pc.beat.clone(),
                 body: pc.body.clone(),
                 src: pc.src.clone(),
+                text: pc.text.clone(),
             },
         );
     }
@@ -339,6 +344,7 @@ fn read_and_parse(
                     beat: None,
                     body: empty,
                     src: canon.to_path_buf(),
+                    text: String::new(),
                 },
                 Vec::new(),
             );
@@ -425,6 +431,7 @@ fn read_and_parse(
             beat,
             body: doc,
             src: canon.to_path_buf(),
+            text,
         },
         tm.components.clone(),
     )

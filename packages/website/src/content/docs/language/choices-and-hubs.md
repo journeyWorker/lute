@@ -5,7 +5,8 @@ description: Choice mechanics — when guards and the into= run-record sugar —
 
 A `<choice>` is one option inside a [`<branch>`](/language/branch-match-when/) or a `<hub>`. Every
 choice requires an **`id`** (the recorded key) and a **`text`** (the button text, which may
-interpolate). Beyond that it carries guards and run-record sugar.
+interpolate; it takes the [label grammar](/language/dialogue-and-cast/#labels-and-prompts), so
+`\{{` writes a literal `{{`). Beyond that it carries guards and run-record sugar.
 
 ## Guards
 
@@ -161,11 +162,53 @@ title: The number
   when empty); `prompt` stays the source string. Because the prompt and the options share the
   `{prefix}.{branch id}.…` namespace, a `<choice id="prompt">` in a branch that has `prompt=` is
   `E-CHOICE-DUP` — rename the choice. Without `prompt=` the id is legal.
+- Since 0.52 a prompt takes the label grammar, as an option's `text` does: its `{{…}}` markers are
+  checked as a label's (an undeclared path is `E-CEL-PROFILE`, a maybe-unset one `E-MAYBE-UNSET`,
+  read before the options), and a prompt with a marker compiles **`promptPlaceholders`** beside
+  `prompt`, built as an option's `placeholders` are.
 
 A `<hub>` compiles to a `hub` record of the same shape: `id`, `selectionKey`
 (`scene.choices.<hubId>`), `options` whose entries add the `once` and `exit` flags, `converge`, and
-an optional `prompt` (with its `promptLineId` and `promptTexts`, as on a branch) and, for a hub
+an optional `prompt` (with its `promptLineId`, `promptTexts` and `promptPlaceholders`, as on a branch) and, for a hub
 with a [`<return>`](#coming-back-return) block, the `return` position that block starts at.
+
+### The menu shows rendered text
+
+The IR keeps each label and prompt as written, markers and all. Since 0.52 the runtime renders them
+at every presentation, as it renders a line, and puts the result on the `awaitChoice` menu: each
+option's **`text`** (and its translations, **`texts`**), the **`prompt`** and **`promptTexts`**. A
+host shows those, not the IR's strings. For this branch, with `run.gold` at 5:
+
+```lute check
+---
+kind: scene
+id: shop.toll
+title: The toll
+state:
+  run.gold: { type: int, default: 5 }
+---
+
+## Gate
+
+<branch id="toll" prompt="You have {{run.gold}} gold.">
+  <choice id="pay" text="Pay {{run.gold}} gold">
+    @narrator: Paid.
+  </choice>
+  <choice id="code" text="Say \{{open}}">
+    @narrator: The gate hums.
+  </choice>
+</branch>
+```
+
+Played in a project as `scenes/gate.lute`, `lute play --events` shows the menu the runtime awaits on:
+
+```json
+{"construct":"branch","document":"scenes/gate.lute","id":"toll","options":[{"exit":false,"id":"pay","once":false,"text":"Pay 5 gold","verdict":"open"},{"exit":false,"id":"code","once":false,"text":"Say {{open}}","verdict":"open"}],"position":"001-0100","presentation":0,"prompt":"You have 5 gold."}
+```
+
+A hub renders again at each presentation, so a label reads the state the last option left. A host
+token (`{{userName}}`) and a marker whose path is unset keep their written text, as in a line, and
+menu text never stops the walk: the menu is still presented.
 
 ## Revisit hubs
 
@@ -232,8 +275,9 @@ title: The bar
 </hub>
 ```
 
-The prompt compiles onto the hub record (`prompt` on `HubCmd`, omitted when unauthored), and
-`lute run` / `lute play` print it with every presentation of the hub. An empty prompt is
+The prompt compiles onto the hub record (`prompt` on `HubCmd`, omitted when unauthored, with
+`promptPlaceholders` when it has a marker), and `lute run` / `lute play` print it with every
+presentation of the hub; the `awaitChoice` menu carries it rendered. An empty prompt is
 `E-BRANCH-PROMPT`, as it is on a branch. Like a branch prompt it is localizable: lineId
 `{prefix}.{hub id}.prompt` (`promptLineId`, here `bar.marina.chat.prompt`), translations in
 `promptTexts`, and a `<choice id="prompt">` in a prompted hub is `E-CHOICE-DUP`.
@@ -272,6 +316,114 @@ title: The lighthouse
 takes at most one `<return>` block, and the block takes no attributes. To vary the text, guard its
 lines with `when=` or wrap them in a `<match>`. [Coming from Ink or
 Yarn](/guides/coming-from-ink-yarn/) ports an Ink knot the player keeps returning to this way.
+
+### Leaving a hub with `::jump`
+
+A forward [`::jump`](/language/directives/#jump-and-label--forward-and-bounded-backward-jumps) from an option body (or
+from `<return>`) to a label after the hub **leaves the hub** (0.52, #216): the visit ends there, no
+`<return>` runs, and the menu is not presented again. A jump out of two nested hubs leaves both.
+
+```lute check
+---
+kind: scene
+id: office.desk
+title: The desk
+---
+
+## Office
+
+@narrator: Before the hub.
+<hub id="desk">
+  <choice id="take" text="Take it">
+    @narrator: Taking it, then jumping past the hub.
+    ::jump{to="after"}
+  </choice>
+  <choice id="leave" text="Leave" exit>
+    @narrator: Leaving.
+  </choice>
+</hub>
+::label{name="after"}
+@narrator: After the hub.
+```
+
+```console
+$ lute trace desk.lute --choice desk=take,leave
+trace: desk.lute  (seeds: 0 paths, 0 facts; 2 selections)
+  ## Office
+    @narrator  Before the hub.
+  <hub desk>   eligible: take, leave   -> take
+    @narrator  Taking it, then jumping past the hub.
+    <jump -> after>
+    <label>
+    @narrator  After the hub.
+trace complete: 1 decision; choices 1/2 (desk)
+```
+
+The scripted `leave` is never needed: `take` already left. The compiled `jump` carries
+**`leaves`**, the number of hub bodies it leaves (here `"leaves": 1`), and an artifact with such a
+jump requires the semantic id `lute.core.hubLeave/1` (see the
+[runtime contract](/tooling/runtime-contract/)).
+
+A jump may not go the other way. An option body, a `<return>` body, an `<on>` or `<objective>` body,
+a lore entry and a beat each run as their own range, so a jump into one of them from outside is
+`E-JUMP-INTO-BODY` (0.52):
+
+<!-- lute-diagnostics unverified="verbatim lute check output; two format! literals in crates/lute-check/src/next_labels.rs match this text, so the scraper cannot pin it to one" -->
+```
+into.lute:11:16: error [E-JUMP-INTO-BODY] `::jump{to="mid"}` enters the body of hub `desk`'s option `take`, which runs only when that option is chosen — jump to a label in the same body, or after the hub
+```
+
+A jump stays in its own body or leaves hub option and `<return>` bodies outward. `<choice>` bodies
+of a `<branch>` and `<match>` arms run inline, so a jump may cross them as before.
+
+### Who is on stage at the options
+
+An option can run after any sequence of earlier picks, so since 0.52 (#217) the checker and the
+compiler judge each option from the **hub head**: the stage on entry joined with the stage every
+non-`exit` option (and `<return>`) can leave behind, iterated until it stops changing. A character
+that one option sends off is therefore maybe-absent in every other option:
+
+```lute check
+---
+kind: scene
+id: desk
+title: The desk
+enums:
+  action:
+    members: [show, hide]
+    exits: [hide]
+---
+
+## Desk
+
+@mira: Hi.
+<hub id="desk">
+  <choice id="send" text="Send her away">
+    ::actor{character="mira" action="hide"}
+  </choice>
+  <choice id="talk" text="Talk">
+    @mira: Still here.
+  </choice>
+  <choice id="leave" text="Leave" exit>
+    @narrator: Bye.
+  </choice>
+</hub>
+```
+
+<!-- lute-diagnostics unverified="verbatim lute check output; the second message splices ACTOR_LOWERING_HINT (crates/lute-check/src/inject.rs), whose span two literals match, so the scraper cannot pin it to one" -->
+```
+head.lute:16:5: warning [W-STAGE-ABSENT] `mira` already left on the declared exit at line 16 on a path that reaches here and has not been shown again, so this exit does nothing. Delete it, or show them again with an `::actor` before it
+head.lute:19:5: warning [W-STAGE-ABSENT] `mira` left the stage on an earlier declared exit (line 16) on a path that reaches here and has not been shown again, so a spoken line here stages someone who is not present. Show them again with an `::actor` (or a plugin directive declared `lower: { record: actor, fields: { character: { fromAttr: character } } }`) before this point, or remove the earlier exit
+```
+
+A `<return>` that shows her again keeps `talk` clean, since every way back to the options passes
+it. An `exit` option never feeds the head, and the stage after the hub joins the head with the exit
+options' ends. The compiler injects the anchors and preloads this same state calls for.
+
+Where routes join (after a hub, a `<branch>`, a `<match>` or at a label), a character on stage on
+every route stays on stage even when the routes left them with different emotions or poses (#222):
+the sprite becomes unknown rather than the character maybe-absent, so the next plain line still
+gets its `auto-pose-reset`, and the next `::actor` of them injects what a fresh show does.
 
 ### No dead ends
 
@@ -313,7 +465,8 @@ past the `<branch>`. A `<branch>` reached again is a new menu, and its `presenta
 `<hub>` inside a loop starts each visit at presentation 0, but a `once` choice taken on an earlier
 visit stays spent: its memory is the scene's visit record (`scene.visited.<hub>.<choice>`), so the
 hub offers only what is left. A loop may sit inside a hub option body (put the `::label` inside that
-option), but a loop cannot jump out of a hub option from inside it: `E-JUMP-LOOP-SCOPE`.
+option), but a loop cannot jump out of a hub option from inside it: `E-JUMP-LOOP-SCOPE`. A forward
+jump can: it [leaves the hub](#leaving-a-hub-with-jump).
 
 ## Plugin stamps on `<branch>`, `<hub>` and `<choice>`
 
@@ -358,4 +511,4 @@ The same attribute may be scoped to several of the three (`on: [branch, choice]`
 }
 ```
 
-Stamps are descriptive: the runtime never reads them, and the `awaitChoice` menu is unchanged. The reference player's `ChoiceView` carries the element's `stamps` and each option's `stamps`, read from the IR record at the menu's address; each is omitted when absent, and a presenter receives them through `showChoice`. A host that does not use the reference player reads the same fields from the IR record, as it reads option text (see the [runtime contract](/tooling/runtime-contract/)).
+Stamps are descriptive: the runtime never reads them, and the `awaitChoice` menu does not carry them. The reference player's `ChoiceView` carries the element's `stamps` and each option's `stamps`, read from the IR record at the menu's address; each is omitted when absent, and a presenter receives them through `showChoice`. A host that does not use the reference player reads the same fields from the IR record (see the [runtime contract](/tooling/runtime-contract/)); option text and the prompt it takes from the menu, already rendered.

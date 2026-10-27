@@ -11,7 +11,7 @@ use crate::{compute_conn_fixpoint, ByRoot, DocGroup};
 pub fn project_docs(group: &DocGroup) -> Vec<ProjectDoc<'_>> {
     group
         .iter()
-        .map(|(p, d, f)| ProjectDoc::new(p.as_path(), d, &f.typed, &f.snapshot.reward_kinds))
+        .map(|(p, d, f)| ProjectDoc::new(p.as_path(), d, &f.typed, &f.snapshot))
         .collect()
 }
 
@@ -21,6 +21,11 @@ pub struct RootScenario {
     /// 0.51.0 §4.5: the declared raises reaching each answerer — what the
     /// node envelope names (`raised by …`).
     pub raises: lute_check::raises::RaiseAnchors,
+    /// 0.52.0 §8.2 (Review052 F4): every resolved raise site behind a
+    /// `[raises]` edge of [`Self::graph`], with its target's provenance —
+    /// what `lute impact` grades that edge by. The graph keeps only edge
+    /// kinds and is not widened.
+    pub raise_sites: Vec<ResolvedRaise>,
     pub reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
     /// Each node's ROUTE envelope ([`envelope::propagate`]); its whole
     /// envelope also holds [`Self::envelope_d`] — read it with
@@ -45,6 +50,61 @@ pub struct RootScenario {
     pub scene_must: BTreeMap<String, Vec<lute_check::fact_env::MustFact>>,
 }
 
+/// One resolved raise site reaching one anchored answerer (0.52.0 §8.2): the
+/// node whose run makes the raise, the scene or bundle beat it reaches, and
+/// the site's resolved target. A [`RaiseTarget::Dynamic`] target
+/// (`occasion.target`) stands for every answerer of the occasion.
+///
+/// [`RaiseTarget::Dynamic`]: lute_check::raises::RaiseTarget::Dynamic
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolvedRaise {
+    pub source: lute_check::connectivity::NodeId,
+    pub answerer: lute_check::connectivity::NodeId,
+    pub target: lute_check::raises::RaiseTarget,
+}
+
+/// The sites of `table` behind each raise anchor of `anchors` (both built
+/// from `docs` parallel to `foldeds`): for each scene or bundle beat that
+/// [`lute_check::raises::RaiseTable::anchors`] anchored, every site with a
+/// source node that reaches it ([`lute_check::raises::RaiseTable::reaches`],
+/// the one answerer rule), in beat then table order.
+fn resolved_raises(
+    table: &lute_check::raises::RaiseTable<'_>,
+    anchors: &lute_check::raises::RaiseAnchors,
+    docs: &[ProjectDoc<'_>],
+    foldeds: &[&lute_check::FoldedEnv],
+) -> Vec<ResolvedRaise> {
+    use lute_check::connectivity::NodeId;
+    let mut out = Vec::new();
+    if anchors.iter().next().is_none() {
+        return out;
+    }
+    for beat in &lute_check::project_beats(docs, foldeds) {
+        let answerer = match beat.kind {
+            lute_check::ProjectBeatKind::Scene => NodeId::Scene(beat.id.clone()),
+            lute_check::ProjectBeatKind::Bundle => NodeId::Beat(beat.id.clone()),
+            lute_check::ProjectBeatKind::Entry => continue,
+        };
+        if anchors.of_node(&answerer).is_empty() {
+            continue;
+        }
+        for site in table
+            .iter()
+            .filter(|site| lute_check::raises::RaiseTable::reaches(site, beat))
+        {
+            let Some(source) = &site.source else {
+                continue;
+            };
+            out.push(ResolvedRaise {
+                source: source.clone(),
+                answerer: answerer.clone(),
+                target: site.target.clone(),
+            });
+        }
+    }
+    out
+}
+
 impl RootScenario {
     /// `node`'s whole envelope: its route part with the entry floor `D`;
     /// `None` when [`envelope::propagate`] gave it none (a cycle).
@@ -64,7 +124,9 @@ pub fn assemble_root_scenario(
     let quest_ids = lute_check::connectivity::quest_id_set(&project_docs);
     let beat_keys = lute_check::connectivity::bundle_beat_key_set(&project_docs);
     let foldeds: Vec<&lute_check::FoldedEnv> = group_full.iter().map(|(_, _, f)| f).collect();
-    let raises = lute_check::raises::RaiseAnchors::of(&project_docs, &foldeds);
+    let raise_table = lute_check::raises::RaiseTable::build(&project_docs, &foldeds);
+    let raises = raise_table.anchors(&project_docs, &foldeds);
+    let raise_sites = resolved_raises(&raise_table, &raises, &project_docs, &foldeds);
     let (mut graph, _) =
         lute_check::connectivity::assemble_graph(&project_docs, &key_set, &quest_ids, &raises);
     let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(&project_docs);
@@ -145,6 +207,7 @@ pub fn assemble_root_scenario(
     RootScenario {
         graph,
         raises,
+        raise_sites,
         reach: fp.reach,
         route_envs,
         tainted,

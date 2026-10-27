@@ -25,6 +25,15 @@ after: 'visited("mira.s01ep01") && active("theCoffeeDebt")'
 
 퀘스트 문서는 `kind: quest`를 선언하고, 자신이 게이트하는 스키마를 위해 `uses:`를 담습니다. 본문은 하나 이상의 `<quest>` 선언입니다 — 퀘스트에서는 `<hub>`, `<timeline>`, `#`/`##` 헤딩을 금지합니다.
 
+퀘스트는 `<on>` 핸들러 본문과 `<objective>` 본문만 실행하므로, 0.52부터(#208) `<quest>` 바로 안에는 이 둘과 `<reward>`만 올 수 있습니다. 퀘스트 최상위의 콘텐츠 줄, 디렉티브, `::set`, `::label`, `::jump`, `<branch>`, `<match>`, `::assert`, `::retract`는 `E-GRAMMAR-NOT-ADMITTED`입니다. 그 순간에 맞는 `<on event=…>`이나 `<objective>` 안으로 옮기세요:
+
+<!-- lute-diagnostics -->
+```
+q.lute:6:3: error [E-GRAMMAR-NOT-ADMITTED] a content line at the top level of `<quest id="toll">` never runs — a quest runs only its `<on>` handlers and `<objective>` bodies: move it into the `<on event=…>` or `<objective>` whose moment it belongs to
+```
+
+0.51에서 이런 콘텐츠는 어떤 실행도 도달하지 않는 레코드로 컴파일되었습니다. 예외는 마지막 본문 뒤의 콘텐츠로, 그 본문의 일부처럼 이어서 실행되었습니다. 그 본문 안으로 옮기세요.
+
 ```lute
 <quest id="rescueHalsinGrove" tier="run" title="Rescue the First Druid" start="run.act == 1" fail="run.npc.halsin.dead">
   <objective id="reachGrove" title="Reach the Emerald Grove" done="run.region == 'grove'"/>
@@ -146,6 +155,17 @@ rearm은 목표를 취소하지만 목표가 읽는 상태는 취소하지 않�
 
 **완료는 파생됩니다.** 작성자가 직접 쓰는 것이 아닙니다: 모든 `optional`이 아닌 목표가 `done`이 되면 퀘스트가 `complete`가 됩니다([`complete="any"`](#대안-completeany)에서는 그중 하나). 목표 완료는 단조적입니다 — 한 번 `done`으로 기록되면 계속 유지됩니다.
 
+#### 목표 제목은 평문입니다
+
+퀘스트 UI는 목표의 `title`을 쓰인 그대로 보여 주며 아무것도 렌더링하지 않습니다. 그래서 0.52부터 `<objective title>` 안의 `{{`는 마커든 이스케이프든 `E-OBJECTIVE-TITLE-INTERP`입니다. 낱말은 평문으로 쓰고, 바뀌는 값은 줄에서 보여 주세요:
+
+<!-- lute-diagnostics -->
+```
+q.lute:7:30: error [E-OBJECTIVE-TITLE-INTERP] `<objective id="pay">`'s `title` is shown as written — a quest UI does not render `{{run.gold}}` — so it takes no `{{…}}`: write the words as plain text (`title="Pay the toll"`), and show a value that changes in a line
+```
+
+퀘스트 자체의 `title=`은 원래 보간되지 않았으며 바뀌지 않습니다.
+
 ### `<reward>` id
 
 퀘스트 또는 목표의 직계 자식인 `<reward>`에는 선택적 `id`를 붙일 수 있습니다. 이는 `[A-Za-z][A-Za-z0-9_-]{0,63}`에 맞는 제한된 ASCII 토큰이어야 합니다. id는 해당 퀘스트의 보상 전체에서 유일해야 하며 목표의 보상도 포함합니다. 같은 퀘스트에서 두 번째 `<reward id="clearPay">`를 쓰면 **`E-REWARD-DUP`**입니다. 이는 `RewardEntry.id`로 낮춰지고 소스 맵과 엔진 모델에서 보상의 안정적인 키가 되므로 보상을 재배열하거나 삽입해도 이동하지 않습니다. 태그가 없는 보상은 IR에 `id`가 없고 선언 인덱스로 키가 지정됩니다.
@@ -185,7 +205,7 @@ rewardKinds:
   OFFER_QUEST: { target: { required: true }, effects: { accepts: ["@target"] } }
 ```
 
-`@target`은 보상의 따옴표 붙은 `target=`입니다. `<reward>`는 다른 속성을 받지 않으므로 효과가 읽을 수 있는 이름은 이것뿐입니다. `writes`는 효과가 아닙니다. 보상의 상태 쓰기는 `credits:`입니다.
+`@target`은 보상의 따옴표 붙은 `target=`입니다. 0.52부터 효과는 kind가 선언한 속성 `@<attr>`도 읽을 수 있습니다(아래). `writes`는 효과가 아닙니다. 보상의 상태 쓰기는 `credits:`입니다.
 
 [plugin-surfaces 예제](https://github.com/journeyWorker/lute/tree/main/docs/examples/plugin-surfaces)는 이 세 종류를 선언하고 지급합니다:
 
@@ -239,6 +259,36 @@ Reward effects (0.50):
 그다음 보상으로 넘어갑니다. 이전과 같이 목표 보상이 퀘스트 보상보다 먼저 지급되고, 한 전환의 모든 지급은 그 전환의 생명주기 핸들러 본문보다 앞서므로 `questComplete` 핸들러는 보상이 assert한 사실을 읽습니다. 효과는 지급 한 번당 정확히 한 번 발생하며, 재생과 복원은 지급 자체의 인스턴스 정체성을 따릅니다. 가드가 거짓인 `<reward when="…">`는 효과를 포함해 아무것도 지급하지 않습니다.
 
 분석은 각 효과를 소유자의 지급 지점에서 읽습니다. `outcome`이 없는 퀘스트 보상은 퀘스트 완료 시점(`questComplete` 핸들러 앞), `outcome="failed"`는 실패 시점(`questFailed` 앞), 목표 보상은 목표 완료 시점입니다. 보상의 assert는 생산자일 뿐입니다. 그 사실에 걸린 퀘스트를 도달 가능하게 하지만, 지급 뒤 그 사실이 *보장*되지는 않으므로(핸들러는 다른 지급 뒤로 미뤄질 수 있고, 호스트는 퀘스트를 완료로 시드할 수 있습니다) 그것을 검사하는 가드는 `W-FACT-GUARANTEED`도 `E-ARM-DEAD`도 받지 않습니다. 보상의 retract는 보장된 사실에서 그것을 제거합니다. 결과는 [사실과 Datalog](/ko/state/facts-and-datalog/#보상-효과가-만드는-사실)와 [도달 가능성](/ko/connectivity/reachability/#보상-효과가-그리는-엣지)에 있습니다.
+
+#### 보상 kind 속성
+
+보상 kind는 디렉티브가 속성을 선언하듯 매니페스트에 **`attrs:`**를 선언할 수 있습니다. 0.52부터(#201) 그 kind의 `<reward>`에 이 속성을 쓸 수 있고, kind의 효과는 이를 `@<attr>`로 읽습니다:
+
+```yaml
+rewardKinds:
+  BADGE:
+    target: { entity: person, required: true }
+    attrs:
+      - { name: rarity, type: { enum: [common, rare, gold] }, default: common }
+    effects: { asserts: ["badge(@target, @rarity)"] }
+```
+
+```lute
+<objective id="pay" done="run.gold > 2">
+  <reward kind="BADGE" target="mira" rarity="gold"/>
+</objective>
+```
+
+- **디렉티브 속성처럼 검사됩니다.** 값은 따옴표 리터럴이고(`bool`은 맨 플래그가 `true`), 선언에 따라 디렉티브와 같은 코드로 타입 검사됩니다. `rarity="silver"`는 `E-BAD-ENUM`(`` `silver` is not a valid value for `rarity` of `<reward kind="BADGE">` (expected one of: common, rare, gold) ``)이고, 빠진 `required: true` 속성은 `E-MISSING-ATTR`, `@ref` 값은 `E-REWARD-ATTR`입니다. 보상의 속성은 엔진이 지급할 때 기준으로 삼는 정적 데이터이기 때문입니다.
+- **알 수 없는 속성.** `E-UNKNOWN-ATTR`는 kind가 선언한 속성을 나열합니다: `` `<reward>` has no attribute `rarety` — did you mean `rarity`?; its attributes are `id`, `kind`, `target`, `amount`, `when`, `outcome`, and kind `BADGE` declares `rarity` ``.
+- **효과.** `@rarity`는 작성한 값에, 없으면 선언된 `default:`에 바인딩됩니다. 둘 다 없는 속성은 바인딩되지 않으며, 그것을 읽는 효과는 `target=`이 없을 때처럼 적용되지 않습니다. 검사기는 바인딩된 사실(`badge(mira, gold)`)을 위와 같이 판정합니다.
+- **아티팩트와 지급.** 컴파일된 보상은 `attrs`(작성한 각 속성과 작성하지 않은 각 기본값, 타입 적용)를 담고, 런타임의 `grant` 레코드는 이를 `reward`에 복사합니다:
+
+```json
+{"index":0,"instance":1,"kind":"grant","objective":"pay","quest":"first","reward":{"amount":1,"attrs":{"rarity":"gold"},"kind":"BADGE","target":"mira"}}
+```
+
+`attrs:`가 없는 kind의 보상은 예전과 똑같이 컴파일되고 지급됩니다. 선언 규칙은 [매니페스트](/ko/plugins/manifests/#보상-kind-속성) 페이지에 있습니다.
 
 ### 퀘스트가 씬 및 계기를 만나는 방식
 
@@ -638,7 +688,7 @@ title: Across the river
 `failedBy`는 이 일곱 값의 enum이므로 위 match는 `<otherwise>` 없이도 모든 경우를 다룹니다. 오타가 난 arm(`is="superceded"`)은 `E-WHEN-LITERAL-DOMAIN`입니다. 놓친 목표와 `fail`이 같은 정착에서 퀘스트를 실패시키면 목표의 종류가 우선합니다. 어느 경로든 `state:`에 선언하면 `E-QUEST-RESERVED-DECL`이고, `::set`으로 쓰면 `E-QUEST-RESERVED-WRITE`입니다. run-tier 퀘스트의 `newRun` 초기화는 둘 다 지웁니다. `lute run`, `lute play`,
  `lute trace`, `lute test`는 이 값에 동의하며, `lute run --json`은 실패한 `quest` 레코드에 `failedBy`를 담습니다.
 
-0.49.0부터 프로젝트 전체 `lute check`는 조건뿐 아니라 이런 읽기를 모두 확인합니다. 줄이나 선택지 라벨의 `{{ quest.<id>.state }}` 보간, 보간 인자, `defs:`에 있는 def의 `cel:` 본문에서 그 id의 퀘스트가 프로젝트에 없으면 각각 `E-QUEST-REF-UNKNOWN`입니다(``quest.nope.state references quest nope, which no project quest defines``).
+0.49.0부터 프로젝트 전체 `lute check`는 조건뿐 아니라 이런 읽기를 모두 확인합니다. 줄이나 선택지 라벨의 `{{ quest.<id>.state }}` 보간, 보간 인자, `defs:`에 있는 def의 `cel:` 본문에서 그 id의 퀘스트가 프로젝트에 없으면 각각 `E-QUEST-REF-UNKNOWN`입니다(``quest.nope.state references quest nope, which no project quest defines``). 0.52부터(#212) 같은 검사는 [라벨 문법](/ko/language/dialogue-and-cast/#라벨과-프롬프트)을 따르는 모든 값, 즉 `<branch>`/`<hub>` 프롬프트와 플러그인 디렉티브의 `text` 속성도 읽으므로, `::banner{… subtitle="{{quest.finalle.state}}"}`도 줄에 쓴 같은 읽기처럼 보고됩니다.
 
 ### `quest.<id>.activatedAt`
 

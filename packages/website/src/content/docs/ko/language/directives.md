@@ -374,6 +374,13 @@ state:
 
 `::jump`와 `::label`은 스탬프를 싣지 않습니다. 플러그인 스탬프나 `wait` 같은 타이밍 키는 `E-UNKNOWN-ATTR`입니다([스탬프를 싣지 않는 디렉티브](#스탬프를-싣지-않는-디렉티브) 참고). 속성은 점프 앞의 줄이나 디렉티브에, 또는 라벨 뒤의 줄이나 디렉티브에 두세요.
 
+### 점프가 건널 수 있는 본문
+
+어떤 본문은 자기 차례가 올 때만 들어가는 별도의 **range**로 실행됩니다. `<hub>` 옵션 본문과 허브 `<return>` 본문, `<on>`·`<objective>` 본문, 로어 `<entry>`, `<beat>`입니다. 문서의 최상위도 하나의 range입니다(씬의 모든 섹션이 함께이므로, 한 섹션에서 다음 섹션으로 가는 앞으로의 점프는 허용됩니다). `<branch>`의 `<choice>` 본문과 `<match>` 갈래는 인라인으로 배치되므로 range가 아닙니다. 0.52부터:
+
+- 자기 range 안의 레이블, 또는 허브 옵션·`<return>` 본문만 지나 바깥 range에 있는 레이블로 가는 점프는 허용됩니다. 허브 밖으로 나가는 점프는 **허브를 떠납니다**. 방문이 끝나고 `<return>`은 실행되지 않으며 메뉴도 다시 제시되지 않습니다(#216, [허브 떠나기](/ko/language/choices-and-hubs/#jump로-허브-떠나기) 참고). 컴파일된 `jump`는 떠나는 허브 본문의 수인 `leaves`를 담고, 아티팩트는 semantic id `lute.core.hubLeave/1`을 요구합니다.
+- 그 밖의 점프는 바깥에서 range 안으로 들어가는 것이며(형제 옵션의 본문, 허브 앞에서 옵션 본문으로, 다른 `<objective>`·`<on>` 본문으로) `E-JUMP-INTO-BODY`입니다. 메시지가 들어가는 본문과 대신 할 일을 알려 줍니다: `` `::jump{to="mid"}` enters the body of `<objective id="p">`, which runs only when that objective completes — jump to a label in the same body (to end a body early, jump to a label at its end) ``. 0.51에서는 두 objective 본문 사이의 점프가 깨끗하게 검사되었지만, 레이블이 약속하는 것과 달리 자기 본문을 끝낼 뿐이었습니다.
+
 ### 한정된 뒤로 점프 — `max`
 
 0.51부터 `::jump`는 `max`를 달면 **앞선** `::label`을 대상으로 할 수 있습니다. `max`는 점프가 실행될 수 있는 횟수입니다. `max`번 실행된 뒤에는 점프가 실행되지 않고 제어가 다음 노드로 이어집니다. `max`는 1부터 99까지의 리터럴 정수이며, `lute.core`가 `::jump`에 `int`로 선언합니다:
@@ -405,7 +412,7 @@ state:
 | 규칙 | 코드 |
 |---|---|
 | `max`는 1부터 99까지의 리터럴 정수입니다. `@ref`, `0`, 음수, 99 초과는 안 되며, 앞으로 가는 점프의 `max`는 의미가 없습니다 | `E-JUMP-MAX` |
-| 라벨은 점프 자신의 본문이나 그것을 감싸는 본문에 있어야 하고, 그 사이의 모든 본문은 `<branch>`의 `<choice>` 본문이거나 `<match>`의 arm 본문이어야 합니다. 루프는 `<hub>` 옵션 본문이나 `<return>` 본문, `<on>`이나 `<objective>` 본문, 퀘스트, entry, beat, 섹션을 벗어날 수 없고, `<on>`이나 `<objective>`를 포함할 수 없습니다 | `E-JUMP-LOOP-SCOPE` |
+| 라벨은 점프 자신의 본문이나 그것을 감싸는 본문에 있어야 하고, 그 사이의 모든 본문은 `<branch>`의 `<choice>` 본문이거나 `<match>`의 arm 본문이어야 합니다. 루프는 `<hub>` 옵션 본문이나 `<return>` 본문, `<on>`이나 `<objective>` 본문, 퀘스트, entry, beat, 섹션을 벗어날 수 없습니다(퀘스트의 `<on>`·`<objective>` 본문을 감싸는 루프에는 퀘스트 최상위의 `::label`이 필요한데, 0.52부터 그것은 `E-GRAMMAR-NOT-ADMITTED`입니다) | `E-JUMP-LOOP-SCOPE` |
 | 루프 바깥에서 앞으로 가는 점프는 그 루프의 머리 뒤쪽, 루프 안쪽에 떨어질 수 없습니다. 루프는 머리에서만 진입합니다 | `E-JUMP-INTO-LOOP` |
 | 두 루프는 중첩되거나 서로 떨어져 있어야 하며, 중첩 없이 겹칠 수 없습니다(머리가 같은 루프는 중첩됩니다) | `E-JUMP-LOOP-CROSS` |
 

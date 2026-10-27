@@ -592,7 +592,7 @@ impl Parser<'_> {
             None => (None, self.span_o(open.start_o, open.end_o)),
         };
         let visible_when = take_cel(&mut attrs, "visibleWhen", CelKind::Condition);
-        let title = take_str(&mut attrs, "title");
+        let title = take_str_spanned(&mut attrs, "title");
         let optional = take_flag(&mut attrs, "optional").is_some_and(|(on, _)| on);
         let on = take_str_spanned(&mut attrs, "on");
         let by = take_cel(&mut attrs, "by", CelKind::Condition);
@@ -1550,7 +1550,7 @@ mod tests {
             panic!()
         };
         assert_eq!(o.id, "reach");
-        assert_eq!(o.title.as_deref(), Some("Reach"));
+        assert_eq!(o.title.as_ref().map(|(t, _)| t.as_str()), Some("Reach"));
         assert!(o.done.raw.contains("run.here"));
         assert!(o.body.is_empty());
         assert!(!o.optional);

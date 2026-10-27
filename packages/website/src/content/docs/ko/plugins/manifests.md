@@ -304,7 +304,7 @@ directives:
 
 `on: [banner]`로 한정되고 이름이 `code`인 스탬프는 그 코어 속성에 가려져 `E-PLUGIN-RESERVED-STAMP-ATTR`가 됩니다. 이름이 `code`인 교차 스탬프는 다른 디렉티브에는 계속 적용되며, `text` 속성이 있는 디렉티브에서는 줄의 자체 `code`처럼 코어 `code`가 먼저 매칭됩니다.
 
-문서에서 `text` 값은 선택지 라벨 문법의 따옴표 문자열입니다. 상태 경로, `@def`, 호스트 토큰의 `{{…}}` 보간(수정자 포함)을 쓸 수 있고, 인라인 마크업은 파싱하지 않습니다. 리터럴 `{{`는 아직 따옴표 속성 값에 쓸 수 없습니다(선택지 라벨에서처럼 그 자리의 `\{{`는 `E-STRING-ESCAPE`입니다. #211). `@ref` 값은 `E-ATTR-TYPE`입니다: `` `title` of `::banner` is localizable `text`, written as a quoted string; a `@def` value has no translation of its own ``. 그러면 디렉티브는 내용 줄처럼 `code=`(문자열)를 받으며, 이는 `text` 속성이 하나 이상 있는 디렉티브에서 허용됩니다. 다른 디렉티브에서 `code`는 계속 `E-UNKNOWN-ATTR`이며, 메시지가 그 이유를 알려 줍니다.
+문서에서 `text` 값은 선택지 라벨 문법의 따옴표 문자열입니다. 상태 경로, `@def`, 호스트 토큰의 `{{…}}` 보간(수정자 포함)을 쓸 수 있고, 인라인 마크업은 파싱하지 않습니다. `\{{`는 선택지 라벨에서처럼 리터럴 `{{`를 씁니다(0.52부터, #211). `@ref` 값은 `E-ATTR-TYPE`입니다: `` `title` of `::banner` is localizable `text`, written as a quoted string; a `@def` value has no translation of its own ``. 그러면 디렉티브는 내용 줄처럼 `code=`(문자열)를 받으며, 이는 `text` 속성이 하나 이상 있는 디렉티브에서 허용됩니다. 다른 디렉티브에서 `code`는 계속 `E-UNKNOWN-ATTR`이며, 메시지가 그 이유를 알려 줍니다.
 
 ```lute
 ::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
@@ -358,12 +358,42 @@ rewardKinds:
 `effects`는 `asserts`, `retracts`, `accepts`, 그리고(0.51부터) [`raises`](#선언된-occasion-raise)만 받고 다른 키는 받지 않습니다. 빈 `effects: {}`는 `E-PLUGIN-PARSE`입니다("declares no effect". 메시지는 키 목록에 `raises:`를 포함합니다). 반면 `effects: { raises: [...] }`만 있는 블록은 유효합니다. `asserts` / `retracts`의 각 항목은 [디렉티브 효과](#디렉티브가-assert하거나-retract하는-팩트)와 같은 팩트 패턴 `relation(arg, …)`입니다.
 
 - **`writes`는 허용되지 않습니다.** 보상의 상태 쓰기는 `credits:`이므로 `effects.writes`는 `E-PLUGIN-KEY`이며, 메시지에 `` — a reward's state write is `credits:` ``가 덧붙습니다.
-- **패턴 인자**는 멤버, `true` / `false`, `@target`, 그리고 `_`(`retracts`에서만)입니다. 그 밖의 `@name`은 `E-PLUGIN-PARSE`입니다: `` reward kind `BADGE` effect `met(@rarity)` reads `@rarity`; a reward kind's effects read only `@target` (a `<reward>` takes no other attribute) ``. 보상 종류 자체의 `attrs:`는 `<reward>`에 쓸 수 없으므로 읽을 다른 값이 없습니다.
+- **패턴 인자**는 멤버, `true` / `false`, `@target`, kind가 선언한 속성을 가리키는 `@<attr>`(0.52부터, [아래](#보상-kind-속성) 참고), 그리고 `_`(`retracts`에서만)입니다. 그 밖의 `@name`은 did-you-mean과 함께 `E-PLUGIN-PARSE`입니다: `` reward kind `BADGE` effect `badge(@target, @rarty)` reads `@rarty`, but the kind declares no such attribute (declared: target, rarity); did you mean `@rarity`? ``.
 - **`accepts`** 항목은 `@target` 또는 리터럴 퀘스트 id(식별자)입니다. 그 밖은 `E-PLUGIN-PARSE`입니다.
 - `target: { forbidden: true }`인 종류의 효과가 `@target`을 읽으면 `E-PLUGIN-PARSE`입니다. 그 효과는 바인딩될 수 없기 때문입니다.
 - `@target`은 보상의 따옴표로 묶인 `target=`에 바인딩됩니다. `target=`이 없는 `<reward>`는 그 `@target`을 읽는 패턴의 효과를 적용하지 않으며, 추가 진단도 없습니다. `target: { required: true }`인 종류는 이미 `E-REWARD-TARGET`을 보고합니다.
+- `@<attr>`은 보상에 작성한 그 속성 값에, 없으면 선언된 `default:`에 바인딩됩니다. 둘 다 없으면 바인딩되지 않으며 그것을 읽는 효과는 적용되지 않습니다.
 
 체커는 이런 종류의 `<reward>`마다 `@target`을 바인딩해 판정합니다. 팩트 패턴은 그것의 `::assert` / `::retract`와 똑같은 기준(관계 선언, arity, 인자 종류와 멤버)으로, 같은 코드를 사용해 보상의 `kind=` 위치에서 판정되며, 각 메시지는 `` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): `` 접두사를 가집니다. `accepts`의 id는 `::accept`의 규칙으로 판정됩니다. 알 수 없는 id(did-you-mean 포함), `start`가 있는 퀘스트, 자동 활성화되는 자식 퀘스트는 `E-ACCEPT-TARGET`입니다. id가 `@target`에서 왔다면 보상의 `target=` 값 위치에, 아니면 `kind=` 위치에 보고됩니다: `` `<reward kind="OFFER_QUEST" target="secnd">` accepts quest `secnd` (its kind's `effects.accepts`), but no quest in the project declares that id — did you mean `second`? ``. 지급 시점에 효과가 무엇을 의미하고 분석이 이를 어떻게 읽는지는 [퀘스트와 씬](/ko/language/quests-and-scenes/)에 있습니다. `effects:`가 없는 종류의 해시는 이전과 같습니다.
+
+### 보상 kind 속성
+
+보상 kind의 **`attrs:`** 목록은 디렉티브 속성 선언 규칙(`{ name, required?, type, default? }`)을 따릅니다. 0.52부터(#201) 그 kind의 `<reward>`에 이 속성을 쓸 수 있고, `effects`는 이를 `@<attr>`로 읽습니다:
+
+```yaml
+# rewardkinds/r.yaml
+rewardKinds:
+  BADGE:
+    target: { entity: person, required: true }
+    attrs:
+      - { name: rarity, type: { enum: [common, rare, gold] }, default: common }
+    effects: { asserts: ["badge(@target, @rarity)"] }
+```
+
+**로드 오류.** 다음은 모두 항목 위치의 `E-PLUGIN-PARSE`이며 플러그인을 로드하지 못합니다:
+
+<!-- lute-diagnostics unverified="verbatim lute check --project output; ManifestError::RewardAttr (crates/lute-manifest/src/validate.rs) writes the `reward kind … declares attribute …` head and each fault's tail with separate write! calls, so no single format! literal spans a line" -->
+```
+./plugins/acme.stage/rewardkinds/r.yaml:5:9: error [E-PLUGIN-PARSE] reward kind `BADGE` declares attribute `amount`, which `<reward>` already has (`id`, `kind`, `target`, `amount`, `when`, `outcome`) — give it another name
+./plugins/acme.stage/rewardkinds/r.yaml:6:9: error [E-PLUGIN-PARSE] reward kind `BADGE` declares attribute `rarity` as `string` with `default: 3`, which is not of type `string` — give a default of the declared type
+./plugins/acme.stage/rewardkinds/r.yaml:7:9: error [E-PLUGIN-PARSE] reward kind `BADGE` declares attribute `tags` as `list<string>`; an attribute value is written as one scalar (string, number, bool, an enum or entity member, a provider or asset id), so no `.lute` value can satisfy a `list`, `map` or `record` (structured attribute values are not supported yet): give each field its own attribute
+```
+
+같은 이름을 두 번 선언해도 거부되며(`` reward kind `BADGE` declares attribute `rarity` more than once — keep one declaration ``), `type: text`는 파일을 파싱할 때 계속 거부됩니다.
+
+**문서에서.** `<reward>`의 속성 집합은 고유한 여섯 키에 kind의 속성을 더한 것입니다. 각 값은 따옴표 리터럴이며, 소유자를 `` <reward kind="BADGE"> ``로 표시하는 디렉티브 속성 검사기로 검사됩니다(`E-ATTR-TYPE`, `E-BAD-ENUM`, `E-UNKNOWN-ID`, 엔티티·프로바이더·에셋 검사). 빠진 `required: true` 속성은 `E-MISSING-ATTR`, `@ref` 값은 `E-REWARD-ATTR`이며, `E-UNKNOWN-ATTR`는 여섯 키 뒤에 kind의 속성을 나열합니다. 속성을 선언하지 않은 kind나 플러그인이 없는 프로젝트는 여섯 키와 기존 메시지를 그대로 씁니다. [퀘스트와 씬](/ko/language/quests-and-scenes/#보상-kind-속성)을 참고하세요.
+
+**바인딩과 아티팩트.** 효과의 `@<attr>`은 보상에 작성한 값, 없으면 선언된 `default:`이며, 둘 다 없으면 바인딩되지 않은 `@target`처럼 효과가 적용되지 않습니다. 컴파일된 보상 항목은 `attrs`(작성한 각 속성과 작성하지 않은 각 `default:`, `plugin` 레코드의 `fields`처럼 타입 적용)를 맨 뒤에, 비어 있지 않을 때만 담고, `grant` 레코드는 이를 `reward`에 복사합니다. `attrs`는 설명용입니다. semantic id를 더하지 않으며, 호스트는 `capabilitySnapshot`이 이미 고정하는 보상 kind 계약에 따라 읽습니다.
 
 ### 선언된 occasion raise
 
@@ -401,10 +431,10 @@ target: scene.chapter2
 ```
 
 - **`effects.raises`**는 `{ occasion, target? }` 항목의 비어 있지 않은 목록이며 다른 키는 없습니다. 디렉티브에서는 `writes`, `asserts`, `retracts` 옆에, 보상 종류에서는 `asserts`, `retracts`, `accepts` 옆에 놓입니다. `raises`만 선언한 보상 종류는 `lute.quest.rewardEffects/1` 시맨틱 id를 `requiredSemantics`에 넣지 않습니다.
-- **`target`**은 다음 중 하나입니다. 생략(대상 없이 선언된 occasion에만 허용), 디렉티브에서의 `@<attr>`(선언된 속성 이름), 보상 종류에서의 `@target`(보상의 `target=`), 또는 비트가 쓰듯 통째로 적은 리터럴 대상(`scene.chapter2`). `target: { forbidden: true }`인 종류는 `@target`으로 raise할 수 없습니다.
+- **`target`**은 다음 중 하나입니다. 생략(대상 없이 선언된 occasion에만 허용), 디렉티브에서의 `@<attr>`(선언된 속성 이름), 보상 종류에서의 `@target`(보상의 `target=`) 또는 (0.52부터) kind가 선언한 [속성](#보상-kind-속성)인 `@<attr>`, 또는 비트가 쓰듯 통째로 적은 리터럴 대상(`scene.chapter2`). `target: { forbidden: true }`인 종류는 `@target`으로 raise할 수 없습니다.
 - occasion의 **`raisedBy: declared`**는 호스트가 선언된 raise를 통해서만 그것을 발생시키게 합니다([occasion 키](#export-파일) 참고). 없으면 선언된 raise는 아티팩트에 기록되고 검사되지만 그래프 엣지를 그리지 않습니다.
 
-**로드 오류**(`E-PLUGIN-PARSE`, 항목 위치): `raises: []`; `occasion`과 선택적 `target`을 가진 매핑이 아닌 항목; `@<name>`도 점으로 구분된 대상도 아닌 `target`; 디렉티브에서 선언되지 않은 속성을 가리키는 `@<name>`; 보상 종류에서 `@target`이 아닌 `@<name>`, 또는 `target: { forbidden: true }`인 종류의 `@target`; 알 수 없는 `raisedBy` 값.
+**로드 오류**(`E-PLUGIN-PARSE`, 항목 위치): `raises: []`; `occasion`과 선택적 `target`을 가진 매핑이 아닌 항목; `@<name>`도 점으로 구분된 대상도 아닌 `target`; 디렉티브에서 선언되지 않은 속성을 가리키는 `@<name>`; 보상 종류에서 `@target`이 아니면서 kind의 어떤 속성도 가리키지 않는 `@<name>`, 또는 `target: { forbidden: true }`인 종류의 `@target`; 알 수 없는 `raisedBy` 값.
 
 raise를 실을 곳이 없는 낮춤, 즉 어떤 `lower:`(스테이징 레코드나 빌트인)든 가진 디렉티브는 `effects.raises`를 선언할 수 없습니다. `raises` 키에서 `E-PLUGIN-INVALID-DIRECTIVE`입니다: `` directive `::playVideo` lowers to the `video` record, which carries no effects (only a `plugin` record does), so its `effects.raises` could never reach the host — drop `lower:` so the call stays a `plugin` record, or raise the occasion from a passthrough directive ``. 이는 `effects.writes`가 레코드 낮춤에서 이미 갖는 경계와 같습니다.
 
@@ -414,7 +444,7 @@ raise를 실을 곳이 없는 낮춤, 즉 어떤 `lower:`(스테이징 레코드
 |---|---|
 | occasion이 스냅숏에 없음 | `` directive `::playScene` (`acme.stage`) raises occasion `cutscne`, which no active plugin declares (a plugin raising another plugin's occasion lists it in `depends:`) — did you mean `cutscene`? `` (설치되었지만 비활성인 플러그인에 occasion이 있으면 메시지가 대신 그 플러그인을 알려 줍니다) |
 | 대상 없는 occasion에 `target`이 있거나, 대상이 있는 occasion에 없음 | `` … raises `cutscene` without a target, but `cutscene` is raised for a target (`scene.<cutsceneId>`) — add `target: "@<attr>"` `` |
-| 도메인 occasion `{ prefix, entity }`에서 선언된 타입이 `{ entity: <entity> }`가 아닌 `@attr`(보상 종류에서는 `target:` 계약이 `{ entity: <entity> }`가 아님) | `` … raises `cutscene` for `@scene`, which is typed `string`; the target of `cutscene` is a `cutsceneId` member, so type the attribute `{ entity: cutsceneId }` `` |
+| 도메인 occasion `{ prefix, entity }`에서 선언된 타입이 `{ entity: <entity> }`가 아닌 `@attr`(보상 종류에서는 `target:` 계약이 `{ entity: <entity> }`가 아닌 `@target`, 또는 다르게 선언된 kind 속성) | `` … raises `cutscene` for `@scene`, which is typed `string`; the target of `cutscene` is a `cutsceneId` member, so type the attribute `{ entity: cutsceneId }` `` |
 | occasion의 도메인 형태(`<prefix>.<member>`, `members:`가 있으면 그 목록) 밖의 리터럴 대상 | `` … raises `cutscene` for `room.office`, but its targets are `scene.<cutsceneId>` `` |
 
 **호출별, 지급별 검사.** 프로젝트 패스(`lute check --project`)는 `@attr` 대상이면 호출의 속성 값 위치에, 리터럴이면 디렉티브 헤드에, 보상이면 `target=`(또는 `kind=`) 위치에 `E-RAISES-TARGET`을 보고합니다. 해석된 대상은 호출에 쓴 값이고, 없으면 속성의 선언된 `default:`입니다. 둘 다 없는 대상만 바인딩되지 않으며, 바인딩되지 않은 대상은 추가 진단 없이 raise를 억제합니다(`required`가 이미 보고합니다). 해석된 각 대상에 대해:

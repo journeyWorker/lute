@@ -1,0 +1,44 @@
+[
+  {
+    "file": "project/toll.lute",
+    "key": "gate.prompt",
+    "kind": "prompt",
+    "line": 12,
+    "lineId": "toll.gate.prompt",
+    "source": null,
+    "sourceHash": "sha256:276f2589134dfa2f4a23b740166ea11644f8143322d862a6607b2a2decf6f175",
+    "text": "통행료는 {{run.gold}} 골드다."
+  },
+  {
+    "file": "project/toll.lute",
+    "key": "gate.pay",
+    "kind": "choice",
+    "line": 13,
+    "lineId": "toll.gate.pay",
+    "source": null,
+    "sourceHash": "sha256:67c47e9b6506609cfbed594ebbd9f61c54182b3c8e1d4f42462781f22affceef",
+    "text": "{{run.gold}} 골드를 낸다"
+  },
+  {
+    "code": "0010",
+    "file": "project/toll.lute",
+    "kind": "line",
+    "line": 14,
+    "lineId": "toll.narrator_0010",
+    "source": null,
+    "sourceHash": "sha256:abcacc8cf39120c4ca02d0ad0c9f9197b012652b862eddee5003b9c17c08c64d",
+    "speaker": "narrator",
+    "text": "문이 열린다."
+  },
+  {
+    "code": "0020",
+    "file": "project/toll.lute",
+    "kind": "line",
+    "line": 17,
+    "lineId": "toll.narrator_0020",
+    "source": null,
+    "sourceHash": "sha256:f28f57b589a47b278fb386f5869d38f2fdd5409b27295c08b648531eccc584e4",
+    "speaker": "narrator",
+    "text": "발길을 돌린다."
+  }
+]

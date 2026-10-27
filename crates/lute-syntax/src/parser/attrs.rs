@@ -108,12 +108,16 @@ pub(crate) fn scan_attr_list(text: &str, start: usize, term: u8) -> AttrScan {
                     // §4.4: only `\" \\ \n \t` are defined String escapes.
                     // `\'` is exempted — a CelString value (indistinguishable
                     // here) may embed a CEL single-quoted string using `\'`.
+                    // `\{{` is kept verbatim (0.52.0 §3.2): a literal `{{` in a
+                    // value that takes the label grammar; the checker refuses
+                    // it in any other value, which the lexer cannot tell.
                     // Any other escape is undefined; span the two bytes `\x`.
                     // A trailing `\` with no next byte (`j + 1 == n`) is an
                     // incomplete escape, not flagged.
                     if j + 1 < n {
                         let e = b[j + 1];
-                        if !matches!(e, b'"' | b'\\' | b'n' | b't' | b'\'') {
+                        let opener = e == b'{' && b.get(j + 2) == Some(&b'{');
+                        if !opener && !matches!(e, b'"' | b'\\' | b'n' | b't' | b'\'') {
                             scan.escapes.push((j, j + 2));
                         }
                     }
@@ -310,7 +314,9 @@ impl Parser<'_> {
         for (s, e) in scan.escapes {
             self.emit_o(
                 E_STRING_ESCAPE,
-                "only \\\" \\\\ \\n \\t are defined escapes (dsl §4.4)".to_string(),
+                "only \\\" \\\\ \\n \\t are defined escapes, and `\\{{` for a literal `{{` in a \
+                 label (dsl §4.4)"
+                    .to_string(),
                 self.orig(s),
                 self.orig(e),
                 Layer::Content,
@@ -706,6 +712,31 @@ mod tests {
              @x: a\n</choice>\n</branch>\n",
         );
         assert_eq!(label, "\"Hi.\" she said");
+    }
+
+    // 0.52.0 §3.2 (#211): an odd backslash run before `{{` is accepted and
+    // stored verbatim; the checker decides by the value's owner. `\{` alone
+    // stays an undefined escape, with the message naming `\{{`.
+    #[test]
+    fn escaped_opener_is_kept_verbatim() {
+        let src = "## Shot 1.\n<branch id=\"b\">\n<choice id=\"c\" text=\"a \\{{x}} \\\\\\{{y}} \\\\{{z}}\">\n\
+                   @x: a\n</choice>\n</branch>\n";
+        assert_eq!(first_choice_label(src), "a \\{{x}} \\\\\\{{y}} \\\\{{z}}");
+        let (_, diags) = parse(src);
+        assert!(
+            diags.iter().all(|d| d.code != "E-STRING-ESCAPE"),
+            "{diags:?}"
+        );
+        let (_, diags) = parse("## Shot 1.\n::sfx{sound=\"a \\{x\"}\n");
+        let escape = diags
+            .iter()
+            .find(|d| d.code == "E-STRING-ESCAPE")
+            .expect("`\\{` alone is undefined");
+        assert_eq!(
+            escape.message,
+            "only \\\" \\\\ \\n \\t are defined escapes, and `\\{{` for a literal `{{` in a label \
+             (dsl §4.4)"
+        );
     }
 
     // Only the delimiter escape is resolved: a CelString's own escapes (`\'`,

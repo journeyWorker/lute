@@ -22,10 +22,12 @@ use std::cell::Cell;
 use lute_manifest::core::{JUMP_DIRECTIVE, JUMP_MAX_ATTR, LABEL_DIRECTIVE, LABEL_NAME_ATTR};
 use lute_syntax::ast::{Arm, AttrValue, CelSlot, Directive, Node};
 
-/// The work one walk kind spent at loop heads (dsl 0.51.0 §3.4).
+/// The work one walk kind spent at loop heads (dsl 0.51.0 §3.4) and, for
+/// the stage walks, hub heads (dsl 0.52.0 §5.4).
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct LoopWalkStats {
-    /// Loop heads iterated, nested heads once per enclosing probe pass.
+    /// Loop and hub heads iterated, nested heads once per enclosing probe
+    /// pass.
     pub heads: u64,
     /// Probe passes over a region.
     pub probe_passes: u64,
@@ -233,8 +235,12 @@ fn holds_back_edge(node: &Node, head: &str) -> bool {
 
 /// The operations of one walk's lattice that [`head_fixpoint`] needs.
 pub(crate) trait HeadLattice<S> {
-    /// `meet(entry, back)`: the next head state.
-    fn meet(&self, entry: &S, back: S) -> S;
+    /// The next head state from the entry, the current head `head` and the
+    /// meet of the back edges a pass from `head` reached (`None`: none).
+    /// A walk whose transfer is monotone joins `entry` with `back` (the
+    /// same fixed point); one whose transfer is not accumulates from `head`
+    /// so the iteration only descends (the stage walk, 0.52.0 §5.4).
+    fn meet(&self, entry: &S, head: &S, back: Option<S>) -> S;
     /// Equal as lattice elements (the convergence test).
     fn same(&self, a: &S, b: &S) -> bool;
     /// The walk's conservative top, from the last state reached.
@@ -245,8 +251,9 @@ pub(crate) trait HeadLattice<S> {
 /// (the fall-through state joined with the forward jumps to the head), each
 /// probe pass walks the region from the current head state and returns the
 /// meet of its back edges (`None`: no back edge was reached); the next head
-/// state is `meet(entry, back)`. At most `bound` passes (the walk's lattice
-/// height); a head still moving then takes the walk's top.
+/// state is [`HeadLattice::meet`] of the entry, the head and that. At most
+/// `bound` passes (the walk's lattice height); a head still moving then
+/// takes the walk's top.
 pub(crate) fn head_fixpoint<S: Clone>(
     kind: WalkKind,
     entry: S,
@@ -261,10 +268,8 @@ pub(crate) fn head_fixpoint<S: Clone>(
     for _ in 0..bound.max(1) {
         passes += 1;
         count(kind, |s| s.probe_passes += 1);
-        let next = match probe(&head) {
-            Some(back) => lattice.meet(&entry, back),
-            None => entry.clone(),
-        };
+        let back = probe(&head);
+        let next = lattice.meet(&entry, &head, back);
         if lattice.same(&next, &head) {
             head = next;
             stable = true;
@@ -290,8 +295,16 @@ mod tests {
     struct Sets;
 
     impl HeadLattice<BTreeSet<u32>> for Sets {
-        fn meet(&self, entry: &BTreeSet<u32>, back: BTreeSet<u32>) -> BTreeSet<u32> {
-            entry.intersection(&back).copied().collect()
+        fn meet(
+            &self,
+            entry: &BTreeSet<u32>,
+            _head: &BTreeSet<u32>,
+            back: Option<BTreeSet<u32>>,
+        ) -> BTreeSet<u32> {
+            match back {
+                Some(back) => entry.intersection(&back).copied().collect(),
+                None => entry.clone(),
+            }
         }
         fn same(&self, a: &BTreeSet<u32>, b: &BTreeSet<u32>) -> bool {
             a == b

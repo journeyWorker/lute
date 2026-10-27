@@ -1,0 +1,9 @@
+pluginsDir: plugins/
+defaultProfile: toll
+profiles:
+  toll:
+    plugins: { toll.occasions: true }
+defaults:
+  luteVersion: "0.52.0"
+  contentLang: en
+  uses: [world.schema.yaml]

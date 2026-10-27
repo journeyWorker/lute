@@ -8,7 +8,7 @@
 //! of one project root once per pass (D14), like 0.50's
 //! [`crate::reward_effects::GrantTable`]: each document's calls against its
 //! own capability snapshot and each reward against its own
-//! [`crate::ProjectDoc::reward_kinds`]. The sources are `accept_sources`'
+//! `rewardKinds` of [`crate::ProjectDoc::snapshot`]. The sources are `accept_sources`'
 //! kinds — a scene's shots, a lore bundle beat, a quest's body and each of
 //! its rewards once ([`crate::reward_effects::reward_grant_sites`]) — plus
 //! a lore entry's body (a raise that anchors nothing); a call inside a
@@ -20,7 +20,9 @@
 //! (an `@def` folds to its constant), else the attribute's declared
 //! `default:`, else it is unbound and the raise does not happen. A value
 //! reading `occasion.target` is the one dynamic target; a reward binds its
-//! quoted `target=`. The compiler records the same resolution
+//! quoted `target=` or kind attribute, else that attribute's `default:`
+//! (0.52.0 §7.3, [`crate::reward_effects::reward_attr_value`]). The
+//! compiler records the same resolution
 //! ([`call_raises`], [`reward_raises`]). [`RaiseTable::reaches`] is the one
 //! answerer rule every consumer shares: [`check_project_raise_targets`]
 //! ([`E_RAISES_TARGET`]), the graph's raise anchors ([`RaiseTable::anchors`]),
@@ -36,7 +38,7 @@ use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::relations::KindShape;
 use lute_manifest::schema::{
     DirectiveDecl, OccasionDecl, OccasionTarget, RaiseDecl, RaiseTargetDecl, RaisedBy,
-    RewardEffects,
+    RewardEffects, RewardKindDecl,
 };
 use lute_manifest::semantics::beats::OCCASION_TARGET;
 use lute_manifest::types::Literal;
@@ -138,6 +140,7 @@ impl<'d> RaiseTable<'d> {
                 .values()
                 .any(|d| d.effects.as_ref().is_some_and(|e| !e.raises.is_empty()));
             let reward_raises = item
+                .snapshot
                 .reward_kinds
                 .values()
                 .any(|k| k.effects.as_ref().is_some_and(|e| !e.raises.is_empty()));
@@ -523,27 +526,29 @@ impl<'d> Walk<'_, 'd> {
     /// Each reward of `quest` once whose kind declares raises, at the grant
     /// points 0.50.0 §5.4 admits ([`crate::reward_effects::reward_grant_sites`]).
     fn rewards(&mut self, quest: &Quest, source: Option<&NodeId>, item: &ProjectDoc<'d>) {
-        for site in crate::reward_effects::reward_grant_sites(quest, item.reward_kinds) {
-            self.reward(site.reward, site.effects, source);
+        for site in crate::reward_effects::reward_grant_sites(quest, &item.snapshot.reward_kinds) {
+            self.reward(site.reward, site.kind, site.effects, source);
         }
     }
 
-    fn reward(&mut self, reward: &Reward, effects: &RewardEffects, source: Option<&NodeId>) {
+    fn reward(
+        &mut self,
+        reward: &Reward,
+        kind: &RewardKindDecl,
+        effects: &RewardEffects,
+        source: Option<&NodeId>,
+    ) {
         let folded: &'d FoldedEnv = self.folded;
         for raise in &effects.raises {
             let Some(occasion) = folded.occasions.get(&raise.occasion) else {
                 continue;
             };
-            let (target, origin) = reward_target(raise, occasion, reward.target.as_deref());
-            let span = match origin {
-                TargetOrigin::Authored => reward.target_span.unwrap_or(reward.kind_span),
-                TargetOrigin::Literal | TargetOrigin::Default => reward.kind_span,
-            };
+            let (target, origin, value_span) = reward_target(raise, occasion, kind, reward);
             self.push(RaiseSite {
                 path: self.path,
                 doc: self.doc,
                 source: source.cloned(),
-                span,
+                span: value_span.unwrap_or(reward.kind_span),
                 occasion: raise.occasion.clone(),
                 target,
                 origin,
@@ -639,23 +644,33 @@ fn directive_target(
     )
 }
 
-/// A reward raise's target: its literal, or the reward's quoted `target=`
-/// for `@target` (unbound without one — the 0.49.0 §3.3 rule `accepts`
-/// follows).
+/// A reward raise's target, with where an authored value sits: its literal,
+/// or the reward's binding of the `@<attr>` it reads
+/// ([`crate::reward_effects::reward_attr_value`]: the quoted `target=` or
+/// kind attribute, else the attribute's `default:`; unbound without one —
+/// the 0.49.0 §3.3 rule `accepts` follows).
 fn reward_target(
     raise: &RaiseDecl,
     occasion: &OccasionDecl,
-    target: Option<&str>,
-) -> (RaiseTarget, TargetOrigin) {
-    match (&raise.target, target) {
-        (None, _) => (RaiseTarget::Untargeted, TargetOrigin::Literal),
-        (Some(RaiseTargetDecl::Literal(t)), _) => {
-            (RaiseTarget::Static(t.clone()), TargetOrigin::Literal)
+    kind: &RewardKindDecl,
+    reward: &Reward,
+) -> (RaiseTarget, TargetOrigin, Option<Span>) {
+    use crate::reward_effects::RewardAttrValue;
+    let attr = match &raise.target {
+        None => return (RaiseTarget::Untargeted, TargetOrigin::Literal, None),
+        Some(RaiseTargetDecl::Literal(t)) => {
+            return (RaiseTarget::Static(t.clone()), TargetOrigin::Literal, None);
         }
-        (Some(RaiseTargetDecl::Attr(_)), Some(t)) => {
-            (static_target(occasion, t), TargetOrigin::Authored)
-        }
-        (Some(RaiseTargetDecl::Attr(_)), None) => (RaiseTarget::Unbound, TargetOrigin::Authored),
+        Some(RaiseTargetDecl::Attr(attr)) => attr,
+    };
+    let Some(value) = crate::reward_effects::reward_attr_value(kind, reward, attr) else {
+        return (RaiseTarget::Unbound, TargetOrigin::Authored, None);
+    };
+    let target = static_target(occasion, &value.text());
+    match value {
+        RewardAttrValue::Target(_) => (target, TargetOrigin::Authored, reward.target_span),
+        RewardAttrValue::Authored(a) => (target, TargetOrigin::Authored, Some(a.value_span)),
+        RewardAttrValue::Default(_) => (target, TargetOrigin::Default, None),
     }
 }
 
@@ -712,14 +727,17 @@ pub fn call_raises(
         .collect()
 }
 
-/// The raises one granted reward records, in list order: `effects.raises`
-/// on an occasion of `occasions`, `@target` bound to the reward's quoted
-/// `target=` (left out without one).
+/// The raises one granted reward of `kind` records, in list order:
+/// `effects.raises` on an occasion of `occasions`, each `@<attr>` target
+/// bound as [`RaiseTable::build`] binds it (left out when unbound).
 pub fn reward_raises(
-    effects: &RewardEffects,
+    kind: &RewardKindDecl,
+    reward: &Reward,
     occasions: &BTreeMap<String, OccasionDecl>,
-    target: Option<&str>,
 ) -> Vec<WireRaise> {
+    let Some(effects) = &kind.effects else {
+        return Vec::new();
+    };
     effects
         .raises
         .iter()
@@ -728,7 +746,7 @@ pub fn reward_raises(
             WireRaise::of(
                 &raise.occasion,
                 occasion,
-                reward_target(raise, occasion, target).0,
+                reward_target(raise, occasion, kind, reward).0,
             )
         })
         .collect()

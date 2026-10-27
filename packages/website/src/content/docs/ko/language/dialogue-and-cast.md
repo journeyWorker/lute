@@ -68,7 +68,7 @@ title: Night Shift
 섹션의 번호는 그 안의 모든 record `position`의 첫 세그먼트이기도 합니다(`001-0100`은 섹션 1의 첫 record).
 position과 번호는 소스 순서를 따르므로 섹션이 이동하면 바뀝니다. 편집을 거쳐도 섹션의 정체성을 유지해야 하는
 도구는 `{#id}`를 읽으며, id가 없는 섹션은 안정적인 정체성이 없는 것으로 보고합니다. 섹션 id는 정체성일
-뿐입니다. 점프 대상이 아니며 — [`::jump`](/ko/language/directives/#jump와-label--앞으로-이동)는 `::label`로 이동합니다.
+뿐입니다. 점프 대상이 아니며 — [`::jump`](/ko/language/directives/#jump와-label--앞으로-이동과-한정된-뒤로-이동)는 `::label`로 이동합니다.
 
 ## 줄 속성
 
@@ -384,7 +384,7 @@ diner.lute:10:7: error [E-MONO-POV] `@mira{mono}` is an interior monologue, but 
 
 ## 보간
 
-콘텐츠 `Text`와 `<choice>`의 `text`에는 렌더링 시 게임 상태를 읽는 **`{{…}}`** 보간을 넣을 수 있습니다:
+콘텐츠 `Text`(와 아래의 [라벨 문법 값](#라벨과-프롬프트))에는 렌더링 시 게임 상태를 읽는 **`{{…}}`** 보간을 넣을 수 있습니다:
 
 ```lute
 @narrator: Good to see you, {{userName}}.
@@ -396,6 +396,17 @@ diner.lute:10:7: error [E-MONO-POV] `@mira{mono}` is an interior monologue, but 
 `{{userName}}`은 항상 사용할 수 있는 예약 토큰입니다. 그 밖의 맨 이름은 플러그인이 선언하는 [호스트 토큰](#호스트-토큰)이고, 그렇지 않은 보간은 **선언된** 상태 경로를 지정해야 합니다. 보간은 확정 할당 분석에서 *읽기*이므로, 가드 없이 설정되지 않을 수 있는 경로를 보간하면 `E-MAYBE-UNSET`입니다. 보간과 [인라인 수식자](#인라인-텍스트-수식자)를 제외하면 두 번째 콜론 뒤의 텍스트는 줄 끝까지 불투명합니다. 괄호, `<`, `//`, `#`, 단일 중괄호 등은 모두 리터럴이며 파싱되지 않습니다. 검사기는 Ink 또는 Yarn에서 마크업으로 쓰이는 모양을 플레이어가 보게 되는 경우 경고합니다. 단일 중괄호 `{run.oil}` 또는 `{run.oil > 0: …}`(`W-TEXT-SINGLE-BRACE`; 보간은 `{{run.oil}}`, 조건부 텍스트는 가드된 줄), ` // note`나 끝의 `# tag`(`W-TEXT-COMMENT-LIKE`; 주석은 자체 줄에 `//`를 씁니다)가 그 예입니다. [Ink 또는 Yarn에서 넘어오기](/ko/guides/coming-from-ink-yarn/)를 참고하세요.
 
 표시 `labels:`가 붙은 enum에 대해 타입이 지정된 경로는 멤버 id가 아니라 라벨을 렌더링합니다: `Today is {{run.weekday}}.`는 `Today is Sunday.`로 읽힙니다([이름 붙은 enum으로 타입 지정된 경로](/ko/state/state-model/#이름-있는-열거형으로-타입을-지정한-경로) 참고).
+
+### 라벨과 프롬프트
+
+따옴표 속성 값 가운데 세 가지가 **라벨 문법**을 따릅니다. `<choice>`의 `text`, `<branch prompt>`·`<hub prompt>`, 그리고 [`type: text`](#지역화-가능한-디렉티브-텍스트-051부터)로 선언된 플러그인 디렉티브 속성입니다. 이 값에는 [형식 힌트](#서수-xordinal)를 포함한 `{{…}}` 보간을 쓸 수 있고 [인라인 수식자](#인라인-텍스트-수식자)는 쓸 수 없습니다. 0.52부터 프롬프트는 선택지 라벨과 똑같이 검사됩니다. 선언되지 않은 경로는 `E-CEL-PROFILE`, 설정되지 않았을 수 있는 경로는 `E-MAYBE-UNSET`이며, 런타임은 프롬프트의 마커를 라벨과 함께 렌더링해 메뉴에 싣습니다([선택지와 허브](/ko/language/choices-and-hubs/#컴파일된-기록) 참고). 세 값 모두에서 `\{{`는 줄 텍스트에서처럼 리터럴 `{{`를 씁니다(0.52, #211). `text="Say \{{open}}"`은 `Say {{open}}`으로 보이고 플레이스홀더가 없습니다. 라벨 문법을 따르지 않는 따옴표 값(`::bg`의 `location`, `when`, `::use` 인자 등)에서 `\{{`는 `E-STRING-ESCAPE`입니다:
+
+<!-- lute-diagnostics -->
+```
+br.lute:17:16: error [E-STRING-ESCAPE] `\{{` (a literal `{{`) is defined only in line text and in the values that take the label grammar — `<choice text>`, `prompt` and a plugin `text` attribute; `location` of `::bg` is not one
+```
+
+`::use` 인자는 리터럴 `{{`를 `\\{{`로 넘깁니다([컴포넌트](/ko/language/components-and-extends/#문자열-매개변수의-문장)). `<objective title>`은 라벨 문법이 아니라 평문입니다. 퀘스트 UI는 제목을 쓰인 그대로 보여주므로 그 안의 `{{`는 `E-OBJECTIVE-TITLE-INTERP`입니다([퀘스트와 씬](/ko/language/quests-and-scenes/#목표-제목은-평문입니다)).
 
 ### 호스트 토큰
 
@@ -495,7 +506,7 @@ entities:
 ::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
 ```
 
-- **값 문법.** `text` 값은 `<choice>` 라벨과 같은 문법의 따옴표 문자열입니다. 상태 경로, `@def`, [호스트 토큰](#호스트-토큰)의 `{{…}}` 보간과 그 수식자를 쓸 수 있습니다. 리터럴 `{{`는 아직 따옴표 속성 값에 쓸 수 없습니다(선택지 라벨에서처럼 그 자리의 `\{{`는 `E-STRING-ESCAPE`입니다. #211). [인라인 텍스트 수식자](#인라인-텍스트-수식자)는 파싱되지 않습니다. 각 보간은 라벨의 보간과 똑같이 검사됩니다. `@ref` 값(`title=@greeting`)은 `E-ATTR-TYPE`입니다. `@def` 값에는 자체 번역이 없기 때문입니다.
+- **값 문법.** `text` 값은 `<choice>` 라벨과 같은 문법의 따옴표 문자열입니다. 상태 경로, `@def`, [호스트 토큰](#호스트-토큰)의 `{{…}}` 보간과 그 수식자를 쓸 수 있습니다. `\{{`는 리터럴 `{{`를 씁니다(0.52부터, #211. [라벨과 프롬프트](#라벨과-프롬프트) 참고). [인라인 텍스트 수식자](#인라인-텍스트-수식자)는 파싱되지 않습니다. 각 보간은 라벨의 보간과 똑같이 검사됩니다. `@ref` 값(`title=@greeting`)은 `E-ATTR-TYPE`입니다. `@def` 값에는 자체 번역이 없기 때문입니다.
 - **`code=`.** `text` 속성이 하나 이상 있는 디렉티브는 콘텐츠 줄처럼 `code="…"`를 받습니다(공백을 제거한 문자열). 그 밖의 디렉티브에서 `code`는 계속 `E-UNKNOWN-ATTR`입니다. `text` 속성 옆에 `code`라는 이름의 속성을 직접 선언하는 디렉티브는 플러그인을 로드할 때 거부됩니다.
 - **`lineId`.** `text` 속성의 id는 `{prefix}~{tag}~{code}~{attr}`이며 예는 `intro~banner~0010~title`입니다. `lineId` 템플릿을 거치지 않고, 위치는 절대 정체성이 아닙니다. `~`가 구분자이므로 `~`를 포함한 `code`는 `E-LINE-CODE-RESERVED`이고, 리터럴 텍스트에 `~`가 들어간 identity 템플릿은 `E-IDENTITY-TEMPLATE`입니다. 안전장치로 프로젝트 전체 `lute check`는 최종 `lineId`가 같은 두 단위(줄, 선택지, 프롬프트, 디렉티브 텍스트)를 `E-LINE-ID-DUP`으로 보고합니다. `lineId` 하나는 번역 하나를 가리키기 때문입니다. 한 범위에서 두 `::banner` 호출이 `code`를 공유하면 `E-DUP-LINE-CODE`입니다.
 - **백필.** 태그 없는 디렉티브는 줄과 마찬가지로 범위 안에서 디렉티브 태그별로 센 다음 코드를 받으며, 컴포넌트에서는 컴포넌트 소스 전체에 걸쳐 셉니다. [`lute tag`](/ko/tooling/cli/#tag)는 `text` 속성이 있는 태그 없는 디렉티브마다 `code="…"`를 기록합니다. 컴포넌트는 그것을 쓰는 문서들의 스냅숏으로 태그하며, 사용자들이 그 텍스트 디렉티브를 서로 다르게 해석하면 `E-COMPONENT-TEXT-DIRECTIVE`입니다. `identity.requireStable`이 켜져 있으면 `code`가 없는 그런 디렉티브는 `W-LINE-CODE-UNTAGGED`입니다.
@@ -554,7 +565,13 @@ state:
 - **중첩.** 스팬은 중첩될 수 있고 보간은 스팬 안에 들어갈 수 있으며 `text`와 `placeholders`에 그대로 남습니다. 중첩 스타일은 쌓이고(`["whisper", "emphasis"]`) 중첩된 `:speed`는 가장 안쪽의 `rate`를 사용합니다. 스타일과 rate가 같은 인접 실행 구간은 합쳐집니다.
 - **이스케이프.** `\:`는 수식자를 시작하지 않는 리터럴 콜론입니다. 수식자 안에서 `\[`, `\]`, `\{`, `\}` 및 `\\`는 괄호, 중괄호 또는 백슬래시를 씁니다. 그 밖의 이스케이프는 `E-TEXT-ESCAPE`입니다.
 - **리터럴 `{{`.** `\{{`는 리터럴 `{{`를 씁니다. `{{` 바로 앞의 백슬래시가 홀수 개이면 이스케이프되고, 짝수 개이면 마커가 남습니다(`\\{{run.a}}`는 백슬래시 하나 뒤에 마커). 아티팩트에서는(lute 0.47.1) 리터럴 `{{`를 `text`, segment 실행 구간, 번역 모두에서 `\{{`로 쓰고 `{{` 바로 앞의 리터럴 백슬래시는 두 번 씁니다. 그래서 `Lit \{{run.a}} and {{ run.a }}.`는 그 `text` 그대로 placeholder 하나를 가지며, `run.a`가 3이면 `Lit {{run.a}} and 3.`로 렌더링됩니다. 번역에도 `\{{`를 쓸 수 있습니다.
+- **마커 바로 앞의 리터럴 `{`** (0.52, #139). 아티팩트에는 `{{…}}` 마커 바로 앞의 리터럴 `{`를 적을 방법이 없습니다. 컴파일된 텍스트가 마커를 중괄호 하나 일찍 열게 됩니다. 그래서 줄 텍스트에서 앞의 리터럴 텍스트가 **홀수** 개의 `{`로 끝나는 마커는, 이스케이프나 수식자로 어떻게 쓰든(`{\{{{{run.a}}`, `x{:pause{s=0.5}{{run.a}}`) `E-INTERP-BRACE`입니다. 짝수 개는 리터럴 `{{` 쌍이므로 그대로 허용됩니다. `\{{{{run.a}}`는 `{{3`으로 렌더링됩니다. 아래 메시지가 두 가지 해결 방법을 알려 줍니다. 이런 마커가 있는 번역은 병합되지 않으며(`E-INTERP-BRACE`를 이름으로 든 `E-L10N-MODIFIERS`), 끼워 넣은 인자가 중괄호를 끝내는 컴포넌트 줄은 `::use`에서 보고됩니다. 평범한 `{{`로 끝나는 인자도 마찬가지입니다(#221, [컴포넌트](/ko/language/components-and-extends/#문자열-매개변수의-문장) 참고).
 - **평범한 콜론은 텍스트로 남습니다.** 콜론 뒤에 이름과 `[` 또는 `{`가 이어질 때만 수식자를 시작하므로 `10:30`과 `:)`에는 이스케이프가 필요 없습니다.
+
+<!-- lute-diagnostics -->
+```
+sign.lute:14:20: error [E-INTERP-BRACE] a literal `{` directly before `{{run.a}}` cannot be told apart from the marker in compiled text (lute 0.47.1 §3): put a character between them (`{ {{run.a}}`), or show the brace from a string state path (`{{run.lbrace}}{{run.a}}`, with `run.lbrace` declared `{ type: string, default: "{" }`)
+```
 
 형식이 잘못된 수식자는 `E-TEXT-MODIFIER`입니다. 여기에는 닫히지 않은 스팬, 코어 수식자도 `textStyle` 멤버도 아닌 이름, 스타일에 붙인 속성, 위치 인자(`:pause{0.5}` — `s=0.5`로 쓰세요)가 포함됩니다:
 

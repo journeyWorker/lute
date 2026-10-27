@@ -141,6 +141,7 @@ fn choice_matches_spec_worked_example() {
         prompt: None,
         prompt_line_id: None,
         prompt_texts: Default::default(),
+        prompt_placeholders: Vec::new(),
         timeout: None,
         default: None,
         stamp: Stamp::default(),
@@ -177,6 +178,7 @@ fn hub_prompt_serializes_only_when_authored() {
             prompt: prompt.map(str::to_string),
             prompt_line_id: None,
             prompt_texts: Default::default(),
+            prompt_placeholders: Vec::new(),
             on_return: back.map(str::to_string),
             stamp: Stamp::default(),
         })
@@ -213,6 +215,7 @@ fn match_jump_barrier_serialize() {
         position: "004-0700".into(),
         target: "004-1100".into(),
         max: None,
+        leaves: None,
     });
     assert_eq!(
         j(&jm),
@@ -223,6 +226,7 @@ fn match_jump_barrier_serialize() {
         position: "004-0900".into(),
         target: "004-0200".into(),
         max: Some(3),
+        leaves: None,
     });
     assert_eq!(
         j(&bounded),
@@ -441,6 +445,7 @@ fn retarget_and_position_helpers_visit_every_flow_field() {
         prompt: None,
         prompt_line_id: None,
         prompt_texts: Default::default(),
+        prompt_placeholders: Vec::new(),
         timeout: None,
         default: None,
         stamp: Stamp::default(),
@@ -458,6 +463,7 @@ fn retarget_and_position_helpers_visit_every_flow_field() {
         position: String::new(),
         target: "@3".into(),
         max: None,
+        leaves: None,
     });
     assert!(jm.stamp_mut().is_none());
     let mut n = 0;
@@ -639,6 +645,7 @@ fn reward_entry_scalar_serializes_per_spec() {
         asserts: vec![],
         accepts: vec![],
         raises: vec![],
+        attrs: Default::default(),
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
@@ -662,6 +669,7 @@ fn reward_entry_range_serializes_amount_min_and_max() {
         asserts: vec![],
         accepts: vec![],
         raises: vec![],
+        attrs: Default::default(),
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
@@ -688,6 +696,7 @@ fn reward_entry_on_failed_serializes_only_when_quest_level() {
         asserts: vec![],
         accepts: vec![],
         raises: vec![],
+        attrs: Default::default(),
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
@@ -717,10 +726,46 @@ fn reward_entry_effects_follow_credits() {
         asserts: vec![fact("met", "mira")],
         accepts: vec!["second".into()],
         raises: vec![],
+        attrs: Default::default(),
     };
     assert_eq!(
         serde_json::to_string(&r).unwrap(),
         r#"{"kind":"BADGE","target":"mira","amount":1,"credits":"run.badges","retracts":[{"relation":"rival","args":["mira"]}],"asserts":[{"relation":"met","args":["mira"]}],"accepts":["second"]}"#
+    );
+}
+
+/// 0.52.0 §7.4: the kind's bound attributes serialize last, typed, and
+/// only when non-empty.
+#[test]
+fn reward_entry_attrs_follow_raises() {
+    let r = RewardEntry {
+        id: None,
+        kind: "BADGE".into(),
+        target: None,
+        amount: Some(1),
+        amount_min: None,
+        amount_max: None,
+        when: None,
+        outcome: None,
+        credits: None,
+        retracts: vec![],
+        asserts: vec![],
+        accepts: vec![],
+        raises: vec![lute_compile::ir::RaiseRecord {
+            occasion: "cutscene".into(),
+            target: None,
+            dynamic: false,
+        }],
+        attrs: [
+            ("tier".to_string(), serde_json::json!(2)),
+            ("rarity".to_string(), serde_json::json!("gold")),
+        ]
+        .into_iter()
+        .collect(),
+    };
+    assert_eq!(
+        serde_json::to_string(&r).unwrap(),
+        r#"{"kind":"BADGE","amount":1,"raises":[{"occasion":"cutscene"}],"attrs":{"rarity":"gold","tier":2}}"#
     );
 }
 
@@ -754,8 +799,9 @@ fn reward_entry_from_ast_defaults_amount_and_gates_on() {
         span: ZERO,
         self_closing: true,
     };
+    let no_occasions = std::collections::BTreeMap::new();
     // Unauthored amount → default 1 on a quest-level entry.
-    let e = RewardEntry::from_ast(&base, true);
+    let e = RewardEntry::from_ast(&base, None, &no_occasions, true);
     assert_eq!(e.amount, Some(1));
     assert!(e.amount_min.is_none() && e.amount_max.is_none());
 
@@ -764,7 +810,7 @@ fn reward_entry_from_ast_defaults_amount_and_gates_on() {
         amount: Some(RewardAmount::Range(-3, 5)),
         ..base.clone()
     };
-    let e = RewardEntry::from_ast(&ranged, true);
+    let e = RewardEntry::from_ast(&ranged, None, &no_occasions, true);
     assert!(e.amount.is_none());
     assert_eq!(e.amount_min, Some(-3));
     assert_eq!(e.amount_max, Some(5));
@@ -775,7 +821,7 @@ fn reward_entry_from_ast_defaults_amount_and_gates_on() {
         ..base.clone()
     };
     assert_eq!(
-        RewardEntry::from_ast(&quest_failed, true)
+        RewardEntry::from_ast(&quest_failed, None, &no_occasions, true)
             .outcome
             .as_deref(),
         Some("failed")
@@ -784,14 +830,22 @@ fn reward_entry_from_ast_defaults_amount_and_gates_on() {
         outcome: Some("banana".into()),
         ..base.clone()
     };
-    assert!(RewardEntry::from_ast(&quest_stray, true).outcome.is_none());
+    assert!(
+        RewardEntry::from_ast(&quest_stray, None, &no_occasions, true)
+            .outcome
+            .is_none()
+    );
 
     // Objective-level entries never carry `on`, whatever the AST holds.
     let obj_failed = Reward {
         outcome: Some("failed".into()),
         ..base.clone()
     };
-    assert!(RewardEntry::from_ast(&obj_failed, false).outcome.is_none());
+    assert!(
+        RewardEntry::from_ast(&obj_failed, None, &no_occasions, false)
+            .outcome
+            .is_none()
+    );
 }
 
 #[test]
@@ -1057,6 +1111,7 @@ fn every_kind_has_its_spec_family() {
                 prompt: None,
                 prompt_line_id: None,
                 prompt_texts: Default::default(),
+                prompt_placeholders: Vec::new(),
                 timeout: Some(5),
                 default: None,
                 stamp: stamp(),
@@ -1086,6 +1141,7 @@ fn every_kind_has_its_spec_family() {
                 prompt: None,
                 prompt_line_id: None,
                 prompt_texts: Default::default(),
+                prompt_placeholders: Vec::new(),
                 on_return: None,
                 stamp: stamp(),
             }),
@@ -1097,6 +1153,7 @@ fn every_kind_has_its_spec_family() {
                 position: p(),
                 target: p(),
                 max: None,
+                leaves: None,
             }),
             "jump",
             "control",

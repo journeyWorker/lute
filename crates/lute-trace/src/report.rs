@@ -168,7 +168,7 @@ pub enum Step {
         objective: Option<String>,
         /// Zero-based position in the objective or quest owner's declared
         /// rewards, including rewards filtered out by `when`/`outcome`.
-        index: usize,
+        index: u64,
         reward: GrantReward,
         #[serde(skip_serializing_if = "std::ops::Not::not")]
         on_failed: bool,
@@ -295,7 +295,7 @@ pub struct GrantCredit {
 pub struct GrantRef {
     pub quest: String,
     pub instance: u64,
-    pub index: usize,
+    pub index: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub objective: Option<String>,
     pub kind: String,

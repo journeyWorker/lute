@@ -26,8 +26,8 @@ fn doc(raw_yaml: &str) -> Document {
         span: span(0),
     }
 }
-fn views(docs: Vec<(PathBuf, Document)>) -> crate::ProjectDocs {
-    crate::ProjectDocs::parse(docs, &lute_manifest::core::load_core_snapshot())
+fn views(docs: Vec<(PathBuf, Document)>) -> crate::ProjectDocs<'static> {
+    crate::ProjectDocs::parse(docs, lute_manifest::core::core_snapshot())
 }
 
 #[test]

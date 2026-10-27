@@ -1,0 +1,187 @@
+{
+  "commands": [
+    {
+      "kind": "line",
+      "position": "001-0100",
+      "speaker": "narrator",
+      "text": "Before the hub."
+    },
+    {
+      "chose": "take",
+      "hub": "desk",
+      "kind": "hub",
+      "position": "001-0200"
+    },
+    {
+      "kind": "line",
+      "position": "001-0300",
+      "speaker": "narrator",
+      "text": "Taking it, then jumping past the hub."
+    },
+    {
+      "kind": "line",
+      "position": "001-0700",
+      "speaker": "narrator",
+      "text": "After the hub."
+    },
+    {
+      "chose": "enter",
+      "hub": "outer",
+      "kind": "hub",
+      "position": "002-0100"
+    },
+    {
+      "chose": "run",
+      "hub": "inner",
+      "kind": "hub",
+      "position": "002-0200"
+    },
+    {
+      "kind": "line",
+      "position": "002-0300",
+      "speaker": "hero",
+      "text": "Out of both."
+    },
+    {
+      "kind": "line",
+      "position": "002-1000",
+      "speaker": "narrator",
+      "text": "Outside both hubs."
+    },
+    {
+      "chose": "climb",
+      "hub": "stairs",
+      "kind": "hub",
+      "position": "003-0100"
+    },
+    {
+      "chose": "rest",
+      "hub": "landing",
+      "kind": "hub",
+      "position": "003-0200"
+    },
+    {
+      "kind": "line",
+      "position": "003-0300",
+      "speaker": "hero",
+      "text": "Resting, then on."
+    },
+    {
+      "kind": "line",
+      "position": "003-0700",
+      "speaker": "hero",
+      "text": "Upstairs."
+    },
+    {
+      "chose": "down",
+      "hub": "stairs",
+      "kind": "hub",
+      "position": "003-0100"
+    },
+    {
+      "kind": "line",
+      "position": "003-0800",
+      "speaker": "hero",
+      "text": "Down again."
+    },
+    {
+      "chose": "eat",
+      "hub": "table",
+      "kind": "hub",
+      "position": "004-0100"
+    },
+    {
+      "kind": "line",
+      "position": "004-0200",
+      "speaker": "hero",
+      "text": "Eating."
+    },
+    {
+      "hub": "table",
+      "kind": "hubReturn",
+      "position": "004-0100"
+    },
+    {
+      "kind": "line",
+      "position": "004-0500",
+      "speaker": "hero",
+      "text": "Full."
+    },
+    {
+      "kind": "line",
+      "position": "004-0700",
+      "speaker": "narrator",
+      "text": "Fed."
+    },
+    {
+      "chose": "knock",
+      "hub": "door",
+      "kind": "hub",
+      "position": "005-0100"
+    },
+    {
+      "kind": "line",
+      "position": "005-0200",
+      "speaker": "hero",
+      "text": "Knocking."
+    },
+    {
+      "kind": "match",
+      "position": "005-0300",
+      "result": "otherwise"
+    },
+    {
+      "kind": "line",
+      "position": "005-0700",
+      "speaker": "hero",
+      "text": "No answer."
+    },
+    {
+      "chose": "wait",
+      "hub": "door",
+      "kind": "hub",
+      "position": "005-0100"
+    },
+    {
+      "kind": "line",
+      "position": "005-0800",
+      "speaker": "hero",
+      "text": "Waiting."
+    },
+    {
+      "kind": "line",
+      "position": "005-1000",
+      "speaker": "narrator",
+      "text": "The end."
+    }
+  ],
+  "exit": "complete",
+  "facts": [],
+  "irVersion": "0.52",
+  "kind": "scene",
+  "quests": {},
+  "state": {
+    "run.open": false,
+    "scene.choices.desk": "take",
+    "scene.choices.door": "wait",
+    "scene.choices.inner": "run",
+    "scene.choices.landing": "rest",
+    "scene.choices.outer": "enter",
+    "scene.choices.stairs": "down",
+    "scene.choices.table": "eat",
+    "scene.visited.desk.leave": false,
+    "scene.visited.desk.take": true,
+    "scene.visited.door.knock": true,
+    "scene.visited.door.wait": true,
+    "scene.visited.inner.back": false,
+    "scene.visited.inner.run": true,
+    "scene.visited.landing.rest": true,
+    "scene.visited.landing.stay": false,
+    "scene.visited.outer.enter": true,
+    "scene.visited.outer.go": false,
+    "scene.visited.stairs.climb": true,
+    "scene.visited.stairs.down": true,
+    "scene.visited.table.eat": true,
+    "scene.visited.table.stand": false
+  }
+}

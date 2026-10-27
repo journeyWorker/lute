@@ -42,6 +42,7 @@ pub mod fact_write;
 pub mod fix;
 pub mod gates;
 pub mod inject;
+pub(crate) mod label_grammar;
 pub mod logic_attrs;
 pub mod loop_walk;
 pub mod lore;
@@ -86,7 +87,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.51.0";
+pub const LUTE_LANG_VERSION: &str = "0.52.0";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
@@ -228,7 +229,7 @@ pub use meta::{
     ident_from_name, parse_meta, parse_meta_kind, resolve_doc_kind, DocKind, MetaKind, Namespace,
     StateDecl, StateSchema, TypedMeta, E_KIND_MISSING, E_STATE_COLLECTION, E_UNKNOWN_KIND,
 };
-pub use project_doc::{ProjectDoc, ProjectDocs};
+pub use project_doc::{ProjectDoc, ProjectDocs, EMPTY_SNAPSHOT};
 
 pub use clock_positions::{
     check_project_advance_cascades, check_project_objective_clock_windows,

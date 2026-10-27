@@ -77,6 +77,7 @@ impl Backend {
             &snapshot.text,
             &doc_ast,
             &input.imports().imported_quest_ids,
+            input.snapshot(),
         ));
         if let Some(project_root) = project_root.as_deref() {
             let project = loaded_project

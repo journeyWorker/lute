@@ -3,9 +3,13 @@ kind: quest
 id: stage-quest
 enums:
   emotion: { members: [happy] }
+state:
+  run.entered: { type: bool, default: false }
 ---
 
-<quest id="stageQuest" title="Stage quest" start="true">
-::portrait{character="marina"}
-@marina{emotion="happy"}: Quest entrance.
+<quest id="stageQuest" title="Stage quest" tier="run" start="true">
+  <objective id="enter" title="Enter the stage" done="run.entered">
+    ::portrait{character="marina"}
+    @marina{emotion="happy"}: Quest entrance.
+  </objective>
 </quest>

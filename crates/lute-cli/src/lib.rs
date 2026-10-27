@@ -547,6 +547,13 @@ fn dispatch(args: &[std::ffi::OsString]) -> ExitCode {
                 json: json.json,
                 coverage,
                 no_derive,
+                // 0.52.0 §8.4: the discovery note only for a discovered
+                // project.
+                note: if project.project.is_some() {
+                    testcmd::DiscoveryNote::Silent
+                } else {
+                    testcmd::DiscoveryNote::Announce
+                },
                 // dsl 0.50.0 §6.2: project levels never change what a
                 // `.test.yaml` expectation observes, so `lute test` gates
                 // on `--deny`/`--deny-warnings` only.

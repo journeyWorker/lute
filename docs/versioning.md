@@ -10,13 +10,13 @@ change bumps which, and states the pre-1.0 breaking-change policy.
 
 | Axis | Where it lives | Current | What a bump means |
 |---|---|---|---|
-| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.51.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
-| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.51.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
-| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.51.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.51.schema.json`](../schemas/lute-ir-0.51.schema.json)). Before 1.0, consuming engines gate on exact major.minor; from 1.0, they gate on MAJOR only. |
-| **Event** | `eventVersion` in runtime outputs; `snapshotVersion` in snapshots | `0.51.0` | A change to the runtime input, output or snapshot JSON ([event contract](runtime/event-contract.md), [`schemas/lute-events-0.51.schema.json`](../schemas/lute-events-0.51.schema.json), [`schemas/lute-snapshot-0.51.schema.json`](../schemas/lute-snapshot-0.51.schema.json)). Before 1.0, hosts gate on exact major.minor. |
+| **Toolchain** | Cargo workspace version (`CARGO_PKG_VERSION`); `lute version` | `0.52.0` | A release of the CLI, checker, compiler, and LSP shipping together, and the npm launcher that distributes them. Tracked in [`CHANGELOG.md`](../CHANGELOG.md). |
+| **Language** | [`lute_check::LUTE_LANG_VERSION`](../crates/lute-check/src/lib.rs); `luteVersion:` frontmatter | `0.52.0` | A change to the grammar or static semantics the checker enforces. History is the versioned spec stack under [`docs/proposals/scenario-dsl/`](proposals/scenario-dsl/). |
+| **IR** | `irVersion` field of every compiled artifact ([`lute_compile::LUTE_IR_VERSION`](../crates/lute-compile/src/lib.rs)) | `0.52.0` | A change to the compiled JSON artifact schema ([`schemas/lute-ir-0.52.schema.json`](../schemas/lute-ir-0.52.schema.json)). Before 1.0, consuming engines gate on exact major.minor; from 1.0, they gate on MAJOR only. |
+| **Event** | `eventVersion` in runtime outputs; `snapshotVersion` in snapshots | `0.52.0` | A change to the runtime input, output or snapshot JSON ([event contract](runtime/event-contract.md), [`schemas/lute-events-0.52.schema.json`](../schemas/lute-events-0.52.schema.json), [`schemas/lute-snapshot-0.52.schema.json`](../schemas/lute-snapshot-0.52.schema.json)). Before 1.0, hosts gate on exact major.minor. |
 | **Capability** | `capabilityVersion` in resolved provider/plugin snapshots | — | A change to the built-in `lute.core` capability surface (directives, state shapes, providers, bridge signatures) a document resolves against. |
 | **Plugin** | each plugin manifest's own version | — | A change to a specific plugin's declared capabilities, independent of core. |
-| **Player packages** | [`packages/player`](../packages/player) and [`packages/player-web`](../packages/player-web) | `0.51.0` | Renderer-free core and browser player released in lockstep with the toolchain; their public contracts are documented under [`packages/website/src/content/docs/player/`](../packages/website/src/content/docs/player/). |
+| **Player packages** | [`packages/player`](../packages/player) and [`packages/player-web`](../packages/player-web) | `0.52.0` | Renderer-free core and browser player released in lockstep with the toolchain; their public contracts are documented under [`packages/website/src/content/docs/player/`](../packages/website/src/content/docs/player/). |
 
 
 The axes are **independent in meaning**: a toolchain release need not advance
@@ -1319,3 +1319,31 @@ unchanged; the schema files move to the `0.51` line, `bindingsVersion` becomes
 an engine that does not implement `lute.core.boundedJump/1` refuses an
 artifact that needs it, and a custom host performs declared raises itself. See
 the [`0.51.0` proposal](proposals/scenario-dsl/0.51.0.md).
+
+**`0.52.0` aligns every visible axis at `0.52.0`; the language, its static
+semantics, the IR, the Event contract, the plugin manifests, the CLI, the
+runtime and the player all earn it.** The release closes the gaps between
+what the checker accepts and what runs, without a new keyword or element. A
+literal `{` directly before a `{{…}}` marker is `E-INTERP-BRACE`, and `\{{`
+writes a literal `{{` in every value that takes the label grammar; a quest's
+top level admits only `<on>` and `<objective>`; a jump stays in its range body
+or leaves hubs (`E-JUMP-INTO-BODY`), and a forward jump out of hub option or
+`<return>` bodies ends those hub visits (IR `jump.leaves`, semantic id
+`lute.core.hubLeave/1`); the hub stage state is a fixed point over the hub
+loop, and the stage join keeps a character on stage on every route; prompts
+take the label grammar and are checked, the runtime renders option labels and
+prompts onto the `awaitChoice` menu (`text`/`texts`, `prompt`/`promptTexts`,
+IR `promptPlaceholders`), and the reference player shows that text; a `{{` in
+an `<objective title>` is `E-OBJECTIVE-TITLE-INTERP`; reward kinds' `attrs:`
+are validated at load, authored on `<reward>`, read by reward effects as
+`@<attr>` and carried as `RewardEntry.attrs` and the `grant` record's
+`reward.attrs`; `lute scenario envelope`, `lute impact`, `loc export` and
+`lute test --project` are corrected; 32-bit casts agree with native. Every
+report id and every `capabilitySnapshot` is unchanged. The IR changes are
+additive; the Event and snapshot shapes change (the menu text). The schema
+files move to the `0.52` line, `bindingsVersion` becomes `"0.52"`, and player
+saves and profiles read `"0.52"`. Engines and hosts gated on `0.51` must widen
+their gates to `0.52`; an engine that does not implement
+`lute.core.hubLeave/1` refuses an artifact that needs it, and a custom host
+shows the menu's rendered text. See the
+[`0.52.0` proposal](proposals/scenario-dsl/0.52.0.md).

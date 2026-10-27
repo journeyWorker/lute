@@ -7,6 +7,7 @@ const BIN: &str = env!("CARGO_BIN_EXE_lute");
 const ALL_IDS: &[&str] = &[
     "lute.core/1",
     "lute.core.boundedJump/1",
+    "lute.core.hubLeave/1",
     "lute.staging/1",
     "lute.timeline/1",
     "lute.quest.lifecycle/1",
@@ -683,7 +684,7 @@ fn jump_scene(tag: &str, with_max: bool) -> (lute_scratch::ScratchDir, PathBuf, 
         &dir,
         "scene.lute",
         &format!(
-            "---\nkind: scene\nluteVersion: \"0.51.0\"\nid: loop\ntitle: T\n---\n\n## Shot \
+            "---\nkind: scene\nluteVersion: \"0.52.0\"\nid: loop\ntitle: T\n---\n\n## Shot \
              1.\n\n{jump}@narrator: Done.\n"
         ),
     );
@@ -766,4 +767,119 @@ fn bounded_jumps_require_their_semantic_id_only_when_used() {
     );
     let stdout = String::from_utf8_lossy(&accepted.stdout);
     assert_eq!(stdout.matches("Try.").count(), 3, "{stdout}");
+}
+
+/// The #216 hub: `take` jumps past the hub (`leaves`) or to a label in its
+/// own body (no `leaves`).
+fn hub_scene(tag: &str, leaves: bool) -> (lute_scratch::ScratchDir, PathBuf, Json) {
+    let dir = lute_scratch::ScratchDir::named(tag);
+    let (jump, inside) = if leaves {
+        ("::jump{to=\"after\"}", "")
+    } else {
+        (
+            "::jump{to=\"in\"}",
+            "    @narrator: Skipped.\n    ::label{name=\"in\"}\n",
+        )
+    };
+    let source = write(
+        &dir,
+        "scene.lute",
+        &format!(
+            "---\nkind: scene\nluteVersion: \"0.52.0\"\nid: hub\ntitle: T\n---\n\n## Shot 1.\n\n\
+             <hub id=\"desk\">\n  <choice id=\"take\" text=\"Take it\">\n    @narrator: Taking.\n    \
+             {jump}\n{inside}  </choice>\n  <choice id=\"leave\" text=\"Leave\" exit>\n    \
+             @narrator: Leaving.\n  </choice>\n</hub>\n::label{{name=\"after\"}}\n\
+             @narrator: After the hub.\n"
+        ),
+    );
+    let artifact = dir.join("scene.json");
+    let out = run(&[
+        "compile".into(),
+        source.display().to_string(),
+        "-o".into(),
+        artifact.display().to_string(),
+    ]);
+    assert!(
+        out.status.success(),
+        "compile failed: {}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let json: Json = serde_json::from_str(&std::fs::read_to_string(&artifact).unwrap()).unwrap();
+    (dir, artifact, json)
+}
+
+/// dsl 0.52.0 §5.2: `lute.core.hubLeave/1` is required only by an artifact
+/// with a `jump` that carries `leaves`, and an engine matrix without it
+/// refuses that artifact before playback (an engine running the 0.51
+/// behaviour would present the hub again).
+#[test]
+fn hub_leaves_require_their_semantic_id_only_when_used() {
+    const HUB_LEAVE: &str = "lute.core.hubLeave/1";
+    let (_plain_dir, _, plain) = hub_scene("hub-stays", false);
+    assert!(!required_ids(&plain).contains(&HUB_LEAVE), "{plain}");
+    assert!(
+        plain["commands"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|c| c.get("leaves").is_none()),
+        "a jump in its own body carries no `leaves`: {plain}"
+    );
+
+    let (_dir, artifact, json) = hub_scene("hub-leaves", true);
+    assert!(required_ids(&json).contains(&HUB_LEAVE), "{json}");
+    let leaving: Vec<&Json> = json["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|c| c.get("leaves").is_some())
+        .collect();
+    let [jump] = leaving.as_slice() else {
+        panic!("one leaving jump: {json}")
+    };
+    assert_eq!(
+        (&jump["kind"], &jump["leaves"]),
+        (&Json::from("jump"), &Json::from(1))
+    );
+    assert!(jump.get("max").is_none(), "{jump}");
+
+    let dir = artifact.parent().unwrap();
+    let ir = ir_version(&json);
+    let without: Vec<&str> = ALL_IDS
+        .iter()
+        .copied()
+        .filter(|id| *id != HUB_LEAVE)
+        .collect();
+    let old = matrix_file(dir, "old.yaml", "old-engine", ir, &without, "");
+    let refused = run_str(&[
+        "run",
+        artifact.to_str().unwrap(),
+        "--engine",
+        old.to_str().unwrap(),
+    ]);
+    assert_eq!(refused.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert!(stderr.contains("E-ENGINE-SEMANTICS"), "{stderr}");
+    assert!(stderr.contains(HUB_LEAVE), "{stderr}");
+    assert!(refused.stdout.is_empty(), "refused playback emits nothing");
+
+    let all = matrix_file(dir, "all.yaml", "new-engine", ir, ALL_IDS, "");
+    let mock = write(dir, "mock.yaml", "choose:\n  desk: [take, leave]\n");
+    let accepted = run_str(&[
+        "run",
+        artifact.to_str().unwrap(),
+        "--engine",
+        all.to_str().unwrap(),
+        "--mock",
+        mock.to_str().unwrap(),
+    ]);
+    assert!(
+        accepted.status.success(),
+        "{}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&accepted.stdout);
+    assert!(stdout.contains("After the hub."), "{stdout}");
+    assert!(!stdout.contains("Leaving."), "{stdout}");
 }

@@ -153,7 +153,7 @@ Describes the command line itself as the `schema` report (always JSON; reads no 
 Each `lute` invocation appends one line to `telemetry.jsonl` in Lute's state directory — `$XDG_STATE_HOME/lute` when that is an absolute path, else `$HOME/.local/state/lute`; `%LOCALAPPDATA%\lute` on Windows:
 
 ```json
-{"v":1,"ts":1760400000000,"lute":"0.51.0","command":"check","json":true,"exit":0,"durationMs":12}
+{"v":1,"ts":1760400000000,"lute":"0.52.0","command":"check","json":true,"exit":0,"durationMs":12}
 ```
 
 That is the whole record: the command id (or `null`), whether the run was in JSON mode, the exit code, the wall time and the toolchain version. No argument or flag value, path, file content, output or environment is recorded, and nothing is sent anywhere — the file stays on your machine. It is rotated to `telemetry.jsonl.1` at 1 MiB; recording is best-effort and never changes a command's output or exit code. Turn it off with `LUTE_TELEMETRY=0` (or `false`, `off`, `no`) or `DO_NOT_TRACK=1`; `lute doctor` shows which (`• Telemetry: off (LUTE_TELEMETRY)`, or the file path when it is on). The repository's own tests, scripts and CI run with it off.
@@ -271,6 +271,32 @@ disclosures, beats/scenes, and downstream facts/state. Each item includes a
 target-to-item reason chain; each link has an edge, reason, file, line, and
 source span.
 
+Since 0.52 (#210) the closure also follows the two anchor edges [`lute scenario`](#scenario) draws:
+an [`[accept]`](/connectivity/scene-graph/#edge-kinds) edge from a unit that `::accept`s a quest,
+labelled `accepts`, and a
+[`[raises]`](/connectivity/scene-graph/#edges-that-declared-raises-draw) edge from a declared raise to
+the scene or beat that answers it, labelled `raises`. An `accepts` link is `proven`. A `raises` link is
+`proven` when at least one raise site behind it names its target statically, and `heuristic` when
+every one reads `occasion.target`. In a project where scenes `a` and `b` both `::accept{quest="q"}`:
+
+```console
+$ lute impact --project . --node scene:a
+downstream
+  state:quest.q.state [proven]
+    - accepts: scene(a) accepts quest(q) (scenes/a.lute:1)
+    - writes: quest lifecycle state (quests/q.lute:6)
+lines
+  line:a.narrator_0010 [proven]
+    - contains: scene contains line (scenes/a.lute:8)
+objectives
+  objective:q.o [proven]
+    - accepts: scene(a) accepts quest(q) (scenes/a.lute:1)
+    - contains: quest contains objective (quests/q.lute:7)
+quests
+  quest:q [proven]
+    - accepts: scene(a) accepts quest(q) (scenes/a.lute:1)
+```
+
 `--json` has this shape (empty groups remain present):
 
 ```json
@@ -376,7 +402,7 @@ calendar aggregate results also carry `scope`. Parse, type, and declaration
 errors omit evidence.
 
 The impact and constraints sections were introduced in the historical 0.34.0
-contract; the repository's current release is 0.51.0 and the AI edit-loop
+contract; the repository's current release is 0.52.0 and the AI edit-loop
 commands are documented below.
 
 ## compile
@@ -571,6 +597,12 @@ $ lute scenario [--project <DIR>] [--providers <DIR>] [--format text|dot] [--jso
 ```
 
 Read-only reporting over the connectivity layer. With no subcommand, prints the assembled node/edge graph. `reach --node <NODE>` reports a node's [reachability verdict](/connectivity/reachability/); `envelope --node <NODE>` (or `envelope --node quest:<id>`) prints the [Guaranteed/Possible tables](/connectivity/envelopes/) plus the [guaranteed facts](/connectivity/envelopes/#guaranteed-facts) at the node's entry (dsl 0.20.0; `envelope.guaranteedFacts` in `--json`, each `{fact, establishedBy}`). `<NODE>` is a scene's canonical key, a quest id, or a [bundle beat](/tooling/play/#bundle-beats)'s canonical `<document id>.<beat id>`. A bare id is looked up among all three; when it names more than one kind, the command refuses and asks for an explicit `scene:`, `quest:` or `beat:` prefix, which always selects that kind. Exit **0** on success, **2** on I/O or an unresolvable or ambiguous node id.
+
+The envelope's `written by:` list names the writers that are provably before the node; a writer
+reached only through an alternative edge is listed after it, as `also written, but not provably
+before this node:`. Since 0.52 (#209) that covers `[accept]` edges as well as `[raises]` edges: of
+several scenes that each `::accept` a quest, any one may be the one that accepted it, so none is
+provably before it (see [envelopes](/connectivity/envelopes/#writers-on-alternative-edges)).
 
 `--format` (`text` or `dot`) and `--json` select the output shape of the bare graph view; `--json` replaces 0.47's `--format json` with the same report and version (`0.43.0.scenario*`), and `--json` together with `--format` is `E-CLI-USAGE`:
 
@@ -992,7 +1024,7 @@ $ lute play --script <FILE> [--project <DIR>] [--providers <DIR>] [--permission-
 Play a story through a WHOLE project as a sequence of raised **occasions** (dsl 0.21.0) — the reference-runtime consumer of [beats and occasions](/tooling/play/). The project (`--project`, else discovered) is compiled once, in memory, with the same gate and declaration union the project compile uses (scene, quest, and lore documents). `--engine <FILE>` loads `lute.engine.yaml`, performs the exact-major.minor IR gate first, then compares the project-index `requiredSemantics` union with `supportedIds`. A missing id refuses with exit **2** and `E-ENGINE-SEMANTICS` before any step, command, condition, asset, or bridge runs; malformed matrices and unsupported IR lines use `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`. Omit it for the built-in `reference` matrix. The required `--script` is a `*.play.yaml` file with a closed key set. Its `steps:` each do one thing — raise an `occasion:` (with `target:`, `pick:`, and a step-local `choose:` that replaces the script's `choose:` key by key for that presentation), start a `newRun:`, write what the engine owns with `engine:` (`state:` literals or `{ add: <n> }`, `facts:`, `retract:`), fire a world `event:`, move a declared clock with `advance: slot | day | <n>` (dsl 0.24.0: writes the clock's paths, settles the quests, raises `dayEnd` / `dayStart` at each midnight it crosses and the `slot` occasion once where it stops, per the clock's `raise:`; it may carry the same moment's `engine:` writes, which land where the clock arrives — after any `dayEnd` / `dayStart` on the way, before the final settle and raise), or end the playthrough with `end: true` — and any step may carry `label:`, `repeat: <n>`, its own `bridges:` answers, and `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`; `- include: <file>` splices another file's steps in place. Beside `steps:`, the script takes the `lute trace --mock` grammars for `state:`, `facts:`, `choose:` and `bridges:`, a save to start from (`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, and a top-level `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }` judging the end of the play (dsl 0.22.0). Each occasion step lists the occasion's candidate beats with their verdicts, presents the winner (or the step's `pick` on a `select: all` occasion; `pick: none`, or no `pick` when nothing is eligible, presents nothing) through `lute run`'s reference evaluator, and advances every quest lifecycle, so later `when` conditions and `after: completed(…)` see real progress. `--json` emits the same transcript as one object.
 
 Since dsl 0.26.0: `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }` moves the clock to the next such position (forward only, never zero steps), and a step `expect:` takes `clock: { weekday, slot, day }` (since 0.28, also `ended`); `engine: { accept: [quest ids] }` accepts an accept-driven quest mid-play (`quest <id> accepted (engine)`); an entry may be named `<document id>.<entry id>` in `pick:`, `entriesRead:` and the selection expectations; a beat targeting `kind:<kind>` answers every member of the kind; a guarded directive that did not run prints `skip ::give{item="potion"} — when: false`; a bridge answer is typed by its result slot or the capability's `result:`, and an untyped one is refused (exit **2**); and a project whose documents declare one state path with two types is refused (exit **1**). The project loads once per play — on Monster League a play load fell from about 12 s to about 1.5 s. See [Playing a story](/tooling/play/).
-`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.51.0"`. It cannot be combined with `--json`, `--ir`, `--derivation`, or `--conditions-output`.
+`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.52.0"`. It cannot be combined with `--json`, `--ir`, `--derivation`, or `--conditions-output`.
 
 `--no-derive` (or the script's `derive: false`; the flag wins) stops applying the project's Datalog rules, so an unmocked derived atom is unknown and halts the walk incomplete. `--derivation <ATOM>` (repeatable) prints, after the play, the derivation tree of a ground atom — the rule used and each premise's own support (seed fact, asserted, or derived in turn), negated premises shown `(absent)` — or, when it does not hold, every rule that could conclude it with its failing premises; `--json` carries the same tree under `explain`.
 
@@ -1005,7 +1037,7 @@ $ lute test [<PATH>]… [--project <DIR>] [--providers <DIR>] [--permission-prof
             [--coverage] [--no-derive] [--deny <CODE>]… [--deny-warnings] [--json]
 ```
 
-Run the project's scenario tests. With no operand, every `*.test.yaml` under the project directory (`--project`, else discovered from the current directory) traces its scene or quest — or presents a lore document's entries or one of its bundle beats — against the declared mocks and asserts the declared expectations, and every `*.play.yaml` there that carries an `expect:` (on a step or at the top level) is played exactly as [`lute play`](#play) plays it and judged by its own expectations (dsl 0.22.0). Operands select scripts instead: each `<PATH>` is a script file (`*.test.yaml` or `*.play.yaml`), or a directory walked for `*.test.yaml` and expectation `*.play.yaml`; any other file is exit **2**. Each script resolves against its nearest project at or below the project directory (`--project` is the walk root, as in [Project and discovery](#project-and-discovery)), as `lute trace` resolves one document, and standard error says so once per project — `lute: note: scenario tests use project . (nearest lute.project.yaml); pass --project to choose another`; with no manifest above the document the trace is core-only. `--json` emits the machine-readable report; `--providers` pins a snapshot directory; `--permission-profile` applies its ceiling; `--deny`/`--deny-warnings` promote every check verdict a test consults (each traced document's check and each play's compile gate), so a denied warning fails that test. `--no-derive` turns derivation off for every test and play, overriding their own `derive:` keys (see [trace](#trace)). Exit **0** when every test and play passes, **1** on a failure, **2** on I/O or a malformed test file.
+Run the project's scenario tests. With no operand, every `*.test.yaml` under the project directory (`--project`, else discovered from the current directory) traces its scene or quest — or presents a lore document's entries or one of its bundle beats — against the declared mocks and asserts the declared expectations, and every `*.play.yaml` there that carries an `expect:` (on a step or at the top level) is played exactly as [`lute play`](#play) plays it and judged by its own expectations (dsl 0.22.0). Operands select scripts instead: each `<PATH>` is a script file (`*.test.yaml` or `*.play.yaml`), or a directory walked for `*.test.yaml` and expectation `*.play.yaml`; any other file is exit **2**. Each script resolves against its nearest project at or below the project directory (`--project` is the walk root, as in [Project and discovery](#project-and-discovery)), as `lute trace` resolves one document. When `lute test` discovered the project (no `--project`), standard error says so once per project — `lute: note: scenario tests use project . (nearest lute.project.yaml); pass --project to choose another`; with `--project` it prints no note (since 0.52, #214), as other commands do. With no manifest above the document the trace is core-only. `--json` emits the machine-readable report; `--providers` pins a snapshot directory; `--permission-profile` applies its ceiling; `--deny`/`--deny-warnings` promote every check verdict a test consults (each traced document's check and each play's compile gate), so a denied warning fails that test. `--no-derive` turns derivation off for every test and play, overriding their own `derive:` keys (see [trace](#trace)). Exit **0** when every test and play passes, **1** on a failure, **2** on I/O or a malformed test file.
 
 Each test and play prints one `PASS`/`FAIL` line naming its file and what it ran, a failure followed by its misses, then a summary:
 

@@ -20,7 +20,8 @@ pub mod value;
 
 pub use driver::{
     guard_premise, BridgeCall, BridgeQueues, BridgeReply, Driver, Forced, GuardRead, Menu,
-    MenuKind, MenuOption, OnUnknown, Pick, ScriptedChoices, SiteKind, UnknownSite, Verdict,
+    MenuKind, MenuOption, MenuText, OnUnknown, Pick, ScriptedChoices, SiteKind, UnknownSite,
+    Verdict,
 };
 pub use eval::{EffectiveState, EvalEnv, FactStore, Pat, Read};
 pub use expr::Slot;

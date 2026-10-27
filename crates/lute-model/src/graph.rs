@@ -15,19 +15,26 @@ pub fn build(model: &ProjectModel) -> SemanticGraph {
         add_document(&mut graph, model, document, &project);
     }
     add_project_dependencies(&mut graph, model);
+    add_scenario_alternatives(&mut graph, model);
     crate::derivation::add_derivations(&mut graph, model);
     graph.rebuild_adjacency();
     graph
 }
 
-fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, project: &NodeKey) {
-    let doc_id = d.folded.typed.id.clone().unwrap_or_else(|| {
+/// The id [`add_document`] gives a document's semantic nodes: its authored
+/// `id:`, else its root-relative path.
+fn document_id(model: &ProjectModel, d: &ModelDocument) -> String {
+    d.folded.typed.id.clone().unwrap_or_else(|| {
         d.path
             .strip_prefix(model.root())
             .unwrap_or(&d.path)
             .to_string_lossy()
             .replace(std::path::MAIN_SEPARATOR, "/")
-    });
+    })
+}
+
+fn add_document(g: &mut SemanticGraph, model: &ProjectModel, d: &ModelDocument, project: &NodeKey) {
+    let doc_id = document_id(model, d);
     let document = NodeKey::new(NodeKind::Document, doc_id.clone());
     g.node(document.clone(), Some(d.path.clone()), Some(d.doc.span));
     g.edge(
@@ -897,6 +904,126 @@ fn add_project_dependencies(g: &mut SemanticGraph, model: &ProjectModel) {
             );
         }
     }
+}
+
+/// 0.52.0 §8.2 (#210): the `[accept]` and `[raises]` edges of each root's
+/// scenario graph ([`crate::RootScenario::graph`]), which `lute scenario`
+/// draws, as `accepts` / `raises` edges from the source node to the
+/// dependent one (both mapped by [`scenario_node_keys`]), anchored where the source node is
+/// declared in this graph. An `accepts` edge is `Proven`. A `raises` edge is `Proven`
+/// when any resolved raise site backing it (its source and answering node,
+/// [`crate::RootScenario::raise_sites`]) has a target known without running
+/// — static or untargeted — else `Heuristic`: every backing site raises
+/// `occasion.target`, which stands for every answerer of the occasion.
+fn add_scenario_alternatives(g: &mut SemanticGraph, model: &ProjectModel) {
+    use lute_check::connectivity::EdgeKind;
+    use lute_check::raises::RaiseTarget;
+    let keys = scenario_node_keys(model);
+    // Every scenario node is a declaration `add_document` already minted a
+    // node for: an unmapped endpoint is an internal fault, never a new node.
+    let resolve = |g: &SemanticGraph, id| {
+        let key = keys.get(id);
+        debug_assert!(
+            key.is_some_and(|key| g.nodes.contains_key(key)),
+            "scenario node {id} has no semantic node"
+        );
+        key.filter(|key| g.nodes.contains_key(key)).cloned()
+    };
+    for scenario in model.reconciled().scenarios.values() {
+        let conn = &scenario.graph;
+        for (source, deps) in &conn.edges {
+            for dep in deps {
+                let Some(kinds) = conn.edge_kinds_for(source, dep) else {
+                    continue;
+                };
+                if !kinds.iter().copied().any(EdgeKind::is_alternative) {
+                    continue;
+                }
+                let (Some(from), Some(to)) = (resolve(g, source), resolve(g, dep)) else {
+                    continue;
+                };
+                let declared = g.nodes.get(&from);
+                let file = declared.and_then(|n| n.file.clone());
+                let span = declared.and_then(|n| n.span);
+                if kinds.contains(&EdgeKind::Accept) {
+                    g.edge(
+                        from.clone(),
+                        to.clone(),
+                        "accepts",
+                        format!("{source} accepts {dep}"),
+                        file.clone(),
+                        span,
+                        Evidence::Proven,
+                    );
+                }
+                if kinds.contains(&EdgeKind::Raises) {
+                    let known = scenario.raise_sites.iter().any(|site| {
+                        &site.source == source
+                            && &site.answerer == dep
+                            && site.target != RaiseTarget::Dynamic
+                    });
+                    let (reason, evidence) = if known {
+                        (format!("{source} raises {dep}"), Evidence::Proven)
+                    } else {
+                        (
+                            format!(
+                                "{source} may raise {dep} (target `occasion.target`, every \
+                                 answerer)"
+                            ),
+                            Evidence::Heuristic,
+                        )
+                    };
+                    g.edge(
+                        from.clone(),
+                        to,
+                        "raises",
+                        reason,
+                        file.clone(),
+                        span,
+                        evidence,
+                    );
+                }
+            }
+        }
+    }
+}
+
+/// The one mapping from a scenario-graph node to the semantic node
+/// [`add_document`] minted for the same declaration (0.52.0 §8.2), built
+/// from the documents: a scene by its connectivity key (authored `id:`, or
+/// the legacy `{character}.{episodeId}`) to the document's scene node (its
+/// `id:` or root-relative path); a bundle beat by `<bundle id>.<beat id>` to
+/// `<document id>.<beat id>`; a quest and a lore entry by id. A repeated key
+/// keeps its first document, as connectivity anchors it.
+fn scenario_node_keys(model: &ProjectModel) -> BTreeMap<lute_check::connectivity::NodeId, NodeKey> {
+    use lute_check::connectivity::{bundle_id, scene_key, NodeId};
+    let mut keys = BTreeMap::new();
+    for d in model.documents() {
+        let doc_id = document_id(model, d);
+        if d.folded.doc_kind == lute_check::DocKind::Scene {
+            if let Some(key) = scene_key(&d.folded.typed) {
+                keys.entry(NodeId::Scene(key))
+                    .or_insert_with(|| NodeKey::new(NodeKind::Scene, doc_id.clone()));
+            }
+        }
+        for q in &d.doc.quests {
+            keys.entry(NodeId::Quest(q.id.clone()))
+                .or_insert_with(|| NodeKey::new(NodeKind::Quest, q.id.clone()));
+        }
+        for e in &d.doc.entries {
+            keys.entry(NodeId::Entry(e.id.clone()))
+                .or_insert_with(|| NodeKey::new(NodeKind::Entry, e.id.clone()));
+        }
+        if let Some(bundle) = bundle_id(&d.folded.typed) {
+            for b in &d.doc.beats {
+                keys.entry(NodeId::Beat(lute_check::bundles::bundle_beat_key(
+                    &bundle, &b.id,
+                )))
+                .or_insert_with(|| NodeKey::new(NodeKind::Beat, format!("{doc_id}.{}", b.id)));
+            }
+        }
+    }
+    keys
 }
 
 /// Return source spans of host lines carrying an authored `code` attribute.

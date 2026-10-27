@@ -512,50 +512,15 @@ impl<'a> TraceDriver<'a> {
             .to_string()
     }
 
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "an objective index from a runtime record: where usize is 32 bits one past \
-                  u32::MAX truncates, as before"
-    )]
     pub(crate) fn grant(&mut self, rec: &Json) {
-        let reward = rec.get("reward").cloned().unwrap_or(Json::Null);
-        let str_of = |v: &Json, k: &str| v.get(k).and_then(Json::as_str).map(str::to_string);
-        self.steps.push(Step::Grant {
-            quest: str_of(rec, "quest").unwrap_or_default(),
-            instance: rec.get("instance").and_then(Json::as_u64).unwrap_or(0),
-            objective: str_of(rec, "objective"),
-            index: rec.get("index").and_then(Json::as_u64).unwrap_or(0) as usize,
-            reward: GrantReward {
-                kind: str_of(&reward, "kind").unwrap_or_default(),
-                target: str_of(&reward, "target"),
-                amount: reward.get("amount").and_then(Json::as_i64),
-                amount_min: reward.get("amountMin").and_then(Json::as_i64),
-                amount_max: reward.get("amountMax").and_then(Json::as_i64),
-            },
-            on_failed: rec.get("onFailed").and_then(Json::as_bool) == Some(true),
-            credited: rec.get("credited").map(|c| GrantCredit {
-                path: str_of(c, "path").unwrap_or_default(),
-                value: json_text(c.get("value")),
-            }),
-        });
+        self.steps.push(grant_step(rec));
     }
 
     /// 0.50.0 §5.6: an `assert` / `retract` / `accept` a granted reward's
     /// effects wrote — no `position`, its grant's identity in `grant`. A
     /// write a later exclusivity refusal names has no authored span.
-    #[expect(
-        clippy::cast_possible_truncation,
-        reason = "a reward index from a runtime record, as `grant`'s"
-    )]
     pub(crate) fn grant_effect(&mut self, rec: &Json, kind: &str, grant: &Json) {
-        let str_of = |v: &Json, k: &str| v.get(k).and_then(Json::as_str).map(str::to_string);
-        let grant = Some(report::GrantRef {
-            quest: str_of(grant, "quest").unwrap_or_default(),
-            instance: grant.get("instance").and_then(Json::as_u64).unwrap_or(0),
-            index: grant.get("index").and_then(Json::as_u64).unwrap_or(0) as usize,
-            objective: str_of(grant, "objective"),
-            kind: str_of(grant, "kind").unwrap_or_default(),
-        });
+        let grant = Some(grant_ref(grant));
         let text = |k: &str| str_of(rec, k).unwrap_or_default();
         let step = match kind {
             "assert" => Step::Assert {
@@ -580,5 +545,67 @@ impl<'a> TraceDriver<'a> {
             self.exclusive.clear();
         }
         self.steps.push(step);
+    }
+}
+
+fn str_of(v: &Json, k: &str) -> Option<String> {
+    v.get(k).and_then(Json::as_str).map(str::to_string)
+}
+
+/// A `grant` record's step. Its reward index stays the record's `u64` on
+/// every target (#198).
+fn grant_step(rec: &Json) -> Step {
+    let reward = rec.get("reward").cloned().unwrap_or(Json::Null);
+    Step::Grant {
+        quest: str_of(rec, "quest").unwrap_or_default(),
+        instance: rec.get("instance").and_then(Json::as_u64).unwrap_or(0),
+        objective: str_of(rec, "objective"),
+        index: rec.get("index").and_then(Json::as_u64).unwrap_or(0),
+        reward: GrantReward {
+            kind: str_of(&reward, "kind").unwrap_or_default(),
+            target: str_of(&reward, "target"),
+            amount: reward.get("amount").and_then(Json::as_i64),
+            amount_min: reward.get("amountMin").and_then(Json::as_i64),
+            amount_max: reward.get("amountMax").and_then(Json::as_i64),
+        },
+        on_failed: rec.get("onFailed").and_then(Json::as_bool) == Some(true),
+        credited: rec.get("credited").map(|c| GrantCredit {
+            path: str_of(c, "path").unwrap_or_default(),
+            value: json_text(c.get("value")),
+        }),
+    }
+}
+
+/// The identity of the grant a reward effect record follows; its index
+/// stays the record's `u64` on every target (#198).
+fn grant_ref(grant: &Json) -> report::GrantRef {
+    report::GrantRef {
+        quest: str_of(grant, "quest").unwrap_or_default(),
+        instance: grant.get("instance").and_then(Json::as_u64).unwrap_or(0),
+        index: grant.get("index").and_then(Json::as_u64).unwrap_or(0),
+        objective: str_of(grant, "objective"),
+        kind: str_of(grant, "kind").unwrap_or_default(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{grant_ref, grant_step, Step};
+    use serde_json::json;
+
+    #[test]
+    fn a_grant_index_past_u32_max_is_kept_as_the_records_u64() {
+        let rec = json!({"quest": "q", "instance": 1, "index": 4294967296_u64,
+            "reward": {"kind": "gold"}});
+        let Step::Grant { index, .. } = grant_step(&rec) else {
+            panic!("a grant step");
+        };
+        assert_eq!(index, 1 << 32);
+        let grant = grant_ref(&rec);
+        assert_eq!(grant.index, 1 << 32);
+        assert_eq!(
+            serde_json::to_value(&grant).expect("a grant ref serializes")["index"],
+            json!(4294967296_u64)
+        );
     }
 }

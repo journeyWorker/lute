@@ -20,8 +20,10 @@
 //!   `Match`/`Hub`/`Timeline`. Recursing into a `<branch>`/`<match>`/`<hub>`
 //!   child body STAYS `SceneBody` — 0.1.0 has no context split.
 //! - **[`GrammarContext::QuestBody`]** — directly inside a `<quest>` body:
-//!   admits `Line`/`Directive`/`Set`/`Branch`/`Match`/`On`/`Objective`. Never
-//!   `Hub`/`Timeline` (forbidden everywhere in a quest doc, dsl 0.2.0 §6.7).
+//!   admits `On`/`Objective` only (dsl 0.52.0 §4). A quest runs only its
+//!   `<on>` handlers and `<objective>` bodies, so anything else at its top
+//!   level would compile to records no run reaches; `Hub`/`Timeline` keep the
+//!   message they have everywhere in a quest doc (dsl 0.2.0 §6.7).
 //! - **[`GrammarContext::Emittable`]** — inside an `<objective>`/`<on>` body, OR
 //!   inside any `<match>`/`<branch>` NESTED within a quest doc (i.e. the moment
 //!   you descend past a quest-body-level `<branch>`/`<match>` into its own
@@ -83,9 +85,12 @@ pub fn node_kind(node: &Node) -> NodeKind {
 /// The grammar POSITION a node stream is being validated in (dsl 0.2.0 §6.7).
 /// See the module docs for the exact node sets each position admits.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum GrammarContext {
+enum GrammarContext<'d> {
     SceneBody,
-    QuestBody,
+    /// Directly inside `<quest id="quest">`; the id names it in the message.
+    QuestBody {
+        quest: &'d str,
+    },
     Emittable,
     EntryBody,
     BeatBody,
@@ -100,14 +105,14 @@ enum GrammarContext {
 /// inconsistent `(doc, ctx)` pair. The inner match is exhaustive over EVERY
 /// [`NodeKind`] variant with NO wildcard (0.3.0-forward: `::assert`/`::retract`
 /// slot in as one arm each, compiler-flagged everywhere until handled).
-fn admits(doc: DocKind, ctx: GrammarContext, nk: NodeKind) -> bool {
+fn admits(doc: DocKind, ctx: GrammarContext<'_>, nk: NodeKind) -> bool {
     debug_assert!(
         matches!(
             (doc, ctx),
             (DocKind::Scene, GrammarContext::SceneBody)
                 | (
                     DocKind::Quest,
-                    GrammarContext::QuestBody | GrammarContext::Emittable
+                    GrammarContext::QuestBody { .. } | GrammarContext::Emittable
                 )
                 | (
                     DocKind::Lore,
@@ -129,17 +134,17 @@ fn admits(doc: DocKind, ctx: GrammarContext, nk: NodeKind) -> bool {
             | NodeKind::Retract => true,
             NodeKind::On | NodeKind::Objective => false,
         },
-        GrammarContext::QuestBody => match nk {
+        GrammarContext::QuestBody { .. } => match nk {
+            NodeKind::On | NodeKind::Objective => true,
             NodeKind::Line
             | NodeKind::Directive
             | NodeKind::Set
             | NodeKind::Branch
             | NodeKind::Match
-            | NodeKind::On
-            | NodeKind::Objective
+            | NodeKind::Hub
+            | NodeKind::Timeline
             | NodeKind::Assert
-            | NodeKind::Retract => true,
-            NodeKind::Hub | NodeKind::Timeline => false,
+            | NodeKind::Retract => false,
         },
         GrammarContext::Emittable => match nk {
             NodeKind::Line
@@ -248,7 +253,7 @@ pub fn check_admission(
                 walk(
                     &quest.body,
                     DocKind::Quest,
-                    GrammarContext::QuestBody,
+                    GrammarContext::QuestBody { quest: &quest.id },
                     &mut diags,
                 );
             }
@@ -445,7 +450,7 @@ pub fn check_component_toplevel(doc: &Document) -> Vec<Diagnostic> {
 /// flagged as not-admitted) so a deeper violation is never masked by an outer
 /// one. `parent` is the construct whose body `nodes` is (T3-17: a handler
 /// nested in a handler is almost always a missing `</on>`, and says so).
-fn walk(nodes: &[Node], doc: DocKind, ctx: GrammarContext, diags: &mut Vec<Diagnostic>) {
+fn walk(nodes: &[Node], doc: DocKind, ctx: GrammarContext<'_>, diags: &mut Vec<Diagnostic>) {
     walk_in(nodes, doc, ctx, None, &|_| Some(""), diags);
 }
 
@@ -456,7 +461,7 @@ fn walk(nodes: &[Node], doc: DocKind, ctx: GrammarContext, diags: &mut Vec<Diagn
 fn walk_in(
     nodes: &[Node],
     doc: DocKind,
-    ctx: GrammarContext,
+    ctx: GrammarContext<'_>,
     parent: Option<NodeKind>,
     effect_only: &dyn Fn(&str) -> Option<&'static str>,
     diags: &mut Vec<Diagnostic>,
@@ -502,13 +507,14 @@ fn walk_in(
                 }
             }
             Node::Hub(h) => {
-                // Only legal in `SceneBody`; if present elsewhere the whole
-                // construct is already flagged above. Its children never
-                // transition context (dsl 0.1.0 grammar, unchanged) — safe
-                // regardless of `doc` since it just re-threads the current
-                // (already doc-consistent) `ctx`.
+                // Only legal in `SceneBody`/`BeatBody`; if present elsewhere
+                // the whole construct is already flagged above. Its option
+                // bodies are nested bodies like a `<branch>`'s: `nested_ctx`
+                // keeps every context but a quest's top level, so a `<hub>`
+                // there is one refusal, not one more per option line.
+                let child_ctx = nested_ctx(doc, ctx);
                 for b in h.bodies() {
-                    walk_in(b, doc, ctx, Some(nk), effect_only, diags);
+                    walk_in(b, doc, child_ctx, Some(nk), effect_only, diags);
                 }
             }
             Node::On(o) => walk_in(
@@ -538,13 +544,24 @@ fn walk_in(
 
 /// Why `nk` is not admitted at `ctx`: in plain words when a quest construct
 /// sits inside another one (T3-17 — `<on>` inside `<on>` is a missing `</on>`
-/// far more often than a design), else the grammar rule for the context.
+/// far more often than a design) or when content sits at a quest's top level
+/// (dsl 0.52.0 §4), else the grammar rule for the context.
 fn not_admitted_message(
     doc: DocKind,
-    ctx: GrammarContext,
+    ctx: GrammarContext<'_>,
     nk: NodeKind,
     parent: Option<NodeKind>,
 ) -> String {
+    if let GrammarContext::QuestBody { quest } = ctx {
+        if !matches!(nk, NodeKind::Hub | NodeKind::Timeline) {
+            return format!(
+                "{} at the top level of `<quest id=\"{quest}\">` never runs — a quest runs only \
+                 its `<on>` handlers and `<objective>` bodies: move it into the `<on event=…>` \
+                 or `<objective>` whose moment it belongs to (dsl 0.2.0 §6.7)",
+                describe(nk)
+            );
+        }
+    }
     match (doc, nk, parent) {
         (DocKind::Quest, NodeKind::On | NodeKind::Objective, Some(p)) if p == nk => {
             let tag = if nk == NodeKind::On {
@@ -582,7 +599,7 @@ fn not_admitted_message(
 /// the entry admission) — except inside a `<beat>` body, which stays
 /// `BeatBody` (dsl 0.23.0 §4). This keeps every `(doc, ctx)` pair [`admits`]
 /// ever sees consistent with its `debug_assert`.
-fn nested_ctx(doc: DocKind, ctx: GrammarContext) -> GrammarContext {
+fn nested_ctx(doc: DocKind, ctx: GrammarContext<'_>) -> GrammarContext<'static> {
     match doc {
         DocKind::Scene => GrammarContext::SceneBody,
         DocKind::Quest => GrammarContext::Emittable,
@@ -607,12 +624,12 @@ fn describe(nk: NodeKind) -> &'static str {
     }
 }
 
-fn context_reason(doc: DocKind, ctx: GrammarContext) -> &'static str {
+fn context_reason(doc: DocKind, ctx: GrammarContext<'_>) -> &'static str {
     match (doc, ctx) {
         (DocKind::Scene, _) | (DocKind::Lore, GrammarContext::BeatBody) => {
             "the scene grammar admits no `<on>`/`<objective>` (quest-only constructs)"
         }
-        (DocKind::Quest, GrammarContext::QuestBody) => {
+        (DocKind::Quest, GrammarContext::QuestBody { .. }) => {
             "a quest body forbids `<hub>`/`<timeline>` (dsl 0.2.0 §6.7)"
         }
         (DocKind::Quest, _) => {
@@ -674,9 +691,16 @@ mod tests {
         let (doc, _) = lute_syntax::parse(scene);
         let snap = lute_manifest::snapshot::CapabilitySnapshot::default();
         assert!(check_admission(&doc, DocKind::Scene, &snap).is_empty());
-        // quest body + <on> arm: admitted
+        // <on> arm: admitted; the quest's top level: refused (dsl 0.52.0 §4)
         let quest = "---\nkind: quest\n---\n<quest id=\"q\" title=\"t\" start=\"true\">\n::retract{ a(b) }\n<on event=\"questComplete\">\n::assert{ a(b) }\n</on>\n</quest>\n";
         let (qdoc, _) = lute_syntax::parse(quest);
-        assert!(check_admission(&qdoc, DocKind::Quest, &snap).is_empty());
+        let diags = check_admission(&qdoc, DocKind::Quest, &snap);
+        let messages: Vec<&str> = diags.iter().map(|d| d.message.as_str()).collect();
+        assert_eq!(
+            messages,
+            ["a `::retract` at the top level of `<quest id=\"q\">` never runs — a quest runs only \
+              its `<on>` handlers and `<objective>` bodies: move it into the `<on event=…>` or \
+              `<objective>` whose moment it belongs to (dsl 0.2.0 §6.7)"]
+        );
     }
 }

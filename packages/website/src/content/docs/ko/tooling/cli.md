@@ -160,7 +160,7 @@ $ lute schema [<COMMAND>]…
 `lute`를 실행할 때마다 Lute 상태 디렉터리의 `telemetry.jsonl`에 한 줄을 추가합니다. `XDG_STATE_HOME`이 절대 경로면 `$XDG_STATE_HOME/lute`, 아니면 `$HOME/.local/state/lute`, Windows에서는 `%LOCALAPPDATA%\lute`입니다.
 
 ```json
-{"v":1,"ts":1760400000000,"lute":"0.51.0","command":"check","json":true,"exit":0,"durationMs":12}
+{"v":1,"ts":1760400000000,"lute":"0.52.0","command":"check","json":true,"exit":0,"durationMs":12}
 ```
 
 이것이 기록의 전부입니다. 명령 id(또는 `null`), JSON 모드 여부, 종료 코드, 걸린 시간, 툴체인 버전입니다. 인자나 플래그 값, 경로, 파일 내용, 출력, 환경은 기록하지 않고 어디로도 보내지 않습니다. 파일은 내 컴퓨터에만 남습니다. 1 MiB가 되면 `telemetry.jsonl.1`로 돌리며, 기록은 best-effort라 명령의 출력이나 종료 코드를 바꾸지 않습니다. `LUTE_TELEMETRY=0`(또는 `false`, `off`, `no`)이나 `DO_NOT_TRACK=1`로 끕니다. `lute doctor`가 상태를 보여 줍니다(`• Telemetry: off (LUTE_TELEMETRY)`, 켜져 있으면 파일 경로). 저장소의 테스트, 스크립트, CI는 꺼진 상태로 실행합니다.
@@ -260,6 +260,26 @@ $ lute impact --node <NODE> [--project <DIR>] [--providers <DIR>] [--json]
 
 예를 들어 `lute impact --project docs/examples/games/drowned-crown --node fact:felled(regent)`는 영향을 받는 줄, 퀘스트/목표, 보상, 공개, 비트/씬, 하위 팩트/상태를 보고합니다. 각 항목에는 대상에서 항목으로 이어지는 이유 체인이 포함되며, 각 링크에는 edge, reason, file, line, source span이 있습니다.
 
+0.52부터(#210) 폐쇄는 [`lute scenario`](#scenario)가 그리는 두 앵커 엣지도 따라갑니다. 퀘스트를 `::accept`하는 단위에서 나오는 [`[accept]`](/ko/connectivity/scene-graph/#엣지-종류) 엣지는 `accepts`로, 선언된 raise에서 그 raise에 응답하는 씬이나 비트로 가는 [`[raises]`](/ko/connectivity/scene-graph/#선언된-raise가-그리는-엣지) 엣지는 `raises`로 표시됩니다. `accepts` 링크는 `proven`입니다. `raises` 링크는 그 뒤의 raise 지점 중 하나라도 대상을 정적으로 지정하면 `proven`이고, 모두 `occasion.target`을 읽으면 `heuristic`입니다. 씬 `a`와 `b`가 모두 `::accept{quest="q"}`를 하는 프로젝트에서:
+
+```console
+$ lute impact --project . --node scene:a
+downstream
+  state:quest.q.state [proven]
+    - accepts: scene(a) accepts quest(q) (scenes/a.lute:1)
+    - writes: quest lifecycle state (quests/q.lute:6)
+lines
+  line:a.narrator_0010 [proven]
+    - contains: scene contains line (scenes/a.lute:8)
+objectives
+  objective:q.o [proven]
+    - accepts: scene(a) accepts quest(q) (scenes/a.lute:1)
+    - contains: quest contains objective (quests/q.lute:7)
+quests
+  quest:q [proven]
+    - accepts: scene(a) accepts quest(q) (scenes/a.lute:1)
+```
+
 `--json`의 형태는 다음과 같습니다(빈 그룹도 계속 포함됩니다).
 
 ```json
@@ -347,7 +367,7 @@ constraints:
 
 `proven`은 건전한 정적 증명이고, `witnessed`는 제공된 실행 또는 트레이스에서 나오며, `bounded`는 선언된 유한 범위 안에서만 건전하고, `heuristic`은 보수적인 안내이며, `unknown`은 분석이 판정하지 못했다는 뜻입니다. 진단에는 선택적 JSON `evidence` 및 `scope` 필드가 포함될 수 있습니다(bounded 진단에는 비어 있지 않은 scope가 반드시 있어야 합니다). `trace`, `play`, `test`, `calendar`, `scenario`, `beats`는 각 verdict/result에 `evidence`를 추가하며, calendar 집계 결과에는 `scope`도 포함됩니다. 파싱, 타입, 선언 오류에는 evidence가 없습니다.
 
-impact 및 constraints 섹션은 역사적인 0.34.0 계약에서 도입되었습니다. 저장소의 현재 릴리스는 0.51.0이며 AI 편집 루프 명령은 아래에 설명되어 있습니다.
+impact 및 constraints 섹션은 역사적인 0.34.0 계약에서 도입되었습니다. 저장소의 현재 릴리스는 0.52.0이며 AI 편집 루프 명령은 아래에 설명되어 있습니다.
 ## compile
 
 ```console
@@ -526,6 +546,8 @@ $ lute scenario knowledge [--node <NODE>]
 ```
 
 연결성 계층에 대해 읽기 전용 보고를 수행합니다. 하위 명령이 없으면 조립된 노드/엣지 그래프를 출력합니다. `reach --node <NODE>`는 노드의 [도달 가능성 판정](/ko/connectivity/reachability/)을 보고합니다. `envelope --node <NODE>`(또는 `envelope --node quest:<id>`)는 노드 진입 시점의 [Guaranteed/Possible 표](/ko/connectivity/envelopes/)와 [보장된 팩트](/ko/connectivity/envelopes/#보장된-팩트)를 출력합니다(dsl 0.20.0; `--json`에서는 `envelope.guaranteedFacts`, 각 항목은 `{fact, establishedBy}`). `<NODE>`는 씬의 정규 key, 퀘스트 id 또는 [번들 비트](/ko/tooling/play/#번들-비트)의 정규 `<document id>.<beat id>`입니다. 단순 id는 세 종류 모두에서 찾습니다. 둘 이상의 종류를 가리키면 명령을 거부하고 명시적인 `scene:`, `quest:` 또는 `beat:` 접두사를 요구하며, 이는 항상 해당 종류를 선택합니다. 성공 시 종료 **0**, I/O 또는 해석 불가/모호한 노드 id 시 **2**입니다.
+
+엔벨로프의 `written by:` 목록은 노드보다 앞섬이 증명되는 작성자를 나열합니다. 대안 엣지를 통해서만 도달하는 작성자는 그 뒤에 `also written, but not provably before this node:`로 따로 나열됩니다. 0.52부터(#209) 이 규칙은 `[raises]` 엣지뿐 아니라 `[accept]` 엣지에도 적용됩니다. 여러 씬이 각각 같은 퀘스트를 `::accept`하면 그중 어느 것이든 수락한 씬일 수 있으므로, 어느 것도 퀘스트보다 앞선다고 증명되지 않습니다([엔벨로프](/ko/connectivity/envelopes/#대안-엣지-위의-작성자) 참고).
 
 `--format`은 단순 그래프 보기의 출력 형태를 `text` 또는 `dot`으로 고르고, JSON은 `--json`이 선택합니다. `--json`과 `--format`을 함께 쓰면 `E-CLI-USAGE`입니다. 보고서와 버전(`0.43.0.scenario*`)은 그대로입니다.
 
@@ -947,7 +969,7 @@ $ lute play --script <FILE> [--project <DIR>] [--providers <DIR>] [--permission-
 프로젝트 **전체**를 발생한 **계기(occasion)**의 시퀀스로 스토리를 플레이합니다(dsl 0.21.0). [비트와 계기](/ko/tooling/play/)의 참조 런타임 소비자입니다. 프로젝트(`--project` 또는 발견된 프로젝트)는 메모리에서 한 번 컴파일되며, 프로젝트 `compile`이 사용하는 것과 같은 게이트와 선언 유합(씬, 퀘스트, 로어 문서)을 사용합니다. `--engine <FILE>`은 `lute.engine.yaml`을 로드하고 정확한 major.minor IR 게이트를 먼저 수행한 다음 프로젝트 인덱스의 `requiredSemantics` 유합을 `supportedIds`와 비교합니다. id가 없으면 어떤 스텝, 명령, 조건, 에셋, 브리지도 실행하기 전에 종료 **2**와 `E-ENGINE-SEMANTICS`로 거부합니다. 잘못된 매트릭스와 지원하지 않는 IR 라인은 `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`을 사용합니다. 생략하면 내장 `reference` 매트릭스를 사용합니다. 필수 `--script`는 닫힌 키 집합을 가진 `*.play.yaml` 파일입니다. 각 `steps:`는 계기 `occasion:` 발생(그리고 `target:`, `pick:`, 해당 제시에서 스크립트의 `choose:` 키를 키별로 대체하는 스텝 로컬 `choose:`), `newRun:` 시작, `engine:`을 통한 엔진 소유 내용 쓰기(`state:` 리터럴 또는 `{ add: <n> }`, `facts:`, `retract:`), 월드 `event:` 발생, 선언된 시계를 `advance: slot | day | <n>`으로 이동(dsl 0.24.0: 시계의 경로를 쓰고, 퀘스트를 정산하며, 시계의 `raise:`에 따라 지나는 자정마다 `dayEnd` / `dayStart`를, 멈춘 곳에서 `slot` 계기를 한 번 발생시킵니다. 같은 순간의 `engine:` 쓰기를 함께 실을 수 있으며, 이 쓰기는 시계가 도착한 곳에 적용됩니다 — 도중의 `dayEnd` / `dayStart` 이후, 마지막 정산과 발생 이전), 또는 `end: true`로 플레이스루를 끝냅니다. 그리고 어떤 스텝이든 `label:`, `repeat: <n>`, 자체 `bridges:` 응답, `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`를 가질 수 있으며, `- include: <file>`은 다른 파일의 스텝을 그 자리에 이어 붙입니다. `steps:` 외에도 스크립트는 `state:`, `facts:`, `choose:`, `bridges:`에 대해 `lute trace --mock` 문법을, 시작점이 되는 세이브(`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, 그리고 플레이의 끝을 판정하는 최상위 `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }`(dsl 0.22.0)를 받습니다. 각 계기 스텝은 계기의 후보 비트와 그 판정을 나열하고, 승자(또는 `select: all` 계기에서는 스텝의 `pick`; `pick: none`이거나 자격 있는 비트가 없을 때 `pick`이 없으면 아무것도 제시하지 않음)를 `lute run`의 참조 평가기로 제시하며, 모든 퀘스트 생애주기를 진행시키므로 이후의 `when` 조건과 `after: completed(…)`가 실제 진행을 봅니다. `--json`은 같은 트랜스크립트를 하나의 객체로 내보냅니다.
 
 dsl 0.26.0부터 `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }`는 다음 해당 위치로 시계를 이동합니다(앞으로만, 0단계는 불가). 스텝 `expect:`는 `clock: { weekday, slot, day }`를 받고(0.28부터 `ended`도 가능), `engine: { accept: [quest ids] }`는 플레이 도중 수락 방식 퀘스트를 수락합니다(`quest <id> accepted (engine)`). 엔트리는 `pick:`, `entriesRead:`, 선택 기대값에서 `<document id>.<entry id>`로 이름 붙일 수 있습니다. `kind:<kind>`를 대상으로 하는 비트는 해당 종류의 모든 멤버에 응답합니다. 실행되지 않은 가드 디렉티브는 `skip ::give{item="potion"} — when: false`를 출력합니다. 브리지 응답은 결과 슬롯 또는 capability의 `result:`로 타입이 정해지며, 타입 없는 응답은 거부됩니다(종료 **2**). 문서가 하나의 상태 경로를 두 타입으로 선언하는 프로젝트도 거부됩니다(종료 **1**). 프로젝트는 플레이마다 한 번만 로드됩니다 — Monster League에서 플레이 로드 시간이 약 12초에서 약 1.5초로 줄었습니다. [스토리 플레이](/ko/tooling/play/)를 참고하세요.
-`--events`는 재개 가능한 런타임 이벤트 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 seed와 그 출력이 들어가고, 이후 플레이어가 취한 각 입력은 출력과 짝을 이룹니다(`choose`와 `bridgeResult` 응답 포함). 모든 출력에는 `eventVersion: "0.51.0"`이 들어갑니다. `--json`, `--ir`, `--derivation`, `--conditions-output`과 함께 사용할 수 없습니다.
+`--events`는 재개 가능한 런타임 이벤트 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 seed와 그 출력이 들어가고, 이후 플레이어가 취한 각 입력은 출력과 짝을 이룹니다(`choose`와 `bridgeResult` 응답 포함). 모든 출력에는 `eventVersion: "0.52.0"`이 들어갑니다. `--json`, `--ir`, `--derivation`, `--conditions-output`과 함께 사용할 수 없습니다.
 
 `--no-derive`(또는 스크립트의 `derive: false`; 플래그가 우선)는 프로젝트의 Datalog 규칙 적용을 중지하므로 mock하지 않은 파생 atom은 unknown이 되고 walk가 미완료로 멈춥니다. `--derivation <ATOM>`(반복 가능)은 플레이 후 ground atom의 도출 트리를 출력합니다. 사용된 규칙과 각 전제의 자체 근거(시드 fact, 단언, 또는 차례로 파생)가 나오고, 부정 전제는 `(absent)`로 표시됩니다. 성립하지 않으면 이를 결론낼 수 있는 모든 규칙과 실패한 전제를 출력합니다. `--json`에서는 같은 트리가 `explain` 아래에 들어갑니다. `--deny <CODE>`/`--deny-warnings`는 프로젝트 compile 게이트의 진단을 승격합니다. `--conditions-output <FILE>`은 CEL 조건을 평가할 때마다 JSONL 레코드 하나를 `<FILE>`에 추가합니다.
 
@@ -959,7 +981,7 @@ $ lute test [<PATH>]… [--project <DIR>] [--providers <DIR>] [--permission-prof
             [--coverage] [--no-derive] [--deny <CODE>]… [--deny-warnings] [--json]
 ```
 
-프로젝트의 시나리오 테스트를 실행합니다. `<PATH>` 피연산자는 테스트/플레이 스크립트를 고릅니다. 스크립트 파일(`*.test.yaml` 또는 expect가 있는 `*.play.yaml`)이거나, `*.test.yaml`과 기대값이 있는 `*.play.yaml`을 순회하는 디렉터리입니다. 피연산자가 없으면 프로젝트 디렉터리(`--project` 또는 발견된 프로젝트)를 순회합니다. 찾은 `*.test.yaml`은 선언된 모의 객체를 사용해 씬이나 퀘스트를 추적하거나, 로어 문서의 엔트리 또는 번들 비트 중 하나를 제시하고 선언된 기대값을 단언합니다. `expect:`(스텝 또는 최상위)가 있는 모든 `*.play.yaml`은 [`lute play`](#play)와 정확히 같은 방식으로 플레이한 뒤 자체 기대값으로 판정합니다(dsl 0.22.0). 그 밖의 파일이면 종료 코드가 **2**입니다. `--json`은 기계 판독 가능한 보고서를 출력하고, `--providers`는 스냅숏 디렉터리를 고정하며, 각 스크립트는 프로젝트 디렉터리 이하에서 가장 가까운 프로젝트에 대해 해석됩니다(발견된 프로젝트도 명시한 것과 똑같이 쓰이며, `--project`가 모든 스크립트를 단일 루트로 강제하지 않습니다). 해석은 문서 위쪽에서 가장 가까운 `lute.project.yaml`에 맞추며, 프로젝트마다 표준 오류에 한 번 이를 알립니다 — `lute: note: scenario tests use project . (nearest lute.project.yaml); pass --project to choose another`. 문서 위에 매니페스트가 없으면 추적은 코어만 사용합니다. `--permission-profile`은 프로젝트 해석에 전달됩니다. `--deny`/`--deny-warnings`는 테스트가 참조하는 모든 check 판정(추적한 문서마다의 check와 플레이마다의 compile 게이트)을 승격하므로 승격된 경고는 그 테스트를 실패시킵니다. `--no-derive`는 모든 테스트와 플레이에서 추론을 끄며 자체 `derive:` 키보다 우선합니다([trace](#trace) 참고). 모든 테스트와 플레이가 통과하면 종료 코드 **0**, 실패하면 **1**, I/O 오류 또는 잘못된 테스트 파일이면 **2**입니다.
+프로젝트의 시나리오 테스트를 실행합니다. `<PATH>` 피연산자는 테스트/플레이 스크립트를 고릅니다. 스크립트 파일(`*.test.yaml` 또는 expect가 있는 `*.play.yaml`)이거나, `*.test.yaml`과 기대값이 있는 `*.play.yaml`을 순회하는 디렉터리입니다. 피연산자가 없으면 프로젝트 디렉터리(`--project` 또는 발견된 프로젝트)를 순회합니다. 찾은 `*.test.yaml`은 선언된 모의 객체를 사용해 씬이나 퀘스트를 추적하거나, 로어 문서의 엔트리 또는 번들 비트 중 하나를 제시하고 선언된 기대값을 단언합니다. `expect:`(스텝 또는 최상위)가 있는 모든 `*.play.yaml`은 [`lute play`](#play)와 정확히 같은 방식으로 플레이한 뒤 자체 기대값으로 판정합니다(dsl 0.22.0). 그 밖의 파일이면 종료 코드가 **2**입니다. `--json`은 기계 판독 가능한 보고서를 출력하고, `--providers`는 스냅숏 디렉터리를 고정하며, 각 스크립트는 프로젝트 디렉터리 이하에서 가장 가까운 프로젝트에 대해 해석됩니다(발견된 프로젝트도 명시한 것과 똑같이 쓰이며, `--project`가 모든 스크립트를 단일 루트로 강제하지 않습니다). 해석은 문서 위쪽에서 가장 가까운 `lute.project.yaml`에 맞춥니다. `lute test`가 프로젝트를 발견한 경우(`--project` 없음)에는 프로젝트마다 표준 오류에 한 번 이를 알립니다 — `lute: note: scenario tests use project . (nearest lute.project.yaml); pass --project to choose another`. `--project`를 주면 다른 명령처럼 이 안내를 출력하지 않습니다(0.52부터, #214). 문서 위에 매니페스트가 없으면 추적은 코어만 사용합니다. `--permission-profile`은 프로젝트 해석에 전달됩니다. `--deny`/`--deny-warnings`는 테스트가 참조하는 모든 check 판정(추적한 문서마다의 check와 플레이마다의 compile 게이트)을 승격하므로 승격된 경고는 그 테스트를 실패시킵니다. `--no-derive`는 모든 테스트와 플레이에서 추론을 끄며 자체 `derive:` 키보다 우선합니다([trace](#trace) 참고). 모든 테스트와 플레이가 통과하면 종료 코드 **0**, 실패하면 **1**, I/O 오류 또는 잘못된 테스트 파일이면 **2**입니다.
 
 각 테스트와 플레이는 파일 및 실행 내용을 명시한 `PASS`/`FAIL` 한 줄을 출력하고, 실패 뒤에는 누락 항목을 출력한 다음 요약을 출력합니다.
 

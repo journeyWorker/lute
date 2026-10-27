@@ -1,6 +1,6 @@
 // THIS FILE IS GENERATED — DO NOT EDIT.
 // Generator: packages/runtime/scripts/contract-codegen.ts
-// Sources: schemas/lute-events-0.51.schema.json, schemas/lute-snapshot-0.51.schema.json
+// Sources: schemas/lute-events-0.52.schema.json, schemas/lute-snapshot-0.52.schema.json
 
 import * as Schema from "effect/Schema";
 import type * as SchemaAST from "effect/SchemaAST";
@@ -323,6 +323,7 @@ export const MenuAwait = Schema.Struct({
     Schema.check(Schema.isGreaterThanOrEqualTo(0))
   ),
   "prompt": Schema.optionalKey(Schema.NullOr(Schema.String)),
+  "promptTexts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   "timeout": Schema.optionalKey(Schema.NullOr(Schema.Int
   .pipe(
     Schema.check(Schema.isGreaterThanOrEqualTo(0))
@@ -334,6 +335,8 @@ export const MenuOptionAwait = Schema.Struct({
   "exit": Schema.Boolean,
   "id": Schema.String,
   "once": Schema.Boolean,
+  "text": Schema.String,
+  "texts": Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   "verdict": Schema.String
 });
 export type MenuOptionAwait = typeof MenuOptionAwait.Type;

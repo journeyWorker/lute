@@ -902,10 +902,18 @@
           "type": "integer"
         },
         "prompt": {
+          "description": "The prompt as rendered at this presentation (dsl 0.52.0 §6.3).",
           "type": [
             "string",
             "null"
           ]
+        },
+        "promptTexts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The prompt's translations, locale → rendered text (dsl 0.52.0 §6.3).",
+          "type": "object"
         },
         "timeout": {
           "minimum": 0,
@@ -937,12 +945,24 @@
         "once": {
           "type": "boolean"
         },
+        "text": {
+          "description": "The label as rendered at this presentation (dsl 0.52.0 §6.3).",
+          "type": "string"
+        },
+        "texts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "The label's translations, locale → rendered text (dsl 0.52.0 §6.3).",
+          "type": "object"
+        },
         "verdict": {
           "type": "string"
         }
       },
       "required": [
         "id",
+        "text",
         "verdict",
         "exit",
         "once"
@@ -1705,7 +1725,7 @@
       ]
     }
   },
-  "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.51.schema.json",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.52.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "oneOf": [
     {
@@ -1724,5 +1744,5 @@
       "$ref": "#/$defs/StreamLine"
     }
   ],
-  "title": "Lute runtime events (eventVersion 0.51.x)"
+  "title": "Lute runtime events (eventVersion 0.52.x)"
 }

@@ -365,6 +365,51 @@ fn a_save_in_a_loops_second_iteration_resumes_identically() {
     assert_eq!(lines, ["Enough.", "After the loop."]);
 }
 
+/// dsl 0.52.0 §5.3: in `hub-leave`, `take` jumps past the hub, so the visit
+/// ends and the next await is the branch after the hub, not the hub again.
+/// A snapshot at that await, restored, resumes to the same output: the leave
+/// is walk-local and the snapshot carries no field for it.
+#[test]
+fn a_save_after_leaving_a_hub_resumes_identically() {
+    let run = session_run("hub-leave");
+    let runtime = &run.runtime;
+    let choose = |option: &str, request: u64| -> Input {
+        serde_json::from_value(
+            serde_json::json!({ "type": "choose", "option": option, "request": request }),
+        )
+        .unwrap()
+    };
+    let (first, request, menu) = first_choice(&run);
+    assert_eq!((menu.id.as_str(), request), ("desk", 1));
+    let (after, output) = runtime
+        .step(first, choose("take", 1))
+        .unwrap_or_else(|(_, r)| panic!("{} {}", r.code, r.message));
+    let Await::Choice { request, menu } = &output.await_ else {
+        panic!("leaving the hub does not await the branch after it: {output:?}");
+    };
+    assert_eq!((menu.id.as_str(), *request), ("confirm", 2));
+    let lines: Vec<String> = records(&output)
+        .filter(|(_, r)| r["kind"] == "line")
+        .map(|(_, r)| r["text"].as_str().unwrap().to_string())
+        .collect();
+    assert_eq!(
+        lines,
+        ["Taking it, then jumping past the hub.", "After the hub."]
+    );
+
+    let text = serde_json::to_string(&runtime.snapshot(&after)).unwrap();
+    let restored = runtime
+        .restore(lute_runtime::runtime::Snapshot::from_json(text.as_str()).unwrap())
+        .unwrap_or_else(|r| panic!("{} {}", r.code, r.message));
+    let (_, resumed) = runtime
+        .step(restored, choose("done", 2))
+        .unwrap_or_else(|(_, r)| panic!("{} {}", r.code, r.message));
+    let (_, straight) = runtime
+        .step(after, choose("done", 2))
+        .unwrap_or_else(|(_, r)| panic!("{} {}", r.code, r.message));
+    assert_eq!(json(&resumed), json(&straight));
+}
+
 /// dsl 0.40.0 §4.2: a timed menu carries its timeout and default, and the
 /// `timeout` input is the choice of the default.
 #[test]

@@ -342,7 +342,7 @@ directives:
 
 A stamp scoped with `on: [banner]` and named `code` is shadowed by that core attribute: `E-PLUGIN-RESERVED-STAMP-ATTR`. A cross-cutting stamp named `code` keeps applying to other directives; on a directive with a `text` attribute the core `code` is matched first, as a line's own `code` is.
 
-In a document, a `text` value is a quoted string in the choice-label grammar: `{{…}}` interpolations of state paths, `@def`s and host tokens, with their modifiers; inline markup is not parsed. A literal `{{` cannot be written in a quoted attribute value yet (`\{{` is `E-STRING-ESCAPE` there, as in a choice label; #211). An `@ref` value is `E-ATTR-TYPE`: `` `title` of `::banner` is localizable `text`, written as a quoted string; a `@def` value has no translation of its own ``. The directive then takes `code=` (a string) as a content line does, on any directive with at least one `text` attribute; on any other directive `code` stays `E-UNKNOWN-ATTR`, and the message says why.
+In a document, a `text` value is a quoted string in the choice-label grammar: `{{…}}` interpolations of state paths, `@def`s and host tokens, with their modifiers; inline markup is not parsed. `\{{` writes a literal `{{` (since 0.52, #211), as in a choice label. An `@ref` value is `E-ATTR-TYPE`: `` `title` of `::banner` is localizable `text`, written as a quoted string; a `@def` value has no translation of its own ``. The directive then takes `code=` (a string) as a content line does, on any directive with at least one `text` attribute; on any other directive `code` stays `E-UNKNOWN-ATTR`, and the message says why.
 
 ```lute
 ::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
@@ -396,12 +396,54 @@ rewardKinds:
 `effects` takes `asserts`, `retracts`, `accepts` and (since 0.51) [`raises`](#declared-occasion-raises), and no other key. An empty `effects: {}` is `E-PLUGIN-PARSE` ("declares no effect"; the message lists `raises:` among the keys), while `effects: { raises: [...] }` alone is a valid block. Each `asserts` / `retracts` entry is the same fact pattern a [directive's effects](#facts-a-directive-asserts-or-retracts) use, `relation(arg, …)`.
 
 - **`writes` is not admitted.** A reward's state write is `credits:`, so `effects.writes` is `E-PLUGIN-KEY`, and its message adds `` — a reward's state write is `credits:` ``.
-- **Pattern arguments** are members, `true` / `false`, `@target`, and `_` (in `retracts` only). Any other `@name` is `E-PLUGIN-PARSE`: `` reward kind `BADGE` effect `met(@rarity)` reads `@rarity`; a reward kind's effects read only `@target` (a `<reward>` takes no other attribute) ``. A reward kind's own `attrs:` cannot be authored on `<reward>`, so there is nothing else to read.
+- **Pattern arguments** are members, `true` / `false`, `@target`, `@<attr>` for an attribute the kind declares (since 0.52, [below](#reward-kind-attributes)), and `_` (in `retracts` only). Any other `@name` is `E-PLUGIN-PARSE`, with a did-you-mean: `` reward kind `BADGE` effect `badge(@target, @rarty)` reads `@rarty`, but the kind declares no such attribute (declared: target, rarity); did you mean `@rarity`? ``.
 - **`accepts`** entries are `@target` or a literal quest id (an identifier). Anything else is `E-PLUGIN-PARSE`.
 - A kind with `target: { forbidden: true }` whose effects read `@target` is `E-PLUGIN-PARSE`: the effect could never bind.
 - `@target` is bound to the reward's quoted `target=`. A `<reward>` with no `target=` applies no effect for a pattern that reads it, with no extra diagnostic; a kind with `target: { required: true }` already reports `E-REWARD-TARGET` there.
 
-The checker judges each `<reward>` of such a kind with its `@target` bound. A fact pattern is held to exactly what an `::assert` / `::retract` of it is (relation declared, arity, argument kinds and members), with the same codes, at the reward's `kind=`; each message is prefixed `` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): ``. An `accepts` id is judged by `::accept`'s rule: `E-ACCEPT-TARGET` for an unknown id (with a did-you-mean), for a quest that has `start`, and for an auto-activating child. It is reported at the reward's `target=` value when the id came from `@target`, otherwise at `kind=`: `` `<reward kind="OFFER_QUEST" target="secnd">` accepts quest `secnd` (its kind's `effects.accepts`), but no quest in the project declares that id — did you mean `second`? ``. What the effects mean at the grant, and how analyses read them, is in [Quests & scenes](/language/quests-and-scenes/). A kind without `effects:` hashes as it did before.
+The checker judges each `<reward>` of such a kind with its `@target` and its attributes bound. A fact pattern is held to exactly what an `::assert` / `::retract` of it is (relation declared, arity, argument kinds and members), with the same codes, at the reward's `kind=`; each message is prefixed `` `<reward kind="BADGE">` asserts `met(mira)` (its kind's `effects`): ``. An `accepts` id is judged by `::accept`'s rule: `E-ACCEPT-TARGET` for an unknown id (with a did-you-mean), for a quest that has `start`, and for an auto-activating child. It is reported at the reward's `target=` value when the id came from `@target`, otherwise at `kind=`: `` `<reward kind="OFFER_QUEST" target="secnd">` accepts quest `secnd` (its kind's `effects.accepts`), but no quest in the project declares that id — did you mean `second`? ``. What the effects mean at the grant, and how analyses read them, is in [Quests & scenes](/language/quests-and-scenes/). A kind without `effects:` hashes as it did before.
+
+### Reward-kind attributes
+
+A reward kind's **`attrs:`** list follows the directive attribute declaration rules
+(`{ name, required?, type, default? }`). Since 0.52 (#201) a `<reward>` of the kind authors them,
+and its `effects` read them as `@<attr>`:
+
+```yaml
+# rewardkinds/r.yaml
+rewardKinds:
+  BADGE:
+    target: { entity: person, required: true }
+    attrs:
+      - { name: rarity, type: { enum: [common, rare, gold] }, default: common }
+    effects: { asserts: ["badge(@target, @rarity)"] }
+```
+
+**Load faults.** Each of these is `E-PLUGIN-PARSE` at the entry, and the plugin fails to load:
+
+<!-- lute-diagnostics unverified="verbatim lute check --project output; ManifestError::RewardAttr (crates/lute-manifest/src/validate.rs) writes the `reward kind … declares attribute …` head and each fault's tail with separate write! calls, so no single format! literal spans a line" -->
+```
+./plugins/acme.stage/rewardkinds/r.yaml:5:9: error [E-PLUGIN-PARSE] reward kind `BADGE` declares attribute `amount`, which `<reward>` already has (`id`, `kind`, `target`, `amount`, `when`, `outcome`) — give it another name
+./plugins/acme.stage/rewardkinds/r.yaml:6:9: error [E-PLUGIN-PARSE] reward kind `BADGE` declares attribute `rarity` as `string` with `default: 3`, which is not of type `string` — give a default of the declared type
+./plugins/acme.stage/rewardkinds/r.yaml:7:9: error [E-PLUGIN-PARSE] reward kind `BADGE` declares attribute `tags` as `list<string>`; an attribute value is written as one scalar (string, number, bool, an enum or entity member, a provider or asset id), so no `.lute` value can satisfy a `list`, `map` or `record` (structured attribute values are not supported yet): give each field its own attribute
+```
+
+A name declared twice is refused too (`` reward kind `BADGE` declares attribute `rarity` more than once — keep one declaration ``), and `type: text` stays refused when the file parses.
+
+**In a document.** The `<reward>` closure is its six keys plus the kind's attributes. Each value is
+a quoted literal checked by the directive attribute checker, with the owner written
+`` <reward kind="BADGE"> `` (`E-ATTR-TYPE`, `E-BAD-ENUM`, `E-UNKNOWN-ID` and the entity, provider and
+asset checks); a `required: true` attribute left out is `E-MISSING-ATTR`; an `@ref` value is
+`E-REWARD-ATTR`; and `E-UNKNOWN-ATTR` lists the kind's attributes after the six. A kind that
+declares none, or a project with no plugin, keeps the six-key closure and its message. See
+[Quests & scenes](/language/quests-and-scenes/#reward-kind-attributes).
+
+**Binding and artifact.** An effect's `@<attr>` is the reward's authored value, else the declared
+`default:`; with neither it is unbound and the effect is not applied, as an unbound `@target` is.
+The compiled reward entry carries `attrs`, written last and only when non-empty (each authored
+attribute and each `default:` not authored, typed as a `plugin` record's `fields`), and the `grant`
+record copies them onto its `reward`. `attrs` is descriptive: it adds no semantic id, and a host
+reads it by the reward kind's contract, which `capabilitySnapshot` already pins.
 
 ### Declared occasion raises
 
@@ -439,10 +481,10 @@ target: scene.chapter2
 ```
 
 - **`effects.raises`** is a non-empty list of `{ occasion, target? }` entries, and no other keys. It sits beside `writes`, `asserts` and `retracts` on a directive, and beside `asserts`, `retracts` and `accepts` on a reward kind. A reward kind that declares only `raises` keeps the `lute.quest.rewardEffects/1` semantic id out of `requiredSemantics`.
-- **`target`** is one of: absent (only for an occasion declared without a target); `@<attr>` on a directive, naming one of its declared attributes; `@target` on a reward kind, the reward's `target=`; or a literal target written whole (`scene.chapter2`), as a beat writes it. A kind with `target: { forbidden: true }` cannot raise for `@target`.
+- **`target`** is one of: absent (only for an occasion declared without a target); `@<attr>` on a directive, naming one of its declared attributes; `@target` on a reward kind, the reward's `target=`, or (since 0.52) `@<attr>`, one of the kind's declared [attributes](#reward-kind-attributes); or a literal target written whole (`scene.chapter2`), as a beat writes it. A kind with `target: { forbidden: true }` cannot raise for `@target`.
 - **`raisedBy: declared`** on the occasion makes the host raise it only through declared raises (see [the occasion keys](#export-files) above). Without it, a declared raise of the occasion is recorded in the artifact and checked, but draws no graph edge.
 
-**Load faults** (`E-PLUGIN-PARSE`, at the entry): `raises: []`; an entry that is not a mapping with `occasion` and an optional `target`; a `target` that is neither `@<name>` nor a dotted target; on a directive, an `@<name>` that names no declared attribute; on a reward kind, any `@<name>` other than `@target`, or `@target` on a kind with `target: { forbidden: true }`; an unknown `raisedBy` value.
+**Load faults** (`E-PLUGIN-PARSE`, at the entry): `raises: []`; an entry that is not a mapping with `occasion` and an optional `target`; a `target` that is neither `@<name>` nor a dotted target; on a directive, an `@<name>` that names no declared attribute; on a reward kind, an `@<name>` other than `@target` that names none of the kind's attributes, or `@target` on a kind with `target: { forbidden: true }`; an unknown `raisedBy` value.
 
 A directive whose lowering has no carrier for raises, which is any `lower:` (a staging record or a builtin), cannot declare `effects.raises`. It is `E-PLUGIN-INVALID-DIRECTIVE`, at the `raises` key: `` directive `::playVideo` lowers to the `video` record, which carries no effects (only a `plugin` record does), so its `effects.raises` could never reach the host — drop `lower:` so the call stays a `plugin` record, or raise the occasion from a passthrough directive ``. This is the boundary `effects.writes` already has on record lowerings.
 
@@ -452,7 +494,7 @@ A directive whose lowering has no carrier for raises, which is any `lower:` (a s
 |---|---|
 | the occasion is not in the snapshot | `` directive `::playScene` (`acme.stage`) raises occasion `cutscne`, which no active plugin declares (a plugin raising another plugin's occasion lists it in `depends:`) — did you mean `cutscene`? `` (when the occasion exists in an installed but inactive plugin, the message names that plugin instead) |
 | a `target` on an untargeted occasion, or none on a targeted one | `` … raises `cutscene` without a target, but `cutscene` is raised for a target (`scene.<cutsceneId>`) — add `target: "@<attr>"` `` |
-| for a domain occasion `{ prefix, entity }`, an `@attr` whose declared type is not `{ entity: <entity> }` (on a reward kind: whose `target:` contract is not `{ entity: <entity> }`) | `` … raises `cutscene` for `@scene`, which is typed `string`; the target of `cutscene` is a `cutsceneId` member, so type the attribute `{ entity: cutsceneId }` `` |
+| for a domain occasion `{ prefix, entity }`, an `@attr` whose declared type is not `{ entity: <entity> }` (on a reward kind, `@target` whose `target:` contract is not `{ entity: <entity> }`, or an attribute of the kind declared otherwise) | `` … raises `cutscene` for `@scene`, which is typed `string`; the target of `cutscene` is a `cutsceneId` member, so type the attribute `{ entity: cutsceneId }` `` |
 | a literal target outside the occasion's domain shape (`<prefix>.<member>`; `members:` when listed) | `` … raises `cutscene` for `room.office`, but its targets are `scene.<cutsceneId>` `` |
 
 **Per call and per grant.** The project pass (`lute check --project`) reports `E-RAISES-TARGET` at the call's attribute value for an `@attr` target, at the directive head for a literal, and at the reward's `target=` (or `kind=`). A resolved target is the call's authored value, else the attribute's declared `default:`; only a target with neither is unbound, and an unbound target suppresses the raise with no extra diagnostic (`required` already reports). For each resolved target:

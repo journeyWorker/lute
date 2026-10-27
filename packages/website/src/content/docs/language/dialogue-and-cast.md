@@ -71,7 +71,7 @@ A section's number is also the first segment of every record `position` in it (`
 first record of section 1). Positions and numbers follow source order, so they change when sections
 move; tools that need a section to keep its identity across edits read its `{#id}`, and report a
 section without one as having no stable identity. A section id is identity only: it is not a jump
-target — [`::jump`](/language/directives/#jump-and-label--forward-jumps) goes to a `::label`.
+target — [`::jump`](/language/directives/#jump-and-label--forward-and-bounded-backward-jumps) goes to a `::label`.
 
 ## Line attributes
 
@@ -375,7 +375,7 @@ component's line.
 
 ## Interpolation
 
-Content `Text` (and a `<choice>`'s `text`) may embed **`{{…}}`** interpolations that read game state at
+Content `Text` (and the [label-grammar values](#labels-and-prompts) below) may embed **`{{…}}`** interpolations that read game state at
 render time:
 
 ```lute
@@ -400,6 +400,28 @@ A path typed against an enum whose members carry display `labels:` renders the l
 member id: `Today is {{run.weekday}}.` reads `Today is Sunday.` (see
 [Paths typed by a named enum](/state/state-model/#paths-typed-by-a-named-enum)).
 
+### Labels and prompts
+
+Three kinds of quoted attribute value take the **label grammar**: a `<choice>`'s `text`, a
+`<branch prompt>` or `<hub prompt>`, and a plugin directive attribute declared
+[`type: text`](#localizable-directive-text-since-051). Each holds `{{…}}` interpolations with their
+[format hints](#ordinals-xordinal) and no [inline modifiers](#inline-text-modifiers). Since 0.52 a
+prompt is checked as an option label is: an undeclared path is `E-CEL-PROFILE`, a maybe-unset one
+`E-MAYBE-UNSET`, and the runtime renders the prompt's markers onto the menu with the labels'
+(see [Choices & hubs](/language/choices-and-hubs/#the-compiled-record)). `\{{` writes a literal `{{` in
+all three (0.52, #211), as in line text: `text="Say \{{open}}"` shows `Say {{open}}` and has no
+placeholder. In a quoted value that does not take the label grammar — a `::bg` `location`, a `when`,
+a `::use` argument — `\{{` is `E-STRING-ESCAPE`:
+
+<!-- lute-diagnostics -->
+```
+br.lute:17:16: error [E-STRING-ESCAPE] `\{{` (a literal `{{`) is defined only in line text and in the values that take the label grammar — `<choice text>`, `prompt` and a plugin `text` attribute; `location` of `::bg` is not one
+```
+
+A `::use` argument passes a literal `{{` as `\\{{` ([Components](/language/components-and-extends/#sentences-in-string-params)). An
+`<objective title>` is plain text, not label grammar: a quest UI shows it as written, so a `{{` in it
+is `E-OBJECTIVE-TITLE-INTERP` ([Quests & scenes](/language/quests-and-scenes/#objective-titles-are-plain-text)).
+
 ### Host tokens
 
 A line may name a value only the engine knows, such as the player's name, with a bare identifier: `{{playerName}}`. Since 0.50 a plugin declares such names in its [`hostTokens`](/plugins/manifests/#host-interpolation-tokens-hosttokens) export, and `lute.core` declares `userName: { type: string }`. With `hostTokens: { playerName: { type: string } }`:
@@ -410,7 +432,7 @@ A line may name a value only the engine knows, such as the player's name, with a
 
 compiles to a `reserved` placeholder, `{ "kind": "reserved", "token": "playerName", "format"? }`. A token is a bare **identifier** (an ASCII letter or `_`, then letters, digits or `_`). `{{player-name}}` and `{{2nd}}` are not tokens: they stay state-path-shaped and keep their `E-CEL-PROFILE`. A state path always has a tier root and a `.`, so no spelling that was a state path changes meaning; the names that are state roots or CEL literals cannot be declared as tokens (see [Reserved names](/reference/reserved-names/)).
 
-- **Declared.** The token's type decides which [format hints](#ordinals-x-ordinal) it takes. A `string` or `enum` token takes the text hints (`{{platform:capitalize}}` is clean), and a number hint on it is `E-REF-TYPE`. An `int` token takes the number hints (`{{rank:ordinal}}` is clean), and a text hint on it (`{{rank:capitalize}}`) is `E-REF-TYPE`. `{{userName}}` behaves exactly as before.
+- **Declared.** The token's type decides which [format hints](#ordinals-xordinal) it takes. A `string` or `enum` token takes the text hints (`{{platform:capitalize}}` is clean), and a number hint on it is `E-REF-TYPE`. An `int` token takes the number hints (`{{rank:ordinal}}` is clean), and a text hint on it (`{{rank:capitalize}}`) is `E-REF-TYPE`. `{{userName}}` behaves exactly as before.
 - **Undeclared.** A bare name no plugin declares is `E-CEL-PROFILE`. The message names "a declared host token" and lists the declared tokens: `` interpolation `playerName` is not a valid `{{…}}` form — only a state path, …, a def `@ref` / `@ref(args)`, or a declared host token (`userName`) are permitted; declare `playerName` in a plugin's `hostTokens:` export if the engine substitutes it … ``. The rest of the message is unchanged.
 - **Escape.** `\{{name}}` is unchanged: it is never a placeholder.
 - **Never a state read.** A host token takes no part in definite-assignment, dependency or quest-reference analysis, and counts as one word for lint.
@@ -503,7 +525,7 @@ A plugin directive can carry text that a translator must see, such as a banner t
 ::banner{code="0010" title="Welcome to the hall, {{userName}}" style="card"}
 ```
 
-- **Value grammar.** A `text` value is a quoted string in the same grammar as a `<choice>` label: `{{…}}` interpolations of state paths, `@def`s and [host tokens](#host-tokens) with their modifiers. A literal `{{` cannot be written in a quoted attribute value yet (`\{{` is `E-STRING-ESCAPE` there, as in a choice label; #211). [Inline text modifiers](#inline-text-modifiers) are not parsed in it. Each interpolation is checked as a label's is. An `@ref` value (`title=@greeting`) is `E-ATTR-TYPE`: a `@def` value has no translation of its own.
+- **Value grammar.** A `text` value is a quoted string in the same grammar as a `<choice>` label: `{{…}}` interpolations of state paths, `@def`s and [host tokens](#host-tokens) with their modifiers. `\{{` writes a literal `{{` (since 0.52, #211; see [Labels and prompts](#labels-and-prompts)). [Inline text modifiers](#inline-text-modifiers) are not parsed in it. Each interpolation is checked as a label's is. An `@ref` value (`title=@greeting`) is `E-ATTR-TYPE`: a `@def` value has no translation of its own.
 - **`code=`.** A directive with at least one `text` attribute takes `code="…"` as a content line does: a string, trimmed. On any other directive `code` stays `E-UNKNOWN-ATTR`. A directive that declares its own attribute named `code` beside a `text` attribute is refused when the plugin loads.
 - **`lineId`.** The id of a `text` attribute is `{prefix}~{tag}~{code}~{attr}`, for example `intro~banner~0010~title`. It does not go through the `lineId` template, and position is never identity. `~` is the separator, so a `code` containing `~` is `E-LINE-CODE-RESERVED` and an identity template whose literal text contains `~` is `E-IDENTITY-TEMPLATE`. As a backstop, whole-project `lute check` reports two units with the same final `lineId` — a line, option, prompt or directive text — as `E-LINE-ID-DUP`, since a `lineId` keys one translation. Two `::banner` calls in one scope sharing a `code` are `E-DUP-LINE-CODE`.
 - **Back-fill.** An untagged directive gets the next code in its scope, counted per directive tag, as a line does; in a component the codes are counted over the whole component source. [`lute tag`](/tooling/cli/#tag) writes `code="…"` into every untagged directive that has a `text` attribute. A component is tagged under the snapshots of the documents that use it, and when those users resolve its text directives differently it is `E-COMPONENT-TEXT-DIRECTIVE`. With `identity.requireStable`, such a directive without `code` is `W-LINE-CODE-UNTAGGED`.
@@ -579,8 +601,22 @@ The rules, line by line above:
   translations, and a literal backslash directly before a `{{` is doubled, so
   `Lit \{{run.a}} and {{ run.a }}.` keeps that `text`, has one placeholder, and renders
   `Lit {{run.a}} and 3.` when `run.a` is 3. A translation may write `\{{` too.
+- **A literal `{` before a marker** (0.52, #139). The artifact has no spelling for a literal `{`
+  directly before a `{{…}}` marker: compiled text would open the marker one brace early. So in line
+  text a marker whose preceding literal text ends in an **odd** run of `{` is `E-INTERP-BRACE`,
+  whichever escapes or modifiers spell the run (`{\{{{{run.a}}`, `x{:pause{s=0.5}{{run.a}}`). An
+  even run is a run of literal `{{` pairs and stays legal: `\{{{{run.a}}` renders `{{3`. The
+  message below gives the two ways out. A translation with such a marker is not merged
+  (`E-L10N-MODIFIERS` naming `E-INTERP-BRACE`), and a component line whose spliced argument ends
+  the run reports at the `::use`, as does an argument ending in a plain `{{` (#221, see
+  [Components](/language/components-and-extends/#sentences-in-string-params)).
 - **Plain colons stay text.** A colon starts a modifier only when a name and then `[` or `{`
   follow it, so `10:30` and `:)` need no escape.
+
+<!-- lute-diagnostics -->
+```
+sign.lute:14:20: error [E-INTERP-BRACE] a literal `{` directly before `{{run.a}}` cannot be told apart from the marker in compiled text (lute 0.47.1 §3): put a character between them (`{ {{run.a}}`), or show the brace from a string state path (`{{run.lbrace}}{{run.a}}`, with `run.lbrace` declared `{ type: string, default: "{" }`)
+```
 
 A malformed modifier is `E-TEXT-MODIFIER`: an unterminated span, a name that is neither core nor a
 `textStyle` member, attributes on a style, or a positional value (`:pause{0.5}` — write `s=0.5`):

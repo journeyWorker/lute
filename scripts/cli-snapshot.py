@@ -4,6 +4,7 @@
 Usage:
     scripts/cli-snapshot.py LUTE-BINARY OUTPUT-DIR
     scripts/cli-snapshot.py LUTE-BINARY OUTPUT-DIR --compare BASELINE-DIR [--strict] [--capability-hash]
+    scripts/cli-snapshot.py LUTE-BINARY OUTPUT-DIR --compare BASELINE-DIR --strict --accept FILE
     scripts/cli-snapshot.py --self-test
 
 The corpus is discovered from ``docs/examples``, ``conformance``, and the
@@ -24,6 +25,16 @@ capability hash (``capabilitySnapshot``/``capabilityVersion``, JSON and text),
 so a release that moves the hash once (spec 0.51.0 section 13, class 4) can
 prove the hash is the only difference.  The command's working directory is
 always the repository root, and locale/time environment variables are pinned.
+``--accept FILE`` (with ``--strict``; Review052 F5, F9) passes the reviewed
+differences FILE lists, one per line as ``<class> <changed|added|removed>
+<command label> <stream/file> <sha256>``: the spec class, the kind, the
+manifest label, ``stdout``/``stderr``/``exit-code`` or the ``artifacts/`` path,
+and the sha256 of the normalized head output (the baseline output for
+``removed``); ``#`` comments and blank lines are ignored. Exit 0 means every
+difference is listed and still hashes to its pinned value; 1 is an unlisted
+difference, a kind mismatch or a byte change after approval; 2 is a comparator
+error (an unreadable snapshot, a malformed FILE). An entry that no longer
+differs is reported and removed from FILE.
 """
 
 from __future__ import annotations
@@ -31,6 +42,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import difflib
+import hashlib
 import io
 import json
 import os
@@ -48,20 +60,20 @@ ROOT = Path(__file__).resolve().parent.parent
 EXAMPLES = ROOT / "docs" / "examples"
 CONFORMANCE = ROOT / "conformance"
 
-# These are intentionally narrow.  In particular, replacing every 0.48/0.49/0.50/0.51
+# These are intentionally narrow.  In particular, replacing every 0.48/0.49/0.50/0.51/0.52
 # would hide a content change in prose, state values, paths, or diagnostic
 # messages.  Schema IDs are version stamps even though they are not JSON keys.
 STAMP_FIELD_RE = re.compile(
     r'(?P<prefix>"?(?:lute|luteVersion|irVersion|eventVersion|snapshotVersion)"?\s*[:=]\s*"?)'
-    r"0\.(?:48|49|50|51)(?:\.\d+)?"
+    r"0\.(?:48|49|50|51|52)(?:\.\d+)?"
 )
 SCHEMA_ID_RE = re.compile(
-    r"(?P<prefix>\blute[-_][A-Za-z0-9_-]*?-)0\.(?:48|49|50|51)"
+    r"(?P<prefix>\blute[-_][A-Za-z0-9_-]*?-)0\.(?:48|49|50|51|52)"
     r"(?=\.schema(?:\.json)?(?:[\"']|[^A-Za-z0-9_.]|$))"
 )
 # The engine gate names the toolchain's own IR version in its refusal.
-ENGINE_ACCEPTS_RE = re.compile(r"(?P<prefix>accepts `)0\.(?:48|49|50|51)\.\d+(?=`)")
-VERSION_RE = re.compile(r"(?<![A-Za-z0-9])0\.(?:48|49|50|51)(?:\.\d+)?(?![A-Za-z0-9])")
+ENGINE_ACCEPTS_RE = re.compile(r"(?P<prefix>accepts `)0\.(?:48|49|50|51|52)\.\d+(?=`)")
+VERSION_RE = re.compile(r"(?<![A-Za-z0-9])0\.(?:48|49|50|51|52)(?:\.\d+)?(?![A-Za-z0-9])")
 # Opt-in (`--capability-hash`): a capability hash after its key, in every form
 # the CLI prints — JSON `"capabilitySnapshot": "<hash>"` (spaced or compact),
 # text `capabilitySnapshot: <hash>` and `(capabilitySnapshot <hash>)` — and the
@@ -530,25 +542,25 @@ def normalize_for_compare(data: bytes, label: str, capability_hash: bool = False
     return text.encode("utf-8")
 
 
-# (label, 0.50 rendering, 0.51 rendering) for every stamp form the
+# (label, 0.51 rendering, 0.52 rendering) for every stamp form the
 # normalizer owns; both renderings must normalize to the same text.
 SELF_TEST_STAMPS = (
-    ("compile", '{"irVersion": "0.50.0", "lute": "0.50.0"}', '{"irVersion": "0.51.0", "lute": "0.51.0"}'),
-    ("check", 'luteVersion: "0.50.0"', 'luteVersion: "0.51.0"'),
-    ("play", '{"eventVersion":"0.50.0","snapshotVersion":"0.50.0"}', '{"eventVersion":"0.51.0","snapshotVersion":"0.51.0"}'),
+    ("compile", '{"irVersion": "0.51.0", "lute": "0.51.0"}', '{"irVersion": "0.52.0", "lute": "0.52.0"}'),
+    ("check", 'luteVersion: "0.51.0"', 'luteVersion: "0.52.0"'),
+    ("play", '{"eventVersion":"0.51.0","snapshotVersion":"0.51.0"}', '{"eventVersion":"0.52.0","snapshotVersion":"0.52.0"}'),
     (
         "schema",
-        '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.50.schema.json"',
         '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.51.schema.json"',
+        '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.52.schema.json"',
     ),
-    ("run", "the engine accepts `0.50.0` artifacts", "the engine accepts `0.51.0` artifacts"),
-    ("version", "lute toolchain 0.50.0\nlanguage      0.50.0\n", "lute toolchain 0.51.0\nlanguage      0.51.0\n"),
+    ("run", "the engine accepts `0.51.0` artifacts", "the engine accepts `0.52.0` artifacts"),
+    ("version", "lute toolchain 0.51.0\nlanguage      0.51.0\n", "lute toolchain 0.52.0\nlanguage      0.52.0\n"),
 )
 # (label, text) the normalizer must leave byte-identical.
 SELF_TEST_UNTOUCHED = (
     ("version", "lute toolchain 0.4\n"),
     ("version", "lute toolchain 10.44.0\n"),
-    ("version", "lute toolchain 0.52.0\n"),
+    ("version", "lute toolchain 0.53.0\n"),
     ("compile", '{"irVersion": "0.4", "lute": "10.44.0"}'),
     ("check", "a value of 0.44 in prose stays"),
 )
@@ -665,6 +677,43 @@ SELF_TEST_COMPARE = (
 )
 
 
+def sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+# `--accept` (Review052 F5, F9). The baseline has `a` and `c`; the head changes
+# `a`'s stdout, adds `b` and removes `c`. ACCEPT_ALL approves every difference,
+# pinning the normalized head bytes (for `removed`, the baseline's).
+ACCEPT_BASELINE = (("a", ["version"], "x\n"), ("c", ["--explain", "E-C"], "c\n"))
+ACCEPT_HEAD = (("a", ["version"], "y\n"), ("b", ["--explain", "E-B"], "b\n"))
+ACCEPT_ALL = (
+    "# a comment and a blank line are kept",
+    "",
+    "3 changed a stdout " + sha256("y\n"),
+    "2 added b stdout " + sha256("b\n"),
+    "2 added b stderr " + sha256(""),
+    "2 added b exit-code " + sha256("0\n"),
+    "3 removed c stdout " + sha256("c\n"),
+    "3 removed c stderr " + sha256(""),
+    "3 removed c exit-code " + sha256("0\n"),
+)
+ACCEPT_STALE = "3 changed d stdout " + sha256("d\n")
+# (case, head commands, accept-file lines, expected exit, accept-file lines after).
+SELF_TEST_ACCEPT = (
+    ("every difference approved", ACCEPT_HEAD, ACCEPT_ALL, 0, ACCEPT_ALL),
+    ("an unlisted difference", ACCEPT_HEAD, ACCEPT_ALL[:-1], 1, ACCEPT_ALL[:-1]),
+    (
+        "an approved delta, then another byte changed under the same label and stream",
+        (("a", ["version"], "z\n"), ("b", ["--explain", "E-B"], "b\n")),
+        ACCEPT_ALL,
+        1,
+        ACCEPT_ALL,
+    ),
+    ("a malformed entry", ACCEPT_HEAD, (*ACCEPT_ALL, "3 changed a stdout not-a-sha256"), 2, None),
+    ("an entry that no longer differs is removed", ACCEPT_HEAD, (*ACCEPT_ALL, ACCEPT_STALE), 0, ACCEPT_ALL),
+)
+
+
 def write_synthetic_snapshot(path: Path, commands: Iterable[tuple[str, list[str], str]]) -> None:
     path.mkdir(parents=True)
     entries = []
@@ -708,6 +757,21 @@ def self_test_compare() -> list[str]:
                 if got != expected:
                     mode = "--capability-hash" if capability_hash else "no --capability-hash"
                     failures.append(f"compare {case} ({mode}): expected exit {expected}, got {got}: {log.getvalue()!r}")
+        for case, head_commands, lines, expected, lines_after in SELF_TEST_ACCEPT:
+            root = Path(scratch) / slug(case)
+            write_synthetic_snapshot(root / "baseline", ACCEPT_BASELINE)
+            write_synthetic_snapshot(root / "current", head_commands)
+            accept = root / "accepted.txt"
+            accept.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
+            log = io.StringIO()
+            with contextlib.redirect_stdout(log), contextlib.redirect_stderr(log):
+                got = compare(root / "current", root / "baseline", True, accept=accept)
+            if got != expected:
+                failures.append(f"--accept {case}: expected exit {expected}, got {got}: {log.getvalue()!r}")
+            if lines_after is not None:
+                after = accept.read_text(encoding="utf-8").splitlines()
+                if after != list(lines_after):
+                    failures.append(f"--accept {case}: accepted-delta file is {after!r}, expected {list(lines_after)!r}")
     return failures
 
 
@@ -753,7 +817,7 @@ def self_test() -> int:
         f"{len(SELF_TEST_UNTOUCHED)} untouched, {len(SELF_TEST_CAPABILITY_HASHES)} capability-hash "
         f"forms, {len(SELF_TEST_CAPABILITY_UNTOUCHED)} capability-hash untouched, "
         f"{len(SELF_TEST_TRANSLATIONS)} translations, {len(SELF_TEST_NOT_RENAMED)} non-renames, "
-        f"{len(SELF_TEST_COMPARE) + 2} compare cases)"
+        f"{len(SELF_TEST_COMPARE) + 2} compare cases, {len(SELF_TEST_ACCEPT)} --accept cases)"
     )
     return 0
 
@@ -776,18 +840,134 @@ def files(path: Path) -> list[str]:
     )
 
 
-def record_label(path: Path, relative_path: str) -> str:
-    record = relative_path.split("/", 1)[0]
-    for command in manifest(path).get("commands", []):
-        if isinstance(command, dict) and command.get("record") == record:
-            return str(command.get("label", ""))
-    return ""
+def record_labels(m: dict[str, object]) -> dict[str, str]:
+    return {str(c["record"]): str(c.get("label", "")) for c in m.get("commands", []) if isinstance(c, dict)}
 
 
-def compare(current: Path, baseline: Path, strict: bool = False, capability_hash: bool = False) -> int:
+ACCEPT_KINDS = ("changed", "added", "removed")
+ACCEPT_STREAMS = ("stdout", "stderr", "exit-code")
+ACCEPT_CLASS_RE = re.compile(r"[1-9][0-9]*")
+SHA256_RE = re.compile(r"[0-9a-f]{64}")
+ACCEPT_FORM = "<class> <changed|added|removed> <command label> <stream/file> <sha256>"
+
+
+@dataclass(frozen=True)
+class AcceptEntry:
+    """One reviewed difference of an accepted-delta file (Review052 F5, F9)."""
+
+    line: int
+    text: str
+    delta_class: str
+    kind: str
+    label: str
+    stream: str
+    digest: str
+
+
+def read_accept(path: Path) -> dict[tuple[str, str], AcceptEntry]:
+    """Read an accepted-delta file, keyed by (command label, stream/file).
+
+    Each line is ``<class> <changed|added|removed> <command label> <stream/file>
+    <sha256>``: the spec class the difference falls in, its kind, the
+    command's manifest label (it may hold spaces), ``stdout``, ``stderr``,
+    ``exit-code`` or an ``artifacts/`` path, and the sha256 of the normalized
+    head output (of the baseline output for ``removed``). Blank lines and
+    ``#`` comment lines are ignored. A malformed or duplicate entry is a
+    ``ValueError`` (exit 2).
+    """
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except (OSError, UnicodeDecodeError) as error:
+        raise ValueError(f"{path}: cannot read the accepted-delta file: {error}") from error
+    entries: dict[tuple[str, str], AcceptEntry] = {}
+    for number, text in enumerate(lines, 1):
+        stripped = text.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        head = stripped.split(maxsplit=2)
+        tail = head[2].rsplit(maxsplit=2) if len(head) == 3 else []
+        if len(tail) != 3:
+            raise ValueError(f"{path}:{number}: malformed entry, expected `{ACCEPT_FORM}`: {stripped}")
+        delta_class, kind = head[0], head[1]
+        label, stream, digest = tail
+        if not ACCEPT_CLASS_RE.fullmatch(delta_class):
+            raise ValueError(f"{path}:{number}: the class `{delta_class}` is not a class number: {stripped}")
+        if kind not in ACCEPT_KINDS:
+            raise ValueError(f"{path}:{number}: the kind `{kind}` is not one of {', '.join(ACCEPT_KINDS)}: {stripped}")
+        if stream not in ACCEPT_STREAMS and not (stream.startswith("artifacts/") and stream != "artifacts/"):
+            raise ValueError(
+                f"{path}:{number}: `{stream}` is not stdout, stderr, exit-code or an artifacts/ path: {stripped}"
+            )
+        if not SHA256_RE.fullmatch(digest):
+            raise ValueError(f"{path}:{number}: `{digest}` is not a lowercase hex sha256: {stripped}")
+        first = entries.get((label, stream))
+        if first is not None:
+            raise ValueError(f"{path}:{number}: duplicate entry for `{label}` {stream} (line {first.line})")
+        entries[(label, stream)] = AcceptEntry(number, stripped, delta_class, kind, label, stream, digest)
+    return entries
+
+
+def drop_accept_lines(path: Path, numbers: set[int]) -> None:
+    lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+    path.write_text("".join(line for number, line in enumerate(lines, 1) if number not in numbers), encoding="utf-8")
+
+
+@dataclass(frozen=True)
+class Difference:
+    """One differing output: ``before``/``after`` are normalized, ``None`` when absent."""
+
+    kind: str
+    label: str
+    name: str
+    before: bytes | None
+    after: bytes | None
+
+    @property
+    def stream(self) -> str:
+        return self.name.split("/", 1)[1]
+
+    @property
+    def digest(self) -> str:
+        head = self.before if self.after is None else self.after
+        return hashlib.sha256(head or b"").hexdigest()
+
+
+def report_difference(difference: Difference) -> None:
+    if difference.kind == "changed":
+        print(f"diff: {difference.name}", file=sys.stderr)
+    else:
+        print(f"missing output: {difference.name}", file=sys.stderr)
+    before_bytes = difference.before or b""
+    after_bytes = difference.after or b""
+    try:
+        before_text = before_bytes.decode("utf-8").splitlines(True)
+        after_text = after_bytes.decode("utf-8").splitlines(True)
+    except UnicodeDecodeError:
+        print(f"binary output differs ({len(before_bytes)} vs {len(after_bytes)} bytes)", file=sys.stderr)
+        return
+    sys.stderr.write(
+        "".join(
+            difflib.unified_diff(
+                before_text,
+                after_text,
+                fromfile=f"baseline/{difference.name}",
+                tofile=f"current/{difference.name}",
+            )
+        )
+    )
+
+
+def compare(
+    current: Path,
+    baseline: Path,
+    strict: bool = False,
+    capability_hash: bool = False,
+    accept: Path | None = None,
+) -> int:
     try:
         current_manifest = manifest(current)
         baseline_manifest = manifest(baseline)
+        accepted = None if accept is None else read_accept(accept)
     except ValueError as error:
         print(f"cli-snapshot: ERROR: {error}", file=sys.stderr)
         return 2
@@ -813,29 +993,42 @@ def compare(current: Path, baseline: Path, strict: bool = False, capability_hash
     changed_args = [r for r in differing if r not in set(renamed_args)]
     for record in added:
         print(f"added command: {record}", file=sys.stderr)
-    differences = bool(removed or changed_args or (strict and added))
     for record in removed:
         print(f"removed command: {record}", file=sys.stderr)
+    # Changed arguments are never an accepted delta: the command itself moved.
     for record in changed_args:
         print(f"command arguments changed: {record}", file=sys.stderr)
     if renamed_args:
         print(f"renamed commands: {len(renamed_args)} (0.47.2 arguments translate to the current ones)", file=sys.stderr)
 
-    # An added command's outputs have no baseline; the command itself is the
-    # difference (reported above, and fatal under strict).
+    # An added command's outputs have no baseline. Not strict, they are not
+    # compared; strict, each is an `added` difference (without --accept the
+    # command line reported above stands for them). A removed command's outputs
+    # are `removed` differences.
     added_records = set(added)
+    baseline_labels = record_labels(baseline_manifest)
+    current_labels = record_labels(current_manifest)
     baseline_files = set(files(baseline))
-    current_files = {f for f in files(current) if f.split("/", 1)[0] not in added_records}
+    current_files = set(files(current))
+    if not strict:
+        current_files = {f for f in current_files if f.split("/", 1)[0] not in added_records}
+    differences: list[Difference] = []
     # Outputs that differ only in their capability hash (--capability-hash).
     hash_only = 0
     for name in sorted(baseline_files | current_files):
+        record = name.split("/", 1)[0]
         before = baseline / name
         after = current / name
-        if not before.exists() or not after.exists():
-            differences = True
-            print(f"missing output: {name}", file=sys.stderr)
+        if name not in current_files:
+            label = baseline_labels.get(record, "")
+            removed_bytes = normalize_for_compare(before.read_bytes(), label, capability_hash)
+            differences.append(Difference("removed", label, name, removed_bytes, None))
             continue
-        label = record_label(current, name)
+        label = current_labels.get(record, "")
+        if name not in baseline_files:
+            added_bytes = normalize_for_compare(after.read_bytes(), label, capability_hash)
+            differences.append(Difference("added", label, name, None, added_bytes))
+            continue
         before_bytes = normalize_for_compare(before.read_bytes(), label)
         after_bytes = normalize_for_compare(after.read_bytes(), label)
         if before_bytes == after_bytes:
@@ -846,28 +1039,53 @@ def compare(current: Path, baseline: Path, strict: bool = False, capability_hash
             if before_bytes == after_bytes:
                 hash_only += 1
                 continue
-        differences = True
-        print(f"diff: {name}", file=sys.stderr)
-        try:
-            before_text = before_bytes.decode("utf-8").splitlines(True)
-            after_text = after_bytes.decode("utf-8").splitlines(True)
-        except UnicodeDecodeError:
-            print(f"binary output differs ({len(before_bytes)} vs {len(after_bytes)} bytes)", file=sys.stderr)
-            continue
-        sys.stderr.write(
-            "".join(
-                difflib.unified_diff(
-                    before_text,
-                    after_text,
-                    fromfile=f"baseline/{name}",
-                    tofile=f"current/{name}",
-                )
+        differences.append(Difference("changed", label, name, before_bytes, after_bytes))
+
+    # --accept: a difference passes only when its (label, stream) entry names
+    # its kind and pins its normalized head bytes (Review052 F5, F9).
+    unaccepted = 0
+    approved = 0
+    listed: set[tuple[str, str]] = set()
+    for difference in differences:
+        if accepted is not None:
+            key = (difference.label, difference.stream)
+            entry = accepted.get(key)
+            if entry is not None:
+                listed.add(key)
+                if entry.kind == difference.kind and entry.digest == difference.digest:
+                    approved += 1
+                    print(f"accepted: {entry.text}", file=sys.stderr)
+                    continue
+            if entry is None:
+                reason = "unlisted difference"
+            elif entry.kind != difference.kind:
+                reason = f"listed as `{entry.kind}` (line {entry.line}), but it is `{difference.kind}`"
+            else:
+                reason = f"bytes changed since approval (line {entry.line}); review and re-approve"
+            print(
+                f"{reason}: <class> {difference.kind} {difference.label} {difference.stream} {difference.digest}",
+                file=sys.stderr,
             )
-        )
+        unaccepted += 1
+        if accepted is None and difference.kind == "added" and difference.name.split("/", 1)[0] in added_records:
+            continue
+        report_difference(difference)
+    if accepted is not None and accept is not None:
+        stale = sorted((e for k, e in accepted.items() if k not in listed), key=lambda e: e.line)
+        for entry in stale:
+            print(f"no longer differs, removed from {accept}: line {entry.line}: {entry.text}", file=sys.stderr)
+        if stale:
+            drop_accept_lines(accept, {entry.line for entry in stale})
     if capability_hash:
         print(f"capability hash only: {hash_only} outputs differ in their capability hash alone")
-    if differences:
+    if changed_args or unaccepted:
         return 1
+    if accepted is not None:
+        print(
+            f"accepted (strict): {len(current_files)} outputs, {len(current_commands)} commands, "
+            f"{approved} approved difference(s)"
+        )
+        return 0
     if strict:
         print(f"byte-identical (strict): {len(current_files)} outputs, {len(current_commands)} commands")
         return 0
@@ -896,6 +1114,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="with --compare: replace every capability hash (capabilitySnapshot/capabilityVersion) before comparing",
     )
+    parser.add_argument(
+        "--accept",
+        type=Path,
+        metavar="FILE",
+        help="with --compare --strict: pass only the differences FILE lists with their pinned sha256 "
+        f"(`{ACCEPT_FORM}` per line); exit 1 on any other difference, 2 on a malformed FILE",
+    )
     parser.add_argument("--self-test", action="store_true", help="check normalize_for_compare and compare, then exit")
     args = parser.parse_args(argv)
     if not args.self_test and (args.binary is None or args.output is None):
@@ -904,6 +1129,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         parser.error("--strict requires --compare")
     if args.capability_hash and args.compare is None:
         parser.error("--capability-hash requires --compare")
+    if args.accept is not None and (args.compare is None or not args.strict):
+        parser.error("--accept requires --compare and --strict")
     return args
 
 
@@ -915,6 +1142,14 @@ def main(argv: list[str]) -> int:
     binary = binary.resolve()
     output = args.output if args.output.is_absolute() else (ROOT / args.output)
     output = output.resolve()
+    accept = None
+    if args.accept is not None:
+        accept = (args.accept if args.accept.is_absolute() else (ROOT / args.accept)).resolve()
+        try:
+            read_accept(accept)
+        except ValueError as error:
+            print(f"cli-snapshot: ERROR: {error}", file=sys.stderr)
+            return 2
     if not binary.exists():
         print(f"cli-snapshot: binary does not exist: {binary}", file=sys.stderr)
         return 2
@@ -929,7 +1164,7 @@ def main(argv: list[str]) -> int:
     if args.compare is None:
         return 0
     baseline = args.compare if args.compare.is_absolute() else (ROOT / args.compare)
-    return compare(output, baseline.resolve(), args.strict, args.capability_hash)
+    return compare(output, baseline.resolve(), args.strict, args.capability_hash, accept)
 
 
 if __name__ == "__main__":

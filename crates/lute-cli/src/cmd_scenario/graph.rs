@@ -275,7 +275,7 @@ pub(crate) fn run_scenario_graph(
         let docs: Vec<lute_check::ProjectDoc<'_>> = group_full
             .iter()
             .map(|(p, d, folded)| {
-                lute_check::ProjectDoc::new(p, d, &folded.typed, &folded.snapshot.reward_kinds)
+                lute_check::ProjectDoc::new(p, d, &folded.typed, &folded.snapshot)
             })
             .collect();
         let key_set = lute_check::connectivity::scene_key_set(&docs);

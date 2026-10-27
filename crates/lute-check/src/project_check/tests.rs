@@ -1,6 +1,5 @@
 use super::*;
 use lute_core_span::{Severity, Span};
-use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::Document;
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
@@ -8,8 +7,8 @@ mod test_cases {
     use super::*;
     use lute_syntax::ast::{Meta, Quest};
 
-    fn project(docs: Vec<(PathBuf, Document)>) -> crate::ProjectDocs {
-        crate::ProjectDocs::parse(docs, &CapabilitySnapshot::default())
+    fn project(docs: Vec<(PathBuf, Document)>) -> crate::ProjectDocs<'static> {
+        crate::ProjectDocs::parse(docs, &crate::EMPTY_SNAPSHOT)
     }
 
     fn span(line: u32) -> Span {

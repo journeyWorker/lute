@@ -349,7 +349,7 @@ mod tests {
             path.as_path(),
             &doc,
             &meta,
-            &crate::reward_effects::NO_REWARD_KINDS,
+            &crate::EMPTY_SNAPSHOT,
         )];
         let producers = crate::cast::fact_producers(&docs, &EffectDirectives::default());
         let vocab = RelVocab::default();

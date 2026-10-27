@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.51.schema.json",
-  "title": "Lute compiled execution IR (irVersion 0.51.x)",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.52.schema.json",
+  "title": "Lute compiled execution IR (irVersion 0.52.x)",
   "description": "JSON Schema (draft 2020-12) for the WHOLE compiled Lute IR artifact emitted by `lute compile` (crates/lute-compile, ir.rs `ExecutionIr`). One artifact is produced per `.lute` document; a project's engine unions the per-document `relations`/`rules`/`seedFacts`/`entities`/`enums`/`prereqEdges` across every artifact exactly as it unions the command streams.\n\nVERSION-NEGOTIATION POLICY (docs/runtime/execution-model.md, Version negotiation): before 1.0 an engine gates on the exact `irVersion` MAJOR.MINOR line it implements — an engine for 0.41.x accepts only 0.41.* artifacts and refuses every other line (E-ENGINE-IR-VERSION), because pre-1.0 minors may change the IR shape (clean cutover, D6). Patch levels within the line are compatible. Unknown fields within a known kind are ignored; an unknown command `kind` is a hard error. From 1.0 the gate becomes MAJOR only.\n\nIR 0.41.0 (dsl 0.38.0 §5) is a clean cutover with no legacy aliases: the envelope stamp is `capabilitySnapshot`; the descriptive heading table is `sections`; every command record carries required `kind`, `family` (the normative kind grouping a runtime dispatches on before `kind`), and `position`; per-record timing lives only in the nested `timing` object; staging kinds are `bg`, `music`, `sfx`, `vfx`, `actor`, `camera`, `cg`, `video`, and `sequence`. A runtime reads timing only from `timing` and never from flattened legacy fields.",
   "type": "object",
   "additionalProperties": true,
@@ -1841,14 +1841,14 @@
           "items": {
             "$ref": "#/$defs/factRecord"
           },
-          "description": "0.50.0 §5.5: the facts the reward kind's `effects.retracts` declares, `@target` bound to `target` (\"_\" a wildcard), stamped at compile. Applied at the grant, after the `grant` record and before `asserts`, through the `::retract` path; absent when none."
+          "description": "0.50.0 §5.5: the facts the reward kind's `effects.retracts` declares, each `@<attr>` bound as `attrs` is — `@target` to `target` — (\"_\" a wildcard; a pattern left unbound is not written), stamped at compile. Applied at the grant, after the `grant` record and before `asserts`, through the `::retract` path; absent when none."
         },
         "asserts": {
           "type": "array",
           "items": {
             "$ref": "#/$defs/factRecord"
           },
-          "description": "0.50.0 §5.5: the facts the reward kind's `effects.asserts` declares, `@target` bound, applied at the grant after `retracts` through the `::assert` path; absent when none."
+          "description": "0.50.0 §5.5: the facts the reward kind's `effects.asserts` declares, each `@<attr>` bound as for `retracts`, applied at the grant after `retracts` through the `::assert` path; absent when none."
         },
         "accepts": {
           "type": "array",
@@ -1862,7 +1862,11 @@
           "items": {
             "$ref": "#/$defs/raiseRecord"
           },
-          "description": "0.51.0 §4.6: the occasions the reward kind's `effects.raises` declares, `@target` bound to `target` (an unbound one is not written), stamped at compile. Descriptive: the host raises each once the grant settles; the runtime raises nothing. Absent when none."
+          "description": "0.51.0 §4.6: the occasions the reward kind's `effects.raises` declares, each `@<attr>` bound as `attrs` is — `@target` to `target` (an unbound one is not written), stamped at compile. Descriptive: the host raises each once the grant settles; the runtime raises nothing. Absent when none."
+        },
+        "attrs": {
+          "type": "object",
+          "description": "0.52.0 §7.4: the reward kind's declared `attrs` as this reward binds them — each authored attribute, else its declared `default:` — typed as a `plugin` record's `fields` are (`int`/`double` numbers, `bool` booleans, everything else strings). Descriptive (no semantic id): a host reads it by the plugin's reward-kind contract, which `capabilityVersion` pins. The `grant` record's `reward` carries a copy. Absent when empty."
         }
       },
       "additionalProperties": true,
@@ -2749,6 +2753,13 @@
           },
           "description": "dsl 0.47.0 §3.1: merged locale texts, locale tag → translated prompt, keyed on `promptLineId`. Absent when no locale bundle translated it. The source-language string stays in `prompt`."
         },
+        "promptPlaceholders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/placeholder"
+          },
+          "description": "dsl 0.52.0 §6.2: the `{{…}}` interpolations in `prompt`, left to right, built as an option's `placeholders` are. Absent when the prompt has none; an engine that renders prompts reads it."
+        },
         "timeout": {
           "type": "integer",
           "minimum": 1,
@@ -2878,6 +2889,13 @@
           },
           "description": "dsl 0.47.0 §3.1: merged locale texts, locale tag → translated prompt, keyed on `promptLineId`. Absent when no locale bundle translated it. The source-language string stays in `prompt`."
         },
+        "promptPlaceholders": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/placeholder"
+          },
+          "description": "dsl 0.52.0 §6.2: the `{{…}}` interpolations in `prompt`, left to right, built as an option's `placeholders` are. Absent when the prompt has none; an engine that renders prompts reads it."
+        },
         "return": {
           "$ref": "#/$defs/position",
           "description": "dsl 0.28.0 §5: position of the hub's `<return>` segment. It runs each time a non-exit option's segment ends, before the hub is judged and presented again; like an option target it bounds the segment before it. Present only when authored."
@@ -2927,6 +2945,11 @@
           "minimum": 1,
           "maximum": 99,
           "description": "dsl 0.51.0 §3.6: a bounded backward jump is taken at most `max` times, then control falls through; its counter resets when control reaches `target` from outside the loop. Requires `lute.core.boundedJump/1`."
+        },
+        "leaves": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "dsl 0.52.0 §5.2: a forward jump out of `leaves` nested hub option or `<return>` bodies ends that many hub visits (no `<return>` body runs, no re-presentation) and continues at `target`. Never together with `max`. Requires `lute.core.hubLeave/1`."
         }
       },
       "additionalProperties": true,

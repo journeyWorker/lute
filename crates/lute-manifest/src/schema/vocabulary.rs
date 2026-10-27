@@ -157,9 +157,12 @@ pub struct EventDecl {
 /// pins the id-space `target=` resolves against — the `providerRef` pattern
 /// the checker already applies to directive-attr `providerRef:` values.
 /// The optional `attrs:` sequence is an ordinary [`AttrDecl`] list for
-/// game-specific slots (`chance=`, `min`/`max` variants, …) — parsed and
-/// carried on the merged [`RewardKindDecl`] so a downstream extra-attr check
-/// can key off it; the shape-only checker (Task 2) does not read it yet.
+/// game-specific slots (`rarity=`, `chance=`, …): a `<reward>` of the kind
+/// authors them beside its own attributes, typed like directive attributes
+/// (0.52.0 §7.2), the compiled `RewardEntry` carries them, and the kind's
+/// `effects` read them as `@<name>` (§7.3). The loader refuses a
+/// declaration no `<reward>` could author (§7.1,
+/// [`crate::validate::validate_reward_attrs`]).
 ///
 /// Per-package duplicate kind id is a [`crate::loader::LoadError::DuplicateId`]
 /// (`kind = "rewardKind"`) from the shared `merge_named` path; a name colliding
@@ -194,8 +197,9 @@ pub struct RewardKindBody {
 
 /// A reward kind's `effects:` (0.50.0 §5.1): what a grant of the kind does
 /// besides its `credits:` write — the facts it retracts, then asserts
-/// ([`FactEffect`] patterns, the directive grammar; an `@attr` may only be
-/// `@target`), then the quests it accepts — and (0.51.0 §4.1) the occasions
+/// ([`FactEffect`] patterns, the directive grammar; an `@attr` is `@target`
+/// or one of the kind's `attrs:`, 0.52.0 §7.3), then the quests it accepts
+/// — and (0.51.0 §4.1) the occasions
 /// the host raises after settling the grant. Every list is optional, but
 /// the block declares at least one effect. A reward's state write is
 /// `credits:`, so `writes` is no key here.
@@ -259,13 +263,20 @@ impl RewardEffects {
             .chain(self.asserts.iter().map(|f| (f, true)))
     }
 
+    /// Whether a fact or (0.51.0 §4.1) a raise target reads the reward's
+    /// `@name` — `@target` or one of the kind's `attrs:` (0.52.0 §7.3).
+    pub fn reads_attr(&self, name: &str) -> bool {
+        self.facts().any(|(f, _)| f.attrs().any(|a| a == name))
+            || self
+                .raises
+                .iter()
+                .any(|r| r.target.as_ref().and_then(RaiseTargetDecl::attr) == Some(name))
+    }
+
     /// Whether any effect reads the reward's `@target` — a fact, an accept
     /// or (0.51.0 §4.1) a raise.
     pub fn reads_target(&self) -> bool {
-        self.facts()
-            .any(|(f, _)| f.attrs().any(|a| a == REWARD_TARGET_ATTR))
-            || self.accepts.contains(&AcceptEffect::Target)
-            || self.target_raises().next().is_some()
+        self.reads_attr(REWARD_TARGET_ATTR) || self.accepts.contains(&AcceptEffect::Target)
     }
 
     /// The raises whose target is the reward's `@target`.
@@ -296,8 +307,9 @@ impl std::fmt::Debug for RewardEffects {
     }
 }
 
-/// The one attribute a reward kind's effects may read: the `<reward>`'s
-/// quoted `target=` (0.50.0 §5.1; a `<reward>` takes no other attribute).
+/// The `<reward>` attribute every reward kind's effects may read: its
+/// quoted `target=` (0.50.0 §5.1). A kind's own `attrs:` are the others
+/// (0.52.0 §7.3).
 pub const REWARD_TARGET_ATTR: &str = "target";
 
 /// One `effects.accepts` entry (0.50.0 §5.1): the reward's `@target`, or a

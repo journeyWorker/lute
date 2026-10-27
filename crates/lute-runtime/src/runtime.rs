@@ -35,9 +35,9 @@ use crate::session::{
 use crate::Machine;
 
 /// The event contract version outputs and snapshots are stamped with.
-pub const EVENT_VERSION: &str = "0.51.0";
+pub const EVENT_VERSION: &str = "0.52.0";
 /// The execution IR version this runtime executes (major.minor gate).
-pub const IR_VERSION: &str = "0.51.0";
+pub const IR_VERSION: &str = "0.52.0";
 
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -300,8 +300,16 @@ pub struct MenuAwait {
     pub document: String,
     pub position: String,
     pub presentation: usize,
+    /// The prompt as rendered at this presentation (dsl 0.52.0 §6.3).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub prompt: Option<String>,
+    /// The prompt's translations, locale → rendered text (dsl 0.52.0 §6.3).
+    #[serde(
+        rename = "promptTexts",
+        default,
+        skip_serializing_if = "BTreeMap::is_empty"
+    )]
+    pub prompt_texts: BTreeMap<String, String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub timeout: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -314,6 +322,11 @@ pub struct MenuAwait {
 #[serde(deny_unknown_fields)]
 pub struct MenuOptionAwait {
     pub id: String,
+    /// The label as rendered at this presentation (dsl 0.52.0 §6.3).
+    pub text: String,
+    /// The label's translations, locale → rendered text (dsl 0.52.0 §6.3).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub texts: BTreeMap<String, String>,
     pub verdict: String,
     pub exit: bool,
     pub once: bool,
@@ -1615,7 +1628,12 @@ impl Driver for ReplayDriver {
                 document: self.document.clone(),
                 position: menu.addr.into(),
                 presentation: menu.presentation,
-                prompt: None,
+                prompt: menu.prompt.as_ref().map(|p| p.text.clone()),
+                prompt_texts: menu
+                    .prompt
+                    .as_ref()
+                    .map(|p| p.texts.clone())
+                    .unwrap_or_default(),
                 timeout: menu.timeout,
                 default: menu.default.map(str::to_owned),
                 options: menu
@@ -1623,6 +1641,8 @@ impl Driver for ReplayDriver {
                     .iter()
                     .map(|o| MenuOptionAwait {
                         id: o.id.clone(),
+                        text: o.text.text.clone(),
+                        texts: o.text.texts.clone(),
                         verdict: match o.verdict {
                             Verdict::Open => "open",
                             Verdict::Closed(_) => "closed",

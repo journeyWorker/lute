@@ -7,11 +7,13 @@ use super::{
 use crate::inject::StageFlow;
 
 /// Fold the injection reducer over a node slice, threading `StageState` and
-/// collecting every injected command. `<branch>`/`<hub>` choices and
-/// `<match>` arms are parallel paths (dsl 0.22.0 §12): each arm folds from a
-/// copy of the state at the fork, and the arms' exit states meet in
+/// collecting every injected command. `<branch>` choices and `<match>` arms
+/// are parallel paths (dsl 0.22.0 §12): each arm folds from a copy of the
+/// state at the fork, and the arms' exit states meet in
 /// [`StageState::join`] at the convergence — the same join `lute compile`'s
 /// CFG walk applies — so a sibling arm's exit never leaks into another arm.
+/// A `<hub>`'s options fold from its hub head instead ([`fold_hub`], dsl
+/// 0.52.0 §5.4): a hub presents again after a non-exit option.
 /// `<timeline>` clips are staged separately in `timeline_tables` and do not
 /// participate in stage-entity lifetime here (see the injection reducer's
 /// node-kind coverage).
@@ -44,6 +46,10 @@ pub(crate) fn fold_injections(
                 continue;
             }
         }
+        if let Node::Hub(h) = node {
+            fold_hub(h, state, out, flow);
+            continue;
+        }
         if let Some(taken) = state.take() {
             let (mut next, emit) =
                 lower_node_with_snapshot(taken, node, &nodes[i + 1..], flow.domains, flow.snapshot);
@@ -51,9 +57,15 @@ pub(crate) fn fold_injections(
             *state = Some(next);
             out.extend(emit);
         }
+        if let Node::Directive(d) = node {
+            if flow.ends(d) {
+                if let Some(mut ended) = state.take() {
+                    flow.diags.append(&mut ended.diags);
+                }
+            }
+        }
         let arms: Vec<&[Node]> = match node {
             Node::Branch(b) => b.choices.iter().map(|c| c.body.as_slice()).collect(),
-            Node::Hub(h) => h.bodies().map(std::vec::Vec::as_slice).collect(),
             Node::Match(m) => m
                 .arms
                 .iter()
@@ -87,6 +99,48 @@ pub(crate) fn fold_injections(
             *state = None;
         }
     }
+}
+
+/// dsl 0.52.0 §5.4: a `<hub>` from the state `state` reaching it. Every
+/// option folds from the hub head ([`StageFlow::hub`]); the `<return>` body
+/// from the completion of the non-exit options, and not at all when none
+/// completes (its nodes are then unreachable, as at runtime); after the hub
+/// the state is `join(H, [H, the exit options' exit states])` — `H` stands
+/// for the presentation with nothing eligible.
+fn fold_hub(
+    h: &lute_syntax::ast::Hub,
+    state: &mut Option<StageState>,
+    out: &mut Vec<InjectedCommand>,
+    flow: &mut StageFlow<'_>,
+) {
+    let head = flow.hub(h, state.take());
+    let mut completed = Vec::new();
+    let mut exits = Vec::new();
+    for c in &h.choices {
+        let mut arm = head.as_ref().map(StageState::bare);
+        flow.enter_hub_body();
+        fold_injections(&c.body, &mut arm, out, flow);
+        flow.leave_hub_body();
+        if StageFlow::exit_option(c) {
+            exits.extend(arm);
+        } else {
+            completed.extend(arm);
+        }
+    }
+    if let Some(r) = &h.on_return {
+        let mut back = StageFlow::completion(completed);
+        flow.enter_hub_body();
+        fold_injections(&r.body, &mut back, out, flow);
+        flow.leave_hub_body();
+    }
+    *state = match head {
+        Some(head) => {
+            let mut all = vec![head.bare()];
+            all.extend(exits);
+            Some(StageState::join(&head, all))
+        }
+        None => StageFlow::completion(exits),
+    };
 }
 
 /// Task 7g, the FOURTH instance of the same class as Task 7b's (content-line

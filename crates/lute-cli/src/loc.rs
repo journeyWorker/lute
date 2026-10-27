@@ -343,12 +343,17 @@ fn walk_prompt<'a>(
 /// Push one choice/hub label unit plus recurse into its body. An option's
 /// identity is the STRUCTURAL `{prefix}.{branchOrHubId}.{optionId}` the
 /// addressing pass writes verbatim (`address.rs`'s `Choice`/`Hub` arms) — dsl
-/// 0.8.0 §9 templates the LINE join only, never this one.
+/// 0.8.0 §9 templates the LINE join only, never this one — under the
+/// document scope (`cx.prefix`), as are prompts ([`walk_prompt`]). The body
+/// is walked under `prefix`, the prefix in force at the choice (0.52.0 §8.3):
+/// a body line inside a component expansion takes its scoped prefix, as
+/// compile mints it.
 fn walk_choice<'a>(
     cx: &Cx<'a>,
     group_id: &str,
     choice: &Choice,
     region: Region<'a>,
+    prefix: Option<&str>,
     out: &mut Vec<Unit>,
 ) {
     let key = format!("{group_id}.{}", choice.id);
@@ -364,7 +369,7 @@ fn walk_choice<'a>(
         source_hash: lute_compile::locale::source_hash(&choice.text),
         prompt: false,
     });
-    walk_nodes(cx, &choice.body, region, cx.prefix, out);
+    walk_nodes(cx, &choice.body, region, prefix, out);
 }
 
 /// Recursively collect translatable units from a node stream in document order
@@ -450,14 +455,14 @@ fn walk_nodes<'a>(
             Node::Branch(b) => {
                 walk_prompt(cx, &b.id, &b.attrs, b.span, region, out);
                 for choice in &b.choices {
-                    walk_choice(cx, &b.id, choice, region, out);
+                    walk_choice(cx, &b.id, choice, region, prefix, out);
                 }
             }
             Node::Hub(h) => {
                 let id = attr_str(&h.attrs, "id").unwrap_or("");
                 walk_prompt(cx, id, &h.attrs, h.span, region, out);
                 for choice in &h.choices {
-                    walk_choice(cx, id, choice, region, out);
+                    walk_choice(cx, id, choice, region, prefix, out);
                 }
                 if let Some(r) = &h.on_return {
                     walk_nodes(cx, &r.body, region, prefix, out);
@@ -1584,6 +1589,58 @@ fn parse_csv(text: &str) -> Result<Vec<Vec<String>>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 0.52.0 §8.3 (#213): a `<branch>` inside a component expansion — the
+    /// latent path (a check-clean project refuses it, `E-COMPONENT-BODY`)
+    /// — keeps its option and prompt under the document scope and walks
+    /// its body under the expansion's scoped prefix, as compile mints them.
+    #[test]
+    fn a_choice_body_in_an_expansion_takes_the_scoped_prefix() {
+        let (mut doc, diags) = lute_syntax::parse(
+            "---\nkind: scene\nid: s\n---\n## Shot 1.\n::begin{component=\"c\" \
+             scope=\"c#a\"}\n<branch id=\"pick\" prompt=\"Which?\">\n  <choice id=\"yes\" \
+             text=\"Yes\">\n    @mira{code=\"0010\"}: Hi.\n  </choice>\n</branch>\n::end\n",
+        );
+        assert!(
+            diags.iter().all(|d| d.severity != Severity::Error),
+            "{diags:?}"
+        );
+        // The sentinels `normalize_document` writes around an expansion.
+        for node in &mut doc.sections[0].body {
+            if let Node::Directive(d) = node {
+                d.tag = match d.tag.as_str() {
+                    "begin" => lute_compile::normalize::COMPONENT_BEGIN.to_string(),
+                    "end" => lute_compile::normalize::COMPONENT_END.to_string(),
+                    _ => continue,
+                };
+            }
+        }
+        let mut out = Vec::new();
+        document_units(
+            "s.lute",
+            &doc,
+            &IdentityTemplates::default(),
+            &lute_check::ComponentSet::default(),
+            &CapabilitySnapshot::default(),
+            &mut out,
+        );
+        let ids: Vec<Option<&str>> = out
+            .iter()
+            .map(|unit| match unit {
+                Unit::Line { line_id, .. }
+                | Unit::Choice { line_id, .. }
+                | Unit::Directive { line_id, .. } => line_id.as_deref(),
+            })
+            .collect();
+        assert_eq!(
+            ids,
+            [
+                Some("s.pick.prompt"),
+                Some("s.pick.yes"),
+                Some("s.c#a.mira_0010")
+            ]
+        );
+    }
 
     #[test]
     fn csv_reader_round_trips_the_writers_quoting() {

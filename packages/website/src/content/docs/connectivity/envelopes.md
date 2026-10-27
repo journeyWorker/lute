@@ -55,6 +55,28 @@ Reading a quest's completion write from a scene gated on `active` is therefore t
 
 Every message carries the verbatim "under your declared routes" qualifier (A-hybrid posture).
 
+## Writers on alternative edges
+
+Each Guaranteed path lists who wrote it (`written by:`). A writer counts only when it is provably
+before the node: a scene on an alternative edge — one of several that may have led here, where any
+one suffices — is listed apart, under `also written, but not provably before this node:`. The
+alternative edges are the [`[raises]`](/connectivity/scene-graph/#edges-that-declared-raises-draw)
+edges and, since 0.52 (#209), the [`[accept]`](/connectivity/scene-graph/#edge-kinds) edges. An edge
+that also carries an ordering kind (an `after:` atom, `[start]`) still orders. With scenes `a` and `b`
+each running `::set{run.x = 1}` and `::accept{quest="q"}`:
+
+```console
+$ lute scenario --project . envelope --node quest:q
+envelope for quest(q) (pre-entry — state available when control REACHES this node, before its own writes):
+  Guaranteed (safe to read under your declared routes):
+    - run.x   written by: (nothing on a declared route reaching here — schema default only); also written, but not provably before this node: scene(a), scene(b)
+  Possible (set on SOME but not every declared route reaching this quest; the Guaranteed paths above are not repeated) -- inventory only: unlike a scene's, this list is not a set of warned read sites; a quest's guard reads are checked where they are written, not against this table:
+    (none)
+  note: this quest declares no `follows` attribute, so this is the defaults-only `D` table; declaring `follows` on quest:q would enrich this table with the full project-resolved envelope.
+```
+
+On 0.51 both scenes were listed as writers provably before `q`.
+
 ## Guaranteed facts
 
 Beside the scalar tables, the envelope carries the **fact envelope** (dsl 0.20.0): the relational facts that hold on *every* declared route reaching the node. It is the same must-set whole-project `lute check` uses to decide relational guards (see [how whole-project `lute check` analyzes relational guards](/state/facts-and-datalog/#how-whole-project-lute-check-analyzes-relational-guards)), propagated over `after:` with the same structural recursion as `Guaranteed` — `visited(A)` contributes what holds when `A` ends, `&&` unions, `||` intersects, `completed(Q)`/`active(Q)` contribute nothing. Only monotone facts cross a scene boundary: nothing may retract them, no other assert may share their `key:` with a different value, and their relation is neither `reserved:` nor engine-open; `tier: scene`/`tier: quest` facts never cross. Each fact names what establishes it — an assert site, a `facts:` seed, or a rule.

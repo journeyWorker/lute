@@ -49,9 +49,7 @@ fn project(texts: &[&str], errors: &ReportedErrors, code: &str) -> Vec<Diagnosti
     let views: Vec<_> = docs
         .iter()
         .zip(&foldeds)
-        .map(|((path, doc), folded)| {
-            ProjectDoc::new(path, doc, &folded.typed, &folded.snapshot.reward_kinds)
-        })
+        .map(|((path, doc), folded)| ProjectDoc::new(path, doc, &folded.typed, &folded.snapshot))
         .collect();
     let producers = lute_check::cast::fact_producers(&views, &Default::default());
     check_project_beats(&views, &refs, &producers, None, errors)

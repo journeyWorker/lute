@@ -3,7 +3,8 @@ use super::quest_tree::E_QUEST_REF_UNKNOWN;
 use crate::ProjectDoc;
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::semantics::cel_paths::is_reserved_quest_path;
-use lute_syntax::ast::{Arm, Document, Interp, InterpKind, Node};
+use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_syntax::ast::{Arm, ClipNode, Document, Interp, InterpKind, Node};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::PathBuf;
 
@@ -92,10 +93,11 @@ fn quest_id_at(path: &str) -> Option<(usize, usize)> {
 pub(crate) fn referenced_reserved_paths(
     doc: &Document,
     meta: &crate::meta::TypedMeta,
+    snapshot: &CapabilitySnapshot,
 ) -> BTreeMap<String, Span> {
     let mut out = referenced_paths(doc, meta, is_reserved_quest_path, quest_id_at);
     let mut text: BTreeMap<String, Span> = BTreeMap::new();
-    text_and_def_quest_reads(doc, meta, &mut |path, span| {
+    text_and_def_quest_reads(doc, meta, snapshot, &mut |path, span| {
         if out.contains_key(&path) {
             return;
         }
@@ -110,12 +112,13 @@ pub(crate) fn referenced_reserved_paths(
 
 /// The reserved quest paths `doc` reads outside its CEL slots (#175 review):
 /// `{{quest.<id>.…}}` interpolations and the arguments of a valid
-/// `{{@fn(…)}}` one in content lines and choice labels (at the
+/// `{{@fn(…)}}` one in every label-grammar text ([`nodes_interps`], at the
 /// interpolation), and the bodies of its inline `defs:` (at the body's
-/// value).
+/// value). `snapshot` tells a directive's `text` attributes.
 fn text_and_def_quest_reads(
     doc: &Document,
     meta: &crate::meta::TypedMeta,
+    snapshot: &CapabilitySnapshot,
     push: &mut impl FnMut(String, Span),
 ) {
     let mut interps = |interps: &[Interp]| {
@@ -156,7 +159,7 @@ fn text_and_def_quest_reads(
         .chain(doc.entries.iter().map(|e| &e.body))
         .chain(doc.beats.iter().map(|b| &b.body));
     for body in bodies {
-        nodes_interps(body, &mut interps);
+        nodes_interps(body, snapshot, &mut interps);
     }
     for (name, def) in &meta.defs {
         let (body, path) = match def {
@@ -182,39 +185,57 @@ fn text_and_def_quest_reads(
     }
 }
 
-/// Every interpolation list under `nodes`, nested bodies included: each
-/// content line's, and each choice label's.
-fn nodes_interps(nodes: &[Node], f: &mut impl FnMut(&[Interp])) {
+/// Every interpolation list under `nodes`, nested bodies included, in
+/// document order: each content line's, each `<branch>`/`<hub>` prompt's,
+/// each choice label's and each directive `text` attribute value's (0.52.0
+/// §6.5; `snapshot` declares the `text` attributes).
+fn nodes_interps(nodes: &[Node], snapshot: &CapabilitySnapshot, f: &mut impl FnMut(&[Interp])) {
+    let prompt = |attrs: &[lute_syntax::ast::Attr], f: &mut dyn FnMut(&[Interp])| {
+        if let Some((text, span)) = crate::logic_attrs::prompt_text(attrs) {
+            f(&lute_syntax::scan_label_interps(text, span));
+        }
+    };
+    let directive = |d: &lute_syntax::ast::Directive, f: &mut dyn FnMut(&[Interp])| {
+        for (attr, text) in crate::directives::text_values(d, snapshot) {
+            f(&lute_syntax::scan_label_interps(text, attr.value_span));
+        }
+    };
     for node in nodes {
         match node {
             Node::Line(l) => f(&l.interps),
+            Node::Directive(d) => directive(d, f),
             Node::Branch(b) => {
+                prompt(&b.attrs, f);
                 for c in &b.choices {
                     f(&lute_syntax::scan_label_interps(&c.text, c.span));
-                    nodes_interps(&c.body, f);
+                    nodes_interps(&c.body, snapshot, f);
                 }
             }
             Node::Hub(h) => {
+                prompt(&h.attrs, f);
                 for c in &h.choices {
                     f(&lute_syntax::scan_label_interps(&c.text, c.span));
                 }
                 for body in h.bodies() {
-                    nodes_interps(body, f);
+                    nodes_interps(body, snapshot, f);
                 }
             }
             Node::Match(m) => {
                 for arm in &m.arms {
                     let (Arm::When { body, .. } | Arm::Otherwise { body, .. }) = arm;
-                    nodes_interps(body, f);
+                    nodes_interps(body, snapshot, f);
                 }
             }
-            Node::Objective(o) => nodes_interps(&o.body, f),
-            Node::On(o) => nodes_interps(&o.body, f),
-            Node::Directive(_)
-            | Node::Set(_)
-            | Node::Timeline(_)
-            | Node::Assert(_)
-            | Node::Retract(_) => {}
+            Node::Timeline(t) => {
+                for clip in t.tracks.iter().flat_map(|track| &track.clips) {
+                    if let ClipNode::Directive(d) = &clip.node {
+                        directive(d, f);
+                    }
+                }
+            }
+            Node::Objective(o) => nodes_interps(&o.body, snapshot, f),
+            Node::On(o) => nodes_interps(&o.body, snapshot, f),
+            Node::Set(_) | Node::Assert(_) | Node::Retract(_) => {}
         }
     }
 }
@@ -315,7 +336,7 @@ pub fn check_project_quest_refs(
     for item in docs {
         let path = item.path;
         let doc = item.doc;
-        for (ref_path, span) in referenced_reserved_paths(doc, item.meta) {
+        for (ref_path, span) in referenced_reserved_paths(doc, item.meta, item.snapshot) {
             let segs: Vec<&str> = ref_path.split('.').collect();
             let message = match segs.as_slice() {
                 // dsl 0.8.0 §5 / 0.24.0 §2: the narrative-time anchor and the
@@ -353,12 +374,14 @@ pub const W_PROJECT_CHECK_SKIPPED: &str = "W-PROJECT-CHECK-SKIPPED";
 /// checked on its own (`lute check <FILE>`, the LSP): one per distinct quest
 /// id that `doc` and `imported_quest_ids` do not declare, at its first read
 /// in source order — over every occurrence of every read
-/// [`referenced_reserved_paths`] sees (CEL slots, interpolations, inline def
-/// bodies), not one per path in walk order.
+/// [`referenced_reserved_paths`] sees (CEL slots, interpolations — prompts
+/// and the directive `text` attributes `snapshot` declares included —, inline
+/// def bodies), not one per path in walk order.
 pub fn project_check_skipped(
     text: &str,
     doc: &Document,
     imported_quest_ids: &BTreeMap<String, PathBuf>,
+    snapshot: &CapabilitySnapshot,
 ) -> Vec<Diagnostic> {
     let (meta, _) = crate::meta::parse_meta(
         &doc.meta,
@@ -404,7 +427,7 @@ pub fn project_check_skipped(
             &mut read,
         );
     });
-    text_and_def_quest_reads(doc, &meta, &mut read);
+    text_and_def_quest_reads(doc, &meta, snapshot, &mut read);
     let index = lute_core_span::TextIndex::new(text);
     let mut notes: Vec<Diagnostic> = first
         .into_iter()

@@ -133,8 +133,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-BRANCH-PROMPT",
-        summary: "A `<branch prompt>` or `<hub prompt>` value is missing or an empty string, but the prompt must be the non-empty sentence the UI shows verbatim.",
-        spec: &["dsl 0.11.1 §4", "dsl 0.23.0 §4"],
+        summary: "A `<branch prompt>` or `<hub prompt>` value is missing or an empty string, but the prompt must be the non-empty sentence the UI shows; its `{{…}}` markers are rendered like a choice label's.",
+        spec: &["dsl 0.11.1 §4", "dsl 0.23.0 §4", "dsl 0.52.0 §6.1"],
     },
     Code {
         code: "E-BRANCH-TIMEOUT",
@@ -638,8 +638,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-GRAMMAR-NOT-ADMITTED",
-        summary: "A document uses a construct its document kind's grammar forbids in that context — such as a `<quest>` in a scene, `<hub>`/`<timeline>` in a quest body, or staging/choices in a lore `<entry>`.",
-        spec: &["dsl 0.2.0 §3.3", "dsl 0.2.0 §6.7", "dsl 0.19.0 §4"],
+        summary: "A document uses a construct its document kind's grammar forbids in that context — such as a `<quest>` in a scene, anything but `<on>`/`<objective>` at a quest's top level (a quest runs only its handlers and objective bodies), `<hub>`/`<timeline>` anywhere in a quest, or staging/choices in a lore `<entry>`.",
+        spec: &["dsl 0.2.0 §3.3", "dsl 0.2.0 §6.7", "dsl 0.19.0 §4", "dsl 0.52.0 §4"],
     },
     Code {
         code: "E-HUB-NO-EXIT",
@@ -655,6 +655,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-INERT-TITLE",
         summary: "A body `# ` heading: it is no document title. Put the value in frontmatter `title:`, the only document title.",
         spec: &["dsl 0.37.0 §3.1"],
+    },
+    Code {
+        code: "E-INTERP-BRACE",
+        summary: "A `{{…}}` marker in line text directly follows an odd run of literal `{`, which compiled text cannot tell apart from the marker — or a `::use` argument ending in a plain `{{` is spliced right before one and swallows it. Put a character between them, or show the brace from a string state path; in an argument write a literal `{{` as `\\\\{{`.",
+        spec: &["dsl 0.52.0 §3.1"],
     },
     Code {
         code: "E-INTERP-DEF",
@@ -692,6 +697,11 @@ pub(crate) const CODES: &[Code] = &[
         spec: &["dsl 0.12.0", "dsl 0.51.0 §3.1"],
     },
     Code {
+        code: "E-JUMP-INTO-BODY",
+        summary: "A `::jump` targets a label in a body that runs as its own range — a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, an entry or a beat — from outside that body. A jump stays in its own body or leaves `<hub>` option and `<return>` bodies for a label in a body around them (after the hub); `<choice>` bodies of a `<branch>` and `<match>` arms are part of the body around them, and a scene's sections are one body.",
+        spec: &["dsl 0.52.0 §5.1"],
+    },
+    Code {
         code: "E-JUMP-INTO-LOOP",
         summary: "A forward `::jump` from outside a loop (a `::label` and a later `::jump{to max}` back to it) lands on a label inside the loop after its head; a loop is entered only at its head label.",
         spec: &["dsl 0.51.0 §3.2"],
@@ -703,7 +713,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-JUMP-LOOP-SCOPE",
-        summary: "A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section. A loop also may not span an `<on>` or `<objective>` at a quest's top level, because each runs on its own.",
+        summary: "A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section.",
         spec: &["dsl 0.51.0 §3.2"],
     },
     Code {
@@ -843,8 +853,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-MISSING-ATTR",
-        summary: "A directive is missing an attribute its declared schema requires, or a directive, content line, `<branch>`, `<hub>` or `<choice>` does not author a plugin stamp declared `required: true` on its surface (`on:`); a stamp is never injected, so its `default:` does not count.",
-        spec: &["dsl 0.50.0 §3.4"],
+        summary: "A directive is missing an attribute its declared schema requires, a `<reward>` does not author an attribute its reward kind declares `required: true`, or a directive, content line, `<branch>`, `<hub>` or `<choice>` does not author a plugin stamp declared `required: true` on its surface (`on:`); a stamp is never injected and a reward attribute's `default:` does not satisfy `required`, so neither counts as authored.",
+        spec: &["dsl 0.50.0 §3.4", "dsl 0.52.0 §7.2"],
     },
     Code {
         code: "E-MOCK-SUBJECT",
@@ -890,6 +900,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-OBJECTIVE-QUEST-DONE",
         summary: "An `<objective>` carries both a `quest=` subquest reference and a non-empty `done=` predicate, which are mutually exclusive.",
         spec: &[],
+    },
+    Code {
+        code: "E-OBJECTIVE-TITLE-INTERP",
+        summary: "An `<objective title>` holds `{{` — a marker, escaped or not — but a quest UI shows the title as written, so it takes no `{{…}}`. Write the title as plain text and show a value that changes in a line.",
+        spec: &["dsl 0.52.0 §6.7"],
     },
     Code {
         code: "E-OBJECTIVE-UNSATISFIABLE",
@@ -1043,8 +1058,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-PLUGIN-PARSE",
-        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `effects:` declares no effect (none of `asserts:`, `retracts:`, `accepts:` or `raises:`), a fact effect reads an `@attr` other than `@target` (a `<reward>` takes no other attribute) or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, a raise targets an `@attr` other than `@target`, or a kind with `target: { forbidden: true }` reads `@target` (a raise for `@target` included), or an `effects.raises` list is empty, an entry is not a mapping of `occasion` and optional `target`, its `target` is neither `@<attr>` nor a dotted target, or (on a directive) its `@<attr>` names no attribute of the directive, or an occasion's `raisedBy` is not `declared`, or a `hostTokens` name is not an identifier (letters, digits and `_`, not starting with a digit) or its `type` is not `string`, `int` or `{ enum: [...] }`, or a `type: text` sits anywhere but a directive attribute (a plugin option, an occasion payload, a reward-kind attribute, a bridge result, a state shape, a nested `{ list: text }`), or a directive's `text` attribute is on a directive with `lower:` or `bridge:` (no localized text would reach the host), declares a `default:` (which has no translation), or sits beside a declared attribute named `code` (the identity attribute of a directive with `text` attributes), or a `lints/` rule's keys do not fit its target (`when` on `target: pair`, a `pair` rule without `open` or `close`, or `open`, `close`, `inside` or `scope` on any other target).",
-        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1", "dsl 0.50.0 §5.1", "dsl 0.51.0 §4.1", "dsl 0.51.0 §4.2", "dsl 0.51.0 §5.1", "dsl 0.51.0 §6.1"],
+        summary: "A plugin export file is not valid YAML or holds a value of the wrong shape (named with its line and the shape the key takes), or a directive's `effects.writes`/`effects.asserts`/`effects.retracts` entry names an attr the directive never declares (or an assert uses `_`), or a `stampAttrs` entry's `on:` is empty, not a list of surface names, or lists a surface twice, or the entry is `required: true` without `on:`, or a reward kind's `attrs:` entry reuses a name `<reward>` already has (`id`, `kind`, `target`, `amount`, `when`, `outcome`), repeats a name, declares a `default:` not of its type or a `list`, `map` or `record` type, or a reward kind's `effects:` declares no effect (none of `asserts:`, `retracts:`, `accepts:` or `raises:`), a fact effect reads an `@attr` that is neither `@target` nor an attribute the kind declares, or asserts `_`, an `accepts` entry is neither `@target` nor a quest id, a raise targets an `@attr` that is neither `@target` nor an attribute the kind declares, or a kind with `target: { forbidden: true }` reads `@target` (a raise for `@target` included), or an `effects.raises` list is empty, an entry is not a mapping of `occasion` and optional `target`, its `target` is neither `@<attr>` nor a dotted target, or (on a directive) its `@<attr>` names no attribute of the directive, or an occasion's `raisedBy` is not `declared`, or a `hostTokens` name is not an identifier (letters, digits and `_`, not starting with a digit) or its `type` is not `string`, `int` or `{ enum: [...] }`, or a `type: text` sits anywhere but a directive attribute (a plugin option, an occasion payload, a reward-kind attribute, a bridge result, a state shape, a nested `{ list: text }`), or a directive's `text` attribute is on a directive with `lower:` or `bridge:` (no localized text would reach the host), declares a `default:` (which has no translation), or sits beside a declared attribute named `code` (the identity attribute of a directive with `text` attributes), or a `lints/` rule's keys do not fit its target (`when` on `target: pair`, a `pair` rule without `open` or `close`, or `open`, `close`, `inside` or `scope` on any other target).",
+        spec: &["dsl 0.27.0 §2", "dsl 0.27.0 §4", "dsl 0.28.0 §7", "dsl 0.50.0 §3.2", "dsl 0.50.0 §4.1", "dsl 0.50.0 §5.1", "dsl 0.51.0 §4.1", "dsl 0.51.0 §4.2", "dsl 0.51.0 §5.1", "dsl 0.51.0 §6.1", "dsl 0.52.0 §7.1", "dsl 0.52.0 §7.3"],
     },
     Code {
         code: "E-PLUGIN-RAISES",
@@ -1268,8 +1283,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-REWARD-ATTR",
-        summary: r#"A `<reward>` element is malformed: an empty/missing `kind`, an `amount=` that is not a signed integer or a valid `N..M` range, an `outcome=` used on an objective-level reward or with a value other than `"failed"`, or a `target=` that is not a quoted id (an `@ref` or a bare `target`, which the IR cannot carry)."#,
-        spec: &["dsl 0.16.0 §2", "dsl 0.16.0 §6", "dsl 0.49.0 §3.3"],
+        summary: r#"A `<reward>` element is malformed: an empty/missing `kind`, an `amount=` that is not a signed integer or a valid `N..M` range, an `outcome=` used on an objective-level reward or with a value other than `"failed"`, a `target=` that is not a quoted id (an `@ref` or a bare `target`, which the IR cannot carry), or an attribute its reward kind declares written as an `@ref` (a reward's attributes are static data the engine grants against: write a quoted value)."#,
+        spec: &["dsl 0.16.0 §2", "dsl 0.16.0 §6", "dsl 0.49.0 §3.3", "dsl 0.52.0 §7.2"],
     },
     Code {
         code: "E-REWARD-DUP",
@@ -1453,8 +1468,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-STRING-ESCAPE",
-        summary: r#"A quoted attribute value uses a backslash escape other than the four defined ones (`\"`, `\\`, `\n`, `\t`)."#,
-        spec: &["dsl §4.4"],
+        summary: r#"A quoted attribute value uses a backslash escape other than the four defined ones (`\"`, `\\`, `\n`, `\t`), or `\{{` (a literal `{{`) in a value that does not take the label grammar — only a `<choice text>`, a `prompt` and a plugin `text` attribute do."#,
+        spec: &["dsl §4.4", "dsl 0.52.0 §3.2"],
     },
     Code {
         code: "E-SUBQUEST-REARM",
@@ -1613,8 +1628,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-UNKNOWN-ATTR",
-        summary: "A content line, directive or logic element carries an attribute key that the content-line grammar, the directive's own declaration or the element's fixed attribute table does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to; on `<branch>`, `<hub>` and `<choice>` the message also lists the stamps scoped to that element. `code=` on a directive without a `text` attribute names why: `code` is the localization identity of a directive with one.",
-        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1", "dsl 0.50.0 §3.4", "dsl 0.51.0 §5.2"],
+        summary: "A content line, directive or logic element carries an attribute key that the content-line grammar, the directive's own declaration or the element's fixed attribute table does not recognize, or a timing key (`wait`/`duration`/`delay`) or plugin stamp on a directive with no stamp carrier (`::jump`, `::label`, `::clear`), which would drop it. A plugin stamp scoped with `on:` to other surfaces is named with the surfaces it applies to; on `<branch>`, `<hub>` and `<choice>` the message also lists the stamps scoped to that element, and on a `<reward>` the attributes its reward kind declares (which it admits). `code=` on a directive without a `text` attribute names why: `code` is the localization identity of a directive with one.",
+        spec: &["dsl 0.1.0 §7.1", "dsl 0.49.0 §4.1", "dsl 0.50.0 §3.4", "dsl 0.51.0 §5.2", "dsl 0.52.0 §7.2"],
     },
     Code {
         code: "E-UNKNOWN-DIRECTIVE",

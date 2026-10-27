@@ -178,13 +178,13 @@ fn beat_when_follows_the_scene_beat_rules() {
     assert!(!with_code(&undeclared, "E-UNDECLARED").is_empty());
 }
 
-fn project(files: &[(&str, &str)]) -> ProjectDocs {
+fn project(files: &[(&str, &str)]) -> ProjectDocs<'static> {
     ProjectDocs::parse(
         files
             .iter()
             .map(|(p, t)| (PathBuf::from(p), lute_syntax::parse(t).0))
             .collect(),
-        &lute_manifest::core::load_core_snapshot(),
+        lute_manifest::core::core_snapshot(),
     )
 }
 

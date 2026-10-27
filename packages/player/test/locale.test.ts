@@ -2,7 +2,7 @@
 import { Effect, SubscriptionRef } from "effect"
 import * as KeyValueStore from "effect/persistence/KeyValueStore"
 import { describe, expect, it } from "@effect/vitest"
-import { compileQuayKorean, compileTallyKorean } from "./fixtures.js"
+import { compileQuayKorean, compileTallyKorean, compileTollKorean } from "./fixtures.js"
 import { flush } from "./director/support.js"
 import { act, hostLayer, player, recorder, textOf } from "./player.js"
 import type { ScreenModel } from "../src/ports/index.js"
@@ -152,4 +152,30 @@ describe("a translation's {{…}} markers show their values (§2.2)", () => {
       { _tag: "Text", text: " and 5.", styles: [] }
     ])
   }))))
+})
+
+describe("choice labels and prompts are the runtime's rendered menu text (0.52.0 §6.4)", () => {
+  const overToll = <A, E, R>(use: Effect.Effect<A, E, R>) =>
+    Effect.flatMap(compileTollKorean, (bundle) => Effect.provide(use, hostLayer(bundle)))
+
+  it.effect("the source locale shows the values; switched to Korean, the saved pending menu continues in Korean, an untranslated label in the source", () => overToll(Effect.gen(function* () {
+    const english = { id: "gate", prompt: "The toll is 5 gold.", options: [{ id: "pay", text: "Pay 5 gold" }, { id: "leave", text: "Walk away" }] }
+    const korean = { id: "gate", prompt: "통행료는 5 골드다.", options: [{ id: "pay", text: "5 골드를 낸다" }, { id: "leave", text: "Walk away" }] }
+    yield* Effect.scoped(Effect.gen(function* () {
+      const recorded = recorder()
+      const handle = yield* player(recorded)
+      yield* act(handle, { type: "newGame" })
+      expect(recorded.choices.at(-1)).toMatchObject(english)
+      yield* act(handle, { type: "quickSave" })
+    }))
+    yield* Effect.scoped(Effect.gen(function* () {
+      const recorded = recorder()
+      const handle = yield* player(recorded)
+      yield* act(handle, { type: "setSettings", settings: { locale: "ko" } })
+      yield* act(handle, { type: "continue" })
+      expect(recorded.choices.at(-1)).toMatchObject(korean)
+      yield* act(handle, { type: "choose", option: "pay" })
+      expect(recorded.lines.map(textOf)).toEqual(["문이 열린다."])
+    }))
+  })))
 })

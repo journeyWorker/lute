@@ -47,16 +47,20 @@ pub struct WalkCx<'a> {
     /// jump reaches: no route reaches the nodes between, so they inject
     /// nothing.
     pub reached: bool,
+    /// dsl 0.52.0 §5.2: the checker's count of hub bodies each leaving
+    /// `::jump` leaves, written on its `jump` record as `leaves`.
+    pub leaves: &'a lute_check::next_labels::HubLeaves,
 }
 
 impl<'a> WalkCx<'a> {
-    /// A walk over one document whose loops are `loops` and whose `<match>`
-    /// subjects resolve against `subjects`; `components` names the
-    /// component table its inlined bodies come from.
+    /// A walk over one document whose label pass (its loops and leaving
+    /// jumps) is `labels` and whose `<match>` subjects resolve against
+    /// `subjects`; `components` names the component table its inlined
+    /// bodies come from.
     pub fn new(
         snapshot: &'a CapabilitySnapshot,
         env: &'a Env,
-        loops: &'a lute_check::next_labels::LoopTable,
+        labels: &'a lute_check::next_labels::LabelPass,
         subjects: lute_check::SubjectScope<'a>,
         components: Option<&'a lute_check::ComponentSet>,
     ) -> Self {
@@ -66,7 +70,7 @@ impl<'a> WalkCx<'a> {
             components: Vec::new(),
             timelines: 0,
             stage: StageFlow::new(
-                loops,
+                &labels.loops,
                 &env.domains,
                 snapshot,
                 subjects,
@@ -74,6 +78,7 @@ impl<'a> WalkCx<'a> {
                 lute_check::WalkKind::StageCompile,
             ),
             reached: true,
+            leaves: &labels.leaves,
         }
     }
 }
@@ -144,6 +149,7 @@ fn walk_flow_directive(
         _ => {
             state = emit_primitive(em, node, state, &[], cx, None);
             scope_jump_target(em, cx);
+            mark_hub_leave(em, d, cx);
             route_jump(cx, d, &mut state);
         }
     }
@@ -184,6 +190,14 @@ pub fn walk_seq(
                     Vec::new()
                 };
                 state = emit_primitive(em, node, state, &look, cx, None);
+                // dsl 0.52.0 §5.4: inside a hub body an unguarded `::end`
+                // ends the route (the body does not complete).
+                if let Node::Directive(d) = node {
+                    if cx.reached && cx.stage.ends(d) {
+                        cx.stage.diags.append(&mut state.diags);
+                        cx.reached = false;
+                    }
+                }
             }
             Node::Branch(b) => {
                 let cont = reachable_after(&nodes[i + 1..], tail);
@@ -523,6 +537,23 @@ fn inject_cmd(ic: &InjectedCommand) -> Command {
     })
 }
 
+/// dsl 0.52.0 §6.2: the placeholders of a `<branch>`/`<hub>` `prompt`
+/// (`attrs`, its residual list), scanned as an option label's are (spanned
+/// at the prompt's value); none when the prompt is absent or has no marker.
+fn prompt_placeholders(attrs: &[lute_syntax::ast::Attr]) -> Vec<crate::ir::Placeholder> {
+    attrs
+        .iter()
+        .find(|a| a.key == "prompt")
+        .map(|a| match &a.value {
+            AttrValue::Str(s) => lute_syntax::scan_label_interps(s, a.value_span)
+                .iter()
+                .map(placeholder_from_interp)
+                .collect(),
+            AttrValue::Ref(_) | AttrValue::BoolTrue => Vec::new(),
+        })
+        .unwrap_or_default()
+}
+
 fn walk_branch(
     em: &mut Emitter,
     b: &Branch,
@@ -562,6 +593,7 @@ fn walk_branch(
         // dsl 0.47.0 §3.1: stamped by the addressing pass with the options'.
         prompt_line_id: None,
         prompt_texts: Default::default(),
+        prompt_placeholders: prompt_placeholders(&b.attrs),
         timeout,
         default: timeout.and_then(|_| attr_string(&b.attrs, "default")),
         stamp: Stamp {
@@ -592,6 +624,7 @@ fn walk_branch(
                 position: String::new(),
                 target: conv.sym(),
                 max: None,
+                leaves: None,
             }),
             || SourceInfo::at(b.span),
         );
@@ -652,6 +685,7 @@ fn walk_hub(
         prompt: attr_string(&h.attrs, "prompt"),
         prompt_line_id: None,
         prompt_texts: Default::default(),
+        prompt_placeholders: prompt_placeholders(&h.attrs),
         on_return: back.map(super::cfg::Label::sym),
         stamp: Stamp {
             stamps: element_stamps(&h.attrs, cx.snapshot, &StampSurface::Hub),
@@ -663,68 +697,81 @@ fn walk_hub(
         arms: h.choices.iter().map(ArmSource::choice).collect(),
         ..SourceInfo::at(h.span)
     });
-    // Fork (D9): every arm starts from the ENTRY state; entry diagnostics are
-    // drained first so per-arm clones don't duplicate them (as in `walk_branch`).
+    // dsl 0.52.0 §5.4: every option starts from the hub HEAD, the checker's
+    // fixed point of the hub's re-presentation edge ([`StageFlow::hub`]);
+    // entry diagnostics are drained first so per-arm clones don't duplicate
+    // them (as in `walk_branch`).
     let mut state = state;
-    let base_diags = std::mem::take(&mut state.diags);
-    let reached = cx.reached;
-    let mut exits: Vec<Option<StageState>> = Vec::with_capacity(h.choices.len());
+    let mut diags_out = std::mem::take(&mut state.diags);
+    let head = cx.stage.hub(h, cx.reached.then_some(state));
+    let reached = head.is_some();
+    let start = head.clone().unwrap_or_default();
+    let mut completed = Vec::new();
+    let mut exits = Vec::new();
     for (c, l) in h.choices.iter().zip(&arms) {
         em.bind(*l);
         let into = into_attr(c);
         em.enter_into(into.clone());
         cx.reached = reached;
-        let exit = walk_seq(em, &c.body, state.clone(), cx, tail, diags);
+        cx.stage.enter_hub_body();
+        let mut exit = walk_seq(em, &c.body, start.clone(), cx, tail, diags);
+        cx.stage.leave_hub_body();
         em.leave_into(into.as_ref());
+        diags_out.append(&mut exit.diags);
         // Flat-VM contract (A2 §7): an EXIT arm ends in a forward Jump→converge,
         // exactly like a `<choice>` arm; a NON-exit arm emits NO trailing jump —
         // its completion returns control to the hub loop head, a RUNTIME property
         // of the `hub` kind. No backward jump is emitted (D2/§3.2 stays flat,
         // forward-only, "reduces to data").
-        if attr_bool(&c.attrs, "exit").unwrap_or(false) {
+        let is_exit = StageFlow::exit_option(c);
+        if is_exit {
             em.push(
                 Command::Jump(JumpCmd {
                     position: String::new(),
                     target: conv.sym(),
                     max: None,
+                    leaves: None,
                 }),
                 || SourceInfo::at(h.span),
             );
         }
-        exits.push(cx.reached.then_some(exit));
+        if cx.reached {
+            if is_exit {
+                exits.push(exit);
+            } else {
+                completed.push(exit);
+            }
+        }
     }
     // dsl 0.28.0 §5: the `<return>` segment, bounded like an option body and
     // likewise ending in NO jump — the runtime runs it after a non-`exit`
-    // option's segment, then judges and presents the hub again. It starts
-    // from what every non-`exit` arm leaves behind (their diagnostics stay
-    // with the arms).
+    // option's segment, then judges and presents the hub again. dsl 0.52.0
+    // §5.4: it starts from the completion of the non-`exit` options, and no
+    // route reaches it when none completes.
     if let (Some(r), Some(l)) = (&h.on_return, back) {
-        let returning: Vec<StageState> = h
-            .choices
-            .iter()
-            .zip(&exits)
-            .filter(|(c, _)| !attr_bool(&c.attrs, "exit").unwrap_or(false))
-            .filter_map(|(_, s)| s.as_ref())
-            .map(|s| StageState {
-                diags: Vec::new(),
-                ..s.clone()
-            })
-            .collect();
-        let entry = StageState::join(&state, returning);
+        let entry = StageFlow::completion(completed);
         em.bind(l);
-        cx.reached = reached;
-        let exit = walk_seq(em, &r.body, entry, cx, tail, diags);
-        exits.push(cx.reached.then_some(exit));
+        cx.reached = entry.is_some();
+        cx.stage.enter_hub_body();
+        let mut exit = walk_seq(em, &r.body, entry.unwrap_or_default(), cx, tail, diags);
+        cx.stage.leave_hub_body();
+        diags_out.append(&mut exit.diags);
     }
     em.bind(conv);
-    let exits: Vec<StageState> = exits.into_iter().flatten().collect();
-    cx.reached = !exits.is_empty() || (reached && h.choices.is_empty() && h.on_return.is_none());
-    // Hub arms have no dominance relation (like `<match>` arms) — arm writes are
-    // may-writes at hub exit; `StageState::join` applies the conservative join.
-    let mut joined = StageState::join(&state, exits);
-    let mut diags = base_diags;
-    diags.append(&mut joined.diags);
-    joined.diags = diags;
+    // After the hub: `join(H, [H, the exit options' exit states])`, `H`
+    // standing for the presentation with nothing eligible.
+    let joined = match head {
+        Some(head) => {
+            let mut all = vec![head.clone()];
+            all.extend(exits);
+            Some(StageState::join(&head, all))
+        }
+        None => StageFlow::completion(exits),
+    };
+    cx.reached = joined.is_some();
+    let mut joined = joined.unwrap_or_default();
+    diags_out.append(&mut joined.diags);
+    joined.diags = diags_out;
     joined
 }
 
@@ -874,6 +921,7 @@ fn walk_match(
                 position: String::new(),
                 target: conv.sym(),
                 max: None,
+                leaves: None,
             }),
             || SourceInfo::at(m.span),
         );
@@ -985,6 +1033,23 @@ fn scope_jump_target(em: &mut Emitter, cx: &WalkCx<'_>) {
     }
 }
 
+/// dsl 0.52.0 §5.2: write the checker's `leaves` count
+/// ([`lute_check::next_labels::HubLeaves`]) on the `jump` record just
+/// emitted for the authored `::jump` `d`. A jump inside a component
+/// expansion never leaves a hub (a component admits no `<hub>`), and its
+/// span is in the component's file, so it is not looked up.
+fn mark_hub_leave(em: &mut Emitter, d: &Directive, cx: &WalkCx<'_>) {
+    if !cx.components.is_empty() {
+        return;
+    }
+    let Some(leaves) = cx.leaves.of(d) else {
+        return;
+    };
+    if let Some(Command::Jump(jump)) = em.recs.last_mut().map(|r| &mut r.cmd) {
+        jump.leaves = Some(leaves);
+    }
+}
+
 /// `timing.timeline`/`at`/`duration` on timeline-clip records (dsl 0.37.0 §5.2).
 fn apply_clip(cmd: &mut Command, clip: Option<ClipStamp>) {
     let Some(c) = clip else { return };
@@ -1008,18 +1073,27 @@ fn component_attr(d: &Directive) -> String {
         .unwrap_or_default()
 }
 
+/// One `<reward>`'s wire entry, stamped with what its kind declares in
+/// `snapshot` ([`RewardEntry::from_ast`]).
+fn reward_entry(
+    reward: &lute_syntax::ast::Reward,
+    snapshot: &CapabilitySnapshot,
+    owner_is_quest: bool,
+) -> RewardEntry {
+    let kind = snapshot.reward_kinds.get(reward.kind.trim());
+    RewardEntry::from_ast(reward, kind, &snapshot.occasions, owner_is_quest)
+}
+
 /// Walk a `<quest>` declaration (dsl 0.2.0 §6.3, IR addendum §3): emits the
 /// `quest` declaration head FIRST (objective table inlined, symbolic `body`
 /// targets for non-empty objective bodies via `em.fresh()` — the quest
 /// record must be the FIRST record, IR addendum §3.1), then walks the WHOLE
 /// `quest.body` in document order — `<objective>`/`<on>` bind their
-/// pre-allocated/fresh label and recurse into `walk_seq` for their body;
-/// direct content (`Line`/`Directive`/`Set`/`Branch`/`Match`, dsl 0.2.0 §6.3,
-/// §6.7 — the checker admits them directly in a quest body and folds their
-/// `<branch>` decls) lowers via the SAME primitives a scene body uses (IR
-/// addendum §3 preamble note) — NEVER dropped, no new record types.
-/// `<hub>`/`<timeline>` are forbidden everywhere in a quest doc (§6.7); the
-/// checker gates them out (D6), so those arms are unreachable here.
+/// pre-allocated/fresh label and recurse into `walk_seq` for their body.
+/// Nothing else sits at a quest's top level: a quest runs only its handler
+/// and objective bodies, so the checker refuses any other node there (dsl
+/// 0.52.0 §4; `<hub>`/`<timeline>` everywhere in a quest, dsl 0.2.0 §6.7)
+/// and gates the document out (D6), so those arms are unreachable here.
 pub fn walk_quest(
     em: &mut Emitter,
     quest: &Quest,
@@ -1038,7 +1112,7 @@ pub fn walk_quest(
             let label = (!o.body.is_empty()).then(|| em.fresh());
             objectives.push(ObjectiveEntry {
                 id: o.id.clone(),
-                title: o.title.clone(),
+                title: o.title.as_ref().map(|(t, _)| t.clone()),
                 title_line_id: o.title.as_ref().map(|_| format!("{}.{}", quest.id, o.id)),
                 done: CelPair::from_slot(&o.done),
                 visible_when: o.visible_when.as_ref().map(CelPair::from_slot),
@@ -1063,7 +1137,7 @@ pub fn walk_quest(
                 rewards: o
                     .rewards
                     .iter()
-                    .map(|r| RewardEntry::from_ast(r, false))
+                    .map(|r| reward_entry(r, cx.snapshot, false))
                     .collect(),
                 // dsl 0.21.0 §7a.2: the occasion the objective is judged at;
                 // `None` (omitted) keeps every other objective byte-identical.
@@ -1094,7 +1168,7 @@ pub fn walk_quest(
         rewards: quest
             .rewards
             .iter()
-            .map(|r| RewardEntry::from_ast(r, true))
+            .map(|r| reward_entry(r, cx.snapshot, true))
             .collect(),
         // dsl 0.22.0 §7, 0.27.0 §5: only `tier="run"` / `"season:<name>"`
         // are serialized (`E-ATTR-TYPE` / `E-SEASON-DECL` gated the rest).
@@ -1127,11 +1201,9 @@ pub fn walk_quest(
 
     // Pass 2: real document-order walk. Each objective-body / on-arm body is
     // an INDEPENDENT, temporally-disconnected trigger (not "one of N
-    // alternatives now" like a branch/match arm) — it starts from a FRESH
-    // `StageState::default()`, discarded afterward (no join, no carry into
-    // the top-level thread). Direct top-level content threads `state`
-    // sequentially with its top-level siblings, exactly like a scene body.
-    let mut state = StageState::default();
+    // alternatives now" like a branch/match arm) — `walk_body` starts it from
+    // a FRESH `StageState::default()`, discarded afterward. Nothing else sits
+    // at a quest's top level (dsl 0.52.0 §4, gated by the checker, D6).
     cx.reached = true;
     let mut obj_idx = 0usize;
     // Empty-`<on>`-body labels (F5, final review P1): `OnCmd.body` is a
@@ -1146,7 +1218,7 @@ pub fn walk_quest(
     // `address::assign_addresses` resolves them all to that same
     // `addr_of(shot, recs.len())` past-end address.
     let mut empty_on_labels: Vec<Label> = Vec::new();
-    for (i, node) in quest.body.iter().enumerate() {
+    for node in &quest.body {
         match node {
             Node::Objective(o) => {
                 if let Some(label) = obj_labels[obj_idx] {
@@ -1174,38 +1246,18 @@ pub fn walk_quest(
                     walk_body(em, &on.body, cx, diags);
                 }
             }
-            // Component sentinels, labels and jumps: the one path `walk_seq`
-            // takes too (#207: component labels scoped per instance).
-            Node::Directive(d) if is_flow_directive(d) => {
-                state = walk_flow_directive(em, node, d, &quest.body[i + 1..], state, cx);
-            }
-            // Fact args are ground — nothing authored, `lower_node`'s
-            // wildcard skips them; lowering to `Command::Assert`/`Retract`
-            // is Task 14.
             Node::Line(_)
             | Node::Directive(_)
             | Node::Set(_)
             | Node::Assert(_)
-            | Node::Retract(_) => {
-                let look = if classify_node(node, cx.snapshot).is_actor() {
-                    reachable_after(&quest.body[i + 1..], &[])
-                } else {
-                    Vec::new()
-                };
-                state = emit_primitive(em, node, state, &look, cx, None);
-            }
-            Node::Branch(b) => {
-                let cont = reachable_after(&quest.body[i + 1..], &[]);
-                state = walk_branch(em, b, state, cx, &cont, diags);
-            }
-            Node::Match(m) => {
-                let cont = reachable_after(&quest.body[i + 1..], &[]);
-                state = walk_match(em, m, state, cx, &cont, diags);
-            }
-            Node::Timeline(_) | Node::Hub(_) => {
+            | Node::Retract(_)
+            | Node::Branch(_)
+            | Node::Match(_)
+            | Node::Timeline(_)
+            | Node::Hub(_) => {
                 unreachable!(
-                    "dsl 0.2.0 §6.7: <hub>/<timeline> are forbidden everywhere \
-                     in a quest doc — the checker gates this out (D6)"
+                    "dsl 0.52.0 §4: a quest's top level admits only <on>/<objective> \
+                     — the checker gates this out (D6)"
                 )
             }
         }

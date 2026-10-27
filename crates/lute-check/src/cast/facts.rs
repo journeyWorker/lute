@@ -181,7 +181,7 @@ pub fn fact_producers(
         }
         // 0.50.0 §5.4: a quest's reward effects produce in its unit.
         for quest in &doc.quests {
-            for grant in crate::reward_effects::quest_grants(quest, item.reward_kinds) {
+            for grant in crate::reward_effects::quest_grants(quest, &item.snapshot.reward_kinds) {
                 if let Some((p, true)) = grant.fact() {
                     out.0.entry(p.relation.clone()).or_default().push((
                         path.to_path_buf(),
@@ -270,7 +270,7 @@ pub(crate) fn fact_writes(
         }
         // 0.50.0 §5.4: each reward effect, at its reward.
         for quest in &doc.quests {
-            for grant in crate::reward_effects::quest_grants(quest, item.reward_kinds) {
+            for grant in crate::reward_effects::quest_grants(quest, &item.snapshot.reward_kinds) {
                 let Some((p, up)) = grant.fact() else {
                     continue;
                 };

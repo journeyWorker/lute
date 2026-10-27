@@ -923,9 +923,7 @@ impl<'g> Producers<'g> {
             };
             let credits = kind.credits.clone();
             // 0.50.0 §5.4: the facts its kind's `effects` assert.
-            let asserts = kind.effects.as_ref().map_or_else(Vec::new, |effects| {
-                lute_check::reward_effects::reward_facts(effects, r).asserts
-            });
+            let asserts = lute_check::reward_effects::reward_facts(kind, r).asserts;
             if let Some(path) = credits {
                 self.write(origin, How::Reward(r.kind.clone()), path);
             }

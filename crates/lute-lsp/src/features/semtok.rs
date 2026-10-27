@@ -776,6 +776,36 @@ mod tests {
         assert_eq!(ref_tok.2, u32::try_from("@fond".len()).unwrap());
     }
 
+    /// 0.52.0 §3.2: `\{{` in a label is literal text — no token starts inside
+    /// the label's value (an escaped `{{` is no interpolation), while a live
+    /// marker in a line still gets its sub-token.
+    #[test]
+    fn an_escaped_opener_in_a_label_is_text() {
+        let text = "---\nstate:\n  run.x: { type: number, default: 0 }\n---\n## Shot 1.\n\
+                    <branch id=\"b\">\n<choice id=\"c\" text=\"a \\{{run.x}}\">\n\
+                    @f: {{run.x}}\n</choice>\n</branch>\n";
+        let idx = TextIndex::new(text);
+        let decoded = decode(&tokens(text));
+        let value = text.find("a \\{{run.x}}").unwrap();
+        let (start, end) = (
+            idx.position(value),
+            idx.position(value + "a \\{{run.x}}".len()),
+        );
+        assert!(
+            decoded.iter().all(|&(l, c, _, _)| l != start.line - 1
+                || c < start.utf16_col
+                || c >= end.utf16_col),
+            "a token inside the label value: {decoded:?}"
+        );
+        let marker = idx.position(text.find("{{run.x}}\n").unwrap() + 2);
+        assert!(
+            decoded.iter().any(|&(l, c, _, t)| l == marker.line - 1
+                && c == marker.utf16_col
+                && t == ty("statePath")),
+            "the line's marker keeps its sub-token: {decoded:?}"
+        );
+    }
+
     // ---- dsl 0.2.0 §6.3/§4: quest / on / objective keyword tokens ----
 
     const QUEST_DOC: &str = "---\nkind: quest\n---\n\

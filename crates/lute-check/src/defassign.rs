@@ -663,8 +663,11 @@ impl Walk<'_, '_> {
 struct AssignHead;
 
 impl crate::loop_walk::HeadLattice<Flow> for AssignHead {
-    fn meet(&self, entry: &Flow, back: Flow) -> Flow {
-        intersect_flows(vec![entry.clone(), back])
+    fn meet(&self, entry: &Flow, _head: &Flow, back: Option<Flow>) -> Flow {
+        match back {
+            Some(back) => intersect_flows(vec![entry.clone(), back]),
+            None => entry.clone(),
+        }
     }
 
     fn same(&self, a: &Flow, b: &Flow) -> bool {
@@ -931,6 +934,7 @@ impl Walk<'_, '_> {
         let cx = self.cx;
         let record = format!("scene.choices.{}", branch.id);
         let had_record = flow.as_ref().is_some_and(|f| f.available.contains(&record));
+        self.prompt_reads(&branch.attrs, flow.as_ref());
         let mut arm_finals: Vec<Option<Flow>> = Vec::new();
         let mut has_unconditional = false;
         for choice in &branch.choices {
@@ -976,6 +980,21 @@ impl Walk<'_, '_> {
         }
     }
 
+    /// 0.52.0 §6.1: a `<branch>`/`<hub>` prompt's `{{path}}` is read when the
+    /// menu shows — before any option's guard, against the flow into it.
+    fn prompt_reads(&mut self, attrs: &[lute_syntax::ast::Attr], flow: Option<&Flow>) {
+        if let (Some(f), Some((text, span))) = (flow, crate::logic_attrs::prompt_text(attrs)) {
+            check_label_reads(
+                text,
+                self.cx,
+                &f.available,
+                span,
+                &mut self.diags,
+                &mut self.reads,
+            );
+        }
+    }
+
     /// A `<hub>` (dsl §7.3.2, §11.1.3): hub arms have NO dominance relation
     /// among one another (same join rule as `<match>` arms), so a write inside
     /// one arm is a **may-write** at hub exit, never a definite assignment.
@@ -987,6 +1006,7 @@ impl Walk<'_, '_> {
     /// arm still carries the arm's flow to its label.
     fn hub(&mut self, hub: &Hub, flow: Option<&Flow>) {
         let cx = self.cx;
+        self.prompt_reads(&hub.attrs, flow);
         for choice in &hub.choices {
             let mut arm = flow.cloned();
             if let Some(a) = arm.as_mut() {

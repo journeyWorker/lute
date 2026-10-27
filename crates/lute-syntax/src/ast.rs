@@ -563,7 +563,8 @@ pub struct Objective {
     /// `visibleWhen=`: the objective is shown only while this holds. It
     /// never gates `done` (put the condition in `done=` for that).
     pub visible_when: Option<CelSlot>,
-    pub title: Option<String>,
+    /// `title=` and its value span (plain text, 0.52.0 §6.7).
+    pub title: Option<(String, Span)>,
     pub optional: bool,
     /// The occasion at which this objective's `done`/`fail` is judged (dsl
     /// 0.21.0 §7a.2), raw text + value span like [`Entry::on`]; `None` →

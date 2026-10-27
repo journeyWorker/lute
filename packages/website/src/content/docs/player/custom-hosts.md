@@ -360,7 +360,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 
 ```json
 {
-  "saveVersion": "0.51",
+  "saveVersion": "0.52",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",
@@ -369,7 +369,7 @@ The core stores saves through Effect's `KeyValueStore`. Slots are `quick`, `auto
 }
 ```
 
-The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log, backlog and (0.51) the declared raises it has not sent yet. Profiles use `profileVersion` (the release line, `"0.51"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
+The runtime snapshot includes `world.stage` and `continuation.stage` where applicable; the player adds its deterministic input log, backlog and (0.51) the declared raises it has not sent yet. Profiles use `profileVersion` (the release line, `"0.52"`), the project fingerprint, `readLines`, and settings. Slot keys (`save:quick`, `save:auto`, `save:1`…) are not namespaced; each save carries the project fingerprint and another project's save is refused, and the profile is stored under `profile:<project>`. Give the player its own (or a prefixed) store when the game stores other data. A different project or save format returns `SaveIncompatible`; malformed data returns `SaveCorrupt`.
 
 Since 0.47 a profile also holds the **lineage** when one was written (see the cross-run model below). A profile of another `profileVersion` is never refused: its read marks and settings are kept, and it has no lineage.
 
@@ -389,9 +389,11 @@ What survives a page reload:
 
 The locale is a setting (`settings.locale`), not a mount option. A loaded bundle's **source locale** is the project index's `contentLang` (the manifest's `defaults.contentLang`), else the `contentLang` of the first artifact (in `index.documents` order) whose meta declares one, else `"en"`; its **compiled locales** are the keys of the artifacts' `texts` and `promptTexts` maps (`lute compile --locale-bundle`), so a locale that translates only a prompt is listed too. The `Settings` screen model's `locales` is the source locale followed by the compiled locales (sorted, without duplicates). A new profile starts at the source locale; a saved locale the bundle does not carry (a 0.46 profile's `"en"` in an `en-US` project) reads source text, and `Settings` shows the source locale selected.
 
-For the current locale, the dialogue line (`texts[locale]`, `localeSegments[locale]`), choice and hub option labels (`texts[locale]`), branch and hub prompts (`promptTexts[locale]`) and the backlog read the translation and fall back to the source text; speaker names are not localized. `setSettings({ locale })` applies to the next text shown and to the backlog the next time it opens — no new game needed. The cue factory takes the locale per call, `fromOutput(output, readLines, locale)` and `choiceView(await, locale)`: a `cueFactory` wrapper or a custom factory receives it and passes it on.
+For the current locale, the dialogue line (`texts[locale]`, `localeSegments[locale]`), choice and hub option labels (the menu option's `texts[locale]`), branch and hub prompts (the menu's `promptTexts[locale]`) and the backlog read the translation and fall back to the source text; speaker names are not localized. `setSettings({ locale })` applies to the next text shown and to the backlog the next time it opens — no new game needed. The cue factory takes the locale per call, `fromOutput(output, readLines, locale)` and `choiceView(await, locale)`: a `cueFactory` wrapper or a custom factory receives it and passes it on.
 
-A dialogue line and a backlog entry take their translation from the runtime's `line` record, not from the compiled artifact: the record carries `texts` and `localeSegments` with every `{{…}}` marker already replaced by its value. A translation's marker gets the value the source line rendered for the marker with the same referent (the text inside `{{ }}`, trimmed), so a translator may reorder markers; a marker the source line does not have stays as written, and a translation may write `\{{` for a literal `{{` (lute 0.47.1). The record holds the decoded text; an engine that substitutes placeholders itself must apply the IR's escaped-interpolation reading (see [Localized text](/tooling/runtime-contract/#localized-text)). Option labels keep the 0.46 behaviour (their `{{…}}` markers are not rendered).
+A dialogue line and a backlog entry take their translation from the runtime's `line` record, not from the compiled artifact: the record carries `texts` and `localeSegments` with every `{{…}}` marker already replaced by its value. A translation's marker gets the value the source line rendered for the marker with the same referent (the text inside `{{ }}`, trimmed), so a translator may reorder markers; a marker the source line does not have stays as written, and a translation may write `\{{` for a literal `{{` (lute 0.47.1). The record holds the decoded text; an engine that substitutes placeholders itself must apply the IR's escaped-interpolation reading (see [Localized text](/tooling/runtime-contract/#localized-text)).
+
+**Menu text arrives rendered (0.52).** Option labels and prompts come the same way, from the runtime, not from the artifact: the `awaitChoice` menu carries each option's `text` and `texts` and the menu's `prompt` and `promptTexts`, with every `{{…}}` marker replaced by its value at that presentation (a hub re-renders each time it presents) and `\{{` read as a literal `{{`. `choiceView` reads them (`localizedText(option.texts, locale, option.text)`, and `menu.promptTexts` / `menu.prompt`); stamps still come from the IR command. A custom host shows the menu's strings too: the IR's `options[].text` and `prompt` keep their markers as written. A host token (`{{userName}}`) stays verbatim for the host to substitute, as in a line.
 
 A directive's `text` attributes (0.51, [`type: text`](/plugins/manifests/#localizable-text-attributes-type-text)) follow the same rules: the runtime renders each marker once and writes the rendered source into the record's `attrs.<attr>` and the rendered translations into `localized: { <attr>: { lineId, texts } }`. `PluginCall.localized?` is a `Readonly<Record<string, string>>` holding each `text` attribute in the player's current locale (`localized.<attr>.texts[locale]`, else `attrs.<attr>`), so a plugin handler shows the right language without reading the record. The cue factory defers a `plugin` cue like a line cue, so the locale is the one current when the call runs: a locale change while an earlier line of the batch is still typing reaches a later call. Host-token markers stay verbatim, as in a line. Locale discovery reads only each command's `texts` and `promptTexts`, each option's `texts`, and, for a `plugin` command, the keys of every `localized.<attr>.texts`; it never reads a `fields` or `stamps` map, so an attribute named `texts` or `promptTexts` is not misread, and a locale that translates only a directive's text is listed too.
 
@@ -407,8 +409,8 @@ For a complete architecture contract, see [`docs/player/architecture.md`](https:
 
 ## Choice views and restored assets
 
-`Presenter.showChoice` receives a `ChoiceView` with the authored prompt and
-localized option text, plus runtime verdict, timeout, default, once, and exit
+`Presenter.showChoice` receives a `ChoiceView` with the rendered prompt and
+option text in the current locale, plus runtime verdict, timeout, default, once, and exit
 metadata. Since 0.50 it also carries the plugin stamps authored on the
 `<branch>`/`<hub>` element (`ChoiceView.stamps`) and on each `<choice>`
 (`options[i].stamps`), read from the IR command at the menu's address; each is

@@ -66,6 +66,10 @@ pub const E_PATH_IDENT: &str = "E-PATH-IDENT";
 /// Diagnostic code: a `{{` interpolation had no closing `}}` before end of line
 /// (§7.6).
 pub const E_INTERP_UNTERMINATED: &str = "E-INTERP-UNTERMINATED";
+/// Diagnostic code (0.52.0 §3.1): a `{{…}}` marker in line text whose
+/// preceding decoded literal text ends in an odd run of `{`. The IR encoding
+/// has no spelling for it ([`crate::line_text::brace_before_marker`]).
+pub const E_INTERP_BRACE: &str = "E-INTERP-BRACE";
 /// Diagnostic code (dsl 0.37.0 §3.1): a body `# ` heading. It is no document
 /// title; the title is frontmatter `title:`.
 pub const E_INERT_TITLE: &str = "E-INERT-TITLE";

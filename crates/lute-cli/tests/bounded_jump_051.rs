@@ -89,7 +89,7 @@ fn an_empty_loop_starts_over_on_each_outer_iteration() {
     let source = dir.join("scene.lute");
     std::fs::write(
         &source,
-        "---\nkind: scene\nluteVersion: \"0.51.0\"\nid: empty\ntitle: T\n---\n\n## Shot 1.\n\n\
+        "---\nkind: scene\nluteVersion: \"0.52.0\"\nid: empty\ntitle: T\n---\n\n## Shot 1.\n\n\
          ::label{name=\"outer\"}\n@narrator: Round.\n::label{name=\"inner\"}\n\
          ::jump{to=\"inner\" max=\"1\"}\n::jump{to=\"outer\" max=\"1\"}\n@narrator: Done.\n",
     )
@@ -164,7 +164,7 @@ fn each_component_instance_loops_on_its_own_label() {
         "component-loops",
         "---\ncomponent: c\n---\n## Body\n::label{name=\"inner\"}\n@narrator: In.\n\
          ::jump{to=\"inner\" max=\"1\"}\n",
-        "---\nkind: scene\nid: host\nluteVersion: \"0.51.0\"\ntitle: Host\n\
+        "---\nkind: scene\nid: host\nluteVersion: \"0.52.0\"\ntitle: Host\n\
          components: [c.component.lute]\n---\n## Shot 1.\n\
          ::use{component=\"c\" instance=\"first\"}\n::label{name=\"outer\"}\n@narrator: Mid.\n\
          ::use{component=\"c\" instance=\"second\"}\n::jump{to=\"outer\" max=\"1\"}\n\
@@ -184,7 +184,7 @@ fn a_forward_jump_stays_in_its_component_instance() {
         "component-forward",
         "---\ncomponent: c\n---\n## Body\n@narrator: In.\n::jump{to=\"skip\"}\n\
          @narrator: Skipped.\n::label{name=\"skip\"}\n@narrator: After.\n",
-        "---\nkind: scene\nid: host\nluteVersion: \"0.51.0\"\ntitle: Host\n\
+        "---\nkind: scene\nid: host\nluteVersion: \"0.52.0\"\ntitle: Host\n\
          components: [c.component.lute]\n---\n## Shot 1.\n\
          ::use{component=\"c\" instance=\"first\"}\n@narrator: Between.\n\
          ::use{component=\"c\" instance=\"second\"}\n@narrator: End.\n",
@@ -200,12 +200,12 @@ fn a_forward_jump_stays_in_its_component_instance() {
     );
 }
 
-/// S3 re-review 2: a quest's top level walks component labels through the
-/// same scoped path as every other body, so a component used twice there
+/// S3 re-review 2: a quest walks component labels through the same scoped
+/// path as every other body, so a component used twice in an objective body
 /// binds each instance's loop to its own head and the artifact loads (on
 /// `39b921e0` the second instance's jump targeted the first instance's
-/// label: crossing loops, refused at load). A quest's top-level content is
-/// not presented by the runtime, so the IR is what shows it.
+/// label: crossing loops, refused at load). Written at the quest's top level
+/// on 0.51; dsl 0.52.0 §4 moves it into the objective's body, which runs.
 #[test]
 fn a_quest_level_component_loops_on_its_own_label() {
     let (text, artifact) = run_with_component(
@@ -214,11 +214,14 @@ fn a_quest_level_component_loops_on_its_own_label() {
          ::jump{to=\"inner\" max=\"1\"}\n",
         "---\nkind: quest\nid: acme.q\ncomponents: [c.component.lute]\n---\n\
          <quest id=\"q\" title=\"Q\" tier=\"run\" start=\"true\">\n\
-         <objective id=\"o\" title=\"O\" done=\"true\"/>\n\
+         <objective id=\"o\" title=\"O\" done=\"true\">\n\
          ::use{component=\"c\" instance=\"first\"}\n::label{name=\"outer\"}\n@narrator: Mid.\n\
-         ::use{component=\"c\" instance=\"second\"}\n::jump{to=\"outer\" max=\"1\"}\n</quest>\n",
+         ::use{component=\"c\" instance=\"second\"}\n::jump{to=\"outer\" max=\"1\"}\n\
+         </objective>\n</quest>\n",
     );
     assert!(text.contains("quest q -> complete"), "{text}");
+    assert_eq!(text.matches("narrator: In.").count(), 6, "{text}");
+    assert_eq!(text.matches("narrator: Mid.").count(), 2, "{text}");
     let cmds = artifact["commands"].as_array().unwrap();
     let at = |i: usize| cmds[i]["position"].clone();
     let inner: Vec<(serde_json::Value, serde_json::Value)> = cmds

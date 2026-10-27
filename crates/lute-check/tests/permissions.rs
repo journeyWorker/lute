@@ -306,6 +306,7 @@ params: {}
                 beat: None,
                 body: component,
                 src: PathBuf::from("sound.component.lute"),
+                text: String::new(),
             },
         )]),
         diags: Vec::new(),

@@ -200,11 +200,19 @@ pub enum ManifestError {
         list: &'static str,
         detail: String,
     },
-    /// 0.50.0 §5.1: a reward kind's `effects` reads an `@attr` other than
-    /// `@target`, asserts `_`, or reads `@target` on a kind that takes none.
+    /// 0.50.0 §5.1, 0.52.0 §7.3: a reward kind's `effects` reads an `@attr`
+    /// that is neither `@target` nor one of the kind's `attrs:`, asserts
+    /// `_`, or reads `@target` on a kind that takes none.
     RewardEffect {
         kind: String,
         detail: String,
+    },
+    /// 0.52.0 §7.1: a reward kind's `attrs:` entry `attr` breaks the
+    /// directive attribute declaration rules.
+    RewardAttr {
+        kind: String,
+        attr: String,
+        fault: RewardAttrFault,
     },
     /// 0.51.0 §4.2: an `effects.raises` target `@a` names no attribute of
     /// the directive.
@@ -257,6 +265,30 @@ pub enum TextFault {
     CodeAttr,
 }
 
+/// Why a reward kind's attribute declaration is refused
+/// ([`ManifestError::RewardAttr`], 0.52.0 §7.1).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RewardAttrFault {
+    /// The name is one of `<reward>`'s own attributes
+    /// ([`crate::core::REWARD_ATTRS`]).
+    Reserved,
+    /// The kind declares the name more than once (reported at each repeat).
+    Duplicate,
+    /// The declared `default:` is not of the declared type: the type and the
+    /// default as they render.
+    DefaultType { ty: String, default: String },
+    /// The type is a `list`, `map` or `record`, which no attribute value can
+    /// write: the type as it renders.
+    Structured { ty: String },
+}
+
+/// Why no attribute declaration may be structured (0.49.0 §3.2): the
+/// sentence [`ManifestError::StructuredAttr`] and
+/// [`RewardAttrFault::Structured`] share.
+const SCALAR_ATTR_VALUES: &str = "an attribute value is written as one scalar (string, \
+     number, bool, an enum or entity member, a provider or asset id), so no `.lute` value can \
+     satisfy a `list`, `map` or `record` (structured attribute values are not supported yet)";
+
 /// Who declares an attribute [`ManifestError::StructuredAttr`] names.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AttrOwner {
@@ -293,6 +325,7 @@ impl ManifestError {
             ManifestError::EffectWrite { .. }
             | ManifestError::EffectFact { .. }
             | ManifestError::RewardEffect { .. }
+            | ManifestError::RewardAttr { .. }
             | ManifestError::EffectRaise { .. }
             | ManifestError::TextAttr { .. } => "E-PLUGIN-PARSE",
         }
@@ -357,6 +390,34 @@ impl std::fmt::Display for ManifestError {
             ManifestError::RewardEffect { kind, detail } => {
                 write!(f, "reward kind `{kind}` {detail}")
             }
+            ManifestError::RewardAttr { kind, attr, fault } => {
+                write!(f, "reward kind `{kind}` declares attribute `{attr}`")?;
+                match fault {
+                    RewardAttrFault::Reserved => {
+                        let own: Vec<String> = crate::core::REWARD_ATTRS
+                            .iter()
+                            .map(|k| format!("`{k}`"))
+                            .collect();
+                        write!(
+                            f,
+                            ", which `<reward>` already has ({}) — give it another name",
+                            own.join(", ")
+                        )
+                    }
+                    RewardAttrFault::Duplicate => {
+                        f.write_str(" more than once — keep one declaration")
+                    }
+                    RewardAttrFault::DefaultType { ty, default } => write!(
+                        f,
+                        " as `{ty}` with `default: {default}`, which is not of type `{ty}` — \
+                         give a default of the declared type"
+                    ),
+                    RewardAttrFault::Structured { ty } => write!(
+                        f,
+                        " as `{ty}`; {SCALAR_ATTR_VALUES}: give each field its own attribute"
+                    ),
+                }
+            }
             ManifestError::EffectRaise { directive, detail } => {
                 write!(f, "directive `::{directive}` effects.raises: {detail}")
             }
@@ -394,11 +455,8 @@ impl std::fmt::Display for ManifestError {
                 }
                 write!(
                     f,
-                    " as `{ty}`; an attribute value is written as one scalar (string, \
-                     number, bool, an enum or entity member, a provider or asset id), so no \
-                     `.lute` value can satisfy a `list`, `map` or `record` (structured \
-                     attribute values are not supported yet): where it fits, give each field \
-                     its own attribute (a stamp can be scoped to its surfaces with `on:`), "
+                    " as `{ty}`; {SCALAR_ATTR_VALUES}: where it fits, give each field its own \
+                     attribute (a stamp can be scoped to its surfaces with `on:`), "
                 )?;
                 // 0.51.0 §7: a stamp cannot be `text` (§5.1), so its hint
                 // does not offer one.
@@ -782,13 +840,60 @@ fn fact_faults<'f>(
     }
 }
 
-/// 0.50.0 §5.1: a reward kind's declared `effects` against what a
-/// `<reward>` can bind. A fact reads only `@target` (a `<reward>` takes no
-/// other attribute, so a kind's `attrs:` cannot bind one), an assert is
-/// ground once bound, and a kind whose `target:` is `forbidden` reads no
-/// `@target` (no reward of it could bind one). 0.51.0 §4.2: a raise targets
-/// `@target` or a literal, under the same `forbidden` rule. The shapes were
-/// checked when the file parsed ([`crate::schema::RewardEffects`]).
+/// 0.52.0 §7.1: a reward kind's `attrs:` against the directive attribute
+/// declaration rules ([`validate_directive`]'s `DuplicateAttr`,
+/// `AttrDefaultType` and [`structured_attr`]) plus `<reward>`'s own names
+/// ([`crate::core::REWARD_ATTRS`]). Each fault comes with the index of its
+/// declaration in `attrs:` (a duplicate's is the repeat's), so the loader
+/// reports it at that entry. `type: text` was already refused when the file
+/// parsed.
+pub fn validate_reward_attrs(kind: &RewardKindDecl) -> Vec<(usize, ManifestError)> {
+    let mut errs = Vec::new();
+    let mut seen = std::collections::BTreeSet::new();
+    for (i, a) in kind.attrs.iter().enumerate() {
+        let mut fault = |fault| {
+            errs.push((
+                i,
+                ManifestError::RewardAttr {
+                    kind: kind.name.clone(),
+                    attr: a.name.clone(),
+                    fault,
+                },
+            ));
+        };
+        if crate::core::REWARD_ATTRS.contains(&a.name.as_str()) {
+            fault(RewardAttrFault::Reserved);
+        }
+        if !seen.insert(a.name.as_str()) {
+            fault(RewardAttrFault::Duplicate);
+        }
+        if let Some(default) = a
+            .default
+            .as_ref()
+            .filter(|v| !attr_default_accepts(&a.ty, v))
+        {
+            fault(RewardAttrFault::DefaultType {
+                ty: crate::types::type_str(&a.ty),
+                default: crate::types::lit_str(default),
+            });
+        }
+        if matches!(a.ty, Type::List(_) | Type::Map { .. } | Type::Record(_)) {
+            fault(RewardAttrFault::Structured {
+                ty: crate::types::type_str(&a.ty),
+            });
+        }
+    }
+    errs
+}
+
+/// 0.50.0 §5.1, 0.52.0 §7.3: a reward kind's declared `effects` against what
+/// a `<reward>` can bind. A fact or a raise target reads `@target` or one
+/// of the kind's `attrs:` (accepts are judged when the file parses), an
+/// assert is ground once bound, and a kind whose `target:` is `forbidden`
+/// reads no `@target` (no reward of it could bind one). Whether a raise's
+/// attribute has the occasion's type is judged at assembly
+/// (`E-PLUGIN-RAISES`). The shapes were checked when the file parsed
+/// ([`crate::schema::RewardEffects`]).
 pub fn validate_reward_effects(kind: &RewardKindDecl) -> Vec<ManifestError> {
     use crate::schema::REWARD_TARGET_ATTR;
     let mut errs = Vec::new();
@@ -801,8 +906,22 @@ pub fn validate_reward_effects(kind: &RewardKindDecl) -> Vec<ManifestError> {
             detail,
         });
     };
+    let declared: Vec<&str> = std::iter::once(REWARD_TARGET_ATTR)
+        .chain(kind.attrs.iter().map(|a| a.name.as_str()))
+        .collect();
+    // `reads `@rarty`, but the kind declares no such attribute (declared:
+    // target, rarity); did you mean `@rarity`?`
+    let undeclared = |attr: &str| {
+        let hint = crate::suggest::nearest(attr, declared.iter().copied(), 2)
+            .map(|s| format!("; did you mean `@{s}`?"))
+            .unwrap_or_default();
+        format!(
+            "`@{attr}`, but the kind declares no such attribute (declared: {}){hint}",
+            declared.join(", ")
+        )
+    };
     for (fact, assert) in effects.facts() {
-        let faults = fact_faults(fact, assert, |attr| attr == REWARD_TARGET_ATTR);
+        let faults = fact_faults(fact, assert, |attr| declared.contains(&attr));
         if faults.asserts_wildcard {
             fault(format!(
                 "effect `{fact}` asserts `_`; an asserted fact is ground — name a member or \
@@ -810,10 +929,7 @@ pub fn validate_reward_effects(kind: &RewardKindDecl) -> Vec<ManifestError> {
             ));
         }
         for attr in faults.foreign {
-            fault(format!(
-                "effect `{fact}` reads `@{attr}`; a reward kind's effects read only \
-                 `@{REWARD_TARGET_ATTR}` (a `<reward>` takes no other attribute)"
-            ));
+            fault(format!("effect `{fact}` reads {}", undeclared(attr)));
         }
     }
     for r in &effects.raises {
@@ -821,16 +937,11 @@ pub fn validate_reward_effects(kind: &RewardKindDecl) -> Vec<ManifestError> {
             .target
             .as_ref()
             .and_then(crate::schema::RaiseTargetDecl::attr)
-            .filter(|a| *a != REWARD_TARGET_ATTR)
+            .filter(|a| !declared.contains(a))
         else {
             continue;
         };
-        fault(format!(
-            "raises `{}` for `@{attr}`; a reward kind's raise targets `@{REWARD_TARGET_ATTR}` \
-             (the `<reward>`'s `target=`) or a literal target — a `<reward>` takes no other \
-             attribute",
-            r.occasion
-        ));
+        fault(format!("raises `{}` for {}", r.occasion, undeclared(attr)));
     }
     if kind.target.as_ref().is_some_and(|t| t.forbidden) && effects.reads_target() {
         let reads: Vec<String> = effects

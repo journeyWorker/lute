@@ -211,6 +211,7 @@ impl<'a> Walker<'a> {
                     // we only validate the branch's own attrs and recurse.
                     self.check_attr_refs(&b.attrs, ctx, &AttrSite::Element(StampSurface::Branch));
                     crate::logic_attrs::check_branch_attrs(b, self.stamp_cx(), &mut self.diags);
+                    self.check_prompt_interps(&b.attrs, ctx);
                     for choice in &b.choices {
                         self.check_attr_refs(
                             &choice.attrs,
@@ -484,6 +485,7 @@ impl<'a> Walker<'a> {
                     // node checks apply inside hub arms too (dsl §7.3.2).
                     self.check_attr_refs(&h.attrs, ctx, &AttrSite::Element(StampSurface::Hub));
                     crate::logic_attrs::check_hub_attrs(h, self.stamp_cx(), &mut self.diags);
+                    self.check_prompt_interps(&h.attrs, ctx);
                     for choice in &h.choices {
                         self.check_attr_refs(
                             &choice.attrs,
@@ -597,12 +599,8 @@ impl<'a> Walker<'a> {
                             Some(&ExpectedType::Bool),
                         ));
                     }
-                    // §7.6: an objective `title` MAY embed `{{…}}` interpolations,
-                    // same as a choice label.
-                    if let Some(title) = &o.title {
-                        check_interps(&scan_label_interps(title, o.span), ctx, &mut self.diags);
-                    }
                     self.check_attr_refs(&o.attrs, ctx, &AttrSite::Untyped);
+                    // 0.52.0 §6.7: the title is plain text (`E-OBJECTIVE-TITLE-INTERP`).
                     crate::logic_attrs::check_objective_attrs(o, &mut self.diags);
                     self.walk(&o.body, ctx);
                     // dsl 0.16.0 §2: `reward.when` is a Bool CEL slot with
@@ -675,6 +673,14 @@ impl<'a> Walker<'a> {
                 ctx,
                 &mut self.diags,
             );
+        }
+    }
+
+    /// 0.52.0 §6.1: a `<branch>`/`<hub>` prompt's `{{…}}` interpolations
+    /// are checked as a choice label's are, at the prompt's value span.
+    fn check_prompt_interps(&mut self, attrs: &[Attr], ctx: &Ctx<'_>) {
+        if let Some((text, span)) = crate::logic_attrs::prompt_text(attrs) {
+            check_interps(&scan_label_interps(text, span), ctx, &mut self.diags);
         }
     }
 

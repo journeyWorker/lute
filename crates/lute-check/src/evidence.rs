@@ -216,6 +216,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-HUB-NO-EXIT", DiagnosticClass::SourceError),
         ("E-IDENTITY-TEMPLATE", DiagnosticClass::SourceError),
         ("E-INERT-TITLE", DiagnosticClass::SourceError),
+        ("E-INTERP-BRACE", DiagnosticClass::SourceError),
         ("E-INTERP-DEF", DiagnosticClass::SourceError),
         ("E-INTERP-UNTERMINATED", DiagnosticClass::SourceError),
         ("E-INTO-TARGET", DiagnosticClass::SourceError),
@@ -223,6 +224,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-INTO-VALUE", DiagnosticClass::SourceError),
         ("E-IR-REMOVED-FIELD", DiagnosticClass::SourceError),
         ("E-JUMP-BACKWARD", DiagnosticClass::SourceError),
+        ("E-JUMP-INTO-BODY", DiagnosticClass::SourceError),
         ("E-JUMP-INTO-LOOP", DiagnosticClass::SourceError),
         ("E-JUMP-LOOP-CROSS", DiagnosticClass::SourceError),
         ("E-JUMP-LOOP-SCOPE", DiagnosticClass::SourceError),
@@ -278,6 +280,7 @@ static TABLE: LazyLock<Vec<(&'static str, DiagnosticClass)>> = LazyLock::new(|| 
         ("E-OBJECTIVE-ID-MISSING", DiagnosticClass::SourceError),
         ("E-OBJECTIVE-MISSING-DONE", DiagnosticClass::SourceError),
         ("E-OBJECTIVE-QUEST-DONE", DiagnosticClass::SourceError),
+        ("E-OBJECTIVE-TITLE-INTERP", DiagnosticClass::SourceError),
         (
             "E-OBJECTIVE-UNSATISFIABLE",
             DiagnosticClass::Analysis {

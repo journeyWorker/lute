@@ -1,5 +1,5 @@
 //! The one walker over a COMPILED execution IR (the executable counterpart of
-//! `docs/runtime/` + `schemas/lute-ir-0.51.schema.json`), parameterised by a
+//! `docs/runtime/` + `schemas/lute-ir-0.52.schema.json`), parameterised by a
 //! [`Driver`] (`docs/design/runtime-unification.md` §3.2). `lute run`
 //! (`RunDriver`), `lute play` (`PlayDriver`) and `lute trace` / `lute test`
 //! (`TraceDriver`) execute through it.
@@ -63,12 +63,17 @@ mod commands;
 mod entry;
 mod format;
 #[cfg(test)]
+mod hub_leave_tests;
+#[cfg(test)]
 mod loop_tests;
 mod menu;
+#[cfg(test)]
+mod menu_text_tests;
 mod plugin;
 mod quest;
 
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use serde_json::{json, Value as Json};
@@ -91,8 +96,22 @@ pub(crate) enum Step {
     /// dsl 0.51.0 §3.7: a taken bounded backward jump — continue at this
     /// index (its head); the range's runaway guard counts from here.
     Loop(usize),
+    /// dsl 0.52.0 §5.3: a jump that leaves `hubs` hub option or `<return>`
+    /// ranges — the range ends at once, and each enclosing hub visit it
+    /// leaves ends ([`Machine::do_hub`]) until control continues at `to`.
+    Leave { to: usize, hubs: NonZeroU32 },
     /// Halt the walk (incomplete decision or a hard error already recorded).
     Halt,
+}
+
+/// How a range ([`Machine::run_range`]) ended (dsl 0.52.0 §5.3).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[must_use]
+pub(crate) enum RangeEnd {
+    /// It ran off its end, a transfer left it, or the walk stopped.
+    Done,
+    /// A [`Step::Leave`] was taken: the hub visits it leaves end.
+    Leave { to: usize, hubs: NonZeroU32 },
 }
 
 /// Why a runner walk stopped short ([`Machine::run`],
@@ -271,7 +290,8 @@ pub(crate) struct Code {
     pub(crate) fault: Option<String>,
 }
 
-/// dsl 0.51.0 §3.7: the bounded jumps of a command stream.
+/// dsl 0.51.0 §3.7: the bounded jumps of a command stream; dsl 0.52.0 §5.3:
+/// its jumps that leave hubs.
 #[derive(Debug, Default)]
 struct Loops {
     /// Loop head index → the index of every bounded jump to it. A bounded
@@ -280,6 +300,9 @@ struct Loops {
     heads: BTreeMap<usize, Vec<usize>>,
     /// Every `jump` with `max`, by index: its bound.
     bounds: BTreeMap<usize, u8>,
+    /// Every `jump` with `leaves`, by index: how many hub visits it ends
+    /// (validated against the hub ranges around it, [`Code::hub_leaves`]).
+    leaves: BTreeMap<usize, NonZeroU32>,
 }
 
 impl std::fmt::Debug for Code {
@@ -353,7 +376,10 @@ impl Code {
     /// record ([`transfers`]) is a position string where the field is
     /// required or present, and goes forward, except a `jump` with `max` (a
     /// bounded loop); a `max` is an integer in 1..=99; and two loops nest or
-    /// are disjoint. `Err` names the malformed record.
+    /// are disjoint. dsl 0.52.0 §5.3: a `leaves` is a positive count, never
+    /// beside `max`, and reaches its target ([`Code::hub_leaves`]); and no
+    /// transfer enters a hub option or `<return>` body from outside it
+    /// ([`Code::body_entries`]). `Err` names the malformed record.
     fn loop_table(&self) -> Result<Loops, String> {
         let mut loops = Loops::default();
         let mut regions = Vec::new();
@@ -379,10 +405,32 @@ impl Code {
                 ),
                 _ => None,
             };
+            // dsl 0.52.0 §5.3: `leaves` is a count of at least 1, never on a
+            // bounded jump (a bounded jump never leaves a hub).
+            if let (Some(leaves), "jump") = (cmd.get("leaves"), kind) {
+                let count = leaves
+                    .as_u64()
+                    .and_then(|n| u32::try_from(n).ok())
+                    .and_then(NonZeroU32::new)
+                    .ok_or_else(|| {
+                        format!(
+                            "malformed `jump` record at {position}: `leaves` must be a positive \
+                             integer, got {leaves}"
+                        )
+                    })?;
+                if bound.is_some() {
+                    return Err(format!(
+                        "malformed `jump` record at {position}: it carries both `max` and \
+                         `leaves`, but a bounded jump never leaves a hub"
+                    ));
+                }
+                loops.leaves.insert(j, count);
+            }
             for Transfer {
                 field,
                 value,
                 required,
+                ..
             } in fields
             {
                 let target = match value {
@@ -439,7 +487,219 @@ impl Code {
             }
             open.push((head, end));
         }
+        let bodies = self.hub_bodies();
+        self.hub_leaves(&bodies, &loops.leaves)?;
+        self.body_entries(&bodies)?;
         Ok(loops)
+    }
+
+    /// dsl 0.52.0 §5.3: the ranges [`Machine::do_hub`] runs for the hub
+    /// record `cmd`, a well-formed record ([`Code::loop_table`]).
+    pub(crate) fn hub_ranges(&self, cmd: &Json) -> HubRanges {
+        let options: &[Json] = cmd
+            .get("options")
+            .and_then(Json::as_array)
+            .map_or(&[], Vec::as_slice);
+        // Segment starts in stream order: every option target, then the
+        // `<return>` segment (dsl 0.28.0 §5), then the converge. A segment
+        // runs from its start up to the NEXT start in this order (a
+        // non-`exit` option never falls through into the next option's body
+        // or the return block). Two starts on one address mean an empty
+        // segment — never the following segment's body.
+        let back = cmd
+            .get("return")
+            .and_then(Json::as_str)
+            .map(|t| self.resolve(t));
+        let converge = self.resolve(required_target(cmd, "converge"));
+        let mut starts: Vec<usize> = options
+            .iter()
+            .map(|o| self.resolve(required_target(o, "target")))
+            .collect();
+        starts.extend(back);
+        starts.push(converge);
+        HubRanges {
+            starts,
+            back,
+            converge,
+        }
+    }
+
+    /// Every hub option and `<return>` range of the stream, `(start, end,
+    /// hub)`: the range a [`Machine::do_hub`] visit runs, and its hub
+    /// record's index.
+    fn hub_bodies(&self) -> Vec<(usize, usize, usize)> {
+        self.commands
+            .iter()
+            .enumerate()
+            .filter(|(_, c)| c.get("kind").and_then(Json::as_str) == Some("hub"))
+            .flat_map(|(h, c)| {
+                self.hub_ranges(c)
+                    .starts
+                    .windows(2)
+                    .map(|w| (w[0], w[1], h))
+                    .collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    /// dsl 0.52.0 §5.3 (S3 review P1): a hub option or `<return>` body is
+    /// entered only through its `hub` record. A transfer from outside a body
+    /// to a record inside it would run the body without a hub visit, so a
+    /// leave from it would reach no visit to end; it is refused, naming the
+    /// record and field. A transfer within the running range to the end of a
+    /// range around it is not an entry, even where that address starts the
+    /// next body (consecutive option bodies, a branch converging at the end
+    /// of an option): reaching it ends the range ([`Machine::run_range`]). A
+    /// declaration's body start ([`TransferRole::BodyStart`]) ends no range —
+    /// the body runs as its own — so it never lands inside a hub body (S4
+    /// review P2).
+    fn body_entries(&self, bodies: &[(usize, usize, usize)]) -> Result<(), String> {
+        if bodies.is_empty() {
+            return Ok(());
+        }
+        let segments = self.segment_bounds();
+        for (j, cmd) in self.commands.iter().enumerate() {
+            let Some(fields) = transfers(cmd) else {
+                continue;
+            };
+            let segment_end = segments
+                .iter()
+                .copied()
+                .find(|&s| s > j)
+                .unwrap_or(self.commands.len());
+            for Transfer {
+                field, value, role, ..
+            } in fields
+            {
+                let Some(Json::String(target)) = value else {
+                    continue;
+                };
+                let to = self.resolve(target);
+                let ends_a_range = role == TransferRole::InRange
+                    && (to == segment_end
+                        || bodies
+                            .iter()
+                            .any(|&(s, e, _)| (s..e).contains(&j) && e == to));
+                let enters = !ends_a_range
+                    && bodies
+                        .iter()
+                        .any(|&(s, e, h)| (s..e).contains(&to) && !(s..e).contains(&j) && j != h);
+                if enters {
+                    let kind = cmd.get("kind").and_then(Json::as_str).unwrap_or("?");
+                    let position = cmd.get("position").and_then(Json::as_str).unwrap_or("?");
+                    return Err(format!(
+                        "malformed `{kind}` record at {position}: its `{field}` goes to {target}, \
+                         inside a hub option or `<return>` body it is not in; a body is entered \
+                         only through its `hub` record"
+                    ));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// dsl 0.52.0 §5.3 (Review052 F1): every `jump` with `leaves` = *n*
+    /// leaves exactly the *n* innermost hub option or `<return>` ranges
+    /// around it for its target's range. With those removed, the innermost
+    /// remaining range — a hub range, or the body segment the jump runs in
+    /// (a scene's whole stream, an objective, handler, entry or beat body) —
+    /// holds the target, its end included (a jump to a range's end ends that
+    /// range), and no hub range inside it holds the target. An undercount
+    /// would present an outer hub again (#216), an overcount would skip the
+    /// rest of a body it should stay in, and a target in a sibling body is
+    /// in no remaining range: each is refused, naming the jump and the count
+    /// that reaches its target.
+    fn hub_leaves(
+        &self,
+        bodies: &[(usize, usize, usize)],
+        leaves: &BTreeMap<usize, NonZeroU32>,
+    ) -> Result<(), String> {
+        if leaves.is_empty() {
+            return Ok(());
+        }
+        let hubs: Vec<(usize, usize)> = bodies.iter().map(|&(s, e, _)| (s, e)).collect();
+        let segments = self.segment_bounds();
+        for (&j, &n) in leaves {
+            let cmd = &self.commands[j];
+            let position = cmd.get("position").and_then(Json::as_str).unwrap_or("?");
+            let target = required_target(cmd, "target");
+            let to = self.resolve(target);
+            // The hub ranges around the jump, innermost first, then its body
+            // segment.
+            let mut chain: Vec<(usize, usize)> = hubs
+                .iter()
+                .copied()
+                .filter(|&(s, e)| s <= j && j < e)
+                .collect();
+            chain.sort_by(|a, b| (a.1 - a.0).cmp(&(b.1 - b.0)).then(b.0.cmp(&a.0)));
+            let start = segments
+                .iter()
+                .rev()
+                .copied()
+                .find(|&s| s <= j)
+                .unwrap_or(0);
+            let stop = segments
+                .iter()
+                .copied()
+                .find(|&s| s > j)
+                .unwrap_or(self.commands.len());
+            chain.push((start, stop));
+            let reaches = |(s, e): (usize, usize)| {
+                (s..=e).contains(&to)
+                    && !hubs
+                        .iter()
+                        .any(|&(hs, he)| s < hs && he <= e && (hs..he).contains(&to))
+            };
+            let left = usize::try_from(n.get()).expect("a u32 count fits in usize");
+            if chain.get(left).is_some_and(|&range| reaches(range)) {
+                continue;
+            }
+            return Err(match chain.iter().position(|&range| reaches(range)) {
+                Some(expected) => format!(
+                    "malformed `jump` record at {position}: `leaves` is {n}, but reaching its \
+                     target {target} leaves {expected} hub option or `<return>` bodies"
+                ),
+                None => format!(
+                    "malformed `jump` record at {position}: `leaves` is {n}, but its target \
+                     {target} lies in a body the jump is not in"
+                ),
+            });
+        }
+        Ok(())
+    }
+
+    /// The start of every body segment a quest or lore artifact runs on its
+    /// own (objective, handler, entry and beat bodies, and the entry and
+    /// beat head records that end the segment before them), sorted: a
+    /// segment runs from one to the next ([`Machine::run_segment`],
+    /// `segment_stop`). Empty for a scene, which runs as one range.
+    fn segment_bounds(&self) -> Vec<usize> {
+        let mut bounds = Vec::new();
+        for (i, cmd) in self.commands.iter().enumerate() {
+            match cmd.get("kind").and_then(Json::as_str) {
+                Some("quest") => {
+                    let objectives = cmd
+                        .get("objectives")
+                        .and_then(Json::as_array)
+                        .map_or(&[][..], Vec::as_slice);
+                    bounds.extend(
+                        objectives
+                            .iter()
+                            .filter_map(|o| o.get("body").and_then(Json::as_str))
+                            .map(|b| self.resolve(b)),
+                    );
+                }
+                Some("on") => bounds.push(self.resolve(required_target(cmd, "body"))),
+                Some("entry" | "beat") => {
+                    bounds.push(i);
+                    bounds.push(self.resolve(required_target(cmd, "body")));
+                }
+                _ => {}
+            }
+        }
+        bounds.sort_unstable();
+        bounds.dedup();
+        bounds
     }
 
     /// The decoded slot of a `{cel, expr}` pair (`None` when absent or its
@@ -459,6 +719,17 @@ impl Code {
 /// dsl 0.51.0 §3.1: the largest `max` a bounded jump may carry.
 const JUMP_MAX_LIMIT: u8 = 99;
 
+/// The ranges of one hub record ([`Code::hub_ranges`]).
+pub(crate) struct HubRanges {
+    /// Every option's range start in order, then the `<return>` range's,
+    /// then the converge: range *i* is `starts[i]..starts[i + 1]`.
+    pub(crate) starts: Vec<usize>,
+    /// The `<return>` range's start.
+    pub(crate) back: Option<usize>,
+    /// Where control continues after the hub.
+    pub(crate) converge: usize,
+}
+
 /// One control transfer field of a record ([`transfers`]).
 struct Transfer<'a> {
     field: &'static str,
@@ -467,6 +738,20 @@ struct Transfer<'a> {
     /// The executor reads it unconditionally ([`required_target`]): absent
     /// or not a position string, the record is malformed.
     required: bool,
+    role: TransferRole,
+}
+
+/// What a [`Transfer`] starts.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TransferRole {
+    /// Control moves within the running range: a jump, a menu's option,
+    /// `return` or `converge`, a match arm. Reaching the end of a range
+    /// around it ends that range.
+    InRange,
+    /// A declaration's body: a quest objective, handler, entry or beat runs
+    /// it as its own range, never as the end of the range around the
+    /// declaration (S4 review P2).
+    BodyStart,
 }
 
 /// Every control transfer `cmd` makes — the one list the load check walks
@@ -477,15 +762,22 @@ struct Transfer<'a> {
 /// [`Machine::do_hub`]'s loop (its options, `return` and `converge` all point
 /// forward).
 fn transfers(cmd: &Json) -> Option<Vec<Transfer<'_>>> {
-    fn field<'a>(field: &'static str, of: &'a Json, required: bool) -> Transfer<'a> {
+    fn field<'a>(
+        field: &'static str,
+        of: &'a Json,
+        required: bool,
+        role: TransferRole,
+    ) -> Transfer<'a> {
         // `options[].target` names the `target` key of each option.
         let key = field.rsplit('.').next().unwrap_or(field);
         Transfer {
             field,
             value: of.get(key),
             required,
+            role,
         }
     }
+    use TransferRole::{BodyStart, InRange};
     let each = |key: &str| {
         cmd.get(key)
             .and_then(Json::as_array)
@@ -494,29 +786,29 @@ fn transfers(cmd: &Json) -> Option<Vec<Transfer<'_>>> {
     };
     let mut out = Vec::new();
     match cmd.get("kind").and_then(Json::as_str).unwrap_or("") {
-        "jump" => out.push(field("target", cmd, true)),
+        "jump" => out.push(field("target", cmd, true, InRange)),
         "choice" | "hub" => {
             for option in each("options") {
-                out.push(field("options[].target", option, true));
+                out.push(field("options[].target", option, true, InRange));
             }
-            out.push(field("return", cmd, false));
-            out.push(field("converge", cmd, true));
+            out.push(field("return", cmd, false, InRange));
+            out.push(field("converge", cmd, true, InRange));
         }
         "match" => {
             for arm in each("arms") {
-                out.push(field("arms[].target", arm, true));
+                out.push(field("arms[].target", arm, true, InRange));
             }
-            out.push(field("otherwise", cmd, false));
-            out.push(field("converge", cmd, true));
+            out.push(field("otherwise", cmd, false, InRange));
+            out.push(field("converge", cmd, true, InRange));
         }
         // Segment starts: the body a quest objective, handler, entry or
         // beat runs, after its declaration.
         "quest" => {
             for objective in each("objectives") {
-                out.push(field("objectives[].body", objective, false));
+                out.push(field("objectives[].body", objective, false, BodyStart));
             }
         }
-        "on" | "entry" | "beat" => out.push(field("body", cmd, true)),
+        "on" | "entry" | "beat" => out.push(field("body", cmd, true, BodyStart)),
         "accept" | "actor" | "assert" | "barrier" | "bg" | "camera" | "cg" | "end" | "line"
         | "music" | "plugin" | "retract" | "sequence" | "set" | "sfx" | "vfx" | "video" => {}
         _ => return None,
@@ -844,7 +1136,7 @@ impl<D: Driver> Machine<D> {
                 self.run_entry();
             }
         } else {
-            self.run_range(0, self.code.commands.len());
+            self.run_body(0, self.code.commands.len());
         }
         self.store.derive();
         self.take_fatal()
@@ -942,9 +1234,11 @@ impl<D: Driver> Machine<D> {
     /// `end` record has run (or the walk halted) the walk is over, so every
     /// LATER segment (a quest `<on>` body, an objective body) is a no-op —
     /// the one guard here is what makes that true for all of them at once.
-    fn run_range(&mut self, start: usize, stop: usize) {
+    /// dsl 0.52.0 §5.3: a [`Step::Leave`] ends the range at once, as
+    /// [`RangeEnd::Leave`]; only [`Machine::do_hub`] acts on it.
+    fn run_range(&mut self, start: usize, stop: usize) -> RangeEnd {
         if self.stopped() {
-            return;
+            return RangeEnd::Done;
         }
         let mut pc = start;
         self.arrive(None, start);
@@ -954,18 +1248,19 @@ impl<D: Driver> Machine<D> {
             guard += 1;
             if guard > limit {
                 self.fatal = Some("execution did not terminate (control-flow cycle?)".into());
-                return;
+                return RangeEnd::Done;
             }
             let (n, took_loop) = match self.step(pc) {
                 Step::Next(n) => (n, false),
                 Step::Loop(n) => (n, true),
-                Step::Halt => return,
+                Step::Leave { to, hubs } => return RangeEnd::Leave { to, hubs },
+                Step::Halt => return RangeEnd::Done,
             };
             if self.fatal.is_some() || self.incomplete || self.terminated {
-                return;
+                return RangeEnd::Done;
             }
             if n < start || n >= stop {
-                return;
+                return RangeEnd::Done;
             }
             // dsl 0.51.0 §3.7: between two bounded takes the walk only moves
             // forward, so the guard counts from the last take; a cycle without
@@ -976,6 +1271,22 @@ impl<D: Driver> Machine<D> {
             self.arrive(Some(pc), n);
             pc = n;
         }
+        RangeEnd::Done
+    }
+
+    /// [`Machine::run_range`] over a body segment no hub encloses: the whole
+    /// scene, or an objective, handler, entry or beat body. Load guarantees
+    /// such a range never ends in a leave: a jump leaves at most the hub
+    /// ranges around it ([`Code::hub_leaves`]), and no transfer enters a hub
+    /// body without its `hub` record ([`Code::body_entries`]), so every leave
+    /// reaches the [`Machine::do_hub`] visit it ends.
+    pub(crate) fn run_body(&mut self, start: usize, stop: usize) {
+        let end = self.run_range(start, stop);
+        assert!(
+            matches!(end, RangeEnd::Done),
+            "load guarantees a body segment never ends in a leave (Code::hub_leaves, \
+             Code::body_entries)"
+        );
     }
 
     /// dsl 0.51.0 §3.7, reset by position: control moves from `from` (`None`:
@@ -998,14 +1309,18 @@ impl<D: Driver> Machine<D> {
     /// dsl 0.51.0 §3.7: a jump with `max` (validated at load,
     /// [`Code::loop_table`]) is taken while its counter is below `max`
     /// ([`Step::Loop`], observed with the take number), then falls through
-    /// (observed as exhausted).
+    /// (observed as exhausted). dsl 0.52.0 §5.3: a jump with `leaves` is a
+    /// [`Step::Leave`].
     fn do_jump(&mut self, cmd: &Json, pc: usize) -> Step {
         let position = cmd.get("position");
         let target = self.resolve(required_target(cmd, "target"));
         let Some(&max) = self.code.loops.bounds.get(&pc) else {
             self.driver
                 .observe(json!({ "kind": "jump", "position": position }));
-            return Step::Next(target);
+            return match self.code.loops.leaves.get(&pc) {
+                Some(&hubs) => Step::Leave { to: target, hubs },
+                None => Step::Next(target),
+            };
         };
         let taken = self.loop_counts.get(&pc).copied().unwrap_or(0);
         if taken >= max {

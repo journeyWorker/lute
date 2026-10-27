@@ -9,14 +9,21 @@ use serde_json::{json, Value as Json};
 
 use super::format::value_to_json;
 use super::{
-    addr, required_target, Machine, Site, Step, NOTE_NO_DECISION, NOTE_NO_ELIGIBLE, NOTE_SKIPPED,
+    addr, required_target, HubRanges, Machine, RangeEnd, Site, Step, NOTE_NO_DECISION,
+    NOTE_NO_ELIGIBLE, NOTE_SKIPPED,
 };
 use crate::driver::{
-    guard_premise, Driver, Forced, GuardRead, Menu, MenuKind, MenuOption, Pick, SiteKind, Verdict,
+    guard_premise, Driver, Forced, GuardRead, Menu, MenuKind, MenuOption, MenuText, Pick, SiteKind,
+    Verdict,
 };
 use crate::eval::Read;
 use crate::expr::{guard_atoms, Expr, Func, GuardAtom, Slot};
 use crate::{UnresolvedAtom, Value};
+
+/// The IR keys of an option label: its text, placeholders and translations.
+const OPTION_TEXT: [&str; 3] = ["text", "placeholders", "texts"];
+/// The IR keys of a `<branch>`/`<hub>` prompt (0.52.0 §6.2).
+const PROMPT_TEXT: [&str; 3] = ["prompt", "promptPlaceholders", "promptTexts"];
 
 /// One premise of a failed rule attempt, named for a refusal when it is
 /// what the attempt misses (HW27-10).
@@ -287,10 +294,10 @@ impl<D: Driver> Machine<D> {
         }
     }
 
-    /// A branch's options judged right now — what its menu shows. Display
-    /// only: the evaluation never feeds [`Machine::unresolved`], so an
-    /// unchosen option's unknown guard cannot halt a playthrough (an unknown
-    /// guard counts as offered).
+    /// A branch's options judged right now — what its menu shows, each label
+    /// rendered ([`Self::menu_text`]). Display only: the evaluation never
+    /// feeds [`Machine::unresolved`], so an unchosen option's unknown guard
+    /// cannot halt a playthrough (an unknown guard counts as offered).
     fn branch_verdicts(&mut self, options: &[Json]) -> Vec<MenuOption> {
         let mark = self.unresolved.len();
         let mut out = Vec::new();
@@ -304,6 +311,7 @@ impl<D: Driver> Machine<D> {
             };
             out.push(MenuOption {
                 id: oid.to_string(),
+                text: self.menu_text(o, OPTION_TEXT).unwrap_or_default(),
                 verdict,
                 exit: o.get("exit").and_then(Json::as_bool).unwrap_or(false),
                 once: o.get("once").and_then(Json::as_bool).unwrap_or(false),
@@ -311,6 +319,29 @@ impl<D: Driver> Machine<D> {
         }
         self.unresolved.truncate(mark);
         out
+    }
+
+    /// A menu text of `rec` — an option label (`keys` [`OPTION_TEXT`]) or a
+    /// prompt ([`PROMPT_TEXT`]) — rendered at this presentation with the
+    /// line renderer ([`Machine::render_text`]; 0.52.0 §6.3): an unknown
+    /// marker or a host token keeps its verbatim text. Display only, like
+    /// the verdicts: it never halts the walk ([`Machine::text_halts`] is not
+    /// asked) and never feeds [`Machine::unresolved`]. `None` when `rec` has
+    /// no such text.
+    fn menu_text(
+        &mut self,
+        rec: &Json,
+        [text, placeholders, texts]: [&str; 3],
+    ) -> Option<MenuText> {
+        let raw = rec.get(text)?.as_str()?;
+        let mark = self.unresolved.len();
+        let (rendered, _) = self.render_text(
+            raw,
+            rec.get(placeholders).and_then(Json::as_array),
+            rec.get(texts),
+        );
+        self.unresolved.truncate(mark);
+        Some(rendered)
     }
 
     /// The `E-TRACE-CHOICE` text for a picked option the driver refused; a
@@ -366,6 +397,8 @@ impl<D: Driver> Machine<D> {
             .and_then(Json::as_array)
             .map_or(&[], Vec::as_slice);
 
+        // The prompt shows with the menu, so it renders before the options.
+        let prompt = self.menu_text(cmd, PROMPT_TEXT);
         let judged = self.branch_verdicts(options);
         // A menu marks what was not offered.
         let closed: Vec<&str> = judged
@@ -378,6 +411,7 @@ impl<D: Driver> Machine<D> {
             id: &branch,
             addr: addr(cmd),
             presentation: 0,
+            prompt,
             options: &judged,
             timeout: cmd
                 .get("timeout")
@@ -487,6 +521,8 @@ impl<D: Driver> Machine<D> {
     /// convergence. Exhaustion with eligible options still standing halts
     /// incomplete (`self.incomplete = true`, exit 3) rather than silently
     /// converging. Every iteration consumes one decision or leaves the loop.
+    /// dsl 0.52.0 §5.3: an option or `<return>` range that ends in a leave
+    /// ends the visit at once ([`leave_hub`]).
     pub(crate) fn do_hub(&mut self, cmd: &Json) -> Step {
         let id = cmd
             .get("id")
@@ -497,36 +533,26 @@ impl<D: Driver> Machine<D> {
             .get("selectionKey")
             .and_then(Json::as_str)
             .map(str::to_string);
-        // dsl 0.23.0 §4: `<hub prompt>` rides every presentation record.
-        let prompt = cmd.get("prompt").and_then(Json::as_str).map(str::to_string);
-        let converge = required_target(cmd, "converge");
-        let converge_idx = self.resolve(converge);
         let options: &[Json] = cmd
             .get("options")
             .and_then(Json::as_array)
             .map_or(&[], Vec::as_slice);
-
-        // Segment starts in stream order: every option target, then the
-        // `<return>` segment (dsl 0.28.0 §5), then the converge. A segment
-        // runs from its start up to the NEXT start in this order (a non-`exit`
-        // option never falls through into the next option's body or the
-        // return block). Two starts on one address mean an empty segment —
-        // never the following segment's body.
-        let return_idx = cmd
-            .get("return")
-            .and_then(Json::as_str)
-            .map(|t| self.resolve(t));
-        let mut starts: Vec<usize> = options
-            .iter()
-            .map(|o| self.resolve(required_target(o, "target")))
-            .collect();
-        starts.extend(return_idx);
-        starts.push(converge_idx);
+        // The ranges this hub runs: each option's, then the `<return>`
+        // segment's, up to the converge (Code::hub_ranges, the one layout
+        // the load check of `leaves` reads too).
+        let HubRanges {
+            starts,
+            back: return_idx,
+            converge: converge_idx,
+        } = self.code.hub_ranges(cmd);
 
         let mut presentation = 0usize;
         // [`Pick::HubAutoPass`]: the next menu position the pass considers.
         let mut auto_at = 0usize;
         loop {
+            // dsl 0.23.0 §4: `<hub prompt>` rides every presentation record,
+            // rendered at each presentation (0.52.0 §6.3) like the labels.
+            let prompt = self.menu_text(cmd, PROMPT_TEXT);
             // Eligible = not a `once` option already taken (its
             // `scene.visited.<hub>.<option>` is true, D8: the memory is the
             // reserved visit record, so a hub `::jump` re-enters still knows
@@ -551,6 +577,7 @@ impl<D: Driver> Machine<D> {
                 };
                 judged.push(MenuOption {
                     id: oid.to_string(),
+                    text: self.menu_text(o, OPTION_TEXT).unwrap_or_default(),
                     verdict,
                     exit: o.get("exit").and_then(Json::as_bool).unwrap_or(false),
                     once,
@@ -582,7 +609,7 @@ impl<D: Driver> Machine<D> {
                 rec.insert("kind".into(), Json::String("hub".into()));
                 rec.insert("hub".into(), Json::String(id.clone()));
                 if let Some(p) = &prompt {
-                    rec.insert("prompt".into(), Json::String(p.clone()));
+                    rec.insert("prompt".into(), Json::String(p.text.clone()));
                 }
                 rec.insert("chose".into(), chose);
                 rec
@@ -593,6 +620,7 @@ impl<D: Driver> Machine<D> {
                 id: &id,
                 addr: addr(cmd),
                 presentation,
+                prompt: prompt.clone(),
                 options: &judged,
                 timeout: None,
                 default: None,
@@ -714,7 +742,9 @@ impl<D: Driver> Machine<D> {
             let mut rec = head(Json::String(choice_id.clone()));
             marks(&mut rec);
             self.driver.emit(Json::Object(rec));
-            self.run_range(starts[at], starts[at + 1]);
+            if let RangeEnd::Leave { to, hubs } = self.run_range(starts[at], starts[at + 1]) {
+                return leave_hub(to, hubs);
+            }
             if self.stopped() {
                 return Step::Halt;
             }
@@ -730,7 +760,9 @@ impl<D: Driver> Machine<D> {
                     "kind": "hubReturn",
                     "hub": id,
                 }));
-                self.run_range(back, converge_idx);
+                if let RangeEnd::Leave { to, hubs } = self.run_range(back, converge_idx) {
+                    return leave_hub(to, hubs);
+                }
                 if self.stopped() {
                     return Step::Halt;
                 }
@@ -860,6 +892,16 @@ impl<D: Driver> Machine<D> {
             "result": result,
         }));
         Step::Next(self.resolve(target))
+    }
+}
+
+/// dsl 0.52.0 §5.3: a hub visit ended by a leave of `hubs` hub ranges:
+/// control continues at `to` when this hub was the last one left, else the
+/// leave goes on to the range around the hub.
+fn leave_hub(to: usize, hubs: std::num::NonZeroU32) -> Step {
+    match std::num::NonZeroU32::new(hubs.get() - 1) {
+        None => Step::Next(to),
+        Some(hubs) => Step::Leave { to, hubs },
     }
 }
 

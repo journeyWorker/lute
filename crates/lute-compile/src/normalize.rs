@@ -24,7 +24,7 @@ use lute_manifest::snapshot::{CapabilitySnapshot, Domain};
 use lute_manifest::types::Type;
 use lute_syntax::ast::{
     classify_interp, interp_from_inner, Arm, Attr, AttrValue, CelKind, CelSlot, Choice, ClipNode,
-    Directive, Document, Interp, InterpKind, Line, Match, Node, Set,
+    Directive, Document, InlineNode, Interp, InterpKind, Line, Match, Node, Set,
 };
 use lute_syntax::line_text::{interp_markers, InterpSite};
 
@@ -366,6 +366,10 @@ struct Components<'a> {
     cast: &'a BTreeMap<String, CastMember>,
     domains: &'a BTreeMap<String, Domain>,
     snapshot: &'a CapabilitySnapshot,
+    /// The outermost `::use` being expanded (`None` outside an expansion):
+    /// a fault of the text an expansion splices is reported there, the
+    /// component-body anchoring (0.52.0 §3.1).
+    site: Option<Span>,
 }
 
 /// Per-owner component instance allocation. Explicit keys are independent of
@@ -402,6 +406,7 @@ pub fn normalize_document(
         cast,
         domains,
         snapshot,
+        site: None,
     };
     let mut diags = Vec::new();
     // One ordinal counter per identity scope (see `COMPONENT_SCOPE_ATTR`):
@@ -1154,10 +1159,28 @@ fn expand_use(
     // name as the text does, and a `{{@p}}` in a line attribute string is
     // interpolated.
     visit_lines(&mut body, &mut |l| bind_line_head(l, &args, &names));
+    // 0.52.0 §3.1: the first spliced `E-INTERP-BRACE`, reported once at the
+    // outermost `::use` (a nested one's arguments come from this one's).
+    let site = components.site.unwrap_or(d.span);
+    let mut brace = None;
     if !names.is_empty() {
-        visit_lines(&mut body, &mut |l| bind_text(l, &names));
+        visit_lines(&mut body, &mut |l| {
+            if let Some(found) = bind_text(l, &names) {
+                brace.get_or_insert(found);
+            }
+        });
     }
-    bind_component_body(&mut body, &args, &def.params, &mut |l| bind_text(l, &args));
+    bind_component_body(&mut body, &args, &def.params, &mut |l| {
+        if let Some(found) = bind_text(l, &args) {
+            brace.get_or_insert(found);
+        }
+    });
+    if let Some(found) = brace {
+        diags.push(Diagnostic {
+            span: site,
+            ..found
+        });
+    }
     // 0.51.0 §5.4: a `text` attribute's `{{@p}}` binds as a line's text
     // does, before lowering makes its placeholders.
     bind_text_attrs(&mut body, components.snapshot, &args, &names);
@@ -1165,7 +1188,10 @@ fn expand_use(
     // this expansion is the nested uses' host, so they count from 1 afresh.
     normalize_nodes(
         &mut body,
-        components,
+        &Components {
+            site: Some(site),
+            ..*components
+        },
         schema,
         &mut UseIdentityState::default(),
         diags,
@@ -1237,7 +1263,11 @@ fn expand_use(
 /// the REWRITTEN `text` (base `l.text_span`), since a rebound `{{@def}}` and a
 /// spliced literal change the text's length — consumers slice `l.text` by
 /// `interp.span - text_span.byte_start` (trace's `render_line_text`).
-fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
+///
+/// 0.52.0 §3.1: returns the `E-INTERP-BRACE` the bound text has (a spliced
+/// argument ending in an odd run of `{` directly before a marker,
+/// [`spliced_brace`]); the caller reports it at the `::use`.
+fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) -> Option<Diagnostic> {
     let bound = |interp: &Interp| -> Option<&AttrValue> {
         (interp.kind == InterpKind::Ref)
             .then(|| interp.raw.strip_prefix('@'))
@@ -1245,13 +1275,15 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
             .and_then(|name| args.get(name))
     };
     if !l.interps.iter().any(|i| bound(i).is_some()) {
-        return;
+        return None;
     }
     let base = l.text_span.byte_start;
     let text = &l.text;
     let mut out = String::with_capacity(text.len());
     // Each kept interp with its `[start, end)` in `out`.
     let mut kept: Vec<(Interp, usize, usize)> = Vec::with_capacity(l.interps.len());
+    // The `[start, end)` of each spliced literal argument in `out`.
+    let mut spliced: Vec<(usize, usize)> = Vec::new();
     let mut interps = std::mem::take(&mut l.interps).into_iter();
     let mut copied = 0;
     for site in lute_syntax::line_text::interp_sites(text) {
@@ -1280,6 +1312,7 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
                 // modifier syntax (or close an authored span).
                 let lit = escape_inline_literal(&literal_text(&interp, &s));
                 out.push_str(&lit);
+                spliced.push((at, out.len()));
                 // dsl 0.26.0 §3.1: a `{{…}}` inside a string argument is
                 // an interpolation exactly as in direct text — it keeps
                 // its placeholder record.
@@ -1315,7 +1348,90 @@ fn bind_text(l: &mut Line, args: &BTreeMap<String, AttrValue>) {
     // The spliced text re-runs the inline grammar (dsl 0.37.0 §3.6), so the
     // lowered plain text and segments follow the bound text.
     l.inline = lute_syntax::parse_inline_text(&out).0;
+    let brace = spliced_brace(&out, &l.inline, &spliced);
     l.text = out;
+    brace
+}
+
+/// 0.52.0 §3.1: the `E-INTERP-BRACE` of bound text `out` (parsed as
+/// `written`), judged with each spliced literal argument (`spliced`, ranges
+/// of `out`) fenced by an empty leaf modifier on both sides (`:x{}`). A
+/// literal argument ending in `{` is written `\{`, which fuses with a `{{`
+/// after it (`\{{{run.a}}` reads as a literal `{{` and no marker); the fence
+/// keeps the two apart, and since a modifier is no text, the fenced parse
+/// is the text the expansion means. A leaf, not a span: a `{` right after a
+/// span's `]` opens its attributes.
+///
+/// - An odd run of `{` before a marker in the meant text is the line-text
+///   fault ([`lute_syntax::line_text::brace_before_marker`]).
+/// - An even run cannot be written by a plain argument either: a plain `{{`
+///   in an argument is an opener without its `}}` (dsl 0.26.0 §3.1), and its
+///   `\{\{` fuses with the marker after it, which `written` then lacks
+///   (#221). The one spelling of a literal `{{` in an argument is `\\{{`
+///   (lute 0.47.1), which never fuses.
+fn spliced_brace(
+    out: &str,
+    written: &[InlineNode],
+    spliced: &[(usize, usize)],
+) -> Option<Diagnostic> {
+    const FENCE: &str = ":x{}";
+    if spliced.is_empty() {
+        return None;
+    }
+    let mut probe = String::with_capacity(out.len() + 2 * FENCE.len() * spliced.len());
+    let mut copied = 0;
+    for &(start, end) in spliced {
+        probe.push_str(&out[copied..start]);
+        probe.push_str(FENCE);
+        probe.push_str(&out[start..end]);
+        probe.push_str(FENCE);
+        copied = end;
+    }
+    probe.push_str(&out[copied..]);
+    let (meant, diags) = lute_syntax::parse_inline_text(&probe);
+    if let Some(found) = diags
+        .into_iter()
+        .find(|d| d.code == lute_syntax::parser::E_INTERP_BRACE)
+    {
+        return Some(found);
+    }
+    let (mut meant_markers, mut written_markers) = (Vec::new(), Vec::new());
+    markers(&meant, &mut meant_markers);
+    markers(written, &mut written_markers);
+    let lost = meant_markers
+        .iter()
+        .zip(&written_markers)
+        .find(|(m, w)| m.source != w.source)
+        .map(|(m, _)| *m)
+        .or_else(|| meant_markers.get(written_markers.len()).copied())?;
+    Some(Diagnostic {
+        code: lute_syntax::parser::E_INTERP_BRACE.to_string(),
+        severity: Severity::Error,
+        message: format!(
+            "a `::use` argument ending in a plain `{{{{` merges with the `{{{{{}}}}}` spliced after \
+             it, and the marker is lost: pass a literal `{{{{` in an argument as `\\\\{{{{` (lute \
+             0.47.1)",
+            lost.source
+        ),
+        evidence: None,
+        span: lost.span,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    })
+}
+
+/// Every `{{…}}` marker of `nodes`, in order, modifier spans included.
+fn markers<'a>(nodes: &'a [InlineNode], out: &mut Vec<&'a Interp>) {
+    for node in nodes {
+        match node {
+            InlineNode::Interpolation(i) => out.push(i),
+            InlineNode::Modifier(m) => markers(&m.children, out),
+            InlineNode::Text { .. } => {}
+        }
+    }
 }
 
 /// A `::use` string argument (kept with its `\\` pairs by the attribute
@@ -1543,6 +1659,50 @@ mod tests {
             "{diags:#?}"
         );
         doc
+    }
+
+    /// 0.52.0 §3.1: a spliced literal ending in an odd run of `{` before a
+    /// marker is found although its `\{` fuses with the `{{` in `out`; so is
+    /// a plain `{{` whose `\{\{` swallows the marker after it (#221). The
+    /// `\\{{` spelling, a separated brace and a run before plain text are
+    /// clean.
+    #[test]
+    fn spliced_brace_reads_the_meant_text() {
+        let splice = |before: &str, arg: &str, after: &str| {
+            let lit = escape_inline_literal(arg);
+            let out = format!("{before}{lit}{after}");
+            let written = lute_syntax::parse_inline_text(&out).0;
+            spliced_brace(&out, &written, &[(before.len(), before.len() + lit.len())])
+                .map(|d| (d.code, d.message))
+        };
+        let odd = |arg: &str, after: &str| {
+            let (code, message) = splice("S ", arg, after).expect("an odd run");
+            assert_eq!(code, "E-INTERP-BRACE");
+            assert!(
+                message.starts_with("a literal `{` directly before `{{run.a}}`"),
+                "{message}"
+            );
+        };
+        odd("{", "{{run.a}} E");
+        odd("x{", "{{run.a}}");
+        odd("{\\{{", "{{run.a}}");
+        // The marker inside the argument itself.
+        odd("{\\{{{{run.a}}", " E");
+        for arg in ["{{", "x{{", "{{{{"] {
+            let (code, message) = splice("S ", arg, "{{run.a}} E").expect("a swallowed marker");
+            assert_eq!(code, "E-INTERP-BRACE");
+            assert_eq!(
+                message,
+                "a `::use` argument ending in a plain `{{` merges with the `{{run.a}}` spliced \
+                 after it, and the marker is lost: pass a literal `{{` in an argument as `\\\\{{` \
+                 (lute 0.47.1)"
+            );
+        }
+        assert_eq!(splice("S ", "{ ", "{{run.a}}"), None);
+        assert_eq!(splice("S ", "\\{{", "{{run.a}}"), None);
+        assert_eq!(splice("S ", "{", "x{{run.a}}"), None);
+        assert_eq!(splice("S ", "{{", " x"), None);
+        assert_eq!(splice("S ", "a\\", "{{run.a}}"), None);
     }
 
     #[test]
@@ -1902,6 +2062,7 @@ params:
                 beat: None,
                 body: comp_doc,
                 src: std::path::PathBuf::from("test://reactor"),
+                text: String::new(),
             },
         );
         let comps = ComponentSet {

@@ -3,6 +3,8 @@
 //! function, so `check()` and the compile walk agree. For every conformance
 //! and example document with a `::jump`, and for generated loops, each label
 //! the checker's fold binds is bound to the same stage by the compile walk.
+//! dsl 0.52.0 §5.4: the same holds for every hub head, recorded as label
+//! `hub:<id>`, in every corpus document with a `<hub>` and generated hubs.
 
 use std::path::{Path, PathBuf};
 
@@ -120,5 +122,74 @@ fn the_compile_walk_binds_the_checker_head_states_of_generated_loops() {
     for (i, body) in cases.iter().enumerate() {
         let labels = assert_agree(&format!("case {i}"), &scene(body));
         assert!(labels >= 1, "case {i}");
+    }
+}
+
+#[test]
+fn the_compile_walk_binds_the_checker_hub_heads_in_the_corpus() {
+    let mut heads = 0;
+    for project in [
+        "docs/examples/games/ember-road",
+        "docs/examples/games/ledger",
+        "docs/examples/games/monster-league",
+        "docs/examples/games/hollow-ward",
+        "conformance/hub-leave",
+        "conformance/session/hub-once/project",
+    ] {
+        let model =
+            ProjectModel::build_single_root(&root().join(project), &ModelOptions::default())
+                .unwrap();
+        for doc in model.documents() {
+            if doc.input.text.contains("<hub") {
+                let (checker, _) = label_states(&doc.input);
+                heads += checker
+                    .iter()
+                    .filter(|l| l.label.starts_with("hub:"))
+                    .count();
+                assert_agree(&doc.path.display().to_string(), &doc.input);
+            }
+        }
+    }
+    // Tollbridge, the keeper's lamp room and the conformance hubs at least.
+    assert!(heads >= 4, "{heads}");
+}
+
+#[test]
+fn the_compile_walk_binds_the_checker_head_states_of_generated_hubs() {
+    let cases = [
+        // #217: an exit in one option, a line in another.
+        "@mira: Hi.\n<hub id=\"desk\">\n<choice id=\"send\" text=\"Send\">\n\
+         ::actor{character=\"mira\" action=\"hide\"}\n</choice>\n\
+         <choice id=\"talk\" text=\"Talk\">\n@mira: Still here.\n</choice>\n\
+         <choice id=\"leave\" text=\"Leave\" exit>\n@narrator: Bye.\n</choice>\n</hub>",
+        // A `<return>` that shows her again; an exit option that hides her.
+        "::actor{character=\"mira\"}\n<hub id=\"desk\">\n<return>\n\
+         ::actor{character=\"mira\"}\n</return>\n<choice id=\"send\" text=\"Send\">\n\
+         ::actor{character=\"mira\" action=\"hide\"}\n</choice>\n\
+         <choice id=\"leave\" text=\"Leave\" exit>\n\
+         ::actor{character=\"mira\" action=\"hide\"}\n</choice>\n</hub>\n@narrator: After.",
+        // Options that only leave or end; a label after the hub.
+        "::actor{character=\"mira\"}\n<hub id=\"desk\">\n<return>\n\
+         ::actor{character=\"mira\" action=\"hide\"}\n</return>\n\
+         <choice id=\"stop\" text=\"Stop\">\n::end{reason=\"done\"}\n</choice>\n\
+         <choice id=\"go\" text=\"Go\">\n::jump{to=\"out\"}\n</choice>\n\
+         <choice id=\"leave\" text=\"Leave\" exit>\n@narrator: Bye.\n</choice>\n</hub>\n\
+         ::label{name=\"out\"}\n@narrator: Out.",
+        // Nested hubs inside a loop region.
+        "::actor{character=\"mira\"}\n::label{name=\"top\"}\n<hub id=\"outer\">\n\
+         <choice id=\"enter\" text=\"In\">\n<hub id=\"inner\">\n\
+         <choice id=\"send\" text=\"Send\">\n::actor{character=\"mira\" action=\"hide\"}\n\
+         </choice>\n<choice id=\"back\" text=\"Back\" exit>\n@narrator: Back.\n</choice>\n\
+         </hub>\n</choice>\n<choice id=\"theo\" text=\"Theo\">\n::actor{character=\"theo\"}\n\
+         </choice>\n<choice id=\"leave\" text=\"Leave\" exit>\n@narrator: Bye.\n</choice>\n\
+         </hub>\n::actor{character=\"mira\"}\n::jump{to=\"top\" max=\"2\"}",
+    ];
+    for (i, body) in cases.iter().enumerate() {
+        let (checker, _) = label_states(&scene(body));
+        assert!(
+            checker.iter().any(|l| l.label.starts_with("hub:")),
+            "case {i}"
+        );
+        assert_agree(&format!("case {i}"), &scene(body));
     }
 }

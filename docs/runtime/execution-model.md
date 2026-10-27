@@ -3,7 +3,7 @@
 This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
 compiler — it checks a `.lute` document and lowers it to the execution IR
-described by the current schema (`schemas/lute-ir-0.51.schema.json`). It runs
+described by the current schema (`schemas/lute-ir-0.52.schema.json`). It runs
 no CEL, no Datalog fixpoint, keeps no fact store, and fires no bridge at
 compile time. Everything on the far side of the execution IR is the engine's
 job.
@@ -86,7 +86,7 @@ loads, exactly as it concatenates the command streams.
 
 `lute compile --project` writes that union, plus the document table and the
 project-wide capability vocabulary, as `project.index.json`. Its shape is the
-`projectIndex` definition of `schemas/lute-ir-0.51.schema.json`: the index
+`projectIndex` definition of `schemas/lute-ir-0.52.schema.json`: the index
 `$defs` (`projectIndex`, `indexDocument`, `indexEntry`, `indexBeat`,
 `indexOccasion`, `indexStateDomain`, `indexDef`, `fieldType`) are generated
 from the Rust index types by `lute-contract-schema` and `$ref` the hand-written
@@ -279,12 +279,17 @@ it with a program counter, resolving control-flow targets — which are all
   A `jump` without `max` only goes forward. Since 0.51 (`lute.core.boundedJump/1`)
   a `jump` may carry `max` (integer 1..99) and then target an earlier
   position — a bounded backward jump; see
-  [Bounded loops](#bounded-loops-051) below.
+  [Bounded loops](#bounded-loops-051) below. Since 0.52
+  (`lute.core.hubLeave/1`) a forward `jump` may carry `leaves` (integer ≥ 1):
+  it leaves that many hub visits; see [Hub leaves](#hub-leaves-052).
 - **`choice` / `hub`** — each option carries a `target` (taken when the option
   is chosen) and the record carries a `converge` position (where control
   resumes after the construct); a `hub` may also carry `return`. A `converge`
   may point "one past the last record" of the addressing unit, i.e.
-  fall-through.
+  fall-through. A label or prompt is the IR text with its `placeholders`
+  (`promptPlaceholders` for a prompt, since 0.52); the runtime renders both
+  onto the `awaitChoice` menu at every presentation (see
+  [event-contract.md](./event-contract.md)).
 - **`match`** — `subject` is the matched CEL slot; each arm carries a
   `target`, plus an optional `otherwise` and a `converge`; an `is` field marks
   the semantic shorthand. When the subject is an unset bare state path, `is`
@@ -363,6 +368,33 @@ without bound or never loops, so it is gated by the semantic id
   `<jump -> attempt not taken (2/2 used)>` (JSON: `"bounded": { "take", "max",
   "outcome": "again" }` or `{ "max", "outcome": "notTaken" }`). This is
   explanation, not a static claim.
+
+### Hub leaves (0.52) {#hub-leaves-052}
+
+A hub option body and a hub `<return>` body each run as a range of their own,
+presented again after they end. A `jump` with `leaves = n` (absent on every
+other jump, and never beside `max`) ends its range at once, and the `n`
+innermost hub visits around it end too: no `<return>` body runs, no menu is
+presented again, and control continues at `target`. Without `leaves`, any
+transfer out of an option range ends the option and the hub presents again, as
+before. An engine that ignores `leaves` would present the hub again, so it is
+gated by the semantic id `lute.core.hubLeave/1`.
+
+- **Load checks.** Beside `loop_table`, the reference runtime refuses at load a
+  `leaves` that does not reach the target exactly (removing the `n` innermost
+  range bodies around the jump must leave the target's range body innermost,
+  each removed one a hub option or `<return>` range), a `jump` with both `max`
+  and `leaves`, and a transfer from outside a hub option or `<return>` body to
+  a record inside it (such a body is entered only through its `hub` record; a
+  transfer to the end of a range around its source is no entry, even where
+  that address starts the next option body).
+- **Coincident ends.** When an inner hub is the outer hub's last laid-out
+  non-exit option and the outer hub has no `<return>`, the end of that option
+  and the outer `converge` are one address, so `leaves: 1` and `leaves: 2`
+  both pass the load check. `leaves` decides: `1` presents the outer hub
+  again, `2` continues after it.
+- **Replay and saves.** The leave is walk-local; the snapshot holds nothing
+  for it.
 
 ## Command records
 
@@ -710,8 +742,12 @@ Choice and hub option labels gain `texts` the same way. A `choice` or `hub`
 record with a `prompt` carries **`promptLineId`**
 (`{prefix}.{branchOrHubId}.prompt`, dsl 0.47.0 §3.1) whenever `prompt` is
 present, and, when the bundle translates it, **`promptTexts`**: locale tag →
-translated prompt. `prompt` stays the source string. Records without a prompt
-are unchanged.
+translated prompt. `prompt` stays the source string, and a prompt with a
+`{{…}}` marker carries **`promptPlaceholders`** (0.52), built as an option's
+`placeholders` are. Records without a prompt are unchanged. The runtime renders
+a label, a prompt and their translations as it renders a line (the lute 0.47.1
+reading of `\{{` included) and hands them to the host on the `awaitChoice`
+menu (0.52).
 
 Each `lute loc export` row carries `sourceHash`, the `sha256:` of the record's
 plain source text (`text` of a line or option, `prompt`), and `lute loc import`
@@ -737,6 +773,13 @@ semantic id `lute.quest.rewardEffects/1` in `requiredSemantics`; an engine that
 ignores the fields would lose facts and quest activations, so the id is
 meaning-changing. See [quest-lifecycle.md](./quest-lifecycle.md) for the order,
 the records and replay.
+
+Since 0.52 a `RewardEntry` may also carry **`attrs`**: the reward's authored
+reward-kind attributes and each declared `default:` not authored, typed as a
+`plugin` record's `fields`, written last and only when non-empty. An effect
+that reads `@<attr>` was bound from them at compile time, so the lists above
+already hold the bound facts. The `grant` record's `reward` copies `attrs`.
+`attrs` adds no semantic id; a host reads it by the reward kind's contract.
 
 ## Dispatcher loop
 
@@ -813,7 +856,7 @@ function run(artifact: ExecutionIr, state: StateStore, facts: FactStore) {
             next = arm ? arm.target : (cmd.otherwise ?? cmd.converge);
             break;
           }
-          case "jump":    next = jumpTarget(cmd);        break; // 0.51: bounded `max`, see Control flow
+          case "jump":    next = jumpTarget(cmd);        break; // 0.51: bounded `max`; 0.52: `leaves` ends hub visits, see Control flow
           case "end":     finish(cmd.reason); return;  // terminate the walk
           case "barrier": joinTimeline(cmd.timeline, cmd.at); break; // see timeline-semantics.md
           default: throw new UnknownCommandKind(cmd.kind);

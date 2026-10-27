@@ -1,0 +1,713 @@
+{
+  "kind": "scene",
+  "lute": "0.52.0",
+  "irVersion": "0.52.0",
+  "capabilitySnapshot": "529a74383209e1736d16b44daa4c140501893cd74051ec6b53ad0c8ebfe457ae",
+  "requiredSemantics": [
+    "lute.core.hubLeave/1",
+    "lute.core/1"
+  ],
+  "meta": {
+    "id": "hero.s01ep01",
+    "character": "hero",
+    "season": 1,
+    "episode": 1,
+    "episodeId": "s01ep01",
+    "title": "Hub leave"
+  },
+  "state": [
+    {
+      "path": "run.open",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.choices.desk",
+      "type": "enum",
+      "domain": [
+        "take",
+        "leave",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:desk"
+    },
+    {
+      "path": "scene.choices.door",
+      "type": "enum",
+      "domain": [
+        "knock",
+        "wait",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:door"
+    },
+    {
+      "path": "scene.choices.inner",
+      "type": "enum",
+      "domain": [
+        "run",
+        "back",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:inner"
+    },
+    {
+      "path": "scene.choices.landing",
+      "type": "enum",
+      "domain": [
+        "rest",
+        "stay",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:landing"
+    },
+    {
+      "path": "scene.choices.outer",
+      "type": "enum",
+      "domain": [
+        "enter",
+        "go",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:outer"
+    },
+    {
+      "path": "scene.choices.stairs",
+      "type": "enum",
+      "domain": [
+        "climb",
+        "down",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:stairs"
+    },
+    {
+      "path": "scene.choices.table",
+      "type": "enum",
+      "domain": [
+        "eat",
+        "stand",
+        "unset"
+      ],
+      "default": "unset",
+      "provenance": "branch:table"
+    },
+    {
+      "path": "scene.visited.desk.leave",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.desk.take",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.door.knock",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.door.wait",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.inner.back",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.inner.run",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.landing.rest",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.landing.stay",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.outer.enter",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.outer.go",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.stairs.climb",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.stairs.down",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.table.eat",
+      "type": "bool",
+      "default": false
+    },
+    {
+      "path": "scene.visited.table.stand",
+      "type": "bool",
+      "default": false
+    }
+  ],
+  "commands": [
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0100",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Before the hub.",
+      "lineId": "hero.s01ep01.narrator_0010",
+      "voiceKey": "hero.s01ep01.narrator-0010"
+    },
+    {
+      "kind": "hub",
+      "family": "control",
+      "position": "001-0200",
+      "id": "desk",
+      "selectionKey": "scene.choices.desk",
+      "options": [
+        {
+          "id": "take",
+          "text": "Take it",
+          "lineId": "hero.s01ep01.desk.take",
+          "once": false,
+          "exit": false,
+          "target": "001-0300"
+        },
+        {
+          "id": "leave",
+          "text": "Leave",
+          "lineId": "hero.s01ep01.desk.leave",
+          "once": false,
+          "exit": true,
+          "target": "001-0500"
+        }
+      ],
+      "converge": "001-0700"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0300",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Taking it, then jumping past the hub.",
+      "lineId": "hero.s01ep01.narrator_0020",
+      "voiceKey": "hero.s01ep01.narrator-0020"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-0400",
+      "target": "001-0700",
+      "leaves": 1
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0500",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Leaving.",
+      "lineId": "hero.s01ep01.narrator_0030",
+      "voiceKey": "hero.s01ep01.narrator-0030"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "001-0600",
+      "target": "001-0700"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "001-0700",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "After the hub.",
+      "lineId": "hero.s01ep01.narrator_0040",
+      "voiceKey": "hero.s01ep01.narrator-0040"
+    },
+    {
+      "kind": "hub",
+      "family": "control",
+      "position": "002-0100",
+      "id": "outer",
+      "selectionKey": "scene.choices.outer",
+      "options": [
+        {
+          "id": "enter",
+          "text": "Enter",
+          "lineId": "hero.s01ep01.outer.enter",
+          "once": false,
+          "exit": false,
+          "target": "002-0200"
+        },
+        {
+          "id": "go",
+          "text": "Go",
+          "lineId": "hero.s01ep01.outer.go",
+          "once": false,
+          "exit": true,
+          "target": "002-0800"
+        }
+      ],
+      "converge": "002-1000"
+    },
+    {
+      "kind": "hub",
+      "family": "control",
+      "position": "002-0200",
+      "id": "inner",
+      "selectionKey": "scene.choices.inner",
+      "options": [
+        {
+          "id": "run",
+          "text": "Run",
+          "lineId": "hero.s01ep01.inner.run",
+          "once": false,
+          "exit": false,
+          "target": "002-0300"
+        },
+        {
+          "id": "back",
+          "text": "Back",
+          "lineId": "hero.s01ep01.inner.back",
+          "once": false,
+          "exit": true,
+          "target": "002-0500"
+        }
+      ],
+      "converge": "002-0700"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "002-0300",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Out of both.",
+      "lineId": "hero.s01ep01.hero_0010",
+      "voiceKey": "hero.s01ep01.hero-0010"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "002-0400",
+      "target": "002-1000",
+      "leaves": 2
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "002-0500",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Back.",
+      "lineId": "hero.s01ep01.hero_0020",
+      "voiceKey": "hero.s01ep01.hero-0020"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "002-0600",
+      "target": "002-0700"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "002-0700",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Still in the outer hub.",
+      "lineId": "hero.s01ep01.hero_0030",
+      "voiceKey": "hero.s01ep01.hero-0030"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "002-0800",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Going.",
+      "lineId": "hero.s01ep01.hero_0040",
+      "voiceKey": "hero.s01ep01.hero-0040"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "002-0900",
+      "target": "002-1000"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "002-1000",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Outside both hubs.",
+      "lineId": "hero.s01ep01.narrator_0050",
+      "voiceKey": "hero.s01ep01.narrator-0050"
+    },
+    {
+      "kind": "hub",
+      "family": "control",
+      "position": "003-0100",
+      "id": "stairs",
+      "selectionKey": "scene.choices.stairs",
+      "options": [
+        {
+          "id": "climb",
+          "text": "Climb",
+          "lineId": "hero.s01ep01.stairs.climb",
+          "once": false,
+          "exit": false,
+          "target": "003-0200"
+        },
+        {
+          "id": "down",
+          "text": "Down",
+          "lineId": "hero.s01ep01.stairs.down",
+          "once": false,
+          "exit": true,
+          "target": "003-0800"
+        }
+      ],
+      "converge": "003-1000"
+    },
+    {
+      "kind": "hub",
+      "family": "control",
+      "position": "003-0200",
+      "id": "landing",
+      "selectionKey": "scene.choices.landing",
+      "options": [
+        {
+          "id": "rest",
+          "text": "Rest",
+          "lineId": "hero.s01ep01.landing.rest",
+          "once": false,
+          "exit": false,
+          "target": "003-0300"
+        },
+        {
+          "id": "stay",
+          "text": "Stay",
+          "lineId": "hero.s01ep01.landing.stay",
+          "once": false,
+          "exit": true,
+          "target": "003-0500"
+        }
+      ],
+      "converge": "003-0700"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "003-0300",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Resting, then on.",
+      "lineId": "hero.s01ep01.hero_0050",
+      "voiceKey": "hero.s01ep01.hero-0050"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "003-0400",
+      "target": "003-0700",
+      "leaves": 1
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "003-0500",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Staying.",
+      "lineId": "hero.s01ep01.hero_0060",
+      "voiceKey": "hero.s01ep01.hero-0060"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "003-0600",
+      "target": "003-0700"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "003-0700",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Upstairs.",
+      "lineId": "hero.s01ep01.hero_0070",
+      "voiceKey": "hero.s01ep01.hero-0070"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "003-0800",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Down again.",
+      "lineId": "hero.s01ep01.hero_0080",
+      "voiceKey": "hero.s01ep01.hero-0080"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "003-0900",
+      "target": "003-1000"
+    },
+    {
+      "kind": "hub",
+      "family": "control",
+      "position": "004-0100",
+      "id": "table",
+      "selectionKey": "scene.choices.table",
+      "options": [
+        {
+          "id": "eat",
+          "text": "Eat",
+          "lineId": "hero.s01ep01.table.eat",
+          "once": false,
+          "exit": false,
+          "target": "004-0200"
+        },
+        {
+          "id": "stand",
+          "text": "Stand",
+          "lineId": "hero.s01ep01.table.stand",
+          "once": false,
+          "exit": true,
+          "target": "004-0300"
+        }
+      ],
+      "converge": "004-0700",
+      "return": "004-0500"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "004-0200",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Eating.",
+      "lineId": "hero.s01ep01.hero_0090",
+      "voiceKey": "hero.s01ep01.hero-0090"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "004-0300",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Standing.",
+      "lineId": "hero.s01ep01.hero_0100",
+      "voiceKey": "hero.s01ep01.hero-0100"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "004-0400",
+      "target": "004-0700"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "004-0500",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Full.",
+      "lineId": "hero.s01ep01.hero_0110",
+      "voiceKey": "hero.s01ep01.hero-0110"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "004-0600",
+      "target": "004-0700",
+      "leaves": 1
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "004-0700",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "Fed.",
+      "lineId": "hero.s01ep01.narrator_0060",
+      "voiceKey": "hero.s01ep01.narrator-0060"
+    },
+    {
+      "kind": "hub",
+      "family": "control",
+      "position": "005-0100",
+      "id": "door",
+      "selectionKey": "scene.choices.door",
+      "options": [
+        {
+          "id": "knock",
+          "text": "Knock",
+          "lineId": "hero.s01ep01.door.knock",
+          "once": false,
+          "exit": false,
+          "target": "005-0200"
+        },
+        {
+          "id": "wait",
+          "text": "Wait",
+          "lineId": "hero.s01ep01.door.wait",
+          "once": false,
+          "exit": true,
+          "target": "005-0800"
+        }
+      ],
+      "converge": "005-1000"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "005-0200",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Knocking.",
+      "lineId": "hero.s01ep01.hero_0120",
+      "voiceKey": "hero.s01ep01.hero-0120"
+    },
+    {
+      "kind": "match",
+      "family": "control",
+      "position": "005-0300",
+      "subject": {
+        "cel": "run.open",
+        "expr": {
+          "path": "run.open"
+        }
+      },
+      "arms": [
+        {
+          "test": {
+            "cel": "run.open",
+            "expr": {
+              "path": "run.open"
+            },
+            "authored": "$"
+          },
+          "target": "005-0400"
+        }
+      ],
+      "otherwise": "005-0600",
+      "converge": "005-0700"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "005-0400",
+      "target": "005-1000",
+      "leaves": 1
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "005-0500",
+      "target": "005-0700"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "005-0600",
+      "target": "005-0700"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "005-0700",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "No answer.",
+      "lineId": "hero.s01ep01.hero_0130",
+      "voiceKey": "hero.s01ep01.hero-0130"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "005-0800",
+      "role": "dialogue",
+      "speaker": "hero",
+      "text": "Waiting.",
+      "lineId": "hero.s01ep01.hero_0140",
+      "voiceKey": "hero.s01ep01.hero-0140"
+    },
+    {
+      "kind": "jump",
+      "family": "control",
+      "position": "005-0900",
+      "target": "005-1000"
+    },
+    {
+      "kind": "line",
+      "family": "content",
+      "position": "005-1000",
+      "role": "narration",
+      "speaker": "narrator",
+      "text": "The end.",
+      "lineId": "hero.s01ep01.narrator_0070",
+      "voiceKey": "hero.s01ep01.narrator-0070"
+    }
+  ],
+  "sections": [
+    {
+      "section": 1,
+      "heading": "The issue scene"
+    },
+    {
+      "section": 2,
+      "heading": "Out of two hubs"
+    },
+    {
+      "section": 3,
+      "heading": "Out of the inner hub only"
+    },
+    {
+      "section": 4,
+      "heading": "Out of the return body"
+    },
+    {
+      "section": 5,
+      "heading": "A guarded leave that falls through"
+    }
+  ],
+  "outsideRun": [],
+  "celEnv": {
+    "variables": [
+      {
+        "name": "run",
+        "type": "map(string, dyn)"
+      }
+    ],
+    "functions": []
+  }
+}

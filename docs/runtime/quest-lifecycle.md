@@ -294,10 +294,11 @@ completion is monotonic, the objective's **body segment plays exactly once**
 per instance — when `done` first holds. The
 body is a single segment that ends by falling through or by a forward converge;
 since 0.51 it may contain a bounded loop (`::jump{to max}`) that lies wholly
-inside it, because a loop never spans an `<on>` or `<objective>` boundary
-(`E-JUMP-LOOP-SCOPE`), so the segment still ends on its own and plays exactly
-once; an empty-body objective has `body: null` and emits no
-segment.
+inside it, because a loop never leaves the `<objective>` body it runs in
+(`E-JUMP-LOOP-SCOPE`) and, since 0.52, no jump enters another body
+(`E-JUMP-INTO-BODY`) and nothing sits at a quest's top level between bodies
+(`E-GRAMMAR-NOT-ADMITTED`), so the segment still ends on its own and plays
+exactly once; an empty-body objective has `body: null` and emits no segment.
 
 A required objective whose `visibleWhen` visibility condition is provably false is
 `W-OBJECTIVE-HIDDEN` (a warning, not an error — `done` is evaluated

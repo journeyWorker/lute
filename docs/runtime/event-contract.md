@@ -1,6 +1,6 @@
 # Runtime event contract
 
-**Status: 0.51.0 runtime contract.**
+**Status: 0.52.0 runtime contract.**
 
 Runtime R2 executes a compiled bundle and returns effects as data. A **host**
 —a game, player or verification server—owns rendering, pacing, bridge calls
@@ -9,8 +9,8 @@ and grant settlement. The runtime never calls those services itself.
 The normative source is [Lute 0.40.0 §§3–12](../proposals/scenario-dsl/0.40.0.md#3-one-contract-definition-rust-types-generated-schemas),
 as amended by [Lute 0.41.0 §5](../proposals/scenario-dsl/0.41.0.md#5-runtime-and-the-event-contract-041).
 The Rust contract types in `crates/lute-runtime` are the single definition:
-the committed [events schema](../../schemas/lute-events-0.51.schema.json) and
-[snapshot schema](../../schemas/lute-snapshot-0.51.schema.json) are generated
+the committed [events schema](../../schemas/lute-events-0.52.schema.json) and
+[snapshot schema](../../schemas/lute-snapshot-0.52.schema.json) are generated
 from them with `schemars`. The generated schemas expose `Input`, `Seed`,
 `Output`, `Event`, `Await`, `Rejected`, snapshots, and the read-only query
 results. TypeScript hosts should also read the
@@ -159,7 +159,7 @@ so it is equivalent to `choose` with that option.
 A wire `Output` has `eventVersion`, ordered `events` and one `await`:
 
 ```json
-{"eventVersion": "0.51.0", "events": [], "await": {"type": "idle"}}
+{"eventVersion": "0.52.0", "events": [], "await": {"type": "idle"}}
 ```
 
 Consume events in execution order before acting on the await. Events are:
@@ -207,8 +207,13 @@ encoding (lute 0.47.1, see [execution-model.md](./execution-model.md)) is
 read, not shown, and `\{{` in a translation stays a literal `{{`, as in the
 source. Grant records
 carry `quest`, `instance`, optional `objective`, `index`, `reward` and the
-machine's remaining fields; `instance` is the settlement key. The host
-settles the grant, not the runtime.
+machine's remaining fields; `instance` is the settlement key. Since 0.52 the
+`reward` object carries `attrs` (the reward entry's reward-kind attributes,
+omitted when empty). The host settles the grant, not the runtime.
+
+```json
+{"index":0,"instance":1,"kind":"grant","objective":"pay","quest":"first","reward":{"amount":1,"attrs":{"rarity":"gold"},"kind":"BADGE","target":"mira"}}
+```
 
 Since 0.50 a reward kind may declare effects, and each effect emits the record
 its command would (`assert`, `retract`, `accept`) with one more key, `grant`:
@@ -326,7 +331,7 @@ An ineligible `Premise` is tagged on `premise` and has one of these shapes:
 `spentBy { raw }`, `when { raw }`, `gate { occasion, raw, reads:
 GuardRead[] }`, or `terminal { occasion, raw }`. `ClockView` carries
 `{ day, slot?, weekday?, weekdayLabel?, last?, ended? }`. These are generated
-definitions in `lute-events-0.51.schema.json` and in
+definitions in `lute-events-0.52.schema.json` and in
 `packages/runtime/src/generated/Contract.ts`; hosts must decode them rather
 than treating query JSON as untyped data.
 `stage()` returns the persistent presentation stage:
@@ -357,16 +362,30 @@ await is serialized as `continuation.stage`, and `stage()` returns it.
 | `halted` | `kind`, `message`, optional `site` | None; restore an earlier snapshot to continue. |
 
  A choice menu carries `construct` (`branch` or `hub`), `id`, `document`,
-`position`, `presentation`, optional `prompt`, `timeout` and `default`, and
-ordered options with `id`, `verdict` (`open`, `closed` or `spent`), `exit` and
-`once`. Hubs omit `timeout` and `default`.
+`position`, `presentation`, optional `prompt`, `promptTexts`, `timeout` and
+`default`, and ordered options with `id`, `text`, optional `texts`, `verdict`
+(`open`, `closed` or `spent`), `exit` and `once`. Hubs omit `timeout` and
+`default`.
+
+Since 0.52 the menu text is rendered: the runtime renders each option label
+and the prompt at every presentation with the line renderer (markers by value,
+`\{{` read as a literal `{{`, each translation by marker as a line's `texts`
+are) and sets `text` (always), `texts` (locale → text, omitted when empty),
+`prompt` (when the branch or hub has one) and `promptTexts` (omitted when
+empty). A host token and a marker whose path is unset keep their written text,
+and menu text never halts. A host shows these instead of the IR's strings,
+which keep their markers. The pending `Await` is part of the `Snapshot`, so the
+snapshot schema carries the same fields:
+
+```json
+{"construct":"branch","document":"scenes/gate.lute","id":"toll","options":[{"exit":false,"id":"pay","once":false,"text":"Pay 5 gold","verdict":"open"},{"exit":false,"id":"code","once":false,"text":"Say {{open}}","verdict":"open"}],"position":"001-0100","presentation":0,"prompt":"You have 5 gold."}
+```
 
 Plugin stamps on a `<branch>`, `<hub>` or `<choice>` (0.50) are not part of the
-menu. The runtime never reads stamps and the menu keeps this shape. A host that
-does not use the reference player reads them from the IR `choice` or `hub`
-record at the menu's address (`document`, `position`): the record's `stamps`
-and each option's `stamps` (omitted when absent), the same place it reads
-option `text`, `texts` and `prompt`.
+menu. The runtime never reads stamps. A host that does not use the reference
+player reads them from the IR `choice` or `hub` record at the menu's address
+(`document`, `position`): the record's `stamps` and each option's `stamps`
+(omitted when absent).
 An undecided guard never becomes an `unknown` menu verdict: it halts as
 `incomplete`. Request ids are unsigned integers, incremented for each await
 and never reused within a state lineage. Restoring preserves the pending id.
@@ -384,6 +403,11 @@ and rebuilt by the same replay: the `Snapshot` does not hold them, and a save at
 a choice await in a later iteration resumes to the same transcript. A `<branch>`
 reached again in a later iteration is a new `awaitChoice` with a new request
 id; its `presentation` stays `0`.
+
+A `jump` with `leaves` (0.52) ends the hub visits it leaves at once: no
+`<return>` body runs and the menu is not presented again, so no further
+`awaitChoice` for that visit follows. The leave is walk-local, as a loop counter
+is; the `Snapshot` holds nothing for it.
 
 ## Rejections and halts
 
@@ -450,7 +474,7 @@ belongs in `user.*` and travels in the snapshot; per-line read-skip history
 is a player profile and never enters runtime state.
 
 The Event axis versions input, output and snapshot JSON and is aligned with
-the other axes at `0.51.0`. Hosts gate on exact major.minor before 1.0.
+the other axes at `0.52.0`. Hosts gate on exact major.minor before 1.0.
 Outputs carry `eventVersion`; snapshots carry the equal `snapshotVersion`.
 The input log is `(seed or snapshot, inputs)`. Replaying it against the same
 bundle must reproduce every serialized output byte-for-byte, including

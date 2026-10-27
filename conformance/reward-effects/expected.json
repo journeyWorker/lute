@@ -202,7 +202,7 @@
     "met(mira)",
     "rival(mira)"
   ],
-  "irVersion": "0.51",
+  "irVersion": "0.52",
   "kind": "quest",
   "quests": {
     "doomed": "failed",

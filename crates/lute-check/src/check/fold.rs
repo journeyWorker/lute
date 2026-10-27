@@ -870,14 +870,6 @@ fn fold_env_in(
             }
         }
         fold_diags.extend(record.diags);
-        // dsl 0.16.0 §2/§4/§6: reward shape/closure/vocabulary, alongside
-        // the rest of the quest fold.
-        fold_diags.extend(check_quest_rewards(
-            quest,
-            snapshot,
-            input.providers(),
-            &vocab.kinds,
-        ));
     }
     // dsl 0.23.0 §6: a subquest's `tier` equals its parent's — the
     // same-document half of `E-QUEST-TIER-MIX`.
@@ -952,6 +944,17 @@ fn fold_env_in(
             None => Arc::clone(&domains_pre),
         },
     };
+    // dsl 0.16.0 §2/§4/§6: reward shape/closure/vocabulary; 0.52.0 §7.2: a
+    // kind attribute is typed against the same domains a directive's is.
+    for quest in &doc.quests {
+        fold_diags.extend(check_quest_rewards(
+            quest,
+            snapshot,
+            input.providers(),
+            &vocab.kinds,
+            &domains,
+        ));
+    }
     if let Some(clock) = &clock {
         let reserved = crate::clock::reserved_decls(clock, &schema);
         // dsl 0.24.0 §1 / 0.27.0 §4: `clock.weekday`, and a finite clock's
@@ -1517,10 +1520,11 @@ fn member_envs(env: &Env) -> Vec<(Vec<String>, Env)> {
 /// into `schema` in document order, threading the episode-wide `seen` id set
 /// (branch + hub ids share it) so `E-DUP-BRANCH` fires exactly once per duplicate.
 /// Recurses into nested bodies (a branch/hub may live inside a match arm or
-/// another choice body). A `<branch>` is ALSO admitted directly inside a quest
-/// body (dsl 0.2.0 §6.7), reached via `<quest>` top level or an `<on>`/
-/// `<objective>` arm — `doc.quests` is folded here too so a quest `<branch>`
-/// gets the SAME `E-CHOICE-DUP`/implicit-decl treatment a scene one gets
+/// another choice body). A `<branch>` is ALSO admitted inside a quest's
+/// `<on>`/`<objective>` bodies (dsl 0.2.0 §6.7; at the quest's top level it is
+/// an admission error, dsl 0.52.0 §4) — `doc.quests` is folded here too so a
+/// quest `<branch>` gets the SAME `E-CHOICE-DUP`/implicit-decl treatment a
+/// scene one gets
 /// (`<hub>` is never legal in a quest doc, dsl 0.2.0 §6.7 — grammar admission
 /// rejects it separately, so it is never reached from a quest walk in
 /// practice, but the recursion below tolerates it structurally regardless).

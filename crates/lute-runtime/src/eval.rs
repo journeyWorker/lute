@@ -755,6 +755,56 @@ mod tests {
     }
 
     #[test]
+    fn an_index_past_the_targets_usize_names_no_item() {
+        // #198: where usize is 32 bits, `as` truncated 2³² to 0 and read `10`.
+        let schema = schema_with(&[]);
+        let state = EffectiveState::new(&schema, BTreeMap::new());
+        let vocab = RelVocab::default();
+        let facts = FactStore::new(&vocab);
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
+        let (v, unresolved) = eval_str("[10, 20][4294967296]", &env);
+        assert_eq!(v, Value::Unknown);
+        assert!(unresolved.is_empty());
+    }
+
+    #[test]
+    fn a_count_distinct_column_past_the_targets_usize_is_out_of_range() {
+        // #198: where usize is 32 bits, `as` truncated column 2³² to 0.
+        let schema = schema_with(&[]);
+        let state = EffectiveState::new(&schema, BTreeMap::new());
+        let vocab = rel_vocab_with(&[("owns", false)]);
+        let mut facts = FactStore::new(&vocab);
+        facts.assert("owns", &["mira".to_string(), "key".to_string()]);
+        facts.assert("owns", &["sol".to_string(), "key".to_string()]);
+        let env = EvalEnv {
+            state: &state,
+            facts: &facts,
+        };
+        let count = |column: i64| {
+            let node = serde_json::json!({"call": "countDistinct", "args": [
+                {"string": "owns"},
+                {"list": [{"string": "_"}, {"string": "_"}]},
+                {"int": column},
+            ]});
+            let mut unresolved = Vec::new();
+            let v = crate::expr::eval(
+                &crate::expr::Expr::decode(&node),
+                &env,
+                None,
+                &mut unresolved,
+            );
+            assert!(unresolved.is_empty());
+            v
+        };
+        assert_eq!(count(0), Value::Int(2));
+        assert_eq!(count(1), Value::Int(1));
+        assert_eq!(count(1 << 32), Value::Int(0));
+    }
+
+    #[test]
     fn index_with_unknown_index_is_unknown_and_records_its_atom() {
         let schema = schema_with(&[]); // run.idx unset -> Unknown
         let state = EffectiveState::new(&schema, BTreeMap::new());

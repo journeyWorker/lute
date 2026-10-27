@@ -1,12 +1,16 @@
-//! dsl 0.12.0 / 0.37.0 §3.5 / 0.51.0 §3.1–§3.2 whole-document label pass:
+//! dsl 0.12.0 / 0.37.0 §3.5 / 0.51.0 §3.1–§3.2 / 0.52.0 §5.1–§5.2
+//! whole-document label pass:
 //! `::label{name}` registers a DOCUMENT-WIDE jump label; `::jump{to}`
 //! resolves against that ONE table. Diagnostics: `E-LABEL-DUP` (a label name
 //! reused anywhere in the document), `E-JUMP-UNDEFINED` (a `to=` naming no
 //! label anywhere in the document), `E-JUMP-BACKWARD` (a `to=` naming a label
 //! at or before the `::jump` site's own document position, on a jump without
-//! `max`), and the bounded-jump rules of dsl 0.51.0: `E-JUMP-MAX`,
-//! `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP` and `E-JUMP-LOOP-CROSS`. The same
-//! pass builds the document's [`LoopTable`], which the flow walks consult.
+//! `max`), the bounded-jump rules of dsl 0.51.0: `E-JUMP-MAX`,
+//! `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP` and `E-JUMP-LOOP-CROSS`, and
+//! dsl 0.52.0's `E-JUMP-INTO-BODY` (a jump into a body the runtime runs as
+//! its own range). The same pass builds the document's [`LoopTable`], which
+//! the flow walks consult, and its [`HubLeaves`], which lowering writes as
+//! `jump.leaves`.
 //!
 //! Position is a MONOTONIC counter, depth first, that ticks at EVERY node: a
 //! label or a jump when it is recorded, every line, ordinary directive,
@@ -20,6 +24,7 @@
 //! position from its head label to its jump.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::num::NonZeroU32;
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
 use lute_manifest::core::{JUMP_MAX_ATTR, LABEL_NAME_ATTR};
@@ -42,7 +47,7 @@ pub const E_NEXT_BACKWARD: &str = "E-JUMP-BACKWARD";
 pub const E_JUMP_MAX: &str = "E-JUMP-MAX";
 
 /// `E-JUMP-LOOP-SCOPE` (dsl 0.51.0 §3.2): a loop leaves the inline bodies
-/// its jump is in, or its region spans an `<on>`/`<objective>`.
+/// its jump is in.
 pub const E_JUMP_LOOP_SCOPE: &str = "E-JUMP-LOOP-SCOPE";
 
 /// `E-JUMP-INTO-LOOP` (dsl 0.51.0 §3.2): a forward jump from outside a loop
@@ -52,6 +57,11 @@ pub const E_JUMP_INTO_LOOP: &str = "E-JUMP-INTO-LOOP";
 /// `E-JUMP-LOOP-CROSS` (dsl 0.51.0 §3.2): two loop regions overlap without
 /// nesting.
 pub const E_JUMP_LOOP_CROSS: &str = "E-JUMP-LOOP-CROSS";
+
+/// `E-JUMP-INTO-BODY` (dsl 0.52.0 §5.1): a jump whose label lies in a range
+/// body it may not enter — not its own range body, nor one that encloses it
+/// through hub option and `<return>` bodies only.
+pub const E_JUMP_INTO_BODY: &str = "E-JUMP-INTO-BODY";
 
 fn diag(code: &str, message: String, span: Span) -> Diagnostic {
     Diagnostic {
@@ -145,8 +155,10 @@ impl MaxAttr {
 }
 
 /// The kind of body a node sits in, for the loop scope rule (dsl 0.51.0
-/// §3.2). Only a `<choice>` body of a `<branch>` and a `<match>` arm body are
-/// laid out inline; every other body is its own runtime range.
+/// §3.2) and the range body rule (dsl 0.52.0 §5.1). Only a `<choice>` body
+/// of a `<branch>` and a `<match>` arm body are laid out inline; every other
+/// body is its own runtime range, except a quest's top level, which holds
+/// only `<on>`/`<objective>` bodies (dsl 0.52.0 §4) and never runs itself.
 #[derive(Clone, Copy)]
 enum BodyKind<'d> {
     Section(&'d str),
@@ -155,8 +167,13 @@ enum BodyKind<'d> {
     Beat(&'d str),
     Choice,
     Arm,
-    HubOption,
-    HubReturn,
+    HubOption {
+        hub: Option<&'d str>,
+        option: &'d str,
+    },
+    HubReturn {
+        hub: Option<&'d str>,
+    },
     On(&'d str),
     Objective(&'d str),
 }
@@ -164,6 +181,59 @@ enum BodyKind<'d> {
 impl BodyKind<'_> {
     fn inline(self) -> bool {
         matches!(self, Self::Choice | Self::Arm)
+    }
+
+    /// A hub option or `<return>` body: the only range bodies a jump may
+    /// leave (dsl 0.52.0 §5.1).
+    fn is_hub_body(self) -> bool {
+        matches!(self, Self::HubOption { .. } | Self::HubReturn { .. })
+    }
+
+    /// The `E-JUMP-INTO-BODY` message for `jump`, which enters this range
+    /// body from outside it (dsl 0.52.0 §5.1). Into a body the engine runs
+    /// on its own, the hint names the 0.52 migration of a jump that ended
+    /// its own body early by entering another (spec §13).
+    fn enter_message(self, jump: &str) -> String {
+        const SAME_BODY: &str = "jump to a label in the same body";
+        const SAME_BODY_OR_END: &str = "jump to a label in the same body (to end a body early, \
+                                        jump to a label at its end)";
+        let hub_name =
+            |hub: Option<&str>| hub.map_or("a `<hub>`".to_string(), |h| format!("hub `{h}`"));
+        match self {
+            Self::HubOption { hub, option } => format!(
+                "`{jump}` enters the body of {}'s option `{option}`, which runs only when that \
+                 option is chosen — {SAME_BODY}, or after the hub",
+                hub_name(hub)
+            ),
+            Self::HubReturn { hub } => format!(
+                "`{jump}` enters the `<return>` body of {}, which runs only when an option hands \
+                 control back — {SAME_BODY}, or after the hub",
+                hub_name(hub)
+            ),
+            Self::Objective(id) => format!(
+                "`{jump}` enters the body of `<objective id=\"{id}\">`, which runs only when that \
+                 objective completes — {SAME_BODY_OR_END}"
+            ),
+            Self::On(event) => format!(
+                "`{jump}` enters the `<on event=\"{event}\">` handler, which runs only when that \
+                 event fires — {SAME_BODY_OR_END}"
+            ),
+            Self::Beat(id) => format!(
+                "`{jump}` enters `<beat id=\"{id}\">`, which runs only when that beat is presented \
+                 — {SAME_BODY_OR_END}"
+            ),
+            Self::Entry(id) => format!(
+                "`{jump}` enters `<entry id=\"{id}\">`, which runs only when that entry is read — \
+                 {SAME_BODY_OR_END}"
+            ),
+            Self::Section(_) => format!(
+                "`{jump}` enters the document's sections from a body that runs on its own — \
+                 {SAME_BODY_OR_END}"
+            ),
+            Self::Quest(_) | Self::Choice | Self::Arm => {
+                unreachable!("a quest's top level and inline bodies are never range bodies")
+            }
+        }
     }
 
     /// The `E-JUMP-LOOP-SCOPE` message for a loop of `jump` back to `head`
@@ -174,12 +244,12 @@ impl BodyKind<'_> {
             Self::Quest(id) => (format!("`<quest id=\"{id}\">`"), "one quest", ""),
             Self::Entry(id) => (format!("`<entry id=\"{id}\">`"), "one entry", ""),
             Self::Beat(id) => (format!("`<beat id=\"{id}\">`"), "one beat", ""),
-            Self::HubOption => (
+            Self::HubOption { .. } => (
                 "the `<hub>` option".to_string(),
                 "one option body",
                 ", or use the hub itself to repeat",
             ),
-            Self::HubReturn => (
+            Self::HubReturn { .. } => (
                 "the `<hub>` `<return>` body".to_string(),
                 "that body",
                 ", or use the hub itself to repeat",
@@ -210,12 +280,68 @@ struct Body<'d> {
     parent: Option<usize>,
 }
 
-/// An `<on>` or `<objective>`: a separate runtime range a loop region may not
-/// span (dsl 0.51.0 §3.2).
-struct Separate<'d> {
-    pos: u64,
-    what: String,
-    body: &'d str,
+/// A range body (dsl 0.52.0 §5.1): a body the runtime runs as its own
+/// range. Every section of a document is one range, its top level (a scene
+/// runs as one range, so a forward jump between sections stays legal);
+/// every other range body is one [`Body`].
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BodyRange {
+    TopLevel,
+    /// The index of a hub option, hub `<return>`, `<on>`, `<objective>`,
+    /// entry or beat body in [`Collector::bodies`].
+    Body(usize),
+}
+
+/// How a forward jump reaches its label ([`Collector::route`]).
+enum Route<'d> {
+    /// In its own range body.
+    Stays,
+    /// In a range body that encloses it, leaving this many hub option or
+    /// `<return>` bodies.
+    Leaves(HubLeave),
+    /// Into a range body it is not in (`E-JUMP-INTO-BODY`), named by the
+    /// outermost one entered.
+    Enters(BodyKind<'d>),
+}
+
+/// `jump.leaves` (dsl 0.52.0 §5.2): the number of hub option or `<return>`
+/// bodies a forward `::jump` leaves on the way to its label, at least 1.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize)]
+#[serde(transparent)]
+pub struct HubLeave(NonZeroU32);
+
+impl HubLeave {
+    /// The count.
+    pub fn get(self) -> u32 {
+        self.0.get()
+    }
+
+    /// `n` as a count: `None` for 0 (a jump that leaves no hub body carries
+    /// no count).
+    pub fn new(n: u32) -> Option<Self> {
+        NonZeroU32::new(n).map(Self)
+    }
+}
+
+/// Every forward `::jump` of one document that leaves hub bodies (dsl
+/// 0.52.0 §5.2), keyed by the directive's position, computed once by
+/// [`check_next_labels`]. A jump inside a `::use`d component body is never
+/// in it (a component admits no `<hub>`, and its labels are its own).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct HubLeaves {
+    by_jump: BTreeMap<usize, HubLeave>,
+}
+
+impl HubLeaves {
+    /// How many hub bodies `jump` leaves, when it leaves any.
+    pub fn of(&self, jump: &Directive) -> Option<HubLeave> {
+        self.by_jump.get(&jump.span.byte_start).copied()
+    }
+
+    /// `true` when no jump of the document leaves a hub body.
+    pub fn is_empty(&self) -> bool {
+        self.by_jump.is_empty()
+    }
 }
 
 /// One label's DEFINING position — first occurrence only; a repeat is
@@ -255,7 +381,6 @@ struct Collector<'d> {
     dups: Vec<Diagnostic>,
     nexts: Vec<NextSite<'d>>,
     bodies: Vec<Body<'d>>,
-    separate: Vec<Separate<'d>>,
 }
 
 impl<'d> Collector<'d> {
@@ -345,12 +470,14 @@ impl<'d> Collector<'d> {
                 }
                 Node::Hub(h) => {
                     self.tick();
+                    let hub = attr_str(&h.attrs, "id");
                     for c in &h.choices {
-                        let inner = self.open(BodyKind::HubOption, Some(body));
+                        let kind = BodyKind::HubOption { hub, option: &c.id };
+                        let inner = self.open(kind, Some(body));
                         self.walk(&c.body, inner);
                     }
                     if let Some(r) = &h.on_return {
-                        let inner = self.open(BodyKind::HubReturn, Some(body));
+                        let inner = self.open(BodyKind::HubReturn { hub }, Some(body));
                         self.walk(&r.body, inner);
                     }
                 }
@@ -366,21 +493,11 @@ impl<'d> Collector<'d> {
                     }
                 }
                 Node::On(o) => {
-                    self.separate.push(Separate {
-                        pos: self.pos,
-                        what: format!("`<on event=\"{}\">`", o.event),
-                        body: "handler's",
-                    });
                     self.tick();
                     let inner = self.open(BodyKind::On(&o.event), Some(body));
                     self.walk(&o.body, inner);
                 }
                 Node::Objective(o) => {
-                    self.separate.push(Separate {
-                        pos: self.pos,
-                        what: format!("`<objective id=\"{}\">`", o.id),
-                        body: "objective's",
-                    });
                     self.tick();
                     let inner = self.open(BodyKind::Objective(&o.id), Some(body));
                     self.walk(&o.body, inner);
@@ -405,6 +522,97 @@ impl<'d> Collector<'d> {
                 .expect("an inline body (a choice or an arm) always sits in an enclosing body");
         }
         None
+    }
+
+    /// The range body (dsl 0.52.0 §5.1) `body` sits in: the nearest
+    /// enclosing body that is not inline; every section is the document's
+    /// one top-level range. `None` at a quest's top level, which never runs
+    /// as a range (a label there is already `E-GRAMMAR-NOT-ADMITTED`).
+    fn range(&self, body: usize) -> Option<BodyRange> {
+        let mut at = body;
+        loop {
+            let b = &self.bodies[at];
+            match b.kind {
+                BodyKind::Choice | BodyKind::Arm => {
+                    at = b.parent.expect(
+                        "an inline body (a choice or an arm) always sits in an enclosing body",
+                    );
+                }
+                BodyKind::Section(_) => return Some(BodyRange::TopLevel),
+                BodyKind::Quest(_) => return None,
+                BodyKind::Entry(_)
+                | BodyKind::Beat(_)
+                | BodyKind::HubOption { .. }
+                | BodyKind::HubReturn { .. }
+                | BodyKind::On(_)
+                | BodyKind::Objective(_) => return Some(BodyRange::Body(at)),
+            }
+        }
+    }
+
+    /// The range body that encloses `range`, if any.
+    fn enclosing_range(&self, range: BodyRange) -> Option<BodyRange> {
+        match range {
+            BodyRange::TopLevel => None,
+            BodyRange::Body(at) => self.bodies[at].parent.and_then(|p| self.range(p)),
+        }
+    }
+
+    fn range_kind(&self, range: BodyRange) -> BodyKind<'d> {
+        match range {
+            BodyRange::TopLevel => BodyKind::Section(""),
+            BodyRange::Body(at) => self.bodies[at].kind,
+        }
+    }
+
+    /// How a forward jump in `jump_body` reaches its label in `label_body`
+    /// (dsl 0.52.0 §5.1): the label's range body must be the jump's or one
+    /// that encloses it, through hub option and `<return>` bodies only,
+    /// each of which the jump leaves.
+    fn route(&self, jump_body: usize, label_body: usize) -> Route<'d> {
+        // A label or jump at a quest's top level is already
+        // `E-GRAMMAR-NOT-ADMITTED` (dsl 0.52.0 §4).
+        let (Some(target), Some(from)) = (self.range(label_body), self.range(jump_body)) else {
+            return Route::Stays;
+        };
+        if !self.encloses(target, from) {
+            // The outermost range body around the label the jump is not in.
+            let mut entered = target;
+            while let Some(outer) = self.enclosing_range(entered) {
+                if self.encloses(outer, from) {
+                    break;
+                }
+                entered = outer;
+            }
+            return Route::Enters(self.range_kind(entered));
+        }
+        let mut left = 0u32;
+        let mut at = from;
+        while at != target {
+            if !self.range_kind(at).is_hub_body() {
+                // Only a hub option or `<return>` body sits inside another
+                // range body where admission allows it: a misplaced
+                // `<on>`/`<objective>` is already `E-GRAMMAR-NOT-ADMITTED`.
+                return Route::Stays;
+            }
+            left += 1;
+            at = self
+                .enclosing_range(at)
+                .expect("`target` encloses `from`, so every range body below it has a parent");
+        }
+        NonZeroU32::new(left).map_or(Route::Stays, |n| Route::Leaves(HubLeave(n)))
+    }
+
+    /// `outer` is `inner` or encloses it.
+    fn encloses(&self, outer: BodyRange, inner: BodyRange) -> bool {
+        let mut at = Some(inner);
+        while let Some(range) = at {
+            if range == outer {
+                return true;
+            }
+            at = self.enclosing_range(range);
+        }
+        false
     }
 }
 
@@ -504,11 +712,13 @@ impl LoopTable {
     }
 }
 
-/// What the label pass finds in one document: its diagnostics and its loops.
+/// What the label pass finds in one document: its diagnostics, its loops and
+/// its jumps that leave hub bodies.
 #[derive(Clone, Debug, Default)]
 pub struct LabelPass {
     pub diagnostics: Vec<Diagnostic>,
     pub loops: LoopTable,
+    pub leaves: HubLeaves,
 }
 
 /// The `E-JUMP-MAX` message for a `max` that is no literal integer in 1..=99.
@@ -520,11 +730,12 @@ fn max_range_message() -> String {
     )
 }
 
-/// dsl 0.12.0 / 0.51.0 whole-document pass: `E-LABEL-DUP` /
+/// dsl 0.12.0 / 0.51.0 / 0.52.0 whole-document pass: `E-LABEL-DUP` /
 /// `E-JUMP-UNDEFINED` / `E-JUMP-BACKWARD`, the bounded-jump rules
 /// (`E-JUMP-MAX`, `E-JUMP-LOOP-SCOPE`, `E-JUMP-INTO-LOOP`,
-/// `E-JUMP-LOOP-CROSS`, judged in one pass after collection) and the
-/// document's [`LoopTable`]. Walks `doc.shots`, `doc.quests`, then the lore
+/// `E-JUMP-LOOP-CROSS`) and the range body rule (`E-JUMP-INTO-BODY`), each
+/// judged in one pass after collection, the document's [`LoopTable`] and its
+/// [`HubLeaves`]. Walks `doc.shots`, `doc.quests`, then the lore
 /// addressing units — `doc.entries` (dsl 0.19.0) and `doc.beats` (dsl 0.23.0
 /// §4) interleaved in source order, as the artifact lays them out — each
 /// recursively — mirrors `reachability::check_reachability_in`'s own walk
@@ -589,32 +800,15 @@ pub fn check_next_labels(doc: &Document) -> LabelPass {
         }
     }
 
-    // Scope: the loop stays inside one inline body chain and spans no
-    // separately run `<on>`/`<objective>`.
+    // Scope: the loop stays inside one inline body chain. A region cannot
+    // span a quest's `<on>`/`<objective>`: that needs a `::label` at the
+    // quest's top level, which admission refuses (dsl 0.52.0 §4).
     let mut scoped: Vec<(&NextSite, LoopRegion)> = Vec::new();
     for (next, label) in bounded {
         if let Some(left) = c.left_body(next.body, label.body) {
             diags.push(diag(
                 E_JUMP_LOOP_SCOPE,
                 left.leave_message(&next.render(), next.to),
-                next.span,
-            ));
-            continue;
-        }
-        if let Some(over) = c
-            .separate
-            .iter()
-            .find(|s| label.pos < s.pos && s.pos < next.pos)
-        {
-            diags.push(diag(
-                E_JUMP_LOOP_SCOPE,
-                format!(
-                    "`{}` loops back over {}, which runs on its own; put the loop inside the {} \
-                     body or before it",
-                    next.render(),
-                    over.what,
-                    over.body
-                ),
                 next.span,
             ));
             continue;
@@ -689,9 +883,37 @@ pub fn check_next_labels(doc: &Document) -> LabelPass {
             ));
         }
     }
+    // dsl 0.52.0 §5.1–§5.2: a forward jump stays in its range body or
+    // leaves hub bodies only. A backward jump is `E-JUMP-BACKWARD` or a
+    // bounded loop, which `E-JUMP-LOOP-SCOPE` already confines.
+    let mut leaves = HubLeaves::default();
+    for next in &c.nexts {
+        let Some(label) = c.labels.get(next.to) else {
+            continue;
+        };
+        if label.pos <= next.pos {
+            continue;
+        }
+        match c.route(next.body, label.body) {
+            Route::Stays => {}
+            Route::Leaves(n) => {
+                // A forward jump with `max` is `E-JUMP-MAX` above; a bounded
+                // jump never carries `leaves`.
+                if matches!(next.max, MaxAttr::Absent) {
+                    leaves.by_jump.insert(next.directive.byte_start, n);
+                }
+            }
+            Route::Enters(body) => diags.push(diag(
+                E_JUMP_INTO_BODY,
+                body.enter_message(&next.render()),
+                next.span,
+            )),
+        }
+    }
     LabelPass {
         diagnostics: diags,
         loops,
+        leaves,
     }
 }
 
@@ -815,7 +1037,6 @@ fn collect(doc: &Document) -> Collector<'_> {
         dups: Vec::new(),
         nexts: Vec::new(),
         bodies: Vec::new(),
-        separate: Vec::new(),
     };
     for shot in &doc.sections {
         let body = c.open(BodyKind::Section(&shot.heading), None);
@@ -1153,5 +1374,193 @@ mod tests {
              text=\"Out\" exit>\n    @a: bye\n  </choice>\n</hub>\n",
         );
         assert_eq!(check_next_labels(&d).loops.regions().len(), 1);
+    }
+
+    // --- dsl 0.52.0 §5.1–§5.2: range bodies, `leaves` -----------------------
+
+    fn parsed(src: &str) -> Document {
+        lute_syntax::parse(src).0
+    }
+
+    /// The one `E-JUMP-INTO-BODY` message of `d`.
+    fn into_body(d: &Document) -> String {
+        let pass = check_next_labels(d);
+        let [diag] = pass.diagnostics.as_slice() else {
+            panic!("one diagnostic: {:?}", pass.diagnostics)
+        };
+        assert_eq!(diag.code, E_JUMP_INTO_BODY);
+        assert!(pass.leaves.is_empty(), "{:?}", pass.leaves);
+        diag.message.clone()
+    }
+
+    /// Clean, and the `leaves` count of every leaving jump in jump order.
+    fn leaves(d: &Document) -> Vec<u32> {
+        let pass = check_next_labels(d);
+        assert!(pass.diagnostics.is_empty(), "{:?}", pass.diagnostics);
+        let mut by_jump: Vec<(usize, u32)> = pass
+            .leaves
+            .by_jump
+            .iter()
+            .map(|(at, n)| (*at, n.get()))
+            .collect();
+        by_jump.sort_unstable();
+        by_jump.into_iter().map(|(_, n)| n).collect()
+    }
+
+    const EXIT: &str = "  <choice id=\"out\" text=\"Out\" exit>\n    @a: bye\n  </choice>\n";
+
+    /// #216's sibling cases (spec §5.1): each checks clean on v0.51.0.
+    #[test]
+    fn a_jump_into_a_hub_body_is_refused() {
+        let sibling = doc(&format!(
+            "<hub id=\"desk\">\n  <choice id=\"look\" text=\"Look\">\n    ::jump{{to=\"mid\"}}\n  \
+             </choice>\n  <choice id=\"take\" text=\"Take\">\n    ::label{{name=\"mid\"}}\n    \
+             @a: took\n  </choice>\n{EXIT}</hub>\n"
+        ));
+        assert_eq!(
+            into_body(&sibling),
+            "`::jump{to=\"mid\"}` enters the body of hub `desk`'s option `take`, which runs only \
+             when that option is chosen — jump to a label in the same body, or after the hub"
+        );
+        // From before the hub; into a nested hub's option, the outer option
+        // is the body entered.
+        let before = doc(&format!(
+            "::jump{{to=\"mid\"}}\n<hub id=\"desk\">\n  <choice id=\"take\" text=\"Take\">\n    \
+             <hub id=\"inner\">\n      <choice id=\"deep\" text=\"Deep\">\n        \
+             ::label{{name=\"mid\"}}\n        @a: deep\n      </choice>\n      <choice id=\"up\" \
+             text=\"Up\" exit>\n        @a: up\n      </choice>\n    </hub>\n  </choice>\n{EXIT}\
+             </hub>\n"
+        ));
+        assert!(
+            into_body(&before)
+                .starts_with("`::jump{to=\"mid\"}` enters the body of hub `desk`'s option `take`"),
+            "{}",
+            into_body(&before)
+        );
+        let back = doc(&format!(
+            "::jump{{to=\"mid\"}}\n<hub id=\"desk\">\n{EXIT}  <return>\n    ::label{{name=\"mid\"}}\n    \
+             @a: back\n  </return>\n</hub>\n"
+        ));
+        assert_eq!(
+            into_body(&back),
+            "`::jump{to=\"mid\"}` enters the `<return>` body of hub `desk`, which runs only when an \
+             option hands control back — jump to a label in the same body, or after the hub"
+        );
+    }
+
+    #[test]
+    fn a_jump_between_quest_bodies_is_refused() {
+        let quest = |body: &str| {
+            parsed(&format!(
+                "---\nkind: quest\n---\n<quest id=\"q\" title=\"Q\">\n{body}</quest>\n"
+            ))
+        };
+        let objectives = quest(
+            "<objective id=\"o\" title=\"O\" done=\"run.a\">\n::jump{to=\"p2\"}\n</objective>\n\
+             <objective id=\"p\" title=\"P\" done=\"run.b\">\n::label{name=\"p2\"}\n@a: p\n\
+             </objective>\n",
+        );
+        assert_eq!(
+            into_body(&objectives),
+            "`::jump{to=\"p2\"}` enters the body of `<objective id=\"p\">`, which runs only when \
+             that objective completes — jump to a label in the same body (to end a body early, \
+             jump to a label at its end)"
+        );
+        let handler = quest(
+            "<objective id=\"o\" title=\"O\" done=\"run.a\">\n::jump{to=\"h\"}\n</objective>\n\
+             <on event=\"questComplete\">\n::label{name=\"h\"}\n@a: done\n</on>\n",
+        );
+        assert_eq!(
+            into_body(&handler),
+            "`::jump{to=\"h\"}` enters the `<on event=\"questComplete\">` handler, which runs only \
+             when that event fires — jump to a label in the same body (to end a body early, jump \
+             to a label at its end)"
+        );
+    }
+
+    #[test]
+    fn a_jump_between_lore_units_is_refused() {
+        let lore = parsed(
+            "---\nkind: lore\n---\n<beat id=\"b1\">\n  ::jump{to=\"x\"}\n</beat>\n\n<beat id=\"b2\">\n  \
+             ::label{name=\"x\"}\n  @a: two\n</beat>\n",
+        );
+        assert_eq!(
+            into_body(&lore),
+            "`::jump{to=\"x\"}` enters `<beat id=\"b2\">`, which runs only when that beat is \
+             presented — jump to a label in the same body (to end a body early, jump to a label \
+             at its end)"
+        );
+        let entries = parsed(
+            "---\nkind: lore\n---\n<entry id=\"e1\" target=\"item.a\">\n  ::jump{to=\"x\"}\n</entry>\n\n\
+             <entry id=\"e2\" target=\"item.b\">\n  ::label{name=\"x\"}\n  @a: two\n</entry>\n",
+        );
+        assert!(
+            into_body(&entries).starts_with("`::jump{to=\"x\"}` enters `<entry id=\"e2\">`"),
+            "{}",
+            into_body(&entries)
+        );
+    }
+
+    /// The legal routes: the same body, after the hub (`leaves` 1), after an
+    /// inner hub inside an outer option (1), after both hubs (2), from a
+    /// `<return>` body (1), into inline branch and match bodies, between
+    /// sections, and a guarded jump.
+    #[test]
+    fn legal_jumps_stay_or_leave_hub_bodies() {
+        let same = doc(&format!(
+            "<hub id=\"h\">\n  <choice id=\"go\" text=\"Go\">\n    ::jump{{to=\"in\"}}\n    @a: skip\n    \
+             ::label{{name=\"in\"}}\n    @a: in\n  </choice>\n{EXIT}</hub>\n"
+        ));
+        assert_eq!(leaves(&same), [] as [u32; 0]);
+        let after = doc(&format!(
+            "<hub id=\"h\">\n  <choice id=\"go\" text=\"Go\">\n    ::jump{{to=\"after\"}}\n  \
+             </choice>\n{EXIT}</hub>\n::label{{name=\"after\"}}\n@a: after\n"
+        ));
+        assert_eq!(leaves(&after), [1]);
+        let nested = doc(&format!(
+            "<hub id=\"outer\">\n  <choice id=\"a\" text=\"A\">\n    <hub id=\"inner\">\n      \
+             <choice id=\"x\" text=\"X\">\n        <branch id=\"pick\">\n          <choice id=\"one\" \
+             text=\"One\">\n            ::jump{{to=\"mid\"}}\n          </choice>\n          <choice \
+             id=\"two\" text=\"Two\">\n            ::jump{{to=\"end\" when=\"run.done\"}}\n          \
+             </choice>\n        </branch>\n      </choice>\n      <choice id=\"y\" text=\"Y\" exit>\n        \
+             @a: y\n      </choice>\n    </hub>\n    ::label{{name=\"mid\"}}\n    @a: mid\n  </choice>\n\
+             {EXIT}</hub>\n::label{{name=\"end\"}}\n@a: end\n"
+        ));
+        assert_eq!(leaves(&nested), [1, 2]);
+        let back = doc(&format!(
+            "<hub id=\"h\">\n{EXIT}  <return>\n    ::jump{{to=\"after\"}}\n  </return>\n</hub>\n\
+             ::label{{name=\"after\"}}\n@a: after\n"
+        ));
+        assert_eq!(leaves(&back), [1]);
+        let inline = doc(
+            "::jump{to=\"c\"}\n<branch id=\"b\">\n  <choice id=\"x\" text=\"X\">\n    \
+             ::label{name=\"c\"}\n    @a: c\n  </choice>\n</branch>\n<match subject=\"run.done\">\n  \
+             <when is=\"true\">\n    ::jump{to=\"m\"}\n  </when>\n  <otherwise>\n    \
+             ::label{name=\"m\"}\n    @a: m\n  </otherwise>\n</match>\n\n## Two\n\n\
+             ::label{name=\"two\"}\n@a: two\n",
+        );
+        assert_eq!(leaves(&inline), [] as [u32; 0]);
+        let sections = doc("::jump{to=\"two\"}\n\n## Two\n\n::label{name=\"two\"}\n@a: two\n");
+        assert_eq!(leaves(&sections), [] as [u32; 0]);
+    }
+
+    /// A bounded jump never carries `leaves`: its loop is
+    /// `E-JUMP-LOOP-SCOPE` when it leaves a hub body, and a forward `max`
+    /// is `E-JUMP-MAX`, with no `E-JUMP-INTO-BODY` beside either.
+    #[test]
+    fn bounded_jumps_carry_no_leaves() {
+        let forward = doc(&format!(
+            "<hub id=\"h\">\n  <choice id=\"go\" text=\"Go\">\n    ::jump{{to=\"after\" max=\"2\"}}\n  \
+             </choice>\n{EXIT}</hub>\n::label{{name=\"after\"}}\n@a: after\n"
+        ));
+        let pass = check_next_labels(&forward);
+        assert_eq!(codes(&pass.diagnostics), ["E-JUMP-MAX"]);
+        assert!(pass.leaves.is_empty());
+        let sibling_loop = doc(&format!(
+            "<hub id=\"h\">\n  <choice id=\"a\" text=\"A\">\n    ::label{{name=\"top\"}}\n    @a: a\n  \
+             </choice>\n  <choice id=\"b\" text=\"B\">\n    ::jump{{to=\"top\" max=\"2\"}}\n  \
+             </choice>\n{EXIT}</hub>\n"
+        ));
+        assert_eq!(codes(&check(&sibling_loop)), ["E-JUMP-LOOP-SCOPE"]);
     }
 }
