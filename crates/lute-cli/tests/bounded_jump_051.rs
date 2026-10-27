@@ -89,7 +89,7 @@ fn an_empty_loop_starts_over_on_each_outer_iteration() {
     let source = dir.join("scene.lute");
     std::fs::write(
         &source,
-        "---\nkind: scene\nluteVersion: \"0.51.0\"\nid: empty\ntitle: T\n---\n\n## Shot 1.\n\n\
+        "---\nkind: scene\nluteVersion: \"0.52.0\"\nid: empty\ntitle: T\n---\n\n## Shot 1.\n\n\
          ::label{name=\"outer\"}\n@narrator: Round.\n::label{name=\"inner\"}\n\
          ::jump{to=\"inner\" max=\"1\"}\n::jump{to=\"outer\" max=\"1\"}\n@narrator: Done.\n",
     )
@@ -164,7 +164,7 @@ fn each_component_instance_loops_on_its_own_label() {
         "component-loops",
         "---\ncomponent: c\n---\n## Body\n::label{name=\"inner\"}\n@narrator: In.\n\
          ::jump{to=\"inner\" max=\"1\"}\n",
-        "---\nkind: scene\nid: host\nluteVersion: \"0.51.0\"\ntitle: Host\n\
+        "---\nkind: scene\nid: host\nluteVersion: \"0.52.0\"\ntitle: Host\n\
          components: [c.component.lute]\n---\n## Shot 1.\n\
          ::use{component=\"c\" instance=\"first\"}\n::label{name=\"outer\"}\n@narrator: Mid.\n\
          ::use{component=\"c\" instance=\"second\"}\n::jump{to=\"outer\" max=\"1\"}\n\
@@ -184,7 +184,7 @@ fn a_forward_jump_stays_in_its_component_instance() {
         "component-forward",
         "---\ncomponent: c\n---\n## Body\n@narrator: In.\n::jump{to=\"skip\"}\n\
          @narrator: Skipped.\n::label{name=\"skip\"}\n@narrator: After.\n",
-        "---\nkind: scene\nid: host\nluteVersion: \"0.51.0\"\ntitle: Host\n\
+        "---\nkind: scene\nid: host\nluteVersion: \"0.52.0\"\ntitle: Host\n\
          components: [c.component.lute]\n---\n## Shot 1.\n\
          ::use{component=\"c\" instance=\"first\"}\n@narrator: Between.\n\
          ::use{component=\"c\" instance=\"second\"}\n@narrator: End.\n",

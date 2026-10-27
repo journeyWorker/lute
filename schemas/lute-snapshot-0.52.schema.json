@@ -1333,7 +1333,7 @@
       ]
     }
   },
-  "$id": "https://lute-lang.vercel.app/schemas/lute-snapshot-0.51.schema.json",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-snapshot-0.52.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "description": "A serialized, resumable runtime state.",

@@ -405,7 +405,7 @@ member id: `Today is {{run.weekday}}.` reads `Today is Sunday.` (see
 Three kinds of quoted attribute value take the **label grammar**: a `<choice>`'s `text`, a
 `<branch prompt>` or `<hub prompt>`, and a plugin directive attribute declared
 [`type: text`](#localizable-directive-text-since-051). Each holds `{{…}}` interpolations with their
-[format hints](#ordinals-x-ordinal) and no [inline modifiers](#inline-text-modifiers). Since 0.52 a
+[format hints](#ordinals-xordinal) and no [inline modifiers](#inline-text-modifiers). Since 0.52 a
 prompt is checked as an option label is: an undeclared path is `E-CEL-PROFILE`, a maybe-unset one
 `E-MAYBE-UNSET`, and the runtime renders the prompt's markers onto the menu with the labels'
 (see [Choices & hubs](/language/choices-and-hubs/#the-compiled-record)). `\{{` writes a literal `{{` in
@@ -432,7 +432,7 @@ A line may name a value only the engine knows, such as the player's name, with a
 
 compiles to a `reserved` placeholder, `{ "kind": "reserved", "token": "playerName", "format"? }`. A token is a bare **identifier** (an ASCII letter or `_`, then letters, digits or `_`). `{{player-name}}` and `{{2nd}}` are not tokens: they stay state-path-shaped and keep their `E-CEL-PROFILE`. A state path always has a tier root and a `.`, so no spelling that was a state path changes meaning; the names that are state roots or CEL literals cannot be declared as tokens (see [Reserved names](/reference/reserved-names/)).
 
-- **Declared.** The token's type decides which [format hints](#ordinals-x-ordinal) it takes. A `string` or `enum` token takes the text hints (`{{platform:capitalize}}` is clean), and a number hint on it is `E-REF-TYPE`. An `int` token takes the number hints (`{{rank:ordinal}}` is clean), and a text hint on it (`{{rank:capitalize}}`) is `E-REF-TYPE`. `{{userName}}` behaves exactly as before.
+- **Declared.** The token's type decides which [format hints](#ordinals-xordinal) it takes. A `string` or `enum` token takes the text hints (`{{platform:capitalize}}` is clean), and a number hint on it is `E-REF-TYPE`. An `int` token takes the number hints (`{{rank:ordinal}}` is clean), and a text hint on it (`{{rank:capitalize}}`) is `E-REF-TYPE`. `{{userName}}` behaves exactly as before.
 - **Undeclared.** A bare name no plugin declares is `E-CEL-PROFILE`. The message names "a declared host token" and lists the declared tokens: `` interpolation `playerName` is not a valid `{{…}}` form — only a state path, …, a def `@ref` / `@ref(args)`, or a declared host token (`userName`) are permitted; declare `playerName` in a plugin's `hostTokens:` export if the engine substitutes it … ``. The rest of the message is unchanged.
 - **Escape.** `\{{name}}` is unchanged: it is never a placeholder.
 - **Never a state read.** A host token takes no part in definite-assignment, dependency or quest-reference analysis, and counts as one word for lint.

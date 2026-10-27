@@ -345,7 +345,7 @@ factory와 `host.plugin`이 같은 tag를 처리하면 host handler가 우선하
 
 ```json
 {
-  "saveVersion": "0.51",
+  "saveVersion": "0.52",
   "project": "<bundle fingerprint>",
   "savedAt": "<ISO timestamp>",
   "label": "Chapter 1",

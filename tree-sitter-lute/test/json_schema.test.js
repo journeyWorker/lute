@@ -699,8 +699,8 @@ options:
 
 describe("generated runtime contract schemas", () => {
   test("every conformance and contract-fixture line validates", () => {
-    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.51.schema.json`, "utf8"));
-    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.51.schema.json`, "utf8"));
+    const events = JSON.parse(readFileSync(`${ROOT}/schemas/lute-events-0.52.schema.json`, "utf8"));
+    const snapshots = JSON.parse(readFileSync(`${ROOT}/schemas/lute-snapshot-0.52.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     const eventValidate = ajv.compile(events);
     const snapshotValidate = ajv.compile(snapshots);
@@ -743,7 +743,7 @@ describe("generated runtime contract schemas", () => {
 // index types; every index the corpus compiles must validate against them.
 describe("generated IR index schema", () => {
   test("every compiled project.index.json validates as `projectIndex`", () => {
-    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.51.schema.json`, "utf8"));
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.52.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     ajv.addSchema(ir);
     const validate = ajv.compile({ $ref: `${ir.$id}#/$defs/projectIndex` });
@@ -775,7 +775,7 @@ describe("generated IR index schema", () => {
   });
 
   test("an index def row is closed to the documented shape", () => {
-    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.51.schema.json`, "utf8"));
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.52.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     ajv.addSchema(ir);
     const def = ajv.compile({ $ref: `${ir.$id}#/$defs/indexDef` });
@@ -796,7 +796,7 @@ describe("generated IR index schema", () => {
 // checks the prefix is the occasion's declared one.
 describe("IR raise records", () => {
   test("a dynamic raise needs the reference as its target", () => {
-    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.51.schema.json`, "utf8"));
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.52.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     ajv.addSchema(ir);
     const raise = ajv.compile({ $ref: `${ir.$id}#/$defs/raiseRecord` });
@@ -823,7 +823,7 @@ describe("IR raise records", () => {
 // option `$defs` are closed, so the schema must name `stamps`.
 describe("IR option stamps", () => {
   test("a compiled document with element and option stamps validates", () => {
-    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.51.schema.json`, "utf8"));
+    const ir = JSON.parse(readFileSync(`${ROOT}/schemas/lute-ir-0.52.schema.json`, "utf8"));
     const ajv = new (Ajv2020)({ allErrors: true, strict: false });
     const validate = ajv.compile(ir);
     const project = `${ROOT}/crates/lute-cli/tests/fixtures/plugin-stamps-050-logic`;

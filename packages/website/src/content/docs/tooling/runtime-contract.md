@@ -11,7 +11,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime).
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
-[`schemas/lute-ir-0.51.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.51.schema.json)
+[`schemas/lute-ir-0.52.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.52.schema.json)
 (JSON Schema draft 2020-12).
 
 ## Runtime event contract and `lute-runtime`
@@ -97,7 +97,7 @@ Every 0.52 IR change is additive: a project that uses none of the new constructs
 
 - **`promptPlaceholders`.** A `choice` or `hub` command with a prompt that holds a marker gains `promptPlaceholders`, built as an option's `placeholders` are. It adds no semantic id; its expressions add the same expression-derived requirements an option label's do (a prompt that reads a temporal def requires `lute.knowledge.temporal/1`), and a `path` placeholder is a content read (a bridge result only a prompt shows is still requested in `awaitBridge.results`).
 
-**Reward-kind attributes.** `RewardEntry` gains `attrs`: each authored [reward-kind attribute](/plugins/manifests/#reward-kind-attributes) and each declared `default:` not authored, typed as a `plugin` record's `fields`, written last and only when non-empty. The effects bound from them land in the existing `retracts`/`asserts`/`raises`. The `grant` record's `reward` copies `attrs` (only when non-empty). Descriptive, no semantic id: a host reads `attrs` by the reward kind's contract, which `capabilityVersion` pins.
+**Reward-kind attributes.** `RewardEntry` gains `attrs`: each authored [reward-kind attribute](/plugins/manifests/#reward-kind-attributes) and each declared `default:` not authored, typed as a `plugin` record's `fields`, written last and only when non-empty. The effects bound from them land in the existing `retracts`/`asserts`/`raises`. The `grant` record's `reward` copies `attrs` (only when non-empty). Descriptive, no semantic id: a host reads `attrs` by the reward kind's contract, which `capabilitySnapshot` pins.
 
 ```json
 {"index":0,"instance":1,"kind":"grant","objective":"pay","quest":"first","reward":{"amount":1,"attrs":{"rarity":"gold"},"kind":"BADGE","target":"mira"}}
@@ -502,8 +502,8 @@ Every host negotiates in this order, before opening a playback session:
 
 1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
    execution-IR shape, so an engine pins the exact `irVersion` major.minor
-   line: a `0.51` engine accepts only `0.51.*` artifacts and refuses `0.50.*`
-   and `0.52.*`; patch handling is the engine's policy. From 1.0 onward, the
+   line: a `0.52` engine accepts only `0.52.*` artifacts and refuses `0.51.*`
+   and `0.53.*`; patch handling is the engine's policy. From 1.0 onward, the
    released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
@@ -515,7 +515,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.51.0"
+irVersion: "0.52.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -531,7 +531,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.41.*` artifact against the `0.51.0`
+the matrix's exact major.minor line (a `0.41.*` artifact against the `0.52.0`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 

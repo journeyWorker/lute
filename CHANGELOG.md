@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.51.0`, the grammar and semantics the checker
+- **Language** — currently `0.52.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.51.0`) and gated on by consuming engines.
+  artifact (currently `0.52.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,277 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.52.0]
+
+**Clean slate** (spec
+[`0.52.0.md`](docs/proposals/scenario-dsl/0.52.0.md); plan
+[`2026-10-27-lute-0.52.0-clean-slate.md`](docs/superpowers/plans/2026-10-27-lute-0.52.0-clean-slate.md);
+decisions [`2026-10-27-lute-0.52-decisions.md`](docs/superpowers/notes/2026-10-27-lute-0.52-decisions.md)).
+The release resolves every issue open on 2026-10-27 — #139, #198, #201, #208,
+#209, #210, #211, #212, #213, #214, #216, #217, #218 — and the three filed
+while it was specified and built (#220, #221, #222), so the next dogfood
+starts from an empty tracker. The rule throughout is conservative: the
+smallest surface, one spelling per concept, static analysis kept sound, refuse
+rather than guess, and the runtime agrees with the checker. There is **no new
+keyword and no new element**. Every axis reads `0.52.0`; the contract schemas
+move to the `0.52` line
+(`schemas/lute-{ir,events,snapshot,player-bindings}-0.52.schema.json`),
+`bindingsVersion` is `"0.52"` and the player's save/profile format is
+`"0.52"`. The seven npm packages align to `0.52.0`. Every report id and every
+artifact's `capabilitySnapshot` is unchanged. The IR changes are additive; the
+Event and snapshot shapes change (rendered menu text). This is a clean cutover
+(ADR D6).
+
+### Breaking
+
+| Class (D6) | Change | Migration |
+|---|---|---|
+| Syntax (stricter) | `E-INTERP-BRACE` (a literal `{` directly before a `{{…}}` marker in line text, or a `::use` argument ending in a plain `{{` spliced before a marker); quest top-level content refused, including content after the last `<on>` / `<objective>`, which ran by fallthrough as part of that body on 0.51.0 (§4); `E-JUMP-INTO-BODY`; `E-OBJECTIVE-TITLE-INTERP`. **Intentional break:** a jump from one `<on>` / `<objective>` / beat / entry body into another ran on 0.51.0 as a layout-dependent early return; 0.52 refuses it. | Put a character between the brace and the marker (`{ {{run.a}}`) or show the brace from a string state path (`{{run.lbrace}}{{run.a}}`); pass a literal `{{` in a `::use` argument as `\\{{`; move top-level quest content into the `<on>` / `<objective>` it belongs to (trailing content: into the body it ran with); jump within the body or past the hub — to end a body early, jump to a label at its end; write objective titles as plain text. |
+| Semantic (stricter) | Prompt interpolations are checked; the hub stage head adds `W-STAGE-ABSENT` and injected anchors/preloads after a sibling option's exit; the stage join keeps a character on stage on every route (#222), so a plain line after it gains its `auto-pose-reset`. | Fix the reported read or staging (corpus: the gained resets listed in spec §15 class 6). |
+| Syntax (looser) | `\{{` is a literal `{{` in every value that takes the label grammar; reward-kind attributes on `<reward>`. | None. |
+| Plugin (stricter) | Reward-kind attribute declaration faults at load. | Rename, de-duplicate, retype the default, or split a structured attribute. None in the corpus. |
+| Plugin (looser) | Reward effects read `@<attr>` in facts and raise targets. | None. |
+| IR (additive) | `jump.leaves` with `lute.core.hubLeave/1`; `choice` / `hub` `promptPlaceholders`; `rewardEntry.attrs`. | Engines implement a hub leave or refuse the id (D5); they MAY read the descriptive fields. |
+| Runtime / events | A leaving jump leaves the hub; an artifact with a transfer into a hub option or `<return>` body from outside it is refused at load (§5.3); the `awaitChoice` menu carries rendered `text` / `texts` / `prompt` / `promptTexts` (the snapshot's pending await too); the grant record's `reward.attrs`; 32-bit casts agree with native. | Hosts show the menu's text instead of rendering the IR's. Compiled artifacts never have such a transfer. |
+| Player | Menu text from the runtime. | None. |
+| CLI | Envelope provenance, impact edges, `loc export` identity, `test` note. | None. |
+| Rust API | `JumpCmd.leaves` (`HubLeave`); `ChoiceCmd` / `HubCmd.prompt_placeholders`; `RewardEntry.attrs`; `driver::Menu.prompt`, `MenuOption.text`, `MenuText`; `MenuAwait.prompt_texts`, `MenuOptionAwait.text` / `texts`; `ProjectDoc.snapshot` (replacing `reward_kinds`) and `lute_check::EMPTY_SNAPSHOT` (replacing `NO_REWARD_KINDS`); `ManifestError::RewardAttr` / `RewardAttrFault`; `lute_manifest::core::REWARD_ATTRS` (moved from `lute_check`); `EdgeKind::is_alternative`; the trace grant index (`u64`); `SpriteState.unknown` (#222); `StageFlow::{hub, completion, exit_option, enter_hub_body, leave_hub_body, ends}`. | Follow the types; the PR carries `api-change`. |
+| TS API | Regenerated event types (`MenuAwait.prompt` / `promptTexts`, `MenuOptionAwait.text` / `texts`) and `Ir.ts` (`leaves`, `promptPlaceholders`, `attrs`); `choiceView` reads the menu. | Additive for hosts. |
+| Release | All axes `0.52.0`; schemas `-0.52`; `bindingsVersion` and saves `"0.52"`. | Widen gates from `0.51` to `0.52`; a `"0.51"` save is refused as every minor's is. |
+
+### Syntax
+
+- **Literal braces** (§3.1): in line text, a `{{…}}` marker whose preceding
+  literal text ends in an odd run of `{` is `E-INTERP-BRACE` — compiled text
+  cannot tell that brace from the marker. An even run stays legal (each pair
+  encodes as `\{{`). A component line that splices a `::use` argument ending
+  in an odd run of `{`, or in a plain `{{`, before a marker is
+  `E-INTERP-BRACE` at the outermost `::use`; a translation with the sequence
+  is `E-L10N-MODIFIERS` (wording unchanged). (#139, #221)
+- **`\{{` in labels** (§3.2): in a quoted value that takes the label grammar
+  — a `<choice text>`, a `<branch prompt>` / `<hub prompt>`, a plugin `text`
+  attribute — `\{{` is a literal `{{`, stored verbatim and rendered as in
+  line text; in any other quoted value it stays `E-STRING-ESCAPE`, whose
+  messages now name `\{{`. (#211)
+- **Quest top level** (§4): a quest admits only `<on>` and `<objective>`
+  directly inside `<quest>`; any other node is `E-GRAMMAR-NOT-ADMITTED`. A
+  top-level `<hub>` is one refusal, not one more per option line. (#208)
+- **`E-JUMP-INTO-BODY`** (§5.1): a forward `::jump` stays in its range body
+  (the document's sections, a hub option, `<return>`, `<on>`, `<objective>`,
+  an entry or a beat body) or leaves enclosing hub option / `<return>`
+  bodies; a jump into another body is refused, naming the outermost body
+  entered. (#216)
+- **Objective titles** (§6.7): an `<objective title>` is plain text; a `{{`
+  in one (escaped, unterminated or not) is `E-OBJECTIVE-TITLE-INTERP`.
+  Titles were checked as interpolations but never rendered. (#220)
+- **Reward-kind attributes** (§7.2): a `<reward>` takes its kind's declared
+  attributes as quoted literals, typed like directive attributes (with the
+  owner `<reward kind="K">`); a missing `required` one is `E-MISSING-ATTR`,
+  an `@ref` value `E-REWARD-ATTR`, and `E-UNKNOWN-ATTR` lists the kind's
+  attributes. (#201)
+
+### Semantics
+
+- **The hub head** (§5.4): the checker's stage fold and the compiler's stage
+  walk start every hub option from one head state, the fixed point of the hub
+  loop (the non-exit options from the head, `<return>` from their
+  completion), shared with the loop heads of 0.51 and counted in
+  `LoopWalkStats`; the converge joins the head with the exit options' exits.
+  A character who left in one option is no longer on stage in the next.
+  (#217)
+- **Stage join** (§5.4): a character on stage on every route stays on stage
+  at a join; differing sprites merge to an unknown sprite, so a plain line
+  after the join keeps its `auto-pose-reset` and an `::actor` of an unknown
+  sprite injects like a fresh show. (#222)
+- **Checked prompts** (§6.1): a `<branch>` / `<hub>` `prompt` takes the label
+  grammar — interpolations checked like an option label's (referents, def
+  inlining, definite assignment read before the options' guards, host
+  tokens, modifiers); the project quest-reference check reads prompts and
+  directive `text` attributes. (#218, #212)
+- **Leaving jumps** (§5.1–§5.3): a forward jump out of hub option or
+  `<return>` bodies to a label after the hub ends those hub visits; no
+  `<return>` body runs and the menu is not presented again. (#216)
+- **Reward attributes in effects** (§7.3): one binding rule — the authored
+  value, else the declared `default:`, else unbound (the effect is not
+  applied, as an unbound `@target`) — feeds the fact analyses, the raise
+  table and lowering. (#201)
+
+### IR
+
+- `jump.leaves` (an integer ≥ 1, the number of hub option or `<return>`
+  bodies the jump leaves; omitted when none, never with `max`), collected as
+  the new semantic id **`lute.core.hubLeave/1`** only by an artifact with
+  such a jump (REGISTRY 18). (#216)
+- `choice` / `hub` `promptPlaceholders`, built as an option's `placeholders`;
+  a prompt's expressions add the requirements an option label's do, and a
+  prompt reading a bridge result makes the call await it. No new semantic
+  id. (#218)
+- `RewardEntry.attrs`: each authored kind attribute and each declared
+  `default:` not authored, typed as a `plugin` record's `fields`, written last
+  and only when non-empty. Descriptive, no semantic id. (#201)
+- A document that uses none of these compiles byte-identical to 0.51.0. The
+  schema is `schemas/lute-ir-0.52.schema.json` (title `irVersion 0.52.x`).
+
+### Plugin
+
+- **Reward-kind attribute declarations** (§7.1) follow the directive rules
+  at load; each fault is `E-PLUGIN-PARSE` at its `attrs:` entry: a name
+  `<reward>` already has (`id`, `kind`, `target`, `amount`, `when`,
+  `outcome`), a duplicate, a `default:` not of the declared type, a `list` /
+  `map` / `record` type. (#201)
+- **Reward effects read `@<attr>`** (§7.3): `asserts`, `retracts` and
+  `effects.raises` targets may read `@target` or a declared attribute of the
+  kind (with a did-you-mean); a raise target `@<attr>` is typed at assembly
+  as a directive's. `accepts` are unchanged. (#201)
+- `schemas/lute.plugin.json`: descriptions only.
+
+### Bindings
+
+- None. `bindingsVersion` is `"0.52"`.
+
+### CLI
+
+- `lute scenario envelope --node`: writer provenance stops at alternative
+  edges (`[accept]`, `[raises]`), so a writer is no longer listed as provably
+  before a quest it only accepts. (#209)
+- `lute impact` follows `[accept]` (`Proven`) and `[raises]` edges
+  (`Proven` when a static or untargeted raise backs the edge, else
+  `Heuristic`, naming `occasion.target`), human and JSON. (#210)
+- `lute loc export`: units in a choice body inside a component expansion take
+  the component-scoped prefix (latent on a check-clean project; an
+  export/compile agreement test pins every `lineId` over `docs/examples`).
+  (#213)
+- `lute test --project` no longer prints the discovery note; a discovered
+  run still prints it once. (#214)
+- Every report id is unchanged; every other output is identical to 0.51.0
+  apart from stamps and the classes the spec's §15 lists.
+
+### Lint
+
+- List indexing converts its `int` operand without truncation on 32-bit
+  targets, and the message names the authored value. (#198)
+
+### Runtime
+
+- **Hub leave** (§5.3): `Step::Leave` / `RangeEnd`; a leaving jump ends its
+  range and the `leaves` innermost hub visits, then continues at the target.
+  At load the runtime refuses a `leaves` that does not reach the target
+  exactly (undercount, overcount, sibling body), `max` with `leaves`, and a
+  transfer from outside a hub option or `<return>` body into it (a body start
+  included). (#216)
+- **Rendered menu text** (§6.3): at every presentation the runtime renders
+  each option label and the prompt with the line renderer (markers by value,
+  the 0.47.1 reading of `\{{`, translations by marker); the `awaitChoice`
+  menu carries `prompt` (now set when authored), `promptTexts`, and each
+  option's `text` and `texts`; the snapshot's pending await holds them. A
+  `hub` record's `prompt` is rendered too. (#218)
+- The `grant` record's `reward` copies `attrs` when non-empty. (#201)
+- List indexing, a `countDistinct` column and the weekday label convert
+  without truncation on wasm32, agreeing with native; the trace grant index is
+  the record's `u64`. (#198)
+- `conformance/hub-leave` and `conformance/session/hub-leave`.
+
+### Player
+
+- `choiceView` takes option labels and the prompt from the await menu
+  (`text` / `texts`, `prompt` / `promptTexts`) in the current locale; a locale
+  change applies at the next presentation. The save and profile format
+  version is `"0.52"`. (#218)
+
+### Diagnostics
+
+- New: `E-INTERP-BRACE`, `E-JUMP-INTO-BODY`, `E-OBJECTIVE-TITLE-INTERP`
+  (source).
+- Changed messages, sites and `--explain` text: `E-STRING-ESCAPE` (names
+  `\{{`; new site outside the label grammar), `E-L10N-MODIFIERS` (new cause,
+  wording unchanged), `E-GRAMMAR-NOT-ADMITTED` (quest top level),
+  `E-JUMP-LOOP-SCOPE` (the quest-body cause removed), `W-STAGE-ABSENT` (hub
+  options after a sibling's exit), the label-interpolation codes
+  (`E-CEL-PROFILE`, `E-MAYBE-UNSET`, `E-QUEST-REF-UNKNOWN`, …) at a `prompt`,
+  `E-QUEST-REF-UNKNOWN` (directive `text` attributes and prompts in the
+  project pass), `E-BRANCH-PROMPT` (summary), `E-UNKNOWN-ATTR`,
+  `E-ATTR-TYPE`, `E-BAD-ENUM`, `E-UNKNOWN-ID`, `E-MISSING-ATTR`,
+  `E-REWARD-ATTR` (reward-kind attributes), `E-PLUGIN-PARSE` (reward-kind
+  declaration faults; effect `@<attr>` wording).
+
+### Identity
+
+- None. Line ids and voice keys do not move; `eventVersion` /
+  `snapshotVersion` read `0.52.0`.
+
+### Fixed
+
+- **A literal `{` directly before a `{{` marker is refused instead of
+  mis-encoded.** ([#139](https://github.com/journeyWorker/lute/issues/139))
+- **A `::use` argument ending in `{{` no longer swallows the marker spliced
+  after it.** ([#221](https://github.com/journeyWorker/lute/issues/221))
+- **A literal `{{` can be written in a quoted label value as `\{{`.**
+  ([#211](https://github.com/journeyWorker/lute/issues/211))
+- **Quest top-level content the runtime never presented is refused.**
+  ([#208](https://github.com/journeyWorker/lute/issues/208))
+- **A forward `::jump` out of a hub option leaves the hub.**
+  ([#216](https://github.com/journeyWorker/lute/issues/216))
+- **The `<hub>` stage walk starts every option from the hub loop's head.**
+  ([#217](https://github.com/journeyWorker/lute/issues/217))
+- **A character on stage on every route keeps their `auto-pose-reset` after a
+  join.** ([#222](https://github.com/journeyWorker/lute/issues/222))
+- **Option labels' and prompts' `{{…}}` markers are rendered.**
+  ([#218](https://github.com/journeyWorker/lute/issues/218))
+- **Objective title markers are refused instead of checked and never
+  rendered.** ([#220](https://github.com/journeyWorker/lute/issues/220))
+- **The project quest-reference check reads directive `text` attributes and
+  prompts.** ([#212](https://github.com/journeyWorker/lute/issues/212))
+- **Reward-kind `attrs:` can be authored on `<reward>` and are validated at
+  load.** ([#201](https://github.com/journeyWorker/lute/issues/201))
+- **`scenario envelope` no longer lists `[accept]` writers as provably
+  before the accepted quest.** ([#209](https://github.com/journeyWorker/lute/issues/209))
+- **`lute impact` follows `[accept]` and `[raises]` edges.**
+  ([#210](https://github.com/journeyWorker/lute/issues/210))
+- **`loc export` units in a choice body inside a component expansion use the
+  component-scoped prefix.** ([#213](https://github.com/journeyWorker/lute/issues/213):
+  not reproducible on a check-clean project; the latent path is fixed and
+  pinned)
+- **`lute test --project` prints no discovery note.**
+  ([#214](https://github.com/journeyWorker/lute/issues/214))
+- **32-bit index, column and weekday casts agree with native.**
+  ([#198](https://github.com/journeyWorker/lute/issues/198))
+
+### Documentation
+
+- Website (EN/KO) and `llms-full.txt`: literal braces and `\{{` in labels
+  (`language/dialogue-and-cast`, `language/choices-and-hubs`), leaving a hub,
+  `E-JUMP-INTO-BODY`, the hub head and #222 (`language/choices-and-hubs`,
+  `language/directives`), the quest top level and objective titles
+  (`language/quests-and-scenes`), `::use` arguments (#221,
+  `language/components-and-extends`), reward-kind attributes
+  (`plugins/manifests`), `tooling/cli`, `tooling/runtime-contract` (0.52
+  additions), `player/custom-hosts`, `connectivity/{scene-graph,envelopes}`,
+  `reference/diagnostics`, `reference/cheatsheet`, the porting guide,
+  `spec/current` and `spec/index`; `docs/runtime/{execution-model,event-contract,quest-lifecycle}.md`;
+  `docs/design/modules.md` (`lute.core.hubLeave/1`).
+
+### Out of scope
+
+- **Not developed** (decision note): a new IR encoding for a literal `{`
+  before a marker; defining when quest top-level content runs; `lute refs`
+  for reward attribute values; LSP / `context` rows for reward attributes;
+  `accepts` reading `@<attr>`.
+
+### Migration notes
+
+| Class | Change | Migration |
+|---|---|---|
+| Syntax | `E-INTERP-BRACE`; quest top level; `E-JUMP-INTO-BODY`; `E-OBJECTIVE-TITLE-INTERP`. | Use a §3.1 spelling; move quest content into its body; jump within the body or past the hub; write titles as plain text. |
+| Semantic | Hub head and stage join: new `W-STAGE-ABSENT` sites and injections. | Re-show the character or fix the staging. |
+| Plugin | Reward-kind attribute declaration faults. | Rename, de-duplicate, retype the default, or split the attribute. |
+| IR | `jump.leaves`, `lute.core.hubLeave/1`, `promptPlaceholders`, `rewardEntry.attrs`. | Implement the hub leave before running artifacts that need it; read the rest when needed; gate on `0.52`. |
+| Events | The menu carries rendered `text` / `texts` / `prompt` / `promptTexts`. | Show the menu's text. |
+| Player | Saves are `"0.52"`. | Re-save. |
+| Release | All axes `0.52.0`; schemas `-0.52`; `bindingsVersion: "0.52"`. | Widen gates from `0.51` to `0.52`. |
+
+From 0.51.0: run `lute fix` to raise `luteVersion` stamps to `0.52.0` and
+`bindingsVersion` to `"0.52"`.
 
 ## [0.51.0]
 

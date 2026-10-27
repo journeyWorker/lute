@@ -1,6 +1,6 @@
 // THIS FILE IS GENERATED — DO NOT EDIT.
 // Generator: packages/runtime/scripts/contract-codegen.ts
-// Sources: schemas/lute-events-0.51.schema.json, schemas/lute-snapshot-0.51.schema.json
+// Sources: schemas/lute-events-0.52.schema.json, schemas/lute-snapshot-0.52.schema.json
 
 import * as Schema from "effect/Schema";
 import type * as SchemaAST from "effect/SchemaAST";

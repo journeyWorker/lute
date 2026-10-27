@@ -443,7 +443,7 @@ declares none, or a project with no plugin, keeps the six-key closure and its me
 The compiled reward entry carries `attrs`, written last and only when non-empty (each authored
 attribute and each `default:` not authored, typed as a `plugin` record's `fields`), and the `grant`
 record copies them onto its `reward`. `attrs` is descriptive: it adds no semantic id, and a host
-reads it by the reward kind's contract, which `capabilityVersion` already pins.
+reads it by the reward kind's contract, which `capabilitySnapshot` already pins.
 
 ### Declared occasion raises
 

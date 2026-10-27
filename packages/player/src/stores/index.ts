@@ -6,7 +6,7 @@ import type { Settings, SlotId, SlotInfo } from "../ports/index.js"
 import type { SaveRuntime } from "../model.js"
 
 /** The save and profile format version (`saveVersion`, `profileVersion`): the release line. */
-const VERSION: "0.51" = "0.51"
+const VERSION: "0.52" = "0.52"
 
 /** A malformed or unreadable persisted save. */
 export class SaveCorrupt extends Schema.TaggedError<SaveCorrupt>()("SaveCorrupt", {

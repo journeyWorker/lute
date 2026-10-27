@@ -393,7 +393,7 @@ rewardKinds:
 
 **문서에서.** `<reward>`의 속성 집합은 고유한 여섯 키에 kind의 속성을 더한 것입니다. 각 값은 따옴표 리터럴이며, 소유자를 `` <reward kind="BADGE"> ``로 표시하는 디렉티브 속성 검사기로 검사됩니다(`E-ATTR-TYPE`, `E-BAD-ENUM`, `E-UNKNOWN-ID`, 엔티티·프로바이더·에셋 검사). 빠진 `required: true` 속성은 `E-MISSING-ATTR`, `@ref` 값은 `E-REWARD-ATTR`이며, `E-UNKNOWN-ATTR`는 여섯 키 뒤에 kind의 속성을 나열합니다. 속성을 선언하지 않은 kind나 플러그인이 없는 프로젝트는 여섯 키와 기존 메시지를 그대로 씁니다. [퀘스트와 씬](/ko/language/quests-and-scenes/#보상-kind-속성)을 참고하세요.
 
-**바인딩과 아티팩트.** 효과의 `@<attr>`은 보상에 작성한 값, 없으면 선언된 `default:`이며, 둘 다 없으면 바인딩되지 않은 `@target`처럼 효과가 적용되지 않습니다. 컴파일된 보상 항목은 `attrs`(작성한 각 속성과 작성하지 않은 각 `default:`, `plugin` 레코드의 `fields`처럼 타입 적용)를 맨 뒤에, 비어 있지 않을 때만 담고, `grant` 레코드는 이를 `reward`에 복사합니다. `attrs`는 설명용입니다. semantic id를 더하지 않으며, 호스트는 `capabilityVersion`이 이미 고정하는 보상 kind 계약에 따라 읽습니다.
+**바인딩과 아티팩트.** 효과의 `@<attr>`은 보상에 작성한 값, 없으면 선언된 `default:`이며, 둘 다 없으면 바인딩되지 않은 `@target`처럼 효과가 적용되지 않습니다. 컴파일된 보상 항목은 `attrs`(작성한 각 속성과 작성하지 않은 각 `default:`, `plugin` 레코드의 `fields`처럼 타입 적용)를 맨 뒤에, 비어 있지 않을 때만 담고, `grant` 레코드는 이를 `reward`에 복사합니다. `attrs`는 설명용입니다. semantic id를 더하지 않으며, 호스트는 `capabilitySnapshot`이 이미 고정하는 보상 kind 계약에 따라 읽습니다.
 
 ### 선언된 occasion raise
 

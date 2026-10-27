@@ -684,7 +684,7 @@ fn jump_scene(tag: &str, with_max: bool) -> (lute_scratch::ScratchDir, PathBuf, 
         &dir,
         "scene.lute",
         &format!(
-            "---\nkind: scene\nluteVersion: \"0.51.0\"\nid: loop\ntitle: T\n---\n\n## Shot \
+            "---\nkind: scene\nluteVersion: \"0.52.0\"\nid: loop\ntitle: T\n---\n\n## Shot \
              1.\n\n{jump}@narrator: Done.\n"
         ),
     );
@@ -785,7 +785,7 @@ fn hub_scene(tag: &str, leaves: bool) -> (lute_scratch::ScratchDir, PathBuf, Jso
         &dir,
         "scene.lute",
         &format!(
-            "---\nkind: scene\nluteVersion: \"0.51.0\"\nid: hub\ntitle: T\n---\n\n## Shot 1.\n\n\
+            "---\nkind: scene\nluteVersion: \"0.52.0\"\nid: hub\ntitle: T\n---\n\n## Shot 1.\n\n\
              <hub id=\"desk\">\n  <choice id=\"take\" text=\"Take it\">\n    @narrator: Taking.\n    \
              {jump}\n{inside}  </choice>\n  <choice id=\"leave\" text=\"Leave\" exit>\n    \
              @narrator: Leaving.\n  </choice>\n</hub>\n::label{{name=\"after\"}}\n\
