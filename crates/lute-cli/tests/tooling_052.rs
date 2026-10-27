@@ -136,6 +136,124 @@ fn impact_follows_accept_edges() {
     assert!(!all.contains("scene:b"), "{json:#}");
 }
 
+/// S7 review: legacy scenes (no `id:`) are keyed `{character}.{episodeId}`
+/// in the scenario graph but by their root-relative path in the semantic
+/// graph. `porter.lute` accepts quest `q` and raises `chapter2.lute`
+/// (answering `cutscene` for `scene.chapter2`): impact from
+/// `scene:scenes/porter.lute` reaches both through their declared nodes,
+/// and no node is minted under a scenario key.
+#[test]
+fn impact_maps_legacy_scene_endpoints_to_their_declared_nodes() {
+    let dir = lute_scratch::ScratchDir::named("tooling-legacy-alternatives");
+    write(
+        &dir,
+        "lute.project.yaml",
+        "pluginsDir: plugins/\ndefaultProfile: game\nprofiles:\n  game:\n    plugins:\n      \
+         acme.stage: true\ndefaults:\n  contentLang: en\n  uses: [world.schema.yaml]\n",
+    );
+    write(
+        &dir,
+        "plugins/acme.stage/plugin.yaml",
+        "id: acme.stage\nversion: 0.1.0\nkind: capability\ndepends:\n  - { id: lute.core, \
+         range: \"^0.0.1\" }\nexports:\n  directives: directives/\n  occasions: occasions/\n",
+    );
+    write(
+        &dir,
+        "plugins/acme.stage/occasions/o.yaml",
+        "occasions:\n  cutscene: { target: { prefix: scene, entity: cutsceneId }, raisedBy: \
+         declared }\n",
+    );
+    write(
+        &dir,
+        "plugins/acme.stage/directives/d.yaml",
+        "directives:\n  - name: playScene\n    attrs:\n      - { name: scene, type: { entity: \
+         cutsceneId }, default: chapter2 }\n    effects: { raises: [{ occasion: cutscene, \
+         target: \"@scene\" }] }\n",
+    );
+    write(
+        &dir,
+        "world.schema.yaml",
+        "state: { run.x: { type: int, default: 0 } }\nentities:\n  cutsceneId: { members: \
+         [chapter2] }\n",
+    );
+    write(
+        &dir,
+        "scenes/porter.lute",
+        "---\nkind: scene\ncharacter: mira\nseason: 1\nepisode: 1\n---\n\n## Shot 1.\n\n\
+         @narrator: Porter.\n\n::set{run.x = 1}\n::accept{quest=\"q\"}\n::playScene\n",
+    );
+    write(
+        &dir,
+        "scenes/chapter2.lute",
+        "---\nkind: scene\ncharacter: mira\nseason: 1\nepisode: 2\non: cutscene\ntarget: \
+         scene.chapter2\n---\n\n## Shot 1.\n\n@narrator: Two.\n",
+    );
+    write(
+        &dir,
+        "quests/q.lute",
+        "---\nkind: quest\nid: q\n---\n\n<quest id=\"q\" tier=\"run\" title=\"Q\">\n  <objective \
+         id=\"o\" title=\"O\" done=\"run.x == 1\"/>\n</quest>\n",
+    );
+    let check = lute(&dir, &["check", "--project", "."]);
+    assert!(
+        check.status.success(),
+        "{}{}",
+        stdout(&check),
+        stderr(&check)
+    );
+    let out = lute(
+        &dir,
+        &[
+            "impact",
+            "--project",
+            ".",
+            "--node",
+            "scene:scenes/porter.lute",
+            "--json",
+        ],
+    );
+    assert!(out.status.success(), "{}{}", stdout(&out), stderr(&out));
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    let items: Vec<&serde_json::Value> = json["items"]
+        .as_object()
+        .unwrap()
+        .values()
+        .flat_map(|group| group.as_array().unwrap())
+        .collect();
+    let reason = |key: &str| {
+        let item = items
+            .iter()
+            .find(|item| item["key"] == key)
+            .unwrap_or_else(|| panic!("no {key} in {json:#}"));
+        (
+            item["evidence"].clone(),
+            item["reasons"][0]["edge"].clone(),
+            item["reasons"][0]["reason"].clone(),
+            item["reasons"][0]["file"].clone(),
+        )
+    };
+    assert_eq!(
+        reason("quest:q"),
+        (
+            "proven".into(),
+            "accepts".into(),
+            "scene(mira.s01ep01) accepts quest(q)".into(),
+            "scenes/porter.lute".into()
+        )
+    );
+    assert_eq!(
+        reason("scene:scenes/chapter2.lute"),
+        (
+            "proven".into(),
+            "raises".into(),
+            "scene(mira.s01ep01) raises scene(mira.s01ep02)".into(),
+            "scenes/porter.lute".into()
+        )
+    );
+    let all = json["items"].to_string();
+    assert!(!all.contains("scene:mira."), "{json:#}");
+}
+
 /// Every `lineId`-like value of a compiled artifact: `lineId`,
 /// `promptLineId`, `titleLineId` at any depth (`localized.*.lineId`
 /// included).
