@@ -410,13 +410,18 @@ pub fn parse_meta_kind_with_defaults(
         // block against each active plugin's declared key schema; a value that
         // violates the schema is a static error." A value with no `Literal`
         // representation at all (null, a `!tag`, a non-string mapping key)
-        // is the SAME error, never a panic.
+        // is the SAME error, never a panic — anywhere in a structured value,
+        // as on 0.52.0. A top-level reference (or list of references) is
+        // read as its string, as 0.49.0 §4.3 always read it.
+        let top_level_ref =
+            is_reference_type(ty) || matches!(ty, Type::List(inner) if is_reference_type(inner));
+        let lit = Literal::from_yaml(v);
         let mut walk = RefWalk::new(key);
-        if walk.value(ty, v) {
+        if (top_level_ref || lit.is_some()) && walk.value(ty, v) {
             typed.frontmatter_refs.extend(walk.refs);
             continue;
         }
-        let found = match &Literal::from_yaml(v) {
+        let found = match &lit {
             Some(l) => lit_str(l),
             None => unrepresentable_yaml(v).to_string(),
         };
@@ -913,21 +918,29 @@ impl<'k> RefWalk<'k> {
                         .iter()
                         .all(|f| !f.required || m.contains_key(f.name.as_str()))
             }
-            (Type::Map { key, value: vty }, Value::Mapping(m)) => m.iter().all(|(k, v)| {
-                let Some(k) = k.as_str() else {
+            (Type::Map { key, value: vty }, Value::Mapping(m)) => {
+                // The key type is judged once, an empty map included: a
+                // reference kind (0.53.0 §6.1), or `string`/`enum` as
+                // `type_accepts` has it.
+                let ref_key = is_reference_type(key);
+                if !ref_key && !matches!(**key, Type::Str | Type::Enum(_)) {
                     return false;
-                };
-                let key_ok = if is_reference_type(key) {
-                    self.steps.push(FrontmatterStep::Key(k.to_string()));
-                    self.push(key, k);
-                    self.steps.pop();
-                    true
-                } else {
-                    matches!(**key, Type::Str | Type::Enum(_))
-                        && type_accepts(key, &Literal::Str(k.to_string()))
-                };
-                key_ok && self.step(FrontmatterStep::Entry(k.to_string()), vty, v)
-            }),
+                }
+                m.iter().all(|(k, v)| {
+                    let Some(k) = k.as_str() else {
+                        return false;
+                    };
+                    let key_ok = if ref_key {
+                        self.steps.push(FrontmatterStep::Key(k.to_string()));
+                        self.push(key, k);
+                        self.steps.pop();
+                        true
+                    } else {
+                        type_accepts(key, &Literal::Str(k.to_string()))
+                    };
+                    key_ok && self.step(FrontmatterStep::Entry(k.to_string()), vty, v)
+                })
+            }
             _ => Literal::from_yaml(value).is_some_and(|l| type_accepts(ty, &l)),
         }
     }

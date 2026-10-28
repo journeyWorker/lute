@@ -33,7 +33,8 @@ fn list(ty: Type) -> Type {
 /// Core + the shared test vocabulary and the plugin frontmatter keys:
 /// `talk` (record: `partner` entity, `turns` int, `guests` list of entity,
 /// `prize` providerRef `items`), `scenes` (list of record: `who` entity),
-/// `moods` (map entity → domain `mood`), `lead` (entity).
+/// `moods` (map entity → domain `mood`), `lead` (entity), `staged` (record:
+/// `setup` with a `shape:`) and `flags` (map bool → string).
 fn snapshot() -> CapabilitySnapshot {
     let mut snap = lute_test_vocab::vocab_snapshot();
     for (key, ty) in [
@@ -55,6 +56,20 @@ fn snapshot() -> CapabilitySnapshot {
             },
         ),
         ("lead", entity()),
+        (
+            "staged",
+            Type::Record(vec![Field {
+                shape: Some("stage".into()),
+                ..field("setup", Type::Str)
+            }]),
+        ),
+        (
+            "flags",
+            Type::Map {
+                key: Box::new(Type::Bool),
+                value: Box::new(Type::Str),
+            },
+        ),
     ] {
         snap.frontmatter.insert(key.into(), ty);
     }
@@ -245,4 +260,49 @@ fn a_top_level_value_keeps_the_attribute_text() {
         )],
         "{ds:#?}"
     );
+}
+
+/// The walk keeps 0.52.0's representability rule for a structured value: a
+/// `!tag`, a null or a non-string mapping key anywhere in it — a reference
+/// field and a `shape:` field included — is `E-FRONTMATTER-SCHEMA`, as
+/// `Literal::from_yaml` refused it on v0.52.0 (Review053 on M). A top-level
+/// reference is still read as its string.
+#[test]
+fn an_unrepresentable_structured_value_is_a_schema_error() {
+    for front in [
+        "talk: { partner: !tag mira }\n",
+        "talk: { guests: [mira, ~] }\n",
+        "staged: { setup: { a: ~ } }\n",
+        "staged: { setup: { a: !tag x } }\n",
+        "staged: { setup: { 1: x } }\n",
+        "moods: { mira: !tag peaceful }\n",
+    ] {
+        let ds = diagnostics(&scene(front));
+        assert_eq!(
+            errors(&ds).iter().map(|(c, _)| *c).collect::<Vec<_>>(),
+            vec!["E-FRONTMATTER-SCHEMA"],
+            "{front}: {ds:#?}"
+        );
+    }
+    for front in ["staged: { setup: { a: x } }\n", "lead: !tag mira\n"] {
+        let ok = diagnostics(&scene(front));
+        assert!(errors(&ok).is_empty(), "{front}: {ok:#?}");
+    }
+}
+
+/// A map's key type is judged before its entries, so an empty map of an
+/// unsupported key type stays `E-FRONTMATTER-SCHEMA` (v0.52.0's
+/// `type_accepts`; Review053 on M).
+#[test]
+fn a_map_of_an_unsupported_key_type_is_refused_even_empty() {
+    for front in ["flags: {}\n", "flags: { on: x }\n"] {
+        let ds = diagnostics(&scene(front));
+        assert_eq!(
+            errors(&ds).iter().map(|(c, _)| *c).collect::<Vec<_>>(),
+            vec!["E-FRONTMATTER-SCHEMA"],
+            "{front}: {ds:#?}"
+        );
+    }
+    let ok = diagnostics(&scene("moods: {}\n"));
+    assert!(errors(&ok).is_empty(), "{ok:#?}");
 }
