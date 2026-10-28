@@ -457,6 +457,10 @@ impl StageState {
 /// routed in its own scope: its own document's loops and labels.
 pub struct StageFlow<'a> {
     loops: &'a crate::next_labels::LoopTable,
+    /// The walked document's top-level sections, one loop scope (dsl 0.53.0
+    /// §9.2): a loop region runs on into the following ones
+    /// ([`Self::top_level`]).
+    top: &'a [lute_syntax::ast::Section],
     pub(crate) domains: &'a BTreeMap<String, Domain>,
     pub(crate) snapshot: &'a CapabilitySnapshot,
     pub(crate) components: Option<&'a crate::component_import::ComponentSet>,
@@ -514,6 +518,7 @@ impl<'a> StageFlow<'a> {
     ) -> Self {
         StageFlow {
             loops,
+            top: &[],
             domains,
             snapshot,
             components,
@@ -528,6 +533,13 @@ impl<'a> StageFlow<'a> {
             using: Vec::new(),
             diags: Vec::new(),
         }
+    }
+
+    /// The document's top-level `sections`, walked one after another with
+    /// this routing: a loop whose head is in one of them runs through its
+    /// last back edge in any later one (dsl 0.53.0 §9.3).
+    pub fn top_level(&mut self, sections: &'a [lute_syntax::ast::Section]) {
+        self.top = sections;
     }
 
     fn loops(&self) -> &crate::next_labels::LoopTable {
@@ -644,7 +656,7 @@ impl<'a> StageFlow<'a> {
         let state = if self.loops().is_head(id) {
             state.map(|mut entry| {
                 let diags = std::mem::take(&mut entry.diags);
-                let region = &rest[..crate::loop_walk::region_len(rest, id)];
+                let region = crate::loop_walk::region(rest, self.top, id);
                 let mut head = self.head(id, entry, HeadAt::Loop(region));
                 head.diags = diags;
                 head
@@ -777,7 +789,7 @@ impl<'a> StageFlow<'a> {
     fn head(&mut self, id: &str, entry: StageState, at: HeadAt<'_>) -> StageState {
         use crate::loop_walk::head_fixpoint;
         let characters = match at {
-            HeadAt::Loop(region) => characters_of(&entry, [region]),
+            HeadAt::Loop(region) => characters_of(&entry, region.parts()),
             HeadAt::Hub(hub) => characters_of(&entry, hub.bodies().map(Vec::as_slice)),
         };
         let bound = 5 * characters.len() + 2;
@@ -795,12 +807,14 @@ impl<'a> StageFlow<'a> {
                     HeadAt::Loop(region) => {
                         let mut state = Some(h.bare());
                         let mut emitted = Vec::new();
-                        crate::check::injections::fold_injections(
-                            region,
-                            &mut state,
-                            &mut emitted,
-                            self,
-                        );
+                        for part in region.parts() {
+                            crate::check::injections::fold_injections(
+                                part,
+                                &mut state,
+                                &mut emitted,
+                                self,
+                            );
+                        }
                         self.pending.remove(id)
                     }
                 };
@@ -817,7 +831,7 @@ impl<'a> StageFlow<'a> {
 /// What a head iterates: a loop's region, or a hub's bodies.
 #[derive(Clone, Copy)]
 enum HeadAt<'n> {
-    Loop(&'n [Node]),
+    Loop(crate::loop_walk::Region<'n>),
     Hub(&'n Hub),
 }
 

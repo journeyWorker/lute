@@ -832,9 +832,9 @@ Spec: [dsl 0.52.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/pr
 
 ### E-JUMP-INTO-LOOP
 
-A forward `::jump` from outside a loop (a `::label` and a later `::jump{to max}` back to it) lands on a label inside the loop after its head; a loop is entered only at its head label.
+A forward `::jump` from outside a loop (a `::label` and a later `::jump{to max}` back to it) lands on a label inside the loop after its head; a loop is entered only at its head label. When the jump ends one `<choice>` body and no other jump targets the label, the message suggests moving the block into that option's body.
 
-Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.53.0 §9.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-JUMP-LOOP-CROSS
 
@@ -844,9 +844,9 @@ Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/pr
 
 ### E-JUMP-LOOP-SCOPE
 
-A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section.
+A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry or a beat. A document's `##` sections are one loop scope.
 
-Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.53.0 §9.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-JUMP-MAX
 

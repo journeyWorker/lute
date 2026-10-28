@@ -201,3 +201,37 @@ fn the_fact_head_stays_within_its_bound() {
     )));
     assert_eq!(loop_walk_stats(WalkKind::Facts), Default::default());
 }
+
+/// dsl 0.53.0 §9.3 (#231): the retract and the back edge in a later section
+/// reach the head, so its guard is possible, not guaranteed (failing before:
+/// the region stopped at the head's section and `met(mira)` stayed Must).
+#[test]
+fn a_retract_in_a_later_section_reaches_the_head() {
+    let split = |test: &str, retract: &str| {
+        scene(&format!(
+            "::assert{{met(mira)}}\n::label{{name=\"top\"}}\n{}\n\n## Shot 2.\n\n\
+             @theo: Time passes.\n{retract}::jump{{to=\"top\" max=\"2\"}}",
+            guard(test)
+        ))
+    };
+    let retract = "::retract{met(mira)}\n";
+    assert_eq!(codes(&guards(&split(HOLDS, retract))), Vec::<&str>::new());
+    assert_eq!(
+        codes(&guards(&split(NOT_HOLDS, retract))),
+        Vec::<&str>::new()
+    );
+    assert_eq!(codes(&guards(&split(HOLDS, ""))), ["W-FACT-GUARANTEED"]);
+}
+
+/// Two back edges to one head, the later after a retract in a later
+/// section: the head sees the retract (failing with a region that stops at
+/// the first back edge).
+#[test]
+fn a_retract_before_a_second_back_edge_reaches_the_head() {
+    let text = scene(&format!(
+        "::assert{{met(mira)}}\n::label{{name=\"top\"}}\n{}\n::jump{{to=\"top\" max=\"2\"}}\n\n\
+         ## Shot 2.\n\n::retract{{met(mira)}}\n::jump{{to=\"top\" max=\"2\"}}",
+        guard(HOLDS)
+    ));
+    assert_eq!(codes(&guards(&text)), Vec::<&str>::new());
+}

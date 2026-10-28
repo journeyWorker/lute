@@ -308,15 +308,19 @@ impl Presence<'_> {
     }
 
     /// dsl 0.51.0 §3.4: a loop head is reached again after its region ran
-    /// (`rest` follows the head label in its body), so whatever the region
-    /// writes may have falsified a guard live at the head — the treatment a
-    /// `<hub>` gets for its bodies. No iteration: a killed guard stays dead.
+    /// (`rest` follows the head label in its body; at the top level the
+    /// region runs on into later sections, dsl 0.53.0 §9.3), so whatever the
+    /// region writes may have falsified a guard live at the head — the
+    /// treatment a `<hub>` gets for its bodies. No iteration: a killed guard
+    /// stays dead.
     fn loop_head(&mut self, id: &str, rest: &[Node]) {
         if !self.folded.labels.loops.is_head(id) {
             return;
         }
         crate::loop_walk::head_met(crate::loop_walk::WalkKind::Presence);
-        self.kill_writes(&rest[..crate::loop_walk::region_len(rest, id)]);
+        for part in crate::loop_walk::region(rest, self.top, id).parts() {
+            self.kill_writes(part);
+        }
     }
 
     /// A write of state `path`: every guard reading it, a record it sits

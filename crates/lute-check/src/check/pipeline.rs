@@ -777,6 +777,8 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     );
     let mut inject_state = Some(StageState::default());
     let mut injections = Vec::new();
+    // dsl 0.53.0 §9.3: the sections are one loop scope.
+    stage.top_level(&doc.sections);
     for shot in &doc.sections {
         fold_injections(&shot.body, &mut inject_state, &mut injections, &mut stage);
     }

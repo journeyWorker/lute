@@ -832,9 +832,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-JUMP-INTO-LOOP
 
-루프(`::label`과 그 뒤에서 그 레이블로 되돌아가는 `::jump{to max}`) 밖의 앞으로 가는 `::jump`가 루프 안, 머리 레이블보다 뒤의 레이블에 도착합니다. 루프에는 머리 레이블로만 들어갈 수 있습니다.
+루프(`::label`과 그 뒤에서 그 레이블로 되돌아가는 `::jump{to max}`) 밖의 앞으로 가는 `::jump`가 루프 안, 머리 레이블보다 뒤의 레이블에 도착합니다. 루프에는 머리 레이블로만 들어갈 수 있습니다. 그 점프가 `<choice>` 본문 하나의 마지막이고 다른 점프가 그 레이블을 가리키지 않으면, 메시지는 그 블록을 해당 선택지 본문 안으로 옮기라고 제안합니다.
 
-명세: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+명세: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.53.0 §9.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-JUMP-LOOP-CROSS
 
@@ -844,9 +844,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-JUMP-LOOP-SCOPE
 
-`max`가 있는 `::jump{to max}`가 자신이 실행되는 본문 밖의 레이블로 되돌아갑니다. 루프는 `<branch>`의 `<choice>` 본문과 `<match>` 갈래만 지날 수 있고, `<hub>` 선택지나 `<return>` 본문, `<on>`·`<objective>` 본문, 퀘스트, 엔트리, 비트, 섹션을 벗어날 수 없습니다.
+`max`가 있는 `::jump{to max}`가 자신이 실행되는 본문 밖의 레이블로 되돌아갑니다. 루프는 `<branch>`의 `<choice>` 본문과 `<match>` 갈래만 지날 수 있고, `<hub>` 선택지나 `<return>` 본문, `<on>`·`<objective>` 본문, 퀘스트, 엔트리, 비트를 벗어날 수 없습니다. 문서의 `##` 섹션들은 하나의 루프 범위입니다.
 
-명세: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+명세: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.53.0 §9.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-JUMP-MAX
 

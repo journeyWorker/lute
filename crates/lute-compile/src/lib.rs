@@ -559,6 +559,9 @@ fn compile_inner(
             let meta = artifact_meta(&doc, &folded, input.snapshot(), beat);
             let prefix = meta.id.clone();
             let mut shots = Vec::new();
+            // dsl 0.53.0 §9.3: the sections are one loop scope, so a loop
+            // head's region runs on into the sections after its own.
+            cx.stage.top_level(&doc.sections);
             for (i, shot) in doc.sections.iter().enumerate() {
                 let mut em = cfg::Emitter::new(map.is_some());
                 // Top-level per-shot walk: no CFG continuation past the shot end.

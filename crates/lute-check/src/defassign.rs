@@ -614,7 +614,9 @@ impl Walk<'_, '_> {
 
     /// A label: join the flows jumping to it into the fall-through flow
     /// (consumed: what is left pending at the end jumped out of the walked
-    /// nodes); at a loop head, iterate the region `rest` starts.
+    /// nodes); at a loop head, iterate the region `rest` starts. A scene is
+    /// walked as its sections' concatenated stream, so the region already
+    /// runs on across sections (dsl 0.53.0 §9.3).
     fn label(&mut self, id: &str, rest: &[Node], flow: &mut Option<Flow>) {
         if let Some(jumped) = self.pending.remove(id) {
             *flow = join_flows(vec![flow.take(), Some(jumped)]);
@@ -623,7 +625,7 @@ impl Walk<'_, '_> {
             return;
         }
         if let Some(entry) = flow.take() {
-            let region = &rest[..crate::loop_walk::region_len(rest, id)];
+            let region = crate::loop_walk::region(rest, &[], id);
             *flow = Some(self.head(id, entry, region));
         }
     }
@@ -632,7 +634,7 @@ impl Walk<'_, '_> {
     /// iterated. Both lattices only grow along a path, so a back edge's flow
     /// contains the head's and the head is stable after one probe pass (the
     /// one-pass stability tests assert it). Top: both sets empty.
-    fn head(&mut self, id: &str, entry: Flow, region: &[Node]) -> Flow {
+    fn head(&mut self, id: &str, entry: Flow, region: crate::loop_walk::Region<'_>) -> Flow {
         use crate::loop_walk::{head_fixpoint, WalkKind};
         let bound = entry.available.len() + entry.writes.len() + 1;
         head_fixpoint(
@@ -645,7 +647,9 @@ impl Walk<'_, '_> {
                 let diags = std::mem::take(&mut self.diags);
                 let reads = std::mem::take(&mut self.reads);
                 let mut flow = Some(h.clone());
-                self.nodes(region, &mut flow);
+                for part in region.parts() {
+                    self.nodes(part, &mut flow);
+                }
                 let back = self.pending.remove(id);
                 self.pending = pending;
                 self.probing = probing;

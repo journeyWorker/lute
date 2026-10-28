@@ -20,7 +20,7 @@
 use std::cell::Cell;
 
 use lute_manifest::core::{JUMP_DIRECTIVE, JUMP_MAX_ATTR, LABEL_DIRECTIVE, LABEL_NAME_ATTR};
-use lute_syntax::ast::{Arm, AttrValue, CelSlot, Directive, Node};
+use lute_syntax::ast::{Arm, AttrValue, CelSlot, Directive, Node, Section};
 
 /// The work one walk kind spent at loop heads (dsl 0.51.0 §3.4) and, for
 /// the stage walks, hub heads (dsl 0.52.0 §5.4).
@@ -197,14 +197,68 @@ pub(crate) fn jump_target(d: &Directive) -> Option<&str> {
     str_attr(d, "to")
 }
 
-/// How many nodes of `rest` (the nodes after a head label `head`, in its
-/// body) the loop's region spans: up to and including the last one holding a
-/// bounded jump to `head`. The region rules (dsl 0.51.0 §3.2) keep each such
-/// jump in the head's body or in an inline body nested in it.
-pub(crate) fn region_len(rest: &[Node], head: &str) -> usize {
-    rest.iter()
-        .rposition(|n| holds_back_edge(n, head))
-        .map_or(0, |i| i + 1)
+/// The nodes a loop's region spans after its head label (dsl 0.53.0 §9.3):
+/// the rest of the head's body and, when that body is a top-level section of
+/// a document, whole following sections, through the **last** node holding a
+/// bounded jump to the head. Walked in [`Region::parts`] order.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct Region<'d> {
+    /// The head's body after the label, through the last back edge when it
+    /// lies there.
+    head: &'d [Node],
+    /// The sections wholly inside the region, after the head's.
+    later: &'d [Section],
+    /// The prefix of the section holding the last back edge, through it
+    /// (empty when that edge is in the head's body).
+    last: &'d [Node],
+}
+
+impl<'d> Region<'d> {
+    /// The region's node slices in document order.
+    pub(crate) fn parts(self) -> impl Iterator<Item = &'d [Node]> {
+        std::iter::once(self.head)
+            .chain(self.later.iter().map(|s| s.body.as_slice()))
+            .chain(std::iter::once(self.last))
+    }
+}
+
+/// The region of the loop headed by `head`, whose label is followed in its
+/// body by `rest`. `top` is the document's top-level sections when the walk
+/// walks them (else empty): when `rest` is the end of one of them, the
+/// sections after it are one loop scope with it (dsl 0.53.0 §9.2) and the
+/// search runs through **all** of them, so a back edge in the head's own
+/// section does not stop it (several bounded jumps may loop to one head).
+/// Inside a nested body no section follows. The region rules (dsl 0.51.0
+/// §3.2) keep every back edge in the head's scope.
+pub(crate) fn region<'d>(rest: &'d [Node], top: &'d [Section], head: &str) -> Region<'d> {
+    let later = later_sections(rest, top);
+    let back = |nodes: &[Node]| nodes.iter().rposition(|n| holds_back_edge(n, head));
+    for (k, section) in later.iter().enumerate().rev() {
+        if let Some(i) = back(&section.body) {
+            return Region {
+                head: rest,
+                later: &later[..k],
+                last: &section.body[..=i],
+            };
+        }
+    }
+    Region {
+        head: &rest[..back(rest).map_or(0, |i| i + 1)],
+        later: &[],
+        last: &[],
+    }
+}
+
+/// The sections of `top` after the one whose body `rest` ends (`rest` is a
+/// suffix of every body it is taken from, so the section is the one ending
+/// at the same address); empty when `rest` ends a nested body. The top-level
+/// hand-off of dsl 0.53.0 §9.3 without threading the following sections
+/// through every nested walk.
+fn later_sections<'d>(rest: &[Node], top: &'d [Section]) -> &'d [Section] {
+    let end = rest.as_ptr_range().end;
+    top.iter()
+        .position(|s| !s.body.is_empty() && std::ptr::eq(s.body.as_ptr_range().end, end))
+        .map_or(&[], |i| &top[i + 1..])
 }
 
 fn holds_back_edge(node: &Node, head: &str) -> bool {
@@ -362,5 +416,83 @@ mod tests {
         assert!(head.is_empty());
         let stats = loop_walk_stats(WalkKind::Stage);
         assert_eq!((stats.probe_passes, stats.widened), (4, 1));
+    }
+}
+
+#[cfg(test)]
+mod region_tests {
+    use super::*;
+
+    fn sections(body: &str) -> Vec<Section> {
+        let src = format!("---\nkind: scene\nid: r\n---\n## One\n\n{body}\n");
+        lute_syntax::parse(&src).0.sections
+    }
+
+    /// The region of `top` in `doc`, as `(section, nodes)` per part.
+    fn parts(doc: &[Section]) -> Vec<usize> {
+        let at = doc[0]
+            .body
+            .iter()
+            .position(|n| label_of(n) == Some("top"))
+            .expect("a `top` label in the first section");
+        region(&doc[0].body[at + 1..], doc, "top")
+            .parts()
+            .map(<[Node]>::len)
+            .collect()
+    }
+
+    const JUMP: &str = "::jump{to=\"top\" max=\"2\"}";
+
+    #[test]
+    fn one_section_ends_at_the_back_edge() {
+        let doc = sections(&format!(
+            "::label{{name=\"top\"}}\n@a: x\n{JUMP}\n@a: after\n"
+        ));
+        assert_eq!(parts(&doc), [2, 0]);
+    }
+
+    #[test]
+    fn two_sections_run_through_the_later_back_edge() {
+        let doc = sections(&format!(
+            "::label{{name=\"top\"}}\n@a: x\n\n## Two\n\n@a: y\n{JUMP}\n@a: after\n"
+        ));
+        assert_eq!(parts(&doc), [1, 2]);
+    }
+
+    #[test]
+    fn a_back_edge_in_a_choice_of_a_later_section_counts() {
+        let doc = sections(&format!(
+            "::label{{name=\"top\"}}\n@a: x\n\n## Two\n\n@a: y\n\n## Three\n\n\
+             <branch id=\"b\">\n<choice id=\"c\" text=\"C\">\n{JUMP}\n</choice>\n</branch>\n\
+             @a: after\n"
+        ));
+        assert_eq!(parts(&doc), [1, 1, 1]);
+    }
+
+    /// Two back edges to one head: the region runs through the later one.
+    #[test]
+    fn two_back_edges_run_through_the_last() {
+        let doc = sections(&format!(
+            "::label{{name=\"top\"}}\n@a: x\n{JUMP}\n@a: y\n\n## Two\n\n@a: z\n{JUMP}\n\n## Three\n\n@a: end\n"
+        ));
+        assert_eq!(parts(&doc), [3, 2]);
+    }
+
+    /// A head inside a nested body has no following section.
+    #[test]
+    fn a_nested_head_stays_in_its_body() {
+        let doc = sections(&format!(
+            "<branch id=\"b\">\n<choice id=\"c\" text=\"C\">\n::label{{name=\"top\"}}\n@a: x\n{JUMP}\n\
+             </choice>\n</branch>\n\n## Two\n\n{JUMP}\n"
+        ));
+        let Node::Branch(b) = &doc[0].body[0] else {
+            panic!("a branch first")
+        };
+        let body = &b.choices[0].body;
+        let lens: Vec<usize> = region(&body[1..], &doc, "top")
+            .parts()
+            .map(<[Node]>::len)
+            .collect();
+        assert_eq!(lens, [2, 0]);
     }
 }

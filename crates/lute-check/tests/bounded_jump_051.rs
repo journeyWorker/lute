@@ -154,13 +154,17 @@ fn a_loop_may_not_leave_a_hub_option_or_return_body() {
     .is_empty());
 }
 
+/// dsl 0.53.0 §9.2 (#231): the sections are one loop scope, so the loop
+/// 0.51 refused here (`E-JUMP-LOOP-SCOPE` "outside the section") checks
+/// clean.
 #[test]
-fn a_loop_may_not_leave_its_section() {
-    let m = only(
-        &scene("::label{name=\"a\"}\n@a: hi\n\n## Two.\n\n@a: there\n::jump{to=\"a\" max=\"2\"}\n"),
-        "E-JUMP-LOOP-SCOPE",
+fn a_loop_may_span_sections() {
+    assert_eq!(
+        codes(&scene(
+            "::label{name=\"a\"}\n@a: hi\n\n## Two.\n\n@a: there\n::jump{to=\"a\" max=\"2\"}\n"
+        )),
+        [] as [String; 0]
     );
-    assert!(m.contains("outside the section `## Two.`"), "{m}");
 }
 
 #[test]

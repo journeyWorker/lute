@@ -155,17 +155,22 @@ impl MaxAttr {
 }
 
 /// The kind of body a node sits in, for the loop scope rule (dsl 0.51.0
-/// §3.2) and the range body rule (dsl 0.52.0 §5.1). Only a `<choice>` body
-/// of a `<branch>` and a `<match>` arm body are laid out inline; every other
-/// body is its own runtime range, except a quest's top level, which holds
-/// only `<on>`/`<objective>` bodies (dsl 0.52.0 §4) and never runs itself.
+/// §3.2, 0.53.0 §9.2) and the range body rule (dsl 0.52.0 §5.1). Only a
+/// `<choice>` body of a `<branch>` and a `<match>` arm body are laid out
+/// inline; every other body is its own runtime range, except a quest's top
+/// level, which holds only `<on>`/`<objective>` bodies (dsl 0.52.0 §4) and
+/// never runs itself. A document's top-level sections are one body: they run
+/// as one range and are one loop scope.
 #[derive(Clone, Copy)]
 enum BodyKind<'d> {
-    Section(&'d str),
+    TopLevel,
     Quest(&'d str),
     Entry(&'d str),
     Beat(&'d str),
-    Choice,
+    Choice {
+        branch: &'d str,
+        option: &'d str,
+    },
     Arm,
     HubOption {
         hub: Option<&'d str>,
@@ -180,7 +185,7 @@ enum BodyKind<'d> {
 
 impl BodyKind<'_> {
     fn inline(self) -> bool {
-        matches!(self, Self::Choice | Self::Arm)
+        matches!(self, Self::Choice { .. } | Self::Arm)
     }
 
     /// A hub option or `<return>` body: the only range bodies a jump may
@@ -226,11 +231,11 @@ impl BodyKind<'_> {
                 "`{jump}` enters `<entry id=\"{id}\">`, which runs only when that entry is read — \
                  {SAME_BODY_OR_END}"
             ),
-            Self::Section(_) => format!(
+            Self::TopLevel => format!(
                 "`{jump}` enters the document's sections from a body that runs on its own — \
                  {SAME_BODY_OR_END}"
             ),
-            Self::Quest(_) | Self::Choice | Self::Arm => {
+            Self::Quest(_) | Self::Choice { .. } | Self::Arm => {
                 unreachable!("a quest's top level and inline bodies are never range bodies")
             }
         }
@@ -240,7 +245,15 @@ impl BodyKind<'_> {
     /// that leaves this (non-inline) body.
     fn leave_message(self, jump: &str, head: &str) -> String {
         let (body, stays, also) = match self {
-            Self::Section(heading) => (format!("the section `## {heading}`"), "one section", ""),
+            // The top level encloses every section, so the head sits in a
+            // nested body the jump is not in.
+            Self::TopLevel => {
+                return format!(
+                    "`{jump}` loops back to `{head}`, which sits in a body this jump is not in; \
+                     a loop's head stays in the jump's own body or one enclosing it — put \
+                     `::label{{name=\"{head}\"}}` outside that body, before the loop"
+                )
+            }
             Self::Quest(id) => (format!("`<quest id=\"{id}\">`"), "one quest", ""),
             Self::Entry(id) => (format!("`<entry id=\"{id}\">`"), "one entry", ""),
             Self::Beat(id) => (format!("`<beat id=\"{id}\">`"), "one beat", ""),
@@ -264,7 +277,9 @@ impl BodyKind<'_> {
                 "the objective's body",
                 "",
             ),
-            Self::Choice | Self::Arm => unreachable!("inline bodies never end a loop's scope"),
+            Self::Choice { .. } | Self::Arm => {
+                unreachable!("inline bodies never end a loop's scope")
+            }
         };
         format!(
             "`{jump}` loops back to a label outside {body} it is in; a loop stays inside \
@@ -273,15 +288,15 @@ impl BodyKind<'_> {
     }
 }
 
-/// One body: its kind and the body that encloses it (`None` for a section,
-/// quest, entry or beat).
+/// One body: its kind and the body that encloses it (`None` for the
+/// document's top level, a quest, an entry or a beat).
 struct Body<'d> {
     kind: BodyKind<'d>,
     parent: Option<usize>,
 }
 
 /// A range body (dsl 0.52.0 §5.1): a body the runtime runs as its own
-/// range. Every section of a document is one range, its top level (a scene
+/// range. The document's sections are one range, its top level (a scene
 /// runs as one range, so a forward jump between sections stays legal);
 /// every other range body is one [`Body`].
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -353,7 +368,8 @@ struct LabelSite {
 
 /// One `::jump{to}` site: its own document position, the target id, the span
 /// to anchor its diagnostics at (the `to` value), the directive, the body it
-/// sits in and its `max`.
+/// sits in, its `max`, and — when it is the last node of a `<choice>` body —
+/// that choice's `<branch>` id and option id.
 struct NextSite<'d> {
     pos: u64,
     to: &'d str,
@@ -361,6 +377,7 @@ struct NextSite<'d> {
     directive: Span,
     body: usize,
     max: MaxAttr,
+    ends_option: Option<(&'d str, &'d str)>,
 }
 
 impl NextSite<'_> {
@@ -418,9 +435,13 @@ impl<'d> Collector<'d> {
         self.tick();
     }
 
-    fn record_next(&mut self, d: &'d Directive, body: usize) {
+    fn record_next(&mut self, d: &'d Directive, body: usize, last: bool) {
         if let Some(to) = attr_str(&d.attrs, "to") {
             let span = attr_span(&d.attrs, "to").unwrap_or(d.span);
+            let ends_option = match self.bodies[body].kind {
+                BodyKind::Choice { branch, option } if last => Some((branch, option)),
+                _ => None,
+            };
             self.nexts.push(NextSite {
                 pos: self.pos,
                 to,
@@ -428,6 +449,7 @@ impl<'d> Collector<'d> {
                 directive: d.span,
                 body,
                 max: MaxAttr::of(&d.attrs),
+                ends_option,
             });
         }
         self.tick();
@@ -451,7 +473,8 @@ impl<'d> Collector<'d> {
                     }
                 }
                 Node::Directive(d) if d.tag == lute_manifest::core::JUMP_DIRECTIVE => {
-                    self.record_next(d, body);
+                    let last = nodes.last().is_some_and(|l| std::ptr::eq(l, node));
+                    self.record_next(d, body, last);
                 }
                 Node::Line(_)
                 | Node::Directive(_)
@@ -464,7 +487,11 @@ impl<'d> Collector<'d> {
                 Node::Branch(b) => {
                     self.tick();
                     for c in &b.choices {
-                        let inner = self.open(BodyKind::Choice, Some(body));
+                        let kind = BodyKind::Choice {
+                            branch: &b.id,
+                            option: &c.id,
+                        };
+                        let inner = self.open(kind, Some(body));
                         self.walk(&c.body, inner);
                     }
                 }
@@ -525,7 +552,7 @@ impl<'d> Collector<'d> {
     }
 
     /// The range body (dsl 0.52.0 §5.1) `body` sits in: the nearest
-    /// enclosing body that is not inline; every section is the document's
+    /// enclosing body that is not inline; the sections are the document's
     /// one top-level range. `None` at a quest's top level, which never runs
     /// as a range (a label there is already `E-GRAMMAR-NOT-ADMITTED`).
     fn range(&self, body: usize) -> Option<BodyRange> {
@@ -533,12 +560,12 @@ impl<'d> Collector<'d> {
         loop {
             let b = &self.bodies[at];
             match b.kind {
-                BodyKind::Choice | BodyKind::Arm => {
+                BodyKind::Choice { .. } | BodyKind::Arm => {
                     at = b.parent.expect(
                         "an inline body (a choice or an arm) always sits in an enclosing body",
                     );
                 }
-                BodyKind::Section(_) => return Some(BodyRange::TopLevel),
+                BodyKind::TopLevel => return Some(BodyRange::TopLevel),
                 BodyKind::Quest(_) => return None,
                 BodyKind::Entry(_)
                 | BodyKind::Beat(_)
@@ -560,7 +587,7 @@ impl<'d> Collector<'d> {
 
     fn range_kind(&self, range: BodyRange) -> BodyKind<'d> {
         match range {
-            BodyRange::TopLevel => BodyKind::Section(""),
+            BodyRange::TopLevel => BodyKind::TopLevel,
             BodyRange::Body(at) => self.bodies[at].kind,
         }
     }
@@ -873,10 +900,11 @@ pub fn check_next_labels(doc: &Document) -> LabelPass {
                 format!(
                     "`{}` enters the loop of `::jump{{to=\"{head}\" max=\"{}\"}}` (line {}) after \
                      its head `{head}`; a loop is entered only at its head — jump to `{head}` \
-                     instead",
+                     instead{}",
                     next.render(),
                     region.max.get(),
                     region.jump.line,
+                    one_option_hint(next, &c.nexts),
                     head = region.head
                 ),
                 next.span,
@@ -915,6 +943,27 @@ pub fn check_next_labels(doc: &Document) -> LabelPass {
         loops,
         leaves,
     }
+}
+
+/// dsl 0.53.0 §9.4: when the jump entering a loop ends a `<choice>` body and
+/// no other jump targets its label, the block is that option's alone.
+fn one_option_hint(next: &NextSite<'_>, nexts: &[NextSite<'_>]) -> String {
+    let Some((branch, option)) = next.ends_option else {
+        return String::new();
+    };
+    if nexts.iter().filter(|n| n.to == next.to).count() != 1 {
+        return String::new();
+    }
+    let menu = if branch.is_empty() {
+        "`<branch>`".to_string()
+    } else {
+        format!("`<branch id=\"{branch}\">`")
+    };
+    format!(
+        " — `{}` is reached only from option `{option}` of {menu}: move the block into that \
+         option's body",
+        next.to
+    )
 }
 
 /// Why `to` is no jump target when it names something else in `doc` — a
@@ -1038,9 +1087,11 @@ fn collect(doc: &Document) -> Collector<'_> {
         nexts: Vec::new(),
         bodies: Vec::new(),
     };
-    for shot in &doc.sections {
-        let body = c.open(BodyKind::Section(&shot.heading), None);
-        c.walk(&shot.body, body);
+    if !doc.sections.is_empty() {
+        let body = c.open(BodyKind::TopLevel, None);
+        for shot in &doc.sections {
+            c.walk(&shot.body, body);
+        }
     }
     for quest in &doc.quests {
         let body = c.open(BodyKind::Quest(&quest.id), None);
@@ -1353,13 +1404,11 @@ mod tests {
             hub_return.contains("outside the `<hub>` `<return>` body"),
             "{hub_return}"
         );
-        let section = message(
+        // dsl 0.53.0 §9.2: the sections are one loop scope.
+        let d = doc(
             "::label{name=\"attempt\"}\n@a: hi\n\n## Two\n\n::jump{to=\"attempt\" max=\"2\"}\n",
         );
-        assert!(
-            section.contains("outside the section `## Two`"),
-            "{section}"
-        );
+        assert!(check(&d).is_empty());
         // Through a `<choice>` body and a `<match>` arm: legal.
         let d = doc(
             "::label{name=\"attempt\"}\n<branch id=\"b\">\n  <choice id=\"c\" text=\"C\">\n    \

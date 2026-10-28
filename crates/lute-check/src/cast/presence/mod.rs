@@ -114,6 +114,7 @@ pub fn check_presence(
             params: &folded.env.def_params,
         },
         jumps,
+        top: &doc.sections,
         guards: Vec::new(),
         base: 0,
         quest: None,
@@ -426,6 +427,8 @@ pub(crate) struct Presence<'a> {
     defs: DefTable<'a>,
     /// Every `::jump{to}` target of the document.
     jumps: BTreeSet<String>,
+    /// The document's top-level sections, one loop scope (dsl 0.53.0 §9.2).
+    top: &'a [lute_syntax::ast::Section],
     guards: Vec<Guard>,
     /// `guards[..base]` are the current unit's own assumptions.
     base: usize,

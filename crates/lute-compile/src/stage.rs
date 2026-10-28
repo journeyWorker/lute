@@ -233,7 +233,9 @@ pub fn walk_seq(
 
 /// dsl 0.51.0 §3.4: the stage state at label `id` (`rest` follows it in its
 /// body), from the checker's label and loop-head function: the walk's own
-/// state joined with the jumps that reach the label, iterated at a loop head.
+/// state joined with the jumps that reach the label, iterated at a loop head
+/// over its region, which at the top level runs on into the later sections
+/// (`StageFlow::top_level`, dsl 0.53.0 §9.3).
 fn bind_label(cx: &mut WalkCx<'_>, id: &str, rest: &[Node], state: &mut StageState) {
     let fall = cx.reached.then(|| std::mem::take(state));
     if let Some(bound) = cx.stage.label(id, rest, fall) {

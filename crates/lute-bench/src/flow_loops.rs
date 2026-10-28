@@ -25,6 +25,14 @@
 //! its time ratio is reported, not gated. Every point is within the product
 //! bound above, `Nₖ` the size of the depth-`k` hub.
 //!
+//! The `sections` axis (dsl 0.53.0 §9.3): one loop whose region of `R`
+//! nodes spans [`SECTIONS`] top-level sections, the head in the first and
+//! the back edge in the last; R ∈ {100, 200, 400}, each doubling ≤ 2.3× in
+//! work (gated; time reported), and a `sections2` point at R = 100 with a
+//! second back edge in the head's section (the region still runs through
+//! the later one). At every sections point the checker's stage fold and the
+//! compiler's stage walk do equal work (gated).
+//!
 //! Each point runs the walks on the calling thread — `check()` (definite
 //! assignment, the stage fold, cast presence), the project fact pass
 //! (`compute_must`) and `lute compile`'s stage walk — and reads their
@@ -79,6 +87,8 @@ struct Point {
     axis: &'static str,
     r: usize,
     d: usize,
+    /// The top-level sections the region spans (`sections` axes; else 1).
+    sections: usize,
     /// Node rows of the outermost region (nested regions included).
     region_nodes: usize,
     /// Probe nodes over every walk.
@@ -177,17 +187,23 @@ fn run(samples: usize, check: Check) -> Report {
     for d in [2, 3] {
         points.push(measure("hub", 8, d, samples));
     }
+    for r in [100, 200, 400] {
+        points.push(measure("sections", r, 1, samples));
+    }
+    points.push(measure("sections2", 100, 1, samples));
     let mut pass = points[0]
         .walks
         .iter()
         .all(|w| w.heads == 0 && w.probe_nodes == 0);
     // The region axis gates work and (with `--check both`) time; the hub
-    // axis gates work and reports time.
+    // and sections axes gate work and report time.
     for (axis, from, to) in [
         ("region", 1, 2),
         ("region", 2, 3),
         ("hub", 7, 8),
         ("hub", 8, 9),
+        ("sections", 12, 13),
+        ("sections", 13, 14),
     ] {
         let (a, b) = (&points[from], &points[to]);
         #[expect(
@@ -216,8 +232,20 @@ fn run(samples: usize, check: Check) -> Report {
             .iter()
             .all(|w| w.widened == 0 && w.probe_nodes <= w.product_bound);
     }
+    // The checker's stage fold and the compiler's stage walk iterate the
+    // same cross-section region.
+    for p in points.iter().filter(|p| p.axis.starts_with("sections")) {
+        let work = |kind: WalkKind| {
+            p.walks
+                .iter()
+                .find(|w| w.kind == kind.name())
+                .map(|w| w.probe_nodes)
+        };
+        pass &= work(WalkKind::Stage) == work(WalkKind::StageCompile)
+            && work(WalkKind::Stage).is_some_and(|w| w > 0);
+    }
     Report {
-        schema_version: "0.52.0.flow-loops",
+        schema_version: "0.53.0.flow-loops",
         samples,
         points,
         ratios,
@@ -226,7 +254,7 @@ fn run(samples: usize, check: Check) -> Report {
 }
 
 fn label(p: &Point) -> String {
-    format!("R={} D={}", p.r, p.d)
+    format!("R={} D={} S={}", p.r, p.d, p.sections)
 }
 
 fn round3(value: f64) -> f64 {
@@ -329,10 +357,11 @@ impl FactPass {
 }
 
 fn measure(axis: &'static str, r: usize, d: usize, samples: usize) -> Point {
-    let (text, region_nodes, sizes) = if axis == "hub" {
-        hub_document(r, d)
-    } else {
-        document(r, d)
+    let (text, region_nodes, sizes) = match axis {
+        "hub" => hub_document(r, d),
+        "sections" => sections_document(r, false),
+        "sections2" => sections_document(r, true),
+        _ => document(r, d),
     };
     let input = input_for(&text);
     let checked = check(&input);
@@ -370,6 +399,11 @@ fn measure(axis: &'static str, r: usize, d: usize, samples: usize) -> Point {
         axis,
         r,
         d,
+        sections: if axis.starts_with("sections") {
+            SECTIONS
+        } else {
+            1
+        },
         region_nodes,
         work: walks.iter().map(|w| w.probe_nodes).sum(),
         walks,
@@ -450,6 +484,44 @@ fn document(r: usize, d: usize) -> (String, usize, Vec<usize>) {
     (out, sizes[0], sizes)
 }
 
+/// The top-level sections a `sections` axis region spans.
+const SECTIONS: usize = 4;
+
+/// The `sections` axis scene of `R`: one loop whose head is in the first of
+/// [`SECTIONS`] sections and whose back edge ends the last, its lines spread
+/// evenly over them; with `second`, a bounded jump to the same head also
+/// ends the head's section. As [`document`], the region's node count (once).
+fn sections_document(r: usize, second: bool) -> (String, usize, Vec<usize>) {
+    use std::fmt::Write as _;
+
+    // Label, show, exit, retract and the last jump, plus the second jump.
+    let fixed = 5 + usize::from(second);
+    let lines = r.saturating_sub(fixed);
+    let mut out = format!("{FRONT}{START}::label{{name=\"l1\"}}\n");
+    out.push_str("::actor{character=\"mira\" action=\"show\"}\n");
+    let mut line = 0usize;
+    for s in 0..SECTIONS {
+        if s > 0 {
+            writeln!(out, "\n## Shot {}.\n", s + 1).expect("a String accepts writes");
+        }
+        let until = lines * (s + 1) / SECTIONS;
+        while line < until {
+            writeln!(out, "@mira: Line {line}.").expect("a String accepts writes");
+            line += 1;
+        }
+        if s == 0 && second {
+            out.push_str("::jump{to=\"l1\" max=\"2\"}\n");
+        }
+    }
+    out.push_str(
+        "::actor{character=\"mira\" action=\"hide\"}\n::retract{met(mira)}\n\
+         ::jump{to=\"l1\" max=\"2\"}\n::actor{character=\"mira\" action=\"show\"}\n\
+         @mira: Done.\n",
+    );
+    let own = fixed + lines;
+    (out, own, vec![own])
+}
+
 /// The scene's start: `mira` met (so the presence walk admits her) and shown.
 const START: &str = "::assert{met(mira)}\n::actor{character=\"mira\" action=\"show\"}\n";
 
@@ -518,5 +590,16 @@ mod tests {
         assert_eq!(text.matches("<hub ").count(), 2);
         assert_eq!(text.matches("<choice ").count(), 18);
         assert_eq!(text.matches(" exit>").count(), 2);
+    }
+
+    #[test]
+    fn a_sections_region_spans_every_section() {
+        let (text, outer, sizes) = sections_document(100, false);
+        assert_eq!((outer, sizes), (100, vec![100]));
+        assert_eq!(text.matches("\n## ").count(), SECTIONS);
+        assert_eq!(text.matches("max=\"2\"").count(), 1);
+        let (two, outer, _) = sections_document(100, true);
+        assert_eq!(outer, 100);
+        assert_eq!(two.matches("max=\"2\"").count(), 2);
     }
 }
