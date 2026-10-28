@@ -132,8 +132,8 @@ pub(crate) use cmd_scenario::{
     node_ref_to_id, primary_node_ambiguity_note, resolve_node_ref, NodeRef,
 };
 pub(crate) use lute_load::BuiltInput;
+pub(crate) use lute_model::ReconciledProject;
 pub(crate) use lute_model::{assemble_root_scenario, node_cycle_degraded, RootScenario};
-pub(crate) use lute_model::{reconcile_collected, ReconciledProject};
 pub(crate) use output::{
     cwd_relative, render_diagnostics, severity_str, write_stdout, SeverityPolicy,
 };

@@ -140,17 +140,27 @@ pub(crate) type RootModels = Vec<(PathBuf, std::sync::Arc<lute_model::ProjectMod
 pub(crate) fn collected_docs(
     models: &RootModels,
 ) -> (Vec<(PathBuf, lute_check::CheckResult)>, ByRoot) {
-    let mut file_results = Vec::new();
-    let mut by_root = BTreeMap::new();
-    for (root, model) in models {
-        let mut group = Vec::new();
-        for doc in model.documents() {
-            file_results.push((doc.path.clone(), doc.analysis_check().clone()));
-            group.push((doc.path.clone(), doc.doc.clone(), doc.folded.clone()));
-        }
-        by_root.insert(root.clone(), group);
-    }
-    (file_results, by_root)
+    let file_results = models
+        .iter()
+        .flat_map(|(_, model)| model.documents())
+        .map(|doc| (doc.path.clone(), doc.analysis_check().clone()))
+        .collect();
+    (file_results, root_groups(models))
+}
+
+/// The per-root document groups of `models`, in root and document order.
+pub(crate) fn root_groups(models: &RootModels) -> ByRoot {
+    models
+        .iter()
+        .map(|(root, model)| {
+            let group = model
+                .documents()
+                .iter()
+                .map(|doc| (doc.path.clone(), doc.doc.clone(), doc.folded.clone()))
+                .collect();
+            (root.clone(), group)
+        })
+        .collect()
 }
 
 /// [`collect_project_docs`] over `memo`'s models.
