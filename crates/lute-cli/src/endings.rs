@@ -40,6 +40,7 @@ use serde_json::{json, Value as Json};
 
 use crate::{
     envelope::{self, CliError},
+    project::RootModels,
     ByRoot, DocGroup,
 };
 
@@ -270,40 +271,77 @@ fn decides_false(folded: &lute_check::FoldedEnv, cond: &str) -> bool {
     )
 }
 
+/// The verdict codes a row cites as its `when` verdict.
+const VERDICT_CODES: [&str; 3] = [
+    lute_check::E_BEAT_UNREACHABLE,
+    lute_check::E_ENTRY_UNREACHABLE,
+    lute_check::W_BEAT_SHADOWED,
+];
+
+/// The whole-project diagnostics the rows cite, as each root's model
+/// reconciled them: every document's result, then the project-wide ones,
+/// in root order.
+struct ProjectVerdicts<'m>(&'m RootModels);
+
+impl ProjectVerdicts<'_> {
+    fn all(&self) -> impl Iterator<Item = (&PathBuf, &Diagnostic)> {
+        let models = self.0.iter().map(|(_, model)| model.reconciled());
+        models
+            .clone()
+            .flat_map(|r| &r.checks)
+            .flat_map(|(p, r)| r.diagnostics.iter().map(move |d| (p, d)))
+            .chain(models.flat_map(|r| r.diagnostics.iter().map(|(p, d)| (p, d))))
+    }
+
+    /// The verdicts about `b` (`E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`,
+    /// `W-BEAT-SHADOWED`).
+    fn about(&self, b: &ProjectBeat<'_>) -> Vec<&Diagnostic> {
+        self.all()
+            .filter(|(p, d)| {
+                VERDICT_CODES.contains(&d.code.as_str()) && crate::beats_cmd::names_beat(p, d, b)
+            })
+            .map(|(_, d)| d)
+            .collect()
+    }
+
+    /// OT-F-13: the errors a verdict follows from — a typo in the `when`
+    /// itself (`E-WHEN-LITERAL-DOMAIN`) — cited before the verdict.
+    fn causes(&self, b: &ProjectBeat<'_>) -> Vec<&Diagnostic> {
+        let Some(slot) = b.when_slot else {
+            return Vec::new();
+        };
+        self.all()
+            .filter(|(p, d)| {
+                d.severity == lute_core_span::Severity::Error
+                    && !VERDICT_CODES.contains(&d.code.as_str())
+                    && p.as_path() == b.path
+                    && d.span.byte_start >= slot.span.byte_start
+                    && d.span.byte_start <= slot.span.byte_end
+            })
+            .map(|(_, d)| d)
+            .collect()
+    }
+}
+
 /// `Err(exit)` on an unknown `--endings=<occasion>` (reported).
+///
+/// Each row reads its root model's reconciliation and scenario graph, the
+/// ones the model built: the command reconciles and assembles each root
+/// once (spec 0.53.0 §3.7, tier `endings`).
 fn rows(
     by_root: &ByRoot,
-    file_results: &[(PathBuf, lute_check::CheckResult)],
+    models: &RootModels,
     occasion: Option<&str>,
 ) -> Result<Vec<RootRows>, ExitCode> {
-    let (reconciled, project_diags, _, _) =
-        crate::reconcile_collected(file_results.to_vec(), by_root, false);
-    let verdict_codes = [
-        lute_check::E_BEAT_UNREACHABLE,
-        lute_check::E_ENTRY_UNREACHABLE,
-        lute_check::W_BEAT_SHADOWED,
-    ];
-    let mut verdicts: Vec<(&PathBuf, &Diagnostic)> = reconciled
-        .iter()
-        .flat_map(|(p, r)| r.diagnostics.iter().map(move |d| (p, d)))
-        .chain(project_diags.iter().map(|(p, d)| (p, d)))
-        .collect();
-    // OT-F-13: the errors a verdict follows from — a typo in the `when`
-    // itself (`E-WHEN-LITERAL-DOMAIN`) — cited before the verdict.
-    let errors: Vec<(&PathBuf, &Diagnostic)> = verdicts
-        .iter()
-        .copied()
-        .filter(|(_, d)| {
-            d.severity == lute_core_span::Severity::Error
-                && !verdict_codes.contains(&d.code.as_str())
-        })
-        .collect();
-    verdicts.retain(|(_, d)| verdict_codes.contains(&d.code.as_str()));
-
+    let verdicts = ProjectVerdicts(models);
     let mut out = Vec::new();
     let mut known: BTreeSet<String> = BTreeSet::new();
     for (root, group) in by_root {
-        let scenario = crate::assemble_root_scenario(group, file_results);
+        let scenario = models
+            .iter()
+            .find(|(model_root, _)| model_root == root)
+            .and_then(|(_, model)| model.reconciled().scenarios.get(model.root()))
+            .expect("every collected root has its model's scenario");
         let docs = lute_model::project_docs(group);
         let beats = lute_check::beats::in_selection_order(lute_check::project_beats(
             &docs,
@@ -334,26 +372,15 @@ fn rows(
             if !is_ending {
                 continue;
             }
-            let about: Vec<&Diagnostic> = verdicts
-                .iter()
-                .filter(|(p, d)| crate::beats_cmd::names_beat(p, d, b))
-                .map(|(_, d)| *d)
-                .collect();
-            let causes: Vec<&Diagnostic> = b
-                .when_slot
-                .map(|slot| {
-                    errors
-                        .iter()
-                        .filter(|(p, d)| {
-                            p.as_path() == b.path
-                                && d.span.byte_start >= slot.span.byte_start
-                                && d.span.byte_start <= slot.span.byte_end
-                        })
-                        .map(|(_, d)| *d)
-                        .collect()
-                })
-                .unwrap_or_default();
-            let mut row = row(root, group, &scenario, &producers, b, &about, &causes);
+            let mut row = row(
+                root,
+                group,
+                scenario,
+                &producers,
+                b,
+                &verdicts.about(b),
+                &verdicts.causes(b),
+            );
             row.runs_end = runs_end;
             row.terminal = writes_terminal;
             row.settles = settles;
@@ -846,17 +873,12 @@ struct Producers<'g> {
 }
 
 impl<'g> Producers<'g> {
+    /// `root`'s producers over `group`, judged against the default-profile
+    /// snapshot of the root's manifest. The manifest is read on its own
+    /// (spec 0.53.0 §3.4): the caller already holds the project's documents,
+    /// so no second project model is built for one field.
     fn of(root: &Path, group: &'g DocGroup) -> Self {
-        let opts = lute_model::ModelOptions {
-            providers: None,
-            permission_profile: None,
-            mode: lute_check::Mode::Ci,
-            compile: false,
-            wip: false,
-        };
-        let project = lute_model::ProjectModel::build_single_root(root, &opts)
-            .ok()
-            .and_then(|model| model.manifest().cloned());
+        let project = lute_manifest::project::load_project(root).ok().flatten();
         let snapshot = resolve_snapshot(project.as_ref());
         let components = group
             .iter()
@@ -1260,10 +1282,10 @@ fn need_json(n: &Need) -> Json {
 pub(crate) fn run_text(
     out: &mut String,
     by_root: &ByRoot,
-    file_results: &[(PathBuf, lute_check::CheckResult)],
+    models: &RootModels,
     occasion: Option<&str>,
 ) -> ExitCode {
-    let roots = match rows(by_root, file_results, occasion) {
+    let roots = match rows(by_root, models, occasion) {
         Ok(r) => r,
         Err(code) => return code,
     };
@@ -1370,10 +1392,10 @@ fn unreachable_exit(roots: &[RootRows]) -> ExitCode {
 /// its exit code ([`unreachable_exit`]).
 pub(crate) fn json(
     by_root: &ByRoot,
-    file_results: &[(PathBuf, lute_check::CheckResult)],
+    models: &RootModels,
     occasion: Option<&str>,
 ) -> Result<(Json, ExitCode), ExitCode> {
-    let roots = rows(by_root, file_results, occasion)?;
+    let roots = rows(by_root, models, occasion)?;
     let exit = unreachable_exit(&roots);
     let roots: Vec<Json> = roots
         .iter()

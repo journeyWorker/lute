@@ -8,7 +8,7 @@ use super::{
     StderrLine, TestResult, TraceExit, TraceReport, UnresolvedEntry, QUEST_STATES,
     TEST_EXPECT_KEYS,
 };
-use lute_load::build_input;
+use lute_load::build_input_with;
 /// `lute test`'s flags (0.48.0 §3.14), resolved by the dispatcher.
 pub struct TestOptions<'a> {
     /// The project directory: the walk root when no operand is given, and
@@ -315,6 +315,10 @@ struct Shared {
     /// document on its project's verdict, as `lute trace --project` and
     /// `lute play` do — one envelope (round-5 `test-project-envelope`).
     gates: BTreeMap<PathBuf, Option<crate::ReconciledProject>>,
+    /// The input layer every standalone test (a document under no manifest)
+    /// assembles through: one base and vocabulary per key for the run, not
+    /// per test (spec 0.53.0 §3.3).
+    standalone: lute_load::InputCache,
 }
 
 /// The root whose producer set judges `lute_path`'s mocked facts: the nearest
@@ -380,6 +384,7 @@ impl Shared {
             quests: BTreeMap::new(),
             plays: BTreeMap::new(),
             gates: BTreeMap::new(),
+            standalone: lute_load::InputCache::default(),
         };
         for root in model_roots {
             let model = memo.single_root(&root, &opts).map_err(|error| {
@@ -902,7 +907,13 @@ fn run_one_test(
             );
             return Err(ExitCode::from(1));
         }
-        let Some(built) = build_input(&lute_path, providers, None, build.permission_profile) else {
+        let Some(built) = build_input_with(
+            &shared.standalone,
+            &lute_path,
+            providers,
+            None,
+            build.permission_profile,
+        ) else {
             return Err(crate::envelope::fail_quietly(
                 crate::envelope::CliError::unreadable_document(&lute_path),
             ));

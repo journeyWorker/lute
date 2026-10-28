@@ -13,7 +13,8 @@ use crate::envelope::{self, CliError};
 use crate::output::{check_report_json, pretty_json, print_human, SeverityPolicy};
 use crate::project::{canonical_path, find_lute_files, resolve_project};
 use lute_load::{
-    build_input, manifest_context, nearest_manifest_dir, normalize_span_from_text, BuiltInput,
+    build_input_with, manifest_context, nearest_manifest_dir, normalize_span_from_text, BuiltInput,
+    InputCache,
 };
 
 /// Every document under `root` whose `::use` names component `name`
@@ -264,7 +265,11 @@ pub(crate) fn component_root_diag(component: &str, at: Span) -> Diagnostic {
 /// ``component `x` (path):`` prefix is redundant. Rule 1 measured those
 /// line/columns as already resolved against the component's own source, so no
 /// re-normalisation is needed.
+///
+/// The callers assemble through the run's `cache` (spec 0.53.0 §3.3): one
+/// base and vocabulary per key, shared with the component's own check.
 fn caller_resolved_common(
+    cache: &InputCache,
     callers: &[PathBuf],
     component_file: &Path,
     providers: Option<&Path>,
@@ -282,7 +287,7 @@ fn caller_resolved_common(
     let mut per_caller: Vec<BTreeSet<(String, String)>> = Vec::new();
     let mut sample: BTreeMap<(String, String), Diagnostic> = BTreeMap::new();
     for caller in callers {
-        let Some(built) = build_input(caller, providers, Some(root), None) else {
+        let Some(built) = build_input_with(cache, caller, providers, Some(root), None) else {
             continue;
         };
         let res = check(&built.input);
@@ -591,9 +596,11 @@ fn resolve_failure(lines: &[String]) -> lute_check::CheckResult {
 
 /// Check one document (or one `.yaml` state schema) against its project and
 /// return its result and the policy it is reported under (the gate options
-/// plus its project's `diagnostics:`). `Err` is a failure already reported
+/// plus its project's `diagnostics:`). The document assembles through the
+/// run's `cache` (spec 0.53.0 §3.3). `Err` is a failure already reported
 /// (exit `2`).
 fn check_document(
+    cache: &InputCache,
     file: &Path,
     opts: &CheckOptions<'_>,
     matrix: &crate::EngineMatrix,
@@ -620,10 +627,16 @@ fn check_document(
     // for paths the project declares, and advice that would have broken it.
     let project = resolve_project(file, opts.project);
     let policy = opts.policy.for_project(project.as_deref());
-    let Some(built) = build_input(file, providers, project.as_deref(), permission_profile) else {
+    let Some(built) = build_input_with(
+        cache,
+        file,
+        providers,
+        project.as_deref(),
+        permission_profile,
+    ) else {
         return Err(envelope::fail_quietly(CliError::unreadable_document(file)));
     };
-    // `build_input` no longer prints these itself (`lute doctor` folds them into
+    // The loader does not print these itself (`lute doctor` folds them into
     // its checklist instead); every gating command emits them exactly as before.
     built.report_project_diags();
     let resolve_lines = built.project_diags.clone();
@@ -716,7 +729,7 @@ fn check_document(
                 // reports at the same position is one fault, printed once
                 // (round-5 T3-4).
                 let common: Vec<Diagnostic> =
-                    caller_resolved_common(&callers, file, providers, root)
+                    caller_resolved_common(cache, &callers, file, providers, root)
                         .into_iter()
                         .filter(|c| {
                             !result.diagnostics.iter().any(|d| {
@@ -811,10 +824,13 @@ pub(crate) fn run(files: &[PathBuf], opts: &CheckOptions<'_>) -> ExitCode {
             return envelope::fail(CliError::input(&path, format!("lute check: {message}")));
         }
     };
+    // One input cache for the run: every base and vocabulary key is built
+    // once, however many operands (and component callers) share it.
+    let cache = InputCache::default();
     let mut results: Vec<(PathBuf, lute_check::CheckResult)> = Vec::new();
     let mut policies: Vec<SeverityPolicy> = Vec::new();
     for file in files {
-        let (checked, policy) = match check_document(file, opts, &matrix) {
+        let (checked, policy) = match check_document(&cache, file, opts, &matrix) {
             Ok(checked) => checked,
             Err(code) => return code,
         };

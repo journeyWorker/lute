@@ -30,7 +30,7 @@ const VOCAB_PHASES: [Phase; 5] = [
     Phase::Serialization,
     Phase::PlayAssembly,
 ];
-const USAGE: &str = "usage: lute-bench --root <checkout> --tier tiny|medium|large|vocab|all --phase <name>|all --samples <n> --json <path>|-\n       lute-bench generate-vocab <outdir> [-S scenes] [-N quests] [-M per-paths] [-K kinds] [-P members]\n       lute-bench lint-nodes [--samples <n>] [--check work|both] [--json <path>|-]\n       lute-bench flow-loops [--samples <n>] [--check work|both] [--json <path>|-]";
+const USAGE: &str = "usage: lute-bench --root <checkout> --tier tiny|medium|large|vocab|all --phase <name>|all --samples <n> --json <path>|-\n       lute-bench generate-vocab <outdir> [-S scenes] [-N quests] [-M per-paths] [-K kinds] [-P members] [-E ending-scenes]\n       lute-bench lint-nodes [--samples <n>] [--check work|both] [--json <path>|-]\n       lute-bench flow-loops [--samples <n>] [--check work|both] [--json <path>|-]";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Phase {

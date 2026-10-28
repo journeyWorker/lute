@@ -1,7 +1,7 @@
 //! `lute scenario` (connectivity T14, dsl §5:571-584) — project-wide,
 //! read-only reporting surface over everything §4 computes. Evaluates no
 //! CEL, runs no Datalog, takes no mocks: pure graph math over declared
-//! structure, reusing [`collect_project_docs`]'s SAME per-root doc grouping
+//! structure, reusing [`collected_docs`]'s SAME per-root doc grouping
 //! whole-project `check` builds (never a second file-walk/parse) plus the SAME
 //! `lute_check::connectivity`/`envelope` analyses whole-project `check`'s own
 //! per-root pass calls (never duplicated math — only the presentation, and
@@ -18,8 +18,8 @@ use crate::endings;
 use crate::envelope::{self, CliError};
 use crate::knowledge;
 use crate::output::write_stdout;
-use crate::project::{collect_project_docs, ByRoot};
-use lute_model::{assemble_root_scenario, RootScenario};
+use crate::project::{collected_docs, project_models_in, ByRoot};
+use lute_model::{assemble_root_scenario, ModelMemo, RootScenario};
 
 pub(crate) mod graph;
 pub(crate) mod node_envelope;
@@ -296,10 +296,11 @@ pub(crate) fn run_scenario(
     command: Option<ScenarioCommand>,
     facts: bool,
 ) -> ExitCode {
-    let (file_results, by_root) = match collect_project_docs(dir, providers, None, false) {
-        Ok(v) => v,
+    let models = match project_models_in(&ModelMemo::default(), dir, providers, None) {
+        Ok(models) => models,
         Err(code) => return code,
     };
+    let (file_results, by_root) = collected_docs(&models);
     // T3-15: the report is built into one buffer and written once through
     // [`write_stdout`] — `lute scenario … | head` used to panic on EPIPE
     // from a bare `println!`.
@@ -312,7 +313,7 @@ pub(crate) fn run_scenario(
         }) => endings::run_text(
             &mut out,
             &by_root,
-            &file_results,
+            &models,
             (!occasion.is_empty()).then_some(occasion.as_str()),
         ),
         Some(ScenarioCommand::Reach { node, .. }) => run_scenario_reach(

@@ -26,26 +26,21 @@ pub(crate) fn run_refresh(
 ) -> ExitCode {
     // The project is `--project` or the nearest `lute.project.yaml` (0.48.0
     // §2.1); `--providers` names the directory, defaulting to the project's
-    // `catalogDir`. With neither there is nothing to refresh.
+    // `catalogDir`. With neither there is nothing to refresh. The manifest is
+    // read once, on its own: no document is read (spec 0.53.0 §3.4), so the
+    // `catalogDir` holds whenever the manifest loads.
     let project = project
         .map(Path::to_path_buf)
         .or_else(crate::project::discover_project_from_cwd);
     let project = project.as_deref();
-    let dir: PathBuf = match (providers, project) {
+    let context = project.map(|root| (root, manifest_context(root)));
+    let dir: PathBuf = match (providers, &context) {
         (Some(dir), _) => dir.to_path_buf(),
-        (None, Some(root)) => {
-            let opts = lute_model::ModelOptions {
-                providers: None,
-                permission_profile: None,
-                mode: lute_check::Mode::Ci,
-                compile: false,
-                wip: false,
-            };
-            lute_model::ProjectModel::build_single_root(root, &opts)
-                .ok()
-                .and_then(|model| model.manifest().map(|config| config.catalog_dir.clone()))
-                .unwrap_or_else(|| root.join("catalog"))
-        }
+        (None, Some((root, context))) => context
+            .as_ref()
+            .ok()
+            .and_then(|context| context.project.as_ref())
+            .map_or_else(|| root.join("catalog"), |config| config.catalog_dir.clone()),
         (None, None) => {
             return envelope::fail(
                 CliError::usage(
@@ -68,14 +63,12 @@ pub(crate) fn run_refresh(
     // Under a project, stamp the resolved snapshot's version (plugin §13). A
     // malformed project must not silently mis-stamp: surface it and fall back to
     // the core-only version rather than pretending it loaded.
-    let version = match project {
-        Some(p) => match manifest_context(p) {
-            Ok(context) => context.snapshot.version,
-            Err(e) => {
-                eprintln!("lute: {e}");
-                load_core_snapshot().version
-            }
-        },
+    let version = match context {
+        Some((_, Ok(context))) => context.snapshot.version,
+        Some((_, Err(e))) => {
+            eprintln!("lute: {e}");
+            load_core_snapshot().version
+        }
         None => load_core_snapshot().version,
     };
 

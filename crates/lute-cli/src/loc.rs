@@ -123,7 +123,7 @@ use std::process::ExitCode;
 use lute_check::meta::canonical_episode_key;
 use lute_compile::locale::LocaleBundle;
 use lute_core_span::Severity;
-use lute_load::{build_input, find_lute_files, project_root_for};
+use lute_load::{build_input_with, find_lute_files, project_root_for, InputCache};
 use lute_manifest::project::IdentityTemplates;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{Arm, Attr, AttrValue, Choice, ClipNode, Directive, Document, Node};
@@ -614,7 +614,9 @@ fn is_component_document(doc: &Document) -> bool {
 /// Each file's `identity:` templates resolve against its OWN nearest-ancestor
 /// project root ([`lute_load::project_root_for`], bounded below by `dir`) —
 /// same nested-subproject rule whole-project `check` and `lute scenario` use, so a
-/// walk spanning two subprojects exports each one's real ids.
+/// walk spanning two subprojects exports each one's real ids. Every file
+/// assembles through one [`InputCache`] for the walk (spec 0.53.0 §3.3): a
+/// base and vocabulary per key, not per file.
 fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
     let files = find_lute_files(dir).map_err(|e| {
         let e = lute_manifest::io_reason(&e);
@@ -622,6 +624,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
         eprintln!("{message}");
         crate::envelope::fail_quietly(crate::envelope::CliError::io(dir, message))
     })?;
+    let cache = InputCache::default();
     let mut units = Vec::new();
     for path in &files {
         // #3 / T6.10 fix (i): expand `::use` before extracting, so a
@@ -632,7 +635,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
         // `expand_document` is deliberately NOT run, because `{{…}}`
         // interpolation is what a translator must see intact.
         let root = project_root_for(path, dir);
-        let Some(built) = build_input(path, None, Some(&root), None) else {
+        let Some(built) = build_input_with(&cache, path, None, Some(&root), None) else {
             eprintln!(
                 "lute loc: skipping {} — cannot resolve inputs",
                 path.display()

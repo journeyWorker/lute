@@ -9,6 +9,12 @@
 //! previous quest. `scripts/vocab-grid.py` measures `lute` over these projects
 //! (spec 0.49.0 §9.8); keep the output identical to `gen.py`, since the issue's
 //! numbers and the gate thresholds are stated against it.
+//!
+//! One flag is not `gen.py`'s: `-E` (default 0, so the default output stays
+//! `gen.py`'s) turns the last `endings` scenes into ending beats (`on:`,
+//! `once:`, a `when` over a per-member path the scenes write, and `::end`),
+//! so `scenario reach --endings` reports a row for each (spec 0.53.0 §3.7,
+//! tier `endings`).
 
 use std::fmt;
 use std::path::Path;
@@ -26,6 +32,8 @@ pub(crate) struct VocabParams {
     pub(crate) kinds: usize,
     /// `-P`: members per kind.
     pub(crate) members: usize,
+    /// `-E` (not `gen.py`'s): the last `endings` scenes are ending beats.
+    pub(crate) endings: usize,
 }
 
 impl Default for VocabParams {
@@ -37,6 +45,7 @@ impl Default for VocabParams {
             paths: 10,
             kinds: 5,
             members: 15,
+            endings: 0,
         }
     }
 }
@@ -50,9 +59,11 @@ impl VocabParams {
         paths: 160,
         kinds: 5,
         members: 15,
+        endings: 0,
     };
 
-    /// Parses `gen.py`'s flags (`-N -M -K -P -S`, each taking a value).
+    /// Parses `gen.py`'s flags (`-N -M -K -P -S`, each taking a value) and
+    /// `-E`.
     pub(crate) fn parse(args: &[String]) -> Result<Self, String> {
         let mut params = Self::default();
         let mut args = args.iter();
@@ -63,6 +74,7 @@ impl VocabParams {
                 "-M" => &mut params.paths,
                 "-K" => &mut params.kinds,
                 "-P" => &mut params.members,
+                "-E" => &mut params.endings,
                 other => return Err(format!("unknown generate-vocab argument `{other}`")),
             };
             let value = args
@@ -164,27 +176,34 @@ fn schema(params: VocabParams) -> String {
 }
 
 fn scene(params: VocabParams, s: usize) -> String {
-    let set = if params.paths > 0 {
-        "::set{user.s0.k0m0 += 1}"
+    let (set, read) = if params.paths > 0 {
+        ("::set{user.s0.k0m0 += 1}", "user.s0.k0m0 >= 1")
     } else {
-        "::set{user.base += 1}"
+        ("::set{user.base += 1}", "user.base >= 1")
     };
-    [
-        "---",
-        "kind: scene",
-        &format!("id: scene.s{s:03}"),
+    let id = format!("id: scene.s{s:03}");
+    let room = format!("@narrator: A quiet room, number {s}.");
+    let mut lines = vec!["---", "kind: scene", &id];
+    let when = format!("when: \"{read}\"");
+    let ending = params.endings > 0 && s + params.endings >= params.scenes;
+    if ending {
+        lines.extend(["on: day_end", "once: run", &when]);
+    }
+    lines.extend([
         USES,
         "---",
         "",
         "## Opening",
         "",
-        &format!("@narrator: A quiet room, number {s}."),
+        &room,
         "@narrator: Something stirs.",
         set,
-        "",
-    ]
-    .join("\n")
-        + "\n"
+    ]);
+    if ending {
+        lines.push("::end");
+    }
+    lines.push("");
+    lines.join("\n") + "\n"
 }
 
 /// Per-member state path number `i`, member `j` of its kind.
@@ -243,6 +262,7 @@ mod tests {
         paths: 3,
         kinds: 2,
         members: 2,
+        endings: 0,
     };
 
     // Expected bytes are `gen.py`'s output for `-S 1 -N 2 -M 3 -K 2 -P 2`
@@ -303,6 +323,24 @@ mod tests {
         assert!(quest(params, 1).contains("start=\"user.base >= 0\">"));
     }
 
+    /// `-E`: the last scenes are ending beats; the others stay `gen.py`'s.
+    #[test]
+    fn ending_scenes_are_beats_that_end() {
+        let params = VocabParams {
+            scenes: 3,
+            endings: 1,
+            ..SMALL
+        };
+        assert_eq!(scene(params, 1), scene(SMALL, 1));
+        assert_eq!(
+            scene(params, 2),
+            "---\nkind: scene\nid: scene.s002\non: day_end\nonce: run\n\
+             when: \"user.s0.k0m0 >= 1\"\nuses: ../schema/world.schema.yaml\n---\n\n\
+             ## Opening\n\n@narrator: A quiet room, number 2.\n@narrator: Something stirs.\n\
+             ::set{user.s0.k0m0 += 1}\n::end\n\n"
+        );
+    }
+
     #[test]
     fn rejects_parameters_gen_py_cannot_generate() {
         let out = std::env::temp_dir().join("lute-bench-vocab-never-written");
@@ -324,13 +362,14 @@ mod tests {
 
     #[test]
     fn parses_gen_py_flags_over_its_defaults() {
-        let args = ["-S", "100", "-N", "0", "-M", "40"].map(String::from);
+        let args = ["-S", "100", "-N", "0", "-M", "40", "-E", "5"].map(String::from);
         assert_eq!(
             VocabParams::parse(&args),
             Ok(VocabParams {
                 scenes: 100,
                 quests: 0,
                 paths: 40,
+                endings: 5,
                 ..VocabParams::default()
             })
         );

@@ -1,7 +1,8 @@
 //! `lute scenario --json` and `--format dot` — machine-readable renderings of the
 //! SAME per-root scenario analysis the text view reports. Never a second
 //! analysis: every graph/reach/envelope datum comes from
-//! `crate::collect_project_docs` + `crate::assemble_root_scenario` (the exact
+//! `crate::collect_project_docs` (its per-root models, for `--endings`) and
+//! `crate::assemble_root_scenario` (the exact
 //! per-root collection + connectivity/envelope passes whole-project `check` and the
 //! text `lute scenario` view share), reusing `crate::reach_verdict_text`,
 //! `crate::format_prereq`, `crate::topo_layers`, `crate::node_cycle_degraded`,
@@ -139,10 +140,16 @@ fn run_json(
     command: Option<ScenarioCommand>,
     facts: bool,
 ) -> ExitCode {
-    let (file_results, by_root) = match collect_project_docs(dir, providers, None, false) {
-        Ok(v) => v,
+    let models = match crate::project::project_models_in(
+        &lute_model::ModelMemo::default(),
+        dir,
+        providers,
+        None,
+    ) {
+        Ok(models) => models,
         Err(code) => return code,
     };
+    let (file_results, by_root) = crate::project::collected_docs(&models);
     match command {
         None => {
             let roots: Vec<Value> = by_root
@@ -164,7 +171,7 @@ fn run_json(
             ..
         }) => match crate::endings::json(
             &by_root,
-            &file_results,
+            &models,
             (!occasion.is_empty()).then_some(occasion.as_str()),
         ) {
             Ok((v, exit)) => {

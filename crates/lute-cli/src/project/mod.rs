@@ -102,6 +102,57 @@ pub(crate) fn collect_project_docs(
     )
 }
 
+/// Each project root under `dir` with its analysis model (`compile: false`),
+/// built through `memo` — what [`collect_project_docs`] reads when it
+/// resolves each file's own root. A command that also reads a model's
+/// reconciled outputs (`lute scenario reach --endings`) takes them from
+/// here instead of recomputing them. `Err` is the first build failure,
+/// reported (exit `2`).
+pub(crate) fn project_models_in(
+    memo: &lute_model::ModelMemo,
+    dir: &Path,
+    providers: Option<&Path>,
+    permission_profile: Option<&str>,
+) -> Result<RootModels, ExitCode> {
+    let opts = lute_model::ModelOptions {
+        providers: providers.map(Path::to_path_buf),
+        permission_profile: permission_profile.map(str::to_owned),
+        mode: lute_check::Mode::Ci,
+        compile: false,
+        wip: false,
+    };
+    memo.roots_under(dir, &opts).map_err(|error| {
+        let message = format!(
+            "lute: cannot build project under {}: {error}",
+            dir.display()
+        );
+        let envelope_error = model_cli_error_with_message(dir, &error, message.clone());
+        eprintln!("{message}");
+        envelope::fail_quietly(envelope_error)
+    })
+}
+
+/// Each project root with its model, as [`project_models_in`] returns them.
+pub(crate) type RootModels = Vec<(PathBuf, std::sync::Arc<lute_model::ProjectModel>)>;
+
+/// The per-document analysis results and the per-root document groups of
+/// `models`, in root and document order.
+pub(crate) fn collected_docs(
+    models: &RootModels,
+) -> (Vec<(PathBuf, lute_check::CheckResult)>, ByRoot) {
+    let mut file_results = Vec::new();
+    let mut by_root = BTreeMap::new();
+    for (root, model) in models {
+        let mut group = Vec::new();
+        for doc in model.documents() {
+            file_results.push((doc.path.clone(), doc.analysis_check().clone()));
+            group.push((doc.path.clone(), doc.doc.clone(), doc.folded.clone()));
+        }
+        by_root.insert(root.clone(), group);
+    }
+    (file_results, by_root)
+}
+
 /// [`collect_project_docs`] over `memo`'s models.
 pub(crate) fn collect_project_docs_in(
     memo: &lute_model::ModelMemo,
@@ -111,32 +162,8 @@ pub(crate) fn collect_project_docs_in(
     single_root: bool,
 ) -> Result<(Vec<(PathBuf, lute_check::CheckResult)>, ByRoot), ExitCode> {
     if !single_root {
-        let opts = lute_model::ModelOptions {
-            providers: providers.map(Path::to_path_buf),
-            permission_profile: permission_profile.map(str::to_owned),
-            mode: lute_check::Mode::Ci,
-            compile: false,
-            wip: false,
-        };
-        let mut file_results = Vec::new();
-        let mut by_root = BTreeMap::new();
-        for (root, model) in memo.roots_under(dir, &opts).map_err(|error| {
-            let message = format!(
-                "lute: cannot build project under {}: {error}",
-                dir.display()
-            );
-            let envelope_error = model_cli_error_with_message(dir, &error, message.clone());
-            eprintln!("{message}");
-            envelope::fail_quietly(envelope_error)
-        })? {
-            let mut group = Vec::new();
-            for doc in model.documents() {
-                file_results.push((doc.path.clone(), doc.analysis_check().clone()));
-                group.push((doc.path.clone(), doc.doc.clone(), doc.folded.clone()));
-            }
-            by_root.insert(root, group);
-        }
-        return Ok((file_results, by_root));
+        return project_models_in(memo, dir, providers, permission_profile)
+            .map(|models| collected_docs(&models));
     }
     let (file_results, by_root, _, resolve_errors) =
         collect_project_inputs_in(memo, dir, providers, permission_profile, single_root, false)?;

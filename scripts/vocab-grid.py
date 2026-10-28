@@ -4,7 +4,8 @@
 Every command is measured on projects from `lute-bench generate-vocab` (a
 byte-identical port of the issue's `gen.py`), written under $TMPDIR: the
 **grid** (100 and 400 scene documents at 150 and 4 800 per-member state
-slots) and the **item-3 project** (20 scenes + 400 quests at 2 400 slots).
+slots) and the **item-3 project** (20 scenes + 400 quests at 2 400 slots;
+its last 10 scenes are ending beats, `generate-vocab -E 10`).
 CPU (user+sys, microsecond resolution) and peak RSS come from the child's
 resource usage (`os.wait4`); each figure is the minimum over `--runs` runs.
 Marginal = (cost at 400 scenes - cost at 100) / 300 documents. Every command
@@ -31,7 +32,8 @@ Tier `check` (retaining) - `check --project P` (spec 0.49.0 section 9.8):
   item 3 (CPU, memory)  on the item-3 project, `scenario`,
                    `scenario reach --node quest:q0200` and `constraints`
                    each <= 1.1x `check --project` in CPU and in RSS
-Tier `endings` - `scenario reach --endings --project P`, item-3 project:
+Tier `endings` - `scenario reach --endings --project P`, item-3 project
+(it must report one row per ending beat, or the run is a measurement error):
   E1 (CPU)         CPU <= 1.1x `check --project`
   E2 (memory)      RSS <= 1.1x `check --project`
 Tier `lint` (retaining) - `lint P` and `lint P --config P/lint-off.yaml`:
@@ -89,7 +91,7 @@ KINDS, MEMBERS = 5, 15
 # Per-member slots = paths x MEMBERS.
 SLOTS_LOW, SLOTS_HIGH, SLOTS_ITEM3 = 150, 4800, 2400
 SCENES_LOW, SCENES_HIGH = 100, 400
-ITEM3_SCENES, ITEM3_QUESTS = 20, 400
+ITEM3_SCENES, ITEM3_QUESTS, ITEM3_ENDINGS = 20, 400, 10
 CPU_RATIO, RSS_RATIO, PEAK_RATIO, COMMAND_RATIO = 1.5, 1.5, 2.0, 1.1
 # Spec 0.53.0 section 3.7.
 LINT_OFF_CPU, LINT_DEFAULT_CPU, LINT_PEAK = 1.0, 1.25, 1.25
@@ -366,11 +368,11 @@ def launch(command: list[str], env: dict[str, str] | None = None) -> subprocess.
         error(f"cannot run {command[0]}: {exception}")
 
 
-def generate(bench: Path, out: Path, scenes: int, quests: int, slots: int, lint_off: str) -> None:
+def generate(bench: Path, out: Path, scenes: int, quests: int, slots: int, lint_off: str, endings: int = 0) -> None:
     shutil.rmtree(out, ignore_errors=True)
     paths = slots // MEMBERS
     command = [str(bench), "generate-vocab", str(out), "-S", str(scenes), "-N", str(quests)]
-    command += ["-M", str(paths), "-K", str(KINDS), "-P", str(MEMBERS)]
+    command += ["-M", str(paths), "-K", str(KINDS), "-P", str(MEMBERS), "-E", str(endings)]
     completed = launch(command)
     if completed.returncode != 0:
         error(f"{' '.join(command)} exited {completed.returncode}: {completed.stderr.strip()}")
@@ -396,6 +398,15 @@ def frontmatter_key(text: str) -> tuple[str, ...]:
         if current is not None:
             values[current] = value.strip()
     return tuple(values.get(key, "") for key in FRONTMATTER_KEYS)
+
+
+def check_ending_rows(lute: Path, project: Path, scratch: Path) -> None:
+    """Tier `endings` measures the row path: the item-3 project must report one row per ending beat."""
+    args = [str(lute), "scenario", "reach", "--endings", "--project", str(project)]
+    code, stdout, stderr, _, _ = run_measured(args, dict(os.environ, LUTE_TELEMETRY="0"), scratch)
+    summary = re.search(r"^(\d+) ending\(s\):", stdout, re.M)
+    if code != 0 or summary is None or int(summary.group(1)) != ITEM3_ENDINGS:
+        error(f"{' '.join(args)}: expected {ITEM3_ENDINGS} ending rows (exit {code}): {(stdout + stderr).strip()[-2000:]}")
 
 
 def fixture_keys(project: Path) -> Keys:
@@ -487,9 +498,11 @@ def collect(options: argparse.Namespace, tiers: list[Tier], scratch: Path) -> Re
             print(f"{tier}\t{label}: marginal per document at {slots} slots: {cpu:.2f} ms, {rss:.3f} MB")
     item3_commands = commands(tiers, "item3")
     if item3_commands:
-        generate(options.bench, project, ITEM3_SCENES, ITEM3_QUESTS, SLOTS_ITEM3, lint_off)
+        generate(options.bench, project, ITEM3_SCENES, ITEM3_QUESTS, SLOTS_ITEM3, lint_off, ITEM3_ENDINGS)
         results.item3_keys = fixture_keys(project)
-        print(f"item-3 project: {ITEM3_SCENES} scenes + {ITEM3_QUESTS} quests, {SLOTS_ITEM3} slots")
+        print(f"item-3 project: {ITEM3_SCENES} scenes ({ITEM3_ENDINGS} ending beats) + {ITEM3_QUESTS} quests, {SLOTS_ITEM3} slots")
+        if any(label == ENDINGS for _, label, _ in item3_commands):
+            check_ending_rows(options.lute, project, scratch)
         for tier, label, args in item3_commands:
             cell = measure(options.lute, args(project, scratch), options.runs, scratch)
             results.item3[label] = cell
