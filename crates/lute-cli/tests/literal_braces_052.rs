@@ -38,6 +38,15 @@ const BRACE_MESSAGE: &str = "a literal `{` directly before `{{run.a}}` cannot be
                              (`{{run.lbrace}}{{run.a}}`, with `run.lbrace` declared `{ type: \
                              string, default: \"{\" }`)";
 
+/// The message for the run of three (`{` + the literal `{{`) of #139: since
+/// 0.53.0 §8 it names the whole run and spells three braces.
+const BRACE_MESSAGE_3: &str = "a literal `{{{` directly before `{{run.a}}` cannot be told apart \
+                               from the marker in compiled text (lute 0.47.1 §3): put a \
+                               character between them (`\\{{{ {{run.a}}`), or show each brace \
+                               from a string state path \
+                               (`{{run.lbrace}}{{run.lbrace}}{{run.lbrace}}{{run.a}}`, with \
+                               `run.lbrace` declared `{ type: string, default: \"{\" }`)";
+
 fn write(dir: &Path, rel: &str, text: &str) {
     let path = dir.join(rel);
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();
@@ -131,7 +140,7 @@ fn issue_139_a_literal_brace_before_a_marker_is_e_interp_brace() {
     assert_eq!(
         check(&dir),
         [format!(
-            "./s.lute:13:20: error [E-INTERP-BRACE] {BRACE_MESSAGE}"
+            "./s.lute:13:20: error [E-INTERP-BRACE] {BRACE_MESSAGE_3}"
         )]
     );
 }
@@ -184,7 +193,7 @@ fn a_translation_with_the_sequence_is_not_merged() {
     assert!(
         text(&out).contains(&format!(
             "[E-L10N-MODIFIERS] `ko` text for `s.narrator_0010` is not merged: its inline markup \
-             does not parse (E-INTERP-BRACE: {BRACE_MESSAGE})"
+             does not parse (E-INTERP-BRACE: {BRACE_MESSAGE_3})"
         )),
         "{}",
         text(&out)
@@ -209,7 +218,7 @@ fn a_spliced_argument_is_reported_at_the_use() {
         check(&dir),
         [
             format!("./s.lute:13:1: error [E-INTERP-BRACE] {BRACE_MESSAGE}"),
-            format!("./s.lute:15:1: error [E-INTERP-BRACE] {BRACE_MESSAGE}"),
+            format!("./s.lute:15:1: error [E-INTERP-BRACE] {BRACE_MESSAGE_3}"),
             format!("./s.lute:16:1: error [E-INTERP-BRACE] {BRACE_MESSAGE}"),
         ]
     );

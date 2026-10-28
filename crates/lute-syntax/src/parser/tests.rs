@@ -661,7 +661,8 @@ fn escaped_and_unterminated_interp() {
 
 /// 0.52.0 §3.1 (#139): an odd run of literal `{` directly before a marker is
 /// `E-INTERP-BRACE` at the marker, in a line and in `parse_inline_text`; an
-/// even run and a separated brace are clean.
+/// even run and a separated brace are clean. The message names the whole
+/// run and spells its braces (0.53.0 §8): here `{` + the literal `{{`.
 #[test]
 fn odd_brace_run_before_a_marker_is_refused() {
     let src = "## Shot 1.\n@narrator: S }}{\\{{{{run.a}}} E\n";
@@ -678,10 +679,11 @@ fn odd_brace_run_before_a_marker_is_refused() {
     );
     assert_eq!(
         brace[0].message,
-        "a literal `{` directly before `{{run.a}}` cannot be told apart from the marker in \
-         compiled text (lute 0.47.1 §3): put a character between them (`{ {{run.a}}`), or show \
-         the brace from a string state path (`{{run.lbrace}}{{run.a}}`, with `run.lbrace` \
-         declared `{ type: string, default: \"{\" }`)"
+        "a literal `{{{` directly before `{{run.a}}` cannot be told apart from the marker in \
+         compiled text (lute 0.47.1 §3): put a character between them (`\\{{{ {{run.a}}`), or \
+         show each brace from a string state path \
+         (`{{run.lbrace}}{{run.lbrace}}{{run.lbrace}}{{run.a}}`, with `run.lbrace` declared `{ \
+         type: string, default: \"{\" }`)"
     );
     // A modifier boundary does not end the run; the message quotes the
     // marker as written.

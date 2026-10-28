@@ -132,8 +132,8 @@ use injections::fold_injections;
 pub(crate) use interp::is_bare_ref;
 pub use interp::W_TEXT_LOOKS_LIKE_REF;
 use interp::{
-    check_interp_format, check_interp_referent, check_interps, interp_grammar_diag, is_renderable,
-    text_looks_like_ref,
+    brace_opened_diag, check_interp_format, check_interp_referent, check_interps,
+    interp_grammar_diag, is_renderable, text_looks_like_ref,
 };
 use pipeline::cel_parse_diagnostics;
 pub use pipeline::{check, check_parsed};

@@ -780,9 +780,9 @@ Spec: [dsl 0.37.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/pr
 
 ### E-INTERP-BRACE
 
-A `{{…}}` marker in line text directly follows an odd run of literal `{`, which compiled text cannot tell apart from the marker — or a `::use` argument ending in a plain `{{` is spliced right before one and swallows it. Put a character between them, or show the brace from a string state path; in an argument write a literal `{{` as `\\{{`.
+A `{{…}}` marker in line text directly follows an odd run of literal `{`, which compiled text cannot tell apart from the marker — or a marker in line text or a label opens on a literal brace run (`{{{run.a}}`: its expression begins with `{`) — or a `::use` argument ending in a plain `{{` is spliced right before one and swallows it. Put a character between the braces and the marker, or show each brace from a string state path; in an argument write a literal `{{` as `\\{{`.
 
-Spec: [dsl 0.52.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
+Spec: [dsl 0.52.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md), [dsl 0.53.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-INTERP-DEF
 

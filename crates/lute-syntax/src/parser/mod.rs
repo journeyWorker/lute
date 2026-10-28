@@ -30,6 +30,7 @@ mod blocks;
 mod foreign;
 mod framing;
 mod line;
+pub use line::interp_brace_message;
 
 /// Diagnostic code: a body line matched no §4.3 rule (rule 7).
 pub const E_UNCLASSIFIED: &str = "E-UNCLASSIFIED";
@@ -68,7 +69,9 @@ pub const E_PATH_IDENT: &str = "E-PATH-IDENT";
 pub const E_INTERP_UNTERMINATED: &str = "E-INTERP-UNTERMINATED";
 /// Diagnostic code (0.52.0 §3.1): a `{{…}}` marker in line text whose
 /// preceding decoded literal text ends in an odd run of `{`. The IR encoding
-/// has no spelling for it ([`crate::line_text::brace_before_marker`]).
+/// has no spelling for it ([`crate::line_text::brace_before_marker`]). The
+/// checker reports it too for a marker in any `{{…}}` grammar that opened on
+/// a literal brace run (0.53.0 §8, [`crate::line_text::brace_opened`]).
 pub const E_INTERP_BRACE: &str = "E-INTERP-BRACE";
 /// Diagnostic code (dsl 0.37.0 §3.1): a body `# ` heading. It is no document
 /// title; the title is frontmatter `title:`.

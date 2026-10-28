@@ -1675,19 +1675,21 @@ mod tests {
             spliced_brace(&out, &written, &[(before.len(), before.len() + lit.len())])
                 .map(|d| (d.code, d.message))
         };
-        let odd = |arg: &str, after: &str| {
+        let odd = |arg: &str, after: &str, braces: &str| {
             let (code, message) = splice("S ", arg, after).expect("an odd run");
             assert_eq!(code, "E-INTERP-BRACE");
             assert!(
-                message.starts_with("a literal `{` directly before `{{run.a}}`"),
+                message.starts_with(&format!(
+                    "a literal `{braces}` directly before `{{{{run.a}}}}`"
+                )),
                 "{message}"
             );
         };
-        odd("{", "{{run.a}} E");
-        odd("x{", "{{run.a}}");
-        odd("{\\{{", "{{run.a}}");
+        odd("{", "{{run.a}} E", "{");
+        odd("x{", "{{run.a}}", "{");
+        odd("{\\{{", "{{run.a}}", "{{{");
         // The marker inside the argument itself.
-        odd("{\\{{{{run.a}}", " E");
+        odd("{\\{{{{run.a}}", " E", "{{{");
         for arg in ["{{", "x{{", "{{{{"] {
             let (code, message) = splice("S ", arg, "{{run.a}} E").expect("a swallowed marker");
             assert_eq!(code, "E-INTERP-BRACE");
