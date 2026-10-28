@@ -189,8 +189,11 @@ fn a_prompt_and_an_option_label_are_judged_too() {
     );
 }
 
-/// `loc import` refuses a marker that does not parse and writes no bundle;
-/// a marker it cannot compare without the source imports.
+/// `loc import` refuses a marker that does not parse under its row's source
+/// grammar and writes no bundle: an unterminated `{{` in a line, a marker
+/// opened on a literal brace anywhere. A `{{` with no `}}` in a prompt is
+/// literal text (the label grammar), and a marker it cannot compare without
+/// the source imports.
 #[test]
 fn loc_import_refuses_a_marker_that_does_not_parse() {
     let dir = project("l10n-markers-import");
@@ -215,7 +218,7 @@ fn loc_import_refuses_a_marker_that_does_not_parse() {
     write(
         &dir,
         "work/ko.json",
-        &translate("S {{{run.a}} E", "P {{run.a"),
+        &translate("S {{run.a E", "P {{{run.a}}"),
     );
     let out = lute(
         &dir,
@@ -225,29 +228,103 @@ fn loc_import_refuses_a_marker_that_does_not_parse() {
     assert!(!dir.join("work/b.json").exists());
     let lines: Vec<&str> = std::str::from_utf8(&out.stderr).unwrap().lines().collect();
     assert_eq!(lines.len(), 3, "{lines:#?}");
-    assert!(
-        lines[0].starts_with(&format!(
+    assert_eq!(
+        lines[0],
+        format!(
             "work/ko.json: error [E-L10N-MARKERS] row 1: `ko` text for `{LINE}` cannot be \
-             merged: its markers do not parse (E-INTERP-BRACE: a literal `{{` directly before \
-             `{{{{run.a}}}}`"
-        )),
+             merged: its markers do not parse (E-INTERP-UNTERMINATED: `{{{{` has no closing \
+             `}}}}`)"
+        ),
         "{lines:#?}"
     );
-    assert_eq!(
-        lines[1],
-        "work/ko.json: error [E-L10N-MARKERS] row 2: `ko` text for `s.b.prompt` cannot be \
-         merged: its markers do not parse (E-INTERP-UNTERMINATED: `{{` has no closing `}}`)"
+    assert!(
+        lines[1].starts_with(
+            "work/ko.json: error [E-L10N-MARKERS] row 2: `ko` text for `s.b.prompt` cannot be \
+             merged: its markers do not parse (E-INTERP-BRACE: a literal `{` directly before \
+             `{{run.a}}`"
+        ),
+        "{lines:#?}"
     );
     assert_eq!(lines[2], "2 E-L10N-MARKERS error(s); no bundle emitted");
 
     write(
         &dir,
         "work/ko.json",
-        &translate("S {{run.zzz}} E", "P {{run.a}}"),
+        &translate("S {{run.zzz}} E", "P {{run.a}} {{"),
     );
     let out = lute(
         &dir,
         &["loc", "import", "work/ko.json", "-o", "work/b.json"],
     );
     assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+}
+
+/// Scene `lit`: a prompt and an option label whose `{{` has no `}}` — literal
+/// text in the label grammar — and a line with a marker.
+const LITERAL_SCENE: &str = "---\nkind: scene\nid: lit\nstate:\n  run.a: { type: int, default: \
+                             3 }\n---\n\n## L\n\n@narrator{code=\"0010\"}: S {{run.a}} E\n\
+                             <branch id=\"b\" prompt=\"Pick {{ now\">\n<choice id=\"c\" \
+                             text=\"Literal {{\">\n@narrator{code=\"0020\"}: ok\n</choice>\n\
+                             </branch>\n";
+
+/// A translation is read by its source surface's grammar: a prompt and an
+/// option label whose source shows a `{{` with no `}}` as literal text
+/// merge a translation that does too (v0.53 before this fix: refused,
+/// `E-INTERP-UNTERMINATED`); a line, whose grammar refuses it, still
+/// refuses its translation.
+#[test]
+fn a_translation_follows_its_surface_grammar() {
+    let dir = lute_scratch::ScratchDir::named("l10n-markers-literal");
+    write(&dir, "lute.project.yaml", PROJECT);
+    write(&dir, "lit.lute", LITERAL_SCENE);
+    let check = lute(&dir, &["check", "lit.lute", "--project", "."]);
+    assert_eq!(check.status.code(), Some(0), "{}", text(&check));
+    let bundle = |line: &str| {
+        json!({ "schemaVersion": 1, "locales": ["ko"], "entries": {
+            "lit.narrator_0010": { "ko": line },
+            "lit.b.prompt": { "ko": "고르기 {{ 지금" },
+            "lit.b.c": { "ko": "리터럴 {{" },
+        }})
+        .to_string()
+    };
+    let compile = |dir: &Path| {
+        lute(
+            dir,
+            &[
+                "compile",
+                "lit.lute",
+                "--project",
+                ".",
+                "-o",
+                dir.join("lit.json").to_str().unwrap(),
+                "--locale-bundle",
+                "b.json",
+            ],
+        )
+    };
+    write(&dir, "b.json", &bundle("S {{run.a}} 끝"));
+    let out = compile(&dir);
+    assert_eq!(out.status.code(), Some(0), "{}", text(&out));
+    let artifact: Value =
+        serde_json::from_str(&std::fs::read_to_string(dir.join("lit.json")).unwrap()).unwrap();
+    let choice = artifact["commands"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["kind"] == "choice")
+        .unwrap();
+    assert_eq!(choice["promptTexts"]["ko"], "고르기 {{ 지금", "{choice}");
+    assert_eq!(choice["options"][0]["texts"]["ko"], "리터럴 {{", "{choice}");
+
+    // The line grammar refuses a `{{` with no `}}`: not merged.
+    write(&dir, "b.json", &bundle("S {{run.a}} 끝 {{"));
+    let out = compile(&dir);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out));
+    let refused: Vec<String> = text(&out)
+        .lines()
+        .filter(|l| l.contains("`ko` text for `lit.narrator_0010` is not merged"))
+        .map(str::to_string)
+        .collect();
+    assert_eq!(refused.len(), 1, "{}", text(&out));
+    assert!(refused[0].contains("E-INTERP-UNTERMINATED"), "{refused:?}");
 }

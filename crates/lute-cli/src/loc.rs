@@ -1207,6 +1207,11 @@ struct ImportRow {
     /// A per-row locale override; `None` falls back to the file's own tag.
     locale: Option<String>,
     text: String,
+    /// The `{{…}}` grammar of the row's source surface (0.53.0 §8.1), from
+    /// its `kind`; a CSV without a `kind` column reads as the label grammar
+    /// (a `{{` with no `}}` is literal), and `compile --locale-bundle` judges
+    /// a line by the line grammar.
+    grammar: lute_compile::locale::TextGrammar,
     /// The row's `sourceHash` (dsl 0.47.0 §3.2); `None` when absent/empty.
     source_hash: Option<String>,
     /// 1-based position for error messages (a CSV record index including the
@@ -1361,10 +1366,10 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>, json: bool) -> ExitCode
                 errors += 1;
                 continue;
             }
-            // 0.53.0 §8.1: a translation's markers parse as the source's
-            // would. Whether they are the source's markers needs the source
-            // text, so `compile --locale-bundle` judges that.
-            if let Some(why) = lute_compile::locale::marker_syntax_fault(&row.text) {
+            // 0.53.0 §8.1: a translation's markers parse as its source
+            // surface's would. Whether they are the source's markers needs
+            // the source text, so `compile --locale-bundle` judges that.
+            if let Some(why) = lute_compile::locale::marker_syntax_fault(&row.text, row.grammar) {
                 markers_error(
                     &mut diagnostics,
                     file,
@@ -1490,8 +1495,10 @@ fn parse_json_rows(text: &str) -> Result<Vec<ImportRow>, String> {
             .ok_or_else(|| format!("entry {row} is not an object"))?;
         // Every row's translatable string is its `text` (dsl 0.37.0 D7) —
         // exactly what `render_json` writes for both kinds.
-        let field = match obj.get("kind").and_then(serde_json::Value::as_str) {
-            Some("line" | "choice" | "prompt" | "directive") => "text",
+        let (field, grammar) = match obj.get("kind").and_then(serde_json::Value::as_str) {
+            Some(kind @ ("line" | "choice" | "prompt" | "directive")) => {
+                ("text", lute_compile::locale::TextGrammar::of_row_kind(kind))
+            }
             Some(other) => {
                 return Err(format!(
                     "entry {row} has unknown `kind` `{other}` (expected `line`, `choice`, \
@@ -1518,6 +1525,7 @@ fn parse_json_rows(text: &str) -> Result<Vec<ImportRow>, String> {
                 Some(_) => return Err(format!("entry {row} has a non-string `locale`")),
             },
             text: text.to_string(),
+            grammar,
             source_hash: match obj.get("sourceHash") {
                 None | Some(serde_json::Value::Null) => None,
                 Some(serde_json::Value::String(s)) => {
@@ -1546,6 +1554,7 @@ fn parse_csv_rows(text: &str) -> Result<Vec<ImportRow>, String> {
         .ok_or_else(|| format!("CSV header has no `text` column (expected `{expected}`)"))?;
     let locale_at = column("locale");
     let hash_at = column("sourceHash");
+    let kind_at = column("kind");
 
     let mut rows = Vec::new();
     for (i, record) in records {
@@ -1568,6 +1577,11 @@ fn parse_csv_rows(text: &str) -> Result<Vec<ImportRow>, String> {
                 .filter(|s| !s.is_empty())
                 .cloned(),
             text: text.clone(),
+            grammar: kind_at
+                .and_then(|at| record.get(at))
+                .map_or(lute_compile::locale::TextGrammar::Label, |kind| {
+                    lute_compile::locale::TextGrammar::of_row_kind(kind.trim())
+                }),
             source_hash: hash_at
                 .and_then(|at| record.get(at))
                 .map(|s| s.trim().to_string())

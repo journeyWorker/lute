@@ -38,10 +38,11 @@
 //!   text is [`W_L10N_STALE`]. The translation is still merged.
 //! - 0.53.0 §8.1 (#241): every translated text — a line's, an option
 //!   label's, a prompt's, a directive `text` attribute's — shows the
-//!   source's `{{…}}` markers: they parse under the source rules
-//!   ([`marker_syntax_fault`]) and are the source's, each as often, in any
-//!   order ([`marker_fault`]). Any other is [`E_L10N_MARKERS`] and is not
-//!   merged: the runtime would show such a marker verbatim.
+//!   source's `{{…}}` markers: they parse under its source surface's
+//!   grammar ([`TextGrammar`], [`marker_syntax_fault`]) and are the
+//!   source's, each as often, in any order ([`marker_fault`]). Any other is
+//!   [`E_L10N_MARKERS`] and is not merged: the runtime would show such a
+//!   marker verbatim.
 
 use std::collections::BTreeMap;
 
@@ -393,9 +394,9 @@ pub fn merge_locales(artifact: &mut ExecutionIr, bundle: &LocaleBundle) -> Vec<D
 /// Fill ONE option label's, prompt's or `text` attribute's locale map from
 /// the bundle and report its gaps and stale translations. `source` is the
 /// record's IR text (the marker and stale checks' input); a translation
-/// whose markers are not the source's is refused ([`marker_fault`]). Shares
-/// [`missing_diag`] and [`StaleCheck`] with [`bind_line`], so the arms can
-/// never diverge on the diagnostic wording.
+/// whose markers are not the source's under the label grammar is refused
+/// ([`marker_fault`]). Shares [`missing_diag`] and [`StaleCheck`] with
+/// [`bind_line`], so the arms can never diverge on the diagnostic wording.
 fn bind(
     line_id: &str,
     source: &str,
@@ -410,7 +411,7 @@ fn bind(
     // completeness CHECK is scoped to the declared axis.
     if let Some(texts) = entry {
         for (locale, text) in texts {
-            if let Some(why) = marker_fault(text, source) {
+            if let Some(why) = marker_fault(text, source, TextGrammar::Label) {
                 diags.push(markers_diag(locale, line_id, &why));
                 continue;
             }
@@ -455,7 +456,7 @@ fn bind_line(l: &mut LineCmd, bundle: &LocaleBundle, diags: &mut Vec<Diagnostic>
             continue;
         }
         let plain = lute_syntax::ast::inline_plain_text(&nodes);
-        if let Some(why) = marker_fault(&plain, &l.text) {
+        if let Some(why) = marker_fault(&plain, &l.text, TextGrammar::Line) {
             diags.push(markers_diag(locale, &l.line_id, &why));
             continue;
         }
@@ -522,19 +523,48 @@ fn render_multiset(set: &BTreeMap<String, usize>) -> String {
     format!("[{}]", items.join(", "))
 }
 
-/// Why a translated text's `{{…}}` markers cannot be read as the source's
-/// are read (0.53.0 §8.1), as `CODE: message` of the diagnostic its source
-/// would get: a `{{` with no `}}` after it (`E-INTERP-UNTERMINATED`), or a
-/// marker that opens on a literal brace run (`E-INTERP-BRACE`, with the
-/// marker meant and its two spellings, 0.53.0 §8). `None` when every marker
-/// parses. It needs no source text, so `lute loc import` runs it too.
-pub fn marker_syntax_fault(text: &str) -> Option<String> {
+/// The `{{…}}` grammar of a translated text's source surface (0.53.0 §8.1):
+/// a translation is read exactly as its source is.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TextGrammar {
+    /// A content line: a `{{` with no `}}` after it is
+    /// `E-INTERP-UNTERMINATED`.
+    Line,
+    /// An option or hub label, a prompt, a directive `text` attribute
+    /// ([`lute_syntax::scan_label_interps`]): a `{{` with no `}}` after it
+    /// is literal text.
+    Label,
+}
+
+impl TextGrammar {
+    /// The grammar of a `lute loc export` row of `kind` (`line`, `choice`,
+    /// `prompt`, `directive`).
+    pub fn of_row_kind(kind: &str) -> Self {
+        if kind == "line" {
+            Self::Line
+        } else {
+            Self::Label
+        }
+    }
+}
+
+/// Why a translated text's `{{…}}` markers cannot be read as its source
+/// surface's `grammar` reads them (0.53.0 §8.1), as `CODE: message` of the
+/// diagnostic its source would get: a `{{` with no `}}` after it in a line
+/// (`E-INTERP-UNTERMINATED`; literal text in the label grammar), or a marker
+/// that opens on a literal brace run (`E-INTERP-BRACE` in every grammar,
+/// with the marker meant and its two spellings, 0.53.0 §8). `None` when the
+/// grammar reads it. It needs no source text, so `lute loc import` runs it
+/// too.
+pub fn marker_syntax_fault(text: &str, grammar: TextGrammar) -> Option<String> {
     use lute_syntax::line_text::{brace_opened, interp_sites, InterpSite};
     interp_sites(text).find_map(|site| match site {
-        InterpSite::Unterminated { .. } => Some(format!(
-            "{}: `{{{{` has no closing `}}}}`",
-            lute_syntax::parser::E_INTERP_UNTERMINATED
-        )),
+        InterpSite::Unterminated { .. } => (grammar == TextGrammar::Line).then(|| {
+            format!(
+                "{}: `{{{{` has no closing `}}}}`",
+                lute_syntax::parser::E_INTERP_UNTERMINATED
+            )
+        }),
         InterpSite::Marker { start, end, .. } => {
             let (n, meant) = brace_opened(&text[start + 2..end - 2])?;
             Some(format!(
@@ -547,13 +577,15 @@ pub fn marker_syntax_fault(text: &str) -> Option<String> {
     })
 }
 
-/// Why `text`, a translation of the IR text `source`, cannot be merged for
-/// its markers (0.53.0 §8.1): [`marker_syntax_fault`], or markers other than
-/// the source's — each source marker as often as the source shows it, in
-/// any order, compared by the trimmed interior, which is how the runtime
-/// matches a translation's marker to the source value it shows.
-fn marker_fault(text: &str, source: &str) -> Option<String> {
-    if let Some(why) = marker_syntax_fault(text) {
+/// Why `text`, a translation of the IR text `source` of a `grammar`
+/// surface, cannot be merged for its markers (0.53.0 §8.1):
+/// [`marker_syntax_fault`], or markers other than the source's — each
+/// source marker as often as the source shows it, in any order, compared by
+/// the trimmed interior, which is how the runtime matches a translation's
+/// marker to the source value it shows. Only real markers count: what the
+/// grammar reads as literal text is literal in both.
+fn marker_fault(text: &str, source: &str, grammar: TextGrammar) -> Option<String> {
+    if let Some(why) = marker_syntax_fault(text, grammar) {
         return Some(format!("its markers do not parse ({why})"));
     }
     let mut balance: BTreeMap<&str, isize> = BTreeMap::new();
@@ -810,26 +842,46 @@ mod tests {
     /// format hint is part of the marker.
     #[test]
     fn marker_parity_reads_markers_by_the_source_rule() {
-        assert_eq!(marker_fault("a \\{{x}} {{ run.a }}", "b {{run.a}}"), None);
-        assert_eq!(
-            marker_fault("{{run.b}}{{run.a}}", "{{run.a}} {{run.b}}"),
-            None
-        );
-        assert_eq!(marker_fault("plain", "plain"), None);
+        use TextGrammar::{Label, Line};
+        let fault = |text, source| marker_fault(text, source, Line);
+        assert_eq!(fault("a \\{{x}} {{ run.a }}", "b {{run.a}}"), None);
+        assert_eq!(fault("{{run.b}}{{run.a}}", "{{run.a}} {{run.b}}"), None);
+        assert_eq!(fault("plain", "plain"), None);
         // A literal `{{` in the source is no marker a translation may show.
-        assert!(
-            marker_fault("a {{x}}", "a \\{{x}}").is_some_and(|why| why.contains("extra `{{x}}`"))
-        );
+        assert!(fault("a {{x}}", "a \\{{x}}").is_some_and(|why| why.contains("extra `{{x}}`")));
         // An even backslash run leaves a marker (IR encoding, lute 0.47.1).
-        assert_eq!(marker_fault("\\\\{{run.a}}", "x \\\\{{run.a}}"), None);
-        assert!(marker_fault("{{run.a:ordinal}}", "{{run.a}}")
+        assert_eq!(fault("\\\\{{run.a}}", "x \\\\{{run.a}}"), None);
+        assert!(fault("{{run.a:ordinal}}", "{{run.a}}")
             .is_some_and(|why| { why.contains("missing `{{run.a}}`; extra `{{run.a:ordinal}}`") }));
-        assert_eq!(marker_syntax_fault("\\{{{run.a}}"), None);
-        assert!(marker_syntax_fault("{{{{run.a}}")
-            .is_some_and(|why| why.starts_with("E-INTERP-BRACE: a literal `{{` directly before")));
+        for grammar in [Line, Label] {
+            assert_eq!(marker_syntax_fault("\\{{{run.a}}", grammar), None);
+            assert!(
+                marker_syntax_fault("{{{{run.a}}", grammar).is_some_and(|why| {
+                    why.starts_with("E-INTERP-BRACE: a literal `{{` directly before")
+                })
+            );
+        }
         assert_eq!(
-            marker_syntax_fault("x {{run.a").as_deref(),
+            marker_syntax_fault("x {{run.a", Line).as_deref(),
             Some("E-INTERP-UNTERMINATED: `{{` has no closing `}}`")
         );
+    }
+
+    /// 0.53.0 §8.1: the label grammar reads a `{{` with no `}}` as literal
+    /// text, so a translation may show one where its source does; only real
+    /// markers are compared.
+    #[test]
+    fn the_label_grammar_reads_an_unterminated_opener_as_text() {
+        assert_eq!(marker_syntax_fault("x {{run.a", TextGrammar::Label), None);
+        assert_eq!(
+            marker_fault("리터럴 {{", "Literal {{", TextGrammar::Label),
+            None
+        );
+        assert_eq!(
+            marker_fault("{{run.a}} 다음 {{", "Next {{run.a}} {{", TextGrammar::Label),
+            None
+        );
+        assert!(marker_fault("{{", "{{run.a}} {{", TextGrammar::Label)
+            .is_some_and(|why| why.contains("missing `{{run.a}}`")));
     }
 }
