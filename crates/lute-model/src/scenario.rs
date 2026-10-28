@@ -115,10 +115,33 @@ impl RootScenario {
     }
 }
 
+/// `group_full`'s root scenario: the connectivity graph, its reach fixpoint
+/// and envelope tables. A command reads its model's
+/// ([`crate::ReconciledOutputs::scenarios`]) rather than assembling it again.
 pub fn assemble_root_scenario(
     group_full: &DocGroup,
     file_results: &[(PathBuf, lute_check::CheckResult)],
 ) -> RootScenario {
+    assemble(group_full, file_results, false).0
+}
+
+/// [`assemble_root_scenario`], also returning the root's reach fixpoint,
+/// which the project reconciliation reads (spec 0.53.0 §3.10: computed once
+/// per root).
+pub(crate) fn assemble_root_scenario_with_fixpoint(
+    group_full: &DocGroup,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+) -> (RootScenario, crate::reconcile::ConnFixpoint) {
+    let (scenario, fp) = assemble(group_full, file_results, true);
+    (scenario, fp.expect("kept on request"))
+}
+
+fn assemble(
+    group_full: &DocGroup,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+    keep_fixpoint: bool,
+) -> (RootScenario, Option<crate::reconcile::ConnFixpoint>) {
+    crate::stats::count_scenario();
     let project_docs = project_docs(group_full);
     let key_set = lute_check::connectivity::scene_key_set(&project_docs);
     let quest_ids = lute_check::connectivity::quest_id_set(&project_docs);
@@ -204,7 +227,8 @@ pub fn assemble_root_scenario(
         reads_per_scene.insert(key.clone(), reads);
     }
     let (route_envs, tainted) = envelope::propagate(&graph, &per_doc);
-    RootScenario {
+    let kept = keep_fixpoint.then(|| fp.clone());
+    let scenario = RootScenario {
         graph,
         raises,
         raise_sites,
@@ -223,7 +247,8 @@ pub fn assemble_root_scenario(
         per_doc,
         rel_vocab,
         scene_must: fp.scene_must,
-    }
+    };
+    (scenario, kept)
 }
 
 /// A reachability verdict ([`reach_claim`]).

@@ -137,7 +137,7 @@ pub(crate) fn build_project_model(project_dir: &Path) -> Result<ProjectModel, Ex
 }
 
 /// The model a play compiles from: the project as whole-project `compile` sees it.
-fn model_options(build: &Build) -> ModelOptions {
+pub(crate) fn model_options(build: &Build) -> ModelOptions {
     ModelOptions {
         providers: build.providers.map(Path::to_path_buf),
         permission_profile: build.permission_profile.map(str::to_owned),

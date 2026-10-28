@@ -100,10 +100,10 @@ use human::{render_human, View, RULE};
 use json::render_json;
 use outcome::{judge, play_outcome, played_choices, PlayedChoice};
 use plan::{bridge_queues, locate_step_error, plan_script, plan_steps, Step};
-pub(crate) use project::Build;
 #[cfg(test)]
 pub(crate) use project::{assemble_project_from_model, build_project_model, manifest_gate, PLAY};
 use project::{compile_play_project, compile_project};
+pub(crate) use project::{model_options, Build};
 use provenance::fact_origins;
 use run::execute;
 use script::{parse_script, parse_script_with, PlayScript, ScriptStep};

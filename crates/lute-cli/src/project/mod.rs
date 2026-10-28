@@ -32,7 +32,6 @@ use lute_core_span::{Diagnostic, Span, TextIndex};
 /// walk I/O error above, never silently skipped or panicked on.
 pub(crate) use lute_load::find_lute_files;
 use lute_load::nearest_manifest_dir;
-use lute_model::assemble_root_scenario;
 
 /// One resolved project root's docs, each paired with its parsed
 /// `Document` and `fold_env`'s `FoldedEnv` — the per-root unit
@@ -163,6 +162,18 @@ pub(crate) fn root_groups(models: &RootModels) -> ByRoot {
         .collect()
 }
 
+/// The scenario `root`'s model assembled: the one assembly per root a
+/// command reads (spec 0.53.0 §3.10). `None` when `models` has no `root`.
+pub(crate) fn model_scenario<'m>(
+    models: &'m RootModels,
+    root: &Path,
+) -> Option<&'m lute_model::RootScenario> {
+    models
+        .iter()
+        .find(|(model_root, _)| model_root == root)
+        .and_then(|(_, model)| model.reconciled().scenarios.get(model.root()))
+}
+
 /// [`collect_project_docs`] over `memo`'s models.
 pub(crate) fn collect_project_docs_in(
     memo: &lute_model::ModelMemo,
@@ -241,44 +252,12 @@ pub(crate) fn collect_project_inputs_in(
     ),
     ExitCode,
 > {
-    let opts = lute_model::ModelOptions {
-        providers: providers.map(Path::to_path_buf),
-        permission_profile: permission_profile.map(str::to_owned),
-        mode: lute_check::Mode::Ci,
-        compile: true,
-        wip,
-    };
-    let models = if single_root {
-        vec![(
-            dir.to_path_buf(),
-            memo.single_root(dir, &opts).map_err(|error| {
-                let message = format!("lute: cannot build project {}: {error}", dir.display());
-                let envelope_error = model_cli_error_with_message(dir, &error, message.clone());
-                eprintln!("{message}");
-                envelope::fail_quietly(envelope_error)
-            })?,
-        )]
-    } else {
-        memo.roots_under(dir, &opts).map_err(|error| {
-            let message = format!(
-                "lute: cannot build project under {}: {error}",
-                dir.display()
-            );
-            let envelope_error = model_cli_error_with_message(dir, &error, message.clone());
-            eprintln!("{message}");
-            envelope::fail_quietly(envelope_error)
-        })?
-    };
+    let models = compiled_models_in(memo, dir, providers, permission_profile, single_root, wip)?;
+    report_project_diags(&models);
     let mut file_results = Vec::new();
     let mut by_root = BTreeMap::new();
-    let mut reported = BTreeSet::new();
     for (root, model) in &models {
         for doc in model.documents() {
-            for message in &doc.project_diags {
-                if reported.insert(message.clone()) {
-                    eprintln!("{}", lute_load::project_diag_line(message));
-                }
-            }
             file_results.push((doc.path.clone(), doc.check.clone()));
             by_root.entry(root.clone()).or_insert_with(Vec::new).push((
                 doc.path.clone(),
@@ -300,6 +279,81 @@ pub(crate) fn collect_project_inputs_in(
     let resolve_errors = resolve_messages.len();
     let models = models.into_iter().map(|(_, model)| model).collect();
     Ok((file_results, by_root, models, resolve_errors))
+}
+
+/// The compiled models [`collect_project_inputs_in`] reads: `dir` as THE
+/// single root, or each root under it.
+fn compiled_models_in(
+    memo: &lute_model::ModelMemo,
+    dir: &Path,
+    providers: Option<&Path>,
+    permission_profile: Option<&str>,
+    single_root: bool,
+    wip: bool,
+) -> Result<RootModels, ExitCode> {
+    let opts = lute_model::ModelOptions {
+        providers: providers.map(Path::to_path_buf),
+        permission_profile: permission_profile.map(str::to_owned),
+        mode: lute_check::Mode::Ci,
+        compile: true,
+        wip,
+    };
+    if single_root {
+        let model = memo.single_root(dir, &opts).map_err(|error| {
+            let message = format!("lute: cannot build project {}: {error}", dir.display());
+            let envelope_error = model_cli_error_with_message(dir, &error, message.clone());
+            eprintln!("{message}");
+            envelope::fail_quietly(envelope_error)
+        })?;
+        Ok(vec![(dir.to_path_buf(), model)])
+    } else {
+        memo.roots_under(dir, &opts).map_err(|error| {
+            let message = format!(
+                "lute: cannot build project under {}: {error}",
+                dir.display()
+            );
+            let envelope_error = model_cli_error_with_message(dir, &error, message.clone());
+            eprintln!("{message}");
+            envelope::fail_quietly(envelope_error)
+        })
+    }
+}
+
+/// Print every distinct project-resolution line `models`' documents carry,
+/// in document order — what a gating command emits once per run.
+fn report_project_diags(models: &RootModels) {
+    let mut reported = BTreeSet::new();
+    for doc in models.iter().flat_map(|(_, model)| model.documents()) {
+        for message in &doc.project_diags {
+            if reported.insert(message) {
+                eprintln!("{}", lute_load::project_diag_line(message));
+            }
+        }
+    }
+}
+
+/// `root`'s model as [`collect_project_docs_in`] reads it: the compiled
+/// single-root model (its project lines printed, as the collection prints
+/// them) or the analysis model of the root found under `root`.
+fn root_model_in(
+    memo: &lute_model::ModelMemo,
+    root: &Path,
+    providers: Option<&Path>,
+    permission_profile: Option<&str>,
+    single_root: bool,
+) -> Option<std::sync::Arc<lute_model::ProjectModel>> {
+    let models = if single_root {
+        let models = compiled_models_in(memo, root, providers, permission_profile, true, false);
+        let models = models.ok()?;
+        report_project_diags(&models);
+        models
+    } else {
+        project_models_in(memo, root, providers, permission_profile).ok()?
+    };
+    models
+        .into_iter()
+        .find(|(model_root, _)| model_root == root)
+        .map(|(_, model)| model)
 }
 
 /// Read and parse each of `files` (under the walk root `dir`) as every
@@ -434,22 +488,6 @@ pub(crate) fn canonical_path(path: &Path) -> Option<PathBuf> {
 /// own roots, and `root`'s group is the root project's). `None` when the
 /// project cannot be collected (the collection already printed why); the
 /// caller then judges the traced document alone, and the note says so.
-pub(crate) fn project_assert_relations(
-    root: &Path,
-    single_root: bool,
-    providers: Option<&Path>,
-    permission_profile: Option<&str>,
-) -> Option<BTreeSet<String>> {
-    project_assert_relations_in(
-        &lute_model::ModelMemo::default(),
-        root,
-        single_root,
-        providers,
-        permission_profile,
-    )
-}
-
-/// [`project_assert_relations`] over `memo`'s models.
 pub(crate) fn project_assert_relations_in(
     memo: &lute_model::ModelMemo,
     root: &Path,
@@ -457,13 +495,17 @@ pub(crate) fn project_assert_relations_in(
     providers: Option<&Path>,
     permission_profile: Option<&str>,
 ) -> Option<BTreeSet<String>> {
-    let (file_results, by_root) =
-        collect_project_docs_in(memo, root, providers, permission_profile, single_root).ok()?;
-    let group = by_root.get(root)?;
-    let scenario = assemble_root_scenario(group, &file_results);
-    let docs = lute_model::project_docs(group);
+    let model = root_model_in(memo, root, providers, permission_profile, single_root)?;
+    model_assert_relations(&model)
+}
+
+/// The relations `model`'s root can assert (`lute_check::connectivity::live_assert_relations`),
+/// judged on the scenario the model assembled: no second assembly (spec
+/// 0.53.0 §3.10).
+pub(crate) fn model_assert_relations(model: &lute_model::ProjectModel) -> Option<BTreeSet<String>> {
+    let scenario = model.reconciled().scenarios.get(model.root())?;
     Some(lute_check::connectivity::live_assert_relations(
-        &docs,
+        &model.project_docs(),
         &scenario.reach,
         &scenario.ambiguous_quests,
         &scenario.unreachable_quests,
@@ -473,30 +515,19 @@ pub(crate) fn project_assert_relations_in(
 
 /// dsl 0.24.0 T3-15: every `<quest id>` declared under the `--project`
 /// root — what `lute trace --project` settles its "existence is unverified"
-/// notes against. `None` when the project cannot be collected.
-pub(crate) fn project_quest_ids(
-    root: &Path,
-    providers: Option<&Path>,
-    permission_profile: Option<&str>,
-) -> Option<BTreeSet<String>> {
-    project_quest_ids_in(
-        &lute_model::ModelMemo::default(),
-        root,
-        providers,
-        permission_profile,
-    )
-}
-
-/// [`project_quest_ids`] over `memo`'s model.
+/// notes against, from `memo`'s model. `None` when the project cannot be
+/// collected.
 pub(crate) fn project_quest_ids_in(
     memo: &lute_model::ModelMemo,
     root: &Path,
     providers: Option<&Path>,
     permission_profile: Option<&str>,
 ) -> Option<BTreeSet<String>> {
-    let (_, by_root) =
-        collect_project_docs_in(memo, root, providers, permission_profile, true).ok()?;
-    let group = by_root.get(root)?;
-    let docs = lute_model::project_docs(group);
-    Some(lute_check::connectivity::quest_id_set(&docs))
+    let model = root_model_in(memo, root, providers, permission_profile, true)?;
+    Some(model_quest_ids(&model))
+}
+
+/// Every `<quest id>` `model`'s documents declare.
+pub(crate) fn model_quest_ids(model: &lute_model::ProjectModel) -> BTreeSet<String> {
+    lute_check::connectivity::quest_id_set(&model.project_docs())
 }

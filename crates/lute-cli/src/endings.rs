@@ -337,10 +337,7 @@ fn rows(
     let mut out = Vec::new();
     let mut known: BTreeSet<String> = BTreeSet::new();
     for (root, group) in by_root {
-        let scenario = models
-            .iter()
-            .find(|(model_root, _)| model_root == root)
-            .and_then(|(_, model)| model.reconciled().scenarios.get(model.root()))
+        let scenario = crate::project::model_scenario(models, root)
             .expect("every collected root has its model's scenario");
         let docs = lute_model::project_docs(group);
         let beats = lute_check::beats::in_selection_order(lute_check::project_beats(

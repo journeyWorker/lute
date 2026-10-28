@@ -32,6 +32,12 @@ Tier `check` (retaining) - `check --project P` (spec 0.49.0 section 9.8):
   item 3 (CPU, memory)  on the item-3 project, `scenario`,
                    `scenario reach --node quest:q0200` and `constraints`
                    each <= 1.1x `check --project` in CPU and in RSS
+  P (counter)      `scenario reach --node quest:q0200` and `test --project P`
+                   (two scenario tests written into the item-3 project, one
+                   naming a quest another document declares), run with
+                   `LUTE_STATS=project`, print `reconciliations=1 scenarios=1
+                   fixpoints=1`: every project-wide pass once for the one
+                   root (spec 0.53.0 section 3.10)
 Tier `endings` - `scenario reach --endings --project P`, item-3 project
 (it must report one row per ending beat, or the run is a measurement error):
   E1 (CPU)         CPU <= 1.1x `check --project`
@@ -99,6 +105,18 @@ STREAM_CPU, STREAM_PEAK, STREAM_CHECK_PEAK = 1.5, 1.5, 1.25
 LINT_OFF = "lint-off.yaml"
 CHECK = "check --project"
 STATS = re.compile(r"^lute: stats: input-cache bases=(\d+) vocabs=(\d+) assemblies=(\d+)$", re.M)
+PASSES = re.compile(r"^lute: stats: project reconciliations=(\d+) scenarios=(\d+) fixpoints=(\d+)$", re.M)
+# Counter item P (spec 0.53.0 section 3.10): each runs every project-wide pass once per root.
+PASS_COMMANDS = (
+    ("scenario reach --node quest:q0200", lambda p: ["scenario", "reach", "--project", str(p), "--node", "quest:q0200"]),
+    ("test --project P", lambda p: ["test", "--project", str(p)]),
+)
+# The item-3 project's scenario tests, for `test --project` (one names a quest
+# another document declares).
+ITEM3_TESTS = {
+    "s000.test.yaml": "file: ../scenes/s000.lute\nexpect:\n  end: complete\n",
+    "s001.test.yaml": "file: ../scenes/s001.lute\nexpect:\n  end: complete\n  quests:\n    q0001: unset\n",
+}
 FRONTMATTER_KEYS = ("profile", "plugins", "uses", "extends")
 
 Args = Callable[[Path, Path], list[str]]
@@ -143,6 +161,8 @@ class Results:
         self.item3: dict[str, Measure] = {}
         self.grid_keys: dict[tuple[int, int], Keys] = {}
         self.item3_keys: Keys | None = None
+        # Counter item P: (reconciliations, scenarios, fixpoints) per command.
+        self.passes: dict[str, tuple[int, int, int] | None] = {}
 
     def marginal(self, label: str, slots: int) -> tuple[float, float]:
         """(ms, MB) per document of `label` between SCENES_LOW and SCENES_HIGH."""
@@ -409,6 +429,36 @@ def check_ending_rows(lute: Path, project: Path, scratch: Path) -> None:
         error(f"{' '.join(args)}: expected {ITEM3_ENDINGS} ending rows (exit {code}): {(stdout + stderr).strip()[-2000:]}")
 
 
+def project_passes(lute: Path, project: Path, scratch: Path) -> dict[str, tuple[int, int, int] | None]:
+    """Counter item P: each PASS_COMMANDS entry on the item-3 project (one root), with `LUTE_STATS=project`."""
+    tests = project / "tests"
+    tests.mkdir(exist_ok=True)
+    for name, text in ITEM3_TESTS.items():
+        (tests / name).write_text(text, encoding="utf-8")
+    out: dict[str, tuple[int, int, int] | None] = {}
+    for label, args in PASS_COMMANDS:
+        command = [str(lute), *args(project)]
+        code, stdout, stderr, _, _ = run_measured(command, dict(os.environ, LUTE_TELEMETRY="0", LUTE_STATS="project"), scratch)
+        if code != 0:
+            error(f"{' '.join(command)} exited {code}: {(stderr.strip() or stdout.strip())[-2000:]}")
+        line = PASSES.search(stderr)
+        out[label] = tuple(int(group) for group in line.groups()) if line else None
+        print(f"check\t{label}\treconciliations/scenarios/fixpoints {'/'.join(map(str, out[label])) if out[label] else '-'}", flush=True)
+    shutil.rmtree(tests)
+    return out
+
+
+def passes_item(results: Results) -> bool:
+    """Counter item P: every project-wide pass ran once per root (the item-3 project has one)."""
+    passed = True
+    for label, counts in results.passes.items():
+        ok = counts == (1, 1, 1)
+        shown = "/".join(map(str, counts)) if counts else "no stats line"
+        print(f"{'PASS' if ok else 'FAIL'} check P: counter: {label}: reconciliations/scenarios/fixpoints {shown} (expected 1/1/1, one root)")
+        passed = passed and ok
+    return passed
+
+
 def fixture_keys(project: Path) -> Keys:
     """The distinct base and vocabulary memo keys of the project's documents (spec 0.53.0 section 3.7)."""
     bases: set[tuple[str, str]] = set()
@@ -503,6 +553,8 @@ def collect(options: argparse.Namespace, tiers: list[Tier], scratch: Path) -> Re
         print(f"item-3 project: {ITEM3_SCENES} scenes ({ITEM3_ENDINGS} ending beats) + {ITEM3_QUESTS} quests, {SLOTS_ITEM3} slots")
         if any(label == ENDINGS for _, label, _ in item3_commands):
             check_ending_rows(options.lute, project, scratch)
+        if any(tier.name == "check" for tier in tiers):
+            results.passes = project_passes(options.lute, project, scratch)
         for tier, label, args in item3_commands:
             cell = measure(options.lute, args(project, scratch), options.runs, scratch)
             results.item3[label] = cell
@@ -562,6 +614,8 @@ def gate(results: Results, tiers: list[Tier]) -> bool:
             ok = check(f"{tier.name} {item.name}", item.value(results), item.base(results), item.limit, f"{item.kind}: {item.what}")
             tier_passed = tier_passed and ok
         tier_passed = counters(results, tier) and tier_passed
+        if tier.name == "check":
+            tier_passed = passes_item(results) and tier_passed
         print(f"tier {tier.name} ({tier.memory}): {'PASS' if tier_passed else 'FAIL'}")
         passed = passed and tier_passed
     if any(tier.name == "check" for tier in tiers):

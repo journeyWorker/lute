@@ -23,7 +23,7 @@ use lute_load::normalize_span_from_text;
 /// `completed()` that scene becomes unreachable -> its own `::assert`
 /// producer drops -> a relation elsewhere goes non-producible -> ANOTHER
 /// quest's required objective dies -> repeat).
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ConnFixpoint {
     pub reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
     pub reach_diags: Vec<(PathBuf, Diagnostic)>,
@@ -93,6 +93,7 @@ pub fn compute_conn_fixpoint(
     quest_ids: &BTreeSet<String>,
     ambiguous_quests: &BTreeSet<String>,
 ) -> ConnFixpoint {
+    crate::stats::count_fixpoint();
     let lifecycle_unreachable_quests =
         lute_check::connectivity::unreachable_quest_ids(group, file_results);
     let mut root_vocab = lute_check::RootVocab::default();
@@ -230,7 +231,7 @@ pub fn compute_conn_fixpoint(
     reason = "the four results are separate outputs the callers destructure by position"
 )]
 pub fn reconcile_collected(
-    mut file_results: Vec<(PathBuf, lute_check::CheckResult)>,
+    file_results: Vec<(PathBuf, lute_check::CheckResult)>,
     by_root: &ByRoot,
     wip: bool,
 ) -> (
@@ -239,6 +240,28 @@ pub fn reconcile_collected(
     BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>>,
     BTreeMap<PathBuf, lute_check::FactEnv>,
 ) {
+    reconcile_collected_with(file_results, by_root, wip, BTreeMap::new())
+}
+
+/// [`reconcile_collected`] with each root's reach fixpoint already computed
+/// (by the model's scenario assembly, on the same inputs): a root found in
+/// `fixpoints` is not computed again (spec 0.53.0 §3.10).
+#[expect(
+    clippy::type_complexity,
+    reason = "the four results are separate outputs the callers destructure by position"
+)]
+pub(crate) fn reconcile_collected_with(
+    mut file_results: Vec<(PathBuf, lute_check::CheckResult)>,
+    by_root: &ByRoot,
+    wip: bool,
+    mut fixpoints: BTreeMap<PathBuf, ConnFixpoint>,
+) -> (
+    Vec<(PathBuf, lute_check::CheckResult)>,
+    Vec<(PathBuf, Diagnostic)>,
+    BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>>,
+    BTreeMap<PathBuf, lute_check::FactEnv>,
+) {
+    crate::stats::count_reconciliation();
     let mut project_diags = Vec::new();
     // T11: every ENTRY-DEPENDENT, RUN/USER-TIER read at a NON-TAINTED scene
     // node that per-file `check()` already flagged `E-MAYBE-UNSET` gets
@@ -299,6 +322,7 @@ pub fn reconcile_collected(
         result_ix.entry(p.clone()).or_insert(i);
     }
     for (root, group_full) in by_root {
+        let precomputed = fixpoints.remove(root);
         let group: Vec<ProjectDoc<'_>> = group_full
             .iter()
             .map(|(p, d, f)| ProjectDoc::new(p.as_path(), d, &f.typed, &f.snapshot))
@@ -418,14 +442,16 @@ pub fn reconcile_collected(
                 // argument) -- `ambiguous_quests` is shared with the envelope wiring
                 // below.
                 let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(&group);
-                let fp = compute_conn_fixpoint(
-                    &group,
-                    group_full,
-                    &file_results,
-                    &conn_graph,
-                    &quest_ids,
-                    &ambiguous_quests,
-                );
+                let fp = precomputed.unwrap_or_else(|| {
+                    compute_conn_fixpoint(
+                        &group,
+                        group_full,
+                        &file_results,
+                        &conn_graph,
+                        &quest_ids,
+                        &ambiguous_quests,
+                    )
+                });
                 // dsl 0.49.0 §6.1: start cycles, against the final verdicts.
                 cycle_diags.extend(lute_check::connectivity::resolve_start_blocks(
                     &mut conn_graph,

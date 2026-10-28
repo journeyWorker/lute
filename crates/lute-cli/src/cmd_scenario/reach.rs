@@ -2,13 +2,13 @@
 //! and reach verdict.
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
 
 use crate::cmd_scenario::{
     node_ref_to_id, primary_node_ambiguity_note, resolve_node_ref, RootScenario,
 };
-use crate::project::ByRoot;
+use crate::project::{ByRoot, RootModels};
 
 /// Render a [`lute_manifest::semantics::prereq::PrereqFormula`] back to CEL-like text, fully
 /// parenthesized so the `&&`/`||` nesting is always visible — a
@@ -257,11 +257,10 @@ pub(crate) fn run_scenario_reach(
     out: &mut String,
     dir: &Path,
     by_root: &ByRoot,
-    file_results: &[(PathBuf, lute_check::CheckResult)],
+    models: &RootModels,
     node_id_raw: &str,
 ) -> ExitCode {
-    let (node_ref, root, scenario) = match resolve_node_ref(dir, by_root, file_results, node_id_raw)
-    {
+    let (node_ref, root, scenario) = match resolve_node_ref(dir, models, node_id_raw) {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -272,16 +271,12 @@ pub(crate) fn run_scenario_reach(
             .expect("resolved scenario root must have documents"),
     );
     outln!(out, "project root: {}", root.display());
-    if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
+    if let Some(note) = primary_node_ambiguity_note(scenario, &node_ref) {
         outln!(out, "reach {node_id}: unavailable -- {note}");
         return ExitCode::SUCCESS;
     }
     outln!(out, "reach {node_id}:");
-    outln!(
-        out,
-        "  verdict: {}",
-        reach_verdict_text(&scenario, &node_id)
-    );
-    print_prereq_structure(out, &scenario, &docs, &node_id);
+    outln!(out, "  verdict: {}", reach_verdict_text(scenario, &node_id));
+    print_prereq_structure(out, scenario, &docs, &node_id);
     ExitCode::SUCCESS
 }

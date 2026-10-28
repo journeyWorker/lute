@@ -17,6 +17,7 @@ pub mod rename;
 pub mod revision;
 pub mod scenario;
 pub mod scripts;
+pub mod stats;
 
 pub use gate::{
     gate_for_doc, project_gate_result, project_gate_result_in, reconciled_project_results,
@@ -43,3 +44,4 @@ pub use patch::{
 };
 pub use rename::{resolve_ledger, ResolvedRenames};
 pub use revision::{project_revision, FileRevision, ProjectRevision, RevisionError};
+pub use stats::{project_work_stats, ProjectWorkStats};
