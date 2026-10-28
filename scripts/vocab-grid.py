@@ -56,6 +56,22 @@ tier `fix` (streaming) - `fix --check P`. Each command of these tiers:
   F2 (CPU)         marginal CPU at 4 800 <= 1.5x `check`'s
   M1 (memory)      peak RSS(400, 4 800) <= 1.5x peak RSS(400, 150)
   M2 (memory)      peak RSS(400, 4 800) <= 1.25x `check`'s
+Tier `lsp` - `lute-bench lsp-requests P --doc P/scenes/s000.lute --requests 20`
+(the language server's analysis, one cache per root across requests; spec
+0.53.0 section 3.5) and the same with `--churn 20`, on 400 scenes at 150 and
+4 800 slots. The generated files are left to age past the cache's racy
+window (2 s) first, as an editor's inputs are; `--fresh` (a cache per
+request, 0.52.0) is measured beside it for the before/after table, not
+gated:
+  S1 (CPU)         median warm request time at 4 800 <= 1.5x at 150
+  S2 (counter)     base and vocabulary builds over the 20 requests equal the
+                   fixture's keys (1/1) at both slot counts
+  S3 (memory)      the bench's peak RSS at 4 800 <= 1.5x at 150
+  S4 (counter)     with `--churn 20`, every owning memo's retained entries and
+                   the dependency-record count equal the closure of the live
+                   and the last 4 configurations at every step, constant
+                   after the fifth (the bench prints `closure_equal=true
+                   constant_after_step5=true`)
 
 Every tier (spec 0.53.0 section 3.7, counter):
   C (counter)      each command, run with `LUTE_STATS=input-cache`, prints
@@ -87,6 +103,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, NoReturn
@@ -105,6 +122,16 @@ STREAM_CPU, STREAM_PEAK, STREAM_CHECK_PEAK = 1.5, 1.5, 1.25
 LINT_OFF = "lint-off.yaml"
 CHECK = "check --project"
 STATS = re.compile(r"^lute: stats: input-cache bases=(\d+) vocabs=(\d+) assemblies=(\d+)$", re.M)
+LSP_LINE = re.compile(
+    r"^lsp-requests: mode=(\w+) requests=(\d+) first_ms=([\d.]+) median_warm_ms=([\d.]+) "
+    r"bases=(\d+) vocabs=(\d+) assemblies=(\d+)$",
+    re.M,
+)
+LSP_CHURN = re.compile(r"^lsp-requests: churn configurations=(\d+) closure_equal=(\w+) constant_after_step5=(\w+)$", re.M)
+LSP_REQUESTS, LSP_CHURN_STEPS, LSP_RATIO = 20, 20, 1.5
+# The cache hashes a file read within 2 s of its last write on every request
+# (its racy window); an editor's inputs are older.
+LSP_SETTLE_S = 2.5
 PASSES = re.compile(r"^lute: stats: project reconciliations=(\d+) scenarios=(\d+) fixpoints=(\d+)$", re.M)
 # Counter item P (spec 0.53.0 section 3.10): each runs every project-wide pass once per root.
 PASS_COMMANDS = (
@@ -153,6 +180,20 @@ class Keys:
     vocabs: int
 
 
+@dataclass(frozen=True)
+class LspMeasure:
+    """Tier `lsp` at one slot count: `lute-bench lsp-requests` (best of the runs) and its `--churn`."""
+
+    median_ms: float  # median warm request time
+    rss_mb: float
+    bases: int
+    vocabs: int
+    fresh_ms: float  # median warm request time with `--fresh` (0.52.0)
+    fresh_bases: int
+    churn_ok: bool  # `closure_equal=true constant_after_step5=true`
+    keys: Keys
+
+
 class Results:
     """Every measurement of a run: grid cells per command, item-3 per command."""
 
@@ -163,6 +204,8 @@ class Results:
         self.item3_keys: Keys | None = None
         # Counter item P: (reconciliations, scenarios, fixpoints) per command.
         self.passes: dict[str, tuple[int, int, int] | None] = {}
+        # Tier `lsp`, per slot count.
+        self.lsp: dict[int, LspMeasure] = {}
 
     def marginal(self, label: str, slots: int) -> tuple[float, float]:
         """(ms, MB) per document of `label` between SCENES_LOW and SCENES_HIGH."""
@@ -261,6 +304,7 @@ def scene_files(project: Path) -> list[str]:
 LINT_DEFAULT, LINT_RULES_OFF = "lint P", f"lint P --config P/{LINT_OFF}"
 FILES, LOC_EXPORT, LOC_REPORT = "check <every scene file> --project P", "loc export --project P -o <tmp>", "loc report --project P"
 DOCTOR, FIX, ENDINGS = "doctor --project P", "fix --check P", "scenario reach --endings --project P"
+LSP = f"lute-bench lsp-requests P --doc P/scenes/s000.lute --requests {LSP_REQUESTS}"
 ITEM3_COMMANDS = ("scenario", "scenario reach --node quest:q0200", "constraints")
 CHECK_ARGS: Args = lambda p, s: ["check", "--project", str(p)]
 
@@ -325,6 +369,21 @@ TIERS: tuple[Tier, ...] = (
     ),
     Tier("doctor", "streaming", ((DOCTOR, lambda p, s: ["doctor", "--project", str(p)]),), (), streaming_items((DOCTOR,))),
     Tier("fix", "streaming", ((FIX, lambda p, s: ["fix", "--check", str(p)]),), (), streaming_items((FIX,))),
+    Tier(
+        "lsp", "per request",
+        (),
+        (),
+        (
+            Item(
+                "S1", "CPU", f"{LSP}: median warm request ms at {SLOTS_HIGH} vs {SLOTS_LOW} slots",
+                lambda r: r.lsp[SLOTS_HIGH].median_ms, lambda r: r.lsp[SLOTS_LOW].median_ms, LSP_RATIO,
+            ),
+            Item(
+                "S3", "memory", f"{LSP}: peak RSS MB at {SLOTS_HIGH} vs {SLOTS_LOW} slots",
+                lambda r: r.lsp[SLOTS_HIGH].rss_mb, lambda r: r.lsp[SLOTS_LOW].rss_mb, LSP_RATIO,
+            ),
+        ),
+    ),
 )
 TIER_NAMES = tuple(tier.name for tier in TIERS)
 
@@ -559,7 +618,77 @@ def collect(options: argparse.Namespace, tiers: list[Tier], scratch: Path) -> Re
             cell = measure(options.lute, args(project, scratch), options.runs, scratch)
             results.item3[label] = cell
             print(f"{tier}\t{label}\t{cell.cpu_s:.2f} s\t{cell.rss_mb:.0f} MB\tload {cell.load:.1f}\t{cell.stats or '-'}", flush=True)
+    if any(tier.name == "lsp" for tier in tiers):
+        collect_lsp(options, results, project, scratch, lint_off)
     return results
+
+
+def run_bench(bench: Path, args: list[str], scratch: Path) -> tuple[str, float]:
+    """`lute-bench` with `args`: (stdout, peak RSS MB); a failure is a measurement error."""
+    command = [str(bench), *args]
+    code, stdout, stderr, _, rss = run_measured(command, dict(os.environ), scratch)
+    if code != 0:
+        error(f"{' '.join(command)} exited {code}: {(stderr.strip() or stdout.strip())[-2000:]}")
+    return stdout, rss
+
+
+def lsp_line(stdout: str, command: str) -> re.Match[str]:
+    line = LSP_LINE.search(stdout)
+    if line is None:
+        error(f"{command}: no `lsp-requests:` summary line in {stdout.strip()[-2000:]!r}")
+    return line
+
+
+def collect_lsp(options: argparse.Namespace, results: Results, project: Path, scratch: Path, lint_off: str) -> None:
+    """Tier `lsp`: `lute-bench lsp-requests` on 400 scenes at both slot counts (best of `--runs`)."""
+    print("tier\tcommand\tslots\tmedian_warm_ms\tpeak_rss_mb\tbases/vocabs\tfresh_median_ms\tfresh_bases\tchurn\tload")
+    for slots in (SLOTS_LOW, SLOTS_HIGH):
+        generate(options.bench, project, SCENES_HIGH, 0, slots, lint_off)
+        keys = fixture_keys(project)
+        time.sleep(LSP_SETTLE_S)
+        doc = project / "scenes" / "s000.lute"
+        args = ["lsp-requests", str(project), "--doc", str(doc), "--requests", str(LSP_REQUESTS)]
+        best_ms = best_rss = None
+        bases = vocabs = -1
+        for _ in range(options.runs):
+            stdout, rss = run_bench(options.bench, args, scratch)
+            line = lsp_line(stdout, LSP)
+            median = float(line.group(4))
+            best_ms = median if best_ms is None else min(best_ms, median)
+            best_rss = rss if best_rss is None else min(best_rss, rss)
+            bases, vocabs = int(line.group(5)), int(line.group(6))
+        fresh = lsp_line(run_bench(options.bench, [*args, "--fresh"], scratch)[0], f"{LSP} --fresh")
+        churn_out, _ = run_bench(options.bench, [*args[:4], "--churn", str(LSP_CHURN_STEPS)], scratch)
+        churn = LSP_CHURN.search(churn_out)
+        churn_ok = churn is not None and churn.group(2) == "true" and churn.group(3) == "true"
+        assert best_ms is not None and best_rss is not None, "--runs is positive"
+        cell = LspMeasure(best_ms, best_rss, bases, vocabs, float(fresh.group(4)), int(fresh.group(5)), churn_ok, keys)
+        results.lsp[slots] = cell
+        churn_shown = churn.group(0).removeprefix("lsp-requests: churn ") if churn else "no churn summary"
+        print(
+            f"lsp\t{LSP}\t{slots}\t{cell.median_ms:.3f}\t{cell.rss_mb:.0f}\t{bases}/{vocabs}\t"
+            f"{cell.fresh_ms:.3f}\t{cell.fresh_bases}\t{churn_shown}\t{os.getloadavg()[0]:.1f}",
+            flush=True,
+        )
+
+
+def lsp_counters(results: Results) -> bool:
+    """Tier `lsp` S2 and S4 at both slot counts."""
+    passed = True
+    for slots, cell in sorted(results.lsp.items()):
+        ok = (cell.bases, cell.vocabs) == (cell.keys.bases, cell.keys.vocabs)
+        print(
+            f"{'PASS' if ok else 'FAIL'} lsp S2: counter: {LSP} at {slots} slots: bases/vocabs "
+            f"{cell.bases}/{cell.vocabs} over {LSP_REQUESTS} requests (expected {cell.keys.bases}/{cell.keys.vocabs}; "
+            f"--fresh built {cell.fresh_bases})"
+        )
+        passed = passed and ok
+        print(
+            f"{'PASS' if cell.churn_ok else 'FAIL'} lsp S4: counter: --churn {LSP_CHURN_STEPS} at {slots} slots: "
+            "retained entries and dependency records equal the closure of live + 4 configurations, constant after step 5"
+        )
+        passed = passed and cell.churn_ok
+    return passed
 
 
 def ratio(value: float, base: float) -> float | None:
@@ -616,6 +745,8 @@ def gate(results: Results, tiers: list[Tier]) -> bool:
         tier_passed = counters(results, tier) and tier_passed
         if tier.name == "check":
             tier_passed = passes_item(results) and tier_passed
+        if tier.name == "lsp":
+            tier_passed = lsp_counters(results) and tier_passed
         print(f"tier {tier.name} ({tier.memory}): {'PASS' if tier_passed else 'FAIL'}")
         passed = passed and tier_passed
     if any(tier.name == "check" for tier in tiers):

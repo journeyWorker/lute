@@ -21,13 +21,13 @@
 //! The `::use` invocation checks (declared / named-arg match / expansion cycle)
 //! and the presentational-body validation live in `check.rs` (Task C3); this
 //! module only LOADS the component files.
-use std::collections::{BTreeMap, BTreeSet, VecDeque};
-use std::path::{Path, PathBuf};
-
 use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
+use lute_manifest::deps::{DependencySink, EntryKind, ListFilter};
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_manifest::types::Type;
 use lute_syntax::ast::{AttrValue, Document};
+use std::collections::{BTreeMap, BTreeSet, VecDeque};
+use std::path::{Path, PathBuf};
 
 use crate::meta::{parse_meta_kind, MetaKind};
 
@@ -101,6 +101,17 @@ struct ParsedComponent {
 /// never a panic; the result is INDEPENDENT of the order of the `components:`
 /// entries.
 pub fn resolve_components(base_dir: &Path, components: &[String], at: Span) -> ComponentSet {
+    resolve_components_in(base_dir, components, at, DependencySink::none())
+}
+
+/// [`resolve_components`], recording every lookup, file read and directory
+/// listing in `sink` (spec 0.53.0 §3.5).
+pub fn resolve_components_in(
+    base_dir: &Path,
+    components: &[String],
+    at: Span,
+    sink: &DependencySink,
+) -> ComponentSet {
     let mut diags = Vec::new();
 
     // Phase 1: traverse the `components:` DAG, parsing each canonical file once.
@@ -110,19 +121,19 @@ pub fn resolve_components(base_dir: &Path, components: &[String], at: Span) -> C
     let mut adj: BTreeMap<PathBuf, Vec<PathBuf>> = BTreeMap::new();
     let mut dq: VecDeque<PathBuf> = VecDeque::new();
 
-    for canon in resolve_edges(base_dir, components, &mut diags, at) {
+    for canon in resolve_edges(base_dir, components, &mut diags, at, sink) {
         dq.push_back(canon);
     }
     while let Some(canon) = dq.pop_front() {
         if parsed.contains_key(&canon) {
             continue;
         }
-        let (pc, child_refs) = read_and_parse(&canon, &mut diags, at);
+        let (pc, child_refs) = read_and_parse(&canon, &mut diags, at, sink);
         let dir = canon
             .parent()
             .unwrap_or_else(|| Path::new("."))
             .to_path_buf();
-        let children = resolve_edges(&dir, &child_refs, &mut diags, at);
+        let children = resolve_edges(&dir, &child_refs, &mut diags, at, sink);
         for c in &children {
             dq.push_back(c.clone());
         }
@@ -228,17 +239,18 @@ fn resolve_edges(
     refs: &[String],
     diags: &mut Vec<Diagnostic>,
     at: Span,
+    sink: &DependencySink,
 ) -> Vec<PathBuf> {
     let mut out = Vec::new();
     for r in refs {
-        match std::fs::canonicalize(dir.join(r)) {
+        match sink.canonicalize(&dir.join(r)) {
             Ok(c) => out.push(c),
             Err(_) => diags.push(comp_diag(
                 "E-COMPONENT-PARSE",
                 format!(
                     "cannot resolve `components:` import `{r}` (from {}){}",
                     dir.display(),
-                    component_suggestion(dir, r)
+                    component_suggestion(dir, r, sink)
                         .map(|s| format!(
                             " — did you mean `{s}`? (a document's own \
                                            `components:` resolves against its directory, \
@@ -258,29 +270,26 @@ fn resolve_edges(
 /// nearest file name (edit distance ≤ 2). The project is the directory of
 /// the nearest `lute.project.yaml` at or above `dir` (else `dir` itself);
 /// hidden directories, `node_modules` and `target` are skipped.
-fn component_suggestion(dir: &Path, r: &str) -> Option<String> {
-    let dir = std::fs::canonicalize(dir).ok()?;
+fn component_suggestion(dir: &Path, r: &str, sink: &DependencySink) -> Option<String> {
+    let dir = sink.canonicalize(dir).ok()?;
     let root = dir
         .ancestors()
-        .find(|a| a.join("lute.project.yaml").is_file())
+        .find(|a| sink.is_file(&a.join("lute.project.yaml")))
         .unwrap_or(&dir)
         .to_path_buf();
     let mut files = Vec::new();
     let mut stack = vec![(root, 0usize)];
     while let Some((d, depth)) = stack.pop() {
-        let Ok(entries) = std::fs::read_dir(&d) else {
+        let Ok(listing) = sink.list(&d, ListFilter::ComponentTree) else {
             continue;
         };
-        for e in entries.flatten() {
-            let p = e.path();
-            let name = e.file_name().to_string_lossy().into_owned();
-            if p.is_dir() {
-                if depth < 8 && !name.starts_with('.') && name != "node_modules" && name != "target"
-                {
-                    stack.push((p, depth + 1));
+        for e in listing.entries {
+            if e.kind == EntryKind::Dir {
+                if depth < 8 {
+                    stack.push((e.path, depth + 1));
                 }
-            } else if name.ends_with(".component.lute") {
-                files.push((name, p));
+            } else {
+                files.push((e.name, e.path));
             }
         }
     }
@@ -323,8 +332,9 @@ fn read_and_parse(
     canon: &Path,
     diags: &mut Vec<Diagnostic>,
     at: Span,
+    sink: &DependencySink,
 ) -> (ParsedComponent, Vec<String>) {
-    let text = match std::fs::read_to_string(canon) {
+    let text = match sink.read_to_string(canon) {
         Ok(t) => t,
         Err(e) => {
             let e = lute_manifest::io_reason(&e);

@@ -590,6 +590,7 @@ dependencies = [
  "lute-core-span",
  "lute-lint",
  "lute-load",
+ "lute-lsp",
  "lute-manifest",
  "lute-model",
  "lute-runtime",
@@ -759,6 +760,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "windows-sys",
  "yaml_serde",
 ]
 

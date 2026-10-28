@@ -281,7 +281,7 @@ pub fn assemble_input_with_mode(
         resolve_error |= d.code.starts_with("E-");
         resolve_blocks |= d.stops_checking();
     }
-    let dir = file.parent().unwrap_or_else(|| Path::new("."));
+    let dir = document_dir(file);
     let (vocab, import_diags) =
         cache
             .imports
@@ -307,6 +307,12 @@ pub fn assemble_input_with_mode(
         manifest: SharedManifest(loaded),
     };
     (built, parsed)
+}
+
+/// The directory a document's `uses:`, `extends:` and `components:` resolve
+/// against: its own.
+pub(crate) fn document_dir(file: &Path) -> &Path {
+    file.parent().unwrap_or_else(|| Path::new("."))
 }
 
 #[cfg(test)]

@@ -1,10 +1,113 @@
 use super::diagnostics::resolve_diag_to_lsp;
 use super::document::{claimed_declaration_yaml, find_project_root, is_yaml, uri_to_path};
+use super::retention::ProjectInputs;
 use super::{Backend, DocumentSnapshot};
 use crate::convert::to_lsp_diagnostic;
 use lute_check::{check, Mode};
-use lute_load::{assemble_input_with_mode, InputCache};
+use lute_core_span::Diagnostic;
+use lute_load::{assemble_input_with_mode, BuiltInput, InputCache};
+use lute_manifest::project::ResolveDiag;
+use std::path::Path;
 use tower_lsp_server::ls_types::{Diagnostic as LspDiagnostic, Uri};
+
+/// What [`analyze_document`] found in one `.lute` document: the assembled
+/// input, the document's diagnostics (check, project-skipped references,
+/// opt-in lint, the project's levels applied) and the project-resolution
+/// diagnostics published at the document start.
+#[derive(Debug)]
+pub struct DocumentAnalysis {
+    pub built: BuiltInput,
+    pub diagnostics: Vec<Diagnostic>,
+    pub resolve_diags: Vec<ResolveDiag>,
+}
+
+/// The analysis behind `textDocument/publishDiagnostics` for the `.lute`
+/// document at `file_path` with the buffer `text`, on the root's input cache
+/// in `inputs` (spec 0.53.0 §3.5): the protocol-free part of
+/// [`Backend::analyze`], which the benchmark (`lute-bench lsp-requests`)
+/// drives too. `doc` keys the document's live configuration (its URI).
+pub fn analyze_document(
+    inputs: &ProjectInputs,
+    doc: &str,
+    file_path: &Path,
+    text: &str,
+) -> DocumentAnalysis {
+    let project_root = find_project_root(file_path);
+    let root = project_root.as_deref();
+    let mut request = inputs.begin(root, Some(doc));
+    let cache = request.cache();
+    let loaded_project = root.map(|root| cache.project(root));
+    let (built, (doc_ast, _)) = assemble_input_with_mode(
+        cache,
+        file_path,
+        text.to_string(),
+        None,
+        root,
+        None,
+        Mode::Author,
+    );
+    request.pin(InputCache::configuration(
+        file_path, None, root, None, &built,
+    ));
+    drop(request);
+    let input = &built.input;
+    let providers = input.providers().clone();
+    let result = check(input);
+    // Opt-in lint (design §2, §3): publish alongside check diagnostics
+    // when `<project root>/lute.lint.yaml` exists AND sets `lsp: true`.
+    // Silent no-op on absent/malformed config or `lsp: false` — the CLI
+    // (`lute lint`) owns config-error reporting; a diagnostic anchored at
+    // a file the editor never opened has no natural publish channel here
+    // (`crate::lint`'s module docs). Lint diagnostics MUST be cached
+    // alongside `check()`'s so `textDocument/codeAction` can still walk
+    // their fixits (spec §8 permits fixits on lint diagnostics; today
+    // none of the v1 rules emit any, but the cache is the general seam).
+    let mut diagnostics = result.diagnostics;
+    // dsl 0.49.0 §7.1 (#175): the quest references only whole-project
+    // `check` resolves, named as info.
+    diagnostics.extend(lute_check::project_check_skipped(
+        text,
+        &doc_ast,
+        &input.imports().imported_quest_ids,
+        input.snapshot(),
+    ));
+    if let Some(project_root) = root {
+        let project = loaded_project
+            .as_deref()
+            .and_then(|loaded| loaded.as_ref().ok())
+            .and_then(Option::as_ref);
+        // `assemble_input_with_mode` already applied project defaults and
+        // chapter derivations to this parsed document.
+        diagnostics.extend(crate::lint::lint_document(
+            file_path,
+            project_root,
+            project,
+            &providers,
+            &doc_ast,
+            text,
+        ));
+        // dsl 0.50.0 §6.2: the project's levels, at the publish boundary.
+        super::diagnostics::apply_project_levels(
+            &mut diagnostics,
+            project,
+            project_root,
+            file_path,
+        );
+    }
+    let mut resolve_diags = built.resolve_diags.clone();
+    if let Some(Err(error)) = loaded_project.as_deref() {
+        resolve_diags.push(ResolveDiag {
+            span: None,
+            code: "E-PROJECT-CONFIG".to_string(),
+            message: error.to_string(),
+        });
+    }
+    DocumentAnalysis {
+        built,
+        diagnostics,
+        resolve_diags,
+    }
+}
 
 impl Backend {
     /// Run `check()` over `snapshot`'s text and publish the converted diagnostics
@@ -42,66 +145,10 @@ impl Backend {
         let Some(file_path) = uri_to_path(&uri) else {
             return;
         };
-        let project_root = find_project_root(&file_path);
-        let request_cache = InputCache::default();
-        let loaded_project = project_root
-            .as_deref()
-            .map(|root| request_cache.project(root));
-        let (built, (doc_ast, _)) = assemble_input_with_mode(
-            &request_cache,
-            &file_path,
-            snapshot.text.clone(),
-            None,
-            project_root.as_deref(),
-            None,
-            Mode::Author,
-        );
-        let input = built.input;
-        let providers = input.providers().clone();
-        let result = check(&input);
-        self.warn_if_older_than_stamp(&snapshot.text, input.defaults())
+        let analysis = analyze_document(&self.inputs, uri.as_str(), &file_path, &snapshot.text);
+        self.warn_if_older_than_stamp(&snapshot.text, analysis.built.input.defaults())
             .await;
-        // Opt-in lint (design §2, §3): publish alongside check diagnostics
-        // when `<project root>/lute.lint.yaml` exists AND sets `lsp: true`.
-        // Silent no-op on absent/malformed config or `lsp: false` — the CLI
-        // (`lute lint`) owns config-error reporting; a diagnostic anchored at
-        // a file the editor never opened has no natural publish channel here
-        // (`crate::lint`'s module docs). Lint diagnostics MUST be cached
-        // alongside `check()`'s so `textDocument/codeAction` can still walk
-        // their fixits (spec §8 permits fixits on lint diagnostics; today
-        // none of the v1 rules emit any, but the cache is the general seam).
-        let mut all_diags = result.diagnostics;
-        // dsl 0.49.0 §7.1 (#175): the quest references only whole-project
-        // `check` resolves, named as info.
-        all_diags.extend(lute_check::project_check_skipped(
-            &snapshot.text,
-            &doc_ast,
-            &input.imports().imported_quest_ids,
-            input.snapshot(),
-        ));
-        if let Some(project_root) = project_root.as_deref() {
-            let project = loaded_project
-                .as_deref()
-                .and_then(|loaded| loaded.as_ref().ok())
-                .and_then(Option::as_ref);
-            // `assemble_input_with_mode` already applied project defaults and
-            // chapter derivations to this parsed document.
-            all_diags.extend(crate::lint::lint_document(
-                &file_path,
-                project_root,
-                project,
-                &providers,
-                &doc_ast,
-                &snapshot.text,
-            ));
-            // dsl 0.50.0 §6.2: the project's levels, at the publish boundary.
-            super::diagnostics::apply_project_levels(
-                &mut all_diags,
-                project,
-                project_root,
-                &file_path,
-            );
-        }
+        let all_diags = analysis.diagnostics;
         // Task 15: retain the ORIGINAL diagnostics (fixits/covered intact)
         // beside the published LSP form for `code_action` to read back later.
         self.diagnostics.insert(uri.clone(), all_diags.clone());
@@ -121,15 +168,7 @@ impl Backend {
                 lsp
             })
             .collect();
-        let mut rdiags = built.resolve_diags;
-        if let Some(Err(error)) = loaded_project.as_deref() {
-            rdiags.push(lute_manifest::project::ResolveDiag {
-                span: None,
-                code: "E-PROJECT-CONFIG".to_string(),
-                message: error.to_string(),
-            });
-        }
-        diags.extend(rdiags.iter().map(resolve_diag_to_lsp));
+        diags.extend(analysis.resolve_diags.iter().map(resolve_diag_to_lsp));
         self.publish(uri, Some((diags, Some(snapshot.version))), foreign)
             .await;
     }

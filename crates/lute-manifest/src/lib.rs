@@ -4,6 +4,7 @@ pub mod bindings;
 pub mod clock;
 pub mod constraints;
 pub mod core;
+pub mod deps;
 pub mod diagnostic_levels;
 pub mod entities;
 pub mod fact;

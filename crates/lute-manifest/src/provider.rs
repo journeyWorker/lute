@@ -75,21 +75,19 @@ impl ProviderSet {
     /// panicking: `check` MUST NOT abort on a corrupt catalog artifact — an id it
     /// cannot find simply resolves to [`IdStatus::Absent`]. Never panics.
     pub fn load(dir: impl AsRef<Path>) -> Self {
-        let dir = dir.as_ref();
-        let mut paths: Vec<_> = match std::fs::read_dir(dir) {
-            Ok(rd) => rd
-                .filter_map(|e| e.ok().map(|e| e.path()))
-                .filter(|p| {
-                    p.is_file()
-                        && matches!(p.extension().and_then(|x| x.to_str()), Some("yaml" | "yml"))
-                })
-                .collect(),
-            Err(_) => return Self::default(),
+        Self::load_in(dir.as_ref(), crate::deps::DependencySink::none())
+    }
+
+    /// [`Self::load`], recording the directory listing and every file read
+    /// in `sink` (spec 0.53.0 §3.5).
+    pub fn load_in(dir: &Path, sink: &crate::deps::DependencySink) -> Self {
+        let Ok(listing) = sink.list(dir, crate::deps::ListFilter::Yaml) else {
+            return Self::default();
         };
-        paths.sort();
-        let snaps = paths
+        let snaps = listing
+            .entries
             .iter()
-            .filter_map(|p| std::fs::read_to_string(p).ok())
+            .filter_map(|e| sink.read_to_string(&e.path).ok())
             .filter_map(|s| yaml_serde::from_str::<ProviderSnapshot>(&s).ok())
             .collect();
         Self { snaps }

@@ -32,6 +32,8 @@ impl Backend {
     pub(crate) fn document_text(&self, uri: &Uri) -> Option<String> {
         self.docs.get(uri).map(|d| d.text.clone())
     }
+    /// Assemble the open document `uri` with `text` on its root's input
+    /// cache (spec 0.53.0 §3.5), for a document query.
     pub(crate) fn assemble(
         &self,
         uri: &Uri,
@@ -39,9 +41,9 @@ impl Backend {
     ) -> Option<(BuiltInput, lute_syntax::ast::Document)> {
         let path = uri_to_path(uri)?;
         let root = find_project_root(&path);
-        let request_cache = InputCache::default();
+        let mut request = self.inputs.begin(root.as_deref(), Some(uri.as_str()));
         let (built, (doc, _)) = assemble_input_with_mode(
-            &request_cache,
+            request.cache(),
             &path,
             text,
             None,
@@ -49,6 +51,13 @@ impl Backend {
             None,
             Mode::Author,
         );
+        request.pin(InputCache::configuration(
+            &path,
+            None,
+            root.as_deref(),
+            None,
+            &built,
+        ));
         Some((built, doc))
     }
 }
@@ -78,7 +87,7 @@ pub(crate) fn canonical_path_of(uri: &Uri) -> Option<PathBuf> {
 /// Starts at the file's parent directory and climbs to the filesystem root;
 /// `None` when no project is found (a loose scene → core-only). Purely lexical
 /// on the path components, so it works for buffers not yet written to disk.
-pub(crate) fn find_project_root(file_path: &Path) -> Option<PathBuf> {
+pub fn find_project_root(file_path: &Path) -> Option<PathBuf> {
     let mut dir = file_path.parent();
     while let Some(d) = dir {
         if d.join("lute.project.yaml").is_file() {

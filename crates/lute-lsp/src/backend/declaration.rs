@@ -59,9 +59,9 @@ impl Backend {
             MetaKind::Schema,
         );
 
-        let request_cache = InputCache::default();
+        let mut request = self.inputs.begin(Some(project_root), Some(uri.as_str()));
         let (built, _) = assemble_input_with_mode(
-            &request_cache,
+            request.cache(),
             file_path,
             snapshot.text.clone(),
             None,
@@ -69,6 +69,15 @@ impl Backend {
             None,
             Mode::Author,
         );
+        request.pin(InputCache::configuration(
+            file_path,
+            None,
+            Some(project_root),
+            None,
+            &built,
+        ));
+        let loaded_project = request.cache().project(project_root);
+        drop(request);
         // Declaration imports and the active project baseline come from the
         // same model assembly used by scene analysis. The imports' own
         // `diags` sit at a placeholder; the copy anchored here is reported.
@@ -76,7 +85,7 @@ impl Backend {
         diags.extend(built.input.import_diags.iter().cloned());
         let baseline = built.input.snapshot().clone();
         let mut rdiags = built.resolve_diags;
-        if let Err(message) = request_cache.project(project_root).as_ref() {
+        if let Err(message) = loaded_project.as_ref() {
             rdiags.push(lute_manifest::project::ResolveDiag {
                 span: None,
                 code: "E-PROJECT-CONFIG".to_string(),
@@ -210,8 +219,11 @@ impl Backend {
         }
 
         // dsl 0.50.0 §6.2: the project's levels, at the publish boundary.
-        let loaded = request_cache.project(project_root);
-        let project = loaded.as_ref().as_ref().ok().and_then(Option::as_ref);
+        let project = loaded_project
+            .as_ref()
+            .as_ref()
+            .ok()
+            .and_then(Option::as_ref);
         super::diagnostics::apply_project_levels(&mut diags, project, project_root, file_path);
         self.diagnostics.insert(uri.clone(), diags.clone());
         let mut lsp_diags: Vec<LspDiagnostic> = diags

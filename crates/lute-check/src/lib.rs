@@ -254,7 +254,10 @@ pub use project_check::{
 };
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use rule_index::evaluable_rules;
-pub use schema_import::{resolve_imports, ImportCache, Memo, RelImports, SchemaImports};
+pub use schema_import::{
+    resolve_imports, ComponentKey, ImportCache, ImportCounts, ImportKey, ImportNode, Memo,
+    RelImports, SchemaImports, VocabKey,
+};
 pub use set_op::{check_set, WriteOwner, E_ENGINE_OWNED_WRITE};
 pub use tag::{
     codes_locked, retag_document, tag_document, text_directive_calls, LineRenumber, RetagOutcome,

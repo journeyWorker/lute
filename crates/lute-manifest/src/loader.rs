@@ -424,7 +424,7 @@ impl std::error::Error for LoadError {}
 /// Read one plugin package. `dir` MUST contain `plugin.yaml`. Any error —
 /// even a duplicate name [`load_plugins_dir`] loads past — is `Err`.
 pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
-    match load_package(dir) {
+    match load_package(dir, crate::deps::DependencySink::none()) {
         Ok((loaded, dups)) if dups.is_empty() => Ok(loaded),
         Ok((_, dups)) => Err(dups),
         Err((_, errs)) => Err(errs),
@@ -442,10 +442,11 @@ pub fn load_plugin_dir(dir: &Path) -> Result<LoadedPlugin, Vec<LoadError>> {
 )]
 fn load_package(
     dir: &Path,
+    sink: &crate::deps::DependencySink,
 ) -> Result<(LoadedPlugin, Vec<LoadError>), (Option<String>, Vec<LoadError>)> {
     let mut errs = Vec::new();
     let manifest_path = dir.join("plugin.yaml");
-    let (manifest, manifest_text) = read_manifest(&manifest_path)?;
+    let (manifest, manifest_text) = read_manifest(&manifest_path, sink)?;
     // 0.51.0 §5.1: an option is set in YAML, never localized.
     for (i, o) in manifest.options.iter().enumerate() {
         if !o.ty.contains_text() {
@@ -504,7 +505,7 @@ fn load_package(
             continue;
         }
         let path = dir.join(rel);
-        if !path.exists() {
+        if !sink.exists(&path) {
             errs.push(LoadError::MissingExportDir {
                 export: export.clone(),
                 path: path.display().to_string(),
@@ -521,89 +522,93 @@ fn load_package(
         };
         let sites = &mut out.sites;
         match export.as_str() {
-            "directives" => read_kind::<DirectivesFile, _>(dir, &path, &mut errs, |f, src, e| {
-                let (file, text) = (src.file, src.text);
-                for (i, d) in f.directives.iter().enumerate() {
-                    // dsl 0.26.0 §4: `when=` is the core directive condition on
-                    // every plugin passthrough directive; an attribute of that
-                    // name could never be written.
-                    if d.attrs.iter().any(|a| a.name == "when") {
-                        e.push(LoadError::Parse {
-                            file: file.display().to_string(),
-                            at: field_value_at(text, "name", &d.name, 0)
-                                .map(|o| crate::yaml_text::line_col(text, o)),
-                            msg: format!(
+            "directives" => {
+                read_kind::<DirectivesFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
+                    let (file, text) = (src.file, src.text);
+                    for (i, d) in f.directives.iter().enumerate() {
+                        // dsl 0.26.0 §4: `when=` is the core directive condition on
+                        // every plugin passthrough directive; an attribute of that
+                        // name could never be written.
+                        if d.attrs.iter().any(|a| a.name == "when") {
+                            e.push(LoadError::Parse {
+                                file: file.display().to_string(),
+                                at: field_value_at(text, "name", &d.name, 0)
+                                    .map(|o| crate::yaml_text::line_col(text, o)),
+                                msg: format!(
                                 "directive `{}` declares an attribute `when`, which is reserved: \
                                  `when=\"<condition>\"` is the core condition every directive \
                                  takes — rename the attribute",
                                 d.name
                             ),
-                        });
+                            });
+                        }
+                        // dsl 0.27.0 §4: a declared effect that reads an attr the
+                        // directive lacks is this file's fault, at its line.
+                        for me in crate::validate::validate_effects(d) {
+                            e.push(LoadError::Parse {
+                                file: file.display().to_string(),
+                                at: effect_error_line(text, &d.name, &me.message()),
+                                msg: me.message(),
+                            });
+                        }
+                        // 0.51.0 §5.1: a `text` attribute no localized text can
+                        // ride, at the attribute (a declared `code` at its own).
+                        for me in crate::validate::text_attr_faults(d) {
+                            let attr = match &me {
+                                crate::validate::ManifestError::TextAttr {
+                                    fault: crate::validate::TextFault::CodeAttr,
+                                    ..
+                                } => crate::schema::DIRECTIVE_TEXT_CODE_ATTR,
+                                crate::validate::ManifestError::TextAttr { attr, .. } => {
+                                    attr.as_str()
+                                }
+                                _ => continue,
+                            };
+                            let at = d.attrs.iter().position(|a| a.name == attr).and_then(|j| {
+                                use crate::yaml_text::YamlStep;
+                                let steps = [
+                                    YamlStep::Key("directives"),
+                                    YamlStep::Item(i),
+                                    YamlStep::Key("attrs"),
+                                    YamlStep::Item(j),
+                                ];
+                                crate::yaml_text::yaml_span(text, &steps)
+                                    .map(|s| crate::yaml_text::line_col(text, s.byte_start))
+                            });
+                            e.push(LoadError::Parse {
+                                file: file.display().to_string(),
+                                at,
+                                msg: me.message(),
+                            });
+                        }
+                        if let Some(msg) = crate::validate::bridge_without_result_write(d) {
+                            // At this declaration's own `name:` when a name repeats.
+                            let nth = f.directives[..i]
+                                .iter()
+                                .filter(|o| o.name == d.name)
+                                .count();
+                            e.push(LoadError::BridgeNoResultWrite {
+                                file: file.display().to_string(),
+                                at: field_value_at(text, "name", &d.name, nth)
+                                    .map(|o| crate::yaml_text::line_col(text, o)),
+                                msg,
+                            });
+                        }
                     }
-                    // dsl 0.27.0 §4: a declared effect that reads an attr the
-                    // directive lacks is this file's fault, at its line.
-                    for me in crate::validate::validate_effects(d) {
-                        e.push(LoadError::Parse {
-                            file: file.display().to_string(),
-                            at: effect_error_line(text, &d.name, &me.message()),
-                            msg: me.message(),
-                        });
-                    }
-                    // 0.51.0 §5.1: a `text` attribute no localized text can
-                    // ride, at the attribute (a declared `code` at its own).
-                    for me in crate::validate::text_attr_faults(d) {
-                        let attr = match &me {
-                            crate::validate::ManifestError::TextAttr {
-                                fault: crate::validate::TextFault::CodeAttr,
-                                ..
-                            } => crate::schema::DIRECTIVE_TEXT_CODE_ATTR,
-                            crate::validate::ManifestError::TextAttr { attr, .. } => attr.as_str(),
-                            _ => continue,
-                        };
-                        let at = d.attrs.iter().position(|a| a.name == attr).and_then(|j| {
-                            use crate::yaml_text::YamlStep;
-                            let steps = [
-                                YamlStep::Key("directives"),
-                                YamlStep::Item(i),
-                                YamlStep::Key("attrs"),
-                                YamlStep::Item(j),
-                            ];
-                            crate::yaml_text::yaml_span(text, &steps)
-                                .map(|s| crate::yaml_text::line_col(text, s.byte_start))
-                        });
-                        e.push(LoadError::Parse {
-                            file: file.display().to_string(),
-                            at,
-                            msg: me.message(),
-                        });
-                    }
-                    if let Some(msg) = crate::validate::bridge_without_result_write(d) {
-                        // At this declaration's own `name:` when a name repeats.
-                        let nth = f.directives[..i]
-                            .iter()
-                            .filter(|o| o.name == d.name)
-                            .count();
-                        e.push(LoadError::BridgeNoResultWrite {
-                            file: file.display().to_string(),
-                            at: field_value_at(text, "name", &d.name, nth)
-                                .map(|o| crate::yaml_text::line_col(text, o)),
-                            msg,
-                        });
-                    }
-                }
-                let (dst, key) = (&mut out.directives, |d: &DirectiveDecl| d.name.clone());
-                merge_named(
-                    dst,
-                    sites,
-                    f.directives,
-                    "directive",
-                    key,
-                    field("name"),
-                    src,
-                    e,
-                );
-            }),
-            "state" => read_kind::<StateFile, _>(dir, &path, &mut errs, |f, src, e| {
+                    let (dst, key) = (&mut out.directives, |d: &DirectiveDecl| d.name.clone());
+                    merge_named(
+                        dst,
+                        sites,
+                        f.directives,
+                        "directive",
+                        key,
+                        field("name"),
+                        src,
+                        e,
+                    );
+                });
+            }
+            "state" => read_kind::<StateFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
                 if f.state_shapes.is_none() && f.state_templates.is_none() {
                     e.push(LoadError::Parse {
                         file: src.file.display().to_string(),
@@ -638,21 +643,23 @@ fn load_package(
                     e,
                 );
             }),
-            "providers" => read_kind::<ProvidersFile, _>(dir, &path, &mut errs, |f, src, e| {
-                let key = |p: &ProviderDecl| p.name.clone();
-                merge_named(
-                    &mut out.providers,
-                    sites,
-                    f.providers,
-                    "provider",
-                    key,
-                    field("name"),
-                    src,
-                    e,
-                );
-            }),
+            "providers" => {
+                read_kind::<ProvidersFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
+                    let key = |p: &ProviderDecl| p.name.clone();
+                    merge_named(
+                        &mut out.providers,
+                        sites,
+                        f.providers,
+                        "provider",
+                        key,
+                        field("name"),
+                        src,
+                        e,
+                    );
+                });
+            }
             // One operation of one service; located by its `operation:`.
-            "bridge" => read_kind::<BridgeFile, _>(dir, &path, &mut errs, |f, src, e| {
+            "bridge" => read_kind::<BridgeFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
                 let key = |b: &BridgeCapability| format!("{}.{}", b.service, b.operation);
                 let at = |src: &Source, id: &str, n: usize| {
                     let op = id.rsplit_once('.').map_or(id, |(_, op)| op);
@@ -660,7 +667,7 @@ fn load_package(
                 };
                 merge_named(&mut out.bridge, sites, f.bridge, "bridge", key, at, src, e);
             }),
-            "defs" => read_kind::<DefsFile, _>(dir, &path, &mut errs, |f, src, e| {
+            "defs" => read_kind::<DefsFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
                 for d in &f.defs {
                     let at = field_value_at(src.text, "name", &d.name, 0);
                     check_name(crate::ident::ident_fault("def", &d.name, "@"), at, src, e);
@@ -687,7 +694,7 @@ fn load_package(
                     e,
                 );
             }),
-            "enums" => read_kind::<EnumsFile, _>(dir, &path, &mut errs, |f, src, e| {
+            "enums" => read_kind::<EnumsFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
                 let mut reported = std::collections::BTreeSet::new();
                 for (name, decl) in &f.enums {
                     let at = key_offset(src.text, &["enums", name]);
@@ -702,39 +709,43 @@ fn load_package(
                 let items = f.enums.into_iter().map(|(k, v)| (k, v.into_domain()));
                 merge_keyed(&mut out.enums, sites, items, "enum", keyed("enums"), src, e);
             }),
-            "frontmatter" => read_kind::<FrontmatterFile, _>(dir, &path, &mut errs, |f, src, e| {
-                let items = f.frontmatter.into_iter().map(|d| (d.key, d.schema));
-                merge_keyed(
-                    &mut out.frontmatter,
-                    sites,
-                    items,
-                    "frontmatter",
-                    field("key"),
-                    src,
-                    e,
-                );
-            }),
+            "frontmatter" => {
+                read_kind::<FrontmatterFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
+                    let items = f.frontmatter.into_iter().map(|d| (d.key, d.schema));
+                    merge_keyed(
+                        &mut out.frontmatter,
+                        sites,
+                        items,
+                        "frontmatter",
+                        field("key"),
+                        src,
+                        e,
+                    );
+                });
+            }
             "docs" => { /* non-normative (plugin §6.7); skip */ }
             // Anchored at the INDIVIDUAL declaration file `read_kind` just
             // parsed `f` from, not the export dir `path` names — the same
             // anchor `LoadError::Parse` already uses for a sibling failure in
             // the same file (plugin §7 fix, defect 2).
-            "assetKinds" => read_kind::<AssetKindsFile, _>(dir, &path, &mut errs, |f, src, e| {
-                check_asset_segment_types(&f.asset_kinds, &src.file.display().to_string(), e);
-                let key = |k: &AssetKindDecl| k.kind.clone();
-                let dst = &mut out.asset_kinds;
-                merge_named(
-                    dst,
-                    sites,
-                    f.asset_kinds,
-                    "assetKind",
-                    key,
-                    field("kind"),
-                    src,
-                    e,
-                );
-            }),
-            "events" => read_kind::<EventsFile, _>(dir, &path, &mut errs, |f, src, e| {
+            "assetKinds" => {
+                read_kind::<AssetKindsFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
+                    check_asset_segment_types(&f.asset_kinds, &src.file.display().to_string(), e);
+                    let key = |k: &AssetKindDecl| k.kind.clone();
+                    let dst = &mut out.asset_kinds;
+                    merge_named(
+                        dst,
+                        sites,
+                        f.asset_kinds,
+                        "assetKind",
+                        key,
+                        field("kind"),
+                        src,
+                        e,
+                    );
+                });
+            }
+            "events" => read_kind::<EventsFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
                 for ev in &f.events {
                     let at = field_value_at(src.text, "name", &ev.name, 0);
                     check_name(crate::ident::name_fault("event", &ev.name), at, src, e);
@@ -751,101 +762,109 @@ fn load_package(
                     e,
                 );
             }),
-            "stampAttrs" => read_kind::<StampAttrsFile, _>(dir, &path, &mut errs, |f, src, e| {
-                merge_stamp_attrs(&mut out.stamp_attrs, f.stamp_attrs, src, e);
-            }),
-            "rewardKinds" => read_kind::<RewardKindsFile, _>(dir, &path, &mut errs, |f, src, e| {
-                let decls: Vec<RewardKindDecl> = f
-                    .reward_kinds
-                    .into_iter()
-                    .map(|(name, body)| RewardKindDecl {
-                        name,
-                        target: body.target,
-                        attrs: body.attrs,
-                        credits: body.credits,
-                        effects: body.effects,
-                    })
-                    .collect();
-                // 0.52.0 §7.1: a kind attribute no `<reward>` could author
-                // is this file's fault, at its `attrs:` entry; 0.50.0 §5.1,
-                // 0.52.0 §7.3: so is an effect a `<reward>` cannot bind, at
-                // the effect's line.
-                for rk in &decls {
-                    for (j, me) in crate::validate::validate_reward_attrs(rk) {
-                        use crate::yaml_text::YamlStep;
-                        let steps = [
-                            YamlStep::Key("rewardKinds"),
-                            YamlStep::Key(rk.name.as_str()),
-                            YamlStep::Key("attrs"),
-                            YamlStep::Item(j),
-                        ];
-                        let at = crate::yaml_text::yaml_span(src.text, &steps)
-                            .map(|s| s.byte_start)
-                            .or_else(|| key_offset(src.text, &["rewardKinds", rk.name.as_str()]))
-                            .map(|o| crate::yaml_text::line_col(src.text, o));
-                        e.push(LoadError::Parse {
-                            file: src.file.display().to_string(),
-                            at,
-                            msg: me.message(),
-                        });
+            "stampAttrs" => {
+                read_kind::<StampAttrsFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
+                    merge_stamp_attrs(&mut out.stamp_attrs, f.stamp_attrs, src, e);
+                });
+            }
+            "rewardKinds" => {
+                read_kind::<RewardKindsFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
+                    let decls: Vec<RewardKindDecl> = f
+                        .reward_kinds
+                        .into_iter()
+                        .map(|(name, body)| RewardKindDecl {
+                            name,
+                            target: body.target,
+                            attrs: body.attrs,
+                            credits: body.credits,
+                            effects: body.effects,
+                        })
+                        .collect();
+                    // 0.52.0 §7.1: a kind attribute no `<reward>` could author
+                    // is this file's fault, at its `attrs:` entry; 0.50.0 §5.1,
+                    // 0.52.0 §7.3: so is an effect a `<reward>` cannot bind, at
+                    // the effect's line.
+                    for rk in &decls {
+                        for (j, me) in crate::validate::validate_reward_attrs(rk) {
+                            use crate::yaml_text::YamlStep;
+                            let steps = [
+                                YamlStep::Key("rewardKinds"),
+                                YamlStep::Key(rk.name.as_str()),
+                                YamlStep::Key("attrs"),
+                                YamlStep::Item(j),
+                            ];
+                            let at = crate::yaml_text::yaml_span(src.text, &steps)
+                                .map(|s| s.byte_start)
+                                .or_else(|| {
+                                    key_offset(src.text, &["rewardKinds", rk.name.as_str()])
+                                })
+                                .map(|o| crate::yaml_text::line_col(src.text, o));
+                            e.push(LoadError::Parse {
+                                file: src.file.display().to_string(),
+                                at,
+                                msg: me.message(),
+                            });
+                        }
+                        for me in crate::validate::validate_reward_effects(rk) {
+                            e.push(LoadError::Parse {
+                                file: src.file.display().to_string(),
+                                at: reward_effect_line(src.text, &rk.name, &me.message()),
+                                msg: me.message(),
+                            });
+                        }
                     }
-                    for me in crate::validate::validate_reward_effects(rk) {
-                        e.push(LoadError::Parse {
-                            file: src.file.display().to_string(),
-                            at: reward_effect_line(src.text, &rk.name, &me.message()),
-                            msg: me.message(),
-                        });
+                    let key = |r: &RewardKindDecl| r.name.clone();
+                    let at = keyed("rewardKinds");
+                    merge_named(
+                        &mut out.reward_kinds,
+                        sites,
+                        decls,
+                        "rewardKind",
+                        key,
+                        at,
+                        src,
+                        e,
+                    );
+                });
+            }
+            "occasions" => {
+                read_kind::<OccasionsFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
+                    for name in f.occasions.keys() {
+                        let at = key_offset(src.text, &["occasions", name]);
+                        check_name(crate::ident::name_fault("occasion", name), at, src, e);
                     }
-                }
-                let key = |r: &RewardKindDecl| r.name.clone();
-                let at = keyed("rewardKinds");
-                merge_named(
-                    &mut out.reward_kinds,
-                    sites,
-                    decls,
-                    "rewardKind",
-                    key,
-                    at,
-                    src,
-                    e,
-                );
-            }),
-            "occasions" => read_kind::<OccasionsFile, _>(dir, &path, &mut errs, |f, src, e| {
-                for name in f.occasions.keys() {
-                    let at = key_offset(src.text, &["occasions", name]);
-                    check_name(crate::ident::name_fault("occasion", name), at, src, e);
-                }
-                check_occasion_members(&f.occasions, src.file, src.text, e);
-                check_gate_types(src.text, src.file, e);
-                let decls: Vec<OccasionDecl> = f
-                    .occasions
-                    .into_iter()
-                    .map(|(name, body)| OccasionDecl {
-                        name,
-                        select: body.select,
-                        target: body.target,
-                        description: body.description,
-                        judge: body.judge,
-                        raised_when: body.raised_when,
-                        payload: body.payload,
-                        outside_run: body.outside_run,
-                        raised_by: body.raised_by,
-                    })
-                    .collect();
-                let key = |o: &OccasionDecl| o.name.clone();
-                let at = keyed("occasions");
-                merge_named(
-                    &mut out.occasions,
-                    sites,
-                    decls,
-                    "occasion",
-                    key,
-                    at,
-                    src,
-                    e,
-                );
-            }),
-            "lints" => read_kind::<LintsFile, _>(dir, &path, &mut errs, |f, src, e| {
+                    check_occasion_members(&f.occasions, src.file, src.text, e);
+                    check_gate_types(src.text, src.file, e);
+                    let decls: Vec<OccasionDecl> = f
+                        .occasions
+                        .into_iter()
+                        .map(|(name, body)| OccasionDecl {
+                            name,
+                            select: body.select,
+                            target: body.target,
+                            description: body.description,
+                            judge: body.judge,
+                            raised_when: body.raised_when,
+                            payload: body.payload,
+                            outside_run: body.outside_run,
+                            raised_by: body.raised_by,
+                        })
+                        .collect();
+                    let key = |o: &OccasionDecl| o.name.clone();
+                    let at = keyed("occasions");
+                    merge_named(
+                        &mut out.occasions,
+                        sites,
+                        decls,
+                        "occasion",
+                        key,
+                        at,
+                        src,
+                        e,
+                    );
+                });
+            }
+            "lints" => read_kind::<LintsFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
                 let key = |r: &crate::lint::LintRuleDecl| r.id.clone();
                 merge_named(
                     &mut out.lints,
@@ -858,7 +877,7 @@ fn load_package(
                     e,
                 );
             }),
-            "cast" => read_kind::<CastFile, _>(dir, &path, &mut errs, |f, src, e| {
+            "cast" => read_kind::<CastFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
                 let decls: Vec<CastMember> = f
                     .cast
                     .into_iter()
@@ -876,33 +895,35 @@ fn load_package(
                     e,
                 );
             }),
-            "hostTokens" => read_kind::<HostTokensFile, _>(dir, &path, &mut errs, |f, src, e| {
-                for name in f.host_tokens.keys() {
-                    // The empty key is written quoted; its quoted spelling
-                    // is looked up as the key itself.
-                    let at = if name.is_empty() {
-                        key_offset(src.text, &["hostTokens", "\"\""])
-                            .or_else(|| key_offset(src.text, &["hostTokens", "''"]))
-                    } else {
-                        key_offset(src.text, &["hostTokens", name])
-                    };
-                    check_name(host_token_fault(name), at, src, e);
-                }
-                let items = f
-                    .host_tokens
-                    .into_iter()
-                    .filter(|(name, _)| crate::ident::is_ident(name))
-                    .map(|(name, body)| (name, body.ty));
-                merge_keyed(
-                    &mut out.host_tokens,
-                    sites,
-                    items,
-                    "hostToken",
-                    keyed("hostTokens"),
-                    src,
-                    e,
-                );
-            }),
+            "hostTokens" => {
+                read_kind::<HostTokensFile, _>(dir, &path, sink, &mut errs, |f, src, e| {
+                    for name in f.host_tokens.keys() {
+                        // The empty key is written quoted; its quoted spelling
+                        // is looked up as the key itself.
+                        let at = if name.is_empty() {
+                            key_offset(src.text, &["hostTokens", "\"\""])
+                                .or_else(|| key_offset(src.text, &["hostTokens", "''"]))
+                        } else {
+                            key_offset(src.text, &["hostTokens", name])
+                        };
+                        check_name(host_token_fault(name), at, src, e);
+                    }
+                    let items = f
+                        .host_tokens
+                        .into_iter()
+                        .filter(|(name, _)| crate::ident::is_ident(name))
+                        .map(|(name, body)| (name, body.ty));
+                    merge_keyed(
+                        &mut out.host_tokens,
+                        sites,
+                        items,
+                        "hostToken",
+                        keyed("hostTokens"),
+                        src,
+                        e,
+                    );
+                });
+            }
             _ => unreachable!("every EXPORT_KINDS entry has an arm"),
         }
     }
@@ -1633,30 +1654,34 @@ fn reward_effect_line(text: &str, kind: &str, message: &str) -> Option<(usize, u
 /// failed to load rather than that it is not installed. A missing `dir`
 /// yields an empty registry.
 pub fn load_plugins_dir(dir: &Path) -> (crate::resolve::InstalledPlugins, Vec<LoadError>) {
+    load_plugins_dir_in(dir, crate::deps::DependencySink::none())
+}
+
+/// [`load_plugins_dir`], recording the directory listing and every package
+/// file it read in `sink` (spec 0.53.0 §3.5).
+pub fn load_plugins_dir_in(
+    dir: &Path,
+    sink: &crate::deps::DependencySink,
+) -> (crate::resolve::InstalledPlugins, Vec<LoadError>) {
     use crate::resolve::{InstalledPlugin, InstalledPlugins};
     let mut reg = InstalledPlugins::default();
     let mut errs = Vec::new();
-    let mut subs: Vec<_> = match std::fs::read_dir(dir) {
-        Ok(rd) => rd
-            .filter_map(|e| e.ok().map(|e| e.path()))
-            .filter(|p| p.is_dir())
-            .collect(),
-        Err(_) => return (reg, errs),
+    let Ok(listing) = sink.list(dir, crate::deps::ListFilter::Dirs) else {
+        return (reg, errs);
     };
-    subs.sort();
     // The manifest each installed id came from, for a later duplicate.
     let mut homes: BTreeMap<String, std::path::PathBuf> = BTreeMap::new();
-    for sub in subs {
-        if !sub.join("plugin.yaml").is_file() {
+    for sub in listing.entries.into_iter().map(|e| e.path) {
+        if !sink.is_file(&sub.join("plugin.yaml")) {
             continue;
         }
-        match load_package(&sub) {
+        match load_package(&sub, sink) {
             Ok((loaded, mut dups)) => {
                 errs.append(&mut dups);
                 let id = loaded.manifest.id.clone();
                 let manifest = sub.join("plugin.yaml");
                 let id_at = |file: &Path| {
-                    let text = std::fs::read_to_string(file).unwrap_or_default();
+                    let text = sink.read_to_string(file).unwrap_or_default();
                     key_at(&text, &["id"])
                 };
                 match reg.by_id.entry(id) {
@@ -1750,6 +1775,7 @@ impl LoadError {
 /// manifest id when the file names one.
 fn read_manifest(
     path: &Path,
+    sink: &crate::deps::DependencySink,
 ) -> Result<(PluginManifest, String), (Option<String>, Vec<LoadError>)> {
     use yaml_serde::Value;
     let file = path.display().to_string();
@@ -1760,7 +1786,7 @@ fn read_manifest(
             msg,
         }]
     };
-    let text = std::fs::read_to_string(path).map_err(|e| {
+    let text = sink.read_to_string(path).map_err(|e| {
         (
             None,
             fail(None, format!("`plugin.yaml` could not be read: {e}")),
@@ -1890,13 +1916,18 @@ fn read_manifest(
 /// deserialize each to `F`, refuse its misplaced `text` types
 /// ([`refuse_text_types`]), and hand it — with its [`Source`] in package
 /// `pkg` — to `merge`.
-fn read_kind<F, M>(pkg: &Path, path: &Path, errs: &mut Vec<LoadError>, mut merge: M)
-where
+fn read_kind<F, M>(
+    pkg: &Path,
+    path: &Path,
+    sink: &crate::deps::DependencySink,
+    errs: &mut Vec<LoadError>,
+    mut merge: M,
+) where
     F: serde::de::DeserializeOwned + DeclaredTypes,
     M: FnMut(F, &Source, &mut Vec<LoadError>),
 {
-    for file in yaml_files(path, errs) {
-        let s = match std::fs::read_to_string(&file) {
+    for file in yaml_files(path, sink, errs) {
+        let s = match sink.read_to_string(&file) {
             Ok(s) => s,
             Err(e) => {
                 errs.push(LoadError::Io {
@@ -2215,12 +2246,16 @@ fn null_key_hint(doc: &yaml_serde::Value, key: &str, expected: &[String]) -> Opt
 /// NOTE: the dir-enumeration failure paths (`read_dir` Err, per-entry Err) are
 /// not portably testable — they require an inaccessible/racing directory — so
 /// they are hardened by construction with no dedicated test.
-fn yaml_files(path: &Path, errs: &mut Vec<LoadError>) -> Vec<std::path::PathBuf> {
-    if path.is_file() {
+fn yaml_files(
+    path: &Path,
+    sink: &crate::deps::DependencySink,
+    errs: &mut Vec<LoadError>,
+) -> Vec<std::path::PathBuf> {
+    if sink.is_file(path) {
         return vec![path.to_path_buf()];
     }
-    let entries = match std::fs::read_dir(path) {
-        Ok(entries) => entries,
+    let listing = match sink.list(path, crate::deps::ListFilter::Yaml) {
+        Ok(listing) => listing,
         Err(e) => {
             errs.push(LoadError::Io {
                 path: path.display().to_string(),
@@ -2229,24 +2264,13 @@ fn yaml_files(path: &Path, errs: &mut Vec<LoadError>) -> Vec<std::path::PathBuf>
             return Vec::new();
         }
     };
-    let mut v = Vec::new();
-    for entry in entries {
-        let p = match entry {
-            Ok(entry) => entry.path(),
-            Err(e) => {
-                errs.push(LoadError::Io {
-                    path: path.display().to_string(),
-                    msg: e.to_string(),
-                });
-                continue;
-            }
-        };
-        if p.is_file() && matches!(p.extension().and_then(|x| x.to_str()), Some("yaml" | "yml")) {
-            v.push(p);
-        }
+    for e in listing.entry_errors {
+        errs.push(LoadError::Io {
+            path: path.display().to_string(),
+            msg: e.to_string(),
+        });
     }
-    v.sort();
-    v
+    listing.entries.into_iter().map(|e| e.path).collect()
 }
 
 /// Merge a `stampAttrs` file's entries into its package (0.50.0 §3.2): each

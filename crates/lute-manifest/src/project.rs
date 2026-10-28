@@ -17,8 +17,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::constraints::{parse_constraints, ConstraintDecl};
 use crate::core::load_core_snapshot;
+use crate::deps::{DependencySink, ListFilter};
 use crate::diagnostic_levels::DiagnosticLevels;
-use crate::loader::load_plugins_dir;
+use crate::loader::load_plugins_dir_in;
 use crate::permissions::{PermissionSet, Permissions};
 use crate::resolve::{
     resolve_activation, validate_activation_options, ActivationMap, Profile, ProfileGraph,
@@ -1077,8 +1078,12 @@ fn defaults_value_hint(key: &str, v: &yaml_serde::Value) -> String {
 /// would be correct only while every consumer shared a depth, and would
 /// break when a single file moved. That is worse than the boilerplate §6
 /// exists to delete.
-fn canonical_default_path(manifest_dir: &Path, rel: &str) -> Result<String, String> {
-    match std::fs::canonicalize(manifest_dir.join(rel)) {
+fn canonical_default_path(
+    manifest_dir: &Path,
+    rel: &str,
+    sink: &DependencySink,
+) -> Result<String, String> {
+    match sink.canonicalize(&manifest_dir.join(rel)) {
         Ok(p) => Ok(p.display().to_string()),
         Err(e) => {
             // `- a.lute, b.lute` is one item naming one (missing) path.
@@ -1109,6 +1114,7 @@ fn canonicalise_entry(
     manifest_dir: &Path,
     v: &yaml_serde::Value,
     globs: bool,
+    sink: &DependencySink,
 ) -> Result<yaml_serde::Value, String> {
     let items: Vec<&str> = match v {
         yaml_serde::Value::Null => return Ok(v.clone()),
@@ -1116,6 +1122,7 @@ fn canonicalise_entry(
             return Ok(yaml_serde::Value::String(canonical_default_path(
                 manifest_dir,
                 s,
+                sink,
             )?))
         }
         yaml_serde::Value::String(s) => vec![s.as_str()],
@@ -1140,11 +1147,11 @@ fn canonicalise_entry(
     };
     for s in items {
         if globs && is_glob(s) {
-            for rel in expand_glob(manifest_dir, s) {
-                push(canonical_default_path(manifest_dir, &rel)?);
+            for rel in expand_glob(manifest_dir, s, sink) {
+                push(canonical_default_path(manifest_dir, &rel, sink)?);
             }
         } else {
-            push(canonical_default_path(manifest_dir, s)?);
+            push(canonical_default_path(manifest_dir, s, sink)?);
         }
     }
     Ok(yaml_serde::Value::Sequence(out))
@@ -1160,7 +1167,8 @@ fn is_glob(s: &str) -> bool {
 /// yet, or a directory not created yet (an area not written; git keeps no
 /// empty directory) — expands to nothing (dsl 0.26.0 §2.4, prerelease N7).
 /// Only a literal (glob-free) entry must exist.
-fn expand_glob(dir: &Path, pattern: &str) -> Vec<String> {
+/// Each directory read is a [`crate::deps::Dependency::Listing`] in `sink`.
+fn expand_glob(dir: &Path, pattern: &str, sink: &DependencySink) -> Vec<String> {
     let segments: Vec<&str> = pattern
         .split('/')
         .filter(|s| !s.is_empty() && *s != ".")
@@ -1168,43 +1176,39 @@ fn expand_glob(dir: &Path, pattern: &str) -> Vec<String> {
     let fixed = segments.iter().take_while(|s| !is_glob(s)).count();
     let prefix: PathBuf = segments[..fixed].iter().collect();
     let mut out = Vec::new();
-    walk_glob(dir, &prefix, &segments[fixed..], &mut out);
+    walk_glob(dir, &prefix, &segments[fixed..], sink, &mut out);
     out.sort();
     out.dedup();
     out
 }
 
-fn walk_glob(root: &Path, at: &Path, rest: &[&str], out: &mut Vec<String>) {
+fn walk_glob(root: &Path, at: &Path, rest: &[&str], sink: &DependencySink, out: &mut Vec<String>) {
     let Some((seg, tail)) = rest.split_first() else {
-        if root.join(at).is_file() {
+        if sink.is_file(&root.join(at)) {
             out.push(at.to_string_lossy().replace('\\', "/"));
         }
         return;
     };
     if *seg == "**" {
-        walk_glob(root, at, tail, out);
+        walk_glob(root, at, tail, sink, out);
+        let Ok(listing) = sink.list(&root.join(at), ListFilter::GlobDirs) else {
+            return;
+        };
+        for entry in listing.entries {
+            walk_glob(root, &at.join(&entry.name), rest, sink, out);
+        }
+        return;
     }
-    let Ok(entries) = std::fs::read_dir(root.join(at)) else {
+    let Ok(listing) = sink.list(&root.join(at), ListFilter::GlobSegment((*seg).to_string())) else {
         return;
     };
-    for entry in entries.flatten() {
-        let name = entry.file_name().to_string_lossy().into_owned();
-        if name.starts_with('.') {
-            continue;
-        }
-        let next = at.join(&name);
-        if *seg == "**" {
-            if root.join(&next).is_dir() {
-                walk_glob(root, &next, rest, out);
-            }
-        } else if segment_matches(seg, &name) {
-            walk_glob(root, &next, tail, out);
-        }
+    for entry in listing.entries {
+        walk_glob(root, &at.join(&entry.name), tail, sink, out);
     }
 }
 
 /// `*` (any run) and `?` (one char) within one path segment.
-fn segment_matches(pattern: &str, name: &str) -> bool {
+pub(crate) fn segment_matches(pattern: &str, name: &str) -> bool {
     let (p, n): (Vec<char>, Vec<char>) = (pattern.chars().collect(), name.chars().collect());
     let (mut pi, mut ni, mut star, mut mark) = (0, 0, None, 0);
     while ni < n.len() {
@@ -1234,6 +1238,7 @@ fn resolve_defaults(
     manifest_dir: &Path,
     raw: Option<yaml_serde::Mapping>,
     locate: &dyn Fn(&[&str]) -> Option<std::ops::Range<usize>>,
+    sink: &DependencySink,
 ) -> (MetaDefaults, Vec<ResolveDiag>) {
     let mut out = MetaDefaults::default();
     let mut diags = Vec::new();
@@ -1273,7 +1278,7 @@ fn resolve_defaults(
             continue;
         }
         if DEFAULTABLE_PATH_KEYS.contains(&key) {
-            match canonicalise_entry(manifest_dir, &v, key == "uses") {
+            match canonicalise_entry(manifest_dir, &v, key == "uses", sink) {
                 Ok(resolved) => {
                     out.entries.insert(key.to_string(), resolved);
                 }
@@ -1361,11 +1366,18 @@ fn drop_unknown_keys(
     }
 }
 
-fn chapter_origins(text: &str, raw: Option<&yaml_serde::Value>, path: &Path) -> Vec<ChapterOrigin> {
+fn chapter_origins(
+    text: &str,
+    raw: Option<&yaml_serde::Value>,
+    path: &Path,
+    sink: &DependencySink,
+) -> Vec<ChapterOrigin> {
     let Some(yaml_serde::Value::Sequence(items)) = raw else {
         return Vec::new();
     };
-    let file = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let file = sink
+        .canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf());
     use crate::yaml_text::{
         yaml_span,
         YamlStep::{Item, Key, Value},
@@ -1475,8 +1487,23 @@ impl std::error::Error for ProjectLoadError {
 /// silently mis-validating (dsl 0.28.0: `<path>:<line>:<col>: error
 /// [E-MANIFEST] …`, in plain words); a valid file → `Ok(Some(cfg))`.
 pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, ProjectLoadError> {
+    load_project_in(project_dir, DependencySink::none())
+}
+
+/// [`load_project`], recording into `sink` what it read (spec 0.53.0 §3.5):
+/// the manifest file, the `pluginsDir`/`catalogDir` and `defaults:` paths it
+/// names, and the directories its `defaults:` globs listed.
+pub fn load_project_in(
+    project_dir: &Path,
+    sink: &DependencySink,
+) -> Result<Option<ProjectConfig>, ProjectLoadError> {
     let path = project_dir.join("lute.project.yaml");
-    let text = match std::fs::read_to_string(&path) {
+    // The manifest's own path, as a lookup: a symlinked manifest retargeted
+    // fails it even when both targets read the same.
+    if sink.is_recording() {
+        let _manifest_target = sink.canonicalize(&path);
+    }
+    let text = match sink.read_to_string(&path) {
         Ok(t) => t,
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(e) => {
@@ -1625,22 +1652,26 @@ pub fn load_project(project_dir: &Path) -> Result<Option<ProjectConfig>, Project
     };
     let plugins_dir = project_dir.join(raw.plugins_dir.as_deref().unwrap_or("plugins/"));
     let catalog_dir = project_dir.join(raw.catalog_dir.as_deref().unwrap_or("catalog/"));
+    if sink.is_recording() {
+        sink.exists(&plugins_dir);
+        sink.exists(&catalog_dir);
+    }
     let identity_raw = raw.identity.clone();
     let identity_require_stable = identity_raw.as_ref().is_some_and(|i| i.require_stable);
     let (identity, identity_diags) = resolve_identity(identity_raw.clone(), &locate);
     let (identity_renames, identity_rename_diags) =
         resolve_identity_renames(identity_raw.and_then(|i| i.renames), &text, &locate);
-    let chapter_origins = chapter_origins(&text, raw.chapters.as_ref(), &path);
+    let chapter_origins = chapter_origins(&text, raw.chapters.as_ref(), &path, sink);
     let (chapters, chapter_diags) = resolve_chapters(raw.chapters);
     let (constraints, constraint_diags) = parse_constraints(raw.constraints.as_ref(), &text);
     let (diagnostics, diagnostics_diags) =
         crate::diagnostic_levels::resolve_diagnostics(raw.diagnostics.as_ref(), &locate);
-    let (defaults, defaults_diags) = resolve_defaults(project_dir, raw.defaults, &locate);
+    let (defaults, defaults_diags) = resolve_defaults(project_dir, raw.defaults, &locate, sink);
     let mut defaults = defaults.with_chapters(chapters);
     if defaults.get("questTier").is_some() {
         if let Some(r) = locate(&["defaults", "questTier"]) {
             let idx = lute_core_span::TextIndex::new(&text);
-            let file = std::fs::canonicalize(&path).unwrap_or_else(|_| path.clone());
+            let file = sink.canonicalize(&path).unwrap_or_else(|_| path.clone());
             defaults.quest_tier_home =
                 Some((file, lute_core_span::Span::from_bytes(&idx, r.start, r.end)));
         }
@@ -1688,8 +1719,16 @@ fn plain_serde(e: &yaml_serde::Error) -> String {
 /// — the no-divergence invariant extended to catalog resolution. Never panics:
 /// [`ProviderSet::load`] already tolerates a missing/corrupt catalog dir.
 pub fn project_providers(project: Option<&ProjectConfig>) -> crate::provider::ProviderSet {
+    project_providers_in(project, DependencySink::none())
+}
+
+/// [`project_providers`], recording the catalog listing and files in `sink`.
+pub fn project_providers_in(
+    project: Option<&ProjectConfig>,
+    sink: &DependencySink,
+) -> crate::provider::ProviderSet {
     match project {
-        Some(p) => crate::provider::ProviderSet::load(&p.catalog_dir),
+        Some(p) => crate::provider::ProviderSet::load_in(&p.catalog_dir, sink),
         None => crate::provider::ProviderSet::default(),
     }
 }
@@ -1730,6 +1769,22 @@ pub fn resolve_document_snapshot(
     scene_profile: Option<&str>,
     scene_plugins: &BTreeMap<String, yaml_serde::Value>,
 ) -> (CapabilitySnapshot, Vec<ResolveDiag>) {
+    resolve_document_snapshot_in(
+        project,
+        scene_profile,
+        scene_plugins,
+        DependencySink::none(),
+    )
+}
+
+/// [`resolve_document_snapshot`], recording the plugins directory's listing
+/// and every plugin file it read in `sink`.
+pub fn resolve_document_snapshot_in(
+    project: Option<&ProjectConfig>,
+    scene_profile: Option<&str>,
+    scene_plugins: &BTreeMap<String, yaml_serde::Value>,
+    sink: &DependencySink,
+) -> (CapabilitySnapshot, Vec<ResolveDiag>) {
     let Some(project) = project else {
         return (load_core_snapshot(), Vec::new());
     };
@@ -1738,7 +1793,7 @@ pub fn resolve_document_snapshot(
     // shared resolver remains the single reporting seam for both surfaces.
 
     // 1. Load every installed plugin package; surface load errors.
-    let (registry, load_errs) = load_plugins_dir(&project.plugins_dir);
+    let (registry, load_errs) = load_plugins_dir_in(&project.plugins_dir, sink);
     diags.extend(load_errs.into_iter().map(|e| ResolveDiag {
         span: None,
         code: e.code().into(),
@@ -1820,7 +1875,12 @@ mod tests {
     fn chapter_origins_anchor_flow_style_values() {
         let text = "defaultProfile: core\nprofiles: {core: {plugins: {}}}\nchapters: [{on: open, scenes: [first, second]}]\n";
         let value: yaml_serde::Value = yaml_serde::from_str(text).unwrap();
-        let origins = chapter_origins(text, value.get("chapters"), Path::new("lute.project.yaml"));
+        let origins = chapter_origins(
+            text,
+            value.get("chapters"),
+            Path::new("lute.project.yaml"),
+            DependencySink::none(),
+        );
         assert_eq!(origins.len(), 1);
         let on = origins[0].on.expect("flow `on` span");
         assert_eq!(&text[on.byte_start..on.byte_end], "open");

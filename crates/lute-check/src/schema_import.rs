@@ -23,10 +23,12 @@
 //!    `E-EXTENDS-STATE-TYPE`. A state path whose winner came from an `extends`
 //!    base (depth >= 1) is marked `overridable`, so the importing scene's inline
 //!    `state:` may refine it (dsl §9.2), while a `uses`-peer path may not.
-use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
+
+use lute_manifest::deps::{Dependency, DependencySink, Recorded};
 
 use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
 use lute_manifest::relations::{
@@ -314,21 +316,59 @@ pub(crate) const AT_PLACEHOLDER: Span = Span {
 /// copied verbatim into diagnostic spans; the memo resolves once against
 /// [`AT_PLACEHOLDER`] and returns each caller its diagnostics anchored at its
 /// `at`, so the shared value is exactly what the uncached resolvers return.
-/// Holds no invalidation: the files are assumed not to change during one run.
+/// Holds no invalidation of its own: a one-shot command assumes the files do
+/// not change while it runs. A [`Self::tracked`] cache (the language
+/// server's, spec 0.53.0 §3.5) records, per memo entry, the entries it was
+/// built from and the filesystem [`Dependency`] records its build observed,
+/// so its owner can revalidate ([`Self::revalidate`]) and reclaim
+/// ([`Self::mark`], [`Self::sweep`]) it.
 ///
 /// [`ProjectVocab`]: crate::ProjectVocab
 /// [`ProjectBase`]: crate::ProjectBase
 #[derive(Default)]
 pub struct ImportCache {
-    imports: Memo<(PathBuf, Vec<String>, Vec<String>), SchemaImports>,
-    vocabs: Memo<(u64, PathBuf, Vec<String>, Vec<String>), crate::ProjectVocab>,
-    components: Memo<(PathBuf, Vec<String>), crate::ComponentSet>,
+    imports: Memo<ImportKey, SchemaImports, Recorded<ImportNode>>,
+    vocabs: Memo<VocabKey, crate::ProjectVocab, Recorded<ImportNode>>,
+    components: Memo<ComponentKey, crate::ComponentSet, Recorded<ImportNode>>,
     /// Each imported file, read once: [`ImportCache::resolve`] is keyed by
     /// the importer's directory, and importers in different directories
     /// reach the same schema files.
-    files: Memo<PathBuf, ParsedFile>,
+    files: Memo<PathBuf, ParsedFile, Recorded<ImportNode>>,
     /// [`crate::ProjectVocab::build`] calls: one per distinct `vocabs` key.
     vocab_builds: AtomicUsize,
+    /// Whether entries record their children and dependencies.
+    tracked: bool,
+}
+
+/// An [`ImportCache`] `imports` key: the importer's directory, `uses:`,
+/// `extends:`.
+pub type ImportKey = (PathBuf, Vec<String>, Vec<String>);
+/// An [`ImportCache`] `vocabs` key: the base's [`crate::ProjectBase::id`]
+/// and the [`ImportKey`].
+pub type VocabKey = (u64, PathBuf, Vec<String>, Vec<String>);
+/// An [`ImportCache`] `components` key: the importer's directory and
+/// `components:`.
+pub type ComponentKey = (PathBuf, Vec<String>);
+
+/// One entry of one [`ImportCache`] memo.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum ImportNode {
+    Imports(ImportKey),
+    Vocab(VocabKey),
+    Components(ComponentKey),
+    /// A parsed imported file (canonical path).
+    File(PathBuf),
+}
+
+/// How many entries each [`ImportCache`] memo holds and how many dependency
+/// records they own.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct ImportCounts {
+    pub imports: usize,
+    pub vocabs: usize,
+    pub components: usize,
+    pub files: usize,
+    pub dependencies: usize,
 }
 
 impl std::fmt::Debug for ImportCache {
@@ -347,13 +387,79 @@ struct ParsedFile {
     diags: Vec<Diagnostic>,
 }
 
+/// The files memo [`resolve_imports_in`] reads through, and whether its
+/// entries record dependencies.
+#[derive(Clone, Copy)]
+struct FileMemo<'a> {
+    memo: &'a Memo<PathBuf, ParsedFile, Recorded<ImportNode>>,
+    tracked: bool,
+}
+
 impl ImportCache {
+    /// A cache whose entries record their children and the dependency
+    /// records their builds observed (spec 0.53.0 §3.5).
+    pub fn tracked() -> Self {
+        Self {
+            tracked: true,
+            ..Self::default()
+        }
+    }
+
+    /// The `imports` key of `(base_dir, uses, extends)`.
+    pub fn import_key(base_dir: &Path, uses: &[String], extends: &[String]) -> ImportKey {
+        (base_dir.to_path_buf(), uses.to_vec(), extends.to_vec())
+    }
+
+    /// The `vocabs` key of `(base_dir, uses, extends)` against `base`.
+    pub fn vocab_key(
+        base: &crate::ProjectBase,
+        base_dir: &Path,
+        uses: &[String],
+        extends: &[String],
+    ) -> VocabKey {
+        (
+            base.id(),
+            base_dir.to_path_buf(),
+            uses.to_vec(),
+            extends.to_vec(),
+        )
+    }
+
+    /// The `components` key of `(base_dir, components)`.
+    pub fn components_key(base_dir: &Path, components: &[String]) -> ComponentKey {
+        (base_dir.to_path_buf(), components.to_vec())
+    }
+
+    fn record(&self, children: Vec<ImportNode>, sink: DependencySink) -> Recorded<ImportNode> {
+        if self.tracked {
+            Recorded::new(children, sink)
+        } else {
+            Recorded::default()
+        }
+    }
+
     /// [`resolve_imports`], memoized on `(base_dir, uses, extends)`, with
     /// its diagnostics anchored at [`AT_PLACEHOLDER`].
     fn resolve(&self, base_dir: &Path, uses: &[String], extends: &[String]) -> Arc<SchemaImports> {
-        let key = (base_dir.to_path_buf(), uses.to_vec(), extends.to_vec());
-        self.imports.get_or_init(key, || {
-            resolve_imports_in(base_dir, uses, extends, AT_PLACEHOLDER, Some(&self.files))
+        let key = Self::import_key(base_dir, uses, extends);
+        self.imports.get_or_init_with(key, || {
+            let sink = DependencySink::new(self.tracked);
+            let mut reached = Vec::new();
+            let files = FileMemo {
+                memo: &self.files,
+                tracked: self.tracked,
+            };
+            let imports = resolve_imports_in(
+                base_dir,
+                uses,
+                extends,
+                AT_PLACEHOLDER,
+                Some(files),
+                &sink,
+                self.tracked.then_some(&mut reached),
+            );
+            let children = reached.into_iter().map(ImportNode::File).collect();
+            (imports, self.record(children, sink))
         })
     }
 
@@ -367,15 +473,18 @@ impl ImportCache {
         extends: &[String],
         at: Span,
     ) -> (Arc<crate::ProjectVocab>, Vec<Diagnostic>) {
-        let key = (
-            base.id(),
-            base_dir.to_path_buf(),
-            uses.to_vec(),
-            extends.to_vec(),
-        );
-        let vocab = self.vocabs.get_or_init(key, || {
+        let key = Self::vocab_key(base, base_dir, uses, extends);
+        let vocab = self.vocabs.get_or_init_with(key, || {
             self.vocab_builds.fetch_add(1, Ordering::Relaxed);
-            crate::ProjectVocab::build(base, self.resolve(base_dir, uses, extends))
+            let vocab = crate::ProjectVocab::build(base, self.resolve(base_dir, uses, extends));
+            let children = if self.tracked {
+                vec![ImportNode::Imports(Self::import_key(
+                    base_dir, uses, extends,
+                ))]
+            } else {
+                Vec::new()
+            };
+            (vocab, self.record(children, DependencySink::default()))
         });
         let mut diags = vocab.imports.diags.clone();
         anchor_at(&mut diags, at);
@@ -390,9 +499,16 @@ impl ImportCache {
         components: &[String],
         at: Span,
     ) -> (Arc<crate::ComponentSet>, Vec<Diagnostic>) {
-        let key = (base_dir.to_path_buf(), components.to_vec());
-        let cached = self.components.get_or_init(key, || {
-            crate::component_import::resolve_components(base_dir, components, AT_PLACEHOLDER)
+        let key = Self::components_key(base_dir, components);
+        let cached = self.components.get_or_init_with(key, || {
+            let sink = DependencySink::new(self.tracked);
+            let set = crate::component_import::resolve_components_in(
+                base_dir,
+                components,
+                AT_PLACEHOLDER,
+                &sink,
+            );
+            (set, self.record(Vec::new(), sink))
         });
         let mut diags = cached.diags.clone();
         anchor_at(&mut diags, at);
@@ -404,19 +520,110 @@ impl ImportCache {
     pub fn vocab_builds(&self) -> usize {
         self.vocab_builds.load(Ordering::Relaxed)
     }
+
+    /// Every entry reachable from `roots` through the recorded children: the
+    /// closure a sweep keeps.
+    pub fn mark(&self, roots: impl IntoIterator<Item = ImportNode>) -> HashSet<ImportNode> {
+        let mut marked = HashSet::new();
+        let mut todo: Vec<ImportNode> = roots.into_iter().collect();
+        while let Some(node) = todo.pop() {
+            if marked.contains(&node) {
+                continue;
+            }
+            let children = match &node {
+                ImportNode::Imports(k) => self.imports.meta(k, |m| m.children.clone()),
+                ImportNode::Vocab(k) => self.vocabs.meta(k, |m| m.children.clone()),
+                ImportNode::Components(k) => self.components.meta(k, |m| m.children.clone()),
+                ImportNode::File(k) => self.files.meta(k, |m| m.children.clone()),
+            };
+            todo.extend(children.into_iter().flatten());
+            marked.insert(node);
+        }
+        marked
+    }
+
+    /// Remove every built entry not in `marked`, with its dependency records.
+    pub fn sweep(&self, marked: &HashSet<ImportNode>) {
+        // The keys are cloned to probe the set: only a tracked cache sweeps,
+        // and it holds a handful of configurations.
+        self.imports
+            .retain(|k| marked.contains(&ImportNode::Imports(k.clone())));
+        self.vocabs
+            .retain(|k| marked.contains(&ImportNode::Vocab(k.clone())));
+        self.components
+            .retain(|k| marked.contains(&ImportNode::Components(k.clone())));
+        self.files
+            .retain(|k| marked.contains(&ImportNode::File(k.clone())));
+    }
+
+    /// Every dependency record of every entry.
+    pub fn dependencies(&self) -> Vec<Dependency> {
+        let mut out = Vec::new();
+        let mut collect = |m: &Recorded<ImportNode>| out.extend(m.records());
+        self.imports.for_each_meta(&mut collect);
+        self.vocabs.for_each_meta(&mut collect);
+        self.components.for_each_meta(&mut collect);
+        self.files.for_each_meta(&mut collect);
+        out
+    }
+
+    /// The entries each memo holds and the dependency records they own.
+    pub fn counts(&self) -> ImportCounts {
+        let mut dependencies = 0;
+        let mut count = |m: &Recorded<ImportNode>| dependencies += m.dependency_count();
+        let imports = self.imports.for_each_meta(&mut count);
+        let vocabs = self.vocabs.for_each_meta(&mut count);
+        let components = self.components.for_each_meta(&mut count);
+        let files = self.files.for_each_meta(&mut count);
+        ImportCounts {
+            imports,
+            vocabs,
+            components,
+            files,
+            dependencies,
+        }
+    }
+
+    /// Whether every dependency record still holds
+    /// ([`Recorded::revalidate`]); `dirty` says which records a notification
+    /// marked.
+    pub fn revalidate(&self, dirty: &dyn Fn(&Dependency) -> bool) -> bool {
+        let mut ok = true;
+        let mut check = |m: &Recorded<ImportNode>| ok = ok && m.revalidate(dirty);
+        self.imports.for_each_meta(&mut check);
+        self.vocabs.for_each_meta(&mut check);
+        self.components.for_each_meta(&mut check);
+        self.files.for_each_meta(&mut check);
+        ok
+    }
+
+    /// Whether any dependency record names `path` ([`Dependency::names`]).
+    pub fn names(&self, path: &Path) -> bool {
+        let mut hit = false;
+        let mut probe = |m: &Recorded<ImportNode>| hit = hit || m.names(path);
+        self.imports.for_each_meta(&mut probe);
+        self.vocabs.for_each_meta(&mut probe);
+        self.components.for_each_meta(&mut probe);
+        self.files.for_each_meta(&mut probe);
+        hit
+    }
 }
 
 /// A per-invocation cache of immutable values.
 ///
 /// Entries are stored behind `Arc`; cache hits clone only the pointer. The
 /// per-key `OnceLock` keeps unrelated keys independent while avoiding holding
-/// the map lock during an expensive parse.
+/// the map lock during an expensive parse. Each entry carries a `M` beside
+/// its value: what a tracked cache records about the entry's build
+/// ([`Recorded`]), `()` elsewhere.
 #[derive(Debug)]
-pub struct Memo<K, V> {
-    map: Mutex<HashMap<K, Arc<OnceLock<Arc<V>>>>>,
+pub struct Memo<K, V, M = ()> {
+    map: Mutex<HashMap<K, MemoCell<V, M>>>,
 }
 
-impl<K, V> Default for Memo<K, V> {
+type MemoCell<V, M> = Arc<OnceLock<(Arc<V>, M)>>;
+
+impl<K, V, M> Default for Memo<K, V, M> {
     fn default() -> Self {
         Memo {
             map: Mutex::new(HashMap::new()),
@@ -424,17 +631,63 @@ impl<K, V> Default for Memo<K, V> {
     }
 }
 
-impl<K: Eq + std::hash::Hash, V> Memo<K, V> {
+impl<K: Eq + std::hash::Hash, V, M: Default> Memo<K, V, M> {
     /// Return the shared value for `key`, computing it once on first use.
     pub fn get_or_init(&self, key: K, init: impl FnOnce() -> V) -> Arc<V> {
-        let cell = {
-            let mut map = self
-                .map
-                .lock()
-                .unwrap_or_else(std::sync::PoisonError::into_inner);
-            Arc::clone(map.entry(key).or_default())
-        };
-        Arc::clone(cell.get_or_init(|| Arc::new(init())))
+        self.get_or_init_with(key, || (init(), M::default()))
+    }
+}
+
+impl<K: Eq + std::hash::Hash, V, M> Memo<K, V, M> {
+    fn lock(&self) -> std::sync::MutexGuard<'_, HashMap<K, MemoCell<V, M>>> {
+        self.map
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// Return the shared value for `key`, computing it and its entry
+    /// metadata once on first use.
+    pub fn get_or_init_with(&self, key: K, init: impl FnOnce() -> (V, M)) -> Arc<V> {
+        let cell = Arc::clone(self.lock().entry(key).or_default());
+        Arc::clone(
+            &cell
+                .get_or_init(|| {
+                    let (value, meta) = init();
+                    (Arc::new(value), meta)
+                })
+                .0,
+        )
+    }
+
+    /// Remove `key`'s entry; whether there was one. A value handed out
+    /// stays alive in its holders' `Arc`s.
+    pub fn remove(&self, key: &K) -> bool {
+        self.lock().remove(key).is_some()
+    }
+
+    /// Keep the built entries `keep` accepts, and every entry still being
+    /// built (its builder holds it).
+    pub fn retain(&self, mut keep: impl FnMut(&K) -> bool) {
+        self.lock()
+            .retain(|k, cell| cell.get().is_none() || keep(k));
+    }
+
+    /// `f` over the metadata of `key`'s built entry.
+    pub fn meta<R>(&self, key: &K, f: impl FnOnce(&M) -> R) -> Option<R> {
+        let cell = self.lock().get(key).map(Arc::clone)?;
+        cell.get().map(|(_, m)| f(m))
+    }
+
+    /// `f` over the metadata of every built entry (outside the map lock);
+    /// returns how many there are.
+    pub fn for_each_meta(&self, mut f: impl FnMut(&M)) -> usize {
+        let cells: Vec<MemoCell<V, M>> = self.lock().values().map(Arc::clone).collect();
+        let mut n = 0;
+        for (_, m) in cells.iter().filter_map(|c| c.get()) {
+            f(m);
+            n += 1;
+        }
+        n
     }
 }
 
@@ -463,18 +716,31 @@ pub fn resolve_imports(
     extends: &[String],
     at: Span,
 ) -> SchemaImports {
-    resolve_imports_in(base_dir, uses, extends, at, None)
+    resolve_imports_in(
+        base_dir,
+        uses,
+        extends,
+        at,
+        None,
+        DependencySink::none(),
+        None,
+    )
 }
 
 /// [`resolve_imports`], reading each imported file through `files` when
 /// given. A file's parse depends on its text and `at` alone, so `files` is
 /// only passed with `at` = [`AT_PLACEHOLDER`] ([`ImportCache::resolve`]).
+/// Every `uses:`/`extends:` lookup is recorded in `sink`; each file read
+/// outside `files` too (through `files`, the file's own entry records it).
+/// `reached` receives every file the graph reached.
 fn resolve_imports_in(
     base_dir: &Path,
     uses: &[String],
     extends: &[String],
     at: Span,
-    files: Option<&Memo<PathBuf, ParsedFile>>,
+    files: Option<FileMemo<'_>>,
+    sink: &DependencySink,
+    reached: Option<&mut Vec<PathBuf>>,
 ) -> SchemaImports {
     let mut diags = Vec::new();
 
@@ -491,11 +757,11 @@ fn resolve_imports_in(
 
     // Seed from the root's own edges (the root is virtual, at depth 0).
     let mut roots = Vec::new();
-    for canon in resolve_edges(base_dir, uses, Edge::Uses, &mut diags, at) {
+    for canon in resolve_edges(base_dir, uses, Edge::Uses, &mut diags, at, sink) {
         relax(canon.clone(), 0, true, &mut dist, &mut dq);
         roots.push(canon);
     }
-    for canon in resolve_edges(base_dir, extends, Edge::Extends, &mut diags, at) {
+    for canon in resolve_edges(base_dir, extends, Edge::Extends, &mut diags, at, sink) {
         relax(canon.clone(), 1, false, &mut dist, &mut dq);
         roots.push(canon);
     }
@@ -514,36 +780,41 @@ fn resolve_imports_in(
         let (doc, uses_refs, extends_refs) = match files {
             Some(files) => {
                 debug_assert!(at == AT_PLACEHOLDER);
-                let file = files.get_or_init(canon.clone(), || {
+                let file = files.memo.get_or_init_with(canon.clone(), || {
+                    let file_sink = DependencySink::new(files.tracked);
                     let mut diags = Vec::new();
-                    let (doc, uses, extends) = read_and_parse(&canon, &mut diags, at);
-                    ParsedFile {
+                    let (doc, uses, extends) = read_and_parse(&canon, &mut diags, at, &file_sink);
+                    let parsed = ParsedFile {
                         doc,
                         uses,
                         extends,
                         diags,
-                    }
+                    };
+                    (parsed, Recorded::new(Vec::new(), file_sink))
                 });
                 diags.extend(file.diags.iter().cloned());
                 (file.doc.clone(), file.uses.clone(), file.extends.clone())
             }
-            None => read_and_parse(&canon, &mut diags, at),
+            None => read_and_parse(&canon, &mut diags, at, sink),
         };
         let dir = canon
             .parent()
             .unwrap_or_else(|| Path::new("."))
             .to_path_buf();
         let mut out = Vec::new();
-        for c in resolve_edges(&dir, &uses_refs, Edge::Uses, &mut diags, at) {
+        for c in resolve_edges(&dir, &uses_refs, Edge::Uses, &mut diags, at, sink) {
             relax(c.clone(), d, true, &mut dist, &mut dq);
             out.push((c, Edge::Uses));
         }
-        for c in resolve_edges(&dir, &extends_refs, Edge::Extends, &mut diags, at) {
+        for c in resolve_edges(&dir, &extends_refs, Edge::Extends, &mut diags, at, sink) {
             relax(c.clone(), d + 1, false, &mut dist, &mut dq);
             out.push((c, Edge::Extends));
         }
         adj.insert(canon.clone(), out);
         parsed.insert(canon, doc);
+    }
+    if let Some(reached) = reached {
+        reached.extend(parsed.keys().cloned());
     }
 
     // Directed-cycle detection over the reachable subgraph (DFS 3-coloring).
@@ -1431,10 +1702,11 @@ fn resolve_edges(
     edge: Edge,
     diags: &mut Vec<Diagnostic>,
     at: Span,
+    sink: &DependencySink,
 ) -> Vec<PathBuf> {
     let mut out = Vec::new();
     for r in refs {
-        match std::fs::canonicalize(dir.join(r)) {
+        match sink.canonicalize(&dir.join(r)) {
             Ok(c) => out.push(c),
             Err(_) => diags.push(uses_diag(
                 "E-USES-NOT-FOUND",
@@ -1484,6 +1756,7 @@ fn read_and_parse(
     canon: &Path,
     diags: &mut Vec<Diagnostic>,
     at: Span,
+    sink: &DependencySink,
 ) -> (ParsedDoc, Vec<String>, Vec<String>) {
     let empty = ParsedDoc {
         raw_yaml: String::new(),
@@ -1509,7 +1782,7 @@ fn read_and_parse(
         failed_heads: BTreeSet::new(),
         kind_adds: Vec::new(),
     };
-    let text = match std::fs::read_to_string(canon) {
+    let text = match sink.read_to_string(canon) {
         Ok(t) => t,
         Err(e) => {
             let e = lute_manifest::io_reason(&e);
