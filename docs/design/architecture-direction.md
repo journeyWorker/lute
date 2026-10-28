@@ -382,15 +382,25 @@ The rule now names its scope:
 
 - **Every command** that reads two or more documents of a project builds
   the project input layer (`InputCache`: base, vocabularies, components)
-  once per root for the whole run — directly or through one `ProjectModel`
-  per root from one `ModelMemo` — and holds per document only its overlay.
-  `build_input` (a fresh cache) is for single-document commands only.
+  once per cache key for the whole run — directly or through one
+  `ProjectModel` per root from one `ModelMemo` — and holds per document
+  only its overlay. Distinct keys (root, providers, profile, `plugins:`,
+  permission profile) stay distinct. `build_input` (a fresh cache) is for
+  single-document commands only.
+- A **long-lived process** (the LSP) keeps one input cache per root across
+  requests and invalidates it exactly when an input file it read changes
+  (fingerprints, watched-file and save notifications). This is the one
+  cross-invocation cache, measured in 0.53 (40 ms per request at 4 800
+  slots); other cross-invocation caching stays out until measured.
 - A command builds a checked `ProjectModel` only when it reads check
   results; a manifest field is read from the manifest.
-- Each such command has a tier in `vocab-grid.py gate` that asserts growth
-  (marginal CPU and RSS per document at 4 800 slots within 1.5× of 150) and
-  its cost relative to `check`. A new multi-document command adds its tier
-  in the change that adds the command.
+- Each such command has a tier in `vocab-grid.py gate` that asserts CPU and
+  memory: marginal CPU per document at 4 800 slots within 1.5× of 150; for
+  a command that retains every document, marginal RSS likewise; for a
+  streaming command, peak-RSS growth and peak RSS against `check`; and for
+  every command a deterministic count of base and vocabulary builds
+  (`LUTE_STATS=input-cache`). A new multi-document command adds its tier in
+  the change that adds the command.
 
 ## 3. Rejected
 
