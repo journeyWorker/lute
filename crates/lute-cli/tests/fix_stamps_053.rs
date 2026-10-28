@@ -181,6 +181,36 @@ fn a_file_behind_a_directory_symlink_reads_its_snapshot() {
     );
 }
 
+/// One rule for every walk: a directory operand's walk does not descend a
+/// directory symlink inside it, as `check --project` and `lint` do not; the
+/// linked directory named as the operand is migrated.
+#[test]
+fn a_directory_walk_does_not_descend_a_directory_symlink() {
+    let p = issue_project(
+        "fix-walk-symlink",
+        "{ name: action, type: string, on: [music] }",
+    );
+    let sources = TempProject::new("fix-walk-symlink-sources");
+    sources.write("intro.lute", SCENE);
+    std::fs::remove_file(p.join("scenes/intro.lute")).unwrap();
+    std::os::unix::fs::symlink(sources.join("."), p.join("linked")).unwrap();
+    let out = lute_in(&p, &["fix", "--check", "."]);
+    assert_eq!(
+        text(&out.stdout),
+        "lute: ./lute.project.yaml: would apply 1 fix(es): lute-version 1\n\
+         lute: would apply 1 fix(es) in 1 of 4 file(s)\n",
+        "{}",
+        text(&out.stderr)
+    );
+    let out = lute_in(&p, &["fix", "--check", "linked"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
+    assert!(
+        text(&out.stdout).contains("would apply 2 fix(es): renamed-attr 2"),
+        "{}",
+        text(&out.stdout)
+    );
+}
+
 /// A document whose plugin is missing: its snapshot does not resolve, so
 /// every rename site is kept with `unresolved`; the other rules still run.
 #[test]

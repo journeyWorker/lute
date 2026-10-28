@@ -805,14 +805,21 @@ impl FixInputs {
     }
 }
 
+/// The files a directory operand migrates, sorted per directory. Like every
+/// other walk ([`lute_load::find_lute_files`], model discovery) it does not
+/// descend a directory symlink inside `path`; `path` itself is read even
+/// when it is one, as an operand named explicitly is.
 fn fix_targets(path: &Path) -> std::io::Result<Vec<PathBuf>> {
     fn visit(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
         let mut entries = std::fs::read_dir(dir)?.collect::<Result<Vec<_>, _>>()?;
         entries.sort_by_key(std::fs::DirEntry::file_name);
         for entry in entries {
             let p = entry.path();
-            if p.is_dir() {
+            let kind = entry.file_type()?;
+            if kind.is_dir() {
                 visit(&p, out)?;
+            } else if kind.is_symlink() && p.is_dir() {
+                continue;
             } else if p
                 .extension()
                 .is_some_and(|ext| ext == "lute" || ext == "yaml" || ext == "yml")
