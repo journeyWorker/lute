@@ -1747,6 +1747,24 @@ mod tests {
         assert_eq!(rows[0].text, "こんにちは");
     }
 
+    /// 0.53.0 §8.1: a CSV row's grammar is its `kind`'s; a CSV without a
+    /// `kind` column reads every row by the label grammar (a `{{` with no
+    /// `}}` is literal text), and `compile` still judges a line by its own.
+    #[test]
+    fn csv_reader_defaults_to_the_label_grammar_without_a_kind_column() {
+        use lute_compile::locale::{marker_syntax_fault, TextGrammar};
+        let rows = parse_csv_rows("lineId,text\r\nx.n_0010,open {{ here\r\n").expect("parses");
+        assert_eq!(rows[0].grammar, TextGrammar::Label);
+        assert_eq!(marker_syntax_fault(&rows[0].text, rows[0].grammar), None);
+        let rows = parse_csv_rows(
+            "kind,lineId,text\r\nline,x.n_0010,open {{ here\r\nprompt,x.b.prompt,P\r\n",
+        )
+        .expect("parses");
+        assert_eq!(rows[0].grammar, TextGrammar::Line);
+        assert!(marker_syntax_fault(&rows[0].text, rows[0].grammar).is_some());
+        assert_eq!(rows[1].grammar, TextGrammar::Label);
+    }
+
     #[test]
     fn json_reader_takes_text_for_a_choice_and_a_line() {
         let src = r#"[

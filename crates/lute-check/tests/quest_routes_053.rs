@@ -168,3 +168,40 @@ fn follows_is_no_route_beside_an_in_script_accept() {
     assert!(heuristic.is_empty());
     assert!(matches!(g.nodes[&q("gift")].follows, FollowsDecl::Valid(_)));
 }
+
+/// An accept-driven quest (not external) with `follows` and no in-script
+/// source: `follows` is no route (§7.1), so its accept anchor is empty and
+/// its reach `Unknown`; the declaration and its edge stay. QReview053 Q1:
+/// failing before (no anchor, `follows` read as the activation route,
+/// `Reachable`).
+#[test]
+fn a_source_less_accept_driven_quest_has_no_follows_route() {
+    let (g, reach, heuristic) = analyse(&format!(
+        "{}{}",
+        quest("intro", " start=\"true\" follows=\"\"", ""),
+        quest("gift", " follows=\"completed('intro')\"", ""),
+    ));
+    assert_eq!(reach[&q("gift")], Reachability::Unknown, "{reach:?}");
+    assert!(heuristic.is_empty(), "{heuristic:?}");
+    let info = &g.nodes[&q("gift")];
+    assert_eq!(
+        info.follows,
+        FollowsDecl::Valid(PrereqFormula::Completed("intro".into()))
+    );
+    let PrereqState::Anchored(anchors) = &info.prereq else {
+        panic!("{g:?}");
+    };
+    assert_eq!(
+        anchors,
+        &[Anchor {
+            kind: EdgeKind::Accept,
+            from: vec![],
+            host: None,
+        }]
+    );
+    assert_eq!(
+        g.edge_kinds_for(&q("intro"), &q("gift"))
+            .map(|k| k.iter().copied().collect::<Vec<_>>()),
+        Some(vec![EdgeKind::Completed])
+    );
+}

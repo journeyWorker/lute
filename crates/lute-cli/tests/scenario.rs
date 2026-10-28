@@ -1186,8 +1186,15 @@ fn scenario_dot_dashes_active_edges_only_and_is_deterministic() {
 #[test]
 fn scenario_reach_accepts_an_active_prerequisite() {
     // End-to-end: `active(…)` must survive the per-file grammar check
-    // (no E-CONN-PROFILE) and resolve to a real, reachable verdict.
-    let (_dir, path) = both_edge_kinds_fixture();
+    // (no E-CONN-PROFILE) and resolve to a real, reachable verdict. The
+    // quests start (`start="true"`): an accept-driven quest with nothing
+    // accepting it has no route, its `follows` included (dsl 0.53.0 §7.1).
+    let (dir, path) = both_edge_kinds_fixture();
+    let q = dir.join("q.lute");
+    let started = std::fs::read_to_string(&q)
+        .unwrap()
+        .replace(" follows=", " start=\"true\" follows=");
+    std::fs::write(&q, started).unwrap();
     let out = run(&[
         "scenario",
         "--project",

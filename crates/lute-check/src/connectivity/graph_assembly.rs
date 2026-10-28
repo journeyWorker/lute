@@ -448,12 +448,14 @@ impl<'a> QuestDecls<'a> {
 /// or `start` anchor (its declared route replaces them, dsl 0.25.0 §4) but
 /// keeps its accept anchor (dsl 0.53.0 §7.1: an in-script accept activates
 /// it whatever `follows` says). The accept anchor of an accept-driven
-/// `accept="external"` quest also holds the host route ([`host_gate`]); one
-/// with no in-script source and no `follows` is no anchor (the quest stays
-/// unanchored, available from the start of play). A quest none of them
-/// anchors is absent. `nodes` holds the scene and bundle beat nodes the
-/// sources resolve against, and the nodes of the quests that declare
-/// `follows`.
+/// `accept="external"` quest also holds the host route ([`host_gate`]). An
+/// accept-driven quest that declares `follows` always gets its accept
+/// anchor, even with no source and no host route: `follows` is never its
+/// route, so nothing then activates it. One with no in-script source, no
+/// host route and no `follows` is no anchor (the quest stays unanchored,
+/// available from the start of play). A quest none of them anchors is
+/// absent. `nodes` holds the scene and bundle beat nodes the sources
+/// resolve against, and the nodes of the quests that declare `follows`.
 pub(crate) fn quest_anchors(
     docs: &[ProjectDoc<'_>],
     decls: &QuestDecls<'_>,
@@ -477,7 +479,8 @@ pub(crate) fn quest_anchors(
         let from = accepts.remove(id).unwrap_or_default();
         let host = (decls.external.contains(id) && driven.contains(id))
             .then(|| host_gate(nodes.get(&NodeId::Quest(id.to_string()))));
-        if !from.is_empty() || host.as_ref().is_some_and(|h| *h != HostGate::Always) {
+        let routed = !from.is_empty() || host.as_ref().is_some_and(|h| *h != HostGate::Always);
+        if routed || (driven.contains(id) && decls.with_after.contains(id)) {
             anchors.push(Anchor {
                 kind: EdgeKind::Accept,
                 from,

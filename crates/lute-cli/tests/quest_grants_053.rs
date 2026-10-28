@@ -746,3 +746,38 @@ fn the_self_read_names_follows_as_the_hosts_condition() {
     let (code, out) = check(&dir);
     assert_eq!(code, 0, "{out}");
 }
+
+/// QReview053 Q1 (§7.1): a non-external accept-driven quest with `follows`
+/// and nothing accepting it is never activated: reach `Unknown`, its
+/// reachable constraint does not hold, `W-QUEST-NEVER-ACCEPTED` stays, and
+/// the declared `follows` stays metadata with its edge. Failing before:
+/// `Reachable [proven]` and the constraint held.
+#[test]
+fn a_source_less_accept_driven_quest_has_no_follows_route() {
+    let quests = format!(
+        "{}{}",
+        quest("intro", " start=\"visited('opening')\"", ""),
+        quest("gift", " follows=\"completed('intro')\"", ""),
+    );
+    let constraints =
+        "constraints:\n  - id: gift-reachable\n    kind: reachable\n    node: quest:gift\n";
+    let dir = project("q-sourceless", &quests, constraints, &[OPENING]);
+    let (_, out) = check(&dir);
+    assert!(out.contains("W-QUEST-NEVER-ACCEPTED"), "{out}");
+
+    let j = reach_json(&dir, "quest:gift");
+    assert_eq!(j["reach"], "unknown", "{j}");
+    assert_eq!(j["prereq"], "completed(\"intro\")", "{j}");
+    assert_eq!(
+        j["anchors"],
+        serde_json::json!([{ "kind": "accept", "from": [] }]),
+        "{j}"
+    );
+    let report = json(&dir, &["constraints", "--project", ".", "--json"]);
+    assert_ne!(report["constraints"][0]["verdict"], "holds", "{report}");
+    let g = graph(&dir);
+    assert!(
+        g.contains("    quest(intro) -> quest(gift) [completed]\n"),
+        "{g}"
+    );
+}
