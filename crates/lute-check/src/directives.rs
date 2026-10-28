@@ -726,12 +726,69 @@ pub const LANGUAGE_DIRECTIVES: &[LanguageDirective] = &[
     },
 ];
 
+/// How a checked value is named in its diagnostics (0.53.0 §6.1).
+#[derive(Clone, Copy, Debug)]
+pub(crate) enum ValueName<'a> {
+    /// An attribute (of a directive, a content line or a frontmatter key),
+    /// by its key: ``attribute `k` ``.
+    Attr(&'a str),
+    /// A position inside a structured plugin frontmatter value, as
+    /// [`crate::meta::FrontmatterPath::position`] renders it:
+    /// ``field `partner` of `talk` ``.
+    Position(&'a str),
+}
+
+impl ValueName<'_> {
+    /// ``attribute `k` ``, or the position.
+    fn subject(self) -> String {
+        match self {
+            ValueName::Attr(key) => format!("attribute `{key}`"),
+            ValueName::Position(position) => position.to_string(),
+        }
+    }
+
+    /// `` `k` ``, or the position.
+    fn bare(self) -> String {
+        match self {
+            ValueName::Attr(key) => format!("`{key}`"),
+            ValueName::Position(position) => position.to_string(),
+        }
+    }
+}
+
 /// Validate one supplied attribute's value against its declared type.
 ///
 /// A `Ref` (CEL `@expr`) value is left untyped here — CEL type/scope resolution
 /// is Task 4.3's job — so only literal `Str`/`BoolTrue` values are checked.
 pub(crate) fn check_attr_value(
     owner: &str,
+    adecl: &AttrDecl,
+    attr: &Attr,
+    snapshot: &CapabilitySnapshot,
+    providers: &ProviderSet,
+    domains: &BTreeMap<String, Domain>,
+    diags: &mut Vec<Diagnostic>,
+) {
+    check_value(
+        owner,
+        ValueName::Attr(&attr.key),
+        adecl,
+        attr,
+        snapshot,
+        providers,
+        domains,
+        diags,
+    );
+}
+
+/// [`check_attr_value`], the value named by `name` in every message.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "check_attr_value's inputs plus how its messages name the value"
+)]
+pub(crate) fn check_value(
+    owner: &str,
+    name: ValueName<'_>,
     adecl: &AttrDecl,
     attr: &Attr,
     snapshot: &CapabilitySnapshot,
@@ -747,9 +804,9 @@ pub(crate) fn check_attr_value(
                 "E-ATTR-TYPE",
                 Severity::Error,
                 format!(
-                    "`{}` of `{owner}` is localizable `text`, written as a quoted string; a \
+                    "{} of `{owner}` is localizable `text`, written as a quoted string; a \
                      `@def` value has no translation of its own",
-                    attr.key
+                    name.bare()
                 ),
                 attr.value_span,
             ));
@@ -759,46 +816,31 @@ pub(crate) fn check_attr_value(
 
     match &adecl.ty {
         Type::Enum(members) => {
-            check_enum_member(owner, &attr.key, members, attr, diags);
+            check_enum_member(owner, name, members, attr, diags);
         }
         Type::EnumFromOption(opt) => {
             // Owning plugin/option unresolvable from the snapshot API: skip
             // rather than emit a false E-BAD-ENUM (see module docs).
             if let Some(members) = resolve_option_domain(snapshot, opt) {
-                check_enum_member(owner, &attr.key, &members, attr, diags);
+                check_enum_member(owner, name, &members, attr, diags);
             }
         }
         Type::ProviderRef(provider) => {
-            check_provider_ref(provider, attr, providers, diags);
+            check_provider_ref(name, provider, attr, providers, diags);
         }
-        Type::Domain(name) => {
-            check_domain_member(owner, name, attr, domains, snapshot, providers, diags);
+        Type::Domain(domain) => {
+            check_domain_member(
+                owner, name, domain, attr, domains, snapshot, providers, diags,
+            );
         }
-        Type::Entity(kind) => check_entity_member(owner, kind, attr, domains, diags),
-        Type::AssetKind(kind) => check_asset_id(kind, attr, snapshot, providers, diags),
+        Type::Entity(kind) => check_entity_member(owner, name, kind, attr, domains, diags),
+        Type::AssetKind(kind) => check_asset_id(name, kind, attr, snapshot, providers, diags),
         ty => {
-            if let Some(lit) = literal_of(ty, &attr.value) {
-                if !type_accepts(ty, &lit) {
-                    diags.push(diag(
-                        "E-ATTR-TYPE",
-                        Severity::Error,
-                        format!(
-                            "attribute `{}` of `{owner}` expects {}",
-                            attr.key,
-                            describe(ty)
-                        ),
-                        attr.value_span,
-                    ));
-                }
-            } else {
+            if !literal_of(ty, &attr.value).is_some_and(|lit| type_accepts(ty, &lit)) {
                 diags.push(diag(
                     "E-ATTR-TYPE",
                     Severity::Error,
-                    format!(
-                        "attribute `{}` of `{owner}` expects {}",
-                        attr.key,
-                        describe(ty)
-                    ),
+                    format!("{} of `{owner}` expects {}", name.subject(), describe(ty)),
                     attr.value_span,
                 ));
             }
@@ -813,7 +855,7 @@ pub(crate) fn check_attr_value(
 /// content-line enum error name a directive that does not exist (#33, T1.4).
 fn check_enum_member(
     owner: &str,
-    key: &str,
+    name: ValueName<'_>,
     members: &[String],
     attr: &Attr,
     diags: &mut Vec<Diagnostic>,
@@ -835,7 +877,8 @@ fn check_enum_member(
             "E-BAD-ENUM",
             Severity::Error,
             format!(
-                "`{got}` is not a valid value for `{key}` of `{owner}` (expected one of: {}){hint}",
+                "`{got}` is not a valid value for {} of `{owner}` (expected one of: {}){hint}",
+                name.bare(),
                 members.join(", ")
             ),
             attr.value_span,
@@ -846,6 +889,7 @@ fn check_enum_member(
 /// Resolve a `providerRef` id against the pinned provider set (plugin §10):
 /// `Fresh` → ok, `Stale` → `W-CATALOG-STALE` warning, `Absent` → `E-UNKNOWN-ID`.
 fn check_provider_ref(
+    name: ValueName<'_>,
     provider: &str,
     attr: &Attr,
     providers: &ProviderSet,
@@ -858,7 +902,7 @@ fn check_provider_ref(
             diags.push(diag(
                 "E-ATTR-TYPE",
                 Severity::Error,
-                format!("attribute `{}` expects a `{provider}` id string", attr.key),
+                format!("{} expects a `{provider}` id string", name.subject()),
                 attr.value_span,
             ));
             return;
@@ -907,9 +951,14 @@ fn check_provider_ref(
 /// `crate::content_line::check_content_line_attrs`) call this DIRECTLY so
 /// their domain-typed values resolve through the exact SAME resolver a
 /// `{domain: X}`-typed directive attr uses, rather than a bespoke second
-/// membership check.
+/// membership check. `value` names the checked value in the messages.
+#[expect(
+    clippy::too_many_arguments,
+    reason = "the domain, the value and how it is named, the merged vocabulary and catalog, and the sink"
+)]
 pub(crate) fn check_domain_member(
     owner: &str,
+    value: ValueName<'_>,
     name: &str,
     attr: &Attr,
     domains: &BTreeMap<String, Domain>,
@@ -923,10 +972,7 @@ pub(crate) fn check_domain_member(
         diags.push(diag(
             "E-ATTR-TYPE",
             Severity::Error,
-            format!(
-                "attribute `{}` expects a `{name}` domain id string",
-                attr.key
-            ),
+            format!("{} expects a `{name}` domain id string", value.subject()),
             attr.value_span,
         ));
         return;
@@ -936,11 +982,11 @@ pub(crate) fn check_domain_member(
         // Step 1: a CLOSED domain's own membership wins — even over a
         // same-named provider (foundation A4 order; A5 reuses this resolver
         // for content-line `emotion`/`action`).
-        check_enum_member(owner, &attr.key, &dom.members, attr, diags);
+        check_enum_member(owner, value, &dom.members, attr, diags);
     } else if snapshot.providers.contains_key(name) {
         // Step 2: provider-backed (OPEN/registry-backed entity names, or a
         // name outside `domains` entirely that is a provider reference).
-        check_provider_ref(name, attr, providers, diags);
+        check_provider_ref(value, name, attr, providers, diags);
     } else if dom.is_some() {
         // Step 3: OPEN, non-provider domain — registry-style ids minted by
         // the engine at runtime (A3); always-accept, never closed-checked.
@@ -952,8 +998,8 @@ pub(crate) fn check_domain_member(
             format!(
                 "`{name}` is not a declared domain — declare its members in an `enums:` block \
                  in this document's own frontmatter, in a project schema reached through \
-                 `uses:`, or in a plugin's `enums` export before using `{}` (dsl 0.9.0 D-C)",
-                attr.key
+                 `uses:`, or in a plugin's `enums` export before using {} (dsl 0.9.0 D-C)",
+                value.bare()
             ) + &crate::renames::renamed_domain_hint(name, domains),
             attr.value_span,
         ));
@@ -968,6 +1014,7 @@ pub(crate) fn check_domain_member(
 /// kind nobody declares is `E-DOMAIN-UNKNOWN`.
 fn check_entity_member(
     owner: &str,
+    name: ValueName<'_>,
     kind: &str,
     attr: &Attr,
     domains: &BTreeMap<String, Domain>,
@@ -980,8 +1027,8 @@ fn check_entity_member(
                 "E-ATTR-TYPE",
                 Severity::Error,
                 format!(
-                    "attribute `{}` of `{owner}` expects a member of entity kind `{kind}`",
-                    attr.key
+                    "{} of `{owner}` expects a member of entity kind `{kind}`",
+                    name.subject()
                 ),
                 attr.value_span,
             ));
@@ -996,8 +1043,8 @@ fn check_entity_member(
             "E-BAD-ENUM",
             Severity::Error,
             format!(
-                "`{id}` is not a member of entity kind `{kind}` (attribute `{}` of `{owner}`){}",
-                attr.key,
+                "`{id}` is not a member of entity kind `{kind}` ({} of `{owner}`){}",
+                name.subject(),
                 crate::rel_schema::member_hint(id, &dom.members)
             ),
             attr.value_span,
@@ -1008,10 +1055,10 @@ fn check_entity_member(
                 "E-DOMAIN-UNKNOWN",
                 Severity::Error,
                 format!(
-                    "attribute `{}` of `{owner}` is typed `{{ entity: {kind} }}`, but `{kind}` is \
+                    "{} of `{owner}` is typed `{{ entity: {kind} }}`, but `{kind}` is \
                      not a declared entity kind — declare it under `entities:` in a project \
                      schema this document reaches through `uses:` (dsl 0.26.0 §2.5){}{}",
-                    attr.key,
+                    name.subject(),
                     crate::rel_schema::member_hint(kind, &names),
                     crate::renames::renamed_domain_hint(kind, domains)
                 ),
@@ -1027,6 +1074,7 @@ fn check_entity_member(
 /// decomposes + validates each segment. The engine (compose/query-from-attrs,
 /// fallback resolution) is out of scope — this only validates an AUTHORED id.
 fn check_asset_id(
+    name: ValueName<'_>,
     kind_name: &str,
     attr: &Attr,
     snapshot: &CapabilitySnapshot,
@@ -1039,7 +1087,7 @@ fn check_asset_id(
             diags.push(diag(
                 "E-ATTR-TYPE",
                 Severity::Error,
-                format!("attribute `{}` expects an asset id string", attr.key),
+                format!("{} expects an asset id string", name.subject()),
                 attr.value_span,
             ));
             return;

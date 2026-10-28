@@ -13,13 +13,17 @@ pub const W_DOMAIN_UNREAD: &str = "W-DOMAIN-UNREAD";
 /// dsl 0.10.0 §11.1: this is the set of domain-typed attribute slots in the
 /// RESOLVED capability snapshot, not a fixed list — a plugin directive
 /// declaring `{ domain: reason }` makes `reason` read, and the warning stops.
-/// Three sources, and they are the whole closed rule:
+/// The sources, and they are the whole closed rule:
 ///  1. every directive's own `AttrDecl`s;
 ///  2. every `stampAttrs` decl, on whichever surfaces it applies to
 ///     (plugin §14.1, 0.50.0 §3.3);
 ///  3. the content line's two domain slots
 ///     ([`crate::content_line::CONTENT_LINE_DOMAIN_SLOTS`]), which are not
-///     `AttrDecl`s because a content line is not a directive.
+///     `AttrDecl`s because a content line is not a directive;
+///  4. every plugin frontmatter key's type, at any depth (0.53.0 §6.2): each
+///     authored value is checked against what it names
+///     ([`crate::meta::check_frontmatter_refs`]);
+///  5. occasion target domains and reward kinds, below.
 pub fn domain_reading_set(snapshot: &CapabilitySnapshot) -> BTreeSet<String> {
     let mut out = BTreeSet::new();
     for decl in snapshot.directives.values() {
@@ -52,6 +56,9 @@ pub fn domain_reading_set(snapshot: &CapabilitySnapshot) -> BTreeSet<String> {
         for attr in &kind.attrs {
             collect_domain_names(&attr.ty, &mut out);
         }
+    }
+    for ty in snapshot.frontmatter.values() {
+        collect_domain_names(ty, &mut out);
     }
     out
 }
@@ -202,7 +209,8 @@ pub fn check_project_domain_reads(
                 message: format!(
                     "domain `{name}` is declared but no active construct reads it: no directive \
                      attribute, content-line slot, or state path is typed `{{ domain: {name} }}`, \
-                     no `relations:` entry takes it as an argument, no `per: {name}` state \
+                     no plugin frontmatter key is typed by it, no `relations:` entry takes it as \
+                     an argument, no `per: {name}` state \
                      family or `subsetOf: {name}` kind builds on it, and no rule or condition \
                      queries `{name}(…)` — so it enforces nothing and only reaches the \
                      artifact's `enums` array. Read it, or remove the declaration \

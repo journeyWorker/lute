@@ -1848,8 +1848,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-DOMAIN-UNREAD",
-        summary: "A declared domain is not read by any active construct — no directive attribute, content-line slot, state path, `relations:` argument, `per:`/`subsetOf:` family, or rule/condition query names it — so it enforces nothing.",
-        spec: &["dsl 0.10.0 §11.1"],
+        summary: "A declared domain is not read by any active construct — no directive attribute, content-line slot, plugin frontmatter key, state path, `relations:` argument, `per:`/`subsetOf:` family, or rule/condition query names it — so it enforces nothing.",
+        spec: &["dsl 0.10.0 §11.1", "dsl 0.53.0 §6.2"],
     },
     Code {
         code: "W-ENTRY-REF-UNKNOWN",

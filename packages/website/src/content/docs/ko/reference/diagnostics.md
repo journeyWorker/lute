@@ -2138,9 +2138,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-DOMAIN-UNREAD
 
-선언된 도메인을 어떤 활성 구성 요소도 읽지 않습니다 — 지시어 속성, 대사 슬롯, 상태 경로, `relations:` 인자, `per:`/`subsetOf:` 패밀리, 규칙·조건 질의 중 어느 것도 이를 참조하지 않아 아무것도 강제하지 않습니다.
+선언된 도메인을 어떤 활성 구성 요소도 읽지 않습니다 — 지시어 속성, 대사 슬롯, 플러그인 프런트매터 키, 상태 경로, `relations:` 인자, `per:`/`subsetOf:` 패밀리, 규칙·조건 질의 중 어느 것도 이를 참조하지 않아 아무것도 강제하지 않습니다.
 
-명세: [dsl 0.10.0 §11.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md)
+명세: [dsl 0.10.0 §11.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md), [dsl 0.53.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### W-ENTRY-REF-UNKNOWN
 

@@ -2124,9 +2124,9 @@ Spec: [dsl 0.26.0 §2.8](https://github.com/journeyWorker/lute/blob/main/docs/pr
 
 ### W-DOMAIN-UNREAD
 
-A declared domain is not read by any active construct — no directive attribute, content-line slot, state path, `relations:` argument, `per:`/`subsetOf:` family, or rule/condition query names it — so it enforces nothing.
+A declared domain is not read by any active construct — no directive attribute, content-line slot, plugin frontmatter key, state path, `relations:` argument, `per:`/`subsetOf:` family, or rule/condition query names it — so it enforces nothing.
 
-Spec: [dsl 0.10.0 §11.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md)
+Spec: [dsl 0.10.0 §11.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md), [dsl 0.53.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### W-ENTRY-REF-UNKNOWN
 
