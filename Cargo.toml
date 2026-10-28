@@ -73,5 +73,12 @@ wildcard_imports = "warn"
 # Tests, CI gates and the conformance harness run the dev binary over every
 # dogfood game; at opt-level 0 their runtime dwarfs the compile. Level 1 keeps
 # debug assertions and overflow checks and runs the corpus several times faster.
+# Debug info: line tables for our crates (backtraces keep file:line), none for
+# dependencies (canon, `cargo test --workspace --no-run` from scratch: 22.6 GB of
+# target with full debug info, 15.4 GB with this; forca-rust sandbox, 2026-10-28).
 [profile.dev]
 opt-level = 1
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+debug = false
