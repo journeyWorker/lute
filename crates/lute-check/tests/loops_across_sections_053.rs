@@ -207,6 +207,70 @@ fn two_back_edges_reach_the_head_through_the_later_one() {
     );
 }
 
+/// The `(code, line)` diagnostics of a scene that shows `mira`, then uses
+/// component `loopy` (frontmatter `params`, use arguments `args`) whose body
+/// is `body`.
+fn through_component(params: &str, body: &str, args: &str) -> Vec<(String, u32)> {
+    let dir = lute_scratch::ScratchDir::new();
+    std::fs::write(
+        dir.join("loopy.lute"),
+        format!("---\ncomponent: loopy\n{params}---\n## One\n\n{body}\n"),
+    )
+    .unwrap();
+    let text = format!(
+        "---\nkind: scene\nid: loops\ncomponents: [loopy.lute]\n{FRONT}---\n## One\n\n\
+         ::actor{{character=\"mira\"}}\n::use{{component=\"loopy\"{args}}}\n"
+    );
+    let (doc, _) = lute_syntax::parse(&text);
+    let (meta, _) = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+    let components = lute_check::resolve_components(&dir, &meta.components, doc.meta.span);
+    let input = CheckInput::new(
+        text,
+        "loops".into(),
+        Mode::Author,
+        lute_check::InputSources::from_parts(
+            lute_manifest::core::load_core_snapshot(),
+            Default::default(),
+            Default::default(),
+            components,
+            Default::default(),
+        ),
+    );
+    check(&input)
+        .diagnostics
+        .into_iter()
+        .map(|d| (d.code, d.span.line))
+        .collect()
+}
+
+/// Inside a `::use` body the component's own sections are the loop scope:
+/// a back edge in its second section reaches the head in its first, so the
+/// sectioned and flat bodies report the same `W-STAGE-ABSENT` at the use,
+/// speaker-bound copies included (failing before: the fold searched the
+/// importing document's sections and the sectioned body reported nothing).
+#[test]
+fn a_component_loop_spans_its_own_sections() {
+    for (params, speaker, args) in [
+        ("", "@mira", ""),
+        ("params:\n  who: speaker\n", "@@who", " who=\"mira\""),
+    ] {
+        let sectioned = format!(
+            "::label{{name=\"top\"}}\n{speaker}: Again.\n\n## Two\n\n\
+             ::actor{{character=\"mira\" action=\"hide\"}}\n::jump{{to=\"top\" max=\"2\"}}"
+        );
+        let flat = sectioned.replace("\n## Two\n\n", "");
+        let ds = through_component(params, &sectioned, args);
+        assert!(
+            ds.iter().any(|(code, _)| code == "W-STAGE-ABSENT"),
+            "{speaker}: {ds:?}"
+        );
+        assert_eq!(ds, through_component(params, &flat, args), "{speaker}");
+    }
+}
+
 /// Presence: a write in a later section kills the guard read at the head.
 fn presence_input(text: &str) -> CheckInput {
     let mut snapshot = lute_manifest::core::load_core_snapshot();

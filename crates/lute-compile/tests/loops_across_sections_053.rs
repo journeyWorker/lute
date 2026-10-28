@@ -15,6 +15,11 @@ const FRONT: &str =
 /// document order (positions carry the section number; their order does
 /// not change).
 fn commands(text: &str) -> Vec<Value> {
+    compiled(text, Default::default())
+}
+
+/// [`commands`] of `text` with its imported `components`.
+fn compiled(text: &str, components: lute_check::ComponentSet) -> Vec<Value> {
     let input = CheckInput::new(
         text.to_string(),
         "flow".into(),
@@ -23,7 +28,7 @@ fn commands(text: &str) -> Vec<Value> {
             lute_manifest::core::load_core_snapshot(),
             Default::default(),
             Default::default(),
-            Default::default(),
+            components,
             Default::default(),
         ),
     );
@@ -112,4 +117,55 @@ fn two_back_edges_compile_as_flat() {
         injected(&sectioned).contains(&"auto-anchor-on-show".to_string()),
         "{sectioned:?}"
     );
+}
+
+/// The commands of `body` using component `loopy`, a single-section loop
+/// whose label is `label`.
+fn with_component(label: &str, body: &str) -> Vec<Value> {
+    let dir = lute_scratch::ScratchDir::new();
+    std::fs::write(
+        dir.join("loopy.lute"),
+        format!(
+            "---\ncomponent: loopy\n---\n## One\n\n::label{{name=\"{label}\"}}\n\
+             ::actor{{character=\"mira\"}}\n@mira: Again.\n::jump{{to=\"{label}\" max=\"2\"}}\n"
+        ),
+    )
+    .unwrap();
+    let front = FRONT
+        .strip_suffix("---\n")
+        .expect("FRONT closes its frontmatter");
+    let text = format!("{front}components: [loopy.lute]\n---\n## One\n\n{body}\n");
+    let (doc, _) = lute_syntax::parse(&text);
+    let (meta, _) = lute_check::parse_meta(
+        &doc.meta,
+        &lute_manifest::snapshot::CapabilitySnapshot::default(),
+    );
+    let components = lute_check::resolve_components(&dir, &meta.components, doc.meta.span);
+    compiled(&text, components)
+}
+
+/// A component's labels are its own scope: its loop region stays inside its
+/// expansion, so a caller loop of the same name after it, in the same
+/// section or the next one, leaves its head alone (failing before: the
+/// caller's hide reached the component's head and its `::actor` took an
+/// injected `center` anchor over the caller's `left`).
+#[test]
+fn a_component_loop_stays_inside_its_expansion() {
+    for between in ["\n", "\n\n## Two\n\n"] {
+        let body = format!(
+            "::actor{{character=\"mira\" anchor=\"left\"}}\n::use{{component=\"loopy\"}}{between}\
+             ::label{{name=\"top\"}}\n@narrator: Later.\n::actor{{character=\"mira\" action=\"hide\"}}\n\
+             ::jump{{to=\"top\" max=\"2\"}}"
+        );
+        let same = with_component("top", &body);
+        assert!(
+            !injected(&same).contains(&"auto-anchor-on-show".to_string()),
+            "{between:?}: {same:?}"
+        );
+        assert_eq!(
+            injected(&same),
+            injected(&with_component("again", &body)),
+            "{between:?}"
+        );
+    }
 }

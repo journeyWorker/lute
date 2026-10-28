@@ -223,13 +223,15 @@ impl<'d> Region<'d> {
 }
 
 /// The region of the loop headed by `head`, whose label is followed in its
-/// body by `rest`. `top` is the document's top-level sections when the walk
-/// walks them (else empty): when `rest` is the end of one of them, the
-/// sections after it are one loop scope with it (dsl 0.53.0 §9.2) and the
-/// search runs through **all** of them, so a back edge in the head's own
-/// section does not stop it (several bounded jumps may loop to one head).
-/// Inside a nested body no section follows. The region rules (dsl 0.51.0
-/// §3.2) keep every back edge in the head's scope.
+/// body by `rest`. `top` is the top-level sections of the scope the walk
+/// walks — the document's, or inside a `::use` body the component's own
+/// (else empty): when `rest` is the end of one of them, the sections after
+/// it are one loop scope with it (dsl 0.53.0 §9.2) and the search runs
+/// through **all** of them, so a back edge in the head's own section does
+/// not stop it (several bounded jumps may loop to one head). Inside a nested
+/// body no section follows. The region rules (dsl 0.51.0 §3.2) keep every
+/// back edge in the head's scope; a caller inlining a component bounds
+/// `rest` to the component's expansion (its labels are its own scope).
 pub(crate) fn region<'d>(rest: &'d [Node], top: &'d [Section], head: &str) -> Region<'d> {
     let later = later_sections(rest, top);
     let back = |nodes: &[Node]| nodes.iter().rposition(|n| holds_back_edge(n, head));
