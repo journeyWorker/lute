@@ -388,8 +388,11 @@ The rule now names its scope:
   permission profile) stay distinct. `build_input` (a fresh cache) is for
   single-document commands only.
 - A **long-lived process** (the LSP) keeps one input cache per root across
-  requests and invalidates it exactly when an input file it read changes
-  (fingerprints, watched-file and save notifications). This is the one
+  requests. It records every filesystem dependency the cache observed
+  (lookups with their outcome, directory listings, files), validates them
+  on each request with a (length, mtime, ctime, inode) fingerprint and a
+  content hash when that changes, and bounds what it retains to the
+  configurations open documents use plus a small LRU. This is the one
   cross-invocation cache, measured in 0.53 (40 ms per request at 4 800
   slots); other cross-invocation caching stays out until measured.
 - A command builds a checked `ProjectModel` only when it reads check
