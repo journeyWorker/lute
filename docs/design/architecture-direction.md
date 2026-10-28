@@ -372,6 +372,26 @@ S5 (a cache returns the shared value, not an owned copy). It is enforced by
 `scripts/vocab-grid.py gate` (spec 0.49.0 §9.8) in `test.yml`, and by the
 `vocab` tier of the A/B benchmark gate.
 
+**Amendment (2026-10-28, 0.53.0, #228).** 0.49 fixed `check --project` but
+not the other commands: `lute lint` built the project once per document
+(27× marginal CPU, 5× marginal RSS per document from 150 to 4 800 slots),
+and so did `check <files…>`, `loc export`/`loc report` and `doctor` (29–45×);
+four commands built a whole checked model to read one manifest field (spec
+`scenario-dsl/0.53.0.md` §3, decision note `2026-10-28-lute-0.53-decisions.md`).
+The rule now names its scope:
+
+- **Every command** that reads two or more documents of a project builds
+  the project input layer (`InputCache`: base, vocabularies, components)
+  once per root for the whole run — directly or through one `ProjectModel`
+  per root from one `ModelMemo` — and holds per document only its overlay.
+  `build_input` (a fresh cache) is for single-document commands only.
+- A command builds a checked `ProjectModel` only when it reads check
+  results; a manifest field is read from the manifest.
+- Each such command has a tier in `vocab-grid.py gate` that asserts growth
+  (marginal CPU and RSS per document at 4 800 slots within 1.5× of 150) and
+  its cost relative to `check`. A new multi-document command adds its tier
+  in the change that adds the command.
+
 ## 3. Rejected
 
 | Proposal | Source | Why |
