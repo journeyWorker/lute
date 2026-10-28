@@ -121,7 +121,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_check::meta::canonical_episode_key;
-use lute_compile::locale::LocaleBundle;
+use lute_compile::locale::{LocaleBundle, E_L10N_MARKERS};
 use lute_core_span::Severity;
 use lute_load::{build_input_with, find_lute_files, project_root_for, InputCache};
 use lute_manifest::project::IdentityTemplates;
@@ -1251,7 +1251,15 @@ struct ImportRow {
 /// no stable identity yet, and a single stderr summary points at `lute tag`
 /// exactly as `export`'s own untagged advisory does.
 ///
-/// Exit `0` on success, `1` on `E-LOCALE-BUNDLE`, `2` on an I/O failure.
+/// ## `E-L10N-MARKERS` (exit 1, 0.53.0 §8.1)
+/// A translated text whose `{{…}}` markers do not parse as its source's
+/// would: a `{{` with no `}}`, or a marker that opens on a literal brace
+/// (`{{{run.a}}`, with the `E-INTERP-BRACE` advice). Every one is reported
+/// and no bundle is written. Whether the markers are the source's is
+/// judged by `compile --locale-bundle`, which has the source text.
+///
+/// Exit `0` on success, `1` on `E-LOCALE-BUNDLE` or `E-L10N-MARKERS`, `2` on
+/// an I/O failure.
 pub fn run_import(files: &[PathBuf], out: Option<&Path>, json: bool) -> ExitCode {
     if json && out.is_none() {
         return crate::envelope::fail(
@@ -1265,6 +1273,7 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>, json: bool) -> ExitCode
     let mut diagnostics: Vec<serde_json::Value> = Vec::new();
     let mut errors = 0usize;
     let mut skipped = 0usize;
+    let mut marker_errors = 0usize;
     let mut triples: Vec<(String, String, String)> = Vec::new();
     let mut hashes: Vec<(String, String, String)> = Vec::new();
     // `(locale, lineId)` already claimed — the duplicate guard is per LOCALE,
@@ -1352,6 +1361,22 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>, json: bool) -> ExitCode
                 errors += 1;
                 continue;
             }
+            // 0.53.0 §8.1: a translation's markers parse as the source's
+            // would. Whether they are the source's markers needs the source
+            // text, so `compile --locale-bundle` judges that.
+            if let Some(why) = lute_compile::locale::marker_syntax_fault(&row.text) {
+                markers_error(
+                    &mut diagnostics,
+                    file,
+                    &format!(
+                        "row {}: `{locale}` text for `{line_id}` cannot be merged: its markers do \
+                         not parse ({why})",
+                        row.row
+                    ),
+                );
+                marker_errors += 1;
+                continue;
+            }
             if let Some(hash) = row.source_hash {
                 hashes.push((line_id.clone(), locale.clone(), hash));
             }
@@ -1380,8 +1405,13 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>, json: bool) -> ExitCode
         )
     };
 
-    if errors > 0 {
-        eprintln!("{errors} {E_LOCALE_BUNDLE} error(s); no bundle emitted");
+    if errors > 0 || marker_errors > 0 {
+        if errors > 0 {
+            eprintln!("{errors} {E_LOCALE_BUNDLE} error(s); no bundle emitted");
+        }
+        if marker_errors > 0 {
+            eprintln!("{marker_errors} {E_L10N_MARKERS} error(s); no bundle emitted");
+        }
         if json {
             return report(None, 1);
         }
@@ -1430,6 +1460,17 @@ fn bundle_error(diagnostics: &mut Vec<serde_json::Value>, file: &Path, message: 
     diagnostics.push(serde_json::json!({
         "path": file.display().to_string(),
         "code": E_LOCALE_BUNDLE,
+        "message": message,
+    }));
+}
+
+/// One `E-L10N-MARKERS` line (0.53.0 §8.1), naming the file like
+/// [`bundle_error`].
+fn markers_error(diagnostics: &mut Vec<serde_json::Value>, file: &Path, message: &str) {
+    eprintln!("{}: error [{E_L10N_MARKERS}] {message}", file.display());
+    diagnostics.push(serde_json::json!({
+        "path": file.display().to_string(),
+        "code": E_L10N_MARKERS,
         "message": message,
     }));
 }

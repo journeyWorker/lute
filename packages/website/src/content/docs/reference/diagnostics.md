@@ -872,6 +872,12 @@ An `entities:` block declares the same entity kind name twice, two schemas decla
 
 Spec: [dsl 0.3.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
 
+### E-L10N-MARKERS
+
+A translated text — a line, an option label, a prompt or a directive `text` attribute — does not show its source's `{{…}}` markers: a marker does not parse (a `{{` with no `}}`, or a marker opened on a literal brace, `{{{run.a}}`), or the markers are not the source's, each as often (any order; spacing inside a marker is free). The runtime would show such a marker verbatim, so the translation is not merged; `lute loc import` refuses a marker that does not parse.
+
+Spec: [dsl 0.53.0 §8.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
+
 ### E-L10N-MODIFIERS
 
 A line translation's inline modifiers (names, span/leaf form, and attributes) differ from its source line's, or its markup does not parse, so the translation is not merged.

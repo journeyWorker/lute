@@ -36,6 +36,12 @@
 //! - dsl 0.47.0 §3.2: a merged `(lineId, locale)` whose stored `sourceHashes`
 //!   value differs from [`source_hash`] of the record's current plain source
 //!   text is [`W_L10N_STALE`]. The translation is still merged.
+//! - 0.53.0 §8.1 (#241): every translated text — a line's, an option
+//!   label's, a prompt's, a directive `text` attribute's — shows the
+//!   source's `{{…}}` markers: they parse under the source rules
+//!   ([`marker_syntax_fault`]) and are the source's, each as often, in any
+//!   order ([`marker_fault`]). Any other is [`E_L10N_MARKERS`] and is not
+//!   merged: the runtime would show such a marker verbatim.
 
 use std::collections::BTreeMap;
 
@@ -58,6 +64,11 @@ pub const W_L10N_MISSING: &str = "W-L10N-MISSING";
 /// normalized attrs) differs from its source line's, or whose markup does not
 /// parse (dsl 0.37.0 §6). Error-grade: the translation is not merged.
 pub const E_L10N_MODIFIERS: &str = "E-L10N-MODIFIERS";
+
+/// A translated text whose `{{…}}` markers do not parse under the source
+/// rules, or are not the source text's markers each as often (0.53.0 §8.1).
+/// Error-grade: the translation is not merged.
+pub const E_L10N_MARKERS: &str = "E-L10N-MARKERS";
 
 /// The `schemaVersion` [`LocaleBundle::to_json`] writes (dsl 0.47.0 §3.2:
 /// `sourceHashes` joined the shape). [`LocaleBundle::parse`] also reads
@@ -328,8 +339,9 @@ fn string_table(
 /// Merge `bundle` into `artifact`, returning one [`W_L10N_MISSING`] warning per
 /// `(lineId, locale)` pair the document needs and the bundle does not carry,
 /// one [`W_L10N_STALE`] warning per merged pair translated from a different
-/// source text, and one [`E_L10N_MODIFIERS`] error per refused line
-/// translation.
+/// source text, one [`E_L10N_MODIFIERS`] error per refused line translation
+/// and one [`E_L10N_MARKERS`] error per translation whose markers are not the
+/// source's.
 ///
 /// Runs over the FINISHED execution IR, i.e. strictly downstream of
 /// [`crate::address::assign_addresses`] — every `lineId` is final. Iteration is
@@ -378,11 +390,12 @@ pub fn merge_locales(artifact: &mut ExecutionIr, bundle: &LocaleBundle) -> Vec<D
     diags
 }
 
-/// Fill ONE option label's or prompt's locale map from the bundle and report
-/// its gaps and stale translations. `source` is the record's plain source
-/// text (the stale check's input). Shares [`missing_diag`] and
-/// [`StaleCheck`] with [`bind_line`], so the arms can never diverge on the
-/// diagnostic wording.
+/// Fill ONE option label's, prompt's or `text` attribute's locale map from
+/// the bundle and report its gaps and stale translations. `source` is the
+/// record's IR text (the marker and stale checks' input); a translation
+/// whose markers are not the source's is refused ([`marker_fault`]). Shares
+/// [`missing_diag`] and [`StaleCheck`] with [`bind_line`], so the arms can
+/// never diverge on the diagnostic wording.
 fn bind(
     line_id: &str,
     source: &str,
@@ -397,6 +410,10 @@ fn bind(
     // completeness CHECK is scoped to the declared axis.
     if let Some(texts) = entry {
         for (locale, text) in texts {
+            if let Some(why) = marker_fault(text, source) {
+                diags.push(markers_diag(locale, line_id, &why));
+                continue;
+            }
             target.insert(locale.clone(), text.clone());
             stale.check(locale, diags);
         }
@@ -409,10 +426,11 @@ fn bind(
 }
 
 /// A line's translations (dsl 0.37.0 §6): each runs the inline grammar; one
-/// whose modifier multiset matches the source's merges its plain derivation
+/// whose modifier multiset matches the source's and whose plain derivation
+/// shows the source's markers ([`marker_fault`]) merges that derivation
 /// into `texts` (and, for a modified source line, its segments into
-/// `localeSegments`), any other is an [`E_L10N_MODIFIERS`] error. The
-/// completeness check is [`bind`]'s.
+/// `localeSegments`); any other is an [`E_L10N_MODIFIERS`] or
+/// [`E_L10N_MARKERS`] error. The completeness check is [`bind`]'s.
 fn bind_line(l: &mut LineCmd, bundle: &LocaleBundle, diags: &mut Vec<Diagnostic>) {
     let entry = bundle.entries.get(&l.line_id);
     let mut stale = StaleCheck::new(bundle, &l.line_id, &l.text);
@@ -436,8 +454,12 @@ fn bind_line(l: &mut LineCmd, bundle: &LocaleBundle, diags: &mut Vec<Diagnostic>
             diags.push(modifiers_diag(locale, &l.line_id, &why));
             continue;
         }
-        l.texts
-            .insert(locale.clone(), lute_syntax::ast::inline_plain_text(&nodes));
+        let plain = lute_syntax::ast::inline_plain_text(&nodes);
+        if let Some(why) = marker_fault(&plain, &l.text) {
+            diags.push(markers_diag(locale, &l.line_id, &why));
+            continue;
+        }
+        l.texts.insert(locale.clone(), plain);
         if !l.modifiers.is_empty() {
             l.locale_segments
                 .insert(locale.clone(), crate::lower::inline_segments(&nodes));
@@ -500,12 +522,90 @@ fn render_multiset(set: &BTreeMap<String, usize>) -> String {
     format!("[{}]", items.join(", "))
 }
 
+/// Why a translated text's `{{…}}` markers cannot be read as the source's
+/// are read (0.53.0 §8.1), as `CODE: message` of the diagnostic its source
+/// would get: a `{{` with no `}}` after it (`E-INTERP-UNTERMINATED`), or a
+/// marker that opens on a literal brace run (`E-INTERP-BRACE`, with the
+/// marker meant and its two spellings, 0.53.0 §8). `None` when every marker
+/// parses. It needs no source text, so `lute loc import` runs it too.
+pub fn marker_syntax_fault(text: &str) -> Option<String> {
+    use lute_syntax::line_text::{brace_opened, interp_sites, InterpSite};
+    interp_sites(text).find_map(|site| match site {
+        InterpSite::Unterminated { .. } => Some(format!(
+            "{}: `{{{{` has no closing `}}}}`",
+            lute_syntax::parser::E_INTERP_UNTERMINATED
+        )),
+        InterpSite::Marker { start, end, .. } => {
+            let (n, meant) = brace_opened(&text[start + 2..end - 2])?;
+            Some(format!(
+                "{}: {}",
+                lute_syntax::parser::E_INTERP_BRACE,
+                lute_syntax::parser::interp_brace_message(n, &format!("{{{{{meant}}}}}"))
+            ))
+        }
+        InterpSite::Escaped { .. } => None,
+    })
+}
+
+/// Why `text`, a translation of the IR text `source`, cannot be merged for
+/// its markers (0.53.0 §8.1): [`marker_syntax_fault`], or markers other than
+/// the source's — each source marker as often as the source shows it, in
+/// any order, compared by the trimmed interior, which is how the runtime
+/// matches a translation's marker to the source value it shows.
+fn marker_fault(text: &str, source: &str) -> Option<String> {
+    if let Some(why) = marker_syntax_fault(text) {
+        return Some(format!("its markers do not parse ({why})"));
+    }
+    let mut balance: BTreeMap<&str, isize> = BTreeMap::new();
+    for (start, end) in lute_syntax::line_text::interp_markers(source) {
+        *balance
+            .entry(source[start + 2..end - 2].trim())
+            .or_default() += 1;
+    }
+    for (start, end) in lute_syntax::line_text::interp_markers(text) {
+        *balance.entry(text[start + 2..end - 2].trim()).or_default() -= 1;
+    }
+    let listed = |missing: bool| {
+        balance
+            .iter()
+            .filter(|(_, n)| if missing { **n > 0 } else { **n < 0 })
+            .map(|(marker, n)| match n.unsigned_abs() {
+                1 => format!("`{{{{{marker}}}}}`"),
+                n => format!("`{{{{{marker}}}}}`×{n}"),
+            })
+            .collect::<Vec<_>>()
+    };
+    let (missing, extra) = (listed(true), listed(false));
+    if missing.is_empty() && extra.is_empty() {
+        return None;
+    }
+    let mut parts = Vec::with_capacity(2);
+    if !missing.is_empty() {
+        parts.push(format!("missing {}", missing.join(", ")));
+    }
+    if !extra.is_empty() {
+        parts.push(format!("extra {}", extra.join(", ")));
+    }
+    Some(format!(
+        "its markers differ from the source's ({}): a translation shows each `{{{{…}}}}` \
+         marker of its source as often as the source does, in any order",
+        parts.join("; ")
+    ))
+}
+
 fn modifiers_diag(locale: &str, line_id: &str, why: &str) -> Diagnostic {
     Diagnostic {
         code: E_L10N_MODIFIERS.to_string(),
         severity: Severity::Error,
         message: format!("`{locale}` text for `{line_id}` is not merged: {why}"),
         ..missing_diag(locale, line_id)
+    }
+}
+
+fn markers_diag(locale: &str, line_id: &str, why: &str) -> Diagnostic {
+    Diagnostic {
+        code: E_L10N_MARKERS.to_string(),
+        ..modifiers_diag(locale, line_id, why)
     }
 }
 
@@ -702,6 +802,34 @@ mod tests {
         assert_eq!(
             source_hash(""),
             "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+    }
+
+    /// 0.53.0 §8.1: markers are read by the source rule on both sides — an
+    /// escaped `{{` is literal text, spacing inside a marker is free, a
+    /// format hint is part of the marker.
+    #[test]
+    fn marker_parity_reads_markers_by_the_source_rule() {
+        assert_eq!(marker_fault("a \\{{x}} {{ run.a }}", "b {{run.a}}"), None);
+        assert_eq!(
+            marker_fault("{{run.b}}{{run.a}}", "{{run.a}} {{run.b}}"),
+            None
+        );
+        assert_eq!(marker_fault("plain", "plain"), None);
+        // A literal `{{` in the source is no marker a translation may show.
+        assert!(
+            marker_fault("a {{x}}", "a \\{{x}}").is_some_and(|why| why.contains("extra `{{x}}`"))
+        );
+        // An even backslash run leaves a marker (IR encoding, lute 0.47.1).
+        assert_eq!(marker_fault("\\\\{{run.a}}", "x \\\\{{run.a}}"), None);
+        assert!(marker_fault("{{run.a:ordinal}}", "{{run.a}}")
+            .is_some_and(|why| { why.contains("missing `{{run.a}}`; extra `{{run.a:ordinal}}`") }));
+        assert_eq!(marker_syntax_fault("\\{{{run.a}}"), None);
+        assert!(marker_syntax_fault("{{{{run.a}}")
+            .is_some_and(|why| why.starts_with("E-INTERP-BRACE: a literal `{{` directly before")));
+        assert_eq!(
+            marker_syntax_fault("x {{run.a").as_deref(),
+            Some("E-INTERP-UNTERMINATED: `{{` has no closing `}}`")
         );
     }
 }

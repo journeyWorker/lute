@@ -59,11 +59,12 @@ once: false
 @narrator{code=\"0030\"}: Total {{ run.a }}.
 ";
 
-/// The ko translations: line 0010 reorders its markers and adds one the
-/// source does not have; line 0020 moves `{{run.b}}` into the modified run;
-/// line 0030 spaces its markers unlike the source and writes an escaped
-/// `\{{run.a}}`, which stays literal (lute 0.47.1 §3).
-const KO_0010: &str = "먼저 {{ run.b }}, 그다음 {{run.a}} {{run.c}}.";
+/// The ko translations: line 0010 reorders and spaces its markers; line 0020
+/// moves `{{run.b}}` into the modified run; line 0030 spaces its markers
+/// unlike the source and writes an escaped `\{{run.a}}`, which stays literal
+/// (lute 0.47.1 §3). (A marker the source does not have is `E-L10N-MARKERS`
+/// since 0.53.0 §8.1: `l10n_markers_053.rs`.)
+const KO_0010: &str = "먼저 {{ run.b }}, 그다음 {{run.a}}.";
 const KO_0020: &str = ":speed[{{run.b}} 세기]{rate=1.5} 그리고 {{run.a}}.";
 const KO_0030: &str = "합계 {{run.a}}, 글자 \\{{run.a}}.";
 
@@ -171,8 +172,8 @@ fn a_line_record_carries_its_translations_rendered_by_marker_text() {
     assert_eq!(lines[0]["text"], "First 3, then 5.");
     assert_eq!(
         lines[0]["texts"],
-        json!({"ko": "먼저 5, 그다음 3 {{run.c}}."}),
-        "reordered and spaced markers keep their values; an unknown one stays as written"
+        json!({"ko": "먼저 5, 그다음 3."}),
+        "reordered and spaced markers keep their values"
     );
     assert!(lines[0].get("localeSegments").is_none(), "{:#?}", lines[0]);
 

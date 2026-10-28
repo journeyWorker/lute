@@ -227,7 +227,8 @@ pub(crate) enum Command {
         /// prompted branch/hub, keyed by `lineId`/`promptLineId`. `text` and
         /// `prompt` stay the source language. A record missing a declared
         /// locale is `W-L10N-MISSING`, a translation of a changed source is
-        /// `W-L10N-STALE`.
+        /// `W-L10N-STALE`; a translation whose `{{…}}` markers are not its
+        /// source's is `E-L10N-MARKERS` and fails the build.
         #[arg(long = "locale-bundle", value_name = "FILE")]
         locale_bundle: Option<PathBuf>,
         #[command(flatten)]
@@ -1082,7 +1083,9 @@ pub(crate) enum LocCommand {
     /// field/column overrides that, so a single merged file also works.
     ///
     /// Exit `0`, `1` on `E-LOCALE-BUNDLE` (unparseable input, a duplicate
-    /// `lineId` within one locale, or an empty locale tag), `2` on I/O.
+    /// `lineId` within one locale, or an empty locale tag) or
+    /// `E-L10N-MARKERS` (a translation's `{{…}}` marker does not parse),
+    /// `2` on I/O.
     ///
     /// `--json` prints the `0.48.0.loc-import` report on stdout and so needs
     /// `-o, --output` (the bundle is the artifact).
