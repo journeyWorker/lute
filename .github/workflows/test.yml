@@ -65,9 +65,11 @@ name: Test
 # `scripts/vocab-grid.py gate` generates the #173 synthetic projects with
 # `lute-bench generate-vocab` and measures `target/debug/lute` from each
 # child's resource usage (`os.wait4`). It checks growth shape (ratios between
-# cells of the same run, each the minimum of five runs), not absolute time,
-# which a shared runner could not hold. Its script is in the trigger set
-# because no other workflow runs it.
+# cells of the same run), not absolute time, which a shared runner could not
+# hold: seven interleaved rounds (each runs every command once on every
+# cell), the median CPU per cell, and a CPU slope passes within
+# max(bound x reference, reference + 0.10 ms/doc) (spec 0.53.0 §3.7). Its
+# script is in the trigger set because no other workflow runs it.
 
 on:
   pull_request:
@@ -313,14 +315,14 @@ jobs:
       - name: Docs consistency check (version parity, stale domain)
         run: python3 scripts/check-docs-consistency.py
 
-      # Spec 0.49.0 §9.8 items 1–3: per-document cost stays flat as the
-      # project vocabulary grows 32x, and one-node commands stay within 1.1x
-      # of `check --project`. About 5 s wall locally (debug, macOS arm64,
-      # load 18; item 1 at 1.05–1.24x over six runs). The timeout only guards
-      # a hang.
+      # Spec 0.49.0 §9.8 items 1–3 and the 0.53.0 §3.7 tiers: per-document
+      # cost stays flat as the project vocabulary grows 32x, each
+      # multi-document command stays within its bound of `check --project`,
+      # and every build counter is exact. Seven interleaved rounds (the
+      # default). The timeout only guards a hang.
       - name: Project-model cost gate (vocab-grid.py gate, ADR D14)
         timeout-minutes: 15
-        run: python3 scripts/vocab-grid.py gate --lute ./target/debug/lute --runs 5
+        run: python3 scripts/vocab-grid.py gate --lute ./target/debug/lute
 
   public-api:
     name: public Rust API

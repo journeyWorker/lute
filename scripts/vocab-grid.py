@@ -7,12 +7,27 @@ byte-identical port of the issue's `gen.py`), written under $TMPDIR: the
 slots) and the **item-3 project** (20 scenes + 400 quests at 2 400 slots;
 its last 10 scenes are ending beats, `generate-vocab -E 10`).
 CPU (user+sys, microsecond resolution) and peak RSS come from the child's
-resource usage (`os.wait4`); each figure is the minimum over `--runs` runs.
-Marginal = (cost at 400 scenes - cost at 100) / 300 documents. Every command
-must exit 0 on the generated projects (a non-zero exit is a measurement
-error). Each generated project also gets `lint-off.yaml`, a lint config that
-turns every core rule of `crates/lute-lint/src/rules.rs` (`core_entries`)
-off.
+resource usage (`os.wait4`). Cells are measured in `--runs` **interleaved
+rounds** (default 7 for `gate`, 2 for `grid`): each round runs every command
+once on every cell, so slow spells of a shared machine fall on every cell
+alike. A cell's CPU is the **median** over the rounds; its peak RSS the
+minimum. Marginal = (cost at 400 scenes - cost at 100) / 300 documents.
+Every command must exit 0 on the generated projects (a non-zero exit is a
+measurement error). Each generated project also gets `lint-off.yaml`, a
+lint config that turns every core rule of `crates/lute-lint/src/rules.rs`
+(`core_entries`) off.
+
+**CPU slope items** (item 1, L1, L3, L4, F1, F2: a marginal CPU slope
+against a reference slope) pass when
+`measured <= max(bound x reference, reference + 0.10 ms/doc)`: at about
+0.1 ms/doc a slope is a 30 ms difference of two cells, which a ratio alone
+would judge on noise; the allowance keeps real per-document growth failing.
+A reference slope that is not positive is no verdict: its command is
+remeasured at 100 and a doubled document count (800, then 1 600 scenes),
+interleaved, and the slope taken over the wider interval; still not
+positive at 1 600 scenes is a measurement error (exit 2). Every other item
+(item 2, item 3, E1, E2, L2, L5, M1, M2, S1, S3) is the plain ratio against
+its limit, and the counter items are exact.
 
 The commands and items are grouped in **tiers** (spec 0.53.0 section 3.7).
 `grid` measures and prints every selected tier's table; `gate` measures
@@ -100,6 +115,7 @@ import os
 import platform
 import re
 import shutil
+import statistics
 import subprocess
 import sys
 import tempfile
@@ -119,6 +135,11 @@ CPU_RATIO, RSS_RATIO, PEAK_RATIO, COMMAND_RATIO = 1.5, 1.5, 2.0, 1.1
 # Spec 0.53.0 section 3.7.
 LINT_OFF_CPU, LINT_DEFAULT_CPU, LINT_PEAK = 1.0, 1.25, 1.25
 STREAM_CPU, STREAM_PEAK, STREAM_CHECK_PEAK = 1.5, 1.5, 1.25
+# CPU slope items: measured <= max(bound x reference, reference + SLOPE_SLACK_MS).
+SLOPE_SLACK_MS = 0.10
+# A nonpositive reference slope is remeasured at doubled document counts up to this.
+SCENES_WIDEST = 1600
+RUNS_GATE, RUNS_GRID = 7, 2
 LINT_OFF = "lint-off.yaml"
 CHECK = "check --project"
 STATS = re.compile(r"^lute: stats: input-cache bases=(\d+) vocabs=(\d+) assemblies=(\d+)$", re.M)
@@ -206,6 +227,10 @@ class Results:
         self.passes: dict[str, tuple[int, int, int] | None] = {}
         # Tier `lsp`, per slot count.
         self.lsp: dict[int, LspMeasure] = {}
+        # The grid's projects, per (scenes, slots), for remeasuring a reference slope.
+        self.projects: dict[tuple[int, int], Path] = {}
+        # A CPU slope remeasured over a wider interval: (label, slots) -> (low cell, high cell, high scenes).
+        self.widened: dict[tuple[str, int], tuple[Measure, Measure, int]] = {}
 
     def marginal(self, label: str, slots: int) -> tuple[float, float]:
         """(ms, MB) per document of `label` between SCENES_LOW and SCENES_HIGH."""
@@ -215,6 +240,10 @@ class Results:
         return (high.cpu_s - low.cpu_s) * 1000 / documents, (high.rss_mb - low.rss_mb) / documents
 
     def cpu(self, label: str, slots: int) -> float:
+        """Marginal CPU ms/doc; over the widened interval when the slope was remeasured."""
+        if (label, slots) in self.widened:
+            low, high, scenes = self.widened[(label, slots)]
+            return (high.cpu_s - low.cpu_s) * 1000 / (scenes - SCENES_LOW)
         return self.marginal(label, slots)[0]
 
     def rss(self, label: str, slots: int) -> float:
@@ -232,6 +261,10 @@ class Item:
     value: Callable[[Results], float]
     base: Callable[[Results], float]
     limit: float
+    # A CPU slope item: the (command, slots) of its reference slope. It passes at
+    # value <= max(limit x base, base + SLOPE_SLACK_MS), and a nonpositive
+    # reference is remeasured over a wider interval first.
+    reference: tuple[str, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -246,14 +279,14 @@ class Tier:
 def cpu_growth(name: str, label: str, limit: float) -> Item:
     return Item(
         name, "CPU", f"{label}: marginal CPU ms/doc at {SLOTS_HIGH} vs {SLOTS_LOW} slots",
-        lambda r: r.cpu(label, SLOTS_HIGH), lambda r: r.cpu(label, SLOTS_LOW), limit,
+        lambda r: r.cpu(label, SLOTS_HIGH), lambda r: r.cpu(label, SLOTS_LOW), limit, (label, SLOTS_LOW),
     )
 
 
 def cpu_vs_check(name: str, label: str, limit: float) -> Item:
     return Item(
         name, "CPU", f"{label}: marginal CPU ms/doc at {SLOTS_HIGH} slots vs {CHECK}'s",
-        lambda r: r.cpu(label, SLOTS_HIGH), lambda r: r.cpu(CHECK, SLOTS_HIGH), limit,
+        lambda r: r.cpu(label, SLOTS_HIGH), lambda r: r.cpu(CHECK, SLOTS_HIGH), limit, (CHECK, SLOTS_HIGH),
     )
 
 
@@ -403,7 +436,14 @@ def parser() -> argparse.ArgumentParser:
         default=default_bench(),
         help="lute-bench binary providing generate-vocab (default: $CARGO_TARGET_DIR or target, debug)",
     )
-    result.add_argument("--runs", type=int, default=2, help="runs per cell; the minimum is kept (default 2)")
+    result.add_argument(
+        "--runs",
+        type=int,
+        help=(
+            "interleaved rounds (each runs every command once on every cell; CPU is the median, "
+            f"peak RSS the minimum; tier lsp: best of the runs); default {RUNS_GATE} for gate, {RUNS_GRID} for grid"
+        ),
+    )
     result.add_argument(
         "--tier",
         action="append",
@@ -549,21 +589,31 @@ def run_measured(command: list[str], env: dict[str, str], scratch: Path) -> tupl
     return process.returncode, stdout, stderr, cpu, usage.ru_maxrss * rss_unit() / 1e6
 
 
-def measure(lute: Path, args: list[str], runs: int, scratch: Path) -> Measure:
+Cell = tuple[str, int, int]  # (command label, scenes, slots); the item-3 project's cells use scenes = slots = 0
+
+
+def measure_rounds(lute: Path, cells: list[tuple[Cell, list[str]]], runs: int, scratch: Path) -> dict[Cell, Measure]:
+    """`runs` rounds, each running every cell once in order (interleaved): per cell the
+    median CPU and the minimum peak RSS over the rounds, the load and stats line of its last run."""
     environment = dict(os.environ, LUTE_TELEMETRY="0", LUTE_STATS="input-cache")
-    best_cpu = best_rss = None
-    stats: Stats | None = None
+    cpus: dict[Cell, list[float]] = {cell: [] for cell, _ in cells}
+    rsss: dict[Cell, list[float]] = {cell: [] for cell, _ in cells}
+    last: dict[Cell, tuple[float, Stats | None]] = {}
     for _ in range(runs):
-        code, stdout, stderr, cpu, rss = run_measured([str(lute), *args], environment, scratch)
-        if code != 0:
-            detail = (stderr.strip() or stdout.strip())[-2000:]
-            shown = " ".join(args) if len(args) <= 12 else " ".join([*args[:6], "...", *args[-3:]])
-            error(f"lute {shown} exited {code}: {detail}")
-        best_cpu = cpu if best_cpu is None else min(best_cpu, cpu)
-        best_rss = rss if best_rss is None else min(best_rss, rss)
-        line = STATS.search(stderr)
-        stats = Stats(*(int(group) for group in line.groups())) if line else None
-    return Measure(best_cpu, best_rss, os.getloadavg()[0], stats)
+        for cell, args in cells:
+            code, stdout, stderr, cpu, rss = run_measured([str(lute), *args], environment, scratch)
+            if code != 0:
+                detail = (stderr.strip() or stdout.strip())[-2000:]
+                shown = " ".join(args) if len(args) <= 12 else " ".join([*args[:6], "...", *args[-3:]])
+                error(f"lute {shown} exited {code}: {detail}")
+            cpus[cell].append(cpu)
+            rsss[cell].append(rss)
+            line = STATS.search(stderr)
+            last[cell] = (os.getloadavg()[0], Stats(*(int(group) for group in line.groups())) if line else None)
+    return {
+        cell: Measure(statistics.median(cpus[cell]), min(rsss[cell]), *last[cell])
+        for cell, _ in cells
+    }
 
 
 def commands(tiers: list[Tier], which: str) -> list[tuple[str, str, Args]]:
@@ -581,6 +631,10 @@ def commands(tiers: list[Tier], which: str) -> list[tuple[str, str, Args]]:
     return result
 
 
+def grid_project(scratch: Path, scenes: int, slots: int) -> Path:
+    return scratch / f"grid-{scenes}x{slots}"
+
+
 def collect(options: argparse.Namespace, tiers: list[Tier], scratch: Path) -> Results:
     """Measures every selected tier's commands and prints the tables."""
     results = Results()
@@ -590,21 +644,35 @@ def collect(options: argparse.Namespace, tiers: list[Tier], scratch: Path) -> Re
     print(f"lute: {options.lute}")
     print(f"tiers: {', '.join(tier.name for tier in tiers)}")
     print(f"{LINT_OFF} turns off: {', '.join(rules)}")
+    print(f"rounds: {options.runs} (interleaved; CPU median, peak RSS minimum)")
     grid_commands = commands(tiers, "grid")
+    cells = [(scenes, slots) for slots in (SLOTS_LOW, SLOTS_HIGH) for scenes in (SCENES_LOW, SCENES_HIGH)]
     if grid_commands:
+        for scenes, slots in cells:
+            path = grid_project(scratch, scenes, slots)
+            generate(options.bench, path, scenes, 0, slots, lint_off)
+            results.projects[(scenes, slots)] = path
+            results.grid_keys[(scenes, slots)] = fixture_keys(path)
+        measured = measure_rounds(
+            options.lute,
+            [
+                ((label, scenes, slots), args(results.projects[(scenes, slots)], scratch))
+                for scenes, slots in cells
+                for _, label, args in grid_commands
+            ],
+            options.runs,
+            scratch,
+        )
         print("tier\tcommand\tdocs\tslots\tcpu_s\tpeak_rss_mb\tload\tbases/vocabs/assemblies")
-    for slots in (SLOTS_LOW, SLOTS_HIGH) if grid_commands else ():
-        for scenes in (SCENES_LOW, SCENES_HIGH):
-            generate(options.bench, project, scenes, 0, slots, lint_off)
-            results.grid_keys[(scenes, slots)] = fixture_keys(project)
-            for tier, label, args in grid_commands:
-                cell = measure(options.lute, args(project, scratch), options.runs, scratch)
+        for scenes, slots in cells:
+            for tier, label, _ in grid_commands:
+                cell = measured[(label, scenes, slots)]
                 results.grid.setdefault(label, {})[(scenes, slots)] = cell
-                print(f"{tier}\t{label}\t{scenes} scenes\t{slots}\t{cell.cpu_s:.2f}\t{cell.rss_mb:.0f}\t{cell.load:.1f}\t{cell.stats or '-'}", flush=True)
+                print(f"{tier}\t{label}\t{scenes} scenes\t{slots}\t{cell.cpu_s:.3f}\t{cell.rss_mb:.0f}\t{cell.load:.1f}\t{cell.stats or '-'}", flush=True)
     for tier, label, _ in grid_commands:
         for slots in (SLOTS_LOW, SLOTS_HIGH):
             cpu, rss = results.marginal(label, slots)
-            print(f"{tier}\t{label}: marginal per document at {slots} slots: {cpu:.2f} ms, {rss:.3f} MB")
+            print(f"{tier}\t{label}: marginal per document at {slots} slots: {cpu:.3f} ms, {rss:.3f} MB")
     item3_commands = commands(tiers, "item3")
     if item3_commands:
         generate(options.bench, project, ITEM3_SCENES, ITEM3_QUESTS, SLOTS_ITEM3, lint_off, ITEM3_ENDINGS)
@@ -614,13 +682,54 @@ def collect(options: argparse.Namespace, tiers: list[Tier], scratch: Path) -> Re
             check_ending_rows(options.lute, project, scratch)
         if any(tier.name == "check" for tier in tiers):
             results.passes = project_passes(options.lute, project, scratch)
-        for tier, label, args in item3_commands:
-            cell = measure(options.lute, args(project, scratch), options.runs, scratch)
+        measured = measure_rounds(
+            options.lute,
+            [((label, 0, 0), args(project, scratch)) for _, label, args in item3_commands],
+            options.runs,
+            scratch,
+        )
+        for tier, label, _ in item3_commands:
+            cell = measured[(label, 0, 0)]
             results.item3[label] = cell
-            print(f"{tier}\t{label}\t{cell.cpu_s:.2f} s\t{cell.rss_mb:.0f} MB\tload {cell.load:.1f}\t{cell.stats or '-'}", flush=True)
+            print(f"{tier}\t{label}\t{cell.cpu_s:.3f} s\t{cell.rss_mb:.0f} MB\tload {cell.load:.1f}\t{cell.stats or '-'}", flush=True)
     if any(tier.name == "lsp" for tier in tiers):
         collect_lsp(options, results, project, scratch, lint_off)
     return results
+
+
+def settle_references(options: argparse.Namespace, results: Results, tiers: list[Tier], scratch: Path) -> None:
+    """Gate: a CPU slope item's nonpositive reference slope is no verdict. Its command is
+    remeasured at SCENES_LOW and a doubled document count (interleaved, `--runs` rounds)
+    until the slope is positive; still nonpositive at SCENES_WIDEST is a measurement error."""
+    args_of = {label: args for tier in TIERS for label, args in ((CHECK, CHECK_ARGS), *tier.grid)}
+    lint_off = rules_off_config(core_lint_rules())
+    references = dict.fromkeys(item.reference for tier in tiers for item in tier.items if item.reference)
+    for label, slots in references:
+        scenes = SCENES_HIGH
+        while results.cpu(label, slots) <= 0:
+            shown = results.cpu(label, slots)
+            scenes *= 2
+            if scenes > SCENES_WIDEST:
+                error(
+                    f"{label}: marginal CPU at {slots} slots is {shown:.3f} ms/doc up to {scenes // 2} scenes; "
+                    "a nonpositive reference slope gives no verdict (rerun on a quieter machine)"
+                )
+            path = grid_project(scratch, scenes, slots)
+            generate(options.bench, path, scenes, 0, slots, lint_off)
+            low_args = args_of[label](results.projects[(SCENES_LOW, slots)], scratch)
+            measured = measure_rounds(
+                options.lute,
+                [((label, SCENES_LOW, slots), low_args), ((label, scenes, slots), args_of[label](path, scratch))],
+                options.runs,
+                scratch,
+            )
+            shutil.rmtree(path, ignore_errors=True)
+            results.widened[(label, slots)] = (measured[(label, SCENES_LOW, slots)], measured[(label, scenes, slots)], scenes)
+            print(
+                f"widened {label} at {slots} slots: reference slope {shown:.3f} ms/doc was not positive; "
+                f"{SCENES_LOW}..{scenes} scenes: {results.cpu(label, slots):.3f} ms/doc",
+                flush=True,
+            )
 
 
 def run_bench(bench: Path, args: list[str], scratch: Path) -> tuple[str, float]:
@@ -695,14 +804,26 @@ def ratio(value: float, base: float) -> float | None:
     return value / base if base > 0 else None
 
 
-def check(name: str, value: float, base: float, limit: float, what: str) -> bool:
+def check(item: Item, name: str, results: Results) -> bool:
+    value, base, what = item.value(results), item.base(results), f"{item.kind}: {item.what}"
+    if item.reference is not None:
+        # CPU slope (settle_references made the reference positive).
+        if base <= 0:
+            error(f"{name}: {what}: reference slope {base:.3f} is not positive after settling")
+        bound = max(item.limit * base, base + SLOPE_SLACK_MS)
+        passed = value <= bound
+        print(
+            f"{'PASS' if passed else 'FAIL'} {name}: {what} = {value:.3f} / {base:.3f} = {value / base:.2f}x "
+            f"(limit max({item.limit}x, +{SLOPE_SLACK_MS:.2f} ms/doc) = {bound:.3f})"
+        )
+        return passed
     observed = ratio(value, base)
     if observed is None:
         print(f"FAIL {name}: {what}: base {base:.3f} is not positive; rerun with more --runs")
         return False
-    passed = observed <= limit
+    passed = observed <= item.limit
     verdict = "PASS" if passed else "FAIL"
-    print(f"{verdict} {name}: {what} = {value:.3f} / {base:.3f} = {observed:.2f}x (limit {limit}x)")
+    print(f"{verdict} {name}: {what} = {value:.3f} / {base:.3f} = {observed:.2f}x (limit {item.limit}x)")
     return passed
 
 
@@ -740,7 +861,7 @@ def gate(results: Results, tiers: list[Tier]) -> bool:
     for tier in tiers:
         tier_passed = True
         for item in tier.items:
-            ok = check(f"{tier.name} {item.name}", item.value(results), item.base(results), item.limit, f"{item.kind}: {item.what}")
+            ok = check(item, f"{tier.name} {item.name}", results)
             tier_passed = tier_passed and ok
         tier_passed = counters(results, tier) and tier_passed
         if tier.name == "check":
@@ -757,6 +878,8 @@ def gate(results: Results, tiers: list[Tier]) -> bool:
 
 def main(arguments: list[str]) -> int:
     options = parser().parse_args(arguments)
+    if options.runs is None:
+        options.runs = RUNS_GATE if options.mode == "gate" else RUNS_GRID
     if options.runs < 1:
         error("--runs must be positive")
     selected = set(options.tier or TIER_NAMES)
@@ -772,6 +895,7 @@ def main(arguments: list[str]) -> int:
         results = collect(options, tiers, scratch)
         if options.mode == "grid":
             return 0
+        settle_references(options, results, tiers, scratch)
         return 0 if gate(results, tiers) else 1
     finally:
         shutil.rmtree(scratch, ignore_errors=True)
