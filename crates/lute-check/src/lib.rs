@@ -207,7 +207,7 @@ pub use fact_check::{check_fact_guards, E_ENTRY_UNREACHABLE, W_FACT_GUARANTEED};
 pub use fact_env::{FactEnv, FactScope, GroundFact, MaySet, MustMap, QueryPattern, RootVocab};
 pub use fact_must::{compute_must, stable_seeds, unproduced_relations, FactMust};
 pub use fact_write::{check_assert, check_retract, E_DERIVED_WRITE, E_FACT_TIER_WRITE};
-pub use fix::{fix_document, FixResult};
+pub use fix::{fix_document, FixKept, FixResult, FixRule, KeptReason, RuleCounts};
 pub use inject::{
     classify_node, is_declared_exit, lower_node, lower_node_with_snapshot, record_stage_labels,
     resolve_record_fields, take_stage_labels, Departure, InjectKind, InjectedCommand, Provenance,

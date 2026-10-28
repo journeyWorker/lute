@@ -94,7 +94,7 @@ fn fixit_and_lute_fix_agree_and_clear_the_warning() {
         let e = &d.fixits[0].edit[0];
         via_lsp.replace_range(e.span.byte_start..e.span.byte_end, &e.new_text);
     }
-    let via_fix = fix_document(&src);
+    let via_fix = fix_document(&src, None);
     assert_eq!(via_fix.text, via_lsp);
     assert_eq!(via_fix.changed, 5);
     for want in [
@@ -111,7 +111,7 @@ fn fixit_and_lute_fix_agree_and_clear_the_warning() {
         );
     }
     assert!(lint(&via_fix.text).is_empty());
-    assert_eq!(fix_document(&via_fix.text).changed, 0, "idempotent");
+    assert_eq!(fix_document(&via_fix.text, None).changed, 0, "idempotent");
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn non_literal_and_unsafe_tests_do_not_warn() {
          </match>\n"
     );
     assert!(lint(&src).is_empty(), "{:?}", lint(&src));
-    assert_eq!(fix_document(&src).changed, 0);
+    assert_eq!(fix_document(&src, None).changed, 0);
 }
 
 /// An arm that already has `is=` is the pattern form; its `test` is a guard
@@ -144,7 +144,7 @@ fn arm_with_is_is_left_alone() {
          </match>\n"
     );
     assert!(lint(&src).is_empty());
-    assert_eq!(fix_document(&src).text, src);
+    assert_eq!(fix_document(&src, None).text, src);
 }
 
 /// Only `<when>` arms of a `<match>`: a `$ == …` guard on a choice inside an
@@ -162,7 +162,7 @@ fn choice_guard_inside_an_arm_does_not_warn() {
          </match>\n"
     );
     assert!(lint(&src).is_empty(), "{:?}", lint(&src));
-    assert_eq!(fix_document(&src).changed, 0);
+    assert_eq!(fix_document(&src, None).changed, 0);
 }
 
 /// `lute fix` rewrites ONLY the `test="…"` attribute, whatever sits around it
@@ -175,7 +175,7 @@ fn fix_rewrites_only_the_test_attribute() {
          <otherwise>\n@x: b\n</otherwise>\n\
          </match>\n"
     );
-    let out = fix_document(&src);
+    let out = fix_document(&src, None);
     assert_eq!(out.changed, 1);
     assert_eq!(
         out.text,
@@ -212,7 +212,7 @@ fn fix_reaches_arms_nested_in_branches_hubs_and_arms() {
          </hub>\n"
     );
     assert_eq!(lint(&src).len(), 3, "{:?}", lint(&src));
-    let out = fix_document(&src);
+    let out = fix_document(&src, None);
     assert_eq!(out.changed, 3, "got:\n{}", out.text);
     for want in [
         "<when is=\"gold\">",
@@ -235,7 +235,7 @@ fn fix_reaches_quest_bodies() {
                <otherwise>\n@x: bye\n</otherwise>\n\
                </match>\n</on>\n</quest>\n";
     assert_eq!(lint(src).len(), 1, "{:?}", lint(src));
-    let out = fix_document(src);
+    let out = fix_document(src, None);
     assert_eq!(out.changed, 1);
     assert!(
         out.text.contains("<when is=\"gold\">"),

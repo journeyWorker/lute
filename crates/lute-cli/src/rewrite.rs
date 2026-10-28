@@ -15,14 +15,15 @@
 //! broken document) or `--check` found a change, `2` on an I/O failure (an
 //! unreadable path or an unwritable file) — the worst outcome across the
 //! files wins. With `--json` the human lines go to stderr and stdout carries
-//! the one report (`0.48.0.tag` / `0.48.0.fix`), or the error envelope on an
+//! the one report (`0.48.0.tag` / `0.53.0.fix`), or the error envelope on an
 //! I/O failure.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 
-use lute_check::LineRenumber;
+use lute_check::{FixKept, FixRule, LineRenumber, RuleCounts};
 use lute_core_span::Diagnostic;
 use serde_json::{json, Value};
 
@@ -582,16 +583,19 @@ fn tag_file(
 /// §3 and 0.32.0 §1.3), rewriting a file only when a span was actually
 /// changed (never with `--check`, which exits `1` when any fix applies). CEL
 /// slots are visited through the shared syntax walker; YAML project surfaces
-/// use the same byte-preserving CEL rewriter.
+/// use the same byte-preserving CEL rewriter. Each changed file's line names
+/// its [`FixRule`]s; a site the document's capability snapshot keeps from the
+/// 0.37 attribute rename is printed on stderr (spec 0.53.0 §4.2, §4.3).
 pub fn run_fix(paths: &[PathBuf], check: bool, json: bool) -> ExitCode {
     let (files, single) = match selected(paths, fix_targets, false) {
         Ok(found) => found,
         Err(err) => return envelope::fail_quietly(err),
     };
-    let volume = volume_eligibility(&files);
+    let mut inputs = FixInputs::default();
+    let volume = inputs.volume_eligibility(&files);
     let mut worst = Outcome::Unchanged;
     let mut failure: Option<CliError> = None;
-    let mut rows: Vec<(PathBuf, bool, usize)> = Vec::new();
+    let mut rows: Vec<(PathBuf, FileFix)> = Vec::new();
     let (mut changed, mut fixes) = (0, 0);
     for (file, &volume) in files.iter().zip(&volume) {
         let scope = if single {
@@ -599,14 +603,14 @@ pub fn run_fix(paths: &[PathBuf], check: bool, json: bool) -> ExitCode {
         } else {
             Scope::Tree(file)
         };
-        match fix_file(file, scope, volume, !check) {
-            Ok((outcome, n)) => {
-                if outcome == Outcome::Changed {
+        match fix_file(file, scope, &inputs, volume, !check) {
+            Ok(fixed) => {
+                if fixed.outcome == Outcome::Changed {
                     changed += 1;
-                    fixes += n;
+                    fixes += fixed.rules.total();
                 }
-                worst = worst.max(outcome);
-                rows.push((file.clone(), outcome == Outcome::Changed, n));
+                worst = worst.max(fixed.outcome);
+                rows.push((file.clone(), fixed));
             }
             Err(err) => {
                 failure.get_or_insert(err);
@@ -640,14 +644,155 @@ pub fn run_fix(paths: &[PathBuf], check: bool, json: bool) -> ExitCode {
             "applied": !check && changed > 0,
             "files": rows
                 .iter()
-                .map(|(path, changed, fixes)| json!({
+                .map(|(path, fixed)| json!({
                     "path": path.display().to_string(),
-                    "changed": changed,
-                    "fixes": fixes,
+                    "changed": fixed.outcome == Outcome::Changed,
+                    "fixes": fixed.rules.total(),
+                    "rules": fixed
+                        .rules
+                        .applied()
+                        .map(|(rule, n)| json!({ "rule": rule.id(), "fixes": n }))
+                        .collect::<Vec<_>>(),
+                    "kept": fixed
+                        .kept
+                        .iter()
+                        .map(|k| json!({
+                            "line": k.line,
+                            "column": k.column,
+                            "rule": k.rule.id(),
+                            "reason": k.reason.id(),
+                        }))
+                        .collect::<Vec<_>>(),
                 }))
                 .collect::<Vec<_>>(),
         }),
     )
+}
+
+/// The `long_about` of `lute fix --help`: every [`FixRule`] with its
+/// description, and the stamp rule (spec 0.53.0 §4.3).
+pub(crate) fn fix_long_about() -> String {
+    let mut text = String::from(
+        "Apply mechanical, meaning-preserving source migrations in place. `lute fix` applies \
+         every migration of every older release, not only the version raise. Each changed \
+         file's line names the rules that applied, with their counts:\n",
+    );
+    for rule in FixRule::ALL {
+        text.push_str(&format!("\n  {}: {}", rule.id(), rule.describe()));
+    }
+    text.push_str(
+        "\n\nA directive attribute key that the active profile declares as a stamp of that \
+         directive is not a 0.37 spelling and is kept; so is every such key in a document whose \
+         plugins did not resolve. Each kept site is printed on stderr \
+         (`lute fix: <path>:<line>:<column>: kept …`).\n\n\
+         Byte-exact and comment-preserving; writes back only when something changed. A \
+         directory migrates `.lute` and project/schema YAML files recursively, sorted; several \
+         paths migrate in the order given. Exit `0` on success, `2` on an I/O failure.",
+    );
+    text
+}
+
+/// What `lute fix` did to one file.
+struct FileFix {
+    outcome: Outcome,
+    rules: RuleCounts,
+    kept: Vec<FixKept>,
+}
+
+/// The project data one `lute fix` run reads (spec 0.53.0 §4.2): each
+/// root's model, built once by one memo, serves both the 0.42 volume
+/// migration and its documents' capability snapshots; a `.lute` file under
+/// no manifest is assembled on one input cache for the run.
+#[derive(Default)]
+struct FixInputs {
+    models: lute_model::ModelMemo,
+    /// Each root's model and document index; `None` when it failed to build.
+    roots: BTreeMap<PathBuf, Option<RootModel>>,
+    loose: lute_load::InputCache,
+}
+
+struct RootModel {
+    model: Arc<lute_model::ProjectModel>,
+    /// Each document's index in the model, by canonical path.
+    by_path: BTreeMap<PathBuf, usize>,
+}
+
+impl FixInputs {
+    /// Whether each of `files` gets the 0.42 volume migration, decided
+    /// before any file is rewritten: its project's folded `volume` domain is
+    /// exactly [`OLD_VOLUME`] in every document that sees one, or — a `.lute`
+    /// file outside any project — its own frontmatter declares exactly
+    /// that. Builds every root's model, so the snapshots read later are the
+    /// sources as they were before the run wrote anything.
+    fn volume_eligibility(&mut self, files: &[PathBuf]) -> Vec<bool> {
+        let mut projects: BTreeMap<PathBuf, bool> = BTreeMap::new();
+        files
+            .iter()
+            .map(|file| match project_root(file) {
+                Some(root) => {
+                    if let Some(&old) = projects.get(&root) {
+                        return old;
+                    }
+                    let old = self.root(&root).is_some_and(|r| has_old_volume(&r.model));
+                    projects.insert(root, old);
+                    old
+                }
+                None => {
+                    file.extension().is_some_and(|ext| ext == "lute")
+                        && read(file).ok().is_some_and(|text| {
+                            frontmatter_volume(&text).is_some_and(is_old_volume)
+                        })
+                }
+            })
+            .collect()
+    }
+
+    /// The model of `root`, built once.
+    fn root(&mut self, root: &Path) -> Option<&RootModel> {
+        let models = &self.models;
+        self.roots
+            .entry(root.to_path_buf())
+            .or_insert_with(|| {
+                let options = lute_model::ModelOptions {
+                    compile: false,
+                    ..Default::default()
+                };
+                let model = models.single_root(root, &options).ok()?;
+                let by_path = model
+                    .documents()
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(i, d)| Some((std::fs::canonicalize(&d.path).ok()?, i)))
+                    .collect();
+                Some(RootModel { model, by_path })
+            })
+            .as_ref()
+    }
+
+    /// Run [`lute_check::fix_document`] over the `.lute` file `file`
+    /// (`text`) with its capability snapshot: its root's model document's,
+    /// or for a file under no manifest its own assembly's; `None` when that
+    /// reports a resolution error, or the model failed to build.
+    fn fix_lute(&self, file: &Path, text: &str) -> lute_check::FixResult {
+        let Some(root) = project_root(file) else {
+            let (built, _) =
+                lute_load::assemble_input(&self.loose, file, text.to_string(), None, None, None);
+            let snapshot = (!built.resolve_error).then(|| built.input.snapshot());
+            return lute_check::fix_document(text, snapshot);
+        };
+        let document = self
+            .roots
+            .get(&root)
+            .and_then(Option::as_ref)
+            .and_then(|r| {
+                let index = r.by_path.get(&std::fs::canonicalize(file).ok()?)?;
+                r.model.documents().get(*index)
+            });
+        let snapshot = document
+            .filter(|d| !d.resolve_error)
+            .map(|d| d.input.snapshot());
+        lute_check::fix_document(text, snapshot)
+    }
 }
 
 fn fix_targets(path: &Path) -> std::io::Result<Vec<PathBuf>> {
@@ -675,21 +820,31 @@ fn fix_targets(path: &Path) -> std::io::Result<Vec<PathBuf>> {
 fn fix_file(
     file: &Path,
     scope: Scope<'_>,
+    inputs: &FixInputs,
     volume: bool,
     write_files: bool,
-) -> Result<(Outcome, usize), CliError> {
+) -> Result<FileFix, CliError> {
     let text = read(file)?;
-    let legacy = lute_check::fix_document(&text);
-    let (mut out, mut changed) = (legacy.text, legacy.changed);
     let yaml = file
         .extension()
         .is_some_and(|ext| ext == "yaml" || ext == "yml");
+    // A YAML file carries no directive a plugin could stamp: it is judged
+    // against the core snapshot, as every key was before 0.53.
+    let legacy = if yaml {
+        lute_check::fix_document(&text, Some(lute_manifest::core::core_snapshot()))
+    } else {
+        inputs.fix_lute(file, &text)
+    };
+    for kept in &legacy.kept {
+        eprintln!("lute fix: {}:{}", file.display(), kept.message());
+    }
+    let (mut out, mut rules) = (legacy.text, legacy.rules);
     let cel = if yaml {
         rewrite_yaml_cel(&out)
     } else {
         rewrite_lute_cel(&out)
     };
-    changed += cel.changed;
+    rules.add(FixRule::Cel032, cel.changed);
     out = cel.text;
     if yaml {
         let domains = rewrite_yaml_domains(&out);
@@ -701,31 +856,45 @@ fn fix_file(
                 renamed.new
             );
         }
-        changed += domains.rewrite.changed;
+        rules.add(FixRule::DomainRename, domains.rewrite.changed);
         out = domains.rewrite.text;
     }
     let stamp = rewrite_lute_version(&out, file);
-    changed += stamp.changed;
+    rules.add(FixRule::LuteVersion, stamp.changed);
     out = stamp.text;
     let bindings = rewrite_bindings_version(&out, file);
-    changed += bindings.changed;
+    rules.add(FixRule::BindingsVersion, bindings.changed);
     out = bindings.text;
     if volume {
         let renamed = rewrite_volume(&out, yaml);
-        changed += renamed.changed;
+        rules.add(FixRule::Volume, renamed.changed);
         out = renamed.text;
     }
+    let changed = rules.total();
     if changed == 0 {
         scope.say_unchanged("nothing to fix");
-        return Ok((Outcome::Unchanged, 0));
+        return Ok(FileFix {
+            outcome: Outcome::Unchanged,
+            rules,
+            kept: legacy.kept,
+        });
     }
+    let named = rules
+        .applied()
+        .map(|(rule, n)| format!("{} {n}", rule.id()))
+        .collect::<Vec<_>>()
+        .join(", ");
     if write_files {
         write(file, &out)?;
-        scope.say(&format!("applied {changed} fix(es)"));
+        scope.say(&format!("applied {changed} fix(es): {named}"));
     } else {
-        scope.say(&format!("would apply {changed} fix(es)"));
+        scope.say(&format!("would apply {changed} fix(es): {named}"));
     }
-    Ok((Outcome::Changed, changed))
+    Ok(FileFix {
+        outcome: Outcome::Changed,
+        rules,
+        kept: legacy.kept,
+    })
 }
 
 /// Convert the 0.31 fact-query calls to standard CEL list-form calls. The
@@ -1361,28 +1530,6 @@ fn new_volume_member(old: &str) -> Option<&'static str> {
     }
 }
 
-/// Whether each of `files` gets the 0.42 volume migration, decided before
-/// any file is rewritten: its project's folded `volume` domain is exactly
-/// [`OLD_VOLUME`] in every document that sees one, or — a `.lute` file
-/// outside any project — its own frontmatter declares exactly that.
-fn volume_eligibility(files: &[PathBuf]) -> Vec<bool> {
-    let mut projects: BTreeMap<PathBuf, bool> = BTreeMap::new();
-    files
-        .iter()
-        .map(|file| match project_root(file) {
-            Some(root) => *projects
-                .entry(root)
-                .or_insert_with_key(|root| project_has_old_volume(root)),
-            None => {
-                file.extension().is_some_and(|ext| ext == "lute")
-                    && read(file)
-                        .ok()
-                        .is_some_and(|text| frontmatter_volume(&text).is_some_and(is_old_volume))
-            }
-        })
-        .collect()
-}
-
 fn is_old_volume(members: Vec<String>) -> bool {
     members.iter().map(String::as_str).eq(OLD_VOLUME)
 }
@@ -1397,22 +1544,14 @@ fn project_root(file: &Path) -> Option<PathBuf> {
         .map(Path::to_path_buf)
 }
 
-/// Whether the project at `root` folds exactly [`OLD_VOLUME`] wherever a
-/// document sees a `volume` domain (and at least one does). Documents that
-/// disagree make the project ineligible: its declarations are not the old
-/// scale alone.
-fn project_has_old_volume(root: &Path) -> bool {
-    let options = lute_model::ModelOptions {
-        compile: false,
-        ..Default::default()
-    };
-    let Ok(model) = lute_model::ProjectModel::build_single_root(root, &options) else {
-        return false;
-    };
+/// Whether `model` folds exactly [`OLD_VOLUME`] wherever a document sees a
+/// `volume` domain (and at least one does). Documents that disagree make the
+/// project ineligible: its declarations are not the old scale alone.
+fn has_old_volume(model: &lute_model::ProjectModel) -> bool {
     let mut seen = false;
     for document in model.documents() {
         if let Some(domain) = document.folded.domains.get("volume") {
-            if !is_old_volume(domain.members.clone()) {
+            if !domain.members.iter().map(String::as_str).eq(OLD_VOLUME) {
                 return false;
             }
             seen = true;
@@ -2164,6 +2303,34 @@ fn rewrite_rule_guards(text: &str, quote: char) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// spec 0.53.0 §4.3 (#230): `lute fix --help` names every rule with its
+    /// description, the 0.37 directive attribute renames included, and says
+    /// a stamp is kept.
+    #[test]
+    fn fix_help_names_every_rule() {
+        use clap::CommandFactory;
+        let mut cli = crate::cli::Cli::command();
+        let help = cli
+            .find_subcommand_mut("fix")
+            .expect("`lute fix` is a subcommand")
+            .render_long_help()
+            .to_string();
+        for rule in FixRule::ALL {
+            assert!(
+                help.contains(&format!("{}: {}", rule.id(), rule.describe())),
+                "`{}` missing from:\n{help}",
+                rule.id()
+            );
+        }
+        assert!(help.contains("`::cg{action}`"), "{help}");
+        assert!(
+            help.contains(
+                "declares as a stamp of that directive is not a 0.37 spelling and is kept"
+            ),
+            "{help}"
+        );
+    }
 
     fn cel(raw: &str) -> String {
         rewrite_cel(raw).text

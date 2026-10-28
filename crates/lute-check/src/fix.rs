@@ -64,7 +64,11 @@
 //!      `::cut` → `::cg`, `::next` → `::jump`, `::mark` → `::label`.
 //!   8. **renamed directive attributes** (§7.1–2): `::label{id}` → `name`,
 //!      `::music{action}` → `playback`, `::video{action}`/`::cg{action}` →
-//!      `display` — also under a directive's old tag in the same pass.
+//!      `display` — also under a directive's old tag in the same pass —
+//!      only where [`crate::renames::renamed_attr`] says the key is the old
+//!      spelling: a key the document's snapshot admits on the directive (a
+//!      stamp of the active profile) is kept, and with no resolved snapshot
+//!      every such site is kept ([`FixResult::kept`], spec 0.53.0 §4.2).
 //!   9. **renamed tag attributes** (§7.3): `<choice label>` → `text`,
 //!      `<match on>` → `subject`.
 //!  10. **content-line `id="x"`** (§7.4) → a `::label{name="x"}` line
@@ -74,6 +78,14 @@
 //!   `E-RENAMED-*` diagnostics use. Lossy forms — camera numerics, `::cg{full}`,
 //!   `::music{track}`, `::sfx{name}` — are diagnosed, never guessed.
 //!
+//! [`FixRule`] names every migration `lute fix` applies, these and the CLI's
+//! text migrations, with the edits per rule in [`FixResult::rules`]:
+//! `line-sigil` (rules 1, 3), `choice-into` (2), `choice-persist` (4),
+//! `shot-heading` (5), `when-is` (6), `delivery`, `renamed-tag` (7),
+//! `renamed-attr` (8), `renamed-tag-attr` (9), `line-id-label` (10), and the
+//! CLI's `cel-0.32`, `domain-rename`, `lute-version`, `bindings-version` and
+//! `volume`.
+//!
 //! Mirrors `tag.rs`'s splice discipline: collect target `(start, end,
 //! replacement)` spans, then splice back-to-front (descending `byte_start`) so
 //! earlier offsets stay valid. Spans are ORIGINAL-source offsets and
@@ -81,22 +93,277 @@
 //! byte offset maps 1:1 onto the original text.
 
 use lute_core_span::Severity;
+use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{Arm, AttrValue, Choice, ClipNode, Directive, Line, Match, Node};
 use lute_syntax::parse;
 
-/// The result of a migration pass: the (possibly rewritten) document text and
-/// how many span edits were applied across both phases.
+/// One migration `lute fix` applies (spec 0.53.0 §4.3). The variants are in
+/// report order: [`fix_document`]'s `.lute` rules, then the CLI's text
+/// migrations (`lute_cli::rewrite`), which count their edits here too so one
+/// enum lists every migration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum FixRule {
+    /// Rules 1 and 3: `:line[speaker]` and every `:`-led content line → `@`.
+    LineSigil,
+    /// Rule 2: `<choice as>` → `into`.
+    ChoiceInto,
+    /// Rule 4: `persist="run"` deleted beside `into`.
+    ChoicePersist,
+    /// Rule 5: the `## Shot N.` / `## Scene N.` heading prefix.
+    ShotHeading,
+    /// Rule 6: `<when test="$ == L">` → `is`.
+    WhenIs,
+    /// The content-line `delivery=` attribute → a flag.
+    Delivery,
+    /// Rule 7: the 0.37 directive tags.
+    RenamedTag,
+    /// Rule 8: the 0.37 directive attributes.
+    RenamedAttr,
+    /// Rule 9: `<choice label>` → `text`, `<match on>` → `subject`.
+    RenamedTagAttr,
+    /// Rule 10: a content line's `id=` → a preceding `::label{name}`.
+    LineIdLabel,
+    /// The 0.31 fact-query and presence calls → standard CEL 0.32.
+    Cel032,
+    /// The 0.41 domain renames in project, schema and plugin YAML.
+    DomainRename,
+    /// `luteVersion` stamps older than the toolchain.
+    LuteVersion,
+    /// A `player.bindings.yaml` `bindingsVersion` older than the toolchain.
+    BindingsVersion,
+    /// The 0.42 `volume` members `down`/`up` → `quiet`/`loud`.
+    Volume,
+}
+
+impl FixRule {
+    /// Every rule, in report order.
+    pub const ALL: [FixRule; 15] = [
+        FixRule::LineSigil,
+        FixRule::ChoiceInto,
+        FixRule::ChoicePersist,
+        FixRule::ShotHeading,
+        FixRule::WhenIs,
+        FixRule::Delivery,
+        FixRule::RenamedTag,
+        FixRule::RenamedAttr,
+        FixRule::RenamedTagAttr,
+        FixRule::LineIdLabel,
+        FixRule::Cel032,
+        FixRule::DomainRename,
+        FixRule::LuteVersion,
+        FixRule::BindingsVersion,
+        FixRule::Volume,
+    ];
+
+    /// The stable kebab-case id the report prints.
+    pub fn id(self) -> &'static str {
+        match self {
+            FixRule::LineSigil => "line-sigil",
+            FixRule::ChoiceInto => "choice-into",
+            FixRule::ChoicePersist => "choice-persist",
+            FixRule::ShotHeading => "shot-heading",
+            FixRule::WhenIs => "when-is",
+            FixRule::Delivery => "delivery",
+            FixRule::RenamedTag => "renamed-tag",
+            FixRule::RenamedAttr => "renamed-attr",
+            FixRule::RenamedTagAttr => "renamed-tag-attr",
+            FixRule::LineIdLabel => "line-id-label",
+            FixRule::Cel032 => "cel-0.32",
+            FixRule::DomainRename => "domain-rename",
+            FixRule::LuteVersion => "lute-version",
+            FixRule::BindingsVersion => "bindings-version",
+            FixRule::Volume => "volume",
+        }
+    }
+
+    /// One line saying what the rule rewrites (`lute fix --help`).
+    pub fn describe(self) -> &'static str {
+        match self {
+            FixRule::LineSigil => {
+                "`:line[speaker]` and every `:`-led content line become `@speaker` (0.2.2)"
+            }
+            FixRule::ChoiceInto => "`<choice as=\"…\">` becomes `into=\"…\"` (0.1.0)",
+            FixRule::ChoicePersist => {
+                "`persist=\"run\"` on a `<choice>` that also has `into=` is deleted (0.6.0)"
+            }
+            FixRule::ShotHeading => {
+                "a `## Shot N.` / `## Scene N.` prefix before a heading title is stripped (0.6.0)"
+            }
+            FixRule::WhenIs => {
+                "`<when test=\"$ == …\">` comparing `$` to literals becomes `is=\"…\"` (0.18.0)"
+            }
+            FixRule::Delivery => {
+                "content-line `delivery=\"thought|voiceover|spoken\"` becomes `mono`, `vo` or \
+                 nothing (0.2.2)"
+            }
+            FixRule::RenamedTag => {
+                "directive tags `::auto`, `::cut`, `::next`, `::mark` become `::actor`, `::cg`, \
+                 `::jump`, `::label` (0.37.0)"
+            }
+            FixRule::RenamedAttr => {
+                "directive attributes `::music{action}` → `playback`, `::cg{action}` and \
+                 `::video{action}` → `display`, `::label{id}` → `name` (0.37.0), unless the \
+                 active profile declares the key as a stamp of that directive"
+            }
+            FixRule::RenamedTagAttr => {
+                "`<choice label>` becomes `text`, `<match on>` becomes `subject` (0.37.0)"
+            }
+            FixRule::LineIdLabel => {
+                "a content line's `id=\"x\"` moves to a `::label{name=\"x\"}` line before it \
+                 (0.37.0)"
+            }
+            FixRule::Cel032 => {
+                "0.31 fact-query and presence calls (`holds`, `count`, `countDistinct`, \
+                 `validAt`, `isSet`) become their standard-CEL forms (0.32.0)"
+            }
+            FixRule::DomainRename => "renamed domains in project, schema and plugin YAML (0.41.0)",
+            FixRule::LuteVersion => {
+                "an existing `luteVersion` stamp older than the toolchain is raised to it \
+                 (0.41.1)"
+            }
+            FixRule::BindingsVersion => {
+                "a `player.bindings.yaml` `bindingsVersion` older than the toolchain line is \
+                 raised to it (0.47.0)"
+            }
+            FixRule::Volume => {
+                "when the project's `volume` domain is exactly `[silent, down, normal, up, \
+                 full]`, `down`/`up` become `quiet`/`loud` (0.42.0)"
+            }
+        }
+    }
+}
+
+/// How many edits each [`FixRule`] applied.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct RuleCounts([usize; FixRule::ALL.len()]);
+
+impl RuleCounts {
+    /// Count `n` more edits of `rule`.
+    pub fn add(&mut self, rule: FixRule, n: usize) {
+        self.0[rule as usize] += n;
+    }
+
+    /// The edits `rule` applied.
+    pub fn get(&self, rule: FixRule) -> usize {
+        self.0[rule as usize]
+    }
+
+    /// Every edit.
+    pub fn total(&self) -> usize {
+        self.0.iter().sum()
+    }
+
+    /// The rules that applied an edit, with their counts, in report order.
+    pub fn applied(&self) -> impl Iterator<Item = (FixRule, usize)> + '_ {
+        FixRule::ALL
+            .into_iter()
+            .map(|rule| (rule, self.get(rule)))
+            .filter(|(_, n)| *n > 0)
+    }
+}
+
+/// Why `lute fix` kept a site a rule would otherwise rewrite.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum KeptReason {
+    /// The document's snapshot admits the key on the directive: a stamp of
+    /// the active profile, not the 0.37 spelling.
+    Stamp,
+    /// The document's capability snapshot did not resolve, so a stamp cannot
+    /// be told from the 0.37 spelling.
+    Unresolved,
+}
+
+impl KeptReason {
+    /// The report's spelling: `stamp` or `unresolved`.
+    pub fn id(self) -> &'static str {
+        match self {
+            KeptReason::Stamp => "stamp",
+            KeptReason::Unresolved => "unresolved",
+        }
+    }
+}
+
+/// A site rule `renamed-attr` did not rewrite because of the snapshot
+/// (spec 0.53.0 §4.2).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FixKept {
+    /// 1-based line of the attribute key.
+    pub line: u32,
+    /// 1-based character column of the attribute key.
+    pub column: u32,
+    pub rule: FixRule,
+    pub reason: KeptReason,
+    /// The directive's current tag (the new one under an old tag).
+    pub tag: String,
+    /// The key as written.
+    pub key: String,
+    /// The key's 0.37 name.
+    pub renamed: &'static str,
+}
+
+impl FixKept {
+    /// The kept line `lute fix` prints after `<path>:`: `9:31: kept
+    /// `action` on `::cg` — …`.
+    pub fn message(&self) -> String {
+        let why = match self.reason {
+            KeptReason::Stamp => format!(
+                "the active profile declares it as a stamp attribute; the 0.37 rename to `{}` \
+                 does not apply",
+                self.renamed
+            ),
+            KeptReason::Unresolved => "the document's capability snapshot did not resolve, so \
+                                       `lute fix` cannot tell a stamp from the 0.37 spelling; \
+                                       run `lute check` and fix the project first"
+                .to_string(),
+        };
+        format!(
+            "{}:{}: kept `{}` on `::{}` — {why}",
+            self.line, self.column, self.key, self.tag
+        )
+    }
+}
+
+/// The result of a migration pass: the (possibly rewritten) document text,
+/// how many span edits were applied across both phases, per rule, and the
+/// sites kept because of the snapshot.
 #[derive(Clone, Debug, PartialEq)]
 pub struct FixResult {
     pub text: String,
+    /// Every edit: `rules.total()`.
     pub changed: usize,
+    pub rules: RuleCounts,
+    pub kept: Vec<FixKept>,
+}
+
+/// The phase-2 edits and their rules.
+#[derive(Default)]
+struct Edits {
+    spans: Vec<(usize, usize, String)>,
+    rules: RuleCounts,
+}
+
+impl Edits {
+    fn push(&mut self, rule: FixRule, edit: (usize, usize, String)) {
+        self.spans.push(edit);
+        self.rules.add(rule, 1);
+    }
+
+    fn extend(&mut self, rule: FixRule, edits: Vec<(usize, usize, String)>) {
+        self.rules.add(rule, edits.len());
+        self.spans.extend(edits);
+    }
 }
 
 /// Migrate a 0.0.1-shaped document toward 0.2.2-readiness in place (see
 /// module docs). Idempotent, deterministic, total: an already-migrated
 /// document (or one whose phase-1 output still fails to parse) is returned
 /// with `changed: 0` / phase-1-only.
-pub fn fix_document(text: &str) -> FixResult {
+///
+/// `snapshot` is the document's resolved capability snapshot, `None` when it
+/// did not resolve: rule 8 renames only where [`crate::renames::renamed_attr`]
+/// says so, and with `None` renames nothing — every site it would rewrite is
+/// [`FixResult::kept`] (spec 0.53.0 §4.2). Every other rule ignores it.
+pub fn fix_document(text: &str, snapshot: Option<&CapabilitySnapshot>) -> FixResult {
     // -- phase 1: apply the parser's `migrate` fix-its (back-to-front) — the
     // `:line[speaker]` bracket form (rule 1) AND any other `:`-led content
     // line's sigil (rule 3) both attach one here, so phase 1 migrates every
@@ -112,7 +379,8 @@ pub fn fix_document(text: &str) -> FixResult {
             }
         }
     }
-    let phase1 = edits.len();
+    let mut rules = RuleCounts::default();
+    rules.add(FixRule::LineSigil, edits.len());
     let text1 = splice(text, edits);
 
     // -- phase 2: re-parse; if clean, rewrite choice/hub `as` keys to `into`.
@@ -126,7 +394,9 @@ pub fn fix_document(text: &str) -> FixResult {
     if diags2.iter().any(|d| d.severity == Severity::Error) {
         return FixResult {
             text: text1,
-            changed: phase1,
+            changed: rules.total(),
+            rules,
+            kept: Vec::new(),
         };
     }
 
@@ -164,7 +434,7 @@ pub fn fix_document(text: &str) -> FixResult {
         collect_lines(&beat.body, &mut lines);
     }
 
-    let mut edits2: Vec<(usize, usize, String)> = Vec::new();
+    let mut edits2 = Edits::default();
     for c in &choices {
         if let Some(a) = c.attrs.iter().find(|a| a.key == "as") {
             // Rewrite only the KEY span (`as`), preserving the value. `Attr.span`
@@ -172,7 +442,10 @@ pub fn fix_document(text: &str) -> FixResult {
             // `span(key_start, ..)`), so the key occupies `[byte_start,
             // byte_start + key.len())`.
             let start = a.span.byte_start;
-            edits2.push((start, start + a.key.len(), "into".to_string()));
+            edits2.push(
+                FixRule::ChoiceInto,
+                (start, start + a.key.len(), "into".to_string()),
+            );
         }
     }
     let bytes1 = text1.as_bytes();
@@ -185,7 +458,7 @@ pub fn fix_document(text: &str) -> FixResult {
         // line, so every `Line` reaching here already starts `@`.
         let start = l.span.byte_start;
         if bytes1.get(start) == Some(&b':') {
-            edits2.push((start, start + 1, "@".to_string()));
+            edits2.push(FixRule::LineSigil, (start, start + 1, "@".to_string()));
         }
     }
 
@@ -207,7 +480,7 @@ pub fn fix_document(text: &str) -> FixResult {
         if let Some(p) = c.attrs.iter().find(|a| a.key == "persist") {
             if matches!(&p.value, AttrValue::Str(s) if s == "run") {
                 let (start, end) = widen_removed_attr(bytes1, p.span.byte_start, p.span.byte_end);
-                edits2.push((start, end, String::new()));
+                edits2.push(FixRule::ChoicePersist, (start, end, String::new()));
             }
         }
     }
@@ -223,7 +496,7 @@ pub fn fix_document(text: &str) -> FixResult {
     // (a stripped title no longer matches the prefix shape).
     for shot in &doc2.sections {
         if let Some((start, end)) = shot_prefix_delete(bytes1, shot.span.byte_start) {
-            edits2.push((start, end, String::new()));
+            edits2.push(FixRule::ShotHeading, (start, end, String::new()));
         }
     }
 
@@ -251,8 +524,8 @@ pub fn fix_document(text: &str) -> FixResult {
             let start = a.span.byte_start;
             let end = a.span.byte_end;
             match v.as_str() {
-                "thought" => edits2.push((start, end, "mono".to_string())),
-                "voiceover" => edits2.push((start, end, "vo".to_string())),
+                "thought" => edits2.push(FixRule::Delivery, (start, end, "mono".to_string())),
+                "voiceover" => edits2.push(FixRule::Delivery, (start, end, "vo".to_string())),
                 "spoken" => {
                     if l.attrs.len() == 1 {
                         match find_enclosing_braces(
@@ -262,12 +535,14 @@ pub fn fix_document(text: &str) -> FixResult {
                             start,
                             end,
                         ) {
-                            Some((bs, be)) => edits2.push((bs, be, String::new())),
-                            None => edits2.push((start, end, String::new())),
+                            Some((bs, be)) => {
+                                edits2.push(FixRule::Delivery, (bs, be, String::new()));
+                            }
+                            None => edits2.push(FixRule::Delivery, (start, end, String::new())),
                         }
                     } else {
                         let (ws, we) = widen_removed_attr(bytes1, start, end);
-                        edits2.push((ws, we, String::new()));
+                        edits2.push(FixRule::Delivery, (ws, we, String::new()));
                     }
                 }
                 _ => {}
@@ -281,7 +556,7 @@ pub fn fix_document(text: &str) -> FixResult {
     // `<when …>` open tag, disjoint from every choice/line/heading span above.
     for rw in crate::when_test_literal::when_test_rewrites(&doc2, &text1) {
         let new_text = rw.new_text();
-        edits2.push((rw.start, rw.end, new_text));
+        edits2.push(FixRule::WhenIs, (rw.start, rw.end, new_text));
     }
 
     // -- dsl 0.37.0 §7 renames (rules 7–10): directive tags and attrs, the
@@ -303,28 +578,33 @@ pub fn fix_document(text: &str) -> FixResult {
     for body in &bodies {
         collect_directives(body, &mut directives, &mut matches);
     }
+    let mut kept = Vec::new();
     for d in &directives {
-        edits2.extend(directive_renames(bytes1, d));
+        directive_renames(bytes1, d, snapshot, &mut edits2, &mut kept);
     }
     for c in &choices {
         if let Some(edit) = rename_key(&c.attrs, "label", "text") {
-            edits2.push(edit);
+            edits2.push(FixRule::RenamedTagAttr, edit);
         }
     }
     for m in &matches {
         if let Some(edit) = rename_key(&m.attrs, "on", "subject") {
-            edits2.push(edit);
+            edits2.push(FixRule::RenamedTagAttr, edit);
         }
     }
     for l in &lines {
-        edits2.extend(line_id_to_label(bytes1, l));
+        edits2.extend(FixRule::LineIdLabel, line_id_to_label(bytes1, l));
     }
-    let phase2 = edits2.len();
-    let text2 = splice(&text1, edits2);
+    for rule in FixRule::ALL {
+        rules.add(rule, edits2.rules.get(rule));
+    }
+    let text2 = splice(&text1, edits2.spans);
 
     FixResult {
         text: text2,
-        changed: phase1 + phase2,
+        changed: rules.total(),
+        rules,
+        kept,
     }
 }
 
@@ -387,26 +667,53 @@ fn collect_choices<'a>(nodes: &'a [Node], out: &mut Vec<&'a Choice>) {
 /// `playback`, `::cut{action}` → `::cg{display}`, `::mark{id}` →
 /// `::label{name}`), read from the checker's own [`crate::renames`] tables.
 /// A key is rewritten only when the new key is not already written, so the
-/// result never carries a duplicate attribute.
-fn directive_renames(bytes: &[u8], d: &Directive) -> Vec<(usize, usize, String)> {
-    let mut edits = Vec::new();
+/// result never carries a duplicate attribute, and only where
+/// [`crate::renames::renamed_attr`] judges it the old spelling on the
+/// (new) tag's surface; a site the snapshot keeps is pushed to `kept`.
+fn directive_renames(
+    bytes: &[u8],
+    d: &Directive,
+    snapshot: Option<&CapabilitySnapshot>,
+    edits: &mut Edits,
+    kept: &mut Vec<FixKept>,
+) {
     let new_tag = crate::renames::renamed_directive(&d.tag);
     if let Some(new_tag) = new_tag {
         let sigil = format!("::{}", d.tag);
         let start = d.span.byte_start;
         if bytes[start..].starts_with(sigil.as_bytes()) {
-            edits.push((start + 2, start + sigil.len(), new_tag.to_string()));
+            edits.push(
+                FixRule::RenamedTag,
+                (start + 2, start + sigil.len(), new_tag.to_string()),
+            );
         }
     }
     let tag = new_tag.unwrap_or(&d.tag);
     for a in &d.attrs {
-        if let Some(new_key) = crate::renames::renamed_directive_attr(tag, &a.key) {
-            if let Some(edit) = rename_key(&d.attrs, &a.key, new_key) {
-                edits.push(edit);
+        let Some(renamed) = crate::renames::renamed_key(tag, &a.key) else {
+            continue;
+        };
+        let Some(edit) = rename_key(&d.attrs, &a.key, renamed) else {
+            continue;
+        };
+        let reason = match snapshot {
+            None => KeptReason::Unresolved,
+            Some(snapshot) if crate::renames::renamed_attr(tag, &a.key, snapshot).is_some() => {
+                edits.push(FixRule::RenamedAttr, edit);
+                continue;
             }
-        }
+            Some(_) => KeptReason::Stamp,
+        };
+        kept.push(FixKept {
+            line: a.span.line,
+            column: a.span.column,
+            rule: FixRule::RenamedAttr,
+            reason,
+            tag: tag.to_string(),
+            key: a.key.clone(),
+            renamed,
+        });
     }
-    edits
 }
 
 /// The key-span edit renaming attribute `old` to `new` in `attrs`, unless
@@ -689,7 +996,7 @@ mod tests {
 
     #[test]
     fn migrates_line_bracket_with_attrs() {
-        let out = fix_document(&wrap(":line[marina]{emotion=\"x\"}: hi\n"));
+        let out = fix_document(&wrap(":line[marina]{emotion=\"x\"}: hi\n"), None);
         assert!(out.changed >= 1, "changed: {}", out.changed);
         assert!(
             out.text.contains("@marina{emotion=\"x\"}: hi"),
@@ -705,7 +1012,7 @@ mod tests {
 
     #[test]
     fn migrates_line_bracket_no_attrs() {
-        let out = fix_document(&wrap(":line[narrator]: plain\n"));
+        let out = fix_document(&wrap(":line[narrator]: plain\n"), None);
         assert!(out.changed >= 1, "changed: {}", out.changed);
         assert!(out.text.contains("@narrator: plain"), "got:\n{}", out.text);
         assert!(!out.text.contains(":line["), "got:\n{}", out.text);
@@ -715,7 +1022,7 @@ mod tests {
     fn migrates_branch_choice_as_to_into() {
         let out = fix_document(&wrap(
             "<branch id=\"b\">\n<choice id=\"c\" text=\"L\" as=\"run.flag\">\n:marina: hi\n</choice>\n</branch>\n",
-        ));
+        ), None);
         assert_eq!(out.changed, 2, "got:\n{}", out.text);
         assert!(
             out.text
@@ -734,7 +1041,7 @@ mod tests {
     fn migrates_hub_choice_as_to_into() {
         let out = fix_document(&wrap(
             "<hub id=\"h\">\n<choice id=\"c\" text=\"L\" as=\"run.flag\">\n:marina: hi\n</choice>\n</hub>\n",
-        ));
+        ), None);
         assert_eq!(out.changed, 2, "got:\n{}", out.text);
         assert!(
             out.text
@@ -759,7 +1066,7 @@ mod tests {
         let src = wrap(
             "<branch id=\"b\">\n<choice id=\"help\" text=\"Help\" into=\"run.metHelpfully\">\n@marina: hi\n</choice>\n</branch>\n",
         );
-        let out = fix_document(&src);
+        let out = fix_document(&src, None);
         assert_eq!(out.changed, 0, "got:\n{}", out.text);
         assert_eq!(
             out.text, src,
@@ -774,7 +1081,7 @@ mod tests {
         // though the line's leading sigil still migrates to `@` (dsl 0.2.2
         // §7.1, Task C3).
         let src = wrap(":marina{as=\"curt\"}: hi\n");
-        let out = fix_document(&src);
+        let out = fix_document(&src, None);
         assert_eq!(out.changed, 1, "only the sigil migrates: {}", out.changed);
         assert!(
             out.text.contains("@marina{as=\"curt\"}: hi"),
@@ -791,7 +1098,7 @@ mod tests {
         let src = wrap(
             "<branch id=\"b\">\n<choice id=\"c\" text=\"L\" into=\"run.flag\">\n:speaker: hi\n</choice>\n</branch>\n",
         );
-        let out = fix_document(&src);
+        let out = fix_document(&src, None);
         assert_eq!(out.changed, 1, "got:\n{}", out.text);
         assert!(out.text.contains("@speaker: hi"), "got:\n{}", out.text);
         assert!(
@@ -806,7 +1113,7 @@ mod tests {
         let src = wrap(
             ":line[marina]{emotion=\"x\"}: hi\n<branch id=\"b\">\n<choice id=\"c\" text=\"L\" as=\"run.flag\">\n:fixer: yo\n</choice>\n</branch>\n",
         );
-        let out = fix_document(&src);
+        let out = fix_document(&src, None);
         // phase1 (`:line[` removal + both lines' `:`→`@`) + phase2 (`as`→`into`).
         assert_eq!(out.changed, 3, "all rules fire; got:\n{}", out.text);
         assert!(
@@ -822,7 +1129,7 @@ mod tests {
         );
         assert!(out.text.contains("@fixer: yo"), "got:\n{}", out.text);
         // Idempotent: re-running the migrated doc changes nothing.
-        let again = fix_document(&out.text);
+        let again = fix_document(&out.text, None);
         assert_eq!(again.changed, 0, "second pass is a no-op");
         assert_eq!(again.text, out.text);
     }
@@ -837,7 +1144,7 @@ mod tests {
         // walked `doc.shots`, so this quest doc would parse clean but yield
         // `changed: 0` and leave both `as=` keys untouched.
         let src = "---\nkind: quest\n---\n<quest id=\"q\">\n<on event=\"questComplete\">\n<branch id=\"b\">\n<choice id=\"c\" text=\"L\" as=\"run.x\">\n:narrator: hi\n</choice>\n</branch>\n</on>\n<objective id=\"o\" done=\"run.d\">\n<branch id=\"b2\">\n<choice id=\"c2\" text=\"M\" as=\"run.y\">\n:narrator: yo\n</choice>\n</branch>\n</objective>\n</quest>\n";
-        let out = fix_document(src);
+        let out = fix_document(src, None);
         assert_eq!(out.changed, 4, "got:\n{}", out.text);
         assert!(
             out.text
@@ -867,17 +1174,21 @@ mod tests {
 
     #[test]
     fn migrates_speaker_colon_to_at() {
-        let out = fix_document("## Shot 1.\n:marina{code=\"0010\"}: hi\n:narrator: x\n");
+        let out = fix_document(
+            "## Shot 1.\n:marina{code=\"0010\"}: hi\n:narrator: x\n",
+            None,
+        );
         assert!(out.text.contains("@marina{code=\"0010\"}: hi"));
         assert!(out.text.contains("@narrator: x"));
         // idempotent
-        assert_eq!(fix_document(&out.text).text, out.text);
+        assert_eq!(fix_document(&out.text, None).text, out.text);
     }
 
     #[test]
     fn migrates_delivery_attr_to_flag() {
         let out = fix_document(
             "## Shot 1.\n@x{delivery=\"thought\"}: a\n@y{delivery=\"voiceover\"}: b\n",
+            None,
         );
         assert!(
             out.text.contains("{mono}") && out.text.contains("{vo}"),
@@ -893,7 +1204,7 @@ mod tests {
         // flag substituted, and (being the line's only attr) the now-empty
         // `{…}` drops too so the line reads as a bare `@speaker: text`
         // (confirmed the parser accepts a brace-less content line).
-        let out = fix_document("## Shot 1.\n@z{delivery=\"spoken\"}: c\n");
+        let out = fix_document("## Shot 1.\n@z{delivery=\"spoken\"}: c\n", None);
         assert!(!out.text.contains("delivery="), "got:\n{}", out.text);
         assert!(
             !out.text.contains('{') && !out.text.contains('}'),
@@ -914,9 +1225,7 @@ mod tests {
         // `spoken` removal among sibling attrs must not orphan them or leave
         // a stray double space — only the `delivery=` attr (plus exactly one
         // adjacent separator) is dropped, whichever side it sits on.
-        let out = fix_document(
-            "## Shot 1.\n@z{emotion=\"x\" delivery=\"spoken\"}: c\n@w{delivery=\"spoken\" emotion=\"x\"}: d\n",
-        );
+        let out = fix_document("## Shot 1.\n@z{emotion=\"x\" delivery=\"spoken\"}: c\n@w{delivery=\"spoken\" emotion=\"x\"}: d\n", None);
         assert!(!out.text.contains("delivery="), "got:\n{}", out.text);
         assert!(
             out.text.contains("@z{emotion=\"x\"}: c"),
@@ -935,7 +1244,7 @@ mod tests {
         // Already-bare `{mono}`/`{vo}` flags (no `delivery=` key) must emit
         // no edits — the rule only ever fires on a `delivery=` attr key.
         let src = "## Shot 1.\n@x{mono}: a\n@y{vo}: b\n@z: c\n";
-        let out = fix_document(src);
+        let out = fix_document(src, None);
         assert_eq!(
             out.changed, 0,
             "already-bare flags must not be touched: {}",
@@ -948,11 +1257,9 @@ mod tests {
     /// its lines and choices take the same migrations as a shot's.
     #[test]
     fn migrates_bundle_beat_body() {
-        let out = fix_document(
-            "---\nid: ship.records\nkind: lore\n---\n<beat id=\"b\" on=\"talk\">\n\
-             @x{delivery=\"thought\"}: a\n<branch id=\"k\">\n<choice id=\"c\" text=\"L\" as=\"run.x\">\n\
-             @y: b\n</choice>\n</branch>\n</beat>\n",
-        );
+        let out = fix_document("---\nid: ship.records\nkind: lore\n---\n<beat id=\"b\" on=\"talk\">\n\
+         @x{delivery=\"thought\"}: a\n<branch id=\"k\">\n<choice id=\"c\" text=\"L\" as=\"run.x\">\n\
+         @y: b\n</choice>\n</branch>\n</beat>\n", None);
         assert_eq!(out.changed, 2, "{}", out.text);
         assert!(out.text.contains("@x{mono}: a"), "{}", out.text);
         assert!(out.text.contains("into=\"run.x\""), "{}", out.text);
@@ -965,7 +1272,7 @@ mod tests {
         // records now) — `lute fix` applies the `"migrate"` deletion.
         let out = fix_document(&wrap(
             "<branch id=\"b\">\n<choice id=\"c\" text=\"L\" persist=\"run\" into=\"run.x\">\n@marina: hi\n</choice>\n</branch>\n",
-        ));
+        ), None);
         assert_eq!(
             out.changed, 1,
             "only the persist attr is deleted; got:\n{}",
@@ -984,7 +1291,7 @@ mod tests {
             !diags.iter().any(|d| d.severity == Severity::Error),
             "{diags:?}"
         );
-        let again = fix_document(&out.text);
+        let again = fix_document(&out.text, None);
         assert_eq!(again.changed, 0, "second pass is a no-op");
         assert_eq!(again.text, out.text);
     }
@@ -993,7 +1300,7 @@ mod tests {
     fn migrates_hub_choice_persist_run_with_into_deletes_persist() {
         let out = fix_document(&wrap(
             "<hub id=\"h\">\n<choice id=\"c\" text=\"L\" persist=\"run\" into=\"run.x\" exit>\n@marina: hi\n</choice>\n</hub>\n",
-        ));
+        ), None);
         assert_eq!(out.changed, 1, "got:\n{}", out.text);
         assert!(
             out.text
@@ -1013,7 +1320,7 @@ mod tests {
         let src = wrap(
             "<branch id=\"b\">\n<choice id=\"c\" text=\"L\" persist=\"run\">\n@marina: hi\n</choice>\n</branch>\n",
         );
-        let out = fix_document(&src);
+        let out = fix_document(&src, None);
         assert_eq!(out.changed, 0, "got:\n{}", out.text);
         assert_eq!(out.text, src, "persist without into must stay manual");
     }
@@ -1025,7 +1332,7 @@ mod tests {
         let src = wrap(
             "<branch id=\"b\">\n<choice id=\"c\" text=\"L\" persist=\"scene\" into=\"run.x\">\n@marina: hi\n</choice>\n</branch>\n",
         );
-        let out = fix_document(&src);
+        let out = fix_document(&src, None);
         assert_eq!(out.changed, 0, "got:\n{}", out.text);
         assert_eq!(out.text, src, "non-run persist value must stay manual");
     }
@@ -1036,7 +1343,7 @@ mod tests {
         // grammar prefix is stripped, the free-text title survives byte-exact.
         let src =
             "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 3. The Alley\n@marina: hi\n";
-        let out = fix_document(src);
+        let out = fix_document(src, None);
         assert_eq!(
             out.changed, 1,
             "only the heading prefix is stripped; got:\n{}",
@@ -1049,7 +1356,7 @@ mod tests {
             out.text
         );
         // idempotent: the stripped title no longer matches the prefix shape.
-        let again = fix_document(&out.text);
+        let again = fix_document(&out.text, None);
         assert_eq!(
             again.changed, 0,
             "second pass is a no-op; got:\n{}",
@@ -1061,7 +1368,7 @@ mod tests {
     #[test]
     fn strips_scene_heading_prefix_when_title_follows() {
         let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Scene 2. Rooftop at dusk\n@marina: hi\n";
-        let out = fix_document(src);
+        let out = fix_document(src, None);
         assert_eq!(out.changed, 1, "got:\n{}", out.text);
         assert!(
             out.text.contains("## Rooftop at dusk\n"),
@@ -1076,7 +1383,7 @@ mod tests {
         // A BARE `## Shot 3.` (no trailing title) is a valid free title now —
         // stripping would leave an empty heading, so `lute fix` leaves it be.
         let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Shot 3.\n@marina: hi\n";
-        let out = fix_document(src);
+        let out = fix_document(src, None);
         assert_eq!(
             out.changed, 0,
             "bare `## Shot 3.` must be untouched; got:\n{}",
@@ -1088,7 +1395,7 @@ mod tests {
     #[test]
     fn leaves_bare_scene_heading_untouched() {
         let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## Scene 2.\n@marina: hi\n";
-        let out = fix_document(src);
+        let out = fix_document(src, None);
         assert_eq!(
             out.changed, 0,
             "bare `## Scene 2.` must be untouched; got:\n{}",
@@ -1102,7 +1409,7 @@ mod tests {
         // A heading that isn't the legacy `Shot|Scene <int>.` shape is a plain
         // free title — never touched.
         let src = "---\ncharacter: x\nseason: 1\nepisode: 1\n---\n## The Alley\n@marina: hi\n";
-        let out = fix_document(src);
+        let out = fix_document(src, None);
         assert_eq!(
             out.changed, 0,
             "a non-grammar free heading is untouched; got:\n{}",
@@ -1114,10 +1421,13 @@ mod tests {
     /// Applies `fix_document` and asserts the exact output, the edit count,
     /// and idempotence (a second run changes nothing).
     fn fixes_to(body: &str, want: &str, changed: usize) {
-        let out = fix_document(&wrap(body));
+        let core = lute_manifest::core::load_core_snapshot();
+        let out = fix_document(&wrap(body), Some(&core));
         assert_eq!(out.text, wrap(want), "got:\n{}", out.text);
         assert_eq!(out.changed, changed, "got:\n{}", out.text);
-        let again = fix_document(&out.text);
+        assert_eq!(out.rules.total(), changed);
+        assert!(out.kept.is_empty(), "{:?}", out.kept);
+        let again = fix_document(&out.text, Some(&core));
         assert_eq!(again.changed, 0, "not idempotent:\n{}", again.text);
         assert_eq!(again.text, out.text);
     }
@@ -1209,7 +1519,7 @@ mod tests {
         let src = wrap(
             "::camera{focus=\"m\" zoom=\"1.2\"}\n::cg{assetId=\"C\" full}\n::music{track=\"t\"}\n",
         );
-        let out = fix_document(&src);
+        let out = fix_document(&src, None);
         assert_eq!(out.changed, 0, "got:\n{}", out.text);
         assert_eq!(out.text, src);
     }

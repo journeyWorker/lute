@@ -104,7 +104,7 @@ pub fn check_directive(
     let Some(decl) = snapshot.directive(&dir.tag) else {
         // dsl 0.37.0 §4: an old core tag names its new spelling, even where a
         // nearest-name suggestion would also be available.
-        if let Some(d) = crate::renames::renamed_directive_diag(dir) {
+        if let Some(d) = crate::renames::renamed_directive_diag(dir, snapshot) {
             diags.push(d);
             return diags;
         }
@@ -289,7 +289,7 @@ pub fn check_directive(
             }
             // dsl 0.37.0 §4: a renamed or removed core attribute names its
             // replacement instead of a spelling neighbour.
-            if let Some(d) = crate::renames::attr_diag(&dir.tag, attr) {
+            if let Some(d) = crate::renames::attr_diag(&dir.tag, attr, snapshot) {
                 diags.push(d);
                 continue;
             }
@@ -379,9 +379,11 @@ pub fn check_directive(
         let Some(default) = adecl.default.as_ref() else {
             continue;
         };
+        // A key the snapshot admits on this directive (a stamp of that
+        // name) is not the attribute's old spelling (spec 0.53.0 §4.1).
         let present = dir.attrs.iter().any(|a| {
             a.key == adecl.name
-                || crate::renames::renamed_directive_attr(&dir.tag, &a.key)
+                || crate::renames::renamed_attr(&dir.tag, &a.key, snapshot)
                     == Some(adecl.name.as_str())
         });
         let Some(value) = default_attr_value(default).filter(|_| !present) else {
@@ -410,7 +412,7 @@ pub fn check_directive(
     // its renamed old spelling already drew `E-RENAMED-ATTR`.
     for adecl in decl.attrs.iter().filter(|a| a.required) {
         let renamed_present = dir.attrs.iter().any(|a| {
-            crate::renames::renamed_directive_attr(&dir.tag, &a.key) == Some(adecl.name.as_str())
+            crate::renames::renamed_attr(&dir.tag, &a.key, snapshot) == Some(adecl.name.as_str())
         });
         if !renamed_present && !dir.attrs.iter().any(|a| a.key == adecl.name) {
             diags.push(diag(

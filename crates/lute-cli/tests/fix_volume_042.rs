@@ -168,7 +168,7 @@ fn a_standalone_document_with_the_old_scale_is_migrated() {
         ::music{playback=\"start\" volume=\"up\"}\n";
     write(&dir, "s.lute", doc);
     let out = fix(&dir.join("s.lute"));
-    assert_eq!(out, "lute: applied 3 fix(es)\n");
+    assert_eq!(out, "lute: applied 3 fix(es): volume 3\n");
     assert_eq!(
         read(&dir, "s.lute"),
         doc.replace(

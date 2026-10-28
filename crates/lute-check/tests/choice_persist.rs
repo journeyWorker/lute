@@ -404,7 +404,7 @@ fn fix_rule_round_trips_persist_into_to_bare_into() {
          </choice>\n\
          </branch>\n"
     );
-    let fixed = fix_document(&before);
+    let fixed = fix_document(&before, None);
     assert_eq!(
         fixed.changed, 1,
         "exactly the persist attr is deleted; got:\n{}",
@@ -543,7 +543,7 @@ fn lsp_fixit_and_lute_fix_agree_byte_for_byte() {
     let mut via_lsp = before.clone();
     via_lsp.replace_range(e.span.byte_start..e.span.byte_end, &e.new_text);
 
-    let via_fix = fix_document(&before);
+    let via_fix = fix_document(&before, None);
     assert_eq!(
         via_fix.text, via_lsp,
         "`lute fix` and the LSP fixit MUST produce identical bytes"
