@@ -708,6 +708,8 @@ struct FixInputs {
     models: lute_model::ModelMemo,
     /// Each root's model and document index; `None` when it failed to build.
     roots: BTreeMap<PathBuf, Option<RootModel>>,
+    /// The input cache for a `.lute` file no model lists: one under no
+    /// manifest, or one its root's model does not reach.
     loose: lute_load::InputCache,
 }
 
@@ -770,28 +772,36 @@ impl FixInputs {
     }
 
     /// Run [`lute_check::fix_document`] over the `.lute` file `file`
-    /// (`text`) with its capability snapshot: its root's model document's,
-    /// or for a file under no manifest its own assembly's; `None` when that
-    /// reports a resolution error, or the model failed to build.
+    /// (`text`) with its capability snapshot: its root's model document's;
+    /// for a file under no manifest, or one the root's model does not list
+    /// (selected through a directory symlink model discovery does not
+    /// descend), its own assembly's on the run's input cache, under its
+    /// root. `None` when that reports a resolution error, or the model
+    /// failed to build.
     fn fix_lute(&self, file: &Path, text: &str) -> lute_check::FixResult {
-        let Some(root) = project_root(file) else {
+        let assembled = |root: Option<&Path>| {
             let (built, _) =
-                lute_load::assemble_input(&self.loose, file, text.to_string(), None, None, None);
+                lute_load::assemble_input(&self.loose, file, text.to_string(), None, root, None);
             let snapshot = (!built.resolve_error).then(|| built.input.snapshot());
-            return lute_check::fix_document(text, snapshot);
+            lute_check::fix_document(text, snapshot)
         };
-        let document = self
-            .roots
-            .get(&root)
-            .and_then(Option::as_ref)
-            .and_then(|r| {
-                let index = r.by_path.get(&std::fs::canonicalize(file).ok()?)?;
-                r.model.documents().get(*index)
-            });
-        let snapshot = document
-            .filter(|d| !d.resolve_error)
-            .map(|d| d.input.snapshot());
-        lute_check::fix_document(text, snapshot)
+        let Some(root) = project_root(file) else {
+            return assembled(None);
+        };
+        let Some(Some(model)) = self.roots.get(&root) else {
+            return lute_check::fix_document(text, None);
+        };
+        let document = std::fs::canonicalize(file)
+            .ok()
+            .and_then(|path| model.by_path.get(&path))
+            .and_then(|&index| model.model.documents().get(index));
+        match document {
+            Some(d) => {
+                let snapshot = (!d.resolve_error).then(|| d.input.snapshot());
+                lute_check::fix_document(text, snapshot)
+            }
+            None => assembled(Some(&root)),
+        }
     }
 }
 

@@ -89,6 +89,7 @@ on:
       - ".github/workflows/test.yml"
       - "scripts/check-public-api.py"
       - "scripts/check-visibility.py"
+      - "scripts/check-clippy-config.py"
       - "scripts/vocab-grid.py"
   workflow_dispatch:
 
@@ -211,6 +212,11 @@ jobs:
       # `pub(super)`/`pub(in …)`, so this script does (rules note §3).
       - name: no pub(super) / pub(in …)
         run: python3 scripts/check-visibility.py && python3 scripts/check-visibility.py --self-test
+
+      # Clippy reads the nearest `clippy.toml`: each crate file repeats the
+      # workspace's entries and the crates add the same probes (rules note §1).
+      - name: crate clippy.toml extends the workspace one
+        run: python3 scripts/check-clippy-config.py && python3 scripts/check-clippy-config.py --self-test
 
   gates:
     name: JS harnesses + doc gates (offline)

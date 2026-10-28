@@ -729,6 +729,17 @@ pub fn resolve_imports(
     )
 }
 
+/// [`resolve_imports`], recording every lookup and file read in `sink`.
+pub(crate) fn resolve_imports_recorded(
+    base_dir: &Path,
+    uses: &[String],
+    extends: &[String],
+    at: Span,
+    sink: &DependencySink,
+) -> SchemaImports {
+    resolve_imports_in(base_dir, uses, extends, at, None, sink, None)
+}
+
 /// [`resolve_imports`], reading each imported file through `files` when
 /// given. A file's parse depends on its text and `at` alone, so `files` is
 /// only passed with `at` = [`AT_PLACEHOLDER`] ([`ImportCache::resolve`]).

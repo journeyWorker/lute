@@ -402,6 +402,50 @@ fn closure(root: &Path, file: &Path, texts: &[&String]) -> RetainedCounts {
     cache.retained()
 }
 
+/// L3 review: a schema only a component imports (its own `uses:`) feeds the
+/// cached template's `defs`, which decide whether a use derives the
+/// header's condition. Editing it invalidates the cache the server
+/// revalidates without a notification, and the next request reads the new
+/// defs.
+#[test]
+fn a_component_only_imported_schema_is_a_recorded_dependency() {
+    let (_dir, root) = project("lsp-component-import", "");
+    let schema = root.join("schema/c.yaml");
+    write(&schema, "defs:\n  ready: \"true\"\n");
+    write(
+        &root.join("components/bond.lute"),
+        "---\ncomponent: bond\nuses: [../schema/c.yaml]\nbeat:\n  on: bond\n  \
+         when: \"@ready\"\n---\n## Bond\n@narrator: A bond story begins.\n",
+    );
+    let file = root.join("lore/a.lute");
+    let text = "---\nkind: lore\nid: lore.a\ncomponents: [../components/bond.lute]\n---\n\n\
+                <beat use=\"bond\" id=\"a\">\n@narrator: Hi.\n</beat>\n"
+        .to_string();
+    write(&file, &text);
+    let defs = |cache: &InputCache| {
+        let (built, _) = assemble_input_with_mode(
+            cache,
+            &file,
+            text.clone(),
+            None,
+            Some(&root),
+            None,
+            Mode::Author,
+        );
+        let def = &built.input.components.table["bond"];
+        def.beat.as_ref().expect("a beat template").defs.clone()
+    };
+    let cache = InputCache::tracked();
+    assert!(defs(&cache).contains("ready"));
+    assert!(cache.revalidate(&|_| false), "nothing changed");
+    write(&schema, "defs:\n  other: \"true\"\n");
+    assert!(
+        !cache.revalidate(&|_| false),
+        "the component's import is a recorded dependency"
+    );
+    assert!(!defs(&InputCache::tracked()).contains("ready"));
+}
+
 /// Configuration `i` of the churn: distinct `plugins:` maps, `uses:` lists
 /// of existing imports and `uses:` lists naming missing imports.
 fn churn_text(i: usize) -> String {

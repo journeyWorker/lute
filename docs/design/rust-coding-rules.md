@@ -126,7 +126,9 @@ probe in input assembly goes through `lute_manifest::deps::DependencySink`;
 a site no memoized build reaches (discovery, a per-document or project pass,
 the recorder itself, a test reading its fixtures) carries an `#[expect]`
 saying so. Clippy reads the nearest `clippy.toml`, so the crate files repeat
-the workspace entries.
+the workspace entries; `scripts/check-clippy-config.py` (CI, next to the
+visibility check) fails when a crate file lacks a workspace key or entry, or
+when the crate files' additions differ.
 
 `clippy::unwrap_used` is not in `[workspace.lints]`, because integration-test
 helpers under `crates/*/tests/` hold 935 `unwrap()` calls. Clippy's

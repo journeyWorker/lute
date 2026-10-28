@@ -155,6 +155,32 @@ fn a_scoped_stamp_keeps_only_its_surface() {
     );
 }
 
+/// A file selected through a directory symlink, which model discovery does
+/// not descend, is assembled under its root: its snapshot resolves and the
+/// scoped stamp and the renames apply as for a listed file (F review).
+#[test]
+fn a_file_behind_a_directory_symlink_reads_its_snapshot() {
+    let p = issue_project(
+        "fix-stamps-symlink",
+        "{ name: action, type: string, on: [music] }",
+    );
+    let sources = TempProject::new("fix-stamps-symlink-sources");
+    sources.write("intro.lute", SCENE);
+    std::fs::remove_file(p.join("scenes/intro.lute")).unwrap();
+    std::os::unix::fs::symlink(sources.join("."), p.join("linked")).unwrap();
+    let out = lute_in(&p, &["fix", "--check", "linked/intro.lute"]);
+    assert_eq!(out.status.code(), Some(1), "{}", text(&out.stderr));
+    assert_eq!(
+        text(&out.stdout),
+        "lute: would apply 2 fix(es): renamed-attr 2\n"
+    );
+    assert_eq!(
+        text(&out.stderr),
+        "lute fix: linked/intro.lute:10:25: kept `action` on `::music` — the active profile \
+         declares it as a stamp attribute; the 0.37 rename to `playback` does not apply\n"
+    );
+}
+
 /// A document whose plugin is missing: its snapshot does not resolve, so
 /// every rename site is kept with `unresolved`; the other rules still run.
 #[test]

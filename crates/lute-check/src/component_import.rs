@@ -425,8 +425,13 @@ fn read_and_parse(
         t.defs = tm.defs.keys().cloned().collect();
         if !tm.uses.is_empty() || !tm.extends.is_empty() {
             let base = canon.parent().unwrap_or(Path::new("."));
-            let imports =
-                crate::schema_import::resolve_imports(base, &tm.uses, &tm.extends, doc.meta.span);
+            let imports = crate::schema_import::resolve_imports_recorded(
+                base,
+                &tm.uses,
+                &tm.extends,
+                doc.meta.span,
+                sink,
+            );
             t.defs.extend(imports.defs.into_keys());
         }
         t
