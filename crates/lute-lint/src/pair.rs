@@ -5,7 +5,9 @@
 //! ([`crate::nodes::walk_nodes_with`]), at each row while the row's view is
 //! valid, with one open slot per frame: per body for scope `body` (the rows
 //! are that body's direct children), per section or top-level declaration
-//! for scope `section` (every row in it, at every depth, in document order).
+//! for scope `section` (every row in it, at every depth, in document order),
+//! and one for the whole document for scope `document` (every row of every
+//! section and declaration, in document order).
 //! A slot holds where its pair was opened and the message rendered there;
 //! no row is stored.
 //!
@@ -46,6 +48,7 @@ impl std::fmt::Display for PairFault {
         let unit = |scope: &PairScope| match scope {
             PairScope::Body => "body",
             PairScope::Section => "section",
+            PairScope::Document => "document",
         };
         match self {
             PairFault::Unclosed(scope) => {
@@ -74,6 +77,8 @@ pub(crate) enum Frame {
     Body,
     /// A section or top-level declaration.
     Scope,
+    /// The whole document: every section and top-level declaration.
+    Document,
 }
 
 /// An open pair: where it was opened and the message rendered at that row.
@@ -131,6 +136,7 @@ impl<'r> PairRule<'r> {
             frame: match pair.scope {
                 PairScope::Body => Frame::Body,
                 PairScope::Section => Frame::Scope,
+                PairScope::Document => Frame::Document,
             },
             scope: pair.scope,
             slots: Vec::new(),

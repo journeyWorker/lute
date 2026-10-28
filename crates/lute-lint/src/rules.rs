@@ -651,6 +651,14 @@ impl NodeVisitor for NodeRules<'_, '_> {
     fn scope_end(&mut self) {
         self.frame(Frame::Scope, false);
     }
+
+    fn document_start(&mut self) {
+        self.frame(Frame::Document, true);
+    }
+
+    fn document_end(&mut self) {
+        self.frame(Frame::Document, false);
+    }
 }
 
 impl NodeRules<'_, '_> {

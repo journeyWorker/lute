@@ -876,7 +876,8 @@
         "scope": {
           "enum": [
             "body",
-            "section"
+            "section",
+            "document"
           ]
         },
         "level": {

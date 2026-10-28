@@ -389,6 +389,7 @@ enums:
     for (const rule of [
       "    target: pair\n    open: 'true'\n    close: 'false'\n",
       "    target: pair\n    open: 'true'\n    close: 'false'\n    inside: 'true'\n    scope: section\n",
+      "    target: pair\n    open: 'true'\n    close: 'false'\n    scope: document\n",
       "    target: node\n    when: 'true'\n",
     ]) {
       const { ok, errors } = validateAgainst(ajv, pluginSchema.$id, file(rule));

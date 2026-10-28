@@ -135,6 +135,10 @@ pub trait NodeVisitor {
     fn scope_start(&mut self) {}
     /// The section or declaration begun last ends.
     fn scope_end(&mut self) {}
+    /// The document begins, before the first section.
+    fn document_start(&mut self) {}
+    /// The document ends, after the top-level declarations.
+    fn document_end(&mut self) {}
 }
 
 /// A [`NodeVisitor`] that sees rows only.
@@ -569,6 +573,7 @@ pub fn walk_nodes_with(
         counters: Counters::default(),
         stats: NodeWalkStats::default(),
     };
+    visitor.document_start();
     for (i, section) in doc.sections.iter().enumerate() {
         let info = section_value(
             i + 1,
@@ -602,6 +607,7 @@ pub fn walk_nodes_with(
         section: &outside,
     };
     walk.body(&decls, scope, true, visitor);
+    visitor.document_end();
     let mut stats = walk.stats;
     stats.preceding_lookups = walk.counters.lookups.get();
     stats.preceding_steps += walk.counters.steps.get();

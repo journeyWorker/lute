@@ -369,6 +369,103 @@ fn section_scope_resets_per_declaration() {
     );
 }
 
+/// dsl 0.53.0 §5 (#225): the issue's `skip.lute`, a pair opened in one
+/// section and closed in the next, written as `lute.lint.yaml` with
+/// `scope: document`, parses and lints clean; as `section` it reports both
+/// ends.
+#[test]
+fn document_scope_balances_across_sections() {
+    let src = "---\nkind: scene\nid: skip\n---\n\n## Arrival {#arrival}\n\n\
+               @mira: We should go.\n::group{mode=\"begin\"}\n@mira: The walk takes a while.\n\n\
+               ## Gate {#gate}\n\n@mira: Here we are.\n::group{mode=\"end\"}\n@mira: Inside now.\n";
+    let (cfg, diags) = parse_config(
+        "custom:\n  - id: group-balanced\n    target: pair\n    \
+         open: 'node.tag == \"group\" && node.attrs[\"mode\"] == \"begin\"'\n    \
+         close: 'node.tag == \"group\" && node.attrs[\"mode\"] == \"end\"'\n    \
+         scope: document\n    level: error\n    message: \"::group begin/end\"\n",
+        span0(),
+    )
+    .unwrap();
+    assert!(diags.is_empty(), "{diags:?}");
+    let rule = cfg.custom[0].clone();
+    let LintRuleBody::Pair(pair) = &rule.body else {
+        panic!("{rule:?}")
+    };
+    assert_eq!(pair.scope, PairScope::Document);
+    assert_eq!(findings(src, std::slice::from_ref(&rule)), []);
+    assert_eq!(
+        findings(src, &[scoped(rule, PairScope::Section)]),
+        found(&[
+            (
+                GROUP,
+                9,
+                "::group begin/end — opened here, with no close in this section",
+                &[]
+            ),
+            (
+                GROUP,
+                15,
+                "::group begin/end — a close with no open pair in this section",
+                &[]
+            ),
+        ])
+    );
+}
+
+/// `document` scope is one slot: an open in a later section with no close
+/// reports "in this document" at the end, after the declarations; a pair
+/// opened in a section may close in a top-level declaration.
+#[test]
+fn document_scope_is_one_slot_for_the_document() {
+    let rule = || scoped(recipe("group-balanced"), PairScope::Document);
+    let src = format!(
+        "{SCENE}## A\n::group{{mode=\"begin\"}}\n## B\n::group{{mode=\"end\"}}\n\
+         ## C\n::group{{mode=\"begin\"}}\n## D\n::bg{{id=\"x\"}}\n"
+    );
+    assert_eq!(
+        findings(&src, &[rule()]),
+        found(&[
+            (
+                GROUP,
+                10,
+                "::group begin/end — opened here, with no close in this document",
+                &[]
+            ),
+            (
+                GROUP,
+                12,
+                "::group begin/end — not allowed inside the pair opened at line 10",
+                &[10]
+            ),
+        ])
+    );
+    // Top-level declarations share the one slot: an open in one quest and
+    // a close in the next balance, which `section` scope reports. (Without
+    // `inside`: the `</quest>`/`<quest>` rows between are not group rows.)
+    let rule = || {
+        let mut rule = rule();
+        if let LintRuleBody::Pair(pair) = &mut rule.body {
+            pair.inside = None;
+        }
+        rule
+    };
+    let quests = "---\nid: q\nkind: quest\n---\n<quest id=\"q1\">\n\
+                  <objective id=\"o\" done=\"true\">\n::group{mode=\"begin\"}\n</objective>\n</quest>\n\
+                  <quest id=\"q2\">\n<objective id=\"p\" done=\"true\">\n::group{mode=\"end\"}\n\
+                  </objective>\n</quest>\n";
+    assert_eq!(findings(quests, &[rule()]), []);
+    let unopened = quests.replace("::group{mode=\"begin\"}\n", "");
+    assert_eq!(
+        findings(&unopened, &[rule()]),
+        found(&[(
+            GROUP,
+            11,
+            "::group begin/end — a close with no open pair in this document",
+            &[]
+        )])
+    );
+}
+
 /// A row for which both predicates hold closes an open pair and opens one
 /// otherwise.
 #[test]
@@ -524,7 +621,7 @@ fn every_custom_shape_fault_is_a_config_error() {
         ),
         (
             "    target: pair\n    open: 'true'\n    close: 'true'\n    scope: shot\n",
-            "unknown variant `shot`, expected `body` or `section`",
+            "unknown variant `shot`, expected one of `body`, `section`, `document`",
         ),
         (
             "    target: node\n    when: 'true'\n    open: 'true'\n",
