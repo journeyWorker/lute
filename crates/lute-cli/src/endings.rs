@@ -278,19 +278,36 @@ const VERDICT_CODES: [&str; 3] = [
     lute_check::W_BEAT_SHADOWED,
 ];
 
-/// The whole-project diagnostics the rows cite, as each root's model
-/// reconciled them: every document's result, then the project-wide ones,
-/// in root order.
-struct ProjectVerdicts<'m>(&'m RootModels);
+/// The whole-project diagnostics the rows cite, as `lute beats` reads them:
+/// the collected (already reconciled) results reconciled once more — every
+/// document's result, then the project-wide ones, in root order.
+///
+/// The second pass is not redundant: the beat tie/shadow pass and the fact
+/// guards run against the per-file errors left after the first pass
+/// dropped the project-reclassified `E-MAYBE-UNSET` and dotted
+/// `E-UNDECLARED`, so a beat the model's own pass excluded is judged here
+/// (`W-BEAT-SHADOWED` can appear). The models' scenarios do not depend on
+/// it and are reused.
+struct ProjectVerdicts {
+    reconciled: Vec<(PathBuf, lute_check::CheckResult)>,
+    project: Vec<(PathBuf, Diagnostic)>,
+}
 
-impl ProjectVerdicts<'_> {
+impl ProjectVerdicts {
+    fn of(by_root: &ByRoot, file_results: &[(PathBuf, lute_check::CheckResult)]) -> Self {
+        let (reconciled, project, _, _) =
+            crate::reconcile_collected(file_results.to_vec(), by_root, false);
+        Self {
+            reconciled,
+            project,
+        }
+    }
+
     fn all(&self) -> impl Iterator<Item = (&PathBuf, &Diagnostic)> {
-        let models = self.0.iter().map(|(_, model)| model.reconciled());
-        models
-            .clone()
-            .flat_map(|r| &r.checks)
+        self.reconciled
+            .iter()
             .flat_map(|(p, r)| r.diagnostics.iter().map(move |d| (p, d)))
-            .chain(models.flat_map(|r| r.diagnostics.iter().map(|(p, d)| (p, d))))
+            .chain(self.project.iter().map(|(p, d)| (p, d)))
     }
 
     /// The verdicts about `b` (`E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`,
@@ -325,15 +342,15 @@ impl ProjectVerdicts<'_> {
 
 /// `Err(exit)` on an unknown `--endings=<occasion>` (reported).
 ///
-/// Each row reads its root model's reconciliation and scenario graph, the
-/// ones the model built: the command reconciles and assembles each root
-/// once (spec 0.53.0 §3.7, tier `endings`).
+/// Each row reads its root model's scenario graph (assembled once per
+/// root) and the verdicts of [`ProjectVerdicts`].
 fn rows(
     by_root: &ByRoot,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
     models: &RootModels,
     occasion: Option<&str>,
 ) -> Result<Vec<RootRows>, ExitCode> {
-    let verdicts = ProjectVerdicts(models);
+    let verdicts = ProjectVerdicts::of(by_root, file_results);
     let mut out = Vec::new();
     let mut known: BTreeSet<String> = BTreeSet::new();
     for (root, group) in by_root {
@@ -1282,10 +1299,11 @@ fn need_json(n: &Need) -> Json {
 pub(crate) fn run_text(
     out: &mut String,
     by_root: &ByRoot,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
     models: &RootModels,
     occasion: Option<&str>,
 ) -> ExitCode {
-    let roots = match rows(by_root, models, occasion) {
+    let roots = match rows(by_root, file_results, models, occasion) {
         Ok(r) => r,
         Err(code) => return code,
     };
@@ -1392,10 +1410,11 @@ fn unreachable_exit(roots: &[RootRows]) -> ExitCode {
 /// its exit code ([`unreachable_exit`]).
 pub(crate) fn json(
     by_root: &ByRoot,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
     models: &RootModels,
     occasion: Option<&str>,
 ) -> Result<(Json, ExitCode), ExitCode> {
-    let roots = rows(by_root, models, occasion)?;
+    let roots = rows(by_root, file_results, models, occasion)?;
     let exit = unreachable_exit(&roots);
     let roots: Vec<Json> = roots
         .iter()

@@ -313,6 +313,7 @@ pub(crate) fn run_scenario(
         }) => endings::run_text(
             &mut out,
             &by_root,
+            &file_results,
             &models,
             (!occasion.is_empty()).then_some(occasion.as_str()),
         ),

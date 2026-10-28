@@ -1849,3 +1849,61 @@ fn scenario_reach_endings_lists_every_ending_with_its_verdicts() {
         Some(2)
     );
 }
+
+/// A project where an ending is shadowed only once its per-file
+/// `E-MAYBE-UNSET` is reconciled away: `y` sets `run.z`; `x` (after `y`,
+/// on `dayEnd`) reads it and ends; `a`, earlier on `dayEnd`, is always
+/// eligible and never spent.
+fn shadowed_ending_project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
+    write(
+        &dir,
+        "y.lute",
+        "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: int }\n\
+         ---\n## Shot 1.\n::set{run.z = 1}\n",
+    );
+    write(
+        &dir,
+        "a.lute",
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 2\non: dayEnd\nonce: false\n---\n\
+         ## Shot 1.\n@narrator: always\n",
+    );
+    write(
+        &dir,
+        "x.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 3\non: dayEnd\n\
+         after: 'visited(\"y.s01ep01\")'\nstate:\n  run.z: { type: int }\n  run.out: { type: int }\n\
+         ---\n## Shot 1.\n::set{run.out = run.z}\n::end\n",
+    );
+    dir
+}
+
+/// `reach --endings` cites the shadow `lute beats` reports for an ending
+/// whose read the project envelope settles (0.52.0 behaviour; 0.53 L2's
+/// first cut read the model's verdicts and called it reachable).
+#[test]
+fn endings_cite_a_shadow_found_after_reclassification() {
+    let dir = shadowed_ending_project("endings-shadow-reclassified");
+    let d = dir.to_str().unwrap();
+    let beats = run(&["beats", "--project", d]);
+    assert!(
+        stdout(&beats).contains("shadowed by a.s01ep02"),
+        "{}",
+        stdout(&beats)
+    );
+    let out = run(&["scenario", "--project", d, "reach", "--endings"]);
+    let text = stdout(&out);
+    assert_eq!(out.status.code(), Some(1), "{text}{}", stderr(&out));
+    assert!(
+        text.contains("x.s01ep03 (scene, x.lute): unreachable"),
+        "{text}"
+    );
+    assert!(text.contains("when: never wins (W-BEAT-SHADOWED"), "{text}");
+    let json = run(&["scenario", "--json", "--project", d, "reach", "--endings"]);
+    assert_eq!(json.status.code(), Some(1), "{}", stdout(&json));
+    assert!(
+        stdout(&json).contains("\"unreachable\": 1"),
+        "{}",
+        stdout(&json)
+    );
+}

@@ -171,6 +171,7 @@ fn run_json(
             ..
         }) => match crate::endings::json(
             &by_root,
+            &file_results,
             &models,
             (!occasion.is_empty()).then_some(occasion.as_str()),
         ) {
