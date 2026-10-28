@@ -879,8 +879,10 @@ lute compile scenes/hall.lute --project . --locale-bundle loc/ko.json
 `PluginCall.localized`가 호스트 핸들러에 플레이어 로케일의 각 텍스트를 줍니다.
 
 번역은 원문의 마커를 그대로 보여 줘야 합니다. 원문의 `{{…}}` 마커 각각이 원문과 같은 횟수만큼, 순서와 무관하게 번역에
-있어야 합니다. 마커를 빠뜨리거나, 더하거나, 파싱되지 않는 마커(줄에서 `}}` 없는 `{{`, 리터럴 중괄호에서 열리는 마커)를 쓴
-번역은 `E-L10N-MARKERS`입니다. `compile --locale-bundle`이 이를 거부하고, `lute loc import`는 파싱되지 않는 것을 거부합니다.
+있어야 합니다(마커 양 끝의 공백은 세지 않지만, 안쪽의 공백이나 형식 힌트는 마커의 일부입니다). 마커를 빠뜨리거나, 더하거나,
+리터럴 중괄호에서 열리는 마커를 쓴 번역은 `E-L10N-MARKERS`이며 `compile --locale-bundle`이 이를 거부합니다. 줄 번역에 `}}`
+없는 `{{`가 있으면 컴파일은 마크업 오류인 `E-L10N-MODIFIERS`(`E-INTERP-UNTERMINATED`를 감쌈)로 실패합니다. `lute loc import`는
+번역된 행만 보므로 파싱되지 않는 마커를, 그 닫히지 않은 `{{`까지 포함해 `E-L10N-MARKERS`로 거부합니다.
 [Quayside 번역하기](/ko/getting-started/build-a-town-game/#8-quayside-번역하기)를 참고하세요.
 
 ## 구조화된 값은 아직 지원하지 않습니다

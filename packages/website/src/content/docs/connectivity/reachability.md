@@ -122,11 +122,11 @@ An unanchored quest is `reachable holds [proven]` with the reason `unanchored: a
 
 ## The host route into an accept-driven quest
 
-An accept-driven quest (no `start`) has an **accept anchor**, an any-of over its routes:
+An accept-driven quest (no `start`) has an **accept anchor**, an any-of over its routes, when an in-script accept names it or it declares `follows`; one with neither has no anchor and stays [unanchored](#unanchored-quests), external or not:
 
 - every in-script accept (`::accept`, a reward's `accepts`) is an unconditional route, **whatever the quest's `follows` says**: `follows` never gates an accept;
 - an `accept="external"` quest adds the **host route**: open without `follows`, or open once its `follows` formula holds, which is host policy (a malformed formula leaves the route `Unknown`);
-- a quest that is not `accept="external"` and that nothing names has no route even if it declares `follows`: `follows` is no route, so `reach` is `Unknown` and `W-QUEST-NEVER-ACCEPTED` fires.
+- a quest that is not `accept="external"`, that nothing names and that declares `follows` gets an empty accept anchor: `follows` is no route, so `reach` is `Unknown` and `W-QUEST-NEVER-ACCEPTED` fires.
 
 The authoring side is in [Routes into an accept-driven quest](/language/quests-and-scenes/#routes-into-an-accept-driven-quest). The verdict is the OR of the routes. A `Reachable` verdict that rests only on a host route with `follows` carries **`heuristic`** evidence (JSON `"evidence": "heuristic"`, `"host": {"follows": …}` on the anchor), with the reason ``reachable if the host grants it once `follows` holds (host policy; Lute does not enforce it)``. A host route without `follows` keeps `proven` ("available from the start of play"). The `follows` formula is printed as metadata, ``(declared ordering; not an activation route)``, and its atoms still draw their edges; it is never an entry guarantee. `lute constraints` reads the same claim, so a `reachable` constraint on such a quest holds with `heuristic` evidence.
 

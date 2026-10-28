@@ -2856,8 +2856,9 @@ change whole-project `lute check` or `lute test`: plays run on the source text.
 
 **Markers.** A translation shows its source's markers (0.53). Every `{{…}}`
 marker of the source — `{{user.endings}}` in the opening scene — must appear in
-the translation as often as in the source, in any order; spacing inside the
-braces is free. Change `{{user.endings}}` to `{{user.ending}}` in the Korean row
+the translation as often as in the source, in any order; the spaces at a
+marker's edges do not count (`{{ user.endings }}` is the same marker), but a
+space inside it or a format hint does. Change `{{user.endings}}` to `{{user.ending}}` in the Korean row
 and `lute loc import` still writes the bundle, because it sees only the
 translated rows and the marker parses. The compile has the source, and refuses:
 
@@ -2874,6 +2875,8 @@ in a line, a marker that opens on a literal brace (`{{{user.endings}}`) — with
 the same code, per the row's grammar: a line row refuses an unterminated `{{`,
 while an option label, a prompt or a directive `text` reads it as literal text,
 as its source does (a CSV without a `kind` column reads every row as a label).
+The compile reports a line's unterminated `{{` as a markup error instead,
+`E-L10N-MODIFIERS` wrapping `E-INTERP-UNTERMINATED`.
 
 **In the player.** Serve the `bundle/` compiled with `--locale-bundle` as the
 `bundleUrl` from step 5. The Settings screen's Locale row lists the source
@@ -5988,8 +5991,9 @@ The limits are where Lute differs from a free divert. A loop is always counted: 
 repeats until a condition changes has no spelling, because the bound is a literal from 1 to 99
 (an `@ref`, `0` or a larger number is `E-JUMP-MAX`). The label must be in the same body as the jump
 or in a body around it, through `<choice>` and `<match>` arm bodies only, so a loop cannot leave a
-`<hub>` option, an `<on>` or `<objective>`, or a section (`E-JUMP-LOOP-SCOPE`); a loop is entered
-only at its label (`E-JUMP-INTO-LOOP`); and loops nest, never overlap (`E-JUMP-LOOP-CROSS`). A jump
+`<hub>` option, an `<on>` or `<objective>` (`E-JUMP-LOOP-SCOPE`); the top-level `##` sections of a
+document are one body, so a loop may span them (0.53). A loop is entered only at its label
+(`E-JUMP-INTO-LOOP`); and loops nest, never overlap (`E-JUMP-LOOP-CROSS`). A jump
 back to a different scene is still an occasion, not a jump. When the player decides when to stop —
 "ask again until I leave" — use a `<hub>`; see [a hub, or a loop](/language/choices-and-hubs/#a-hub-or-a-loop).
 
@@ -7047,9 +7051,11 @@ locale is `W-L10N-MISSING` and a changed source is `W-L10N-STALE`, as for a line
 player's locale.
 
 A translation shows its source's markers: each `{{…}}` marker of the source appears in the translation as often as in the
-source, in any order. A translation that drops one, adds one, or writes one that does not parse (`{{` with no `}}` in a line,
-a marker that opens on a literal brace) is `E-L10N-MARKERS`: `compile --locale-bundle` refuses it, and `lute loc import`
-refuses one that does not parse. See [translate Quayside](/getting-started/build-a-town-game/#8-translate-quayside).
+source, in any order (the spaces at a marker's edges do not count; a space inside it or a format hint does). A translation
+that drops one, adds one, or writes one that opens on a literal brace is `E-L10N-MARKERS`: `compile --locale-bundle` refuses
+it. A line translation with a `{{` that has no `}}` fails the compile as a markup error, `E-L10N-MODIFIERS` (wrapping
+`E-INTERP-UNTERMINATED`). `lute loc import` sees only the translated rows and refuses a marker that does not parse, that
+unterminated `{{` included, as `E-L10N-MARKERS`. See [translate Quayside](/getting-started/build-a-town-game/#8-translate-quayside).
 
 ## Structured values are not supported yet
 
@@ -8275,14 +8281,17 @@ update that translation. The stale translation is still merged until you do.
 ### Translations keep the source's markers
 
 Since 0.53 a translation also shows its source's `{{…}}` markers, as it shows its modifiers: each
-source marker as often as the source does, in any order and with free spacing (a format hint is
-part of the marker). The rule covers a line, an option label, a prompt and a directive `text`
-attribute. A marker that does not parse (a `{{` with no `}}` in a line, or one that opens on a
-literal brace) or one that is not the source's is `E-L10N-MARKERS`: the translation is not merged,
-and `lute compile --locale-bundle` fails. `lute loc import` has only the translated rows, so it
-refuses a marker that does not parse and writes no bundle. Without this the runtime would show a
-marker it cannot match to the source verbatim. Given `Score {{run.a}} now.` as the source and
-`점수 {{run.zzz}}` as the `ko` text:
+source marker as often as the source does, in any order. A marker is compared by its interior
+without the spaces at its edges, so `{{ run.a }}` is `{{run.a}}`, but a space inside it or another
+format hint makes another marker (`{{run.a: ordinal}}` is not `{{run.a:ordinal}}`). The rule covers
+a line, an option label, a prompt and a directive `text` attribute. A marker that opens on a
+literal brace, or one that is not the source's, is `E-L10N-MARKERS`: the translation is not merged,
+and `lute compile --locale-bundle` fails. A line translation whose `{{` has no `}}` fails the
+compile as any inline markup that does not parse, `E-L10N-MODIFIERS` (wrapping
+`E-INTERP-UNTERMINATED`). `lute loc import` has only the translated rows, so it refuses a marker
+that does not parse — that unterminated `{{` in a line included, there as `E-L10N-MARKERS` — and
+writes no bundle. Without this the runtime would show a marker it cannot match to the source
+verbatim. Given `Score {{run.a}} now.` as the source and `점수 {{run.zzz}}` as the `ko` text:
 
 <!-- lute-diagnostics unverified="the message quotes `{{…}}` literally, which the doc matcher reads as an elision; verbatim lute compile --locale-bundle output" -->
 ```
@@ -11467,7 +11476,7 @@ An accept-driven quest activates when it is accepted, and three things can accep
 
 - **An in-script accept** — a scene's `::accept`, or a reward kind's `effects.accepts` — activates the quest at the next lifecycle round **whatever its `follows=` says**. `follows` is metadata for the graph and the host; the runtime never reads it.
 - **The host's grant** of an `accept="external"` quest (a board, a menu, the server) is the host's own decision. `follows=` on such a quest is the **condition under which the host grants it**: Lute carries it to the host and analysis reads it as host policy. Lute does not enforce it.
-- **Nothing else.** A quest that is not `accept="external"` and has no `::accept` or reward naming it has no route, `follows=` or not: `follows` is ordering metadata and never a route.
+- **Nothing else.** A quest that is not `accept="external"` and has no `::accept` or reward naming it has no route, `follows=` or not: `follows` is ordering metadata and never a route. With a `follows`, `reach` says `Unknown` (below); without one the quest stays `Unanchored`, the conservative reading of a quest on no edge.
 
 A quest the host grants only once other quests are done is therefore written `accept="external" follows="…"`; `accept="external"` beside `start` stays refused. Both quests below check clean, and `salvage` is reachable through the host once `survey` is complete:
 
@@ -11488,7 +11497,7 @@ state:
 </quest>
 ```
 
-`lute scenario reach` lists the host route first. With no `follows` it reads `[accept] the host (accept="external")`, and the evidence stays `proven`. With a `follows` the verdict rests on host policy, so its evidence is **`heuristic`** and the `follows` line is marked as metadata:
+`lute scenario reach` lists the host route first among the quest's accept-anchor sources. An external quest has that anchor when it declares `follows` or something in the script accepts it; one with neither has no anchor and stays `Unanchored` (no `[accept]` line). With no `follows` the host route reads `[accept] the host (accept="external")`, and the evidence stays `proven`. With a `follows` the host route rests on host policy, so a verdict that depends only on host routes is **`heuristic`** (an in-script accept that can run keeps it `proven`); the `follows` line is marked as metadata:
 
 ```console
 $ lute scenario --project . reach --node quest:gated
@@ -15607,7 +15616,7 @@ project root: .
     quest(findkai) -> scene(narrator.s01ep03) [completed]
 ```
 
-A quest joins the graph by declaring `follows` (even `follows=""`; graph metadata only — it never gates the quest), or, without one, through its anchors: the `::accept`s that take it up (`[accept]`, dsl 0.24.0 §2), its parent quest (`[subquest]`, dsl 0.25.0 §4), and the `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` conjuncts of its `start` (`[start]`, dsl 0.25.0 §4; an entry becomes the node `entry(X)`). See [Quests & scenes](/language/quests-and-scenes/#quest). A quest with none of these is listed as unanchored; it is still addressable by `lute scenario --project <DIR> envelope --node quest:<id>`, but contributes no edges.
+A quest joins the graph by declaring `follows` (even `follows=""`; graph metadata only — it never gates the quest), or through its anchors: the `::accept`s that take it up (`[accept]`, dsl 0.24.0 §2; since 0.53 an accept-driven quest keeps them beside a declared `follows`, which is then ordering metadata and never its entry route, so its [envelope](/connectivity/envelopes/#quest-addressing) stays the defaults-only table), and, when it declares no `follows`, its parent quest (`[subquest]`, dsl 0.25.0 §4) and the `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` conjuncts of its `start` (`[start]`, dsl 0.25.0 §4; an entry becomes the node `entry(X)`). See [Quests & scenes](/language/quests-and-scenes/#quest). A quest with none of these is listed as unanchored; it is still addressable by `lute scenario --project <DIR> envelope --node quest:<id>`, but contributes no edges.
 
 ### Edge kinds
 
@@ -15801,11 +15810,11 @@ An unanchored quest is `reachable holds [proven]` with the reason `unanchored: a
 
 ## The host route into an accept-driven quest
 
-An accept-driven quest (no `start`) has an **accept anchor**, an any-of over its routes:
+An accept-driven quest (no `start`) has an **accept anchor**, an any-of over its routes, when an in-script accept names it or it declares `follows`; one with neither has no anchor and stays [unanchored](#unanchored-quests), external or not:
 
 - every in-script accept (`::accept`, a reward's `accepts`) is an unconditional route, **whatever the quest's `follows` says**: `follows` never gates an accept;
 - an `accept="external"` quest adds the **host route**: open without `follows`, or open once its `follows` formula holds, which is host policy (a malformed formula leaves the route `Unknown`);
-- a quest that is not `accept="external"` and that nothing names has no route even if it declares `follows`: `follows` is no route, so `reach` is `Unknown` and `W-QUEST-NEVER-ACCEPTED` fires.
+- a quest that is not `accept="external"`, that nothing names and that declares `follows` gets an empty accept anchor: `follows` is no route, so `reach` is `Unknown` and `W-QUEST-NEVER-ACCEPTED` fires.
 
 The authoring side is in [Routes into an accept-driven quest](/language/quests-and-scenes/#routes-into-an-accept-driven-quest). The verdict is the OR of the routes. A `Reachable` verdict that rests only on a host route with `follows` carries **`heuristic`** evidence (JSON `"evidence": "heuristic"`, `"host": {"follows": …}` on the anchor), with the reason ``reachable if the host grants it once `follows` holds (host policy; Lute does not enforce it)``. A host route without `follows` keeps `proven` ("available from the start of play"). The `follows` formula is printed as metadata, ``(declared ordering; not an activation route)``, and its atoms still draw their edges; it is never an entry guarantee. `lute constraints` reads the same claim, so a `reachable` constraint on such a quest holds with `heuristic` evidence.
 
@@ -15919,7 +15928,7 @@ envelope for quest(q) (pre-entry — state available when control REACHES this n
     - run.x   written by: (nothing on a declared route reaching here — schema default only); also written, but not provably before this node: scene(a), scene(b)
   Possible (set on SOME but not every declared route reaching this quest; the Guaranteed paths above are not repeated) -- inventory only: unlike a scene's, this list is not a set of warned read sites; a quest's guard reads are checked where they are written, not against this table:
     (none)
-  note: this quest declares no `follows` attribute, so this is the defaults-only `D` table; declaring `follows` on quest:q would enrich this table with the full project-resolved envelope.
+  note: this quest declares no `follows` attribute, so this is the defaults-only `D` table; quest:q is accept-driven, and an accept activates it whatever `follows` says, so `follows` is never an entry route and would not enrich this table.
 ```
 
 On 0.51 both scenes were listed as writers provably before `q`.
@@ -15947,10 +15956,11 @@ Episode 6 asserts all three of Ottavio's facts outside any branch, and every rou
 
 `lute scenario --project <DIR> envelope --node quest:<id>` prints a real table for **every** quest:
 
-- A quest **with** an `after` attribute → the full `Guaranteed`/`Possible` tables, computed exactly like a scene's.
-- A quest **without** `after` → the defaults-only `D` table (never empty, never an error), plus a one-line note that declaring `after` would enrich it beyond defaults-only.
+- A quest whose `follows` is its route — one with a `start`, or a subquest that activates with its parent — and that declares it → the full `Guaranteed`/`Possible` tables, computed exactly like a scene's.
+- An **accept-driven** quest (no `start`) → the defaults-only `D` table, `follows` or not. An accept activates it in the middle of whatever accepted it, so nothing that scene writes is guaranteed at its entry, and since 0.53 its `follows` is ordering metadata, never an entry route; without `follows` the note says that declaring one would not enrich the table.
+- Any other quest **without** `follows` → the defaults-only `D` table (never empty, never an error), plus a one-line note that declaring `follows` would enrich it beyond defaults-only.
 
-A quest is reactive — `<quest start>` may fire at the earliest possible instant, so nothing beyond schema defaults can be soundly guaranteed at quest entry unless the author opts into a graph position with `after`. The reactive diagnostic side ("is this specific guard's read safe?") is already handled by `defassign` on the quest's own guards.
+A quest is reactive — `<quest start>` may fire at the earliest possible instant, so nothing beyond schema defaults can be soundly guaranteed at quest entry unless the author opts into a graph position with `follows`. The reactive diagnostic side ("is this specific guard's read safe?") is already handled by `defassign` on the quest's own guards.
 
 # CLI reference
 
@@ -16483,7 +16493,7 @@ A merged translation whose stored `sourceHash` (see [`loc import`](#loc-import))
 
 Since 0.51 the bundle also reaches a directive's [localizable text](/language/dialogue-and-cast/#localizable-directive-text-since-051): a bundle entry keyed by the `lineId` of a `text` attribute is merged into `localized.<attr>.texts` of its `plugin` record, as a line's translation goes into `texts`. `W-L10N-MISSING` and `W-L10N-STALE` apply to these entries with the same wording and the same `--deny` promotion, one per `(lineId, locale)` pair. `E-L10N-MODIFIERS` does not apply to them, because a `text` value has no inline modifiers. A document compiled without `--locale-bundle`, or without `text` attributes, is byte-identical to before.
 
-**A translation shows its source's markers (0.53).** Every translated text — a line's, an option label's, a prompt's, a directive `text` attribute's — must carry the `{{…}}` markers of its source: each source marker as often as the source shows it, in any order, compared by the trimmed interior (spacing inside `{{ … }}` is free; a format hint is part of the marker). The runtime renders a translation's marker with the value its source gave the marker of the same interior, so any other marker would show verbatim. A translation whose markers differ is `E-L10N-MARKERS`: it is not merged and the compile fails with exit **1** and no artifact, as for `E-L10N-MODIFIERS`, in a single-document and in a `--project` compile alike. A marker that does not parse (a `{{` with no `}}` in a line, a marker opening on a literal brace — `E-INTERP-BRACE`) is refused the same way; [`loc import`](#loc-import) lists the grammar per surface.
+**A translation shows its source's markers (0.53).** Every translated text — a line's, an option label's, a prompt's, a directive `text` attribute's — must carry the `{{…}}` markers of its source: each source marker as often as the source shows it, in any order, compared by the interior without the spaces at its edges (`{{ run.a }}` is `{{run.a}}`; a space inside the interior and a format hint are part of the marker, so `{{run.a: ordinal}}` is not `{{run.a:ordinal}}`). The runtime renders a translation's marker with the value its source gave the marker of the same interior, so any other marker would show verbatim. A translation whose markers differ is `E-L10N-MARKERS`: it is not merged and the compile fails with exit **1** and no artifact, as for `E-L10N-MODIFIERS`, in a single-document and in a `--project` compile alike. A marker that opens on a literal brace (`E-INTERP-BRACE`) is refused the same way. A line translation with a `{{` that has no `}}` fails before the marker check, as any line markup that does not parse: `E-L10N-MODIFIERS`, wrapping `E-INTERP-UNTERMINATED` (`loc import` reports that row as `E-L10N-MARKERS`); [`loc import`](#loc-import) lists the grammar per surface.
 
 <!-- lute-diagnostics unverified="verbatim lute compile --locale-bundle output; the message is composed at runtime from the source's and the translation's marker lists" -->
 ```console

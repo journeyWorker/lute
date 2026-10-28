@@ -1,7 +1,7 @@
 //! dsl 0.53.0 §8.1 (#241): a translated text shows its source's `{{…}}`
 //! markers. Each marker parses under the source rules (the §8 brace advice
 //! included), and the markers are the source's, each as often, in any order
-//! (spacing inside a marker is free). Any other translation is
+//! (the spaces at a marker's edges do not count). Any other translation is
 //! `E-L10N-MARKERS` at `compile --locale-bundle` and is not merged;
 //! `loc import` refuses a marker that does not parse. On v0.52.0 every one of
 //! them merges verbatim (exit 0) and the runtime shows the marker as written.

@@ -661,7 +661,7 @@ An accept-driven quest activates when it is accepted, and three things can accep
 
 - **An in-script accept** — a scene's `::accept`, or a reward kind's `effects.accepts` — activates the quest at the next lifecycle round **whatever its `follows=` says**. `follows` is metadata for the graph and the host; the runtime never reads it.
 - **The host's grant** of an `accept="external"` quest (a board, a menu, the server) is the host's own decision. `follows=` on such a quest is the **condition under which the host grants it**: Lute carries it to the host and analysis reads it as host policy. Lute does not enforce it.
-- **Nothing else.** A quest that is not `accept="external"` and has no `::accept` or reward naming it has no route, `follows=` or not: `follows` is ordering metadata and never a route.
+- **Nothing else.** A quest that is not `accept="external"` and has no `::accept` or reward naming it has no route, `follows=` or not: `follows` is ordering metadata and never a route. With a `follows`, `reach` says `Unknown` (below); without one the quest stays `Unanchored`, the conservative reading of a quest on no edge.
 
 A quest the host grants only once other quests are done is therefore written `accept="external" follows="…"`; `accept="external"` beside `start` stays refused. Both quests below check clean, and `salvage` is reachable through the host once `survey` is complete:
 
@@ -682,7 +682,7 @@ state:
 </quest>
 ```
 
-`lute scenario reach` lists the host route first. With no `follows` it reads `[accept] the host (accept="external")`, and the evidence stays `proven`. With a `follows` the verdict rests on host policy, so its evidence is **`heuristic`** and the `follows` line is marked as metadata:
+`lute scenario reach` lists the host route first among the quest's accept-anchor sources. An external quest has that anchor when it declares `follows` or something in the script accepts it; one with neither has no anchor and stays `Unanchored` (no `[accept]` line). With no `follows` the host route reads `[accept] the host (accept="external")`, and the evidence stays `proven`. With a `follows` the host route rests on host policy, so a verdict that depends only on host routes is **`heuristic`** (an in-script accept that can run keeps it `proven`); the `follows` line is marked as metadata:
 
 ```console
 $ lute scenario --project . reach --node quest:gated

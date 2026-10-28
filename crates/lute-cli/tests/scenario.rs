@@ -124,6 +124,8 @@ fn scenario_envelope_reports_guaranteed_for_scene() {
 
 #[test]
 fn scenario_envelope_quest_without_follows_shows_defaults_note() {
+    // `someQuest` has no `start`: it is accept-driven, so `follows` would be
+    // no entry route (dsl 0.53.0 §7.1) and the note must not recommend it.
     let dir = lute_scratch::ScratchDir::named("scenario-envelope-quest-defaults");
     write(&dir, "q.lute", &quest_no_after("someQuest"));
 
@@ -137,7 +139,49 @@ fn scenario_envelope_quest_without_follows_shows_defaults_note() {
     ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
-    assert!(out_text.contains("declaring `follows`"), "{out_text}");
+    assert!(
+        out_text.contains(
+            "quest:someQuest is accept-driven, and an accept activates it whatever `follows` \
+             says, so `follows` is never an entry route and would not enrich this table."
+        ),
+        "{out_text}"
+    );
+    assert!(
+        !out_text.contains("would enrich this table with"),
+        "{out_text}"
+    );
+}
+
+/// A quest with a `start` takes a declared `follows` as its route, so the
+/// note still says declaring one would enrich the table.
+#[test]
+fn scenario_envelope_started_quest_without_follows_recommends_follows() {
+    let dir = lute_scratch::ScratchDir::named("scenario-envelope-quest-started");
+    write(
+        &dir,
+        "q.lute",
+        "---\nkind: quest\nstate:\n  run.done: { type: bool, default: false }\n---\n\
+         <quest id=\"startedQuest\" start=\"true\">\n<objective id=\"o\" done=\"run.done\"/>\n\
+         </quest>\n",
+    );
+
+    let out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "quest:startedQuest",
+    ]);
+    let out_text = stdout(&out);
+    assert!(out.status.success(), "{out_text}");
+    assert!(
+        out_text.contains(
+            "declaring `follows` on quest:startedQuest would enrich this table with the full \
+             project-resolved envelope."
+        ),
+        "{out_text}"
+    );
 }
 
 #[test]
@@ -280,9 +324,13 @@ fn scenario_envelope_plain_quest_on_cyclic_root_no_cycle_note() {
         "a plain (after-less) quest's D/D floor does not degrade due to the root cycle, so no \
          cycle note must be printed: {out_text}"
     );
-    // Its normal defaults-only tables still print (the enrichment note fires).
+    // Its normal defaults-only tables still print (the enrichment note fires;
+    // `plainQuest` is accept-driven, so the note names that).
     assert!(out_text.contains("Guaranteed (safe to read"), "{out_text}");
-    assert!(out_text.contains("declaring `follows`"), "{out_text}");
+    assert!(
+        out_text.contains("defaults-only `D` table; quest:plainQuest is accept-driven"),
+        "{out_text}"
+    );
 }
 
 #[test]

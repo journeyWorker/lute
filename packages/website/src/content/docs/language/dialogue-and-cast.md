@@ -658,14 +658,17 @@ update that translation. The stale translation is still merged until you do.
 ### Translations keep the source's markers
 
 Since 0.53 a translation also shows its source's `{{…}}` markers, as it shows its modifiers: each
-source marker as often as the source does, in any order and with free spacing (a format hint is
-part of the marker). The rule covers a line, an option label, a prompt and a directive `text`
-attribute. A marker that does not parse (a `{{` with no `}}` in a line, or one that opens on a
-literal brace) or one that is not the source's is `E-L10N-MARKERS`: the translation is not merged,
-and `lute compile --locale-bundle` fails. `lute loc import` has only the translated rows, so it
-refuses a marker that does not parse and writes no bundle. Without this the runtime would show a
-marker it cannot match to the source verbatim. Given `Score {{run.a}} now.` as the source and
-`점수 {{run.zzz}}` as the `ko` text:
+source marker as often as the source does, in any order. A marker is compared by its interior
+without the spaces at its edges, so `{{ run.a }}` is `{{run.a}}`, but a space inside it or another
+format hint makes another marker (`{{run.a: ordinal}}` is not `{{run.a:ordinal}}`). The rule covers
+a line, an option label, a prompt and a directive `text` attribute. A marker that opens on a
+literal brace, or one that is not the source's, is `E-L10N-MARKERS`: the translation is not merged,
+and `lute compile --locale-bundle` fails. A line translation whose `{{` has no `}}` fails the
+compile as any inline markup that does not parse, `E-L10N-MODIFIERS` (wrapping
+`E-INTERP-UNTERMINATED`). `lute loc import` has only the translated rows, so it refuses a marker
+that does not parse — that unterminated `{{` in a line included, there as `E-L10N-MARKERS` — and
+writes no bundle. Without this the runtime would show a marker it cannot match to the source
+verbatim. Given `Score {{run.a}} now.` as the source and `점수 {{run.zzz}}` as the `ko` text:
 
 <!-- lute-diagnostics unverified="the message quotes `{{…}}` literally, which the doc matcher reads as an elision; verbatim lute compile --locale-bundle output" -->
 ```

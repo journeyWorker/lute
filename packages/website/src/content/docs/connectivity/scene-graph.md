@@ -77,7 +77,7 @@ project root: .
     quest(findkai) -> scene(narrator.s01ep03) [completed]
 ```
 
-A quest joins the graph by declaring `follows` (even `follows=""`; graph metadata only — it never gates the quest), or, without one, through its anchors: the `::accept`s that take it up (`[accept]`, dsl 0.24.0 §2), its parent quest (`[subquest]`, dsl 0.25.0 §4), and the `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` conjuncts of its `start` (`[start]`, dsl 0.25.0 §4; an entry becomes the node `entry(X)`). See [Quests & scenes](/language/quests-and-scenes/#quest). A quest with none of these is listed as unanchored; it is still addressable by `lute scenario --project <DIR> envelope --node quest:<id>`, but contributes no edges.
+A quest joins the graph by declaring `follows` (even `follows=""`; graph metadata only — it never gates the quest), or through its anchors: the `::accept`s that take it up (`[accept]`, dsl 0.24.0 §2; since 0.53 an accept-driven quest keeps them beside a declared `follows`, which is then ordering metadata and never its entry route, so its [envelope](/connectivity/envelopes/#quest-addressing) stays the defaults-only table), and, when it declares no `follows`, its parent quest (`[subquest]`, dsl 0.25.0 §4) and the `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` conjuncts of its `start` (`[start]`, dsl 0.25.0 §4; an entry becomes the node `entry(X)`). See [Quests & scenes](/language/quests-and-scenes/#quest). A quest with none of these is listed as unanchored; it is still addressable by `lute scenario --project <DIR> envelope --node quest:<id>`, but contributes no edges.
 
 ### Edge kinds
 

@@ -738,7 +738,7 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-L10N-MARKERS",
-        summary: "A translated text — a line, an option label, a prompt or a directive `text` attribute — does not show its source's `{{…}}` markers: a marker does not parse (a `{{` with no `}}`, or a marker opened on a literal brace, `{{{run.a}}`), or the markers are not the source's, each as often (any order; spacing inside a marker is free). The runtime would show such a marker verbatim, so the translation is not merged; `lute loc import` refuses a marker that does not parse.",
+        summary: "A translated text — a line, an option label, a prompt or a directive `text` attribute — does not show its source's `{{…}}` markers: a marker does not parse (a marker opened on a literal brace, `{{{run.a}}`; at `lute loc import` also a line's `{{` with no `}}`, which `compile` reports as `E-L10N-MODIFIERS`), or the markers are not the source's, each as often (any order; the spaces at a marker's edges do not count, a space inside it or a format hint does). The runtime would show such a marker verbatim, so the translation is not merged; `lute loc import` refuses a marker that does not parse.",
         spec: &["dsl 0.53.0 §8.1"],
     },
     Code {

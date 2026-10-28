@@ -122,11 +122,11 @@ reach quest(letter):
 
 ## 수락 기반 퀘스트로 향하는 호스트 경로
 
-수락 기반 퀘스트(`start` 없음)에는 경로들의 any-of인 **accept 앵커**가 있습니다:
+수락 기반 퀘스트(`start` 없음)는 스크립트 안의 accept가 이름 붙이거나 `follows`를 선언하면 경로들의 any-of인 **accept 앵커**를 가집니다. 둘 다 아니면 외부 퀘스트든 아니든 앵커가 없어 [앵커가 없는 퀘스트](#앵커가-없는-퀘스트)로 남습니다:
 
 - 스크립트 안의 모든 accept(`::accept`, 보상의 `accepts`)는 퀘스트의 `follows`가 무엇이든 **상관없이** 무조건 경로입니다. `follows`는 accept를 게이트하지 않습니다.
 - `accept="external"` 퀘스트는 **호스트 경로**를 더합니다. `follows`가 없으면 열려 있고, 있으면 그 `follows` 식이 성립할 때 열리는데, 이는 호스트 정책입니다(형식이 잘못된 식이면 경로는 `Unknown`).
-- `accept="external"`이 아니고 아무것도 이름 붙이지 않는 퀘스트는 `follows`를 선언해도 경로가 없습니다. `follows`는 경로가 아니므로 `reach`는 `Unknown`이고 `W-QUEST-NEVER-ACCEPTED`가 발생합니다.
+- `accept="external"`이 아니고 아무것도 이름 붙이지 않으면서 `follows`를 선언한 퀘스트는 빈 accept 앵커를 가집니다. `follows`는 경로가 아니므로 `reach`는 `Unknown`이고 `W-QUEST-NEVER-ACCEPTED`가 발생합니다.
 
 판정은 경로들의 OR입니다. 작성 측 설명은 [수락 기반 퀘스트로 들어오는 경로](/ko/language/quests-and-scenes/#수락-기반-퀘스트로-들어오는-경로)에 있습니다. `follows`가 있는 호스트 경로에만 기댄 `Reachable` 판정은 **`heuristic`** 증거를 가집니다(JSON `"evidence": "heuristic"`, 앵커의 `"host": {"follows": …}`). 이유는 ``reachable if the host grants it once `follows` holds (host policy; Lute does not enforce it)``입니다. `follows`가 없는 호스트 경로는 `proven`("available from the start of play")을 유지합니다. `follows` 식은 메타데이터인 ``(declared ordering; not an activation route)``로 출력되고 그 원자는 여전히 간선을 그리지만, 진입 보장이 되지는 않습니다. `lute constraints`도 같은 주장을 읽으므로, 이런 퀘스트에 건 `reachable` 제약은 `heuristic` 증거로 성립합니다.
 

@@ -432,7 +432,7 @@ state:
 
 - **스크립트 안의 수락** — 씬의 `::accept` 또는 보상 kind의 `effects.accepts` — 은 `follows=`가 무엇이든 **상관없이** 다음 생명주기 라운드에 퀘스트를 활성화합니다. `follows`는 그래프와 호스트를 위한 메타데이터이며 런타임은 읽지 않습니다.
 - **호스트의 부여**: `accept="external"` 퀘스트(게시판, 메뉴, 서버)는 호스트가 스스로 결정합니다. 이런 퀘스트의 `follows=`는 **호스트가 부여하는 조건**입니다. Lute는 이를 호스트에 전달하고, 분석은 호스트 정책으로 읽습니다. Lute가 강제하지는 않습니다.
-- **그 밖에는 없습니다.** `accept="external"`이 아니고 `::accept`나 보상이 이름 붙이지 않는 퀘스트에는 `follows=`가 있든 없든 경로가 없습니다. `follows`는 순서 메타데이터일 뿐 경로가 아닙니다.
+- **그 밖에는 없습니다.** `accept="external"`이 아니고 `::accept`나 보상이 이름 붙이지 않는 퀘스트에는 `follows=`가 있든 없든 경로가 없습니다. `follows`는 순서 메타데이터일 뿐 경로가 아닙니다. `follows`가 있으면 `reach`는 `Unknown`이고(아래), 없으면 그 퀘스트는 간선 없는 퀘스트의 보수적인 판정대로 `Unanchored`로 남습니다.
 
 따라서 다른 퀘스트가 끝나야 호스트가 부여하는 퀘스트는 `accept="external" follows="…"`로 씁니다. `accept="external"`과 `start`의 조합은 계속 거부됩니다. 아래 두 퀘스트는 깨끗하게 검사되며, `salvage`는 `survey`가 끝난 뒤 호스트를 통해 도달 가능합니다:
 
@@ -453,7 +453,7 @@ state:
 </quest>
 ```
 
-`lute scenario reach`는 호스트 경로를 맨 앞에 나열합니다. `follows`가 없으면 `[accept] the host (accept="external")`로 읽히고 증거는 `proven`입니다. `follows`가 있으면 판정이 호스트 정책에 기대므로 증거가 **`heuristic`**이고, `follows` 줄에는 메타데이터라는 표시가 붙습니다:
+`lute scenario reach`는 퀘스트의 accept 앵커 소스 가운데 호스트 경로를 맨 앞에 나열합니다. 외부 퀘스트는 `follows`를 선언했거나 스크립트 안의 무언가가 수락할 때 그 앵커를 가집니다. 둘 다 없으면 앵커가 없어 `Unanchored`로 남습니다(`[accept]` 줄 없음). `follows`가 없으면 호스트 경로는 `[accept] the host (accept="external")`로 읽히고 증거는 `proven`입니다. `follows`가 있으면 호스트 경로가 호스트 정책에 기대므로, 호스트 경로에만 의존하는 판정의 증거가 **`heuristic`**입니다(실행될 수 있는 스크립트 안 수락이 있으면 `proven`). `follows` 줄에는 메타데이터라는 표시가 붙습니다:
 
 ```console
 $ lute scenario --project . reach --node quest:gated

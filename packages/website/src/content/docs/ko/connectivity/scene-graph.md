@@ -71,7 +71,7 @@ project root: .
     quest(findkai) -> scene(narrator.s01ep03) [completed]
 ```
 
-퀘스트는 `follows`를 선언하면(`follows=""`도 가능하며 그래프 메타데이터일 뿐, 퀘스트를 잠그지는 않음) 그래프에 들어옵니다. 이를 선언하지 않으면 앵커를 통해 들어옵니다. 앵커는 퀘스트를 받는 `::accept`(`[accept]`, dsl 0.24.0 §2), 부모 퀘스트(`[subquest]`, dsl 0.25.0 §4), 그리고 `start`의 `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` 결합식(`[start]`, dsl 0.25.0 §4)입니다. (entry는 노드 `entry(X)`가 됩니다.) [퀘스트와 씬](/ko/language/quests-and-scenes/#quest)을 참고하세요. 이들 중 어느 것도 없는 퀘스트는 앵커되지 않은 것으로 나열됩니다. 그래도 `lute scenario --project <DIR> envelope --node quest:<id>`로 지정할 수 있지만 엣지는 만들지 않습니다.
+퀘스트는 `follows`를 선언하면(`follows=""`도 가능하며 그래프 메타데이터일 뿐, 퀘스트를 잠그지는 않음) 그래프에 들어오거나, 앵커를 통해 들어옵니다. 앵커는 퀘스트를 받는 `::accept`(`[accept]`, dsl 0.24.0 §2. 0.53부터 수락 기반 퀘스트는 `follows`를 선언해도 이 앵커를 유지하며, 이때 `follows`는 순서 메타데이터일 뿐 진입 경로가 아니므로 그 [엔벨로프](/ko/connectivity/envelopes/#퀘스트-지정)는 기본값만 담은 표로 남습니다)이고, `follows`를 선언하지 않았다면 부모 퀘스트(`[subquest]`, dsl 0.25.0 §4)와 `start`의 `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` 결합식(`[start]`, dsl 0.25.0 §4)도 앵커입니다. (entry는 노드 `entry(X)`가 됩니다.) [퀘스트와 씬](/ko/language/quests-and-scenes/#quest)을 참고하세요. 이들 중 어느 것도 없는 퀘스트는 앵커되지 않은 것으로 나열됩니다. 그래도 `lute scenario --project <DIR> envelope --node quest:<id>`로 지정할 수 있지만 엣지는 만들지 않습니다.
 
 ### 엣지 종류
 

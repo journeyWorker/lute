@@ -838,8 +838,8 @@ mod tests {
     }
 
     /// 0.53.0 §8.1: markers are read by the source rule on both sides — an
-    /// escaped `{{` is literal text, spacing inside a marker is free, a
-    /// format hint is part of the marker.
+    /// escaped `{{` is literal text, the spaces at a marker's edges do not
+    /// count, a format hint is part of the marker.
     #[test]
     fn marker_parity_reads_markers_by_the_source_rule() {
         use TextGrammar::{Label, Line};

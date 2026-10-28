@@ -172,7 +172,7 @@ impl<'a> ProjectQuests<'a> {
 /// quest=…>` in `docs` names it) or a subquest child declared
 /// `activate="accept"`. An auto-activating child — one without
 /// `activate="accept"` — activates with its parent and is not in the set.
-pub(crate) fn accept_driven_quests<'a>(docs: &'a [ProjectDoc<'a>]) -> BTreeSet<&'a str> {
+pub fn accept_driven_quests<'a>(docs: &'a [ProjectDoc<'a>]) -> BTreeSet<&'a str> {
     let project = ProjectQuests::new(docs);
     project
         .quests

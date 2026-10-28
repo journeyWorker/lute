@@ -634,8 +634,9 @@ change whole-project `lute check` or `lute test`: plays run on the source text.
 
 **Markers.** A translation shows its source's markers (0.53). Every `{{…}}`
 marker of the source — `{{user.endings}}` in the opening scene — must appear in
-the translation as often as in the source, in any order; spacing inside the
-braces is free. Change `{{user.endings}}` to `{{user.ending}}` in the Korean row
+the translation as often as in the source, in any order; the spaces at a
+marker's edges do not count (`{{ user.endings }}` is the same marker), but a
+space inside it or a format hint does. Change `{{user.endings}}` to `{{user.ending}}` in the Korean row
 and `lute loc import` still writes the bundle, because it sees only the
 translated rows and the marker parses. The compile has the source, and refuses:
 
@@ -652,6 +653,8 @@ in a line, a marker that opens on a literal brace (`{{{user.endings}}`) — with
 the same code, per the row's grammar: a line row refuses an unterminated `{{`,
 while an option label, a prompt or a directive `text` reads it as literal text,
 as its source does (a CSV without a `kind` column reads every row as a label).
+The compile reports a line's unterminated `{{` as a markup error instead,
+`E-L10N-MODIFIERS` wrapping `E-INTERP-UNTERMINATED`.
 
 **In the player.** Serve the `bundle/` compiled with `--locale-bundle` as the
 `bundleUrl` from step 5. The Settings screen's Locale row lists the source

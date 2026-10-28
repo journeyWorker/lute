@@ -922,9 +922,11 @@ locale is `W-L10N-MISSING` and a changed source is `W-L10N-STALE`, as for a line
 player's locale.
 
 A translation shows its source's markers: each `{{…}}` marker of the source appears in the translation as often as in the
-source, in any order. A translation that drops one, adds one, or writes one that does not parse (`{{` with no `}}` in a line,
-a marker that opens on a literal brace) is `E-L10N-MARKERS`: `compile --locale-bundle` refuses it, and `lute loc import`
-refuses one that does not parse. See [translate Quayside](/getting-started/build-a-town-game/#8-translate-quayside).
+source, in any order (the spaces at a marker's edges do not count; a space inside it or a format hint does). A translation
+that drops one, adds one, or writes one that opens on a literal brace is `E-L10N-MARKERS`: `compile --locale-bundle` refuses
+it. A line translation with a `{{` that has no `}}` fails the compile as a markup error, `E-L10N-MODIFIERS` (wrapping
+`E-INTERP-UNTERMINATED`). `lute loc import` sees only the translated rows and refuses a marker that does not parse, that
+unterminated `{{` included, as `E-L10N-MARKERS`. See [translate Quayside](/getting-started/build-a-town-game/#8-translate-quayside).
 
 ## Structured values are not supported yet
 

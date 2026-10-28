@@ -269,8 +269,9 @@ The limits are where Lute differs from a free divert. A loop is always counted: 
 repeats until a condition changes has no spelling, because the bound is a literal from 1 to 99
 (an `@ref`, `0` or a larger number is `E-JUMP-MAX`). The label must be in the same body as the jump
 or in a body around it, through `<choice>` and `<match>` arm bodies only, so a loop cannot leave a
-`<hub>` option, an `<on>` or `<objective>`, or a section (`E-JUMP-LOOP-SCOPE`); a loop is entered
-only at its label (`E-JUMP-INTO-LOOP`); and loops nest, never overlap (`E-JUMP-LOOP-CROSS`). A jump
+`<hub>` option, an `<on>` or `<objective>` (`E-JUMP-LOOP-SCOPE`); the top-level `##` sections of a
+document are one body, so a loop may span them (0.53). A loop is entered only at its label
+(`E-JUMP-INTO-LOOP`); and loops nest, never overlap (`E-JUMP-LOOP-CROSS`). A jump
 back to a different scene is still an occasion, not a jump. When the player decides when to stop —
 "ask again until I leave" — use a `<hub>`; see [a hub, or a loop](/language/choices-and-hubs/#a-hub-or-a-loop).
 
