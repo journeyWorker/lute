@@ -269,11 +269,11 @@ impl Parser<'_> {
         // 0.52.0 §3.1: the whole text's nodes, once (a modifier's own call
         // has a terminator and sees only its span).
         if terminator.is_none() {
-            if let Some(marker) = crate::line_text::brace_before_marker(&nodes) {
+            if let Some((marker, n)) = crate::line_text::brace_before_marker(&nodes) {
                 let source = format!("{{{{{}}}}}", marker.source);
                 self.emit_o(
                     E_INTERP_BRACE,
-                    interp_brace_message(&source),
+                    interp_brace_message(n, &source),
                     marker.span.byte_start,
                     marker.span.byte_end,
                     Layer::Content,
@@ -408,13 +408,23 @@ fn is_inline_name_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_'
 }
 
-/// The `E-INTERP-BRACE` message for the marker whose source is `marker`
-/// (0.52.0 §3.1). Both spellings it names check clean and render.
-fn interp_brace_message(marker: &str) -> String {
+/// The `E-INTERP-BRACE` message for a run of `n` literal `{` directly before
+/// the marker whose source is `marker` (0.52.0 §3.1, 0.53.0 §8). Both
+/// spellings it names check clean and render the n braces, then the marker:
+/// the run spelled as literals (`\{{` per pair, `{` for an odd one) and a
+/// space before the marker, or one `{{run.lbrace}}` per brace.
+pub fn interp_brace_message(n: usize, marker: &str) -> String {
+    let braces = "{".repeat(n);
+    let mut spelled = "\\{{".repeat(n / 2);
+    if n % 2 == 1 {
+        spelled.push('{');
+    }
+    let from_state = "{{run.lbrace}}".repeat(n);
+    let which = if n == 1 { "the brace" } else { "each brace" };
     format!(
-        "a literal `{{` directly before `{marker}` cannot be told apart from the marker in \
-         compiled text (lute 0.47.1 §3): put a character between them (`{{ {marker}`), or show \
-         the brace from a string state path (`{{{{run.lbrace}}}}{marker}`, with `run.lbrace` \
+        "a literal `{braces}` directly before `{marker}` cannot be told apart from the marker in \
+         compiled text (lute 0.47.1 §3): put a character between them (`{spelled} {marker}`), or \
+         show {which} from a string state path (`{from_state}{marker}`, with `run.lbrace` \
          declared `{{ type: string, default: \"{{\" }}`)"
     )
 }

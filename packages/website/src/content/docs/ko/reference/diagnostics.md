@@ -780,9 +780,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-INTERP-BRACE
 
-줄 텍스트의 `{{…}}` 마커 바로 앞에 리터럴 `{`가 홀수 개 연달아 있어, 컴파일된 텍스트에서 마커와 구별되지 않습니다. 또는 일반 `{{`로 끝나는 `::use` 인자가 마커 바로 앞에 끼워져 그 마커를 삼킵니다. 둘 사이에 문자를 하나 넣거나, 중괄호를 문자열 상태 경로로 보여 주세요. 인자 안의 리터럴 `{{`는 `\\{{`로 씁니다.
+줄 텍스트의 `{{…}}` 마커 바로 앞에 리터럴 `{`가 홀수 개 연달아 있어, 컴파일된 텍스트에서 마커와 구별되지 않습니다. 또는 줄 텍스트나 레이블의 마커가 리터럴 중괄호에서 열립니다(`{{{run.a}}`: 식이 `{`로 시작합니다). 또는 일반 `{{`로 끝나는 `::use` 인자가 마커 바로 앞에 끼워져 그 마커를 삼킵니다. 중괄호와 마커 사이에 문자를 하나 넣거나, 각 중괄호를 문자열 상태 경로로 보여 주세요. 인자 안의 리터럴 `{{`는 `\\{{`로 씁니다.
 
-명세: [dsl 0.52.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
+명세: [dsl 0.52.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md), [dsl 0.53.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-INTERP-DEF
 
@@ -832,9 +832,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-JUMP-INTO-LOOP
 
-루프(`::label`과 그 뒤에서 그 레이블로 되돌아가는 `::jump{to max}`) 밖의 앞으로 가는 `::jump`가 루프 안, 머리 레이블보다 뒤의 레이블에 도착합니다. 루프에는 머리 레이블로만 들어갈 수 있습니다.
+루프(`::label`과 그 뒤에서 그 레이블로 되돌아가는 `::jump{to max}`) 밖의 앞으로 가는 `::jump`가 루프 안, 머리 레이블보다 뒤의 레이블에 도착합니다. 루프에는 머리 레이블로만 들어갈 수 있습니다. 그 점프가 `<choice>` 본문 하나의 마지막이고 다른 점프가 그 레이블을 가리키지 않으면, 메시지는 그 블록을 해당 선택지 본문 안으로 옮기라고 제안합니다.
 
-명세: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+명세: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.53.0 §9.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-JUMP-LOOP-CROSS
 
@@ -844,9 +844,9 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-JUMP-LOOP-SCOPE
 
-`max`가 있는 `::jump{to max}`가 자신이 실행되는 본문 밖의 레이블로 되돌아갑니다. 루프는 `<branch>`의 `<choice>` 본문과 `<match>` 갈래만 지날 수 있고, `<hub>` 선택지나 `<return>` 본문, `<on>`·`<objective>` 본문, 퀘스트, 엔트리, 비트, 섹션을 벗어날 수 없습니다.
+`max`가 있는 `::jump{to max}`가 자신이 실행되는 본문 밖의 레이블로 되돌아갑니다. 루프는 `<branch>`의 `<choice>` 본문과 `<match>` 갈래만 지날 수 있고, `<hub>` 선택지나 `<return>` 본문, `<on>`·`<objective>` 본문, 퀘스트, 엔트리, 비트를 벗어날 수 없습니다. 문서의 `##` 섹션들은 하나의 루프 범위입니다.
 
-명세: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+명세: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.53.0 §9.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-JUMP-MAX
 
@@ -871,6 +871,12 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 `entities:` 블록에서 같은 엔티티 kind 이름을 두 번 선언했거나, 두 스키마가 한 kind를 다르게 선언했거나, 한 이름이 엔티티 kind이자 관계로 동시에 선언되었습니다.
 
 명세: [dsl 0.3.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
+
+### E-L10N-MARKERS
+
+번역문(대사, 선택지 레이블, 프롬프트, 지시어 `text` 속성)이 원문의 `{{…}}` 마커를 그대로 보여 주지 않습니다. 마커를 파싱할 수 없거나(리터럴 중괄호에서 열린 마커 `{{{run.a}}`. `lute loc import`에서는 `}}`로 닫히지 않은 대사의 `{{`도 해당하며, `compile`은 이를 `E-L10N-MODIFIERS`로 보고합니다), 마커가 원문과 다릅니다(원문의 각 마커를 같은 횟수만큼, 순서는 자유. 마커 양 끝의 공백은 세지 않지만 안쪽의 공백이나 형식 힌트는 마커의 일부입니다). 런타임은 이런 마커를 쓴 그대로 보여 주므로 해당 번역문을 병합하지 않습니다. `lute loc import`는 파싱할 수 없는 마커를 거부합니다.
+
+명세: [dsl 0.53.0 §8.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-L10N-MODIFIERS
 
@@ -1332,15 +1338,15 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-QUEST-START-CYCLE
 
-퀘스트의 `start`가 영영 성립할 수 없습니다(0.49.0). 각 `start`가 다음 퀘스트를 기다리고 순환 밖의 어떤 소스도 그중 하나를 시작시키지 않아, 앵커 엣지의 순환 위에서 교착됩니다. 강연결 집합마다 하나씩 가장 작은 퀘스트의 `start`에서 보고하며, 경로는 `E-CONN-CYCLE`처럼 표시합니다: ``quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` waits for the next and no source outside the cycle starts any of them; start one of them from something outside the cycle, or grant it with `accept="external"` ``. 순환 밖의 무언가에서 하나를 시작시키거나 `accept="external"`로 부여하세요. 외부에서 진입할 수 있는 순환은 오류가 아닙니다.
+퀘스트의 `start`가 영영 성립할 수 없습니다(0.49.0). 퀘스트의 `start` 조건과 스크립트 안의 수락(`::accept`, 보상 종류의 `accepts`)이 서로를 기다리고 순환 밖의 어떤 소스도 그중 하나를 시작시키지 않아, 앵커 엣지의 순환 위에서 교착됩니다(0.53.0부터 수락 앵커도 포함). 강연결 집합마다 하나씩 가장 작은 퀘스트의 `start`에서, `start`가 없으면(수락으로 시작하는 퀘스트) 그 `id`에서 보고하며, 경로는 엣지 종류와 함께 기다리는 순서로 표시합니다: ``quest start cycle: quest(intro) -[start]-> quest(letter) -[accept]-> quest(intro) — each waits for the next (a `start` for its condition, an accept for the `::accept` or reward that grants it) and no source outside the cycle starts any of them; start one of them from something outside the cycle, or let the host grant one with `accept="external"` ``. 순환 밖의 무언가에서 하나를 시작시키거나 호스트가 `accept="external"`로 그중 하나를 부여하게 하세요. 외부에서 진입할 수 있는 순환은 오류가 아닙니다.
 
-명세: [dsl 0.49.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+명세: [dsl 0.49.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.53.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-QUEST-START-SELF
 
-퀘스트가 자신의 `start`에서 자기 상태(`quest.<own id>.*`)를 읽습니다(0.49.0). 퀘스트가 시작되기 전에는 그 상태에 값이 없으므로 이 조건으로는 퀘스트를 의도대로 시작할 수 없습니다. 호스트만 부여하는 퀘스트는 `start` 없이 `accept="external"`로 씁니다. 자기 읽기만으로 인한 교착은 `E-QUEST-START-CYCLE`이 아니라 이 코드로 보고합니다.
+퀘스트가 자신의 `start`에서 자기 상태(`quest.<own id>.*`)를 읽습니다(0.49.0). 퀘스트가 시작되기 전에는 그 상태에 값이 없으므로 이 조건으로는 퀘스트를 의도대로 시작할 수 없습니다. 호스트만 부여하는 퀘스트는 `start` 없이 `accept="external"`로 쓰고, 호스트가 다른 장면이나 퀘스트가 끝난 뒤에만 부여한다면 그 조건을 `follows="…"`로 씁니다(호스트 정책: Lute는 이를 호스트에 전달하고 분석이 읽지만 강제하지는 않습니다). 자기 읽기만으로 인한 교착은 `E-QUEST-START-CYCLE`이 아니라 이 코드로 보고합니다.
 
-명세: [dsl 0.49.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+명세: [dsl 0.49.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.53.0 §7.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 ### E-QUEST-TIER-MIX
 
 서브퀘스트의 실효 `tier`가 부모 퀘스트의 tier와 다릅니다.
@@ -2138,9 +2144,9 @@ CEL 가드 슬롯이 unset일 수 있는 유한 도메인 주체를 실제로는
 
 ### W-DOMAIN-UNREAD
 
-선언된 도메인을 어떤 활성 구성 요소도 읽지 않습니다 — 지시어 속성, 대사 슬롯, 상태 경로, `relations:` 인자, `per:`/`subsetOf:` 패밀리, 규칙·조건 질의 중 어느 것도 이를 참조하지 않아 아무것도 강제하지 않습니다.
+선언된 도메인을 어떤 활성 구성 요소도 읽지 않습니다 — 지시어 속성, 대사 슬롯, 플러그인 프런트매터 키, 상태 경로, `relations:` 인자, `per:`/`subsetOf:` 패밀리, 규칙·조건 질의 중 어느 것도 이를 참조하지 않아 아무것도 강제하지 않습니다.
 
-명세: [dsl 0.10.0 §11.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md)
+명세: [dsl 0.10.0 §11.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md), [dsl 0.53.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### W-ENTRY-REF-UNKNOWN
 

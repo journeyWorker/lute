@@ -33,6 +33,10 @@ pub(crate) fn check_interps(interps: &[Interp], ctx: &Ctx<'_>, diags: &mut Vec<D
         match_subject: None,
     };
     for interp in interps {
+        if let Some(brace) = brace_opened_diag(interp) {
+            diags.push(brace);
+            continue;
+        }
         // §7.6 grammar: an interp is EXACTLY a bare state `Path`, a def `Ref`
         // (`@name` / `@name(args)`), or a declared host token — NOT an arbitrary
         // CEL expression (the ONLY CEL admitted inside `{{…}}` is a `@fn(args)`
@@ -198,6 +202,31 @@ pub(crate) fn is_renderable(ty: &Type) -> bool {
         ty,
         Type::Int | Type::Double | Type::Bool | Type::Enum(_) | Type::EnumFromOption(_)
     )
+}
+
+/// 0.53.0 §8 (#229): a marker that opened on a literal brace run — the `{{`
+/// of `{{{run.a}}` is the literal `{` and the marker's first brace, so its
+/// interior is `{run.a` ([`lute_syntax::line_text::brace_opened`]). No
+/// `{{…}}` form begins with `{`, so this is the marker's one diagnostic,
+/// before any grammar or referent check: `E-INTERP-BRACE` naming the marker
+/// meant (the whole leading run stripped, the rest as written) and the two
+/// spellings of its n braces. Every `{{…}}` grammar the checker reads comes
+/// here: line text, and every label-grammar value (choice and hub labels,
+/// prompts, directive `text` attributes), in scenes and component bodies.
+pub(crate) fn brace_opened_diag(interp: &Interp) -> Option<Diagnostic> {
+    let (n, meant) = lute_syntax::line_text::brace_opened(&interp.source)?;
+    Some(Diagnostic {
+        code: lute_syntax::parser::E_INTERP_BRACE.to_string(),
+        severity: Severity::Error,
+        message: lute_syntax::parser::interp_brace_message(n, &format!("{{{{{meant}}}}}")),
+        evidence: None,
+        span: interp.span,
+        layer: Layer::Content,
+        fixits: Vec::new(),
+        provenance: None,
+        covered: Vec::new(),
+        related: Vec::new(),
+    })
 }
 
 /// §7.6 interpolation-grammar violation: a `{{…}}` interior that is neither a

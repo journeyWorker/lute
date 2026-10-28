@@ -112,7 +112,7 @@ Every command has an **id**: its subcommand path as typed — `check`, `scenario
 | `loc import` | `--json` | `0.48.0.loc-import` |
 | `doctor` | `--json` | `0.43.0.doctor` |
 | `tag` | `--json` | `0.48.0.tag` |
-| `fix` | `--json` | `0.48.0.fix` |
+| `fix` | `--json` | `0.53.0.fix` |
 | `fmt` | `--json` | `0.48.0.fmt` |
 | `catalog refresh` | `--json` | `0.48.0.catalog-refresh` |
 | `init` | `--json` | `0.48.0.init` |
@@ -153,10 +153,32 @@ Describes the command line itself as the `schema` report (always JSON; reads no 
 Each `lute` invocation appends one line to `telemetry.jsonl` in Lute's state directory — `$XDG_STATE_HOME/lute` when that is an absolute path, else `$HOME/.local/state/lute`; `%LOCALAPPDATA%\lute` on Windows:
 
 ```json
-{"v":1,"ts":1760400000000,"lute":"0.52.0","command":"check","json":true,"exit":0,"durationMs":12}
+{"v":1,"ts":1760400000000,"lute":"0.53.0","command":"check","json":true,"exit":0,"durationMs":12}
 ```
 
 That is the whole record: the command id (or `null`), whether the run was in JSON mode, the exit code, the wall time and the toolchain version. No argument or flag value, path, file content, output or environment is recorded, and nothing is sent anywhere — the file stays on your machine. It is rotated to `telemetry.jsonl.1` at 1 MiB; recording is best-effort and never changes a command's output or exit code. Turn it off with `LUTE_TELEMETRY=0` (or `false`, `off`, `no`) or `DO_NOT_TRACK=1`; `lute doctor` shows which (`• Telemetry: off (LUTE_TELEMETRY)`, or the file path when it is on). The repository's own tests, scripts and CI run with it off.
+
+## Cost counters (`LUTE_STATS`)
+
+`LUTE_STATS` is a tooling switch for measuring what a command rebuilds; it changes no stdout and no exit code. It is read once at start. With `LUTE_STATS=input-cache` the command prints one extra stderr line when it returns, counting the project data it built: the folded project bases and vocabularies (one each per distinct configuration) and the per-document assemblies.
+
+<!-- lute-diagnostics unverified="verbatim lute lint output; L-MUSIC-BALANCED is the user's own custom rule message from lute.lint.yaml" -->
+```console
+$ LUTE_STATS=input-cache lute lint scenes/walk.lute
+scenes/walk.lute:12:1: error [L-MUSIC-BALANCED] ::music start/stop — opened here, with no close in this document
+failed: scenes/walk.lute (1 error(s), 0 warning(s))
+lute: stats: input-cache bases=1 vocabs=1 assemblies=1
+```
+
+Since 0.53 a command builds each base and vocabulary once per run, however many documents it reads. With `LUTE_STATS=project` it prints the project-level counters instead — reconciliations, scenario assemblies and fixpoints, one reconciliation per project root:
+
+```console
+$ LUTE_STATS=project lute check --project .
+…
+lute: stats: project reconciliations=1 scenarios=1 fixpoints=1
+```
+
+Any other value, or none, prints nothing.
 
 ## check
 
@@ -239,6 +261,19 @@ $ lute check --project . --wip
 Without `--wip` the same line is `error [E-ENTRY-UNREACHABLE]` and the command exits **1**; with it the project passes. [`lute scenario knowledge`](/tooling/overviews/#lute-scenario-knowledge) lists every such relation as `NO PRODUCER`. Since 0.23.0 the decider behind these three codes, `E-ARM-DEAD`, and `W-BEAT-PRIORITY-TIE` also reasons per path across `&&`/`||`, so a contradiction such as `run.slot == 'morning' && run.slot == 'evening'` is now reported where 0.22 missed it — see [how a `when` is decided](/language/beats/#how-a-when-is-decided).
 
 Since 0.34.0, project-wide commands load one `ProjectModel` per nearest manifest root; whole-project `check`, `scenario`, `beats`, `impact`, `calendar`, `play`, and `test` therefore share one reconciled snapshot. Analysis-derived results carry an `evidence` level (`proven`, `witnessed`, `bounded`, `heuristic`, or `unknown`). Human output adds `[bounded: <scope>]`, `[heuristic]`, or `[unknown]`; it does not suffix `proven` or `witnessed`. A bounded result means “within this scope”, never “no path exists”.
+
+Since 0.53, `check --project` reports the beat and fact-guard verdicts the project pass settles after it reclassifies reads (#240) — the `W-BEAT-SHADOWED`, `W-BEAT-PRIORITY-TIE` and guard diagnostics [`lute beats`](#beats) always showed. Before, a beat whose only per-file error the project envelope reconciled away was not judged by those passes, so `lute beats` listed it `shadowed` while `check --project` said `ok`. Here `x` reads `run.z`, which `y` sets; `a`, ordered first on `dayEnd`, is always eligible and never spent, so `x` can never win:
+
+<!-- lute-diagnostics unverified="verbatim lute check --project output; the beat message is composed at runtime from the beat ladder's verdict" -->
+```console
+$ lute check --project .
+ok: ./a.lute (0 warning(s))
+ok: ./x.lute (0 warning(s))
+ok: ./y.lute (0 warning(s))
+project-wide diagnostics:
+./x.lute:6:1: warning [W-BEAT-SHADOWED] scene `x.s01ep03` can never win occasion `dayEnd`: scene `a.s01ep02` (priority 0) is ordered before it, is always eligible (no `after:`, and its `when` is absent or always true), and is never spent (`once: false`), so it wins every time
+ok: . (3 file(s), 1 project-wide warning(s))
+```
 
 Constraints declared in `lute.project.yaml` are also checked by whole-project `check`: only violations are diagnostics; holds and unknowns appear in the report below.
 
@@ -402,7 +437,7 @@ calendar aggregate results also carry `scope`. Parse, type, and declaration
 errors omit evidence.
 
 The impact and constraints sections were introduced in the historical 0.34.0
-contract; the repository's current release is 0.52.0 and the AI edit-loop
+contract; the repository's current release is 0.53.0 and the AI edit-loop
 commands are documented below.
 
 ## compile
@@ -496,6 +531,15 @@ scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `na
 A merged translation whose stored `sourceHash` (see [`loc import`](#loc-import)) differs from the hash of the record's current source text is `W-L10N-STALE`, one per `(lineId, locale)` pair: the line, option label or prompt changed after the export the translator worked from. The message names the lineId and the locale and says to re-export with `lute loc export` and update the translation. The translation is still merged. Like every warning it is promoted by `--deny W-L10N-STALE` or `--deny-warnings`, in a single-document compile and in the project compile. A `schemaVersion: 1` bundle carries no hashes and gets no stale check.
 
 Since 0.51 the bundle also reaches a directive's [localizable text](/language/dialogue-and-cast/#localizable-directive-text-since-051): a bundle entry keyed by the `lineId` of a `text` attribute is merged into `localized.<attr>.texts` of its `plugin` record, as a line's translation goes into `texts`. `W-L10N-MISSING` and `W-L10N-STALE` apply to these entries with the same wording and the same `--deny` promotion, one per `(lineId, locale)` pair. `E-L10N-MODIFIERS` does not apply to them, because a `text` value has no inline modifiers. A document compiled without `--locale-bundle`, or without `text` attributes, is byte-identical to before.
+
+**A translation shows its source's markers (0.53).** Every translated text — a line's, an option label's, a prompt's, a directive `text` attribute's — must carry the `{{…}}` markers of its source: each source marker as often as the source shows it, in any order, compared by the interior without the spaces at its edges (`{{ run.a }}` is `{{run.a}}`; a space inside the interior and a format hint are part of the marker, so `{{run.a: ordinal}}` is not `{{run.a:ordinal}}`). The runtime renders a translation's marker with the value its source gave the marker of the same interior, so any other marker would show verbatim. A translation whose markers differ is `E-L10N-MARKERS`: it is not merged and the compile fails with exit **1** and no artifact, as for `E-L10N-MODIFIERS`, in a single-document and in a `--project` compile alike. A marker that opens on a literal brace (`E-INTERP-BRACE`) is refused the same way. A line translation with a `{{` that has no `}}` fails before the marker check, as any line markup that does not parse: `E-L10N-MODIFIERS`, wrapping `E-INTERP-UNTERMINATED` (`loc import` reports that row as `E-L10N-MARKERS`); [`loc import`](#loc-import) lists the grammar per surface.
+
+<!-- lute-diagnostics unverified="verbatim lute compile --locale-bundle output; the message is composed at runtime from the source's and the translation's marker lists" -->
+```console
+$ lute compile scenes/s.lute --project . --locale-bundle de-bundle.json -o out.json
+scenes/s.lute:1:1: error [E-L10N-MARKERS] `de` text for `s.narrator_0010` is not merged: its markers differ from the source's (missing `{{run.a}}`; extra `{{run.zzz + 1}}`): a translation shows each `{{…}}` marker of its source as often as the source does, in any order
+locale merge failed; no execution IR emitted
+```
 
 ### `--stream` — compile a scene from a live body
 
@@ -732,7 +776,80 @@ lute: tagged 8 line(s) in 5 of 5 file(s)
 $ lute fix [<PATH>]… [--check] [--json]
 ```
 
-Apply the mechanical, meaning-preserving migrations in place. Byte-exact and comment-preserving; writes back only when something changed, and running it again applies nothing. Each `<PATH>` (default `.`) is a `.lute` file, a project/schema YAML file, or a directory — every `.lute` and YAML file under it, recursively and in sorted order; several paths are migrated in the order given. Each changed file gets its own line, then a summary (`lute: applied N fix(es) in M of K file(s)`); a single file with nothing to change prints `lute: nothing to fix`. Exit **0** on success, **2** on I/O — the worst outcome across the files. `--check` writes nothing and exits **1** when any fix applies. `--json` prints the `0.48.0.fix` report, `{applied, files: [{path, changed, fixes}]}`, `fixes` being the count the text output prints.
+Apply the mechanical, meaning-preserving migrations in place. **`lute fix` applies every migration of every older release, not only the version raise**: a project written for 0.31 gets the 0.31, 0.37 and 0.41 migrations in one run, and [What `lute fix` runs](#what-lute-fix-runs) lists them all. Run `lute fix --check` first and review the diff, then `lute fix`. Byte-exact and comment-preserving; writes back only when something changed, and running it again applies nothing. Each `<PATH>` (default `.`) is a `.lute` file, a project/schema YAML file, or a directory — every `.lute` and YAML file under it, recursively and in sorted order; several paths are migrated in the order given. A directory walk does not descend into a directory symlink, like every other walker (`check --project`, `lint`, `loc`, `doctor`); a file or directory named explicitly through a link is still migrated, with its root's snapshot. Each changed file gets its own line naming the rules that applied, with their counts, then a summary (`lute: applied N fix(es) in M of K file(s)`); a single file with nothing to change prints `lute: nothing to fix`. Exit **0** on success, **2** on I/O — the worst outcome across the files. `--check` writes nothing and exits **1** when any fix applies. `--json` prints the `0.53.0.fix` report, `{applied, ok, files: [{path, changed, fixes, rules, kept}]}`, `fixes` being the count the text output prints; `rules` is `[{rule, fixes}]` in rule order (empty when nothing applies) and `kept` is `[{line, column, rule, reason}]` (see [What `lute fix` runs](#what-lute-fix-runs)). The `0.48.0.fix` report carried `path`, `changed` and `fixes` only.
+
+### What `lute fix` runs
+
+`lute fix --help` prints the same list. Each rule has a stable id; the per-file line and the JSON report use it.
+
+| Rule | Rewrites | Since |
+| ---- | -------- | ----- |
+| `line-sigil` | `:line[speaker]` and every `:`-led content line become `@speaker` | 0.2.2 |
+| `choice-into` | `<choice as="…">` becomes `into="…"` | 0.1.0 |
+| `choice-persist` | `persist="run"` on a `<choice>` that also has `into=` is deleted | 0.6.0 |
+| `shot-heading` | a `## Shot N.` / `## Scene N.` prefix before a heading title is stripped | 0.6.0 |
+| `when-is` | `<when test="$ == …">` comparing `$` to literals becomes `is="…"` | 0.18.0 |
+| `delivery` | content-line `delivery="thought\|voiceover\|spoken"` becomes `mono`, `vo` or nothing | 0.2.2 |
+| `renamed-tag` | directive tags `::auto`, `::cut`, `::next`, `::mark` become `::actor`, `::cg`, `::jump`, `::label` | 0.37.0 |
+| `renamed-attr` | `::music{action}` → `playback`, `::cg{action}` and `::video{action}` → `display`, `::label{id}` → `name`, unless the active profile declares the key as a stamp of that directive | 0.37.0 |
+| `renamed-tag-attr` | `<choice label>` becomes `text`, `<match on>` becomes `subject` | 0.37.0 |
+| `line-id-label` | a content line's `id="x"` moves to a `::label{name="x"}` line before it | 0.37.0 |
+| `cel-0.32` | 0.31 fact-query and presence calls (`holds`, `count`, `countDistinct`, `validAt`, `isSet`) become their standard-CEL forms | 0.32.0 |
+| `domain-rename` | renamed domains in project, schema and plugin YAML | 0.41.0 |
+| `lute-version` | an existing `luteVersion` stamp older than the toolchain is raised to it | 0.41.1 |
+| `bindings-version` | a `player.bindings.yaml` `bindingsVersion` older than the toolchain line is raised to it | 0.47.0 |
+| `volume` | when the project's `volume` domain is exactly `[silent, down, normal, up, full]`, `down`/`up` become `quiet`/`loud` | 0.42.0 |
+
+Because the migrations of every older release run, the diff can be larger than the version raise: review it before you write it. `lute fix --check` writes nothing, prints the same lines with `would apply`, and exits **1** when any fix applies.
+
+**A plugin stamp is kept.** A directive attribute key that the active profile declares as a stamp of that directive is not a 0.37 spelling. `lute fix` reads each `.lute` document's capability snapshot (the project's, for a document under a manifest) and renames `::cg{action}` only where the snapshot does not admit `action` on `::cg`; the checker makes the same decision, so a fixed project checks clean. Each site `lute fix` leaves alone is printed on stderr in both modes, and listed in `kept` of the JSON report with its `reason`:
+
+- `stamp` — the active profile declares the key as a stamp attribute;
+- `unresolved` — the document's plugins did not resolve, so `lute fix` cannot tell a stamp from the 0.37 spelling and keeps every such key; run `lute check` and fix the project first.
+
+The line names the key's column. A project whose plugin declares `action` as a stamp, with an old `luteVersion`:
+
+```console
+$ lute fix --check .
+lute: ./lute.project.yaml: would apply 1 fix(es): lute-version 1
+lute fix: ./scenes/intro.lute:9:22: kept `action` on `::cg` — the active profile declares it as a stamp attribute; the 0.37 rename to `display` does not apply
+lute fix: ./scenes/intro.lute:10:25: kept `action` on `::music` — the active profile declares it as a stamp attribute; the 0.37 rename to `playback` does not apply
+lute fix: ./scenes/intro.lute:11:25: kept `action` on `::video` — the active profile declares it as a stamp attribute; the 0.37 rename to `display` does not apply
+lute: would apply 1 fix(es) in 1 of 5 file(s)
+```
+
+On 0.52 the same run reported three more fixes in `scenes/intro.lute` and left a project that failed `check`. With `--json`, the kept sites are in the file's entry (output shortened):
+
+```console
+$ lute fix --check --json .
+{
+  "applied": false,
+  "command": "fix",
+  "files": [
+    {
+      "changed": true,
+      "fixes": 1,
+      "kept": [],
+      "path": "./lute.project.yaml",
+      "rules": [{ "fixes": 1, "rule": "lute-version" }]
+    },
+    …
+    {
+      "changed": false,
+      "fixes": 0,
+      "kept": [
+        { "column": 22, "line": 9, "reason": "stamp", "rule": "renamed-attr" },
+        …
+      ],
+      "path": "./scenes/intro.lute",
+      "rules": []
+    },
+    …
+  ],
+  "ok": false,
+  "schemaVersion": "0.53.0.fix"
+}
+```
 
 The 0.37 surface rewrites, each of which `lute check` reports with the new spelling and a note that `lute fix` rewrites it:
 
@@ -793,8 +910,8 @@ state:
 
 ```console
 $ lute fix scenes/pier.lute lore
-lute: scenes/pier.lute: applied 8 fix(es)
-lute: lore/dock.lute: applied 8 fix(es)
+lute: scenes/pier.lute: applied 8 fix(es): renamed-tag 2, renamed-attr 1, renamed-tag-attr 3, line-id-label 2
+lute: lore/dock.lute: applied 8 fix(es): renamed-tag 2, renamed-attr 1, renamed-tag-attr 3, line-id-label 2
 lute: applied 16 fix(es) in 2 of 2 file(s)
 $ lute fix scenes/pier.lute lore
 lute: applied 0 fix(es) in 0 of 2 file(s)
@@ -849,6 +966,8 @@ $ lute catalog refresh [--project <DIR>] [--providers <DIR>] [--json]
 ```
 
 Re-stamp every pinned provider snapshot in `--providers <DIR>` against the current `capabilitySnapshot` and clear its `stale` flag (see [providers & catalog](/tooling/providers-and-catalog/)). `--providers` defaults to the project's `catalogDir` (default `catalog/`); the project (`--project`, else discovered) supplies the stamp — the project's multi-plugin version. With neither a project nor `--providers` the command is `E-CLI-USAGE` naming `--providers`. `--json` prints the `0.48.0.catalog-refresh` report, `{providers, capabilitySnapshot, refreshed: [path], skipped: [{path, reason}]}`. Exit **0** on success, **2** on I/O.
+
+`catalog refresh` reads the manifest's `catalogDir` whenever the manifest loads, also when some document of the project is unreadable (0.52 fell back to `catalog/` then).
 
 ## init
 
@@ -969,6 +1088,8 @@ $ lute doctor [--project <DIR>] [--strict] [--json]
 
 Diagnose the local toolchain and project setup: the version axes, the project manifest, the content documents, play scripts (`*.play.yaml`) and scenario tests (`*.test.yaml`), provider snapshots, the active plugins, every declared occasion with the number of beats answering it, the declared vocabulary slots, and editor integration. `--project <DIR>` is the project directory to inspect (default: the project discovered from the current directory; with none found, doctor reports the missing manifest as before). The document scan walks the project directory. Provider snapshots are looked for in the manifest's `catalogDir:` (default `catalog/`), the directory `check` reads; with none there the line says `no pinned provider snapshots`. The editor check runs `lute-lsp --version` on the first `lute-lsp` on `PATH` and flags one that reports another version — or none, as a server older than 0.22.0 does — with how to reinstall it. It also compares the `lute-lsp` beside the running `lute` with the one on `PATH` (`lute-lsp beside lute`; `siblingLanguageServer` in `--json`): another build first on `PATH` — same version or not — fails the check, naming both binaries, with the fix: put the `lute` directory first on `PATH`, or point the editor's language server at the `lute-lsp` beside it.
 
+`doctor` likewise reads the manifest's `catalogDir` when some document of the project is unreadable (0.53; 0.52 fell back to `catalog/`).
+
 ```console
 $ lute doctor --project .
   • toolchain version: 0.22.0
@@ -1024,7 +1145,7 @@ $ lute play --script <FILE> [--project <DIR>] [--providers <DIR>] [--permission-
 Play a story through a WHOLE project as a sequence of raised **occasions** (dsl 0.21.0) — the reference-runtime consumer of [beats and occasions](/tooling/play/). The project (`--project`, else discovered) is compiled once, in memory, with the same gate and declaration union the project compile uses (scene, quest, and lore documents). `--engine <FILE>` loads `lute.engine.yaml`, performs the exact-major.minor IR gate first, then compares the project-index `requiredSemantics` union with `supportedIds`. A missing id refuses with exit **2** and `E-ENGINE-SEMANTICS` before any step, command, condition, asset, or bridge runs; malformed matrices and unsupported IR lines use `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`. Omit it for the built-in `reference` matrix. The required `--script` is a `*.play.yaml` file with a closed key set. Its `steps:` each do one thing — raise an `occasion:` (with `target:`, `pick:`, and a step-local `choose:` that replaces the script's `choose:` key by key for that presentation), start a `newRun:`, write what the engine owns with `engine:` (`state:` literals or `{ add: <n> }`, `facts:`, `retract:`), fire a world `event:`, move a declared clock with `advance: slot | day | <n>` (dsl 0.24.0: writes the clock's paths, settles the quests, raises `dayEnd` / `dayStart` at each midnight it crosses and the `slot` occasion once where it stops, per the clock's `raise:`; it may carry the same moment's `engine:` writes, which land where the clock arrives — after any `dayEnd` / `dayStart` on the way, before the final settle and raise), or end the playthrough with `end: true` — and any step may carry `label:`, `repeat: <n>`, its own `bridges:` answers, and `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`; `- include: <file>` splices another file's steps in place. Beside `steps:`, the script takes the `lute trace --mock` grammars for `state:`, `facts:`, `choose:` and `bridges:`, a save to start from (`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, and a top-level `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }` judging the end of the play (dsl 0.22.0). Each occasion step lists the occasion's candidate beats with their verdicts, presents the winner (or the step's `pick` on a `select: all` occasion; `pick: none`, or no `pick` when nothing is eligible, presents nothing) through `lute run`'s reference evaluator, and advances every quest lifecycle, so later `when` conditions and `after: completed(…)` see real progress. `--json` emits the same transcript as one object.
 
 Since dsl 0.26.0: `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }` moves the clock to the next such position (forward only, never zero steps), and a step `expect:` takes `clock: { weekday, slot, day }` (since 0.28, also `ended`); `engine: { accept: [quest ids] }` accepts an accept-driven quest mid-play (`quest <id> accepted (engine)`); an entry may be named `<document id>.<entry id>` in `pick:`, `entriesRead:` and the selection expectations; a beat targeting `kind:<kind>` answers every member of the kind; a guarded directive that did not run prints `skip ::give{item="potion"} — when: false`; a bridge answer is typed by its result slot or the capability's `result:`, and an untyped one is refused (exit **2**); and a project whose documents declare one state path with two types is refused (exit **1**). The project loads once per play — on Monster League a play load fell from about 12 s to about 1.5 s. See [Playing a story](/tooling/play/).
-`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.52.0"`. It cannot be combined with `--json`, `--ir`, `--derivation`, or `--conditions-output`.
+`--events` emits a resumable runtime event stream as compact JSON Lines: the first line contains the seed and its output, then each input the player takes is paired with its output (including `choose` and `bridgeResult` answers). Every output carries `eventVersion: "0.53.0"`. It cannot be combined with `--json`, `--ir`, `--derivation`, or `--conditions-output`.
 
 `--no-derive` (or the script's `derive: false`; the flag wins) stops applying the project's Datalog rules, so an unmocked derived atom is unknown and halts the walk incomplete. `--derivation <ATOM>` (repeatable) prints, after the play, the derivation tree of a ground atom — the rule used and each premise's own support (seed fact, asserted, or derived in turn), negated premises shown `(absent)` — or, when it does not hold, every rule that could conclude it with its failing premises; `--json` carries the same tree under `explain`.
 
@@ -1167,6 +1288,17 @@ Run the advisory content lints — line length, dialogue ratio, emotion streaks,
 
 `lute lint <DIR>` uses the project (0.49.0): it discovers the nearest `lute.project.yaml` at or above `<DIR>`, applies that project's `lute.lint.yaml`, and prints findings relative to the project root. `lute lint <DIR> --project <P>` lints `<DIR>` inside `<P>`; a `<DIR>` outside `<P>` is `E-CLI-USAGE` (`lute lint: <DIR> is not inside the project <P>`).
 
+`lute lint` reads only its operands (0.53), plus the manifest, the plugins, the providers and the imports they reach. It builds the project's shared data once per run (`LUTE_STATS=input-cache` shows `bases=1 vocabs=1`) and no whole-project model, so an unrelated unreadable sibling — invalid UTF-8, no permission — no longer fails it, as it did on 0.52 (`lute: cannot load project …`, exit **2**). An unreadable *operand* is reported as its own I/O error, exit **2**:
+
+<!-- lute-diagnostics unverified="verbatim lute lint output; the section message is composed at runtime from the section's title" -->
+```console
+$ lute lint scenes/good.lute
+scenes/good.lute:6:1: warning [L-SECTION-STARTS-WITH-BACKGROUND] section `A` does not open with a `::bg` staging directive
+ok: scenes/good.lute (0 error(s), 1 warning(s))
+$ lute lint scenes/bad.lute
+lute: cannot read scenes/bad.lute: stream did not contain valid UTF-8
+```
+
 Since dsl 0.26.0 lint also reports `W-DISPLAY-NAME-DUP`, the advisory whole-project `check` reports too: two speakers the dialogue box would show under one name — two cast entries with the same `name:`, a cast name equal to a `::use{… name="…"}` display string, or two such strings for different speakers (`who=`). A cast entry marked `sharedName: true` is an intended role name several speakers share and is not counted. The code is not a `lute.lint.yaml` rule; `--deny W-DISPLAY-NAME-DUP` makes it an error. See [Linting](/tooling/linting/#display-names).
 
 ## loc export
@@ -1236,6 +1368,15 @@ Input is exactly what `export` writes, in either format (`.csv` → CSV, anythin
 (Hashes shortened here.) `sourceHashes` holds each row's `sourceHash` per lineId **and** locale (two locales may be translated from different exports); it is always written, `{}` when no row carried a hash. Every map is sorted, so the bundle is byte-stable: importing the same inputs twice produces identical bytes. `compile --locale-bundle` still reads a `schemaVersion: 1` bundle (no `sourceHashes`, no stale check). An unparseable input, a `lineId` appearing twice within one locale, or an empty locale tag is `E-LOCALE-BUNDLE`, reported with the offending file and row. A row with **no** `lineId` is skipped rather than rejected — an untagged line simply has no stable identity yet — and a single stderr summary counts them.
 
 Since 0.51 `loc import` accepts rows of `kind: "directive"` and keys the bundle by their `lineId` like every other row; an unknown `kind` is still refused. A directive row with no `lineId` (no authored `code`) is skipped like any untagged row.
+
+`loc import` refuses a text whose `{{…}}` marker does not parse (0.53): `E-L10N-MARKERS`, one error per row, every one reported, no bundle written, exit **1**. A row is read by the grammar of its source surface, taken from its `kind`: a `line` row refuses a `{{` with no `}}` (`E-INTERP-UNTERMINATED`) and a marker that opens on a literal brace (`E-INTERP-BRACE`); a `choice` (option label), `prompt` or `directive` (`text` attribute) row reads a `{{` with no `}}` as literal text, as its source does, and refuses only the brace case. A CSV without a `kind` column reads every row as a label. `loc import` has only the translated rows, so it judges whether the markers parse; [`compile --locale-bundle`](#--locale-bundle--merge-a-translation-bundle) also judges that they are the source's.
+
+<!-- lute-diagnostics unverified="verbatim lute loc import output; the message is composed at runtime from the marker parser's own error" -->
+```console
+$ lute loc import fr.json -o bundle.json
+fr.json: error [E-L10N-MARKERS] row 1: `fr` text for `s.narrator_0010` cannot be merged: its markers do not parse (E-INTERP-BRACE: a literal `{` directly before `{{run.a}}` cannot be told apart from the marker in compiled text (lute 0.47.1 §3): put a character between them (`{ {{run.a}}`), or show the brace from a string state path (`{{run.lbrace}}{{run.a}}`, with `run.lbrace` declared `{ type: string, default: "{" }`))
+1 E-L10N-MARKERS error(s); no bundle emitted
+```
 
 ## loc report
 

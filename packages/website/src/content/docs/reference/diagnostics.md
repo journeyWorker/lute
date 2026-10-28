@@ -780,9 +780,9 @@ Spec: [dsl 0.37.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/pr
 
 ### E-INTERP-BRACE
 
-A `{{…}}` marker in line text directly follows an odd run of literal `{`, which compiled text cannot tell apart from the marker — or a `::use` argument ending in a plain `{{` is spliced right before one and swallows it. Put a character between them, or show the brace from a string state path; in an argument write a literal `{{` as `\\{{`.
+A `{{…}}` marker in line text directly follows an odd run of literal `{`, which compiled text cannot tell apart from the marker — or a marker in line text or a label opens on a literal brace run (`{{{run.a}}`: its expression begins with `{`) — or a `::use` argument ending in a plain `{{` is spliced right before one and swallows it. Put a character between the braces and the marker, or show each brace from a string state path; in an argument write a literal `{{` as `\\{{`.
 
-Spec: [dsl 0.52.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md)
+Spec: [dsl 0.52.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.52.0.md), [dsl 0.53.0 §8](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-INTERP-DEF
 
@@ -832,9 +832,9 @@ Spec: [dsl 0.52.0 §5.1](https://github.com/journeyWorker/lute/blob/main/docs/pr
 
 ### E-JUMP-INTO-LOOP
 
-A forward `::jump` from outside a loop (a `::label` and a later `::jump{to max}` back to it) lands on a label inside the loop after its head; a loop is entered only at its head label.
+A forward `::jump` from outside a loop (a `::label` and a later `::jump{to max}` back to it) lands on a label inside the loop after its head; a loop is entered only at its head label. When the jump ends one `<choice>` body and no other jump targets the label, the message suggests moving the block into that option's body.
 
-Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.53.0 §9.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-JUMP-LOOP-CROSS
 
@@ -844,9 +844,9 @@ Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/pr
 
 ### E-JUMP-LOOP-SCOPE
 
-A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section.
+A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry or a beat. A document's `##` sections are one loop scope.
 
-Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md)
+Spec: [dsl 0.51.0 §3.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.51.0.md), [dsl 0.53.0 §9.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-JUMP-MAX
 
@@ -871,6 +871,12 @@ Spec: [dsl 0.2.0 §3.1](https://github.com/journeyWorker/lute/blob/main/docs/pro
 An `entities:` block declares the same entity kind name twice, two schemas declare one kind differently, or a name is declared as both an entity kind and a relation.
 
 Spec: [dsl 0.3.0 §4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.3.0.md)
+
+### E-L10N-MARKERS
+
+A translated text — a line, an option label, a prompt or a directive `text` attribute — does not show its source's `{{…}}` markers: a marker does not parse (a marker opened on a literal brace, `{{{run.a}}`; at `lute loc import` also a line's `{{` with no `}}`, which `compile` reports as `E-L10N-MODIFIERS`), or the markers are not the source's, each as often (any order; the spaces at a marker's edges do not count, a space inside it or a format hint does). The runtime would show such a marker verbatim, so the translation is not merged; `lute loc import` refuses a marker that does not parse.
+
+Spec: [dsl 0.53.0 §8.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-L10N-MODIFIERS
 
@@ -1320,15 +1326,15 @@ Spec: [dsl 0.2.0 §5.4](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 ### E-QUEST-START-CYCLE
 
-Quests' `start` conditions wait on each other around a cycle that no source outside it enters, so none of them can ever start; start one of them from something outside the cycle, or grant it with `accept="external"`.
+Quests' `start` conditions and in-script accepts (`::accept`, a reward's `accepts`) wait on each other around a cycle that no source outside it enters, so none of them can ever start; the path names each edge kind, and the error is at the least quest's `start`, or its `id` when it has none. Start one of them from something outside the cycle, or let the host grant one with `accept="external"`.
 
-Spec: [dsl 0.49.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+Spec: [dsl 0.49.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.53.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-QUEST-START-SELF
 
-A quest's `start` reads the quest's own state (`quest.<id>.*`), which has no value before the quest starts; a quest only the host grants is written `accept="external"` without a `start`.
+A quest's `start` reads the quest's own state (`quest.<id>.*`), which has no value before the quest starts; a quest only the host grants is written `accept="external"` without a `start`, and a condition the host waits for is written `follows="…"` (host policy: Lute carries it, analysis reads it).
 
-Spec: [dsl 0.49.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+Spec: [dsl 0.49.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.53.0 §7.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-QUEST-TIER-MIX
 
@@ -2124,9 +2130,9 @@ Spec: [dsl 0.26.0 §2.8](https://github.com/journeyWorker/lute/blob/main/docs/pr
 
 ### W-DOMAIN-UNREAD
 
-A declared domain is not read by any active construct — no directive attribute, content-line slot, state path, `relations:` argument, `per:`/`subsetOf:` family, or rule/condition query names it — so it enforces nothing.
+A declared domain is not read by any active construct — no directive attribute, content-line slot, plugin frontmatter key, state path, `relations:` argument, `per:`/`subsetOf:` family, or rule/condition query names it — so it enforces nothing.
 
-Spec: [dsl 0.10.0 §11.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md)
+Spec: [dsl 0.10.0 §11.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.10.0.md), [dsl 0.53.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### W-ENTRY-REF-UNKNOWN
 

@@ -197,7 +197,7 @@ fn a_command_lists_its_arguments_options_and_outputs() {
     assert_eq!(kinds, ["report", "stream"]);
     for (path, version) in [
         (&["tag"][..], "0.48.0.tag"),
-        (&["fix"][..], "0.48.0.fix"),
+        (&["fix"][..], "0.53.0.fix"),
         (&["fmt"][..], "0.48.0.fmt"),
         (&["catalog", "refresh"][..], "0.48.0.catalog-refresh"),
         (&["init"][..], "0.48.0.init"),

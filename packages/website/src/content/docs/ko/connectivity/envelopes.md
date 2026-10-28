@@ -66,7 +66,7 @@ envelope for quest(q) (pre-entry — state available when control REACHES this n
     - run.x   written by: (nothing on a declared route reaching here — schema default only); also written, but not provably before this node: scene(a), scene(b)
   Possible (set on SOME but not every declared route reaching this quest; the Guaranteed paths above are not repeated) -- inventory only: unlike a scene's, this list is not a set of warned read sites; a quest's guard reads are checked where they are written, not against this table:
     (none)
-  note: this quest declares no `follows` attribute, so this is the defaults-only `D` table; declaring `follows` on quest:q would enrich this table with the full project-resolved envelope.
+  note: this quest declares no `follows` attribute, so this is the defaults-only `D` table; quest:q is accept-driven, and an accept activates it whatever `follows` says, so `follows` is never an entry route and would not enrich this table.
 ```
 
 0.51에서는 두 씬 모두 `q`보다 앞서는 작성자로 나열되었습니다.
@@ -94,7 +94,8 @@ $ lute scenario --project docs/examples/haven envelope --node haven.s01ep09
 
 `lute scenario --project <DIR> envelope --node quest:<id>`는 **모든** 퀘스트에 대해 실제 표를 출력합니다.
 
-- `after` 속성이 **있는** 퀘스트 → 장면과 정확히 같은 방식으로 계산한 전체 `Guaranteed`/`Possible` 표입니다.
-- `after`가 **없는** 퀘스트 → 기본값만 담은 `D` 표(결코 비어 있지 않고 오류도 아님)와, `after`를 선언하면 기본값만 있는 상태를 넘어 더 풍부한 정보를 얻는다는 한 줄 메모입니다.
+- `follows`가 경로가 되는 퀘스트(`start`가 있는 퀘스트, 또는 부모와 함께 활성화되는 서브퀘스트)가 이를 선언하면 → 장면과 정확히 같은 방식으로 계산한 전체 `Guaranteed`/`Possible` 표입니다.
+- **수락 기반** 퀘스트(`start` 없음) → `follows`가 있든 없든 기본값만 담은 `D` 표입니다. 수락은 그 퀘스트를 수락한 쪽의 중간에서 활성화하므로 그 씬이 쓰는 것은 진입 시점에 보장되지 않고, 0.53부터 `follows`는 순서 메타데이터일 뿐 진입 경로가 아닙니다. `follows`가 없으면 메모는 이를 선언해도 표가 풍부해지지 않는다고 알려 줍니다.
+- 그 밖에 `follows`가 **없는** 퀘스트 → 기본값만 담은 `D` 표(결코 비어 있지 않고 오류도 아님)와, `follows`를 선언하면 기본값만 있는 상태를 넘어 더 풍부한 정보를 얻는다는 한 줄 메모입니다.
 
-퀘스트는 반응형입니다 — `<quest start>`가 가능한 가장 이른 순간에 실행될 수 있으므로, 작성자가 `after`를 통해 그래프 위치를 선택하지 않는 한 퀘스트 진입 시 스키마 기본값을 넘어서는 어떤 것도 건전하게 보장할 수 없습니다. 반응형 진단 측면("이 특정 가드의 읽기가 안전한가?")은 이미 퀘스트 자체 가드에 대해 `defassign`이 처리합니다.
+퀘스트는 반응형입니다 — `<quest start>`가 가능한 가장 이른 순간에 실행될 수 있으므로, 작성자가 `follows`를 통해 그래프 위치를 선택하지 않는 한 퀘스트 진입 시 스키마 기본값을 넘어서는 어떤 것도 건전하게 보장할 수 없습니다. 반응형 진단 측면("이 특정 가드의 읽기가 안전한가?")은 이미 퀘스트 자체 가드에 대해 `defassign`이 처리합니다.

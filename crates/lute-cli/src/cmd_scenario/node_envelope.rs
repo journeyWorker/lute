@@ -2,7 +2,7 @@
 //! envelope, its writers, and its fact envelope.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
 
 use lute_check::envelope;
@@ -12,7 +12,7 @@ use crate::cmd_scenario::{
     node_ref_to_id, primary_node_ambiguity_note, resolve_node_ref, NodeRef, RootScenario,
 };
 use crate::knowledge;
-use crate::project::ByRoot;
+use crate::project::{ByRoot, RootModels};
 
 /// dsl 0.20.0 §6: the fact envelope — each fact guaranteed on arrival with
 /// where it is established (an assert site, an enclosing guard, a seed).
@@ -357,7 +357,10 @@ fn print_scene_envelope(
 /// Print a quest node's envelope (T12 [`envelope::quest_envelope`]) — full
 /// tables for a quest with `follows=`, defaults-only `D` plus the
 /// enrichment note for a bare quest (dsl §4.4) — plus its `Possible \
-/// Guaranteed` SET as plain inventory. [`envelope::check_envelope`] is
+/// Guaranteed` SET as plain inventory. The note says `follows` would enrich
+/// the table only for a quest it would route: an accept-driven quest's
+/// `follows` is never an entry route (dsl 0.53.0 §7.1), so its table stays
+/// the defaults-only one. [`envelope::check_envelope`] is
 /// SCENE-ONLY by design (its own doc comment: quest reads stay
 /// `check_quest_guard_defassign`'s territory), so this is NEVER labeled
 /// as the T11 warning-grade read-site class (Main review) — there is no
@@ -424,12 +427,22 @@ fn print_quest_envelope(
     );
     print_path_set_with_writers(out, &possible_only, &writers);
     if qe.enrichment_note {
-        outln!(
-            out,
-            "  note: this quest declares no `follows` attribute, so this is the defaults-only \
-             `D` table; declaring `follows` on quest:{id} would enrich this table \
-             with the full project-resolved envelope."
-        );
+        if lute_check::accept::accept_driven_quests(docs).contains(id) {
+            outln!(
+                out,
+                "  note: this quest declares no `follows` attribute, so this is the \
+                 defaults-only `D` table; quest:{id} is accept-driven, and an accept \
+                 activates it whatever `follows` says, so `follows` is never an entry \
+                 route and would not enrich this table."
+            );
+        } else {
+            outln!(
+                out,
+                "  note: this quest declares no `follows` attribute, so this is the \
+                 defaults-only `D` table; declaring `follows` on quest:{id} would enrich \
+                 this table with the full project-resolved envelope."
+            );
+        }
     }
     print_facts_section(out, scenario, docs, root);
 }
@@ -438,11 +451,10 @@ pub(crate) fn run_scenario_envelope(
     out: &mut String,
     dir: &Path,
     by_root: &ByRoot,
-    file_results: &[(PathBuf, lute_check::CheckResult)],
+    models: &RootModels,
     node_id_raw: &str,
 ) -> ExitCode {
-    let (node_ref, root, scenario) = match resolve_node_ref(dir, by_root, file_results, node_id_raw)
-    {
+    let (node_ref, root, scenario) = match resolve_node_ref(dir, models, node_id_raw) {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -451,14 +463,14 @@ pub(crate) fn run_scenario_envelope(
             .get(root)
             .expect("resolved scenario root must have documents"),
     );
-    if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
+    if let Some(note) = primary_node_ambiguity_note(scenario, &node_ref) {
         let node_id = node_ref_to_id(&node_ref);
         outln!(out, "envelope for {node_id}: unavailable -- {note}");
         return ExitCode::SUCCESS;
     }
     match &node_ref {
         NodeRef::Scene(key) | NodeRef::Beat(key) => {
-            print_scene_envelope(out, &scenario, &docs, &node_ref_to_id(&node_ref), key, root);
+            print_scene_envelope(out, scenario, &docs, &node_ref_to_id(&node_ref), key, root);
         }
         NodeRef::Quest(id) => {
             let Some(quest) = docs
@@ -469,7 +481,7 @@ pub(crate) fn run_scenario_envelope(
                 eprintln!("lute: internal error: quest `{id}` resolved but no declaration found");
                 return ExitCode::from(2);
             };
-            print_quest_envelope(out, &scenario, &docs, id, quest, root);
+            print_quest_envelope(out, scenario, &docs, id, quest, root);
         }
     }
     ExitCode::SUCCESS

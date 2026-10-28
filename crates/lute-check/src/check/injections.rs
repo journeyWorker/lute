@@ -4,7 +4,7 @@
 use super::{
     attr_str, lower_node_with_snapshot, Arm, Directive, InjectedCommand, Node, StageState,
 };
-use crate::inject::StageFlow;
+use crate::inject::{Sections, StageFlow};
 
 /// Fold the injection reducer over a node slice, threading `StageState` and
 /// collecting every injected command. `<branch>` choices and `<match>` arms
@@ -177,16 +177,18 @@ fn fold_hub(
 /// naming the whole expansion path.
 ///
 /// dsl 0.51.0 §3.4: the body's labels and loops are its own document's
-/// ([`StageFlow::enter_component`]).
+/// ([`StageFlow::enter_component`]), and dsl 0.53.0 §9.2: its own top-level
+/// sections are one loop scope ([`StageFlow::component_sections`]), so a
+/// loop region runs on through them and never into the caller's.
 ///
 /// An unresolvable name (no `component=` attr, or one absent from the table)
 /// is silently skipped — the resolution failure is already
 /// `E-COMPONENT-UNKNOWN`/`E-COMPONENT-PARSE` on the import surface.
-fn fold_use(
+fn fold_use<'a>(
     d: &Directive,
     state: &mut Option<StageState>,
     out: &mut Vec<InjectedCommand>,
-    flow: &mut StageFlow<'_>,
+    flow: &mut StageFlow<'a>,
 ) {
     let Some(name) = attr_str(d, "component") else {
         return;
@@ -207,29 +209,25 @@ fn fold_use(
     let mark = flow.diags.len();
     // dsl 0.26.0 §3.2: a `@@p:` line stages the member this `::use` binds
     // `p` to (a nested `::use`'s arguments pass the binding through).
-    let bound: Vec<Vec<Node>>;
-    let bodies: Vec<&[Node]> = if def.speakers.is_empty() {
-        def.body
-            .sections
-            .iter()
-            .map(|s| s.body.as_slice())
-            .collect()
+    let sections = if def.speakers.is_empty() {
+        Sections::Doc(&def.body.sections)
     } else {
         let args = crate::component_effects::use_args_for(d, def);
-        bound = def
-            .body
-            .sections
-            .iter()
-            .map(|s| {
-                let mut body = s.body.clone();
-                crate::component_effects::bind_speaker_params(&mut body, &args, &def.params);
-                body
-            })
-            .collect();
-        bound.iter().map(Vec::as_slice).collect()
+        Sections::Bound(
+            def.body
+                .sections
+                .iter()
+                .map(|s| {
+                    let mut s = s.clone();
+                    crate::component_effects::bind_speaker_params(&mut s.body, &args, &def.params);
+                    s
+                })
+                .collect(),
+        )
     };
-    for body in bodies {
-        fold_injections(body, state, out, flow);
+    flow.component_sections(sections.clone());
+    for section in sections.iter() {
+        fold_injections(&section.body, state, out, flow);
     }
     let name = flow.using.pop().expect("pushed above");
     flow.leave_component();

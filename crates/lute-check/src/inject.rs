@@ -437,6 +437,27 @@ impl StageState {
     }
 }
 
+/// The top-level sections a stage walk's loop regions run on through (dsl
+/// 0.53.0 §9.2): the walked document's, or inside a `::use` body the
+/// component's own — the speaker-bound copies the fold walks when the use
+/// binds speakers ([`StageFlow::component_sections`]).
+#[derive(Clone, Debug)]
+pub(crate) enum Sections<'a> {
+    Doc(&'a [lute_syntax::ast::Section]),
+    Bound(std::rc::Rc<[lute_syntax::ast::Section]>),
+}
+
+impl std::ops::Deref for Sections<'_> {
+    type Target = [lute_syntax::ast::Section];
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Sections::Doc(sections) => sections,
+            Sections::Bound(sections) => sections,
+        }
+    }
+}
+
 /// The stage-state routing of `::jump`s and `::label`s for one walk (dsl
 /// 0.51.0 §3.4), shared by `check()`'s injection fold and `lute compile`'s
 /// stage walk, so both bind the same state at every label and loop head:
@@ -457,6 +478,12 @@ impl StageState {
 /// routed in its own scope: its own document's loops and labels.
 pub struct StageFlow<'a> {
     loops: &'a crate::next_labels::LoopTable,
+    /// The current scope's top-level sections, one loop scope (dsl 0.53.0
+    /// §9.2): a loop region runs on into the following ones
+    /// ([`Self::top_level`], [`Self::component_sections`]).
+    top: Sections<'a>,
+    /// The enclosing scopes' sections, innermost last.
+    outer_top: Vec<Sections<'a>>,
     pub(crate) domains: &'a BTreeMap<String, Domain>,
     pub(crate) snapshot: &'a CapabilitySnapshot,
     pub(crate) components: Option<&'a crate::component_import::ComponentSet>,
@@ -514,6 +541,8 @@ impl<'a> StageFlow<'a> {
     ) -> Self {
         StageFlow {
             loops,
+            top: Sections::Doc(&[]),
+            outer_top: Vec::new(),
             domains,
             snapshot,
             components,
@@ -528,6 +557,13 @@ impl<'a> StageFlow<'a> {
             using: Vec::new(),
             diags: Vec::new(),
         }
+    }
+
+    /// The document's top-level `sections`, walked one after another with
+    /// this routing: a loop whose head is in one of them runs through its
+    /// last back edge in any later one (dsl 0.53.0 §9.3).
+    pub fn top_level(&mut self, sections: &'a [lute_syntax::ast::Section]) {
+        self.top = Sections::Doc(sections);
     }
 
     fn loops(&self) -> &crate::next_labels::LoopTable {
@@ -566,7 +602,10 @@ impl<'a> StageFlow<'a> {
     }
 
     /// Enter component `name`'s body: its labels and loops are its own
-    /// document's ([`Self::leave_component`] returns to the enclosing ones).
+    /// document's, and it has no sections until
+    /// [`Self::component_sections`] names them (an inlined body is flat
+    /// inside its caller's); [`Self::leave_component`] returns to the
+    /// enclosing ones.
     pub fn enter_component(&mut self, name: &str) {
         let loops = match self.component_loops.get(name) {
             Some(loops) => loops.clone(),
@@ -583,12 +622,21 @@ impl<'a> StageFlow<'a> {
         };
         self.scopes.push(loops);
         self.outer.push(std::mem::take(&mut self.pending));
+        self.outer_top
+            .push(std::mem::replace(&mut self.top, Sections::Doc(&[])));
+    }
+
+    /// The top-level sections of the component body just entered, as the
+    /// walk folds them: a loop region in one runs on into the later ones.
+    pub(crate) fn component_sections(&mut self, sections: Sections<'a>) {
+        self.top = sections;
     }
 
     /// Leave the component scope [`Self::enter_component`] entered.
     pub fn leave_component(&mut self) {
         self.scopes.pop();
         self.pending = self.outer.pop().unwrap_or_default();
+        self.top = self.outer_top.pop().unwrap_or(Sections::Doc(&[]));
     }
 
     /// Route `::jump` `d` from `state` (dsl 0.51.0 §3.4): an unguarded jump
@@ -644,7 +692,8 @@ impl<'a> StageFlow<'a> {
         let state = if self.loops().is_head(id) {
             state.map(|mut entry| {
                 let diags = std::mem::take(&mut entry.diags);
-                let region = &rest[..crate::loop_walk::region_len(rest, id)];
+                let top = self.top.clone();
+                let region = crate::loop_walk::region(rest, &top, id);
                 let mut head = self.head(id, entry, HeadAt::Loop(region));
                 head.diags = diags;
                 head
@@ -777,7 +826,7 @@ impl<'a> StageFlow<'a> {
     fn head(&mut self, id: &str, entry: StageState, at: HeadAt<'_>) -> StageState {
         use crate::loop_walk::head_fixpoint;
         let characters = match at {
-            HeadAt::Loop(region) => characters_of(&entry, [region]),
+            HeadAt::Loop(region) => characters_of(&entry, region.parts()),
             HeadAt::Hub(hub) => characters_of(&entry, hub.bodies().map(Vec::as_slice)),
         };
         let bound = 5 * characters.len() + 2;
@@ -795,12 +844,14 @@ impl<'a> StageFlow<'a> {
                     HeadAt::Loop(region) => {
                         let mut state = Some(h.bare());
                         let mut emitted = Vec::new();
-                        crate::check::injections::fold_injections(
-                            region,
-                            &mut state,
-                            &mut emitted,
-                            self,
-                        );
+                        for part in region.parts() {
+                            crate::check::injections::fold_injections(
+                                part,
+                                &mut state,
+                                &mut emitted,
+                                self,
+                            );
+                        }
                         self.pending.remove(id)
                     }
                 };
@@ -817,7 +868,7 @@ impl<'a> StageFlow<'a> {
 /// What a head iterates: a loop's region, or a hub's bodies.
 #[derive(Clone, Copy)]
 enum HeadAt<'n> {
-    Loop(&'n [Node]),
+    Loop(crate::loop_walk::Region<'n>),
     Hub(&'n Hub),
 }
 

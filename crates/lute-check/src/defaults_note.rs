@@ -11,6 +11,10 @@ use std::path::{Path, PathBuf};
 use lute_core_span::{Diagnostic, Severity};
 use lute_syntax::ast::Document;
 
+// The notes are built per check, never memoized, so their probes need no
+// record (spec 0.53.0 §3.5).
+use lute_manifest::deps::DependencySink;
+
 use crate::rel_schema::origin_display;
 use crate::CheckInput;
 
@@ -40,7 +44,7 @@ pub(crate) fn component_hint(src: &Path) -> String {
     format!(
         " — this document's `components:` replaces `defaults.components` (from \
          lute.project.yaml), which imports it from `{}`; list that file here too",
-        origin_display(src)
+        origin_display(src, DependencySink::none())
     )
 }
 
@@ -134,7 +138,7 @@ fn annotate(d: &mut Diagnostic, missing: &BTreeMap<String, PathBuf>) {
                 " — this document's `uses:` replaces `defaults.uses` (from lute.project.yaml), \
                  and `{name}` is declared in `{}`, which it no longer imports; list that schema \
                  here too",
-                origin_display(file)
+                origin_display(file, DependencySink::none())
             );
             d.message.push_str(&note);
         }

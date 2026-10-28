@@ -72,7 +72,7 @@ envelope for quest(q) (pre-entry — state available when control REACHES this n
     - run.x   written by: (nothing on a declared route reaching here — schema default only); also written, but not provably before this node: scene(a), scene(b)
   Possible (set on SOME but not every declared route reaching this quest; the Guaranteed paths above are not repeated) -- inventory only: unlike a scene's, this list is not a set of warned read sites; a quest's guard reads are checked where they are written, not against this table:
     (none)
-  note: this quest declares no `follows` attribute, so this is the defaults-only `D` table; declaring `follows` on quest:q would enrich this table with the full project-resolved envelope.
+  note: this quest declares no `follows` attribute, so this is the defaults-only `D` table; quest:q is accept-driven, and an accept activates it whatever `follows` says, so `follows` is never an entry route and would not enrich this table.
 ```
 
 On 0.51 both scenes were listed as writers provably before `q`.
@@ -100,7 +100,8 @@ Episode 6 asserts all three of Ottavio's facts outside any branch, and every rou
 
 `lute scenario --project <DIR> envelope --node quest:<id>` prints a real table for **every** quest:
 
-- A quest **with** an `after` attribute → the full `Guaranteed`/`Possible` tables, computed exactly like a scene's.
-- A quest **without** `after` → the defaults-only `D` table (never empty, never an error), plus a one-line note that declaring `after` would enrich it beyond defaults-only.
+- A quest whose `follows` is its route — one with a `start`, or a subquest that activates with its parent — and that declares it → the full `Guaranteed`/`Possible` tables, computed exactly like a scene's.
+- An **accept-driven** quest (no `start`) → the defaults-only `D` table, `follows` or not. An accept activates it in the middle of whatever accepted it, so nothing that scene writes is guaranteed at its entry, and since 0.53 its `follows` is ordering metadata, never an entry route; without `follows` the note says that declaring one would not enrich the table.
+- Any other quest **without** `follows` → the defaults-only `D` table (never empty, never an error), plus a one-line note that declaring `follows` would enrich it beyond defaults-only.
 
-A quest is reactive — `<quest start>` may fire at the earliest possible instant, so nothing beyond schema defaults can be soundly guaranteed at quest entry unless the author opts into a graph position with `after`. The reactive diagnostic side ("is this specific guard's read safe?") is already handled by `defassign` on the quest's own guards.
+A quest is reactive — `<quest start>` may fire at the earliest possible instant, so nothing beyond schema defaults can be soundly guaranteed at quest entry unless the author opts into a graph position with `follows`. The reactive diagnostic side ("is this specific guard's read safe?") is already handled by `defassign` on the quest's own guards.

@@ -3,9 +3,9 @@ use super::{
     datalog, default_key_legal_on, get_i64, get_params, get_ref_list, get_str, get_sub_map,
     ident_from_name, kind_keys, lit_str, meta_key_span, meta_path_span, sanitize_dup_block_keys,
     scan_block_dup_names, type_accepts, type_str, unknown_key_hint, yaml_key, yaml_parse_error,
-    yaml_shape, BTreeMap, BTreeSet, CapabilitySnapshot, Diagnostic, FrontmatterRef, Layer, Literal,
-    Meta, MetaKind, Severity, Span, Type, TypedMeta, COMPONENT_ONLY_KEYS, E_PATH_IDENT,
-    REQUIRED_KEYS, UNIVERSAL_KEYS,
+    yaml_shape, BTreeMap, BTreeSet, CapabilitySnapshot, Diagnostic, FrontmatterPath,
+    FrontmatterRef, FrontmatterStep, Layer, Literal, Meta, MetaKind, Severity, Span, Type,
+    TypedMeta, COMPONENT_ONLY_KEYS, E_PATH_IDENT, REQUIRED_KEYS, UNIVERSAL_KEYS,
 };
 
 /// dsl 0.15.0 §3: lift one authored `extra:` YAML value into the JSON-ready
@@ -401,35 +401,38 @@ pub fn parse_meta_kind_with_defaults(
             ));
             continue;
         };
-        // 0.49.0 §4.3: a reference-typed key (or a list of one) whose value
-        // is a string (each element a string) is checked for membership in
-        // `fold_env`, once the merged vocabulary exists
-        // ([`check_frontmatter_refs`]). Any other value is the schema error
-        // below.
-        if let Some(r) = frontmatter_ref(key, ty, v) {
-            typed.frontmatter_refs.push(r);
-            continue;
-        }
+        // 0.49.0 §4.3, 0.53.0 §6.1: every reference inside the value (at the
+        // top level, in list items, record fields, map keys and values) is
+        // checked for membership in `fold_env`, once the merged vocabulary
+        // exists ([`check_frontmatter_refs`]).
+        //
         // plugin Appendix C2: "The checker MUST validate a scene's frontmatter
         // block against each active plugin's declared key schema; a value that
         // violates the schema is a static error." A value with no `Literal`
         // representation at all (null, a `!tag`, a non-string mapping key)
-        // is the SAME error, never a panic.
+        // is the SAME error, never a panic — anywhere in a structured value,
+        // as on 0.52.0. A top-level reference (or list of references) is
+        // read as its string, as 0.49.0 §4.3 always read it.
+        let top_level_ref =
+            is_reference_type(ty) || matches!(ty, Type::List(inner) if is_reference_type(inner));
         let lit = Literal::from_yaml(v);
-        if !lit.as_ref().is_some_and(|l| type_accepts(ty, l)) {
-            let found = match &lit {
-                Some(l) => lit_str(l),
-                None => unrepresentable_yaml(v).to_string(),
-            };
-            diags.push(err_at(
-                "E-FRONTMATTER-SCHEMA",
-                format!(
-                    "frontmatter key `{key}` expects {} (declared by an active plugin), got {found}",
-                    type_str(ty)
-                ),
-                meta_key_span(meta, key),
-            ));
+        let mut walk = RefWalk::new(key);
+        if (top_level_ref || lit.is_some()) && walk.value(ty, v) {
+            typed.frontmatter_refs.extend(walk.refs);
+            continue;
         }
+        let found = match &lit {
+            Some(l) => lit_str(l),
+            None => unrepresentable_yaml(v).to_string(),
+        };
+        diags.push(err_at(
+            "E-FRONTMATTER-SCHEMA",
+            format!(
+                "frontmatter key `{key}` expects {} (declared by an active plugin), got {found}",
+                type_str(ty)
+            ),
+            meta_key_span(meta, key),
+        ));
     }
 
     // Lift the built-in scalar/collection keys.
@@ -853,43 +856,134 @@ pub fn parse_meta_kind_with_defaults(
     (typed, diags)
 }
 
-/// 0.49.0 §4.3: `Some` for a reference-typed plugin frontmatter key
-/// (`entity`, `domain`, `enumFromOption`, `providerRef`, `assetKind`, or a
-/// `list` of one) whose value is a string, or a list of strings.
-fn frontmatter_ref(key: &str, ty: &Type, value: &yaml_serde::Value) -> Option<FrontmatterRef> {
-    let is_ref = |t: &Type| {
-        matches!(
-            t,
-            Type::Entity(_)
-                | Type::Domain(_)
-                | Type::EnumFromOption(_)
-                | Type::ProviderRef(_)
-                | Type::AssetKind(_)
-        )
-    };
-    let (elem, values) = match ty {
-        Type::List(inner) if is_ref(inner) => (
-            inner.as_ref(),
-            value
-                .as_sequence()?
-                .iter()
-                .map(|item| item.as_str().map(str::to_string))
-                .collect::<Option<Vec<_>>>()?,
-        ),
-        t if is_ref(t) => (t, vec![value.as_str()?.to_string()]),
-        _ => return None,
-    };
-    Some(FrontmatterRef {
-        key: key.to_string(),
-        ty: elem.clone(),
-        values,
-    })
+/// 0.53.0 §6.1: the one walk over a plugin frontmatter key's declared type
+/// and its authored value. It collects every reference (a reference type with
+/// a string value, at any depth below `list`, `record` and `map`) and judges
+/// the value's shape: [`RefWalk::value`] is `false` exactly when the value
+/// does not have the type's shape (`E-FRONTMATTER-SCHEMA`, whose references
+/// are then not checked). Off the reference types this is `type_accepts`;
+/// a reference type accepts a string at every depth, where `type_accepts`
+/// refuses `providerRef` and `enumFromOption` and every non-`string`,
+/// non-`enum` map key.
+struct RefWalk<'k> {
+    key: &'k str,
+    steps: Vec<FrontmatterStep>,
+    refs: Vec<FrontmatterRef>,
 }
 
-/// 0.49.0 §4.3: each reference-typed plugin frontmatter value against the
-/// merged vocabulary, through the same `check_attr_value` a directive
-/// attribute uses (owner `frontmatter`, so its type-specific codes and
-/// did-you-mean hints are the attribute's), at the key.
+impl<'k> RefWalk<'k> {
+    fn new(key: &'k str) -> Self {
+        RefWalk {
+            key,
+            steps: Vec::new(),
+            refs: Vec::new(),
+        }
+    }
+
+    /// Whether `value` has `ty`'s shape, collecting its references.
+    fn value(&mut self, ty: &Type, value: &yaml_serde::Value) -> bool {
+        use yaml_serde::Value;
+        if is_reference_type(ty) {
+            return match value.as_str() {
+                Some(s) => {
+                    self.push(ty, s);
+                    true
+                }
+                None => false,
+            };
+        }
+        match (ty, value) {
+            (Type::List(inner), Value::Sequence(items)) => items
+                .iter()
+                .enumerate()
+                .all(|(i, item)| self.step(FrontmatterStep::Item(i), inner, item)),
+            (Type::Record(fields), Value::Mapping(m)) => {
+                let authored = m.iter().all(|(k, v)| {
+                    let Some(f) = k
+                        .as_str()
+                        .and_then(|name| fields.iter().find(|f| f.name == name))
+                    else {
+                        return false;
+                    };
+                    if f.shape.is_some() {
+                        // As `type_accepts`: a shape is resolved at snapshot
+                        // assembly; a mapping is accepted and holds no
+                        // reference the walk can type.
+                        return v.is_mapping();
+                    }
+                    self.step(FrontmatterStep::Field(f.name.clone()), &f.ty, v)
+                });
+                authored
+                    && fields
+                        .iter()
+                        .all(|f| !f.required || m.contains_key(f.name.as_str()))
+            }
+            (Type::Map { key, value: vty }, Value::Mapping(m)) => {
+                // The key type is judged once, an empty map included: a
+                // reference kind (0.53.0 §6.1), or `string`/`enum` as
+                // `type_accepts` has it.
+                let ref_key = is_reference_type(key);
+                if !ref_key && !matches!(**key, Type::Str | Type::Enum(_)) {
+                    return false;
+                }
+                m.iter().all(|(k, v)| {
+                    let Some(k) = k.as_str() else {
+                        return false;
+                    };
+                    let key_ok = if ref_key {
+                        self.steps.push(FrontmatterStep::Key(k.to_string()));
+                        self.push(key, k);
+                        self.steps.pop();
+                        true
+                    } else {
+                        type_accepts(key, &Literal::Str(k.to_string()))
+                    };
+                    key_ok && self.step(FrontmatterStep::Entry(k.to_string()), vty, v)
+                })
+            }
+            _ => Literal::from_yaml(value).is_some_and(|l| type_accepts(ty, &l)),
+        }
+    }
+
+    /// [`Self::value`] one step below the current position.
+    fn step(&mut self, step: FrontmatterStep, ty: &Type, value: &yaml_serde::Value) -> bool {
+        self.steps.push(step);
+        let ok = self.value(ty, value);
+        self.steps.pop();
+        ok
+    }
+
+    fn push(&mut self, ty: &Type, value: &str) {
+        self.refs.push(FrontmatterRef {
+            path: FrontmatterPath {
+                key: self.key.to_string(),
+                steps: self.steps.clone(),
+            },
+            ty: ty.clone(),
+            value: value.to_string(),
+        });
+    }
+}
+
+/// The types whose value names a member of the merged vocabulary, checked by
+/// `check_attr_value` (0.49.0 §4.3).
+fn is_reference_type(ty: &Type) -> bool {
+    matches!(
+        ty,
+        Type::Entity(_)
+            | Type::Domain(_)
+            | Type::EnumFromOption(_)
+            | Type::ProviderRef(_)
+            | Type::AssetKind(_)
+    )
+}
+
+/// 0.49.0 §4.3, 0.53.0 §6.1: each reference inside a plugin frontmatter
+/// value against the merged vocabulary, through the same `check_attr_value`
+/// a directive attribute uses (owner `frontmatter`, so its type-specific
+/// codes and did-you-mean hints are the attribute's), at the key. A value
+/// below the top level is named by its path (``field `partner` of `talk` of
+/// `frontmatter` ``).
 pub(crate) fn check_frontmatter_refs(
     typed: &TypedMeta,
     meta: &Meta,
@@ -897,32 +991,37 @@ pub(crate) fn check_frontmatter_refs(
     providers: &lute_manifest::provider::ProviderSet,
     domains: &BTreeMap<String, lute_manifest::snapshot::Domain>,
 ) -> Vec<Diagnostic> {
+    use crate::directives::ValueName;
     let mut diags = Vec::new();
     for r in &typed.frontmatter_refs {
-        let span = meta_key_span(meta, &r.key);
+        let key = &r.path.key;
+        let span = meta_key_span(meta, key);
         let decl = lute_manifest::schema::AttrDecl {
-            name: r.key.clone(),
+            name: key.clone(),
             required: false,
             ty: r.ty.clone(),
             default: None,
         };
-        for value in &r.values {
-            let attr = lute_syntax::ast::Attr {
-                key: r.key.clone(),
-                value: lute_syntax::ast::AttrValue::Str(value.clone()),
-                value_span: span,
-                span,
-            };
-            crate::directives::check_attr_value(
-                "frontmatter",
-                &decl,
-                &attr,
-                snapshot,
-                providers,
-                domains,
-                &mut diags,
-            );
-        }
+        let attr = lute_syntax::ast::Attr {
+            key: key.clone(),
+            value: lute_syntax::ast::AttrValue::Str(r.value.clone()),
+            value_span: span,
+            span,
+        };
+        let position = r.path.position();
+        let name = position
+            .as_deref()
+            .map_or(ValueName::Attr(key), ValueName::Position);
+        crate::directives::check_value(
+            "frontmatter",
+            name,
+            &decl,
+            &attr,
+            snapshot,
+            providers,
+            domains,
+            &mut diags,
+        );
     }
     // The frontmatter's own layer, as `E-FRONTMATTER-SCHEMA` (`err_at`);
     // `check_attr_value` stamps the staging layer of a directive attribute.

@@ -87,7 +87,7 @@ pub mod when_test_literal;
 /// freshness signal (spec §3). Defined HERE, not in `lute-compile`, so the
 /// checker can read it WITHOUT depending on the compiler — the crate
 /// dependency runs the other way (`lute-compile` → `lute-check`).
-pub const LUTE_LANG_VERSION: &str = "0.52.0";
+pub const LUTE_LANG_VERSION: &str = "0.53.0";
 
 /// The parse-time desugar every surface applies to a document it parsed
 /// from `input.text`, before reading it: the manifest's `questTier`
@@ -207,7 +207,7 @@ pub use fact_check::{check_fact_guards, E_ENTRY_UNREACHABLE, W_FACT_GUARANTEED};
 pub use fact_env::{FactEnv, FactScope, GroundFact, MaySet, MustMap, QueryPattern, RootVocab};
 pub use fact_must::{compute_must, stable_seeds, unproduced_relations, FactMust};
 pub use fact_write::{check_assert, check_retract, E_DERIVED_WRITE, E_FACT_TIER_WRITE};
-pub use fix::{fix_document, FixResult};
+pub use fix::{fix_document, FixKept, FixResult, FixRule, KeptReason, RuleCounts};
 pub use inject::{
     classify_node, is_declared_exit, lower_node, lower_node_with_snapshot, record_stage_labels,
     resolve_record_fields, take_stage_labels, Departure, InjectKind, InjectedCommand, Provenance,
@@ -254,7 +254,10 @@ pub use project_check::{
 };
 pub use rel_schema::{build_rel_vocab, check_atom, validate_rel_decls, RelVocab};
 pub use rule_index::evaluable_rules;
-pub use schema_import::{resolve_imports, ImportCache, Memo, RelImports, SchemaImports};
+pub use schema_import::{
+    resolve_imports, ComponentKey, ImportCache, ImportCounts, ImportKey, ImportNode, Memo,
+    RelImports, SchemaImports, VocabKey,
+};
 pub use set_op::{check_set, WriteOwner, E_ENGINE_OWNED_WRITE};
 pub use tag::{
     codes_locked, retag_document, tag_document, text_directive_calls, LineRenumber, RetagOutcome,

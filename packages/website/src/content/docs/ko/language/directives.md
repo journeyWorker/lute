@@ -407,16 +407,104 @@ state:
 - **소진.** `max`번 실행되고 나면 점프는 단순히 실행되지 않으며, 아무것도 보고되지 않습니다. 도달하지 않는 `max`나 한 번도 참이 되지 않는 `when`은 오류가 아닙니다.
 - **라벨 공유.** 한정된 점프 둘 이상이 같은 라벨을 대상으로 할 수 있습니다. 각각 자기 카운터와 자기 루프를 가집니다.
 
-한정된 점프의 **루프**는 문서 순서로 그 라벨에서 점프까지의 모든 노드이며, 라벨이 루프의 **머리(head)**입니다. 모든 루프가 잘 중첩되고 머리에서만 진입되도록 검사기는 다음 규칙을 적용합니다:
+한정된 점프의 **루프**는 문서 순서로 그 라벨에서 점프까지의 모든 노드이며, 라벨이 루프의 **머리(head)**입니다. 문서의 최상위 섹션들은 하나의 range이므로 루프는 섹션에 걸칠 수 있습니다(아래). 모든 루프가 잘 중첩되고 머리에서만 진입되도록 검사기는 다음 규칙을 적용합니다:
 
 | 규칙 | 코드 |
 |---|---|
 | `max`는 1부터 99까지의 리터럴 정수입니다. `@ref`, `0`, 음수, 99 초과는 안 되며, 앞으로 가는 점프의 `max`는 의미가 없습니다 | `E-JUMP-MAX` |
-| 라벨은 점프 자신의 본문이나 그것을 감싸는 본문에 있어야 하고, 그 사이의 모든 본문은 `<branch>`의 `<choice>` 본문이거나 `<match>`의 arm 본문이어야 합니다. 루프는 `<hub>` 옵션 본문이나 `<return>` 본문, `<on>`이나 `<objective>` 본문, 퀘스트, entry, beat, 섹션을 벗어날 수 없습니다(퀘스트의 `<on>`·`<objective>` 본문을 감싸는 루프에는 퀘스트 최상위의 `::label`이 필요한데, 0.52부터 그것은 `E-GRAMMAR-NOT-ADMITTED`입니다) | `E-JUMP-LOOP-SCOPE` |
+| 라벨은 점프 자신의 본문이나 그것을 감싸는 본문에 있어야 하고, 그 사이의 모든 본문은 `<branch>`의 `<choice>` 본문이거나 `<match>`의 arm 본문이어야 합니다. 루프는 `<hub>` 옵션 본문이나 `<return>` 본문, `<on>`이나 `<objective>` 본문, 퀘스트, entry, beat를 벗어날 수 없습니다(퀘스트의 `<on>`·`<objective>` 본문을 감싸는 루프에는 퀘스트 최상위의 `::label`이 필요한데, 0.52부터 그것은 `E-GRAMMAR-NOT-ADMITTED`입니다) | `E-JUMP-LOOP-SCOPE` |
 | 루프 바깥에서 앞으로 가는 점프는 그 루프의 머리 뒤쪽, 루프 안쪽에 떨어질 수 없습니다. 루프는 머리에서만 진입합니다 | `E-JUMP-INTO-LOOP` |
 | 두 루프는 중첩되거나 서로 떨어져 있어야 하며, 중첩 없이 겹칠 수 없습니다(머리가 같은 루프는 중첩됩니다) | `E-JUMP-LOOP-CROSS` |
 
 루프 안에서 루프 뒤의 라벨로 나가는 점프(탈출)와 루프 앞에서 머리로 가는 앞 방향 점프는 모두 허용됩니다. 컴포넌트 본문 안의 한정된 점프는 그 컴포넌트 자신의 문서에서 검사되며, 확장된 인스턴스마다 자기 카운터와 자기 라벨을 가집니다. 컴파일러가 `::use` 인스턴스마다 라벨 이름을 따로 붙이므로, 두 번 쓰인 컴포넌트도 각 인스턴스 안에서 루프를 돌거나 앞으로 점프합니다(#207).
+
+#### 루프는 섹션에 걸칠 수 있습니다
+
+섹션 경계는 없습니다. 문서의 최상위 `##` 섹션들은 하나의 range로 실행되므로, 한정된 점프는 앞선 섹션의 라벨로 되돌아갈 수 있습니다. 루프의 영역은 머리부터 그것으로 돌아오는 **마지막** 뒤로 가는 간선까지, 사이에 있는 섹션을 가로지르는 모든 노드입니다(한정된 점프 여러 개가 머리의 섹션과 뒤쪽 섹션에서 한 머리로 돌아올 수 있으며, 앞선 점프의 `max`가 소진되면 제어는 뒤쪽 섹션과 그 점프에 도달합니다). 위의 다른 규칙은 그대로 적용됩니다. 자기 섹션에 놓인 "다시 시도"도 깨끗하게 검사됩니다:
+
+```lute check
+---
+kind: scene
+id: demo.toss
+state:
+  run.x: { type: int, default: 0 }
+---
+## Offer
+
+@mira: Want to try the ring toss?
+<branch id="offer">
+  <choice id="play" text="Play">
+    ::jump{to="play"}
+  </choice>
+  <choice id="skip" text="Not now">
+    ::jump{to="out"}
+  </choice>
+</branch>
+
+## Play {#play}
+
+::label{name="play"}
+@mira: Toss!
+
+## Retry {#retry}
+
+<branch id="again">
+  <choice id="retry" text="Try again">
+    ::jump{to="play" max="3"}
+  </choice>
+  <choice id="stop" text="Stop">
+    ::jump{to="out"}
+  </choice>
+</branch>
+
+## After {#after}
+
+::label{name="out"}
+@mira: Let us head back.
+```
+
+루프 안의 `::end`는 계속 허용됩니다. 허브 옵션, `<return>`, `<on>`, `<objective>`, entry, beat 본문을 벗어나는 루프는 여전히 `E-JUMP-LOOP-SCOPE`이며, 메시지에 섹션 이름은 나오지 않습니다:
+
+<!-- lute-diagnostics -->
+```
+hub.lute:16:16: error [E-JUMP-LOOP-SCOPE] `::jump{to="top" max="2"}` loops back to a label outside the `<hub>` option it is in; a loop stays inside one option body — put `::label{name="top"}` inside it, or use the hub itself to repeat
+```
+
+루프 중간으로 앞으로 가는 점프는 섹션 안이든 아니든 `E-JUMP-INTO-LOOP`입니다. 그 점프가 `<branch>`의 `<choice>` 본문 하나의 마지막 노드이고 그 라벨을 대상으로 하는 다른 점프가 없으면, 메시지 끝에 옵션 하나짜리 힌트가 붙습니다. 그 블록은 그 옵션 안에 있어야 합니다:
+
+<!-- lute-diagnostics -->
+```
+entered.lute:11:16: error [E-JUMP-INTO-LOOP] `::jump{to="blockA"}` enters the loop of `::jump{to="top" max="2"}` (line 24) after its head `top`; a loop is entered only at its head — jump to `top` instead — `blockA` is reached only from option `a` of `<branch id="pick">`: move the block into that option's body
+```
+
+블록을 옵션 안으로 옮기면 문서가 깨끗하게 검사됩니다:
+
+```lute check
+---
+kind: scene
+id: demo.toss
+state:
+  run.x: { type: int, default: 0 }
+---
+## One
+
+<branch id="pick">
+  <choice id="a" text="A">
+    @mira: A.
+  </choice>
+  <choice id="b" text="B">
+    @mira: B.
+  </choice>
+</branch>
+::label{name="top"}
+@mira: Top.
+
+## Two
+
+::jump{to="top" max="2"}
+```
+
+**런타임에서 섹션이란.** `##` 섹션은 표시와 식별을 위한 것입니다. 제목, 아티팩트의 설명용 `sections` 표에 있는 선택적 `{#id}`, 레코드의 빌드 로컬 `position`의 첫 구간이 그 전부입니다. 런타임 range도, 재개 지점도, 호스트 진입점도, 점프 대상도 아닙니다. 런타임은 씬의 섹션들을 하나의 range로 실행하므로, 섹션에 걸친 루프는 제목을 뺀 같은 문서와 같은 명령으로 컴파일됩니다(위치와 `sections` 표는 제외). 호스트가 라우팅하는 콘텐츠는 섹션으로 들어가는 것이 아니라 스크립트가 `<match>`하는 브리지 결과입니다.
 
 루프가 보행을 끝없이 돌게 만들 수는 없습니다. 한정된 점프가 두 번 실행되는 사이에 제어는 앞으로만 움직이므로 보행의 길이로 상한이 정해집니다. 루프의 카운터는 머리가 바깥에서 진입될 때만 리셋되므로, 중첩에 대한 귀납으로 `d`개의 한정된 점프 안에 중첩된 루프는 그 점프들의 `(max + 1)` 곱 이하로만 실행됩니다. 모든 보행은 플레이어의 협조 없이 끝나며, 검사기는 여전히 모든 경로를 따라갈 수 있습니다. 참조 런타임은 이를 컴파일러에 맡기지 않습니다. 적재 시 한정된 `jump`가 아닌 뒤로 가는 이동이나 교차하는 루프가 있는 아티팩트를 거부합니다([런타임 계약](/ko/tooling/runtime-contract/#051-추가-사항) 참고).
 

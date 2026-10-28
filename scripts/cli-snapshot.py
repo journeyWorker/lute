@@ -35,6 +35,10 @@ difference is listed and still hashes to its pinned value; 1 is an unlisted
 difference, a kind mismatch or a byte change after approval; 2 is a comparator
 error (an unreadable snapshot, a malformed FILE). An entry that no longer
 differs is reported and removed from FILE.
+Every project also runs the spec 0.53.0 section 3.8 commands (``lint``,
+``loc``, ``check`` over every ``.lute`` file under it, ``scenario reach
+--endings``, ``fix --check``); a ``fix --check`` that changes a byte of its
+project aborts the capture with exit 2.
 """
 
 from __future__ import annotations
@@ -60,20 +64,20 @@ ROOT = Path(__file__).resolve().parent.parent
 EXAMPLES = ROOT / "docs" / "examples"
 CONFORMANCE = ROOT / "conformance"
 
-# These are intentionally narrow.  In particular, replacing every 0.48/0.49/0.50/0.51/0.52
+# These are intentionally narrow.  In particular, replacing every 0.48/0.49/0.50/0.51/0.52/0.53
 # would hide a content change in prose, state values, paths, or diagnostic
 # messages.  Schema IDs are version stamps even though they are not JSON keys.
 STAMP_FIELD_RE = re.compile(
     r'(?P<prefix>"?(?:lute|luteVersion|irVersion|eventVersion|snapshotVersion)"?\s*[:=]\s*"?)'
-    r"0\.(?:48|49|50|51|52)(?:\.\d+)?"
+    r"0\.(?:48|49|50|51|52|53)(?:\.\d+)?"
 )
 SCHEMA_ID_RE = re.compile(
-    r"(?P<prefix>\blute[-_][A-Za-z0-9_-]*?-)0\.(?:48|49|50|51|52)"
+    r"(?P<prefix>\blute[-_][A-Za-z0-9_-]*?-)0\.(?:48|49|50|51|52|53)"
     r"(?=\.schema(?:\.json)?(?:[\"']|[^A-Za-z0-9_.]|$))"
 )
 # The engine gate names the toolchain's own IR version in its refusal.
-ENGINE_ACCEPTS_RE = re.compile(r"(?P<prefix>accepts `)0\.(?:48|49|50|51|52)\.\d+(?=`)")
-VERSION_RE = re.compile(r"(?<![A-Za-z0-9])0\.(?:48|49|50|51|52)(?:\.\d+)?(?![A-Za-z0-9])")
+ENGINE_ACCEPTS_RE = re.compile(r"(?P<prefix>accepts `)0\.(?:48|49|50|51|52|53)\.\d+(?=`)")
+VERSION_RE = re.compile(r"(?<![A-Za-z0-9])0\.(?:48|49|50|51|52|53)(?:\.\d+)?(?![A-Za-z0-9])")
 # Opt-in (`--capability-hash`): a capability hash after its key, in every form
 # the CLI prints — JSON `"capabilitySnapshot": "<hash>"` (spaced or compact),
 # text `capabilitySnapshot: <hash>` and `(capabilitySnapshot <hash>)` — and the
@@ -95,12 +99,36 @@ class Command:
     artifact_dir: Path | None = None
     temporary_output: bool = False
     replacements: tuple[tuple[bytes, bytes], ...] = ()
+    # A directory the command must leave byte-identical (`fix --check`).
+    unchanged_tree: Path | None = None
+
+
+class SnapshotError(Exception):
+    """A capture that cannot be trusted (exit 2), e.g. a read-only command wrote."""
+
+
+def tree_digest(root: Path) -> str:
+    """sha256 over every entry under `root`: relative path, kind and bytes (link target for a symlink)."""
+    digest = hashlib.sha256()
+    for directory, dirs, names in os.walk(root):
+        dirs.sort()
+        for name in sorted([*dirs, *names]):
+            path = Path(directory) / name
+            digest.update(path.relative_to(root).as_posix().encode() + b"\0")
+            if path.is_symlink():
+                digest.update(b"L" + os.readlink(path).encode())
+            elif path.is_file():
+                digest.update(b"F" + hashlib.sha256(path.read_bytes()).digest())
+            else:
+                digest.update(b"D")
+    return digest.hexdigest()
 
 
 class Snapshot:
-    def __init__(self, binary: Path, output: Path) -> None:
+    def __init__(self, binary: Path, output: Path, cwd: Path = ROOT) -> None:
         self.binary = binary
         self.output = output
+        self.cwd = cwd
         self.commands: list[dict[str, object]] = []
         self.output_files: list[str] = []
         self._names: dict[str, int] = {}
@@ -114,10 +142,11 @@ class Snapshot:
             self._names[record_name] = 1
         record = self.output / record_name
         record.mkdir(parents=True)
+        tree_before = tree_digest(command.unchanged_tree) if command.unchanged_tree is not None else None
         try:
             result = subprocess.run(
                 [str(self.binary), *command.args],
-                cwd=ROOT,
+                cwd=self.cwd,
                 env=environment(),
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -132,6 +161,8 @@ class Snapshot:
             stdout = result.stdout
             stderr = result.stderr
             exit_code = result.returncode
+        if command.unchanged_tree is not None and tree_digest(command.unchanged_tree) != tree_before:
+            raise SnapshotError(f"`{command.label}` changed files under {command.unchanged_tree}; it must write nothing")
         for before, after in command.replacements:
             stdout = stdout.replace(before, after)
             stderr = stderr.replace(before, after)
@@ -192,8 +223,66 @@ def slug(label: str) -> str:
     return result or "command"
 
 
-def relative(path: Path) -> str:
-    return path.relative_to(ROOT).as_posix()
+def relative(path: Path, base: Path = ROOT) -> str:
+    return path.relative_to(base).as_posix()
+
+
+def lute_files(directory: Path) -> list[Path]:
+    """The `.lute` files `lute_load::find_lute_files` lists for `directory`.
+
+    Its walk: every directory entry, descending into real directories only (a
+    symlinked directory is not followed, `DirEntry::file_type`), every entry
+    named `*.lute` kept; sorted by path components, then deduplicated by
+    canonical path, the first spelling kept.
+    """
+    found: list[Path] = []
+    stack = [directory]
+    while stack:
+        current = stack.pop()
+        for entry in os.scandir(current):
+            path = Path(entry.path)
+            if entry.is_dir(follow_symlinks=False):
+                stack.append(path)
+            elif path.suffix == ".lute":
+                found.append(path)
+    result: list[Path] = []
+    seen: set[Path] = set()
+    for path in sorted(found, key=lambda p: p.parts):
+        canonical = path.resolve(strict=True)
+        if canonical not in seen:
+            seen.add(canonical)
+            result.append(path)
+    return result
+
+
+def project_commands(project: Path, base: Path = ROOT) -> Iterable[Command]:
+    """The per-project commands of spec 0.53.0 section 3.8 (`lint`, `loc`,
+    multi-file `check`, `scenario reach --endings`, `fix --check`).
+
+    `check-files` runs on every `.lute` file under the project, as
+    `find_lute_files` lists them; the file list stays out of the recorded
+    arguments so the manifest does not change when a file is added. `fix
+    --check` must write nothing: the capture fails (exit 2) if the project
+    tree changes.
+    """
+    project_arg = relative(project, base)
+    files = tuple(relative(path, base) for path in lute_files(project))
+    yield Command("lint " + project_arg, ("lint", project_arg))
+    yield Command("lint --json " + project_arg, ("lint", project_arg, "--json"))
+    yield Command("loc export " + project_arg, ("loc", "export", "--project", project_arg))
+    yield Command("loc report --json " + project_arg, ("loc", "report", "--project", project_arg, "--json"))
+    yield Command(
+        "check-files --json " + project_arg,
+        ("check", *files, "--project", project_arg, "--json"),
+        display_args=("check", f"<every .lute under {project_arg}>", "--project", project_arg, "--json"),
+    )
+    yield Command(
+        "scenario reach --endings " + project_arg, ("scenario", "reach", "--endings", "--project", project_arg)
+    )
+    yield Command("fix --check " + project_arg, ("fix", "--check", project_arg), unchanged_tree=project)
+    yield Command(
+        "fix --check --json " + project_arg, ("fix", "--check", "--json", project_arg), unchanged_tree=project
+    )
 
 
 def sorted_files(pattern: str, root: Path = EXAMPLES) -> list[Path]:
@@ -255,6 +344,7 @@ def commands_for(binary: Path) -> Iterable[Command]:
         yield Command("test --json " + project_arg, ("test", "--project", project_arg, "--json"))
         yield Command("scenario " + project_arg, ("scenario", "--project", project_arg))
         yield Command("beats " + project_arg, ("beats", "--project", project_arg))
+        yield from project_commands(project)
 
     for script in sorted(CONFORMANCE.joinpath("session").rglob("*.play.yaml")):
         if not script.is_file():
@@ -542,25 +632,25 @@ def normalize_for_compare(data: bytes, label: str, capability_hash: bool = False
     return text.encode("utf-8")
 
 
-# (label, 0.51 rendering, 0.52 rendering) for every stamp form the
+# (label, 0.52 rendering, 0.53 rendering) for every stamp form the
 # normalizer owns; both renderings must normalize to the same text.
 SELF_TEST_STAMPS = (
-    ("compile", '{"irVersion": "0.51.0", "lute": "0.51.0"}', '{"irVersion": "0.52.0", "lute": "0.52.0"}'),
-    ("check", 'luteVersion: "0.51.0"', 'luteVersion: "0.52.0"'),
-    ("play", '{"eventVersion":"0.51.0","snapshotVersion":"0.51.0"}', '{"eventVersion":"0.52.0","snapshotVersion":"0.52.0"}'),
+    ("compile", '{"irVersion": "0.52.0", "lute": "0.52.0"}', '{"irVersion": "0.53.0", "lute": "0.53.0"}'),
+    ("check", 'luteVersion: "0.52.0"', 'luteVersion: "0.53.0"'),
+    ("play", '{"eventVersion":"0.52.0","snapshotVersion":"0.52.0"}', '{"eventVersion":"0.53.0","snapshotVersion":"0.53.0"}'),
     (
         "schema",
-        '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.51.schema.json"',
         '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.52.schema.json"',
+        '"$id": "https://lute-lang.vercel.app/schemas/lute-ir-0.53.schema.json"',
     ),
-    ("run", "the engine accepts `0.51.0` artifacts", "the engine accepts `0.52.0` artifacts"),
-    ("version", "lute toolchain 0.51.0\nlanguage      0.51.0\n", "lute toolchain 0.52.0\nlanguage      0.52.0\n"),
+    ("run", "the engine accepts `0.52.0` artifacts", "the engine accepts `0.53.0` artifacts"),
+    ("version", "lute toolchain 0.52.0\nlanguage      0.52.0\n", "lute toolchain 0.53.0\nlanguage      0.53.0\n"),
 )
 # (label, text) the normalizer must leave byte-identical.
 SELF_TEST_UNTOUCHED = (
     ("version", "lute toolchain 0.4\n"),
     ("version", "lute toolchain 10.44.0\n"),
-    ("version", "lute toolchain 0.53.0\n"),
+    ("version", "lute toolchain 0.54.0\n"),
     ("compile", '{"irVersion": "0.4", "lute": "10.44.0"}'),
     ("check", "a value of 0.44 in prose stays"),
 )
@@ -775,8 +865,83 @@ def self_test_compare() -> list[str]:
     return failures
 
 
+# The per-project commands of spec 0.53.0 section 3.8 on a synthetic project
+# `p`: (label, arguments the binary receives, arguments the manifest records).
+# `p/alias.lute` (a symlink to `a.lute`) is dropped as a duplicate and the
+# symlinked directory `p/link` is not followed, as in `find_lute_files`.
+SELF_TEST_FILES = ["p/a.lute", "p/b.lute", "p/sub/c.lute"]
+SELF_TEST_PROJECT_COMMANDS = (
+    ("lint p", ["lint", "p"], ["lint", "p"]),
+    ("lint --json p", ["lint", "p", "--json"], ["lint", "p", "--json"]),
+    ("loc export p", ["loc", "export", "--project", "p"], ["loc", "export", "--project", "p"]),
+    ("loc report --json p", ["loc", "report", "--project", "p", "--json"], ["loc", "report", "--project", "p", "--json"]),
+    (
+        "check-files --json p",
+        ["check", *SELF_TEST_FILES, "--project", "p", "--json"],
+        ["check", "<every .lute under p>", "--project", "p", "--json"],
+    ),
+    (
+        "scenario reach --endings p",
+        ["scenario", "reach", "--endings", "--project", "p"],
+        ["scenario", "reach", "--endings", "--project", "p"],
+    ),
+    ("fix --check p", ["fix", "--check", "p"], ["fix", "--check", "p"]),
+    ("fix --check --json p", ["fix", "--check", "--json", "p"], ["fix", "--check", "--json", "p"]),
+)
+# A stand-in `lute`: prints its arguments as JSON; `fix` writes into `p` when
+# the marker file `write-on-fix` exists in its working directory.
+FAKE_LUTE = """#!/usr/bin/env python3
+import json, os, sys
+print(json.dumps(sys.argv[1:]))
+if sys.argv[1:2] == ["fix"] and os.path.exists("write-on-fix"):
+    open(os.path.join("p", "fix-wrote.txt"), "w").write("x")
+"""
+
+
+def self_test_project_commands() -> list[str]:
+    failures = []
+    with tempfile.TemporaryDirectory() as scratch:
+        base = Path(scratch)
+        project = base / "p"
+        (project / "sub").mkdir(parents=True)
+        (project / "lute.project.yaml").write_text("defaultProfile: core\n", encoding="utf-8")
+        for name in ("b.lute", "a.lute", "sub/c.lute", "notes.txt"):
+            (project / name).write_text("---\nkind: scene\n---\n", encoding="utf-8")
+        (project / "alias.lute").symlink_to("a.lute")
+        (project / "link").symlink_to("sub", target_is_directory=True)
+        fake = base / "fake-lute"
+        fake.write_text(FAKE_LUTE, encoding="utf-8")
+        fake.chmod(0o755)
+        snapshot = Snapshot(fake, base / "out", cwd=base)
+        commands = list(project_commands(project, base))
+        try:
+            for command in commands:
+                snapshot.run(command)
+        except SnapshotError as error:
+            return [f"project commands: a read-only run was refused: {error}"]
+        recorded = [(c["label"], c["args"], c["record"]) for c in snapshot.commands]
+        expected_labels = [label for label, _, _ in SELF_TEST_PROJECT_COMMANDS]
+        if [label for label, _, _ in recorded] != expected_labels:
+            failures.append(f"project commands: labels {[r[0] for r in recorded]!r}, expected {expected_labels!r}")
+        for (label, args, record), (_, executed, shown) in zip(recorded, SELF_TEST_PROJECT_COMMANDS):
+            received = json.loads((base / "out" / record / "stdout").read_text(encoding="utf-8"))
+            if received != executed:
+                failures.append(f"project commands: {label} ran {received!r}, expected {executed!r}")
+            if args != shown:
+                failures.append(f"project commands: {label} recorded {args!r}, expected {shown!r}")
+        (base / "write-on-fix").write_text("", encoding="utf-8")
+        for command in (c for c in commands if c.args[0] == "fix"):
+            try:
+                Snapshot(fake, base / f"out-{slug(command.label)}", cwd=base).run(command)
+            except SnapshotError:
+                (project / "fix-wrote.txt").unlink()
+            else:
+                failures.append(f"project commands: {command.label} wrote into the project and was not refused")
+    return failures
+
+
 def self_test() -> int:
-    failures = self_test_compare()
+    failures = self_test_compare() + self_test_project_commands()
     for old, new in SELF_TEST_TRANSLATIONS:
         got = translate_baseline_args(old)
         if canonical_args(got) != canonical_args(new):
@@ -817,7 +982,8 @@ def self_test() -> int:
         f"{len(SELF_TEST_UNTOUCHED)} untouched, {len(SELF_TEST_CAPABILITY_HASHES)} capability-hash "
         f"forms, {len(SELF_TEST_CAPABILITY_UNTOUCHED)} capability-hash untouched, "
         f"{len(SELF_TEST_TRANSLATIONS)} translations, {len(SELF_TEST_NOT_RENAMED)} non-renames, "
-        f"{len(SELF_TEST_COMPARE) + 2} compare cases, {len(SELF_TEST_ACCEPT)} --accept cases)"
+        f"{len(SELF_TEST_COMPARE) + 2} compare cases, {len(SELF_TEST_ACCEPT)} --accept cases, "
+        f"{len(SELF_TEST_PROJECT_COMMANDS)} project commands)"
     )
     return 0
 
@@ -1159,7 +1325,11 @@ def main(argv: list[str]) -> int:
     if output.exists():
         shutil.rmtree(output)
     output.mkdir(parents=True)
-    snapshot = collect_commands(binary, output)
+    try:
+        snapshot = collect_commands(binary, output)
+    except SnapshotError as error:
+        print(f"cli-snapshot: ERROR: {error}", file=sys.stderr)
+        return 2
     print(f"captured: {len(snapshot.output_files)} outputs")
     if args.compare is None:
         return 0

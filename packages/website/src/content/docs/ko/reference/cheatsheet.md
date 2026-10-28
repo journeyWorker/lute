@@ -306,7 +306,7 @@ def 타입 추론: 비교, `&&` `||` `!`, `holds`, `has`는 `bool`이고, `count
 제목은 프론트매터 `title:` 하나뿐이며, 본문의 `# 제목`은 `E-INERT-TITLE`입니다. 퀘스트의 그래프 간선은
 `<quest>`의 `follows=` 속성이며, 프론트매터 키가 아닙니다.
 
-플러그인 프론트매터 키 중 타입이 `entity`, `domain`, `enumFromOption`, `providerRef`, `assetKind`인 키는 해당 타입의 속성과 같은 타입별 검증으로 검사됩니다(0.49.0). `providerRef`는 `E-UNKNOWN-ID`(경우에 따라 `W-CATALOG-STALE`), 에셋 종류는 `E-ASSET-*`가 되고, 엔티티·enum 오타는 비슷한 이름 제안과 함께 `E-BAD-ENUM`입니다. 예를 들면 (`` `mirra` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`? ``). 그런 타입의 `list`는 각 원소를 검사하고, 문자열이 아닌 값은 계속 `E-FRONTMATTER-SCHEMA`입니다.
+플러그인 프론트매터 키 중 타입이 `entity`, `domain`, `enumFromOption`, `providerRef`, `assetKind`인 키는 해당 타입의 속성과 같은 타입별 검증으로 검사됩니다(0.49.0). `providerRef`는 `E-UNKNOWN-ID`(경우에 따라 `W-CATALOG-STALE`), 에셋 종류는 `E-ASSET-*`가 되고, 엔티티·enum 오타는 비슷한 이름 제안과 함께 `E-BAD-ENUM`입니다. 예를 들면 (`` `mirra` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`? ``). 0.53부터는 같은 검사가 `record` 필드, `list` 항목, `map`의 키나 값 안에 중첩된 그런 값에도 깊이와 상관없이 적용되며, 메시지가 필드 경로를 적습니다(`` field `partner` of `talk` of `frontmatter` ``). 표현할 수 없는 값, 지원하지 않는 map 키 타입, 모양이 맞지 않는 값은 계속 `E-FRONTMATTER-SCHEMA`입니다.
 
 → [프론트매터와 프로필](/ko/language/frontmatter-and-profiles/)
 
@@ -449,7 +449,7 @@ defs:
 | `<choice id text>` | `text=`는 보여 줄 선택지 텍스트입니다. `when=` 가드. `into="run.x"`는 `true`를 쓰고, number나 enum 경로에는 `value=`를 함께 써서 이후 씬이 읽을 수 있게 합니다. |
 | `<hub id>` | `exit`를 고를 때까지 자격 있는 선택지를 다시 보여 줍니다. `once`는 한 번 고른 선택지를 없앱니다. 가드 없는 `exit`가 있거나 모든 선택지가 `once`여야 합니다(`E-HUB-NO-EXIT`). 고를 때마다 `scene.visited.<hub>.<choice>`가 설정됩니다. 선택 속성 `prompt=`(0.23.0)는 선택지와 함께 보여 줄 질문이며, 비어 있으면 `E-BRANCH-PROMPT`입니다. |
 | `::label{name}` | 점프 대상 이름입니다. 문서 전체가 이름공간 하나를 쓰고, 레코드를 내지 않습니다. 줄을 대상으로 삼으려면 그 줄 바로 앞에 둡니다. 섹션의 `{#id}`는 점프 대상이 아닙니다. |
-| `::jump{to when max}` | 같은 문서의 `::label`로 가는 점프입니다. 기본은 앞쪽으로 갑니다. 0.51부터 `max="N"`(1~99의 정수 리터럴)이 있으면 앞선 label로 최대 N번까지 되돌아갈 수 있고, 그다음에는 다음 노드로 넘어갑니다([한도 있는 점프](#한도-있는-점프-선언된-raise-지시어-텍스트-pair-lint-051)). `max` 없이 뒤로 가는 점프는 `E-JUMP-BACKWARD`, 앞으로 가는 점프의 `max`는 `E-JUMP-MAX`입니다. `when`도 `max`도 없으면 그 뒤의 콘텐츠는 죽은 코드입니다(`W-CODE-AFTER-JUMP`). 0.26.0부터 `lute trace`와 `lute test`도 `lute play`처럼 실행된 점프를 따라 label로 갑니다(트랜스크립트에 `<jump -> outro>`). |
+| `::jump{to when max}` | 같은 문서의 `::label`로 가는 점프입니다. 기본은 앞쪽으로 갑니다. 0.51부터 `max="N"`(1~99의 정수 리터럴)이 있으면 앞선 label로 최대 N번까지 되돌아갈 수 있고, 그다음에는 다음 노드로 넘어갑니다([한도 있는 점프](#한도-있는-점프-선언된-raise-지시어-텍스트-pair-lint-051)). 0.53부터 그 label은 앞선 최상위 `##` 섹션에 있어도 됩니다. `max` 없이 뒤로 가는 점프는 `E-JUMP-BACKWARD`, 앞으로 가는 점프의 `max`는 `E-JUMP-MAX`입니다. `when`도 `max`도 없으면 그 뒤의 콘텐츠는 죽은 코드입니다(`W-CODE-AFTER-JUMP`). 0.26.0부터 `lute trace`와 `lute test`도 `lute play`처럼 실행된 점프를 따라 label로 갑니다(트랜스크립트에 `<jump -> outro>`). |
 | `::end{reason}` | 씬을 끝냅니다. `lute play`에서는 자신이 실행된 제시(또는 퀘스트 핸들러)만 끝내고, 플레이는 계속됩니다. 같은 본문에서 그 뒤의 콘텐츠는 `W-CODE-AFTER-END`입니다. |
 | `::accept{quest}` | 수락형 퀘스트(`start`가 없는 퀘스트, 또는 `activate="accept"`인 자식)를 받아들입니다. `at="nextRun"`(0.24.0)은 다음 `newRun` 초기화 직후로 수락을 미루며, 그 밖의 `at`은 `E-ACCEPT-TARGET`입니다. [퀘스트](#퀘스트)를 보세요. `when=`을 받습니다(0.26.0). |
 
@@ -1049,7 +1049,7 @@ state:
 | 요소 | 규칙 |
 |---|---|
 | `start=` | 성립하면 퀘스트를 활성화합니다(`unset` → `active`). `start`가 없으면 수락형입니다: 씬이 `::accept{quest="…"}`를 실행하거나 목(mock)이 수락할 때까지 `unset`으로 남습니다. 플레이 스크립트는 `quests:`로 세이브의 상태를 시드합니다. 어떤 `::accept`도 이름을 부르지 않는 수락형 퀘스트는 `W-QUEST-NEVER-ACCEPTED`입니다(0.24.0, 프로젝트 전체 `check`). 0.25.0부터 `accepts:` 목은 더 이상 치지 않습니다. 0.26.0부터 테스트의 `accepts:`는 퀘스트를 프로젝트 전체에서 찾고, 플레이는 `engine: { accept: [id] }` 스텝으로 도중에 수락합니다. |
-| `accept="external"` | 0.25.0. 엔진이 문서 밖(퀘스트 게시판, 메뉴)에서 퀘스트를 수락합니다. `W-QUEST-NEVER-ACCEPTED`를 잠재웁니다. `start`와 함께 쓰면 `E-ATTR-TYPE`, 부모와 함께 활성화되는 자식에 쓰면 `E-ACCEPT-TARGET`입니다(`activate="accept"`를 더하세요). IR: `QuestCmd.accept`. |
+| `accept="external"` | 0.25.0. 엔진이 문서 밖(퀘스트 게시판, 메뉴)에서 퀘스트를 수락합니다. `W-QUEST-NEVER-ACCEPTED`를 잠재웁니다. `start`와 함께 쓰면 `E-ATTR-TYPE`, 부모와 함께 활성화되는 자식에 쓰면 `E-ACCEPT-TARGET`입니다(`activate="accept"`를 더하세요). IR: `QuestCmd.accept`. 0.53부터 조건이 있는 호스트 부여 퀘스트는 `accept="external" follows="…"`로 씁니다. 조건은 호스트가 적용하고 Lute는 적용하지 않습니다(스크립트 안 accept는 `follows`와 상관없이 활성화합니다). |
 | `fail=` | `active` → `failed`. 완료 조건과 동시에 성립하면 실패가 이깁니다. |
 | `follows=` | 씬 그래프를 위한 그래프 메타데이터: `&&` / `\|\|`로 묶은 `visited` / `completed` / `active`. 활성화를 결코 막지 않으며, 활성화는 `start`가 정합니다. 씬은 활성화를 막는 선행 조건을 프론트매터에 `after:`로 씁니다. 0.28.0 전에는 `after=`로 썼습니다(이제 `E-UNKNOWN-ATTR`). 이것이 없으면 퀘스트는 자신의 `::accept`, 부모(`[subquest]`, 0.25.0), 그리고 `visited(…)` / `entry.X.everRead` / `quest.Y.state == …`를 읽는 `start` 연언항(`[start]`, 0.25.0)에 고정됩니다. |
 | `tier="run"` | 새 런에서 퀘스트가 `unset`으로 돌아가고 목표도 모두 미완료가 됩니다. 기본값 `tier="user"`는 런이 바뀌어도 상태를 유지합니다. 0.26.0부터 매니페스트의 `defaults: questTier: run`은 `tier=`를 쓰지 않은 모든 퀘스트의 기본값을 바꿉니다. 하위 퀘스트의 등급은 부모와 같아야 합니다(`E-QUEST-TIER-MIX`). |
@@ -1463,7 +1463,7 @@ directives:
 ::banner{code="0010" title="Welcome to the hall, {{userName}}"}
 ```
 
-`pair` lint는 닫히지 않은 여는 요소, 열린 적 없는 닫는 요소, 이미 열린 쌍 안에서 다시 열린 요소, 쌍 안에 `inside`가 허용하지 않는 행을 찾습니다. `scope: body`(기본)는 한 본문의 형제끼리, `scope: section`은 깊이와 상관없이 문서 순서대로 행을 짝짓습니다.
+`pair` lint는 닫히지 않은 여는 요소, 열린 적 없는 닫는 요소, 이미 열린 쌍 안에서 다시 열린 요소, 쌍 안에 `inside`가 허용하지 않는 행을 찾습니다. `scope: body`(기본)는 한 본문의 형제끼리, `scope: section`은 깊이와 상관없이 문서 순서대로 행을 짝짓고 섹션마다 초기화합니다. 0.53부터 `scope: document`는 모든 섹션을 포함해 문서 전체에 슬롯 하나만 둡니다.
 
 ```yaml
 custom:
@@ -1519,6 +1519,41 @@ rewardKinds:
 
 → [선택지와 허브](/ko/language/choices-and-hubs/) · [대사와 캐스트](/ko/language/dialogue-and-cast/#라벨과-프롬프트) · [퀘스트와 씬](/ko/language/quests-and-scenes/) · [플러그인 매니페스트](/ko/plugins/manifests/#보상-kind-속성)
 
+## 섹션을 넘는 루프, 호스트가 부여하는 퀘스트, 중첩 프론트매터 참조, `scope: document` (0.53)
+
+문서의 최상위 `##` 섹션은 런타임에서 하나의 범위이듯 하나의 루프 범위입니다(섹션은 표현과 식별용이며 엔트리나 재개 지점이 아닙니다). 한도 있는 `::jump{to max}`는 앞선 섹션의 `::label`로 되돌아갈 수 있습니다. 그 밖의 루프 규칙은 그대로입니다(머리에서만 진입, 겹침 금지, 허브 옵션·`<return>`·`<on>`·`<objective>`·엔트리·비트 본문 밖으로 나가는 루프 금지). `E-JUMP-LOOP-SCOPE`는 더 이상 섹션을 이름으로 들지 않습니다.
+
+```lute check
+---
+kind: scene
+id: lock.retry
+title: Retry
+---
+
+## Shot 1. The door {#door}
+
+::label{name="attempt"}
+@narrator: Mira tries the lock.
+
+## Shot 2. The result {#result}
+
+@narrator: It sticks.
+::jump{to="attempt" max="2"}
+@narrator: That's enough for today.
+```
+
+조건이 성립하면 호스트가 부여하는 퀘스트는 `accept="external" follows="…"`로 씁니다. 조건은 호스트가 적용합니다(Lute는 조건을 호스트에 전달하고, 분석은 이를 호스트 정책으로 읽어 `heuristic` 근거로 다룹니다). 보상이나 `::accept`는 `follows`와 상관없이 퀘스트를 활성화하며, `accept="external"`과 `start`를 함께 쓰면 계속 `E-ATTR-TYPE`입니다. `start`와 스크립트 안 accept로 서로를 기다리는 퀘스트들이 있고 사이클 밖의 출처도 호스트 경로도 없으면 `E-QUEST-START-CYCLE`입니다(accept로 활성화되는 퀘스트도 마찬가지). 하나를 `accept="external"`로 호스트가 부여하게 하세요.
+
+```lute
+<quest id="letter" accept="external" follows="completed('intro')">
+  <objective id="read" title="Read the letter"/>
+</quest>
+```
+
+플러그인 프론트매터의 `record`, `list`, `map` 값 안에 있는 참조도 최상위 값과 똑같이 검사되고, 메시지가 필드 경로를 이름으로 듭니다. `pair` lint는 `scope: document`(문서 전체에 슬롯 하나)를 받습니다. `lute fix`는 이전 모든 릴리스의 모든 이전(migration)을 적용하며, 프로필이 스탬프로 선언한 디렉티브 속성은 그대로 둡니다.
+
+→ [디렉티브](/ko/language/directives/) · [퀘스트와 씬](/ko/language/quests-and-scenes/) · [프론트매터와 프로필](/ko/language/frontmatter-and-profiles/#플러그인-frontmatter-키) · [린트](/ko/tooling/linting/) · [`lute fix`가 실행하는 것](/ko/tooling/cli/)
+
 ## 산출물
 
 `lute compile`은 실행 IR을 씁니다. 봉투에는 `kind`, `lute`, `irVersion`, `capabilitySnapshot`, 정렬된
@@ -1554,7 +1589,7 @@ rewardKinds:
 |---|---|
 | `lute check [<file>…] [--project <DIR>] [--wip] [--deny-warnings] [--json]` | 문서 하나(또는 여러 개)를 검사합니다. 관계형 가드 판정과 `W-WIP`은 프로젝트 전체 모드가 필요합니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`을 적용하고, 그 사실을 stderr에 알립니다. |
 | `lute check --project <DIR> [--wip] [--deny-warnings]` (문서 피연산자 없음) | 프로젝트 전체 모드: 모든 문서와 함께 연결성, 퀘스트 id, `::accept` 대상, 계기, 팩트 가드를 검사합니다. 깨끗한 문서는 모두 컴파일까지 해 보므로, 컴파일 단계 오류(`E-DUP-VOICEKEY`, `E-CAPABILITY-MISMATCH`)도 여기서 실패합니다. `W-BEAT-PRIORITY-TIE`, `W-QUEST-HANDLER-DEAD` 같은 프로젝트 권고도 여기서 나옵니다. `--wip`(0.23.0)는 아직 아무것도 만들어 내지 않는 관계(시드, assert, 규칙, `reserved` 모두 없음) 때문에만 가드가 죽은 `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, `E-OBJECTIVE-UNSATISFIABLE`을 경고로 낮춥니다. 만드는 쪽이 있는데도 결코 맞지 않는 관계는 여전히 오류입니다. 0.26.0부터 `--wip`는 바인딩되지 않은 `@param`을 쓰는 컴포넌트 `::assert`만이 만드는 관계도 아직 생산자가 없는 것으로 봅니다. |
-| `lute fix <file\|dir>` | 기계적 이전을 제자리에서 적용합니다: 옛 `:line` 표기, `as=` → `into=`, `test="$ == …"` → `is=`, 그리고 이름이 바뀐 디렉티브·속성·태그 속성(`E-RENAMED-*`). 카메라 값, `cgLayout` 멤버, 시점(`pov`, `monoSpeakers`)처럼 판단이 필요한 것은 진단만 하고 추측하지 않습니다. 디렉터리를 주면 그 아래의 모든 `.lute` 파일을 재귀적으로, 정렬 순서대로 처리합니다. |
+| `lute fix <file\|dir>` | 기계적 이전을 제자리에서 적용합니다: 옛 `:line` 표기, `as=` → `into=`, `test="$ == …"` → `is=`, 그리고 이름이 바뀐 디렉티브·속성·태그 속성(`E-RENAMED-*`). 카메라 값, `cgLayout` 멤버, 시점(`pov`, `monoSpeakers`)처럼 판단이 필요한 것은 진단만 하고 추측하지 않습니다. 디렉터리를 주면 그 아래의 모든 `.lute` 파일을 재귀적으로, 정렬 순서대로 처리합니다. 0.53부터는 버전 올리기만이 아니라 이전 모든 릴리스의 모든 이전을 적용합니다. 바뀐 파일의 줄에 적용한 규칙 이름이 나오고, 프로필이 스탬프로 선언한 디렉티브 속성은 그대로 두며 stderr에 출력합니다. 먼저 `lute fix --check`를 실행해 diff를 검토하세요. |
 | `lute tag [<path>…] [--renumber [--commit]] [--check]` | 파일이나 디렉터리(기본 `.`) 아래 모든 `.lute` 파일의 모든 줄에 안정적인 `code`를 채웁니다. `--renumber`는 다시 번호를 매길 내용을 미리 보여 주기만 하고, `--renumber --commit`이 실제로 씁니다. `--check`는 아무것도 쓰지 않고 바뀔 파일이 있으면 `1`로 끝납니다. |
 | `lute compile <file> -o out.json` · `compile --project <DIR> -o <DIR>` (문서 피연산자 없음) · `compile --stream <file>` · `--locale-bundle <file>` | 산출물을 만듭니다. 프로젝트 모드는 `beats`를 포함한 `project.index.json`도 씁니다. `--stream`은 stdin의 본문을 이어 붙여 NDJSON 스냅숏을 냅니다. `--project`가 없으면 파일 하나를 그 위쪽에서 가장 가까운 `lute.project.yaml`로 컴파일합니다(0.27.0). `check`와 같습니다. |
 | `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choice id=c[,c]] [--event e] [--accepted-quest q] [--occasion o[@target]] [--entry id \| --beat id] [--no-derive] [--expand]` | 프로젝트의 시드 팩트와 규칙을 적용한 채 소스를 목에 맞춰 미리 봅니다. `--project`가 없으면 파일 위쪽에서 가장 가까운 `lute.project.yaml`이 프로젝트입니다(0.27.0, `check`와 같음). 종료 코드 `3`은 판정할 수 없는 가드를 만났다는 뜻입니다. `--occasion talk@npc.mira`는 대상에 대해 계기를 발생시킵니다(0.23.0). `--beat`는 번들 비트 하나를 로컬 id나 정식 id로 제시합니다(없는 id면 `E-TRACE-BEAT`). `@def`는 쓴 그대로 출력되고(`<match @weekday>`), `--expand`(0.24.0)는 펼친 식을 출력합니다. `--accepted-quest`는 `activate="accept"` 자식도 받습니다. 0.26.0: `--entry`는 `<doc>.<entry>`도 받고, 실행된 `::jump`는 label까지 따라갑니다. |
@@ -1812,7 +1847,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-LUTE-VERSION-STALE` | 문서의 `luteVersion`이 툴체인과 다릅니다. 0.25.0: 매니페스트의 `defaults: luteVersion`에서 물려받은 경우 프로젝트 전체 `check`는 문서마다가 아니라 `lute.project.yaml`의 그 줄에서 한 번 보고합니다(`… — every document inherits it (N documents)`). |
 | `W-DEADLINE-BEFORE-DONE` | 0.24.0. `on=` 목표의 `by=`가 `done`이 성립할 때마다 성립하므로, 매 정산마다 판정하는 `by`가 계기가 `done`을 판정하기 전에 목표를 실패시킵니다. 그 조건을 `until=`로 쓰세요. |
 | `E-STATE-DECL` | 상태 선언이 잘못되었습니다. 0.24.0부터는 열린 종류나 모르는 종류에 대한 `per:`, 그리고 멤버가 아닌 키를 쓰거나 값도 `_`도 없는 멤버를 남기거나(`` `default:` gives no value for `guild` ``) `per:` 없는 경로에 쓴 맵 `default:`도 해당합니다. |
-| `W-DOMAIN-UNREAD` | 선언했지만 아무것도 읽지 않는 enum이나 종류입니다. 0.24.0부터는 `per:` 색인, `subsetOf:` 부모, 규칙 본문이나 `holds(…)`의 종류 원자도 읽기로 치며, 경고는 선언 자신의 줄에 붙습니다. |
+| `W-DOMAIN-UNREAD` | 선언했지만 아무것도 읽지 않는 enum이나 종류입니다. 0.24.0부터는 `per:` 색인, `subsetOf:` 부모, 규칙 본문이나 `holds(…)`의 종류 원자도 읽기로 치며, 경고는 선언 자신의 줄에 붙습니다. 0.53부터는 그 타입을 쓰는 플러그인 프론트매터 키(깊이 무관)도 읽기로 칩니다. |
 | `E-ENTITY-KIND-SHAPE` | 엔티티 종류가 잘못되었습니다. 0.26.0부터는 한 종류나 enum에 같은 멤버를 두 번 적었거나 두 파일이 같은 멤버를 더한 경우(두 줄을 모두 밝힘), 어떤 import도 선언하지 않은 종류에 `add:`를 쓴 경우(비슷한 이름 제안), `open:` 종류에 `add:`를 쓰거나 `members:` / `open:` 옆에 쓴 경우도 해당합니다. 하위 종류의 멤버는 부모에 다시 적지 않아도 됩니다. 스키마 줄에서 한 번 보고합니다. |
 | `E-STATE-DECL-CONFLICT` | 0.26.0, 프로젝트 전체 `check`. 두 문서가 한 상태 경로를 다른 `type`, `default`, `per`, `owner`로 선언합니다(`scene.*`는 제외, `extends:`로 다듬은 것은 충돌 아님). 함께 쓰는 경로는 두 문서가 모두 가져오는 스키마에 한 번만 선언하세요. |
 | `E-REWARD-TARGET` | 0.26.0. 보상의 `target=`이 보상 종류의 `target:` 계약을 어깁니다: `{ entity: K }` 종류의 멤버가 아니거나, `{ provider: … }`가 모르거나, `required: true`인데 없습니다. |
@@ -1820,9 +1855,10 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-DISPLAY-NAME-DUP` | 0.26.0, 프로젝트 전체 `check`와 `lute lint`. 두 화자가 같은 표시 이름으로 보입니다: 캐스트 `name:` 둘, 캐스트 이름과 `::use{… name="…"}` 문자열, 또는 그런 문자열 둘. 하나를 바꾸거나, 의도한 역할 이름이면 캐스트 항목에 `sharedName: true`를 적으세요. |
 | `E-PLUGIN-STAMP-SURFACE` | 0.50. `stampAttrs`의 `on:`이 `line`, `branch`, `hub`, `choice`, 또는 해결된 프로필의 스탬프 가능한 디렉티브가 아닌 것을 지정합니다(오타, `jump`/`label`/`clear`, 비활성 플러그인의 디렉티브). 이름을 고치거나 그 디렉티브를 선언한 플러그인을 `depends:`에 넣으세요. |
 | `E-DIAGNOSTICS-CONFIG` | 0.50. `lute.project.yaml`의 `diagnostics:` 항목이 잘못되었거나 허용되지 않습니다: `E-*`나 `L-*` 코드, 알 수 없는 코드, 잘못된 level, 잘못된 `paths`. 단계를 바꿀 수 있는 것은 `W-*` 코드뿐입니다. |
-| `E-JUMP-MAX` / `E-JUMP-LOOP-SCOPE` / `E-JUMP-INTO-LOOP` / `E-JUMP-LOOP-CROSS` | 0.51. `max`가 1~99의 정수 리터럴이 아니거나 앞으로 가는 점프에 붙었습니다. 루프가 자기 본문을 벗어납니다. 앞으로 가는 점프가 루프의 머리 뒤로 들어갑니다. 두 루프가 중첩되지 않고 겹칩니다. |
+| `E-JUMP-MAX` / `E-JUMP-LOOP-SCOPE` / `E-JUMP-INTO-LOOP` / `E-JUMP-LOOP-CROSS` | 0.51. `max`가 1~99의 정수 리터럴이 아니거나 앞으로 가는 점프에 붙었습니다. 루프가 자기 본문을 벗어납니다(0.53: `##` 섹션은 본문이 아니며 루프는 섹션을 넘을 수 있습니다). 앞으로 가는 점프가 루프의 머리 뒤로 들어갑니다(0.53: 그 점프가 `<choice>` 본문의 마지막 노드이고 다른 점프가 그 label을 가리키지 않으면 메시지가 블록을 그 옵션 안으로 옮기라고 제안합니다). 두 루프가 중첩되지 않고 겹칩니다. |
 | `E-JUMP-INTO-BODY` | 0.52. `::jump`가 자기 range로 실행되는 본문(허브 옵션·`<return>`, `<on>`·`<objective>` 본문, 엔트리, 비트)으로 바깥에서 들어갑니다. 허브 본문에서 허브 뒤의 레이블로 나가는 점프는 허용되며 허브를 떠납니다. |
-| `E-INTERP-BRACE` | 0.52. 줄 텍스트에서 `{{…}}` 마커 바로 앞에 리터럴 `{`(홀수 개)가 있거나, 평범한 `{{`로 끝나는 `::use` 인자가 마커 앞에 끼워집니다. 둘 사이에 글자를 넣거나 `\\{{`를 넘기세요. |
+| `E-INTERP-BRACE` | 0.52. 줄 텍스트에서 `{{…}}` 마커 바로 앞에 리터럴 `{`(홀수 개)가 있거나, 평범한 `{{`로 끝나는 `::use` 인자가 마커 앞에 끼워집니다. 둘 사이에 글자를 넣거나 `\\{{`를 넘기세요. 0.53. 표현식 자체가 `{`로 시작하는 마커(`{{{run.a}}`, 라벨 문법 값 포함)도 해당하며 0.52는 이를 `E-CEL-PROFILE`로 보고했습니다. 메시지가 중괄호 개수 n을 밝힙니다. |
+| `E-L10N-MARKERS` | 0.53. 번역의 `{{…}}` 마커가 파싱되지 않거나 소스의 마커가 아닙니다(각각 같은 횟수, 순서 무관). 그 번역은 병합되지 않고 `compile --locale-bundle`이 실패하며, `loc import`는 파싱되지 않는 마커를 거부합니다. |
 | `E-OBJECTIVE-TITLE-INTERP` | 0.52. `<objective title>`에 `{{`가 있습니다. 제목은 쓰인 그대로 보입니다. 평문으로 쓰세요. |
 | `E-PLUGIN-RAISES` / `E-RAISES-TARGET` / `W-OCCASION-NEVER-RAISED` | 0.51. `raises` 항목이 알 수 없는 occasion이나 잘못된 꼴의 target을 가리킵니다. 해석된 raise target이 도메인 밖이거나 어떤 장면·비트도 응답하지 않습니다. `raisedBy: declared` occasion에 응답하는 쪽이 있는데 아무것도 던지지 않습니다. |
 | `E-LINE-CODE-RESERVED` / `E-LINE-ID-DUP` | 0.51. `code`에 `~`가 있습니다. 두 로컬라이제이션 단위가 같은 최종 `lineId`를 가집니다. |

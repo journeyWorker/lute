@@ -261,10 +261,12 @@ fn print_omitted(out: &mut String, omitted: &[lute_check::connectivity::OmittedR
     }
 }
 
+/// Each root's graph, as its model's scenario assembled it (one assembly
+/// per root per command, spec 0.53.0 §3.10).
 pub(crate) fn run_scenario_graph(
     out: &mut String,
     by_root: &ByRoot,
-    file_results: &[(std::path::PathBuf, lute_check::CheckResult)],
+    models: &crate::project::RootModels,
     facts: bool,
 ) -> ExitCode {
     if by_root.is_empty() {
@@ -278,40 +280,22 @@ pub(crate) fn run_scenario_graph(
                 lute_check::ProjectDoc::new(p, d, &folded.typed, &folded.snapshot)
             })
             .collect();
-        let key_set = lute_check::connectivity::scene_key_set(&docs);
-        let quest_ids = lute_check::connectivity::quest_id_set(&docs);
-        let foldeds: Vec<&lute_check::FoldedEnv> = group_full.iter().map(|(_, _, f)| f).collect();
-        let raises = lute_check::raises::RaiseAnchors::of(&docs, &foldeds);
-        let (mut graph, _cycle_diags) =
-            lute_check::connectivity::assemble_graph(&docs, &key_set, &quest_ids, &raises);
-        // dsl 0.49.0 §6.1: start cycles, against the final reach verdicts.
-        let fp = lute_model::compute_conn_fixpoint(
-            &docs,
-            group_full,
-            file_results,
-            &graph,
-            &quest_ids,
-            &lute_check::connectivity::ambiguous_quest_ids(&docs),
-        );
-        let _ = lute_check::connectivity::resolve_start_blocks(
-            &mut graph,
-            &docs,
-            &fp.reach,
-            &fp.unreachable_quests,
-        );
-        let when_visited = lute_check::connectivity::when_visited_unanchored(&docs, &graph);
-        let fact_graph = facts.then(|| FactGraph::of(group_full, &docs, &graph));
+        let scenario = crate::project::model_scenario(models, root)
+            .expect("every collected root has its model's scenario");
+        let (graph, quest_ids) = (&scenario.graph, &scenario.quest_ids);
+        let when_visited = lute_check::connectivity::when_visited_unanchored(&docs, graph);
+        let fact_graph = facts.then(|| FactGraph::of(group_full, &docs, graph));
         print_graph_for_root(
             out,
             root,
-            &graph,
-            &unanchored_quests(&quest_ids, &graph),
+            graph,
+            &unanchored_quests(quest_ids, graph),
             &when_visited,
             fact_graph.as_ref(),
         );
         print_omitted(
             out,
-            &lute_check::connectivity::omitted_refs(&docs, &graph, &quest_ids),
+            &lute_check::connectivity::omitted_refs(&docs, graph, quest_ids),
         );
     }
     ExitCode::SUCCESS

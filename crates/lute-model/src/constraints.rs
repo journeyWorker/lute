@@ -263,9 +263,12 @@ fn reachable(
     };
     let claim = crate::scenario::reach_claim(scenario, &key);
     match claim.verdict {
-        ReachVerdict::Reachable => {
+        // dsl 0.53.0 §7.1: the claim's evidence; a `heuristic` one (a host
+        // route with `follows`) keeps the claim's reason.
+        ReachVerdict::Reachable if claim.evidence == Evidence::Proven => {
             Outcome::holds(Evidence::Proven, "connectivity proves reachable")
         }
+        ReachVerdict::Reachable => Outcome::holds(claim.evidence, claim.reason),
         ReachVerdict::Unanchored => Outcome::holds(
             claim.evidence,
             "unanchored: available from the start of play",

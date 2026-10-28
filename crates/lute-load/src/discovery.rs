@@ -1,4 +1,12 @@
 //! Source discovery and parse-only project helpers.
+//!
+//! Discovery runs before any cache is consulted (which files a command or
+//! request reads, which root governs them) and is redone by every command
+//! and request, so its probes are not dependency records.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "discovery runs before input assembly, per command and request; no cache keeps its result"
+)]
 
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};

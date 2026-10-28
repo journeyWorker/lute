@@ -1,11 +1,11 @@
 //! `lute scenario` (connectivity T14, dsl §5:571-584) — project-wide,
 //! read-only reporting surface over everything §4 computes. Evaluates no
 //! CEL, runs no Datalog, takes no mocks: pure graph math over declared
-//! structure, reusing [`collect_project_docs`]'s SAME per-root doc grouping
-//! whole-project `check` builds (never a second file-walk/parse) plus the SAME
-//! `lute_check::connectivity`/`envelope` analyses whole-project `check`'s own
-//! per-root pass calls (never duplicated math — only the presentation, and
-//! the omission of diagnostics, differ).
+//! structure, reusing each root model's documents ([`crate::project::root_groups`],
+//! the SAME per-root grouping whole-project `check` builds — never a second
+//! file-walk/parse) and the scenario that model assembled (one per root per
+//! command, spec 0.53.0 §3.10) — only the presentation, and the omission of
+//! diagnostics, differ.
 
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -18,8 +18,8 @@ use crate::endings;
 use crate::envelope::{self, CliError};
 use crate::knowledge;
 use crate::output::write_stdout;
-use crate::project::{collect_project_docs, ByRoot};
-use lute_model::{assemble_root_scenario, RootScenario};
+use crate::project::{project_models_in, RootModels};
+use lute_model::{ModelMemo, RootScenario};
 
 pub(crate) mod graph;
 pub(crate) mod node_envelope;
@@ -65,23 +65,23 @@ pub(crate) fn node_ref_to_id(node: &NodeRef) -> lute_check::connectivity::NodeId
     }
 }
 
-/// Find EVERY resolved root (sorted, deterministic — [`ByRoot`] is a
-/// `BTreeMap`) whose docs declare `node` (a scene key in `scene_key_set` or
-/// a declared `<quest id>`), returning each match's root path alongside its
-/// assembled [`RootScenario`]. A scene/quest id is only unique WITHIN one
+/// Find EVERY resolved root (sorted, deterministic — `models` come in root
+/// order) whose docs declare `node` (a scene key in `scene_key_set` or
+/// a declared `<quest id>`), returning each match's root path alongside the
+/// [`RootScenario`] its model assembled. A scene/quest id is only unique WITHIN one
 /// resolved project root (dsl §2.3/§6.3) — the SAME id may legitimately
 /// exist in two independently resolved sibling roots (the bare `lute
 /// scenario` graph view already shows both). Callers MUST treat 2+ matches
 /// as an ambiguous lookup (Main review: never silently pick the
 /// lexicographically-first root), never collapse to one.
 fn find_matching_roots<'a>(
-    by_root: &'a ByRoot,
-    file_results: &[(PathBuf, lute_check::CheckResult)],
+    models: &'a RootModels,
     node: &NodeRef,
-) -> Vec<(&'a PathBuf, RootScenario)> {
+) -> Vec<(&'a PathBuf, &'a RootScenario)> {
     let mut out = Vec::new();
-    for (root, group_full) in by_root {
-        let scenario = assemble_root_scenario(group_full, file_results);
+    for (root, _) in models {
+        let scenario = crate::project::model_scenario(models, root)
+            .expect("every collected root has its model's scenario");
         let present = match node {
             NodeRef::Scene(key) => scenario.key_set.contains_key(key),
             NodeRef::Quest(id) => scenario.quest_ids.contains(id),
@@ -105,10 +105,10 @@ fn find_matching_roots<'a>(
 /// independent sibling roots, so this NEVER silently picks the
 /// lexicographically-first one).
 fn pick_unique_root<'a>(
-    mut matches: Vec<(&'a PathBuf, RootScenario)>,
+    mut matches: Vec<(&'a PathBuf, &'a RootScenario)>,
     dir: &Path,
     node_id_raw: &str,
-) -> Result<(&'a PathBuf, RootScenario), ExitCode> {
+) -> Result<(&'a PathBuf, &'a RootScenario), ExitCode> {
     match matches.len() {
         0 => {
             let message = format!("lute: unknown node `{node_id_raw}` under {}", dir.display());
@@ -141,12 +141,11 @@ fn pick_unique_root<'a>(
 /// thin wrapper: [`find_matching_roots`] then [`pick_unique_root`].
 fn resolve_unique_root<'a>(
     dir: &Path,
-    by_root: &'a ByRoot,
-    file_results: &[(PathBuf, lute_check::CheckResult)],
+    models: &'a RootModels,
     node_ref: &NodeRef,
     node_id_raw: &str,
-) -> Result<(&'a PathBuf, RootScenario), ExitCode> {
-    let matches = find_matching_roots(by_root, file_results, node_ref);
+) -> Result<(&'a PathBuf, &'a RootScenario), ExitCode> {
+    let matches = find_matching_roots(models, node_ref);
     pick_unique_root(matches, dir, node_id_raw)
 }
 
@@ -174,23 +173,22 @@ fn resolve_unique_root<'a>(
 ///   never silently pick one candidate over another equally-valid one).
 pub(crate) fn resolve_node_ref<'a>(
     dir: &Path,
-    by_root: &'a ByRoot,
-    file_results: &[(PathBuf, lute_check::CheckResult)],
+    models: &'a RootModels,
     node_id_raw: &str,
-) -> Result<(NodeRef, &'a PathBuf, RootScenario), ExitCode> {
+) -> Result<(NodeRef, &'a PathBuf, &'a RootScenario), ExitCode> {
     if let Some(explicit) = parse_node_ref_prefix(node_id_raw) {
-        return resolve_unique_root(dir, by_root, file_results, &explicit, node_id_raw)
+        return resolve_unique_root(dir, models, &explicit, node_id_raw)
             .map(|(root, scenario)| (explicit, root, scenario));
     }
     let raw = node_id_raw.to_string();
-    let mut found: Vec<(NodeRef, Vec<(&'a PathBuf, RootScenario)>)> = [
+    let mut found: Vec<(NodeRef, Vec<(&'a PathBuf, &'a RootScenario)>)> = [
         NodeRef::Scene(raw.clone()),
         NodeRef::Quest(raw.clone()),
         NodeRef::Beat(raw),
     ]
     .into_iter()
     .map(|r| {
-        let matches = find_matching_roots(by_root, file_results, &r);
+        let matches = find_matching_roots(models, &r);
         (r, matches)
     })
     .filter(|(_, matches)| !matches.is_empty())
@@ -296,37 +294,38 @@ pub(crate) fn run_scenario(
     command: Option<ScenarioCommand>,
     facts: bool,
 ) -> ExitCode {
-    let (file_results, by_root) = match collect_project_docs(dir, providers, None, false) {
-        Ok(v) => v,
+    let models = match project_models_in(&ModelMemo::default(), dir, providers, None) {
+        Ok(models) => models,
         Err(code) => return code,
     };
+    let by_root = crate::project::root_groups(&models);
     // T3-15: the report is built into one buffer and written once through
     // [`write_stdout`] — `lute scenario … | head` used to panic on EPIPE
     // from a bare `println!`.
     let mut out = String::new();
     let code = match command {
-        None => run_scenario_graph(&mut out, &by_root, &file_results, facts),
+        None => run_scenario_graph(&mut out, &by_root, &models, facts),
         Some(ScenarioCommand::Reach {
             endings: Some(occasion),
             ..
         }) => endings::run_text(
             &mut out,
             &by_root,
-            &file_results,
+            &models,
             (!occasion.is_empty()).then_some(occasion.as_str()),
         ),
         Some(ScenarioCommand::Reach { node, .. }) => run_scenario_reach(
             &mut out,
             dir,
             &by_root,
-            &file_results,
+            &models,
             node.as_deref().unwrap_or_default(),
         ),
         Some(ScenarioCommand::Envelope { node }) => {
-            run_scenario_envelope(&mut out, dir, &by_root, &file_results, &node)
+            run_scenario_envelope(&mut out, dir, &by_root, &models, &node)
         }
         Some(ScenarioCommand::Knowledge { node }) => {
-            knowledge::run_text(&mut out, &by_root, &file_results, node.as_deref())
+            knowledge::run_text(&mut out, &by_root, node.as_deref())
         }
     };
     if write_stdout(&out).is_err() {

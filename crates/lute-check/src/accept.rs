@@ -172,7 +172,7 @@ impl<'a> ProjectQuests<'a> {
 /// quest=…>` in `docs` names it) or a subquest child declared
 /// `activate="accept"`. An auto-activating child — one without
 /// `activate="accept"` — activates with its parent and is not in the set.
-pub(crate) fn accept_driven_quests<'a>(docs: &'a [ProjectDoc<'a>]) -> BTreeSet<&'a str> {
+pub fn accept_driven_quests<'a>(docs: &'a [ProjectDoc<'a>]) -> BTreeSet<&'a str> {
     let project = ProjectQuests::new(docs);
     project
         .quests
@@ -342,7 +342,10 @@ fn check_target(
     let message = match project.quests.get(id) {
         Some(q) if q.start => format!(
             "{subject}, which has a `start` condition and activates on its own; only an \
-             accept-driven quest (no `start`) can be accepted (dsl 0.21.0 §7a.3)"
+             accept-driven quest (no `start`) can be accepted; drop its `start` — the accept \
+             activates it whatever other condition it had (a `follows=\"…\"` records such \
+             conditions for analysis and the host, but does not gate the accept) (dsl 0.21.0 \
+             §7a.3)"
         ),
         Some(q) => match project.parents.get(id) {
             Some(parent) if !q.on_accept => format!(

@@ -4,6 +4,10 @@
 //! and both diagnostic streams, in order. Inputs are assembled through one
 //! `InputCache` per project, as a project check assembles them, so every
 //! document of a project folds against the same shared `ProjectVocab`.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a test walks and reads the corpus it folds; no cache is involved"
+)]
 
 use std::path::{Path, PathBuf};
 

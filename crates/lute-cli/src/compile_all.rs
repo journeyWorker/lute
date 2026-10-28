@@ -289,8 +289,9 @@ pub fn run(
         };
         if let Some(bundle) = bundle {
             let merged = lute_compile::locale::merge_locales(&mut artifact, bundle);
-            // dsl 0.37.0 §6: a refused translation (`E-L10N-MODIFIERS`)
-            // fails its document like a check error.
+            // dsl 0.37.0 §6, 0.53.0 §8.1: a refused translation
+            // (`E-L10N-MODIFIERS`, `E-L10N-MARKERS`) fails its document like
+            // a check error.
             if merged
                 .iter()
                 .any(|d| d.severity == lute_core_span::Severity::Error)

@@ -1,24 +1,32 @@
-//! dsl 0.49.0 §6.1–§6.2: quests that can never start because their `start`
-//! anchors wait on each other (a start cycle) or on the quest itself.
+//! dsl 0.49.0 §6.1–§6.2, 0.53.0 §7.3: quests that can never start because
+//! their `start` and in-script accept anchors wait on each other (a start
+//! cycle) or on the quest itself.
 
 use super::graph_assembly::QuestDecls;
-use super::graph_nodes::{Anchor, ConnGraph, EdgeKind, NodeId, NodeInfo, PrereqState, StartBlock};
+use super::graph_nodes::{
+    Anchor, ConnGraph, CyclePath, EdgeKind, HostGate, NodeId, NodeInfo, PrereqState, StartBlock,
+};
 use super::reachability::Reachability;
 use crate::ProjectDoc;
 use lute_core_span::{Diagnostic, Layer, Severity};
+use lute_manifest::semantics::prereq::PrereqFormula;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 use std::path::PathBuf;
 
-/// dsl 0.49.0 §6.1: quests whose `start` anchors wait on each other around
-/// a cycle that no source outside it enters, so none of them can ever start.
+/// dsl 0.49.0 §6.1, 0.53.0 §7.3: quests whose `start` and in-script accept
+/// anchors wait on each other around a cycle that no source outside it
+/// enters and no host route opens, so none of them can ever start.
 pub const E_QUEST_START_CYCLE: &str = "E-QUEST-START-CYCLE";
 
-/// Whether `anchor` gates when its quest can start: a `start` conjunct or
-/// the subquest parent. An `::accept` anchor does not (the engine may accept
-/// the quest outside any `::accept`; accept deadlocks are out of scope,
-/// dsl 0.49.0 §14).
+/// Whether `anchor` gates when its quest can start: a `start` conjunct, the
+/// subquest parent, or (dsl 0.53.0 §7.3) the accepts — `accept="external"`
+/// is the only non-content acceptance (dsl 0.25.0 §5), and it is the
+/// anchor's host route.
 fn gates(anchor: &Anchor) -> bool {
-    matches!(anchor.kind, EdgeKind::Start | EdgeKind::Subquest)
+    matches!(
+        anchor.kind,
+        EdgeKind::Start | EdgeKind::Subquest | EdgeKind::Accept
+    )
 }
 
 /// The gating anchors of a node, `None` when it has none.
@@ -30,6 +38,38 @@ fn gating(info: &NodeInfo) -> Option<impl Iterator<Item = &Anchor>> {
         .iter()
         .any(gates)
         .then(|| anchors.iter().filter(|a| gates(a)))
+}
+
+/// Whether `anchor` opens once the quests in `can` can start: one of its
+/// sources can, or its host route opens — always without `follows`, when
+/// the formula holds over what can start with it, and always when the
+/// formula cannot be read (dsl 0.53.0 §7.3).
+fn opens(anchor: &Anchor, can: &BTreeSet<&NodeId>, nodes: &BTreeMap<NodeId, NodeInfo>) -> bool {
+    anchor.from.iter().any(|s| can.contains(s))
+        || match &anchor.host {
+            None => false,
+            Some(HostGate::Always | HostGate::Unreadable) => true,
+            Some(HostGate::Follows(f)) => formula_opens(f, can, nodes),
+        }
+}
+
+/// [`opens`] for a host `follows` formula: an atom holds when its node can
+/// start, or names no graph node (a plain quest, an undeclared id — the
+/// latter is `E-CONN-UNKNOWN-NODE`'s, never a deadlock).
+fn formula_opens(
+    f: &PrereqFormula,
+    can: &BTreeSet<&NodeId>,
+    nodes: &BTreeMap<NodeId, NodeInfo>,
+) -> bool {
+    let holds = |node: NodeId| !nodes.contains_key(&node) || can.contains(&&node);
+    match f {
+        PrereqFormula::Visited(key) => holds(NodeId::visited(key, nodes)),
+        PrereqFormula::Completed(id) | PrereqFormula::Active(id) => {
+            holds(NodeId::Quest(id.clone()))
+        }
+        PrereqFormula::And(l, r) => formula_opens(l, can, nodes) && formula_opens(r, can, nodes),
+        PrereqFormula::Or(l, r) => formula_opens(l, can, nodes) || formula_opens(r, can, nodes),
+    }
 }
 
 /// Whether `quest`'s own `start` anchors read `quest` itself.
@@ -67,12 +107,13 @@ pub fn resolve_start_blocks(
 /// The least fixed point of *can-start* (dsl 0.49.0 §6.1) and, for every
 /// quest outside it that a start cycle or a self-read blocks, the
 /// [`StartBlock`]. Pushes one [`E_QUEST_START_CYCLE`] per strongly connected
-/// set of deadlocked quests that do not read themselves, at its least quest's
-/// `start`.
+/// set of deadlocked quests that do not read themselves, at its least
+/// quest's `start`, or at its `id` when it has none (an accept-driven quest,
+/// dsl 0.53.0 §7.3).
 ///
 /// A node can start (is a way in) only when `routable`. Without gating
 /// anchors it also has to be in `topo_order` (not on or past an `after`
-/// cycle); with them, every gating anchor needs a source that can start.
+/// cycle); with them, every gating anchor has to open ([`opens`]).
 fn start_blocks(
     nodes: &BTreeMap<NodeId, NodeInfo>,
     topo_order: &[NodeId],
@@ -89,8 +130,9 @@ fn start_blocks(
         .filter_map(|id| nodes.get_key_value(id))
         .filter(|(_, info)| gating(info).is_some())
         .collect();
-    // `topo_order` puts every ordering source first, so only a back edge
-    // needs another pass; each pass that adds nothing ends it.
+    // `topo_order` puts every ordering source first, so only a back edge or
+    // an undrawn accept edge needs another pass; each pass that adds
+    // nothing ends it.
     loop {
         let mut grew = false;
         for &(id, info) in &gated {
@@ -102,7 +144,7 @@ fn start_blocks(
             let starts = gating(info)
                 .into_iter()
                 .flatten()
-                .all(|a| a.from.iter().any(|s| can.contains(s)));
+                .all(|a| opens(a, &can, nodes));
             if starts {
                 can.insert(id);
                 grew = true;
@@ -113,23 +155,25 @@ fn start_blocks(
         }
     }
 
-    // The anchor graph over the quests that cannot start: `source ->
-    // dependent` for each blocked source of a gating anchor (the same
-    // anchors the fixed point reads).
+    // The waiting graph over the quests that cannot start: `dependent ->
+    // source` with the anchor's kind, for each blocked source of a gating
+    // anchor (the same anchors the fixed point reads; the first kind of a
+    // pair in anchor order).
     let blocked: BTreeSet<&NodeId> = nodes
         .iter()
         .filter(|(id, info)| gating(info).is_some() && !can.contains(id))
         .map(|(id, _)| id)
         .collect();
-    let mut next: BTreeMap<&NodeId, BTreeSet<&NodeId>> = BTreeMap::new();
+    let mut waits: BTreeMap<&NodeId, BTreeMap<&NodeId, EdgeKind>> = BTreeMap::new();
     for &id in &blocked {
-        for source in gating(&nodes[id])
-            .into_iter()
-            .flatten()
-            .flat_map(|a| &a.from)
-            .filter(|s| blocked.contains(s))
-        {
-            next.entry(source).or_default().insert(id);
+        for anchor in gating(&nodes[id]).into_iter().flatten() {
+            for source in anchor.from.iter().filter(|s| blocked.contains(s)) {
+                waits
+                    .entry(id)
+                    .or_default()
+                    .entry(source)
+                    .or_insert(anchor.kind);
+            }
         }
     }
 
@@ -141,15 +185,14 @@ fn start_blocks(
             out.insert(id.clone(), StartBlock::SelfRead);
             continue;
         }
-        let Some(path) = shortest_cycle(id, &next) else {
+        let Some(path) = shortest_cycle(id, &waits) else {
             continue;
         };
         if !reported.contains(id) {
             // `blocked` is in `NodeId` order, so `id` is the least member of
             // its strongly connected set not yet reported.
-            let members = strongly_connected(id, &next);
+            let members = strongly_connected(id, &waits);
             reported.extend(members.iter().copied());
-            let rendered: Vec<String> = path.iter().map(ToString::to_string).collect();
             let span = match id {
                 NodeId::Quest(q) => decls
                     .first
@@ -162,10 +205,11 @@ fn start_blocks(
                 info.path.clone(),
                 start_cycle_diag(
                     format!(
-                        "quest start cycle: {} — each `start` waits for the next and no source \
-                         outside the cycle starts any of them; start one of them from something \
-                         outside the cycle, or grant it with `accept=\"external\"`",
-                        rendered.join(" -> ")
+                        "quest start cycle: {path} — each waits for the next (a `start` for its \
+                         condition, an accept for the `::accept` or reward that grants it) and no \
+                         source outside the cycle starts any of them; start one of them from \
+                         something outside the cycle, or let the host grant one with \
+                         `accept=\"external\"`"
                     ),
                     span,
                 ),
@@ -201,35 +245,42 @@ fn start_blocks(
     out
 }
 
-/// The shortest cycle through `start` along `next` that is not its
-/// self-loop, `start -> … -> start`; `None` when there is none.
+/// The shortest cycle through `start` along `waits` that is not its
+/// self-loop, in waiting order with each step's anchor kind; `None` when
+/// there is none.
 fn shortest_cycle(
     start: &NodeId,
-    next: &BTreeMap<&NodeId, BTreeSet<&NodeId>>,
-) -> Option<Vec<NodeId>> {
+    waits: &BTreeMap<&NodeId, BTreeMap<&NodeId, EdgeKind>>,
+) -> Option<CyclePath> {
     let mut parent: BTreeMap<&NodeId, &NodeId> = BTreeMap::new();
     let mut queue: VecDeque<&NodeId> = VecDeque::new();
-    for n in next.get(start).into_iter().flatten() {
+    for n in waits.get(start).into_iter().flat_map(BTreeMap::keys) {
         if *n != start && !parent.contains_key(n) {
             parent.insert(n, start);
             queue.push_back(n);
         }
     }
     while let Some(n) = queue.pop_front() {
-        for &m in next.get(n).into_iter().flatten() {
+        for &m in waits.get(n).into_iter().flat_map(BTreeMap::keys) {
             if m == start {
-                let mut chain = Vec::new();
+                let mut chain = vec![n];
                 let mut at = n;
                 while at != start {
-                    chain.push(at.clone());
                     at = parent[at];
+                    chain.push(at);
                 }
+                // `chain` runs back from `n` to `start`; in waiting order
+                // it is `start`, …, `n`, and `n` waits on `start`.
                 chain.reverse();
-                let mut path = Vec::with_capacity(chain.len() + 2);
-                path.push(start.clone());
-                path.extend(chain);
-                path.push(start.clone());
-                return Some(path);
+                let steps = chain
+                    .iter()
+                    .enumerate()
+                    .map(|(i, &node)| {
+                        let to = chain.get(i + 1).copied().unwrap_or(start);
+                        (node.clone(), waits[node][to])
+                    })
+                    .collect();
+                return Some(CyclePath { steps });
             }
             if m != start && !parent.contains_key(m) {
                 parent.insert(m, n);
@@ -240,27 +291,27 @@ fn shortest_cycle(
     None
 }
 
-/// Every node reachable from `start` along `next` that reaches it back.
+/// Every node reachable from `start` along `waits` that reaches it back.
 fn strongly_connected<'a>(
     start: &'a NodeId,
-    next: &BTreeMap<&'a NodeId, BTreeSet<&'a NodeId>>,
+    waits: &BTreeMap<&'a NodeId, BTreeMap<&'a NodeId, EdgeKind>>,
 ) -> BTreeSet<&'a NodeId> {
-    let forward = reachable(start, next);
+    let forward = reachable(start, waits);
     forward
         .iter()
         .copied()
-        .filter(|n| reachable(n, next).contains(start))
+        .filter(|n| reachable(n, waits).contains(start))
         .collect()
 }
 
 fn reachable<'a>(
     from: &'a NodeId,
-    next: &BTreeMap<&'a NodeId, BTreeSet<&'a NodeId>>,
+    waits: &BTreeMap<&'a NodeId, BTreeMap<&'a NodeId, EdgeKind>>,
 ) -> BTreeSet<&'a NodeId> {
     let mut seen = BTreeSet::new();
     let mut stack = vec![from];
     while let Some(n) = stack.pop() {
-        for &m in next.get(n).into_iter().flatten() {
+        for &m in waits.get(n).into_iter().flat_map(BTreeMap::keys) {
             if seen.insert(m) {
                 stack.push(m);
             }

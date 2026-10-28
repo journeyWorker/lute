@@ -8,5 +8,5 @@ identity:
   requireStable: true
 defaults:
   pov: inspector
-  luteVersion: "0.52.0"
+  luteVersion: "0.53.0"
   uses: [world.schema.yaml, vocabulary.schema.yaml]

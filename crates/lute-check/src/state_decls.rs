@@ -139,6 +139,10 @@ impl Decl<'_> {
 /// `scene.*` paths are local to each scene (reset at every scene boundary)
 /// and never shared, so they are exempt. `foldeds` is index-aligned with
 /// `docs`.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "a project pass, rerun by every command and request; no cache keeps its result"
+)]
 pub fn check_project_state_decls(
     docs: &[ProjectDoc<'_>],
     foldeds: &[&FoldedEnv],
@@ -299,6 +303,10 @@ fn error(message: String, span: Span) -> Diagnostic {
 
 /// Every file `file` reaches through `extends:`, transitively. A schema's
 /// own `extends:` is read from its (front)matter once and cached in `known`.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "part of a project pass (`check_project_state_decls`), never memoized"
+)]
 fn extends_closure(file: &Path, known: &mut BTreeMap<PathBuf, Vec<PathBuf>>) -> BTreeSet<PathBuf> {
     let mut out = BTreeSet::new();
     let mut todo: Vec<PathBuf> = std::fs::canonicalize(file).into_iter().collect();
@@ -317,6 +325,10 @@ fn extends_closure(file: &Path, known: &mut BTreeMap<PathBuf, Vec<PathBuf>>) -> 
 }
 
 /// The `extends:` entries of the schema or document at `file`, canonical.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "part of a project pass (`check_project_state_decls`), never memoized"
+)]
 fn declared_extends(file: &Path) -> Vec<PathBuf> {
     let Ok(text) = std::fs::read_to_string(file) else {
         return Vec::new();

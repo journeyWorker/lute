@@ -1476,12 +1476,7 @@ pub(crate) fn collect(by_root: &ByRoot) -> Vec<RootKnowledge> {
 }
 
 /// The text view (`lute scenario knowledge`).
-pub(crate) fn run_text(
-    out: &mut String,
-    by_root: &ByRoot,
-    _file_results: &[(PathBuf, lute_check::CheckResult)],
-    node: Option<&str>,
-) -> ExitCode {
+pub(crate) fn run_text(out: &mut String, by_root: &ByRoot, node: Option<&str>) -> ExitCode {
     let roots = collect(by_root);
     let picked = match select(&roots, node) {
         Ok(p) => p,

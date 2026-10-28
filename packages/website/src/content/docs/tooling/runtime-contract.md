@@ -11,7 +11,7 @@ the condensed runtime contract; the full, source-grounded specification is in
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime).
 The `lute.engine.yaml` matrix format is specified in
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix).
-[`schemas/lute-ir-0.52.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.52.schema.json)
+[`schemas/lute-ir-0.53.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.53.schema.json)
 (JSON Schema draft 2020-12).
 
 ## Runtime event contract and `lute-runtime`
@@ -502,8 +502,8 @@ Every host negotiates in this order, before opening a playback session:
 
 1. **Exact MAJOR.MINOR IR gate.** Before 1.0, every minor may break the
    execution-IR shape, so an engine pins the exact `irVersion` major.minor
-   line: a `0.52` engine accepts only `0.52.*` artifacts and refuses `0.51.*`
-   and `0.53.*`; patch handling is the engine's policy. From 1.0 onward, the
+   line: a `0.53` engine accepts only `0.53.*` artifacts and refuses `0.52.*`
+   and `0.54.*`; patch handling is the engine's policy. From 1.0 onward, the
    released major's policy applies.
 2. **Semantic capability gate.** Load the immutable `lute.engine.yaml` matrix
    and compare every artifact `requiredSemantics` id with `supportedIds`.
@@ -515,7 +515,7 @@ The matrix example is:
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.52.0"
+irVersion: "0.53.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -531,7 +531,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 If an id is missing, they refuse with exit code **2** and
 `E-ENGINE-SEMANTICS` **before playback**: no command, condition, asset, or
 bridge executes. Malformed matrices use `E-ENGINE-MATRIX`; an artifact outside
-the matrix's exact major.minor line (a `0.41.*` artifact against the `0.52.0`
+the matrix's exact major.minor line (a `0.41.*` artifact against the `0.53.0`
 matrix above, say) uses `E-ENGINE-IR-VERSION`. Unknown
 artifact or registry ids use `E-SEMANTICS-UNKNOWN`. `lute run` refuses an
 
@@ -673,7 +673,8 @@ names (dsl 0.28.0 §6):
 - **`RewardEntry.outcome`** (was `on`): only ever `"failed"`, on a quest-level reward that grants
   on a fresh `failed` transition.
 - **A quest's `prereqEdges` row carries `follows`** (was `after`): quest-graph metadata that never
-  gates the quest (its `start` does). Scene and bundle-beat rows keep `after`.
+  gates the quest (its `start` does) and no in-script accept; on an `accept="external"` quest it is the
+  condition under which the host grants it (the host applies it; Lute does not enforce it). Scene and bundle-beat rows keep `after`.
 
 New behaviour and optional fields, each omitted when unauthored:
 
@@ -965,6 +966,12 @@ section number, then the record's order within that section. It is
 identity, a localization key, or a save key. The stable content joins are
 `lineId` / `voiceKey`; a section's stable identity is its optional `id` in
 `sections`.
+
+A section is presentation and identity, **not a runtime boundary**. The
+runtime runs a scene's sections as one range: there is no section resume point,
+no section entry a host can address and no section jump target, and a bounded
+loop may span sections. Content a host routes to is a bridge result that the
+script `<match>`es, not a section it enters.
 
 Both segments are zero-padded to a width computed from the document — at least
 `3` for the section and `4` for the index, wider when the document needs it —

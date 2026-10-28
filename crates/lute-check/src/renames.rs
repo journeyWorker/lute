@@ -5,6 +5,8 @@
 //! tables so the diagnostic and the codemod cannot drift apart.
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::snapshot::CapabilitySnapshot;
+use lute_manifest::stamps::StampSurface;
 use lute_syntax::ast::{Attr, Directive};
 
 /// `E-RENAMED-DIRECTIVE`: an old directive tag (`::auto`, `::cut`, `::next`,
@@ -172,22 +174,57 @@ pub fn renamed_directive(tag: &str) -> Option<&'static str> {
         .map(|(_, new)| *new)
 }
 
-/// The new key of a renamed attribute of `tag` (the current tag).
-pub fn renamed_directive_attr(tag: &str, key: &str) -> Option<&'static str> {
+/// The current name of `key` on `::tag` when `key` is a renamed core
+/// attribute (dsl 0.37.0 §4) AND the snapshot does not admit `key` on
+/// `::tag` — neither the directive's own attribute nor a stamp on its
+/// surface (plugin §14.1, 0.50.0 §3.4). `None` otherwise.
+///
+/// The one predicate for an old attribute spelling (spec 0.53.0 §4.1): the
+/// checker's `E-RENAMED-ATTR`, its default and required-attribute judgments,
+/// and `lute fix`'s rule `renamed-attr` all ask it, so a key the active
+/// profile declares as a stamp is never read, reported or rewritten as the
+/// 0.37 spelling.
+pub fn renamed_attr(tag: &str, key: &str, snapshot: &CapabilitySnapshot) -> Option<&'static str> {
+    renamed_key(tag, key).filter(|_| !admits_attr(tag, key, snapshot))
+}
+
+/// The new key of `key` on `::tag` in [`RENAMED_DIRECTIVE_ATTRS`], whatever
+/// the snapshot admits. `lute fix` reads it to report the sites
+/// [`renamed_attr`] keeps.
+pub(crate) fn renamed_key(tag: &str, key: &str) -> Option<&'static str> {
     RENAMED_DIRECTIVE_ATTRS
         .iter()
         .find(|(t, old, _)| *t == tag && *old == key)
         .map(|(_, _, new)| *new)
 }
 
-/// `E-RENAMED-DIRECTIVE` for an old tag no snapshot declares.
-pub fn renamed_directive_diag(dir: &Directive) -> Option<Diagnostic> {
+/// Whether `snapshot` admits `key` on `::tag`: an attribute of the
+/// directive's own declaration, or a stamp admissible on its surface (a
+/// directive with no stamp carrier admits none, 0.49.0 §4.1).
+fn admits_attr(tag: &str, key: &str, snapshot: &CapabilitySnapshot) -> bool {
+    let own = snapshot
+        .directive(tag)
+        .is_some_and(|decl| decl.attrs.iter().any(|a| a.name == key));
+    own || (!lute_manifest::core::UNSTAMPED_DIRECTIVES.contains(&tag)
+        && snapshot
+            .stamp_attrs
+            .get(&StampSurface::Directive(tag.to_string()), key)
+            .is_some())
+}
+
+/// `E-RENAMED-DIRECTIVE` for an old tag no snapshot declares. The hint
+/// naming the tag's renamed attribute judges it on the new tag's surface
+/// ([`renamed_attr`]).
+pub fn renamed_directive_diag(
+    dir: &Directive,
+    snapshot: &CapabilitySnapshot,
+) -> Option<Diagnostic> {
     let new = renamed_directive(&dir.tag)?;
-    let attrs = RENAMED_DIRECTIVE_ATTRS
+    let attrs = dir
+        .attrs
         .iter()
-        .find(|(t, _, _)| *t == new)
-        .filter(|(_, old, _)| dir.attrs.iter().any(|a| a.key == *old))
-        .map(|(_, old, key)| format!(" (its `{old}=` is now `{key}=`)"))
+        .find_map(|a| Some((a.key.as_str(), renamed_attr(new, &a.key, snapshot)?)))
+        .map(|(old, key)| format!(" (its `{old}=` is now `{key}=`)"))
         .unwrap_or_default();
     Some(diag(
         E_RENAMED_DIRECTIVE,
@@ -201,8 +238,8 @@ pub fn renamed_directive_diag(dir: &Directive) -> Option<Diagnostic> {
 
 /// The diagnostic for a renamed or removed attribute of `tag`, if `attr` is
 /// one.
-pub fn attr_diag(tag: &str, attr: &Attr) -> Option<Diagnostic> {
-    if let Some(new) = renamed_directive_attr(tag, &attr.key) {
+pub fn attr_diag(tag: &str, attr: &Attr, snapshot: &CapabilitySnapshot) -> Option<Diagnostic> {
+    if let Some(new) = renamed_attr(tag, &attr.key, snapshot) {
         return Some(diag(
             E_RENAMED_ATTR,
             format!(

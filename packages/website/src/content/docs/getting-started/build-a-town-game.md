@@ -271,7 +271,7 @@ the title screen; `ui.title.music` uses the `assets:` key `title-music`;
 never raises it itself:
 
 ```yaml check="docs/examples/quayside/player.bindings.yaml"
-bindingsVersion: "0.52"
+bindingsVersion: "0.53"
 canvas: { width: 1280, height: 720 }
 assetsBase: assets/
 assets:
@@ -303,7 +303,7 @@ flow:
 ```
 
 Every referenced placeholder file is committed under `docs/examples/quayside/assets/`.
-The manifest uses `bindingsVersion: "0.52"`; see the [bindings reference](/player/bindings/)
+The manifest uses `bindingsVersion: "0.53"`; see the [bindings reference](/player/bindings/)
 for the complete catalogue.
 
 ## 5. A player-web host
@@ -631,6 +631,30 @@ Re-export, update that row's `text` (the new row carries the new
 `sourceHash`) and import again. `--deny W-L10N-STALE` or `--deny-warnings`
 makes the compile refuse while a translation is stale. Locale bundles do not
 change whole-project `lute check` or `lute test`: plays run on the source text.
+
+**Markers.** A translation shows its source's markers (0.53). Every `{{…}}`
+marker of the source — `{{user.endings}}` in the opening scene — must appear in
+the translation as often as in the source, in any order; the spaces at a
+marker's edges do not count (`{{ user.endings }}` is the same marker), but a
+space inside it or a format hint does. Change `{{user.endings}}` to `{{user.ending}}` in the Korean row
+and `lute loc import` still writes the bundle, because it sees only the
+translated rows and the marker parses. The compile has the source, and refuses:
+
+<!-- lute-diagnostics unverified="verbatim lute compile --locale-bundle output; the message is composed at runtime from the source's and the translation's marker lists" -->
+```text
+./scenes/opening.lute:1:1: error [E-L10N-MARKERS] `ko` text for `opening.narrator_0010` is not merged: its markers differ from the source's (missing `{{user.endings}}`; extra `{{user.ending}}`): a translation shows each `{{…}}` marker of its source as often as the source does, in any order
+```
+
+`E-L10N-MARKERS` is an error: the text is not merged and the compile writes no
+output. The runtime renders a translation's marker with the value its source
+gave the marker of the same interior, so any other marker would show verbatim.
+`loc import` itself refuses a marker that does not parse — a `{{` with no `}}`
+in a line, a marker that opens on a literal brace (`{{{user.endings}}`) — with
+the same code, per the row's grammar: a line row refuses an unterminated `{{`,
+while an option label, a prompt or a directive `text` reads it as literal text,
+as its source does (a CSV without a `kind` column reads every row as a label).
+The compile reports a line's unterminated `{{` as a markup error instead,
+`E-L10N-MODIFIERS` wrapping `E-INTERP-UNTERMINATED`.
 
 **In the player.** Serve the `bundle/` compiled with `--locale-bundle` as the
 `bundleUrl` from step 5. The Settings screen's Locale row lists the source

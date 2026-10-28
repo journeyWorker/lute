@@ -949,11 +949,11 @@ fn prepare(file: &Path, rel: String, project: Option<&Path>, gates: &Gates) -> O
     }
     let built = build_input(file, None, project, None)?;
     let crate::BuiltInput {
-        input, identity, ..
+        input, manifest, ..
     } = built;
     let gate = gates.gate(file, project, &input);
     let artifact = if gate.ok {
-        match lute_compile::compile_with_check(&input, gate.clone(), &identity) {
+        match lute_compile::compile_with_check(&input, gate.clone(), manifest.identity()) {
             Ok(a) => Ok(serde_json::to_value(&a).expect("an artifact serializes")),
             Err(diags) => Err(first_error(&diags)),
         }

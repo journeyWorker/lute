@@ -339,21 +339,63 @@ pub struct TypedMeta {
     pub terminal: Option<crate::gates::TerminalDecl>,
     /// dsl 0.27.0 §5: a schema document's `seasons:` (name -> `{ live }`).
     pub seasons: crate::season::Seasons,
-    /// 0.49.0 §4.3: each reference-typed plugin frontmatter key whose value
-    /// is a string (or a list of strings), for the membership check
-    /// [`crate::meta::check_frontmatter_refs`] runs once the merged
-    /// vocabulary is folded. In key order.
+    /// 0.49.0 §4.3, 0.53.0 §6.1: every reference inside a plugin frontmatter
+    /// value (top level, list items, record fields, map keys and values),
+    /// for the membership check [`crate::meta::check_frontmatter_refs`]
+    /// runs once the merged vocabulary is folded. In key order, then in
+    /// authored order within the value.
     pub(crate) frontmatter_refs: Vec<FrontmatterRef>,
 }
 
-/// One reference-typed plugin frontmatter key (0.49.0 §4.3): `ty` is the
-/// element type (`entity`, `domain`, `enumFromOption`, `providerRef` or
-/// `assetKind`), `values` the authored string, or each element of a list.
+/// One reference inside a plugin frontmatter value (0.53.0 §6.1): `ty` is
+/// the reference type (`entity`, `domain`, `enumFromOption`, `providerRef`
+/// or `assetKind`), `value` the authored string, `path` where it sits.
 #[derive(Clone, Debug)]
 pub(crate) struct FrontmatterRef {
-    pub(crate) key: String,
+    pub(crate) path: FrontmatterPath,
     pub(crate) ty: Type,
-    pub(crate) values: Vec<String>,
+    pub(crate) value: String,
+}
+
+/// Where a reference sits inside a plugin frontmatter value (0.53.0 §6.1):
+/// the top-level key, then each step below it, outermost first.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) struct FrontmatterPath {
+    pub(crate) key: String,
+    pub(crate) steps: Vec<FrontmatterStep>,
+}
+
+/// One step of a [`FrontmatterPath`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(crate) enum FrontmatterStep {
+    /// A field of a `record`, by name.
+    Field(String),
+    /// An item of a `list`, by zero-based index.
+    Item(usize),
+    /// A key of a `map` (the reference is the key itself).
+    Key(String),
+    /// The value of a `map` entry, by its key.
+    Entry(String),
+}
+
+impl FrontmatterPath {
+    /// How a diagnostic names the position, innermost step first
+    /// (``field `partner` of `talk` ``, ``field `b` of item 1 of `a` ``), or
+    /// `None` for a top-level value or an item of a top-level list, which
+    /// keep the attribute's text (``attribute `lead` ``).
+    pub(crate) fn position(&self) -> Option<String> {
+        if matches!(self.steps.as_slice(), [] | [FrontmatterStep::Item(_)]) {
+            return None;
+        }
+        let steps = self.steps.iter().rev().map(|step| match step {
+            FrontmatterStep::Field(name) => format!("field `{name}`"),
+            FrontmatterStep::Item(index) => format!("item {}", index + 1),
+            FrontmatterStep::Key(key) => format!("key `{key}`"),
+            FrontmatterStep::Entry(key) => format!("entry `{key}`"),
+        });
+        let key = std::iter::once(format!("`{}`", self.key));
+        Some(steps.chain(key).collect::<Vec<_>>().join(" of "))
+    }
 }
 
 impl TypedMeta {

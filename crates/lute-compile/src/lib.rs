@@ -402,7 +402,7 @@ pub use lute_check::LUTE_LANG_VERSION;
 /// strings. `schemas/lute-ir-0.29.schema.json` is renamed to
 /// `schemas/lute-ir-0.30.schema.json` per the release-line rule, its name
 /// patterns widened to the name rule.
-pub const LUTE_IR_VERSION: &str = "0.52.0";
+pub const LUTE_IR_VERSION: &str = "0.53.0";
 
 /// Compile a checked document to its artifact. `Err` carries the gating
 /// diagnostics: the full `check()` stream when any Error is present (D6), or
@@ -559,6 +559,9 @@ fn compile_inner(
             let meta = artifact_meta(&doc, &folded, input.snapshot(), beat);
             let prefix = meta.id.clone();
             let mut shots = Vec::new();
+            // dsl 0.53.0 §9.3: the sections are one loop scope, so a loop
+            // head's region runs on into the sections after its own.
+            cx.stage.top_level(&doc.sections);
             for (i, shot) in doc.sections.iter().enumerate() {
                 let mut em = cfg::Emitter::new(map.is_some());
                 // Top-level per-shot walk: no CFG continuation past the shot end.
@@ -1841,7 +1844,7 @@ mod tests {
     fn lang_and_ir_version_stamps() {
         // 0.41.0 axis alignment (docs/versioning.md): a breaking minor that
         // moves language and IR together with the toolchain.
-        assert_eq!(super::LUTE_IR_VERSION, "0.52.0");
+        assert_eq!(super::LUTE_IR_VERSION, "0.53.0");
     }
 
     #[test]
@@ -1850,8 +1853,8 @@ mod tests {
         let input = test_input(text);
         let art = super::compile(&input).expect("compiles");
         let v = serde_json::to_value(&art).unwrap();
-        assert_eq!(v["lute"], "0.52.0");
-        assert_eq!(v["irVersion"], "0.52.0");
+        assert_eq!(v["lute"], "0.53.0");
+        assert_eq!(v["irVersion"], "0.53.0");
         assert_eq!(v["entities"][0]["name"], "c");
         assert_eq!(v["entities"][1]["open"], true);
         assert_eq!(v["enums"][0]["name"], "trust");

@@ -2,13 +2,13 @@
 //! and reach verdict.
 
 use std::collections::BTreeSet;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::ExitCode;
 
 use crate::cmd_scenario::{
     node_ref_to_id, primary_node_ambiguity_note, resolve_node_ref, RootScenario,
 };
-use crate::project::ByRoot;
+use crate::project::{ByRoot, RootModels};
 
 /// Render a [`lute_manifest::semantics::prereq::PrereqFormula`] back to CEL-like text, fully
 /// parenthesized so the `&&`/`||` nesting is always visible — a
@@ -50,28 +50,30 @@ fn quote_cel_string(s: &str) -> String {
 }
 
 /// The evidence token of `node`'s reachability claim
-/// ([`lute_model::reach_claim`]): `proven` or `unknown`.
+/// ([`lute_model::reach_claim`]): `proven`, `heuristic` (a host route with
+/// `follows`, dsl 0.53.0 §7.1) or `unknown`.
 pub(crate) fn reach_evidence(
     scenario: &RootScenario,
     node: &lute_check::connectivity::NodeId,
 ) -> &'static str {
     match lute_model::reach_claim(scenario, node).evidence {
         lute_core_span::Evidence::Unknown => "unknown",
+        lute_core_span::Evidence::Heuristic => "heuristic",
         _ => "proven",
     }
 }
 
 /// `node`'s reachability claim as text ([`lute_model::reach_claim`]), with
-/// `[unknown]` appended when its evidence is unknown.
+/// `[unknown]` or `[heuristic]` appended when that is its evidence.
 pub(crate) fn reach_verdict_text(
     scenario: &RootScenario,
     node: &lute_check::connectivity::NodeId,
 ) -> String {
     let claim = lute_model::reach_claim(scenario, node);
-    if claim.evidence == lute_core_span::Evidence::Unknown {
-        format!("{} [unknown]", claim.reason)
-    } else {
-        claim.reason
+    match claim.evidence {
+        lute_core_span::Evidence::Unknown => format!("{} [unknown]", claim.reason),
+        lute_core_span::Evidence::Heuristic => format!("{} [heuristic]", claim.reason),
+        _ => claim.reason,
     }
 }
 
@@ -96,21 +98,25 @@ pub(crate) fn unanchored_quests(
 /// predecessor list that could misrepresent a disjunction as a joint
 /// requirement), plus each directly-referenced node's own reachability as
 /// supplementary context (explicitly labeled "referenced", never "route" —
-/// the formula above IS the route structure).
+/// the formula above IS the route structure). dsl 0.53.0 §7.1: the
+/// declaration is read from [`lute_check::connectivity::NodeInfo::follows`];
+/// an anchored quest that declares one prints it first, marked as
+/// metadata, then its anchors.
 fn print_prereq_structure(
     out: &mut String,
     scenario: &RootScenario,
     docs: &[lute_check::ProjectDoc<'_>],
     node: &lute_check::connectivity::NodeId,
 ) {
-    use lute_check::connectivity::{NodeId, PrereqState};
+    use lute_check::connectivity::{FollowsDecl, NodeId, PrereqState};
     // A quest declares its graph edge with `follows=`; scenes and beats with `after`.
     let key = if matches!(node, NodeId::Quest(_)) {
         "follows"
     } else {
         "after"
     };
-    match scenario.graph.nodes.get(node).map(|info| &info.prereq) {
+    let info = scenario.graph.nodes.get(node);
+    match info {
         None if matches!(node, NodeId::Quest(id) if scenario.quest_ids.contains(id)) => {
             outln!(
                 out,
@@ -121,55 +127,109 @@ fn print_prereq_structure(
         _ if matches!(node, NodeId::Beat(_)) => {
             print_bundle_beat_selection(out, scenario, docs, node);
         }
-        None | Some(PrereqState::Absent) => {
+        None => {
             outln!(
                 out,
                 "  {key}: (none declared) — this node is an entry point."
             );
         }
-        Some(PrereqState::Invalid) => {
-            outln!(
-                out,
-                "  {key}: (malformed — E-CONN-PROFILE; structure unavailable)"
-            );
-        }
-        Some(prereq @ PrereqState::Valid(f)) => {
-            outln!(out, "  {key}: {}", format_prereq(f));
-            print_referenced(
-                out,
-                scenario,
-                prereq,
-                &format!("`{key}` above for the && / || structure"),
-            );
-        }
-        Some(prereq @ PrereqState::Anchored(anchors)) => {
-            outln!(
-                out,
-                "  {key}: (none declared) — anchored; each anchor \
-                 holds before it activates, through any one of its sources:"
-            );
-            for a in anchors {
-                let from: Vec<String> = a
-                    .from
-                    .iter()
-                    .map(std::string::ToString::to_string)
-                    .collect();
-                outln!(out, "    [{}] {}", a.kind.as_str(), from.join(" || "));
+        Some(info) => match (&info.follows, &info.prereq) {
+            (declared, PrereqState::Anchored(anchors)) => {
+                const METADATA: &str = "(declared ordering; not an activation route)";
+                let see = match declared {
+                    FollowsDecl::Absent => {
+                        outln!(
+                            out,
+                            "  {key}: (none declared) — anchored; each anchor \
+                             holds before it activates, through any one of its sources:"
+                        );
+                        "the anchors above".to_string()
+                    }
+                    FollowsDecl::Malformed(code) => {
+                        outln!(out, "  {key}: (malformed — {code}) {METADATA}");
+                        anchored_header(out);
+                        format!("`{key}` and the anchors above")
+                    }
+                    FollowsDecl::Valid(f) => {
+                        outln!(out, "  {key}: {} {METADATA}", format_prereq(f));
+                        anchored_header(out);
+                        format!("`{key}` and the anchors above")
+                    }
+                };
+                for a in anchors {
+                    outln!(out, "    [{}] {}", a.kind.as_str(), anchor_routes(a));
+                }
+                print_referenced(out, scenario, info, &see);
             }
-            print_referenced(out, scenario, prereq, "the anchors above");
-        }
+            (FollowsDecl::Absent, _) => {
+                outln!(
+                    out,
+                    "  {key}: (none declared) — this node is an entry point."
+                );
+            }
+            (FollowsDecl::Malformed(code), _) => {
+                outln!(out, "  {key}: (malformed — {code}; structure unavailable)");
+            }
+            (FollowsDecl::Valid(f), _) => {
+                outln!(out, "  {key}: {}", format_prereq(f));
+                print_referenced(
+                    out,
+                    scenario,
+                    info,
+                    &format!("`{key}` above for the && / || structure"),
+                );
+            }
+        },
     }
 }
 
-/// Each node `prereq` names, with its own reach verdict — context for the
-/// structure printed above it (`see`), never a route list.
+/// The line under an anchored node's declared `follows` (dsl 0.53.0 §7.1).
+fn anchored_header(out: &mut String) {
+    outln!(
+        out,
+        "  anchored; each anchor holds before it activates, through any one of its sources:"
+    );
+}
+
+/// One anchor's routes as `reach` prints them: the host route first
+/// (dsl 0.53.0 §7.1), then the alternative source nodes. An anchor with
+/// neither is the accept anchor of an accept-driven quest with `follows`
+/// that nothing accepts (its `follows` is no route): named as such.
+fn anchor_routes(a: &lute_check::connectivity::Anchor) -> String {
+    use lute_check::connectivity::HostGate;
+    let sources: Vec<String> = a.from.iter().map(ToString::to_string).collect();
+    let sources = sources.join(" || ");
+    let host = match &a.host {
+        None if sources.is_empty() => {
+            return "nothing accepts it (no ::accept or reward names it, and it is not \
+                    accept=\"external\")"
+                .to_string()
+        }
+        None => return sources,
+        Some(HostGate::Always) => "the host (accept=\"external\")".to_string(),
+        Some(HostGate::Follows(f)) => format!("the host once follows: {}", format_prereq(f)),
+        Some(HostGate::Unreadable) => format!(
+            "the host once follows: (malformed — {})",
+            lute_check::prereq::E_CONN_PROFILE
+        ),
+    };
+    if sources.is_empty() {
+        host
+    } else {
+        format!("{host} | {sources}")
+    }
+}
+
+/// Each node `info` names ([`lute_check::connectivity::NodeInfo::referenced`]),
+/// with its own reach verdict — context for the structure printed above it
+/// (`see`), never a route list.
 fn print_referenced(
     out: &mut String,
     scenario: &RootScenario,
-    prereq: &lute_check::connectivity::PrereqState,
+    info: &lute_check::connectivity::NodeInfo,
     see: &str,
 ) {
-    let targets = prereq.referenced(&scenario.graph.nodes);
+    let targets = info.referenced(&scenario.graph.nodes);
     if targets.is_empty() {
         return;
     }
@@ -197,27 +257,24 @@ fn print_bundle_beat_selection(
     docs: &[lute_check::ProjectDoc<'_>],
     node: &lute_check::connectivity::NodeId,
 ) {
-    use lute_check::connectivity::PrereqState;
+    use lute_check::connectivity::FollowsDecl;
     let Some(info) = scenario.graph.nodes.get(node) else {
         return;
     };
-    match &info.prereq {
-        prereq @ PrereqState::Valid(f) => {
+    match &info.follows {
+        FollowsDecl::Valid(f) => {
             outln!(out, "  after: {}", format_prereq(f));
             print_referenced(
                 out,
                 scenario,
-                prereq,
+                info,
                 "`after` above for the && / || structure",
             );
         }
-        PrereqState::Invalid => {
-            outln!(
-                out,
-                "  after: (malformed — E-CONN-PROFILE; structure unavailable)"
-            );
+        FollowsDecl::Malformed(code) => {
+            outln!(out, "  after: (malformed — {code}; structure unavailable)");
         }
-        _ => outln!(
+        FollowsDecl::Absent => outln!(
             out,
             "  after: (none declared) — an entry node: it plays when its occasion is raised and \
              its `when` holds."
@@ -257,11 +314,10 @@ pub(crate) fn run_scenario_reach(
     out: &mut String,
     dir: &Path,
     by_root: &ByRoot,
-    file_results: &[(PathBuf, lute_check::CheckResult)],
+    models: &RootModels,
     node_id_raw: &str,
 ) -> ExitCode {
-    let (node_ref, root, scenario) = match resolve_node_ref(dir, by_root, file_results, node_id_raw)
-    {
+    let (node_ref, root, scenario) = match resolve_node_ref(dir, models, node_id_raw) {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -272,16 +328,12 @@ pub(crate) fn run_scenario_reach(
             .expect("resolved scenario root must have documents"),
     );
     outln!(out, "project root: {}", root.display());
-    if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
+    if let Some(note) = primary_node_ambiguity_note(scenario, &node_ref) {
         outln!(out, "reach {node_id}: unavailable -- {note}");
         return ExitCode::SUCCESS;
     }
     outln!(out, "reach {node_id}:");
-    outln!(
-        out,
-        "  verdict: {}",
-        reach_verdict_text(&scenario, &node_id)
-    );
-    print_prereq_structure(out, &scenario, &docs, &node_id);
+    outln!(out, "  verdict: {}", reach_verdict_text(scenario, &node_id));
+    print_prereq_structure(out, scenario, &docs, &node_id);
     ExitCode::SUCCESS
 }

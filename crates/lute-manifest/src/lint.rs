@@ -132,6 +132,9 @@ pub enum PairScope {
     /// Every row of one section or top-level declaration, in document
     /// order, at every depth.
     Section,
+    /// Every row of the whole document — every section and top-level
+    /// declaration, at every depth, in document order (dsl 0.53.0 §5).
+    Document,
 }
 
 /// A rule whose keys do not fit its target (dsl 0.51.0 §6.1).

@@ -3,7 +3,7 @@
 This directory is the **runtime contract**: what an engine must implement to
 *consume* a compiled Lute artifact. Lute itself is a total, side-effect-free
 compiler — it checks a `.lute` document and lowers it to the execution IR
-described by the current schema (`schemas/lute-ir-0.52.schema.json`). It runs
+described by the current schema (`schemas/lute-ir-0.53.schema.json`). It runs
 no CEL, no Datalog fixpoint, keeps no fact store, and fires no bridge at
 compile time. Everything on the far side of the execution IR is the engine's
 job.
@@ -86,7 +86,7 @@ loads, exactly as it concatenates the command streams.
 
 `lute compile --project` writes that union, plus the document table and the
 project-wide capability vocabulary, as `project.index.json`. Its shape is the
-`projectIndex` definition of `schemas/lute-ir-0.52.schema.json`: the index
+`projectIndex` definition of `schemas/lute-ir-0.53.schema.json`: the index
 `$defs` (`projectIndex`, `indexDocument`, `indexEntry`, `indexBeat`,
 `indexOccasion`, `indexStateDomain`, `indexDef`, `fieldType`) are generated
 from the Rust index types by `lute-contract-schema` and `$ref` the hand-written
@@ -242,6 +242,12 @@ The stable joins are:
   `id` is present when the author wrote `## Heading {#id}`; it is identity
   metadata only and is never a jump target. A section without an `id` has
   only its position, which is not stable across edits.
+
+A section is presentation and identity, **not a runtime boundary**: the
+runtime runs a scene's sections as one range, so it has no section resume
+point, no section entry a host can address and no section jump target; a
+bounded loop may span sections (dsl 0.53.0 §9). Content a host routes to is a
+bridge result that the script `<match>`es, not a section it enters.
 
 ```lute check
 ---

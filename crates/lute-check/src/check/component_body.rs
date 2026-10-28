@@ -2,14 +2,15 @@
 //! component-mode walk and its purity scans, and `::use` cycle detection.
 
 use super::{
-    cel_parse_diagnostics, check_cel_slot, check_directive, check_directive_when, check_guard,
-    check_interp_format, check_interp_referent, check_param_match, check_speaker_args, check_use,
-    check_use_typed_args, collect_use_directives, directive_when_refused, fill_document,
-    fold_directive_slots, for_each_cel_slot, interp_grammar_diag, is_bare_ref, param_domain,
-    scan_refs, text_looks_like_ref, use_diag, Arm, Attr, AttrValue, CapabilitySnapshot, CelArena,
-    CelSlot, ClipNode, ComponentSet, Ctx, DecideCtx, DefTable, Diagnostic, Directive, Document,
-    Domain, DomainInfo, Env, ExpectedType, Interp, InterpKind, Mode, Node, PathBuf, ProviderSet,
-    Span, Type, E_COMPONENT_ARG, E_COMPONENT_BODY, E_COMPONENT_CYCLE, E_COMPONENT_STATE,
+    brace_opened_diag, cel_parse_diagnostics, check_cel_slot, check_directive,
+    check_directive_when, check_guard, check_interp_format, check_interp_referent,
+    check_param_match, check_speaker_args, check_use, check_use_typed_args, collect_use_directives,
+    directive_when_refused, fill_document, fold_directive_slots, for_each_cel_slot,
+    interp_grammar_diag, is_bare_ref, param_domain, scan_refs, text_looks_like_ref, use_diag, Arm,
+    Attr, AttrValue, CapabilitySnapshot, CelArena, CelSlot, ClipNode, ComponentSet, Ctx, DecideCtx,
+    DefTable, Diagnostic, Directive, Document, Domain, DomainInfo, Env, ExpectedType, Interp,
+    InterpKind, Mode, Node, PathBuf, ProviderSet, Span, Type, E_COMPONENT_ARG, E_COMPONENT_BODY,
+    E_COMPONENT_CYCLE, E_COMPONENT_STATE,
 };
 use crate::directives::AttrSite;
 
@@ -234,6 +235,10 @@ pub(crate) fn validate_components(
         // The component's own text resolves each inner span's line/column: a
         // CEL-slot span carries byte offsets only (`normalize_spans` never
         // walks `related`), which printed as `0:0`.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "per-document check, never memoized; the component file is a recorded dependency of the components memo"
+        )]
         let src_text = (!body_diags.is_empty())
             .then(|| std::fs::read_to_string(&def.src).ok())
             .flatten();
@@ -361,6 +366,10 @@ fn collect_use_names(nodes: &[Node], out: &mut Vec<(String, Span)>) {
 /// nearest ancestor directory holding a `lute.project.yaml` — the project
 /// root every other path in a report is read against — with `/` separators.
 /// A component outside any project keeps its full path.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "names a component in a per-document check message, never memoized"
+)]
 pub(crate) fn project_relative_display(src: &std::path::Path) -> String {
     src.ancestors()
         .skip(1)
@@ -528,6 +537,10 @@ fn component_interp_scan(
         match_subject: None,
     };
     for interp in interps {
+        if let Some(brace) = brace_opened_diag(interp) {
+            diags.push(brace);
+            continue;
+        }
         match interp.kind {
             // 0.50.0 §4.2: a declared host token renders in a body too; an
             // undeclared bare name is read as the ambient state it was in

@@ -1,15 +1,24 @@
 //! Shared source input assembly for CLI, LSP, and project models.
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use lute_check::{CheckInput, InputSources, Mode};
 use lute_core_span::Diagnostic;
-use lute_manifest::project::ResolveDiag;
+use lute_manifest::project::{
+    IdentityRenameDecl, IdentityTemplates, MetaDefaults, ProjectConfig, ResolveDiag,
+};
 use lute_manifest::snapshot::CapabilitySnapshot;
 
-use crate::cache::InputCache;
+use crate::cache::{InputCache, LoadedProject};
 
+/// One document assembled on the project input layer (ADR D14): its
+/// [`CheckInput`] (the text plus `Arc`s to the shared base, vocabulary and
+/// components), the resolution verdicts, its typed frontmatter and the
+/// governing manifest. Nothing the manifest declares is copied into the
+/// document (spec 0.53.0 §3.2): the `defaults:` are `input.defaults()`, the
+/// shared base's, and the `identity:` block is read through
+/// [`SharedManifest`].
 #[derive(Debug)]
 pub struct BuiltInput {
     pub input: CheckInput,
@@ -18,13 +27,9 @@ pub struct BuiltInput {
     pub project_diags: Vec<String>,
     pub resolve_diags: Vec<ResolveDiag>,
     pub meta: lute_check::TypedMeta,
-    pub defaults: lute_manifest::project::MetaDefaults,
-    pub identity: lute_manifest::project::IdentityTemplates,
-    /// Authored project ledger declarations, used to cheaply decide whether a
-    /// full project graph is needed to stamp a standalone artifact.
-    pub identity_rename_decls: Vec<lute_manifest::project::IdentityRenameDecl>,
-    /// Manifest-level ledger diagnostics that exist before graph validation.
-    pub identity_rename_diags: Vec<ResolveDiag>,
+    /// The manifest the document resolved against, shared with every other
+    /// document of its root.
+    pub manifest: SharedManifest,
 }
 
 impl BuiltInput {
@@ -32,6 +37,49 @@ impl BuiltInput {
         for m in &self.project_diags {
             eprintln!("{}", project_diag_line(m));
         }
+    }
+}
+
+/// The governing manifest as the run's [`InputCache`] loaded it, shared
+/// (`Arc`) by every document of the root. Absent for a loose document, and
+/// read as absent when the manifest failed to load (its error is one of the
+/// document's `project_diags`).
+#[derive(Debug, Clone, Default)]
+pub struct SharedManifest(Option<Arc<LoadedProject>>);
+
+/// The `identity:` templates of a document under no loaded manifest.
+static DEFAULT_IDENTITY: LazyLock<IdentityTemplates> = LazyLock::new(IdentityTemplates::default);
+
+impl SharedManifest {
+    /// The manifest of `root` as `cache` loads it (once per root per cache).
+    pub fn of(cache: &InputCache, root: &Path) -> Self {
+        Self(Some(cache.project(root)))
+    }
+
+    /// The loaded manifest, if there is one.
+    pub fn config(&self) -> Option<&ProjectConfig> {
+        self.0
+            .as_deref()
+            .and_then(|loaded| loaded.as_ref().ok())
+            .and_then(Option::as_ref)
+    }
+
+    /// The `identity:` templates (0.8.0 §9); the default pair without a
+    /// loaded manifest.
+    pub fn identity(&self) -> &IdentityTemplates {
+        self.config().map_or(&*DEFAULT_IDENTITY, |p| &p.identity)
+    }
+
+    /// The authored identity ledger declarations, used to cheaply decide
+    /// whether a full project graph is needed to stamp a standalone artifact.
+    pub fn identity_rename_decls(&self) -> &[IdentityRenameDecl] {
+        self.config().map_or(&[], |p| &p.identity_renames)
+    }
+
+    /// The manifest-level ledger diagnostics that exist before graph
+    /// validation.
+    pub fn identity_rename_diags(&self) -> &[ResolveDiag] {
+        self.config().map_or(&[], |p| &p.identity_rename_diags)
     }
 }
 
@@ -56,6 +104,9 @@ pub fn project_diag_line(m: &str) -> String {
     located.unwrap_or_else(|| format!("lute: {m}"))
 }
 
+/// [`build_input_with`] on a fresh [`InputCache`]: for a command that reads
+/// one document. A command that reads two or more assembles them through
+/// one cache for the run instead (spec 0.53.0 §3.1).
 pub fn build_input(
     file: &Path,
     providers: Option<&Path>,
@@ -122,6 +173,10 @@ pub fn build_input_with_mode(
 /// # Errors
 ///
 /// [`ReadError`]: the file cannot be read.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the document's own text: a command reads it once, the language server takes its buffer"
+)]
 pub fn read_document(file: &Path) -> Result<String, ReadError> {
     std::fs::read_to_string(file).map_err(|source| ReadError {
         path: file.to_path_buf(),
@@ -173,6 +228,10 @@ pub fn assemble_input(
     )
 }
 
+/// Assemble one document's [`BuiltInput`] from `text` on `cache`'s shared
+/// layer, returning it with the document's parse (`defaults.questTier`
+/// already applied). Each base and vocabulary key is built once per cache;
+/// the document keeps only its overlay and `Arc`s to them.
 pub fn assemble_input_with_mode(
     cache: &InputCache,
     file: &Path,
@@ -182,6 +241,7 @@ pub fn assemble_input_with_mode(
     permission_profile: Option<&str>,
     mode: Mode,
 ) -> (BuiltInput, (lute_syntax::ast::Document, Vec<Diagnostic>)) {
+    cache.count_assembly();
     let mut project_diags = Vec::new();
     let root = project;
     let loaded = root.map(|dir| cache.project(dir));
@@ -193,15 +253,16 @@ pub fn assemble_input_with_mode(
         }
         None => None,
     };
-    let defaults = project.map(|p| p.defaults.clone()).unwrap_or_default();
+    let no_defaults = MetaDefaults::default();
+    let defaults = project.map_or(&no_defaults, |p| &p.defaults);
     let mut parsed = lute_syntax::parse(&text);
-    lute_check::meta::apply_quest_tier_default(&mut parsed.0, &defaults);
+    lute_check::meta::apply_quest_tier_default(&mut parsed.0, defaults);
     let doc = &parsed.0;
     let (meta0, _) = lute_check::meta::parse_meta_kind_with_defaults(
         &doc.meta,
         &CapabilitySnapshot::default(),
         lute_check::meta::MetaKind::Scene,
-        &defaults,
+        defaults,
     );
     let meta_span = doc.meta.span;
     let resolved = cache.base(
@@ -224,11 +285,7 @@ pub fn assemble_input_with_mode(
         resolve_error |= d.code.starts_with("E-");
         resolve_blocks |= d.stops_checking();
     }
-    let identity = project
-        .as_ref()
-        .map(|p| p.identity.clone())
-        .unwrap_or_default();
-    let dir = file.parent().unwrap_or_else(|| Path::new("."));
+    let dir = document_dir(file);
     let (vocab, import_diags) =
         cache
             .imports
@@ -251,16 +308,15 @@ pub fn assemble_input_with_mode(
         project_diags,
         resolve_diags: rdiags,
         meta: meta0,
-        defaults,
-        identity,
-        identity_rename_decls: project
-            .map(|p| p.identity_renames.clone())
-            .unwrap_or_default(),
-        identity_rename_diags: project
-            .map(|p| p.identity_rename_diags.clone())
-            .unwrap_or_default(),
+        manifest: SharedManifest(loaded),
     };
     (built, parsed)
+}
+
+/// The directory a document's `uses:`, `extends:` and `components:` resolve
+/// against: its own.
+pub(crate) fn document_dir(file: &Path) -> &Path {
+    file.parent().unwrap_or_else(|| Path::new("."))
 }
 
 #[cfg(test)]

@@ -74,7 +74,7 @@ Every custom entry has the same shape as a plugin rule:
 | `when` | yes, except on `pair` | A CEL assertion over the target row and `options`; it fires when `true`. Refused on `pair`. |
 | `open`, `close` | on `pair` only, both required | CEL predicates over the `node` row: where a pair begins and where it ends ([Pair rules](#pair-rules)). |
 | `inside` | no; `pair` only | A CEL predicate every row between an open and its close must satisfy. |
-| `scope` | no; `pair` only | `body` (the default) or `section`. |
+| `scope` | no; `pair` only | `body` (the default), `section` or `document`. |
 | `level` | no | `off`, `hint`, `info`, `warn`, or `error`. |
 | `message` | yes | Finding text. `{path.to.field}` interpolates a metric or option path. `{expr:%}` renders shares as percentages. |
 | `options` | no | Defaults exposed to the predicates and the message. |
@@ -259,6 +259,19 @@ balances:
   `<branch>` and a close inside one of its choices pair up, and so do an open
   in one `<choice>` and a close in its sibling; a close in each of two sibling
   choices leaves the second without an open pair.
+- `document`: every row of the whole document, every section and top-level
+  declaration, in document order: the `section` pass without the reset at
+  each section. A pair may open in one section and close in a later one, as
+  a skippable stretch that begins in one shot and ends in the next:
+
+  ```lute
+  ## Arrival {#arrival}
+  ::group{mode="begin"}
+  @mira: The walk takes a while.
+
+  ## Gate {#gate}
+  ::group{mode="end"}
+  ```
 
 Each pass holds one open pair at a time. At each row, while a pair is open, a
 row for which `close` holds closes it; otherwise a row for which `open` holds is
@@ -266,15 +279,16 @@ a nested open (the outer pair stays open), and otherwise, with `inside`, a row
 for which `inside` is false is an inside fault. With no pair open, `open` opens
 one and `close` is a close with no open pair. A row that satisfies both
 predicates is therefore a close while a pair is open and an open otherwise. An
-open still unclosed when its body or section ends is reported at the open.
+open still unclosed when its body, section or document ends is reported at
+the open.
 
 A finding carries the rule's code and level, is anchored at the offending row,
 and appends one fixed phrase to the rendered message:
 
 | fault | phrase |
 | --- | --- |
-| unclosed open | `— opened here, with no close in this body` (`section` scope: `in this section`) |
-| close with no open pair | `— a close with no open pair in this body` (`section` scope: `in this section`) |
+| unclosed open | `— opened here, with no close in this body` (`section` scope: `in this section`; `document` scope: `in this document`) |
+| close with no open pair | `— a close with no open pair in this body` (`section` scope: `in this section`; `document` scope: `in this document`) |
 | nested open | `— opened again while the pair from line N is still open` |
 | inside fault | `— not allowed inside the pair opened at line N` |
 

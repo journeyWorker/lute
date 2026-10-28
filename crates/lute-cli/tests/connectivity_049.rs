@@ -105,9 +105,10 @@ fn a_two_quest_start_cycle_is_an_error_with_both_edges_drawn() {
     assert_eq!(code, 1, "{out}");
     assert!(
         out.contains(
-            "./quests/q.lute:6:46: error [E-QUEST-START-CYCLE] quest start cycle: quest(cycA) -> \
-             quest(cycB) -> quest(cycA) — each `start` waits for the next and no source outside \
-             the cycle starts any of them"
+            "./quests/q.lute:6:46: error [E-QUEST-START-CYCLE] quest start cycle: quest(cycA) \
+             -[start]-> quest(cycB) -[start]-> quest(cycA) — each waits for the next (a `start` \
+             for its condition, an accept for the `::accept` or reward that grants it) and no \
+             source outside the cycle starts any of them"
         ),
         "{out}"
     );
@@ -131,8 +132,8 @@ fn a_two_quest_start_cycle_is_an_error_with_both_edges_drawn() {
     assert!(!out.contains("layer 0: quest(cycB)"), "{out}");
 
     let reason = "Unknown — this quest's `start` waits on a start cycle (E-QUEST-START-CYCLE): \
-                  quest(cycA) -> quest(cycB) -> quest(cycA); it can never start under your \
-                  declared routes. [unknown]";
+                  quest(cycA) -[start]-> quest(cycB) -[start]-> quest(cycA); it can never start \
+                  under your declared routes. [unknown]";
     let (_, out) = run(
         &dir,
         &[
@@ -470,7 +471,7 @@ fn a_cycle_through_a_subquest_anchor_is_a_start_cycle() {
     let lines = start_cycle_lines(&out);
     assert_eq!(lines.len(), 1, "{out}");
     assert!(
-        lines[0].contains("quest start cycle: quest(a) -> quest(b) -> quest(a)"),
+        lines[0].contains("quest start cycle: quest(a) -[start]-> quest(b) -[subquest]-> quest(a)"),
         "{out}"
     );
 }
@@ -497,13 +498,16 @@ fn one_diagnostic_per_strongly_connected_set() {
     let (_, out) = run(&dir, &["check", "--project", "."]);
     let lines = start_cycle_lines(&out);
     assert_eq!(lines.len(), 2, "{out}");
+    // Each quest waits on the one its `start` reads (0.53.0 §7.3: the
+    // waiting order, with the edge kinds).
     assert!(
         lines[0].contains(":6:")
-            && lines[0].contains("quest(a) -> quest(b) -> quest(c) -> quest(a)"),
+            && lines[0]
+                .contains("quest(a) -[start]-> quest(c) -[start]-> quest(b) -[start]-> quest(a)"),
         "{out}"
     );
     assert!(
-        lines[1].contains("quest(x) -> quest(y) -> quest(x)"),
+        lines[1].contains("quest(x) -[start]-> quest(y) -[start]-> quest(x)"),
         "{out}"
     );
 }
@@ -598,22 +602,32 @@ fn a_subquest_parent_is_no_way_into_a_cycle() {
     let lines = start_cycle_lines(&out);
     assert_eq!(lines.len(), 1, "{out}");
     assert!(
-        lines[0].contains("quest(a) -> quest(b) -> quest(a)"),
+        lines[0].contains("quest(a) -[start]-> quest(b) -[start]-> quest(a)"),
         "{out}"
     );
 }
 
 #[test]
-fn an_accept_anchor_never_makes_a_start_cycle() {
-    // `x` is accepted from `y`'s body and `y` starts once `x` is active:
-    // the engine may accept `x` anyway (dsl 0.49.0 §14).
+fn an_in_script_accept_deadlock_is_a_start_cycle() {
+    // `x` is accepted only from `y`'s body and `y` starts once `x` is
+    // active. 0.53.0 §7.3 (dsl 0.25.0 §5: `accept="external"` is the only
+    // non-content acceptance): neither can ever start; the error is at
+    // `x`'s `id` (it has no `start`).
     let dir = project_body(
         "connectivity-049-accept",
         "<quest id=\"x\" tier=\"run\" title=\"X\">\n  <objective id=\"o\" title=\"Do it\" done=\"run.flag\"/>\n</quest>\n\n<quest id=\"y\" tier=\"run\" title=\"Y\" start=\"quest.x.state == 'active'\">\n  <objective id=\"o\" title=\"Do it\" done=\"run.flag\">\n    ::accept{quest=\"x\"}\n  </objective>\n</quest>\n",
         &[],
     );
     let (_, out) = run(&dir, &["check", "--project", "."]);
-    assert!(start_cycle_lines(&out).is_empty(), "{out}");
+    let lines = start_cycle_lines(&out);
+    assert_eq!(lines.len(), 1, "{out}");
+    assert!(
+        lines[0].starts_with(
+            "./quests/q.lute:6:12: error [E-QUEST-START-CYCLE] quest start cycle: quest(x) \
+             -[accept]-> quest(y) -[start]-> quest(x)"
+        ),
+        "{out}"
+    );
 }
 
 #[test]
@@ -636,7 +650,7 @@ fn a_lifecycle_unreachable_scene_is_no_way_in() {
     let lines = start_cycle_lines(&out);
     assert_eq!(lines.len(), 1, "{out}");
     assert!(
-        lines[0].contains("quest(cycA) -> quest(cycB) -> quest(cycA)"),
+        lines[0].contains("quest(cycA) -[start]-> quest(cycB) -[start]-> quest(cycA)"),
         "{out}"
     );
     let (_, graph) = run(&dir, &["scenario", "--project", "."]);
@@ -670,7 +684,7 @@ fn a_lifecycle_unreachable_quest_is_no_way_in() {
     let lines = start_cycle_lines(&out);
     assert_eq!(lines.len(), 1, "{out}");
     assert!(
-        lines[0].contains("quest(a) -> quest(b) -> quest(a)"),
+        lines[0].contains("quest(a) -[start]-> quest(b) -[start]-> quest(a)"),
         "{out}"
     );
     let (_, graph) = run(&dir, &["scenario", "--project", "."]);

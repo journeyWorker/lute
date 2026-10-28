@@ -23,7 +23,7 @@ use lute_load::normalize_span_from_text;
 /// `completed()` that scene becomes unreachable -> its own `::assert`
 /// producer drops -> a relation elsewhere goes non-producible -> ANOTHER
 /// quest's required objective dies -> repeat).
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct ConnFixpoint {
     pub reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
     pub reach_diags: Vec<(PathBuf, Diagnostic)>,
@@ -93,6 +93,7 @@ pub fn compute_conn_fixpoint(
     quest_ids: &BTreeSet<String>,
     ambiguous_quests: &BTreeSet<String>,
 ) -> ConnFixpoint {
+    crate::stats::count_fixpoint();
     let lifecycle_unreachable_quests =
         lute_check::connectivity::unreachable_quest_ids(group, file_results);
     let mut root_vocab = lute_check::RootVocab::default();
@@ -230,7 +231,7 @@ pub fn compute_conn_fixpoint(
     reason = "the four results are separate outputs the callers destructure by position"
 )]
 pub fn reconcile_collected(
-    mut file_results: Vec<(PathBuf, lute_check::CheckResult)>,
+    file_results: Vec<(PathBuf, lute_check::CheckResult)>,
     by_root: &ByRoot,
     wip: bool,
 ) -> (
@@ -239,6 +240,28 @@ pub fn reconcile_collected(
     BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>>,
     BTreeMap<PathBuf, lute_check::FactEnv>,
 ) {
+    reconcile_collected_with(file_results, by_root, wip, BTreeMap::new())
+}
+
+/// [`reconcile_collected`] with each root's reach fixpoint already computed
+/// (by the model's scenario assembly, on the same inputs): a root found in
+/// `fixpoints` is not computed again (spec 0.53.0 §3.10).
+#[expect(
+    clippy::type_complexity,
+    reason = "the four results are separate outputs the callers destructure by position"
+)]
+pub(crate) fn reconcile_collected_with(
+    mut file_results: Vec<(PathBuf, lute_check::CheckResult)>,
+    by_root: &ByRoot,
+    wip: bool,
+    mut fixpoints: BTreeMap<PathBuf, ConnFixpoint>,
+) -> (
+    Vec<(PathBuf, lute_check::CheckResult)>,
+    Vec<(PathBuf, Diagnostic)>,
+    BTreeMap<PathBuf, Vec<(lute_check::connectivity::NodeId, Span)>>,
+    BTreeMap<PathBuf, lute_check::FactEnv>,
+) {
+    crate::stats::count_reconciliation();
     let mut project_diags = Vec::new();
     // T11: every ENTRY-DEPENDENT, RUN/USER-TIER read at a NON-TAINTED scene
     // node that per-file `check()` already flagged `E-MAYBE-UNSET` gets
@@ -299,6 +322,7 @@ pub fn reconcile_collected(
         result_ix.entry(p.clone()).or_insert(i);
     }
     for (root, group_full) in by_root {
+        let precomputed = fixpoints.remove(root);
         let group: Vec<ProjectDoc<'_>> = group_full
             .iter()
             .map(|(p, d, f)| ProjectDoc::new(p.as_path(), d, &f.typed, &f.snapshot))
@@ -418,14 +442,16 @@ pub fn reconcile_collected(
                 // argument) -- `ambiguous_quests` is shared with the envelope wiring
                 // below.
                 let ambiguous_quests = lute_check::connectivity::ambiguous_quest_ids(&group);
-                let fp = compute_conn_fixpoint(
-                    &group,
-                    group_full,
-                    &file_results,
-                    &conn_graph,
-                    &quest_ids,
-                    &ambiguous_quests,
-                );
+                let fp = precomputed.unwrap_or_else(|| {
+                    compute_conn_fixpoint(
+                        &group,
+                        group_full,
+                        &file_results,
+                        &conn_graph,
+                        &quest_ids,
+                        &ambiguous_quests,
+                    )
+                });
                 // dsl 0.49.0 §6.1: start cycles, against the final verdicts.
                 cycle_diags.extend(lute_check::connectivity::resolve_start_blocks(
                     &mut conn_graph,
@@ -549,62 +575,6 @@ pub fn reconcile_collected(
             }
         }
         let fact_env = wip_env.as_ref().unwrap_or(&fp.fact_env);
-        // Only verdicts the facts newly make decidable are added; one the
-        // per-file `check()` already reported for the same slot is not
-        // repeated.
-        // Per document, independent: in parallel, appended in walk order.
-        // Beside it, dsl 0.21.0 §5 / 0.22.0 §13: `W-BEAT-SHADOWED` — a
-        // `select: first` beat an earlier-ordered, always-eligible,
-        // never-spent beat on the same occasion always beats (project order
-        // is the selection tiebreak) — and `W-BEAT-PRIORITY-TIE`, which (dsl
-        // 0.26.0 §8) reads the fact envelope's must sets and the root's
-        // assert sites; appended after the cast pass, where it always was.
-        let (guard_diags, beat_diags): (Vec<Vec<Diagnostic>>, _) = rayon::join(
-            || {
-                group_full
-                    .par_iter()
-                    .map(|(path, doc, folded)| {
-                        let reported = result_ix
-                            .get(path)
-                            .map_or(&[][..], |&i| file_results[i].1.diagnostics.as_slice());
-                        lute_check::check_fact_guards(path, doc, folded, fact_env, reported)
-                    })
-                    .collect()
-            },
-            || {
-                // T3-5: a beat the per-file check rejected is left out of the
-                // tie and shadow passes — its error is the one report. An
-                // error folded into an earlier one (`(+N more: …)`) rejects
-                // the beat it sits in just the same.
-                let errors: lute_check::beats::ReportedErrors = group_full
-                    .iter()
-                    .filter_map(|(path, _, _)| {
-                        let &i = result_ix.get(path)?;
-                        let spans: Vec<_> = file_results[i]
-                            .1
-                            .diagnostics
-                            .iter()
-                            .filter(|d| d.severity == Severity::Error)
-                            .flat_map(|d| std::iter::once(&d.span).chain(&d.covered))
-                            .map(|s| s.byte_start..s.byte_end)
-                            .collect();
-                        (!spans.is_empty()).then(|| (path.clone(), spans))
-                    })
-                    .collect();
-                lute_check::check_project_beats(
-                    &group,
-                    &beat_foldeds,
-                    &producers,
-                    Some(fact_env),
-                    &errors,
-                )
-            },
-        );
-        for ((path, _, _), diags) in group_full.iter().zip(guard_diags) {
-            for d in diags {
-                project_diags.push((path.clone(), d));
-            }
-        }
         // dsl 0.24.0 §4: `W-CAST-ABSENT` re-decided under the fact envelope,
         // the beat ladders and the root's assert sites — a line the Must set,
         // the beats a ladder must have spent first, or a fact only its own
@@ -652,8 +622,9 @@ pub fn reconcile_collected(
                 }
             }
         }
-        project_diags.extend(beat_diags);
-        fact_envs.insert(root.clone(), fp.fact_env);
+        // T10/T11 below: the envelope's error-grade reports, appended after
+        // the guard and beat passes (their fixed order).
+        let mut envelope_diags = Vec::new();
         // T10/T11: connectivity envelope (dsl §4.3). `PerDocEffects`
         // populated from T8 (per-scene `guaranteed`/`possible_writes`,
         // recomputed here from this root's own docs+resolved schema, keyed
@@ -779,7 +750,7 @@ pub fn reconcile_collected(
             &families,
         ) {
             if d.severity == Severity::Error {
-                project_diags.push((path, d));
+                envelope_diags.push((path, d));
             }
         }
         for (key, occurrences) in &key_set {
@@ -825,30 +796,100 @@ pub fn reconcile_collected(
             }
             dotted_heads.push(heads);
         }
+        // #240: the per-file results as this pass leaves them — the
+        // reconciled-away diagnostics dropped now, for the passes below —
+        // so a second reconciliation of them changes nothing.
+        for (path, _, _) in group_full {
+            if let Some(&i) = result_ix.get(path) {
+                let result = &mut file_results[i].1;
+                result.diagnostics.retain(|d| {
+                    !reconciled_away(
+                        d,
+                        path,
+                        &covered,
+                        &entry_covered,
+                        &reconciled_reads,
+                        dotted_root_of
+                            .get(path)
+                            .map(|&r| dotted_heads[r].as_slice()),
+                    )
+                });
+            }
+        }
+        // Only verdicts the facts newly make decidable are added; one the
+        // per-file `check()` already reported for the same slot is not
+        // repeated.
+        // Per document, independent: in parallel, appended in walk order.
+        // Beside it, dsl 0.21.0 §5 / 0.22.0 §13: `W-BEAT-SHADOWED` — a
+        // `select: first` beat an earlier-ordered, always-eligible,
+        // never-spent beat on the same occasion always beats (project order
+        // is the selection tiebreak) — and `W-BEAT-PRIORITY-TIE`, which (dsl
+        // 0.26.0 §8) reads the fact envelope's must sets and the root's
+        // assert sites. Both read the per-file results as reconciled above
+        // (#240): an `E-MAYBE-UNSET` the envelope settles no longer rejects
+        // its beat.
+        let (guard_diags, beat_diags): (Vec<Vec<Diagnostic>>, _) = rayon::join(
+            || {
+                group_full
+                    .par_iter()
+                    .map(|(path, doc, folded)| {
+                        let reported = result_ix
+                            .get(path)
+                            .map_or(&[][..], |&i| file_results[i].1.diagnostics.as_slice());
+                        lute_check::check_fact_guards(path, doc, folded, fact_env, reported)
+                    })
+                    .collect()
+            },
+            || {
+                // T3-5: a beat the per-file check rejected is left out of the
+                // tie and shadow passes — its error is the one report. An
+                // error folded into an earlier one (`(+N more: …)`) rejects
+                // the beat it sits in just the same.
+                let errors: lute_check::beats::ReportedErrors = group_full
+                    .iter()
+                    .filter_map(|(path, _, _)| {
+                        let &i = result_ix.get(path)?;
+                        let spans: Vec<_> = file_results[i]
+                            .1
+                            .diagnostics
+                            .iter()
+                            .filter(|d| d.severity == Severity::Error)
+                            .flat_map(|d| std::iter::once(&d.span).chain(&d.covered))
+                            .map(|s| s.byte_start..s.byte_end)
+                            .collect();
+                        (!spans.is_empty()).then(|| (path.clone(), spans))
+                    })
+                    .collect();
+                lute_check::check_project_beats(
+                    &group,
+                    &beat_foldeds,
+                    &producers,
+                    Some(fact_env),
+                    &errors,
+                )
+            },
+        );
+        for ((path, _, _), diags) in group_full.iter().zip(guard_diags) {
+            for d in diags {
+                project_diags.push((path.clone(), d));
+            }
+        }
+        project_diags.extend(beat_diags);
+        project_diags.extend(envelope_diags);
+        fact_envs.insert(root.clone(), fp.fact_env);
     }
     for (path, result) in &mut file_results {
         result.diagnostics.retain(|d| {
-            let quest_dup_covered = d.code == "E-QUEST-ID-DUP"
-                && covered.iter().any(|(p, s)| p == path && *s == d.span);
-            let entry_dup_covered = (d.code == lute_check::E_ENTRY_ID_DUP
-                || d.code == lute_check::E_ENTRY_SERIES_ORDER)
-                && entry_covered.iter().any(|(p, s)| p == path && *s == d.span);
-            let envelope_reconciled = d.code == "E-MAYBE-UNSET"
-                && reconciled_reads
-                    .iter()
-                    .any(|(p, s, m)| p == path && *s == d.span && *m == d.message);
-            // The path an `E-UNDECLARED` names first, read of a dotted id this
-            // root declares.
-            let dotted_read = d.code == "E-UNDECLARED"
-                && dotted_root_of.get(path).is_some_and(|&i| {
-                    d.message
-                        .strip_prefix('`')
-                        .and_then(|m| m.split_once('`'))
-                        .is_some_and(|(read, _)| {
-                            dotted_heads[i].iter().any(|h| read.starts_with(h.as_str()))
-                        })
-                });
-            !quest_dup_covered && !entry_dup_covered && !envelope_reconciled && !dotted_read
+            !reconciled_away(
+                d,
+                path,
+                &covered,
+                &entry_covered,
+                &reconciled_reads,
+                dotted_root_of
+                    .get(path)
+                    .map(|&r| dotted_heads[r].as_slice()),
+            )
         });
         result.ok = !result
             .diagnostics
@@ -877,6 +918,42 @@ pub fn reconcile_collected(
         d.span = normalize_span_from_text(text, d.span);
     }
     (file_results, project_diags, nodes_by_path, fact_envs)
+}
+
+/// Whether the project pass reconciles the per-file diagnostic `d` on
+/// `path` away: an `E-QUEST-ID-DUP` / `E-ENTRY-ID-DUP` /
+/// `E-ENTRY-SERIES-ORDER` the project pass re-reports (`covered`,
+/// `entry_covered`), an `E-MAYBE-UNSET` the connectivity envelope
+/// reclassified (`reconciled_reads`), or an `E-UNDECLARED` read of a dotted
+/// quest or entry id `path`'s root declares (`dotted`: the root's
+/// `quest.<id>.` / `entry.<id>.` heads).
+fn reconciled_away(
+    d: &Diagnostic,
+    path: &Path,
+    covered: &[(PathBuf, Span)],
+    entry_covered: &[(PathBuf, Span)],
+    reconciled_reads: &[(PathBuf, Span, String)],
+    dotted: Option<&[String]>,
+) -> bool {
+    let quest_dup_covered =
+        d.code == "E-QUEST-ID-DUP" && covered.iter().any(|(p, s)| p == path && *s == d.span);
+    let entry_dup_covered = (d.code == lute_check::E_ENTRY_ID_DUP
+        || d.code == lute_check::E_ENTRY_SERIES_ORDER)
+        && entry_covered.iter().any(|(p, s)| p == path && *s == d.span);
+    let envelope_reconciled = d.code == "E-MAYBE-UNSET"
+        && reconciled_reads
+            .iter()
+            .any(|(p, s, m)| p == path && *s == d.span && *m == d.message);
+    // The path an `E-UNDECLARED` names first, read of a dotted id this
+    // root declares.
+    let dotted_read = d.code == "E-UNDECLARED"
+        && dotted.is_some_and(|heads| {
+            d.message
+                .strip_prefix('`')
+                .and_then(|m| m.split_once('`'))
+                .is_some_and(|(read, _)| heads.iter().any(|h| read.starts_with(h.as_str())))
+        });
+    quest_dup_covered || entry_dup_covered || envelope_reconciled || dotted_read
 }
 
 /// Round-5 T3-4: a diagnostic a document carries only because it imports a

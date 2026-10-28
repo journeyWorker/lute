@@ -227,9 +227,18 @@ pub(crate) fn run_trace(opts: &TraceOptions<'_>) -> ExitCode {
     };
 
     let mut mocks = merge(file_mocks, flag_mocks);
-    // The project models this trace consults (gate, quest ids, producers),
-    // each built once.
-    let memo = lute_model::ModelMemo::default();
+    // The project model this trace consults (gate, quest ids, producers),
+    // built once per root: the lookups read the documents and the reconciled
+    // scenario, which the gate's `compile: false` model holds exactly as a
+    // compiled one does (they are assembled before compilation), so every
+    // request is served from the gate's model (spec 0.53.0 §3.10).
+    let memo = lute_model::ModelMemo::selecting(lute_model::ModelOptions {
+        providers: providers.map(Path::to_path_buf),
+        permission_profile: permission_profile.map(str::to_owned),
+        mode: lute_check::Mode::Ci,
+        compile: false,
+        wip: false,
+    });
     // dsl 0.26.0 §7 (T3-5): `--accepted-quest` / `accepts:` resolve against every
     // quest of the project, not only this document's.
     if !mocks.accepts.is_empty() {

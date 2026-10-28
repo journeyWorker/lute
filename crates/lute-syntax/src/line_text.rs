@@ -21,7 +21,10 @@
 //! pairs greedily, so the run's last `{` is written bare and every reader
 //! opens the marker one brace early. [`brace_before_marker`] finds such a
 //! marker; the inline parser reports it as `E-INTERP-BRACE` (0.52.0 §3.1). An
-//! even run is representable (each pair is written `\{{`).
+//! even run is representable (each pair is written `\{{`). A run the source
+//! itself lets open the marker (`{{{run.a}}`: the marker's interior is
+//! `{run.a`) is [`brace_opened`]; the checker reports it as `E-INTERP-BRACE`
+//! in every `{{…}}` grammar (0.53.0 §8).
 
 use crate::ast::{InlineNode, Interp};
 
@@ -109,12 +112,26 @@ pub fn interp_markers(text: &str) -> impl Iterator<Item = (usize, usize)> + '_ {
     })
 }
 
+/// A marker interior that opened on a literal brace run (0.53.0 §8): the
+/// `{{` of `{{{run.a}}` is the literal `{` and the marker's own first `{`,
+/// so its interior `source` is `{run.a`. Returns the run length n (every
+/// leading `{`) and the interior the author meant (`run.a`), or `None` when
+/// `source` does not begin with `{` or holds nothing after the run.
+pub fn brace_opened(source: &str) -> Option<(usize, &str)> {
+    let meant = source.trim_start_matches('{');
+    let n = source.len() - meant.len();
+    (n > 0 && !meant.trim().is_empty()).then_some((n, meant))
+}
+
 /// The first `{{…}}` marker of `nodes` whose preceding decoded literal text
-/// ends in an odd run of `{` (0.52.0 §3.1). The literal text is joined as
-/// [`crate::ast::inline_plain_text`] joins it — modifier delimiters dropped,
-/// so a run continues across a modifier boundary — and a marker ends the run.
-pub fn brace_before_marker(nodes: &[InlineNode]) -> Option<&Interp> {
-    fn walk<'a>(nodes: &'a [InlineNode], run: &mut usize) -> Option<&'a Interp> {
+/// ends in an odd run of `{` (0.52.0 §3.1), with the run's length. The
+/// literal text is joined as [`crate::ast::inline_plain_text`] joins it —
+/// modifier delimiters dropped, so a run continues across a modifier
+/// boundary — and a marker ends the run. A marker that opened on a literal
+/// brace itself ([`brace_opened`]) is the checker's to report, with its own
+/// run (0.53.0 §8), so it is not returned here: one diagnostic per marker.
+pub fn brace_before_marker(nodes: &[InlineNode]) -> Option<(&Interp, usize)> {
+    fn walk<'a>(nodes: &'a [InlineNode], run: &mut usize) -> Option<(&'a Interp, usize)> {
         for node in nodes {
             match node {
                 InlineNode::Text { text, .. } => {
@@ -126,14 +143,14 @@ pub fn brace_before_marker(nodes: &[InlineNode]) -> Option<&Interp> {
                     };
                 }
                 InlineNode::Interpolation(i) => {
-                    if *run % 2 == 1 {
-                        return Some(i);
+                    if *run % 2 == 1 && brace_opened(&i.source).is_none() {
+                        return Some((i, *run));
                     }
                     *run = 0;
                 }
                 InlineNode::Modifier(m) => {
-                    if let Some(i) = walk(&m.children, run) {
-                        return Some(i);
+                    if let Some(found) = walk(&m.children, run) {
+                        return Some(found);
                     }
                 }
             }
@@ -278,40 +295,64 @@ mod tests {
         assert_eq!(t.finish(), "글자 \\{{a}} 끝\\\\{{b}}");
     }
 
-    /// The marker source [`brace_before_marker`] finds in `text`, read by
-    /// the inline parser.
+    /// The run length and the marker source [`brace_before_marker`] finds
+    /// in `text`, read by the inline parser, as `n:{{source}}`.
     fn brace_marker(text: &str) -> Option<String> {
         let (nodes, _) = crate::parse_inline_text(text);
-        brace_before_marker(&nodes).map(|i| format!("{{{{{}}}}}", i.source))
+        brace_before_marker(&nodes).map(|(i, n)| format!("{n}:{{{{{}}}}}", i.source))
     }
 
     #[test]
     fn an_odd_brace_run_before_a_marker_is_found() {
-        // #139: `{` + the literal `{{` + the marker.
+        // #139: `{` + the literal `{{` + the marker: a run of three.
         assert_eq!(
             brace_marker("S }}{\\{{{{run.a}}} E").as_deref(),
-            Some("{{run.a}}")
+            Some("3:{{run.a}}")
         );
         // A plain `{` then an escaped pair.
-        assert_eq!(brace_marker("{\\{{{{run.a}}").as_deref(), Some("{{run.a}}"));
+        assert_eq!(
+            brace_marker("{\\{{{{run.a}}").as_deref(),
+            Some("3:{{run.a}}")
+        );
         // The run continues across a modifier boundary, out of a span (an
         // escaped brace in it) and over an empty span.
         assert_eq!(
             brace_marker("x{:pause{s=0.5}{{run.a}}").as_deref(),
-            Some("{{run.a}}")
+            Some("1:{{run.a}}")
         );
         assert_eq!(
             brace_marker(":em[x\\{]:pause{s=0.5}{{run.a}}").as_deref(),
-            Some("{{run.a}}")
+            Some("1:{{run.a}}")
         );
         assert_eq!(
             brace_marker("{:em[]:pause{s=0.5}{{run.a}}").as_deref(),
-            Some("{{run.a}}")
+            Some("1:{{run.a}}")
         );
         // The first such marker, after a clean one.
         assert_eq!(
             brace_marker("{{run.a}} and {\\{{{{run.b}}").as_deref(),
-            Some("{{run.b}}")
+            Some("3:{{run.b}}")
+        );
+    }
+
+    #[test]
+    fn a_marker_opened_on_a_literal_brace_is_the_checkers() {
+        // 0.53.0 §8: the run inside the marker is every leading `{`.
+        assert_eq!(brace_opened("{run.a"), Some((1, "run.a")));
+        assert_eq!(brace_opened("{{run.a:ordinal"), Some((2, "run.a:ordinal")));
+        assert_eq!(brace_opened("{ run.a "), Some((1, " run.a ")));
+        assert_eq!(brace_opened("run.a"), None);
+        assert_eq!(brace_opened(" {run.a"), None);
+        // Nothing after the run: no marker was meant.
+        assert_eq!(brace_opened("{"), None);
+        assert_eq!(brace_opened("{{ "), None);
+        // The parser's finder leaves such a marker alone, even after an odd
+        // run of literal braces, and finds a later one.
+        assert_eq!(brace_marker("{{{run.a}}"), None);
+        assert_eq!(brace_marker("{\\{{{{{run.a}}"), None);
+        assert_eq!(
+            brace_marker("{\\{{{{{run.a}} x{:pause{s=0.5}{{run.b}}").as_deref(),
+            Some("1:{{run.b}}")
         );
     }
 

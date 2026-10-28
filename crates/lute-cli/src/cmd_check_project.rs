@@ -28,6 +28,7 @@ use lute_model::relocate_imported_diags;
 /// on an I/O failure walking `dir` or reading a file.
 ///
 /// [`collect_project_docs`]: crate::project::collect_project_docs
+/// [`reconcile_collected`]: lute_model::reconcile_collected
 pub(crate) fn run_check_project(
     dir: &Path,
     json: bool,

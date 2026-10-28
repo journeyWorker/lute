@@ -229,17 +229,23 @@ impl ProjectModel {
             .collect();
         let mut by_root = ByRoot::new();
         by_root.insert(root.clone(), group);
-        let scenarios = by_root
-            .iter()
-            .map(|(root, group)| {
-                (
-                    root.clone(),
-                    crate::scenario::assemble_root_scenario(group, &initial_checks),
-                )
-            })
-            .collect();
+        // One reach fixpoint per root: the scenario assembly computes it and
+        // the reconciliation reads it (spec 0.53.0 §3.10).
+        let mut scenarios = BTreeMap::new();
+        let mut fixpoints = BTreeMap::new();
+        for (root, group) in &by_root {
+            let (scenario, fixpoint) =
+                crate::scenario::assemble_root_scenario_with_fixpoint(group, &initial_checks);
+            scenarios.insert(root.clone(), scenario);
+            fixpoints.insert(root.clone(), fixpoint);
+        }
         let (mut checks, mut project_diagnostics, nodes_by_path, fact_envs) =
-            crate::reconcile::reconcile_collected(initial_checks, &by_root, opts.wip);
+            crate::reconcile::reconcile_collected_with(
+                initial_checks,
+                &by_root,
+                opts.wip,
+                fixpoints,
+            );
         crate::reconcile::rollup_component_body_diags(&mut checks);
         if let Some(config) = manifest.as_ref() {
             let manifest_path = root.join("lute.project.yaml");

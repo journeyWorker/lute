@@ -132,22 +132,39 @@ pub(crate) use cmd_scenario::{
     node_ref_to_id, primary_node_ambiguity_note, resolve_node_ref, NodeRef,
 };
 pub(crate) use lute_load::BuiltInput;
-pub(crate) use lute_model::{assemble_root_scenario, node_cycle_degraded, RootScenario};
-pub(crate) use lute_model::{reconcile_collected, ReconciledProject};
+pub(crate) use lute_model::ReconciledProject;
+pub(crate) use lute_model::{node_cycle_degraded, RootScenario};
 pub(crate) use output::{
     cwd_relative, render_diagnostics, severity_str, write_stdout, SeverityPolicy,
 };
 pub(crate) use project::{
-    collect_project_docs, find_lute_files, parse_project_docs, project_assert_relations,
-    project_quest_ids, ByRoot, DocGroup,
+    collect_project_docs, find_lute_files, parse_project_docs, ByRoot, DocGroup,
 };
 
 /// The `lute` command line: parse `std::env::args`, run the command, and
 /// record the invocation in the local telemetry file (dsl 0.43.0 §6).
+///
+/// With `LUTE_STATS` in the environment (tooling only, spec 0.53.0 §3.7) it
+/// prints one stderr line at exit: for `input-cache`, the work of every
+/// [`lute_load::InputCache`] the command used, a project model's included,
+/// `lute: stats: input-cache bases=<n> vocabs=<n> assemblies=<n>`; for
+/// `project`, the project-wide passes it ran,
+/// `lute: stats: project reconciliations=<n> scenarios=<n> fixpoints=<n>`. Any other
+/// value prints nothing.
 pub fn run() -> ExitCode {
     let started = std::time::Instant::now();
+    let stats = std::env::var_os("LUTE_STATS");
     let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
     let code = dispatch(&args);
+    match stats.as_ref().and_then(|value| value.to_str()) {
+        Some("input-cache") => {
+            eprintln!("lute: stats: input-cache {}", lute_load::dropped_stats());
+        }
+        Some("project") => {
+            eprintln!("lute: stats: project {}", lute_model::project_work_stats());
+        }
+        _ => {}
+    }
     telemetry::record(&args, code, started.elapsed());
     code
 }

@@ -233,13 +233,41 @@ pub fn walk_seq(
 
 /// dsl 0.51.0 §3.4: the stage state at label `id` (`rest` follows it in its
 /// body), from the checker's label and loop-head function: the walk's own
-/// state joined with the jumps that reach the label, iterated at a loop head.
+/// state joined with the jumps that reach the label, iterated at a loop head
+/// over its region, which at the top level runs on into the later sections
+/// (`StageFlow::top_level`, dsl 0.53.0 §9.3). Inside an inlined component
+/// the region stays inside the component's expansion: its labels are its
+/// own scope, so a caller label of the same name after it is no back edge.
 fn bind_label(cx: &mut WalkCx<'_>, id: &str, rest: &[Node], state: &mut StageState) {
+    let rest = if cx.components.is_empty() {
+        rest
+    } else {
+        &rest[..expansion_len(rest)]
+    };
     let fall = cx.reached.then(|| std::mem::take(state));
     if let Some(bound) = cx.stage.label(id, rest, fall) {
         *state = bound;
         cx.reached = true;
     }
+}
+
+/// How much of `rest`, inside a component expansion, lies before the end
+/// sentinel closing that expansion (nested expansions skipped); all of it
+/// when the expansion does not end in this body (`rest` ends a nested body
+/// of it).
+fn expansion_len(rest: &[Node]) -> usize {
+    let mut depth = 0usize;
+    for (i, node) in rest.iter().enumerate() {
+        match node {
+            Node::Directive(d) if d.tag == COMPONENT_BEGIN => depth += 1,
+            Node::Directive(d) if d.tag == COMPONENT_END => match depth.checked_sub(1) {
+                Some(outer) => depth = outer,
+                None => return i,
+            },
+            _ => {}
+        }
+    }
+    rest.len()
 }
 
 /// dsl 0.51.0 §3.4: route `::jump` `d`'s state to its label; after an

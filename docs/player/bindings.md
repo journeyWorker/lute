@@ -6,7 +6,7 @@ fingerprint or runtime execution. Paths are relative to `assetsBase`, which
 defaults to `assets/` beside this file.
 
 ```yaml
-bindingsVersion: "0.52"
+bindingsVersion: "0.53"
 canvas: { width: 1920, height: 1080 }
 assetsBase: assets/
 assets: { theme: audio/theme.ogg }
@@ -94,7 +94,7 @@ flow:
 
 `bindingsVersion` follows the `luteVersion` rule. Its value is
 `"MAJOR.MINOR"`; the **toolchain line** is the `MAJOR.MINOR` of the toolchain
-version (`"0.52"` for Lute 0.52.x).
+version (`"0.53"` for Lute 0.53.x).
 
 - `lute check --project` reports `W-BINDINGS-VERSION-STALE` at the value when it
   differs from the toolchain line: older — update it to the toolchain line

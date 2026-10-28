@@ -34,7 +34,7 @@ const MANIFEST: &str =
 const SCENE: &str = "---\nkind: scene\nid: start\non: start\n---\n## Start\n\
     ::music{playback=\"start\" mood=\"calm\" volume=\"down\"}\n@narrator: Quiet, then up.\n\
     ::music{playback=\"change\" volume=\"up\"}\n";
-const BINDINGS: &str = "bindingsVersion: \"0.52\"\ncanvas: {width: 1920, height: 1080}\n\
+const BINDINGS: &str = "bindingsVersion: \"0.53\"\ncanvas: {width: 1920, height: 1080}\n\
     volumes:\n  silent: 0\n  down: 0.25   # was relative\n  normal: 0.5\n  \"up\": 0.75\n  full: 1\n";
 
 fn project(tag: &str, vocabulary: &str) -> lute_scratch::ScratchDir {
@@ -168,7 +168,7 @@ fn a_standalone_document_with_the_old_scale_is_migrated() {
         ::music{playback=\"start\" volume=\"up\"}\n";
     write(&dir, "s.lute", doc);
     let out = fix(&dir.join("s.lute"));
-    assert_eq!(out, "lute: applied 3 fix(es)\n");
+    assert_eq!(out, "lute: applied 3 fix(es): volume 3\n");
     assert_eq!(
         read(&dir, "s.lute"),
         doc.replace(

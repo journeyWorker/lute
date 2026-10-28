@@ -8,7 +8,7 @@ use super::{
     StderrLine, TestResult, TraceExit, TraceReport, UnresolvedEntry, QUEST_STATES,
     TEST_EXPECT_KEYS,
 };
-use lute_load::build_input;
+use lute_load::build_input_with;
 /// `lute test`'s flags (0.48.0 §3.14), resolved by the dispatcher.
 pub struct TestOptions<'a> {
     /// The project directory: the walk root when no operand is given, and
@@ -121,7 +121,17 @@ pub fn run_test(options: &TestOptions) -> ExitCode {
     let mut noted: BTreeSet<PathBuf> = BTreeSet::new();
     // Every model this run builds, once: the tests' analysis, the gates,
     // quest ids, producer sets and the plays' compile read the same project.
-    let memo = lute_model::ModelMemo::default();
+    // With plays the one build is the plays' compiled model, whose
+    // analysis-only results the tests read (spec 0.49.0 §9.6): one
+    // reconciliation per root (0.53.0 §3.10).
+    let memo = if !play_files
+        .iter()
+        .any(|p| matches!(scan_play(p), PlayScan::Expect { .. }))
+    {
+        lute_model::ModelMemo::default()
+    } else {
+        lute_model::ModelMemo::selecting(crate::play::model_options(build))
+    };
     let mut shared = match Shared::for_tests(&memo, &test_files, build) {
         Ok(shared) => shared,
         Err(code) => return code,
@@ -302,12 +312,12 @@ struct Shared {
     /// models for the entire run.
     models: BTreeMap<String, std::sync::Arc<ProjectModel>>,
     /// The project May producer set per project root (T1-14), for every
-    /// root a test mocking `facts:` resolves against — it costs a full
-    /// project collection.
+    /// root a test mocking `facts:` resolves against — read off the root's
+    /// model and its scenario (no second assembly).
     producers: BTreeMap<PathBuf, Option<BTreeSet<String>>>,
-    /// Every quest id of the project per root (dsl 0.26.0 §7, T3-5), for
-    /// every root a test with `accepts:` resolves against.
-    quests: BTreeMap<PathBuf, Option<BTreeSet<String>>>,
+    /// Every quest id of the project per model root (dsl 0.26.0 §7, T3-5),
+    /// for every test that names a quest its document does not declare.
+    quests: BTreeMap<PathBuf, BTreeSet<String>>,
     /// The compiled project per play project directory.
     plays: BTreeMap<PathBuf, crate::play::PlayProject>,
     /// The reconciled project analysis per project root a test resolves
@@ -315,13 +325,16 @@ struct Shared {
     /// document on its project's verdict, as `lute trace --project` and
     /// `lute play` do — one envelope (round-5 `test-project-envelope`).
     gates: BTreeMap<PathBuf, Option<crate::ReconciledProject>>,
+    /// The input layer every standalone test (a document under no manifest)
+    /// assembles through: one base and vocabulary per key for the run, not
+    /// per test (spec 0.53.0 §3.3).
+    standalone: lute_load::InputCache,
 }
 
 /// The root whose producer set judges `lute_path`'s mocked facts: the nearest
-/// `lute.project.yaml` — with whether it is a single root
-/// ([`crate::project_assert_relations`]).
-fn producer_root(lute_path: &Path) -> Option<(PathBuf, bool)> {
-    nearest_manifest_dir(lute_path).map(|root| (root, false))
+/// `lute.project.yaml` (nested subprojects keep their own roots).
+fn producer_root(lute_path: &Path) -> Option<PathBuf> {
+    nearest_manifest_dir(lute_path)
 }
 
 /// The project `file` belongs to: the nearest `lute.project.yaml` at or above
@@ -340,8 +353,7 @@ impl Shared {
     ) -> Result<Self, ExitCode> {
         let providers = build.providers;
         let mut model_roots: BTreeSet<PathBuf> = BTreeSet::new();
-        let mut producer_roots: BTreeSet<(PathBuf, bool)> = BTreeSet::new();
-        let mut quest_roots: BTreeSet<PathBuf> = BTreeSet::new();
+        let mut producer_roots: BTreeSet<PathBuf> = BTreeSet::new();
         let mut gate_roots: BTreeSet<PathBuf> = BTreeSet::new();
         for test_file in test_files {
             let Ok(text) = std::fs::read_to_string(test_file) else {
@@ -362,9 +374,6 @@ impl Shared {
             if !mocks.facts.is_empty() {
                 producer_roots.extend(producer_root(&lute_path));
             }
-            if !mocks.accepts.is_empty() {
-                quest_roots.extend(project_dir_of(&lute_path));
-            }
             gate_roots.extend(project_dir_of(&lute_path));
         }
         let opts = ModelOptions {
@@ -380,6 +389,7 @@ impl Shared {
             quests: BTreeMap::new(),
             plays: BTreeMap::new(),
             gates: BTreeMap::new(),
+            standalone: lute_load::InputCache::default(),
         };
         for root in model_roots {
             let model = memo.single_root(&root, &opts).map_err(|error| {
@@ -411,26 +421,17 @@ impl Shared {
                 eprintln!("lute test: project resolution failed; refusing to run the tests");
                 return Err(ExitCode::from(1));
             }
+            shared
+                .quests
+                .insert(root.clone(), crate::project::model_quest_ids(&model));
             shared.models.insert(canonical_key(&root), model);
         }
-        for (root, single_root) in producer_roots {
-            let set = crate::project::project_assert_relations_in(
-                memo,
-                &root,
-                single_root,
-                providers,
-                build.permission_profile,
-            );
+        for root in producer_roots {
+            let set = shared
+                .models
+                .get(&canonical_key(&root))
+                .and_then(|model| crate::project::model_assert_relations(model));
             shared.producers.insert(root, set);
-        }
-        for root in quest_roots {
-            let ids = crate::project::project_quest_ids_in(
-                memo,
-                &root,
-                providers,
-                build.permission_profile,
-            );
-            shared.quests.insert(root, ids);
         }
         for root in gate_roots {
             let rec = lute_model::reconciled_project_results_in(
@@ -478,29 +479,14 @@ impl Shared {
     /// ([`producer_root`]). `None` when there is no project to consult or it
     /// could not be collected — the trace then judges the document alone
     /// and its note says so.
-    fn for_document(
-        &self,
-        lute_path: &Path,
-        build: &crate::play::Build,
-    ) -> Option<BTreeSet<String>> {
-        let (root, single_root) = producer_root(lute_path)?;
-        match self.producers.get(&root) {
-            Some(set) => set.clone(),
-            None => crate::project_assert_relations(
-                &root,
-                single_root,
-                build.providers,
-                build.permission_profile,
-            ),
-        }
+    fn for_document(&self, lute_path: &Path) -> Option<BTreeSet<String>> {
+        let root = producer_root(lute_path)?;
+        self.producers.get(&root).cloned().flatten()
     }
 
     /// Every quest id of the project at `root`.
-    fn project_quests(&self, root: &Path, build: &crate::play::Build) -> Option<BTreeSet<String>> {
-        match self.quests.get(root) {
-            Some(ids) => ids.clone(),
-            None => crate::project_quest_ids(root, build.providers, build.permission_profile),
-        }
+    fn project_quests(&self, root: &Path) -> Option<BTreeSet<String>> {
+        self.quests.get(root).cloned()
     }
 
     /// `lute_path`'s gate verdict in the project at `root` (the spec §5
@@ -902,7 +888,13 @@ fn run_one_test(
             );
             return Err(ExitCode::from(1));
         }
-        let Some(built) = build_input(&lute_path, providers, None, build.permission_profile) else {
+        let Some(built) = build_input_with(
+            &shared.standalone,
+            &lute_path,
+            providers,
+            None,
+            build.permission_profile,
+        ) else {
             return Err(crate::envelope::fail_quietly(
                 crate::envelope::CliError::unreadable_document(&lute_path),
             ));
@@ -1175,7 +1167,7 @@ fn run_one_test(
     let project_asserts = if mocks.facts.is_empty() {
         None
     } else {
-        shared.for_document(&lute_path, build)
+        shared.for_document(&lute_path)
     };
     // dsl 0.26.0 §7 (T3-5), round-5 T3-24: an `accepts:`, a `quests:` seed or
     // an `expect.quests` naming a quest this document does not declare
@@ -1198,7 +1190,7 @@ fn run_one_test(
             .iter()
             .any(|id| !doc.quests.iter().any(|q| q.id == *id));
         if foreign {
-            mocks.project_quests = resolve_with.and_then(|root| shared.project_quests(root, build));
+            mocks.project_quests = resolve_with.and_then(|root| shared.project_quests(root));
         }
     }
     // What a quest another document declares starts the walk as (T3-24).

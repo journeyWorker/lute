@@ -141,6 +141,7 @@ fn rel_stage(
     typed: &crate::meta::TypedMeta,
     meta: &lute_syntax::ast::Meta,
     at: Span,
+    sink: &lute_manifest::deps::DependencySink,
 ) -> (
     std::collections::BTreeMap<String, Domain>,
     crate::rel_schema::RelVocab,
@@ -152,7 +153,8 @@ fn rel_stage(
     // (`typed.domains`), the same value `build_rel_vocab` gets, so the domain
     // map and `RelVocab` never disagree about a name (A3's `merge_domains`).
     let (mut domains, mut diags) = merge_domains(snapshot, imports, typed, at);
-    let (mut vocab, rel_diags) = crate::rel_schema::build_rel_vocab(imports, typed, &domains, meta);
+    let (mut vocab, rel_diags) =
+        crate::rel_schema::build_rel_vocab(imports, typed, &domains, meta, sink);
     vocab.effect_directives = crate::directive_facts::effect_directives(snapshot);
     vocab.effect_origins = plugin_origins.effect_facts.clone();
     // dsl 0.26.0 §2.3: a project kind's domain is the kind's final member
@@ -366,9 +368,12 @@ fn results_under(snapshot: &CapabilitySnapshot, value: &str) -> Vec<String> {
 /// frontmatter spanning [`crate::vocab::KEY_PLACEHOLDER`]; a diagnostic that
 /// carries it depends on the document, and the stage is then rerun per
 /// document.
+/// `sink` records the filesystem probes the stages make (a message naming
+/// an imported schema): the vocab memo keeps them with its entry.
 pub(crate) fn base_fold(
     base: &crate::vocab::ProjectBase,
     imports: &SchemaImports,
+    sink: &lute_manifest::deps::DependencySink,
 ) -> crate::vocab::BaseFold {
     use crate::schema_import::AT_PLACEHOLDER;
     use crate::vocab::KEY_PLACEHOLDER;
@@ -386,6 +391,7 @@ pub(crate) fn base_fold(
         &typed,
         &meta,
         AT_PLACEHOLDER,
+        sink,
     );
     let mut state = imports.state.clone();
     let mirrors = prev_run_mirrors(&state.decls);
@@ -677,6 +683,7 @@ fn fold_env_in(
                     &typed,
                     &doc.meta,
                     at,
+                    lute_manifest::deps::DependencySink::none(),
                 );
                 fold_diags.extend(diags);
             }
@@ -690,6 +697,7 @@ fn fold_env_in(
                 &typed,
                 &doc.meta,
                 at,
+                lute_manifest::deps::DependencySink::none(),
             );
             fold_diags.extend(diags);
             (Arc::new(domains), Arc::new(vocab))

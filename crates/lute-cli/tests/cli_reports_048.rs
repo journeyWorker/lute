@@ -278,12 +278,17 @@ fn fix_check_writes_nothing_and_reports() {
     assert_eq!(out.status.code(), Some(1), "{}", all(&out));
     let v = json(&out);
     assert_eq!(v["command"], "fix", "{v}");
-    assert_eq!(v["schemaVersion"], "0.48.0.fix", "{v}");
+    assert_eq!(v["schemaVersion"], "0.53.0.fix", "{v}");
     assert_eq!(v["ok"], false);
     assert_eq!(v["applied"], false);
     assert_eq!(v["files"][0]["path"], "s.lute");
     assert_eq!(v["files"][0]["changed"], true);
     assert_eq!(v["files"][0]["fixes"], 1);
+    assert_eq!(
+        v["files"][0]["rules"],
+        serde_json::json!([{ "rule": "lute-version", "fixes": 1 }])
+    );
+    assert_eq!(v["files"][0]["kept"], serde_json::json!([]));
     assert_eq!(read(&f), OLD_STAMP);
     // Applying, with the default path `.`.
     let out = lute_in(&dir, &["fix", "--json"]);

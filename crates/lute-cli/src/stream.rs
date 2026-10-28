@@ -58,16 +58,14 @@ pub fn run(
     let crate::BuiltInput {
         input,
         resolve_error,
-        identity,
-        identity_rename_decls,
-        identity_rename_diags,
+        manifest,
         ..
     } = built;
     if resolve_error {
         return ExitCode::FAILURE;
     }
 
-    let mut compiler = match ContinuationCompiler::new(input, identity) {
+    let mut compiler = match ContinuationCompiler::new(input, manifest.identity().clone()) {
         Ok(compiler) => compiler,
         Err(diagnostics) => {
             let stdout = io::stdout();
@@ -83,7 +81,8 @@ pub fn run(
             };
         }
     };
-    if !identity_rename_decls.is_empty() || !identity_rename_diags.is_empty() {
+    if !manifest.identity_rename_decls().is_empty() || !manifest.identity_rename_diags().is_empty()
+    {
         let Some(root) = project else {
             eprintln!("lute compile --stream: identity ledger requires a project root");
             return ExitCode::FAILURE;

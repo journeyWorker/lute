@@ -1,5 +1,5 @@
 use super::identity::scene_identity;
-use super::{ConnGraph, EdgeKind, NodeId, NodeInfo, PrereqState};
+use super::{ConnGraph, EdgeKind, HostGate, NodeId, NodeInfo, PrereqState};
 use crate::ProjectDoc;
 
 use crate::check::CheckResult;
@@ -140,9 +140,13 @@ pub(crate) fn too_complex_diag(message: String, span: Span) -> Diagnostic {
 ///     `Unreachable` iff BOTH `Unreachable`; else `Unknown`.
 ///
 /// - [`PrereqState::Anchored`]`(anchors)` ⇒ the `And` over the anchors of
-///   the `Or` over each anchor's sources (a quest source through the same
-///   ambiguous / `unreachable_quests` precedence), except that
-///   `Unreachable` reads `Unknown` (see [`PrereqState::Anchored`]).
+///   the `Or` over each anchor's routes — its sources (a quest source
+///   through the same ambiguous / `unreachable_quests` precedence) and, on
+///   the accept anchor of an `accept="external"` quest, the host route
+///   (dsl 0.53.0 §7.1: `Reachable` with [`HostGate::Always`], the formula's
+///   verdict with [`HostGate::Follows`], `Unknown` with
+///   [`HostGate::Unreadable`]) — except that `Unreachable` reads `Unknown`
+///   (see [`PrereqState::Anchored`]).
 ///
 /// A node whose formula's flattened atom count exceeds
 /// [`MAX_FORMULA_ATOMS`] earns [`E_CONN_FORMULA_TOO_COMPLEX`] instead of
@@ -159,41 +163,20 @@ pub fn check_reachability(
     ambiguous_quest_ids: &BTreeSet<String>,
     unreachable_quests: &BTreeSet<String>,
 ) -> (BTreeMap<NodeId, Reachability>, Vec<(PathBuf, Diagnostic)>) {
-    let mut reach: BTreeMap<NodeId, Reachability> = BTreeMap::new();
-    // dsl 0.49.0 §6.1: a back edge feeds a source evaluated after its
-    // dependent, so the pass repeats until nothing changes — the least fixed
-    // point, from "not yet known" (`Unknown`). Values only ever refine
-    // (`Unknown` to a verdict), so it ends; one pass suffices without back
-    // edges. 0.51.0 §4.5: so does a raise anchor whose cycle-closing edge
-    // was not drawn — its source is not ordered before it.
-    let repeat = !g.back_edges.is_empty() || has_undrawn_raise_source(g);
-    for _ in 0..=g.nodes.len() {
-        let mut changed = false;
-        for id in &g.topo_order {
-            let Some(info) = g.nodes.get(id) else {
-                continue;
-            };
-            let r = node_reach(
-                info,
-                g,
-                &reach,
-                quest_ids,
-                ambiguous_quest_ids,
-                unreachable_quests,
-            );
-            changed |= reach.insert(id.clone(), r) != Some(r);
-        }
-        if !changed || !repeat {
-            break;
-        }
-    }
+    let ctx = ReachCtx {
+        g,
+        quest_ids,
+        ambiguous_quest_ids,
+        unreachable_quests,
+    };
+    let reach = ctx.fixed_point(HostFollows::Read);
 
     let mut diags = Vec::new();
     for id in &g.topo_order {
         let Some(info) = g.nodes.get(id) else {
             continue;
         };
-        if let PrereqState::Valid(f) = &info.prereq {
+        if let Some(f) = evaluated_formula(info) {
             let count = atoms(f).len();
             if count > MAX_FORMULA_ATOMS {
                 diags.push((
@@ -222,71 +205,206 @@ pub fn check_reachability(
     (reach, diags)
 }
 
-/// Whether some [`EdgeKind::Raises`] anchor names a graph node whose edge to
-/// the anchored node [`crate::connectivity::assemble_graph`] did not draw
-/// (it would close a cycle): that source may be evaluated after the node it
-/// anchors. A self-raise is no route in, so it needs no second pass.
-/// (`[accept]` anchors keep 0.50's single pass.)
-fn has_undrawn_raise_source(g: &ConnGraph) -> bool {
-    g.nodes.values().any(|info| match &info.prereq {
-        PrereqState::Anchored(anchors) => anchors
-            .iter()
-            .filter(|a| a.kind == EdgeKind::Raises)
-            .flat_map(|a| &a.from)
-            .any(|from| {
-                from != &info.id
-                    && g.nodes.contains_key(from)
-                    && !g.edges.get(from).is_some_and(|t| t.contains(&info.id))
-            }),
-        _ => false,
-    })
-}
-
-/// One node's reachability given the verdicts in `reach` so far (a missing
-/// one reads `Unknown`); see [`check_reachability`].
-fn node_reach(
-    info: &NodeInfo,
+/// dsl 0.53.0 §7.1 (D9): every node whose `Reachable` verdict in `reach`
+/// (the [`check_reachability`] result for the same inputs) rests only on
+/// host routes with `follows` — host policy, which Lute does not enforce,
+/// so its evidence is `heuristic`. That is exactly the nodes the same
+/// fixed point does not prove `Reachable` when every such route reads
+/// `Unknown`: on every proof, some anchor is reached only through a host
+/// route with `follows` (the node's own, or one a node it needs carries).
+/// Empty, without a second pass, when no anchor has one.
+pub fn host_heuristic_nodes(
     g: &ConnGraph,
     reach: &BTreeMap<NodeId, Reachability>,
     quest_ids: &BTreeSet<String>,
     ambiguous_quest_ids: &BTreeSet<String>,
     unreachable_quests: &BTreeSet<String>,
-) -> Reachability {
-    match &info.prereq {
-        PrereqState::Absent => Reachability::Reachable,
-        PrereqState::Invalid => Reachability::Unknown,
-        PrereqState::Valid(f) if atoms(f).len() > MAX_FORMULA_ATOMS => Reachability::Unknown,
-        PrereqState::Valid(f) => eval_reach(
-            f,
-            g,
-            reach,
-            quest_ids,
-            ambiguous_quest_ids,
-            unreachable_quests,
-        ),
-        // Synthesized anchors never prove a quest dead: the engine may
-        // accept it outside any `::accept` (dsl 0.24.0 §2), and `after`
-        // stays the declared route (dsl 0.25.0 §4). Every anchor must
-        // hold; one source of each suffices.
-        PrereqState::Anchored(anchors) => {
-            let source = |n: &NodeId| match n {
-                NodeId::Quest(q) if ambiguous_quest_ids.contains(q) => Reachability::Unknown,
-                NodeId::Quest(q) if unreachable_quests.contains(q) => Reachability::Unreachable,
-                _ => reach.get(n).copied().unwrap_or(Reachability::Unknown),
-            };
-            let all = anchors.iter().fold(Reachability::Reachable, |all, a| {
-                let any = a
-                    .from
-                    .iter()
-                    .fold(Reachability::Unreachable, |any, n| or_reach(any, source(n)));
-                and_reach(all, any)
-            });
-            match all {
-                Reachability::Unreachable => Reachability::Unknown,
-                r => r,
+) -> BTreeSet<NodeId> {
+    let has_host_follows = g
+        .nodes
+        .values()
+        .any(|info| host_routes(info).any(|h| matches!(h, HostGate::Follows(_))));
+    if !has_host_follows {
+        return BTreeSet::new();
+    }
+    let strict = ReachCtx {
+        g,
+        quest_ids,
+        ambiguous_quest_ids,
+        unreachable_quests,
+    }
+    .fixed_point(HostFollows::Unknown);
+    reach
+        .iter()
+        .filter(|&(id, r)| {
+            *r == Reachability::Reachable && strict.get(id) != Some(&Reachability::Reachable)
+        })
+        .map(|(id, _)| id.clone())
+        .collect()
+}
+
+/// How one pass reads a host route with `follows` ([`host_heuristic_nodes`]).
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum HostFollows {
+    /// As the formula's verdict (the analysis).
+    Read,
+    /// As `Unknown` (what is proven without host policy).
+    Unknown,
+}
+
+/// The inputs one reachability fixed point reads.
+struct ReachCtx<'a> {
+    g: &'a ConnGraph,
+    quest_ids: &'a BTreeSet<String>,
+    ambiguous_quest_ids: &'a BTreeSet<String>,
+    unreachable_quests: &'a BTreeSet<String>,
+}
+
+impl ReachCtx<'_> {
+    /// The least fixed point over [`ConnGraph::topo_order`], from "not yet
+    /// known" (`Unknown`). dsl 0.49.0 §6.1: a back edge feeds a source
+    /// evaluated after its dependent, so the pass repeats until nothing
+    /// changes; so does an anchor source or host `follows` atom whose edge
+    /// does not order it first ([`has_undrawn_anchor_source`], 0.51.0 §4.5,
+    /// 0.53.0 §7.2). The update is monotone over a finite lattice (values
+    /// only refine from `Unknown`), so it ends; one pass suffices
+    /// otherwise.
+    fn fixed_point(&self, host: HostFollows) -> BTreeMap<NodeId, Reachability> {
+        let g = self.g;
+        let mut reach: BTreeMap<NodeId, Reachability> = BTreeMap::new();
+        let repeat = !g.back_edges.is_empty() || has_undrawn_anchor_source(g);
+        for _ in 0..=g.nodes.len() {
+            let mut changed = false;
+            for id in &g.topo_order {
+                let Some(info) = g.nodes.get(id) else {
+                    continue;
+                };
+                let r = self.node_reach(info, &reach, host);
+                changed |= reach.insert(id.clone(), r) != Some(r);
+            }
+            if !changed || !repeat {
+                break;
+            }
+        }
+        reach
+    }
+
+    /// One node's reachability given the verdicts in `reach` so far (a
+    /// missing one reads `Unknown`); see [`check_reachability`].
+    fn node_reach(
+        &self,
+        info: &NodeInfo,
+        reach: &BTreeMap<NodeId, Reachability>,
+        host: HostFollows,
+    ) -> Reachability {
+        let formula = |f: &PrereqFormula| {
+            if atoms(f).len() > MAX_FORMULA_ATOMS {
+                return Reachability::Unknown;
+            }
+            eval_reach(
+                f,
+                self.g,
+                reach,
+                self.quest_ids,
+                self.ambiguous_quest_ids,
+                self.unreachable_quests,
+            )
+        };
+        match &info.prereq {
+            PrereqState::Absent => Reachability::Reachable,
+            PrereqState::Invalid => Reachability::Unknown,
+            PrereqState::Valid(f) => formula(f),
+            // Synthesized anchors never prove a node dead: a declared raise
+            // is a host promise and a host grant host policy (dsl 0.24.0 §2,
+            // 0.53.0 §7.1). Every anchor must hold; one route of each
+            // suffices.
+            PrereqState::Anchored(anchors) => {
+                let source = |n: &NodeId| match n {
+                    NodeId::Quest(q) if self.ambiguous_quest_ids.contains(q) => {
+                        Reachability::Unknown
+                    }
+                    NodeId::Quest(q) if self.unreachable_quests.contains(q) => {
+                        Reachability::Unreachable
+                    }
+                    _ => reach.get(n).copied().unwrap_or(Reachability::Unknown),
+                };
+                let all = anchors.iter().fold(Reachability::Reachable, |all, a| {
+                    let sources = a
+                        .from
+                        .iter()
+                        .fold(Reachability::Unreachable, |any, n| or_reach(any, source(n)));
+                    let any = match &a.host {
+                        None => sources,
+                        Some(HostGate::Always) => Reachability::Reachable,
+                        Some(HostGate::Unreadable) => or_reach(sources, Reachability::Unknown),
+                        Some(HostGate::Follows(f)) => or_reach(
+                            sources,
+                            match host {
+                                HostFollows::Read => formula(f),
+                                HostFollows::Unknown => Reachability::Unknown,
+                            },
+                        ),
+                    };
+                    and_reach(all, any)
+                });
+                match all {
+                    Reachability::Unreachable => Reachability::Unknown,
+                    r => r,
+                }
             }
         }
     }
+}
+
+/// The formula reachability evaluates for `info`: its declared route, or
+/// the `follows` of its host route (dsl 0.53.0 §7.1).
+fn evaluated_formula(info: &NodeInfo) -> Option<&PrereqFormula> {
+    match &info.prereq {
+        PrereqState::Valid(f) => Some(f),
+        _ => host_routes(info).find_map(|h| match h {
+            HostGate::Follows(f) => Some(f),
+            HostGate::Always | HostGate::Unreadable => None,
+        }),
+    }
+}
+
+/// The host routes of `info`'s anchors (dsl 0.53.0 §7.1).
+fn host_routes(info: &NodeInfo) -> impl Iterator<Item = &HostGate> {
+    let anchors = match &info.prereq {
+        PrereqState::Anchored(anchors) => anchors.as_slice(),
+        PrereqState::Absent | PrereqState::Valid(_) | PrereqState::Invalid => &[],
+    };
+    anchors.iter().filter_map(|a| a.host.as_ref())
+}
+
+/// Whether some node may be evaluated before a route into it (dsl 0.53.0
+/// §7.2): a source of an [`EdgeKind::Accept`] or [`EdgeKind::Raises`]
+/// anchor, or a node an atom of a host `follows` names, whose edge to the
+/// anchored node [`crate::connectivity::assemble_graph`] did not draw (it
+/// would close a cycle) or drew as a back edge. A self-source is no route
+/// in.
+fn has_undrawn_anchor_source(g: &ConnGraph) -> bool {
+    let unordered = |from: &NodeId, to: &NodeId| {
+        from != to
+            && g.nodes.contains_key(from)
+            && !(g.edges.get(from).is_some_and(|t| t.contains(to)) && g.orders(from, to))
+    };
+    g.nodes.values().any(|info| {
+        let PrereqState::Anchored(anchors) = &info.prereq else {
+            return false;
+        };
+        anchors.iter().any(|a| {
+            let sources = matches!(a.kind, EdgeKind::Accept | EdgeKind::Raises)
+                && a.from.iter().any(|from| unordered(from, &info.id));
+            let host_atoms = match &a.host {
+                Some(HostGate::Follows(f)) => atoms(f)
+                    .iter()
+                    .any(|atom| unordered(&NodeId::of_atom(atom, &g.nodes), &info.id)),
+                Some(HostGate::Always | HostGate::Unreadable) | None => false,
+            };
+            sources || host_atoms
+        })
+    })
 }
 
 /// Recurse [`check_reachability`]'s tri-state lattice directly over `f`'s

@@ -28,6 +28,9 @@ lute lint  --project docs/examples/plugin-surfaces
 [구조화된 속성 값](#구조화된-값은-아직-지원하지-않습니다)입니다. 이들을 실행해 볼 수 있는 프로젝트는
 [`docs/examples/flow-and-text/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text)입니다.
 
+0.53부터는 [샷을 섹션으로](#샷을-섹션으로) 두는 방식(포팅이 원본 샷마다 섹션 하나를 유지해도 되고, 재시도 루프가 섹션에 걸칠 수 있습니다),
+[조건이 성립하면 호스트가 부여하는 퀘스트](#호스트가-부여하는-퀘스트), [오래된 프로젝트에서 `lute fix` 실행하기](#오래된-프로젝트에서-lute-fix-실행하기)도 다룹니다.
+
 ## 열은 자기 표면의 스탬프가 됩니다
 
 시트에는 행의 종류마다 다른 열이 있습니다. 대사 행에는 음성 에셋, 배경 행에는 에셋 이름, 선택지 행에는 메뉴 종류,
@@ -519,7 +522,7 @@ lints:
 
 균형 규칙은 반드시 닫혀야 하는 여는 요소에 관한 규칙입니다. `::group{mode="begin"}`과 `::group{mode="end"}`, 열고 닫는
 창이 그 예입니다. 이것은 `target: pair` lint(0.51부터)이며 `node` lint와 같은 자리에서 쓸 수 있습니다. `pair` 규칙은 같은
-`node` 행 위의 `open`과 `close` 술어, 선택적인 `inside` 술어, `scope`를 선언하며 `when`은 없습니다. `pair` 규칙에 `when`을
+`node` 행 위의 `open`과 `close` 술어, 선택적인 `inside` 술어, `scope`(`body`, `section`, 0.53부터는 `document`)를 선언하며 `when`은 없습니다. `pair` 규칙에 `when`을
 쓰거나 다른 target의 규칙에 `open`, `close`, `inside`, `scope`를 쓰면 플러그인 `lints:`에서는 `E-PLUGIN-PARSE`,
 `lute.lint.yaml`에서는 `E-LINT-CONFIG`입니다.
 
@@ -530,7 +533,7 @@ lints:
     open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
     close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
     inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'   # optional
-    scope: body                                                    # body (default) | section
+    scope: body                                                    # body (default) | section | document
     level: error
     message: "::group begin/end"
 ```
@@ -629,9 +632,10 @@ lints:
   `max="two"`는 `E-ATTR-TYPE`뿐입니다. 앞으로 가는 점프의 `max`도 아무 뜻이 없으므로 `E-JUMP-MAX`입니다. `max` 없이 뒤로
   가는 점프는 계속 `E-JUMP-BACKWARD`이며, 메시지는 이제 `max`와 선택지를 다시 보여 주는 `<hub>`를 알려 줍니다.
 - **`when=`과 `max`는 함께 쓸 수 있습니다.** `when`이 성립하고 횟수가 남아 있는 동안 점프합니다.
-- **루프는 한 본문 안에 머뭅니다.** 레이블은 점프와 같은 본문에 있거나, `<branch>`의 `<choice>` 본문과 `<match>` 갈래
-  본문만 거쳐 점프를 감싸는 본문에 있어야 합니다. 점프가 든 `<hub>` 옵션 밖의 레이블은
-  `E-JUMP-LOOP-SCOPE`입니다.
+- **루프는 한 본문 안에 머물며, 문서의 섹션들은 하나의 본문입니다.** 레이블은 점프와 같은 본문에 있거나, `<branch>`의
+  `<choice>` 본문과 `<match>` 갈래 본문만 거쳐 점프를 감싸는 본문에 있어야 합니다. 문서의 최상위 `##` 섹션들은 하나의
+  범위로 실행되므로 레이블이 앞선 섹션에 있어도 됩니다(0.53. [샷을 섹션으로](#샷을-섹션으로) 참고). 점프가 든 `<hub>`
+  옵션 밖의 레이블은 `E-JUMP-LOOP-SCOPE`입니다.
 - **루프는 머리에서만 진입합니다.** 바깥에서 출발해 머리 뒤, 루프 안의 레이블로 가는 앞으로 가는 점프는
   `E-JUMP-INTO-LOOP`입니다. 머리로 가는 앞으로 가는 점프와 루프 밖으로 나가는 점프는 괜찮습니다.
 - **루프는 중첩될 뿐 교차하지 않습니다.** 두 루프는 중첩되거나 서로소여야 하며, 아니면 나중 점프에서 `E-JUMP-LOOP-CROSS`입니다.
@@ -668,6 +672,86 @@ yes, no] }`가 세 번의 반복을 이끕니다). 루프 안의 `<hub>`는 방�
 
 "같은 구간을 한도 안에서 다시"에는 루프를 쓰고, 플레이어가 `exit` 선택지를 고를 때까지 메뉴를 다시 보여 줄 때는 `<hub>`를
 쓰세요.
+
+## 샷을 섹션으로
+
+샷 단위로 잘린 원본 세트는 샷마다 `##` 섹션 하나로 옮겨집니다. 포팅은 그 구분을 그대로 유지해도 됩니다. 임포터는
+`## Arrival {#shot-01}`, `## The lock {#shot-02}` … 를 내보내며, 루프를 한 섹션 안에 두려고 샷을 합칠 필요가 더는
+없습니다. 섹션은 표현과 식별을 위한 것(heading, 아티팩트 `sections` 표의 `{#id}`)이지 런타임 경계가 아닙니다. 장면의 섹션들은
+하나의 범위로 실행되며, `##` heading은 점프 대상도, 재개 지점도, 호스트 진입점도 아닙니다. 따라서 0.53부터 한도 있는
+`::jump`는 **앞선** 섹션의 레이블로 되돌아가 루프를 돌 수 있습니다. 루프의 영역은 head부터 그 점프까지, 사이의 섹션을
+가로지르는 모든 노드입니다. 나머지 루프 규칙은 그대로입니다(`E-JUMP-INTO-LOOP`, `E-JUMP-LOOP-CROSS`, 중첩,
+hub 옵션·`<return>`·`<on>`·`<objective>`·entry·beat 본문을 벗어나는 루프의 `E-JUMP-LOOP-SCOPE`). 세 샷 중 세 번째가
+플레이어를 최대 두 번 첫 샷으로 되돌려 보냅니다.
+
+```lute check
+---
+kind: scene
+id: demo.vault
+---
+## Arrival {#shot-01}
+
+::label{name="attempt"}
+@mira: The vault door is locked.
+
+## The lock {#shot-02}
+
+<branch id="lock">
+  <choice id="pick" text="Pick it">
+    @mira: It jams.
+  </choice>
+  <choice id="leave" text="Leave it">
+    ::end
+  </choice>
+</branch>
+
+## Again {#shot-03}
+
+::jump{to="attempt" max="2"}
+@mira: That's enough for today.
+```
+
+head가 아닌 곳으로 들어가는 앞으로 가는 점프는 여전히 `E-JUMP-INTO-LOOP`입니다. 그 점프가 `<choice>` 본문의 마지막 노드이고
+그 레이블을 가리키는 다른 점프가 없으면, 메시지가 고치는 방법을 덧붙입니다("`blockA` is reached only from option `a` of
+`<branch id="pick">`: move the block into that option's body"). 호스트가 라우팅하는 콘텐츠는 섹션 점프로 닿지 않습니다.
+호스트 주도 흐름이 모두 그렇듯 브리지 결과를 `<match>`가 읽습니다.
+[루프는 섹션에 걸칠 수 있습니다](/ko/language/directives/#루프는-섹션에-걸칠-수-있습니다)를 참고하세요.
+
+## 호스트가 부여하는 퀘스트
+
+"퀘스트 A를 끝내면 게시판이 퀘스트 B를 제안한다" 같은 시트 행은 **호스트**가 부여하는 퀘스트입니다. 게시판, 메뉴, 서버가
+그 부여를 소유합니다. `accept="external"`로 쓰고 조건은 `follows`에 둡니다.
+
+```lute check
+---
+kind: quest
+title: The board
+state:
+  run.dived: { type: bool, default: false }
+---
+
+<quest id="survey" title="Survey the reef" tier="run" start="true">
+  <objective id="look" title="Look at the reef" done="run.dived"/>
+</quest>
+
+<quest id="salvage" title="Salvage the wreck" tier="run" accept="external" follows="completed('survey')">
+  <objective id="dive" title="Dive the wreck" done="run.dived"/>
+</quest>
+```
+
+- **`follows`는 호스트가 적용합니다.** Lute는 조건을 호스트에 전달하고(`prereqEdges`) 분석은 이를 호스트 정책으로 읽습니다
+  (`lute scenario reach`는 `heuristic` 증거로 판정을 보고합니다). Lute는 이를 강제하지 않으며 0.53은 런타임 게이트를 추가하지
+  않습니다. 보상 종류의 `effects.accepts`나 `::accept`는 `follows`가 무엇이든 퀘스트를 활성화하며, 스크립트 안의 accept를
+  게이트하는 표기는 없습니다.
+- **`accept="external"`과 `start`를 함께 쓰면 거부됩니다**(`E-ATTR-TYPE`). `start` 조건은 퀘스트를 스스로 활성화하므로
+  호스트가 결정할 수 없기 때문입니다. 메시지가 호스트가 적용하는 조건의 표기로 `follows="…"`를 알려 줍니다.
+- **external이 아닌 퀘스트는 스크립트 안의 accept로만 닿으며**, `follows`로는 닿지 않습니다. 아무것도 accept하지 않는 퀘스트에
+  "해금 조건" 열을 `follows`로 옮기면 `W-QUEST-NEVER-ACCEPTED`가 나옵니다. 호스트가 부여한다면 `accept="external"`로
+  표시하세요.
+- **스크립트 안 accept의 순환**을 밖에서 들어오는 경로가 없으면 `E-QUEST-START-CYCLE`입니다. 순환의 퀘스트 하나를
+  `accept="external"`로 호스트가 부여하게 하세요.
+
+[수락 기반 퀘스트로 들어오는 경로](/ko/language/quests-and-scenes/#수락-기반-퀘스트로-들어오는-경로)를 참고하세요.
 
 ## 디렉티브나 보상이 raise하는 장면
 
@@ -794,6 +878,13 @@ lute compile scenes/hall.lute --project . --locale-bundle loc/ko.json
 바뀌었으면 `W-L10N-STALE`이며 줄과 같습니다. 런타임이 마커를 렌더링하고(호스트 토큰은 그대로 남습니다), 레퍼런스 플레이어의
 `PluginCall.localized`가 호스트 핸들러에 플레이어 로케일의 각 텍스트를 줍니다.
 
+번역은 원문의 마커를 그대로 보여 줘야 합니다. 원문의 `{{…}}` 마커 각각이 원문과 같은 횟수만큼, 순서와 무관하게 번역에
+있어야 합니다(마커 양 끝의 공백은 세지 않지만, 안쪽의 공백이나 형식 힌트는 마커의 일부입니다). 마커를 빠뜨리거나, 더하거나,
+리터럴 중괄호에서 열리는 마커를 쓴 번역은 `E-L10N-MARKERS`이며 `compile --locale-bundle`이 이를 거부합니다. 줄 번역에 `}}`
+없는 `{{`가 있으면 컴파일은 마크업 오류인 `E-L10N-MODIFIERS`(`E-INTERP-UNTERMINATED`를 감쌈)로 실패합니다. `lute loc import`는
+번역된 행만 보므로 파싱되지 않는 마커를, 그 닫히지 않은 `{{`까지 포함해 `E-L10N-MARKERS`로 거부합니다.
+[Quayside 번역하기](/ko/getting-started/build-a-town-game/#8-quayside-번역하기)를 참고하세요.
+
 ## 구조화된 값은 아직 지원하지 않습니다
 
 목록이나 레코드를 담는 열(태그 목록, 언어별로 키가 달린 음성 에셋 맵)은 디렉티브 속성에 맞지 않습니다. `list`, `map`,
@@ -812,6 +903,39 @@ lute compile scenes/hall.lute --project . --locale-bundle loc/ko.json
 
 거부 메시지도 같은 말을 합니다. 필드마다 속성을 하나씩 두거나, 플레이어에게 보이는 텍스트에는 `text` 속성을, 옵션 목록에는
 `<choice>` 요소를 쓰라는 것입니다. 스탬프는 `text`가 될 수 없으므로 스탬프에는 `text` 안내가 빠집니다.
+
+## 오래된 프로젝트에서 `lute fix` 실행하기
+
+포팅은 종종 오래된 릴리스에 맞춰 쓴 프로젝트에서 시작합니다. 0.37 이전의 임포터 출력, 올린 적 없는 `luteVersion` 같은 것입니다.
+먼저 `lute fix --check`를 실행해 diff를 검토한 다음 `lute fix`를 실행하세요. `lute fix`는 이전 모든 릴리스의 migration을
+**전부** 적용하며 버전 stamp 올리기만 하지 않으므로, diff가 stamp보다 클 수 있습니다. `## Shot N.` 접두사, 이름이 바뀐
+디렉티브 태그, 콘텐츠 줄의 `id=`가 그 예입니다. 플러그인 stamp는 유지됩니다. 플러그인이 stamp 속성으로 선언한 키는 0.37
+표기가 아니며, `lute fix`가 건드리지 않은 위치는 모두 출력됩니다. [`lute fix`가 실행하는 규칙](/ko/tooling/cli/#lute-fix가-실행하는-규칙)을
+참고하세요.
+
+```console
+$ lute fix --check .
+lute: ./lute.project.yaml: would apply 1 fix(es): lute-version 1
+lute fix: ./scenes/intro.lute:9:22: kept `action` on `::cg` — the active profile declares it as a stamp attribute; the 0.37 rename to `display` does not apply
+lute fix: ./scenes/intro.lute:10:25: kept `action` on `::music` — the active profile declares it as a stamp attribute; the 0.37 rename to `playback` does not apply
+lute fix: ./scenes/intro.lute:11:25: kept `action` on `::video` — the active profile declares it as a stamp attribute; the 0.37 rename to `display` does not apply
+lute: ./scenes/old.lute: would apply 4 fix(es): shot-heading 1, renamed-tag 1, line-id-label 2
+lute: would apply 5 fix(es) in 2 of 6 file(s)
+$ lute fix .
+lute: ./lute.project.yaml: applied 1 fix(es): lute-version 1
+…
+lute: ./scenes/old.lute: applied 4 fix(es): shot-heading 1, renamed-tag 1, line-id-label 2
+lute: applied 5 fix(es) in 2 of 6 file(s)
+$ lute check --project .
+ok: ./scenes/intro.lute (0 warning(s))
+ok: ./scenes/old.lute (0 warning(s))
+ok: . (2 file(s), 0 project-wide warning(s))
+```
+
+**0.52.0에서 옮겨 올 때:** `lute fix --check`를 실행하고, 검토한 뒤 `lute fix`를 실행하세요. `lute fix`는 이전 모든 릴리스의
+migration을 **전부** 적용하며 버전 stamp 올리기만 하지 않습니다. [`lute fix`가 실행하는 규칙](/ko/tooling/cli/#lute-fix가-실행하는-규칙)을
+참고하세요. 원본 샷마다 섹션 하나를 유지한 포팅은 0.53에서 바꿀 것이 없습니다. 섹션에 걸친 루프가 허용되고,
+`accept="external"` 퀘스트는 호스트가 적용하는 `follows`를 가질 수 있습니다.
 
 ## 도구가 잡아내는 것과 잡아내지 못하는 것
 
@@ -836,6 +960,10 @@ lute compile scenes/hall.lute --project . --locale-bundle loc/ko.json
 | 번역할 수 없는 플레이어용 디렉티브 텍스트 | `type: text`, `lute tag`, `lute loc` |
 | id가 같은 두 번역 단위 | `E-LINE-ID-DUP`. `code`의 `~`는 `E-LINE-CODE-RESERVED` |
 | 닫히지 않는 여는 요소 | `pair` lint |
+| 샷에 걸친 재시도 루프 | 섹션을 가로지르는 `::jump{max}`(0.53) |
+| 조건이 성립하면 호스트가 부여하는 퀘스트 | `accept="external" follows="…"`. 여기에 `start`를 쓰면 `E-ATTR-TYPE` |
+| 번역의 마커가 원문과 다름 | `E-L10N-MARKERS` |
+| 오래된 프로젝트의 낡은 표기 | `lute fix --check`, 이어서 `lute fix` |
 | 목록이나 레코드 열 | 거부됨. 스칼라로 나누세요 |
 
 Lute가 알지 **못하는** 것은 다음과 같습니다.

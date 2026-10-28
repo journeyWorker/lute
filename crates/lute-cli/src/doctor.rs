@@ -9,7 +9,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use lute_load::{build_input, find_lute_files, project_root_for};
+use lute_load::{build_input_with, find_lute_files, project_root_for, InputCache};
 use lute_manifest::provider::ProviderSet;
 use lute_manifest::snapshot::Domain;
 use lute_manifest::validate::{SLOT_REQUIRES_DEFAULT, SLOT_REQUIRES_EXITS};
@@ -92,7 +92,7 @@ fn find_manifest_dir(dir: &Path) -> Option<PathBuf> {
 /// occasion vocabulary with the beats answering each occasion, and the
 /// DEDUPLICATED project-resolution problems resolution surfaced.
 ///
-/// Deliberately no second resolution path: this reuses `lute_load::build_input` —
+/// Deliberately no second resolution path: this reuses `lute_load::build_input_with` —
 /// the SAME per-document resolution `lute check`/whole-project `check` perform (each
 /// file's own project root via `lute_load::project_root_for`, its activated
 /// capability snapshot per plugin §4/§11, then its `uses:`/`extends:` schema
@@ -100,7 +100,9 @@ fn find_manifest_dir(dir: &Path) -> Option<PathBuf> {
 /// checker consults for `Type::Domain` resolution. So a slot `doctor` calls
 /// declared is a slot the checker resolves, and a plugin it calls active is a
 /// plugin some document's snapshot carries, by construction rather than by two
-/// implementations agreeing.
+/// implementations agreeing. Every document assembles through the run's
+/// one `cache` (spec 0.53.0 §3.3): a base and vocabulary per key, not per
+/// document.
 /// `root` is the WALK ROOT handed to `lute_load::project_root_for`, i.e. the lower
 /// bound of each file's own ancestor search. It MUST be the directory `doctor`
 /// was asked about, for the reason spelled out at the call site.
@@ -129,7 +131,7 @@ struct ProjectScan {
     beats: BTreeMap<String, usize>,
 }
 
-fn scan_documents(root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
+fn scan_documents(cache: &InputCache, root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
     // `merge_domains` anchors its (discarded) diagnostics at this span; there
     // is no one document to blame for a project-wide report, so it gets the
     // same zeroed placeholder the CLI's other source-less call sites use.
@@ -143,7 +145,7 @@ fn scan_documents(root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
     let mut scan = ProjectScan::default();
     for file in lute_files {
         let project = project_root_for(file, root);
-        let Some(built) = build_input(file, None, Some(&project), None) else {
+        let Some(built) = build_input_with(cache, file, None, Some(&project), None) else {
             continue;
         };
         for m in &built.project_diags {
@@ -174,7 +176,7 @@ fn scan_documents(root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
             &doc.meta,
             built.input.snapshot(),
             lute_check::meta::MetaKind::Scene,
-            &built.defaults,
+            built.input.defaults(),
         );
         if let Some(beat) = &meta.beat {
             *scan.beats.entry(beat.on.clone()).or_default() += 1;
@@ -824,6 +826,9 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     };
 
     let mut checks = Vec::new();
+    // The run's one input cache: the manifest the provider check reads and
+    // every document the slot scan assembles (spec 0.53.0 §3.3, §3.4).
+    let cache = InputCache::default();
 
     // --- Versions (the three independent axes, docs/versioning.md) --------
     checks.push(Check::info(
@@ -894,19 +899,16 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     // The SAME directory `check` resolves provider ids against
     // (`lute_manifest::project::project_providers`): the manifest's
     // `catalogDir:`, default `catalog/`. Its absence says nothing about
-    // plugins — only that no provider id is pinned.
+    // plugins — only that no provider id is pinned. Read from the manifest
+    // whenever it loads, however the root's documents read (spec 0.53.0 §3.4).
     let catalog_dir = manifest_dir.as_deref().map(|root| {
-        let opts = lute_model::ModelOptions {
-            providers: None,
-            permission_profile: None,
-            mode: lute_check::Mode::Ci,
-            compile: false,
-            wip: false,
-        };
-        lute_model::ProjectModel::build_single_root(root, &opts)
+        cache
+            .project(root)
+            .as_ref()
+            .as_ref()
             .ok()
-            .and_then(|model| model.manifest().map(|config| config.catalog_dir.clone()))
-            .unwrap_or_else(|| root.join("catalog"))
+            .and_then(Option::as_ref)
+            .map_or_else(|| root.join("catalog"), |config| config.catalog_dir.clone())
     });
     match catalog_dir.filter(|d| d.is_dir()) {
         Some(catalog_dir) => {
@@ -958,7 +960,7 @@ fn collect_checks(dir: &Path) -> Option<Vec<Check>> {
     // `E-DOMAIN-UNKNOWN`. `manifest_dir` remains the right answer for the
     // "found `lute.project.yaml` at …" line above, which reports the ancestry
     // rather than predicting a verdict.
-    let scan = scan_documents(dir, &lute_files);
+    let scan = scan_documents(&cache, dir, &lute_files);
     let domains = &scan.domains;
 
     // --- Plugins and occasions (dsl 0.21.0 §2) ---------------------------

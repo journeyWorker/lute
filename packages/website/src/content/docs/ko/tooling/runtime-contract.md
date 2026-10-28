@@ -11,7 +11,7 @@ Datalog 고정점을 계산하지 않으며, 팩트 저장소를 유지하지 �
 [`docs/runtime/`](https://github.com/journeyWorker/lute/tree/main/docs/runtime)에 있습니다.
 `lute.engine.yaml` 매트릭스 형식은
 [`0.33.0.md §4`](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#4-engine-capability-matrix)에
-[`schemas/lute-ir-0.52.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.52.schema.json)
+[`schemas/lute-ir-0.53.schema.json`](https://github.com/journeyWorker/lute/blob/main/schemas/lute-ir-0.53.schema.json)
 (JSON Schema draft 2020-12)입니다.
 
 ## 런타임 이벤트 계약과 `lute-runtime`
@@ -436,14 +436,14 @@ Lute의 정적 분석도 한계를 정직하게 드러냅니다 — 도달 가�
 
 모든 호스트는 플레이백 세션을 열기 전에 다음 순서로 협상합니다.
 
-1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.52` 엔진은 `0.52.*` 아티팩트만 받아들이고 `0.51.*` 및 `0.53.*`는 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
+1. **정확한 MAJOR.MINOR IR 게이트.** 1.0 이전에는 모든 마이너 버전이 실행 IR 형태를 깨뜨릴 수 있으므로, 엔진은 정확한 `irVersion` major.minor 계열을 고정합니다. `0.53` 엔진은 `0.53.*` 아티팩트만 받아들이고 `0.52.*` 및 `0.54.*`는 거부합니다. 패치 처리는 엔진 정책입니다. 1.0부터는 릴리스된 메이저 버전의 정책을 적용합니다.
 2. **의미 캐퍼빌리티 게이트.** 변경할 수 없는 `lute.engine.yaml` 매트릭스를 로드하고 모든 아티팩트의 `requiredSemantics` ID를 `supportedIds`와 비교합니다. `engine`, `irVersion`, 고유한 `supportedIds`는 필수이며, `version`과 `description`은 설명용입니다. 전체 레지스트리는 [0.33.0 제안서 §2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.33.0.md#2-semantic-id-registry)에 있습니다.
 
 매트릭스 예시는 다음과 같습니다.
 
 ```yaml
 engine: chat-text-engine
-irVersion: "0.52.0"
+irVersion: "0.53.0"
 supportedIds:
   - lute.core/1
   - lute.quest.lifecycle/1
@@ -459,7 +459,7 @@ description: "Text-only chat client: no staging, timeline, or clock"
 ID가 누락되면 플레이백 전에 종료 코드 **2**와 함께
 `E-ENGINE-SEMANTICS`로 거부합니다. 명령, 조건, 에셋 또는 브리지는 실행되지 않습니다.
 형식이 잘못된 매트릭스에는 `E-ENGINE-MATRIX`를 사용합니다. 매트릭스의 정확한
-major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.52.0` 매트릭스에 대한
+major.minor 계열을 벗어난 아티팩트(예를 들어 위 `0.53.0` 매트릭스에 대한
 `0.41.*` 아티팩트)에는 `E-ENGINE-IR-VERSION`을 사용합니다. 알 수 없는 아티팩트 또는
 레지스트리 ID에는 `E-SEMANTICS-UNKNOWN`을 사용합니다. `lute run`은 제거된 0.36 필드를
 여전히 담은 아티팩트를 `E-IR-REMOVED-FIELD`로 거부합니다.
@@ -548,7 +548,7 @@ match 주제가 유효한 값이 없는 단순 상태 경로일 때 `"unset"`이
 
 - **`ObjectiveEntry.visibleWhen`** (이전 `when`): 가시성만 제어합니다 — 성립하는 동안 목표를 표시하며 `done`을 제한하지 않습니다.
 - **`RewardEntry.outcome`** (이전 `on`): 퀘스트 수준 보상에서 새로운 `failed` 전환이 발생할 때만 지급되며, 값은 오직 `"failed"`입니다.
-- **퀘스트의 `prereqEdges` 행은 `follows`**(이전 `after`)를 담습니다: 퀘스트 그래프 메타데이터이며 퀘스트를 제한하지 않습니다(`start`가 제한합니다). 씬과 번들 비트 행은 `after`를 유지합니다.
+- **퀘스트의 `prereqEdges` 행은 `follows`**(이전 `after`)를 담습니다: 퀘스트 그래프 메타데이터이며 퀘스트를 제한하지 않습니다(`start`가 제한합니다). 스크립트 안의 accept도 제한하지 않으며, `accept="external"` 퀘스트에서는 호스트가 부여하는 조건입니다(호스트가 적용하고 Lute는 강제하지 않습니다). 씬과 번들 비트 행은 `after`를 유지합니다.
 
 새 동작과 선택적 필드는 다음과 같으며, 작성되지 않았으면 각각 생략됩니다.
 
@@ -660,6 +660,8 @@ JSON Schema에 대해 검증한다면 `lute-ir-0.10.schema.json`을 가리키세
 ## 위치
 
 모든 명령 레코드는 `position`을 가지며, 그 값은 `"{section}-{(index + 1) * 100}"`(예: `"001-0300"`)입니다. 앞부분은 1부터 세는 `##` 섹션 번호이고, 뒷부분은 해당 섹션 안에서 레코드의 순서입니다. 이 값은 **컴파일할 때마다 다시 생성**되며, 빌드에 한정된 실행 위치이지 식별자, 현지화 키 또는 세이브 키가 아닙니다. 안정적인 콘텐츠 결합에는 `lineId` / `voiceKey`를 사용하고, 섹션의 안정적인 식별자는 `sections`에 있는 선택적 `id`입니다.
+
+섹션은 표시와 식별을 위한 것이며 **런타임 경계가 아닙니다**. 런타임은 씬의 섹션들을 하나의 range로 실행하므로, 섹션 재개 지점도, 호스트가 지정할 수 있는 섹션 진입점도, 섹션 점프 대상도 없으며 한정된 루프는 섹션에 걸칠 수 있습니다. 호스트가 라우팅하는 콘텐츠는 섹션으로 들어가는 것이 아니라 스크립트가 `<match>`하는 브리지 결과입니다.
 
 두 부분 모두 문서에서 계산한 너비로 0을 채웁니다. 섹션은 최소 `3`, 인덱스는 최소 `4`이며, 문서에 더 큰 값이 필요하면 너비가 늘어납니다. 이 너비는 **아티팩트 전체에서 균일**합니다. 따라서 다음 보장을 신뢰할 수 있습니다.
 

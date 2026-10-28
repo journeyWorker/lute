@@ -161,7 +161,7 @@ fn fix_raises_a_single_document_stamp() {
     write(&dir, "old.lute", OLD_DOC);
     let (code, out) = run(&["fix"], &dir.join("old.lute"));
     assert_eq!(code, 0, "{out}");
-    assert_eq!(out, "lute: applied 1 fix(es)\n");
+    assert_eq!(out, "lute: applied 1 fix(es): lute-version 1\n");
     assert_eq!(
         read(&dir, "old.lute"),
         OLD_DOC.replace("'0.39.2'", &format!("'{CURRENT}'"))

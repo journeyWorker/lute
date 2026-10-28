@@ -5,6 +5,10 @@
 //! and the `capabilitySnapshot` of a manifest without the new keys. Every
 //! package is written to disk and goes through the real loader and
 //! assembler.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a test reads the fixtures it wrote; no cache is involved"
+)]
 
 use std::collections::BTreeMap;
 use std::fs;

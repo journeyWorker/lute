@@ -1,5 +1,6 @@
 //! dsl 0.51.0 §3.4/§3.8 cost acceptance for the loop-head fixed point, and
-//! dsl 0.52.0 §5.4 for the hub head, on the deterministic counters of
+//! dsl 0.52.0 §5.4 for the hub head and dsl 0.53.0 §9.3 for a region
+//! across sections, on the deterministic counters of
 //! `lute-bench flow-loops` (stable in CI; the wall times are recorded by
 //! running the command itself).
 
@@ -7,7 +8,7 @@ use std::process::Command;
 
 /// `(axis, R, D)` → the probe nodes of each walk, in `WalkKind::ALL` order
 /// (facts, assign, stage, stageCompile, presence).
-const WORK: [(&str, u64, u64, [u64; 5]); 12] = [
+const WORK: [(&str, u64, u64, [u64; 5]); 16] = [
     ("control", 100, 0, [0, 0, 0, 0, 0]),
     ("region", 100, 1, [198, 99, 198, 198, 0]),
     ("region", 200, 1, [398, 199, 398, 398, 0]),
@@ -20,6 +21,10 @@ const WORK: [(&str, u64, u64, [u64; 5]); 12] = [
     ("hub", 32, 1, [0, 0, 192, 192, 0]),
     ("hub", 8, 2, [0, 0, 196, 196, 0]),
     ("hub", 8, 3, [0, 0, 544, 544, 0]),
+    ("sections", 100, 1, [198, 99, 198, 198, 0]),
+    ("sections", 200, 1, [398, 199, 398, 398, 0]),
+    ("sections", 400, 1, [798, 399, 798, 798, 0]),
+    ("sections2", 100, 1, [198, 99, 198, 198, 0]),
 ];
 
 #[test]
@@ -30,7 +35,7 @@ fn loop_head_cost_is_linear_in_the_region_and_product_shaped_in_depth() {
         .unwrap();
     let report: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
     assert!(output.status.success(), "{report:#}");
-    assert_eq!(report["schemaVersion"], "0.52.0.flow-loops");
+    assert_eq!(report["schemaVersion"], "0.53.0.flow-loops");
     assert_eq!(report["pass"], true);
 
     let points = report["points"].as_array().unwrap();
@@ -80,7 +85,10 @@ fn loop_head_cost_is_linear_in_the_region_and_product_shaped_in_depth() {
     }
     let ratios = report["ratios"].as_array().unwrap();
     let axes: Vec<&str> = ratios.iter().map(|r| r["axis"].as_str().unwrap()).collect();
-    assert_eq!(axes, ["region", "region", "hub", "hub"]);
+    assert_eq!(
+        axes,
+        ["region", "region", "hub", "hub", "sections", "sections"]
+    );
     for ratio in ratios {
         let work = ratio["work"].as_f64().unwrap();
         // Each doubling of the region (of the hub's options) costs about 2×.

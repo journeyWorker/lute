@@ -126,7 +126,7 @@ error [E-META-UNKNOWN-KEY] unknown top-level meta key `after` (not a core key an
 - **서브퀘스트.** 모든 중첩 퀘스트는 부모에 매달립니다: `quest(relight) -> quest(oil) [subquest]`. 자식이 있는 부모는 더 이상 고정되지 않은 것으로 나열되지 않으며 자식도 마찬가지입니다.
 - **`start` 결합항.** `follows=`가 없는 퀘스트는 `visited('…')`, `entry.X.everRead`, 또는 `quest.Y.state == '…'`(어떤 상태든 `unset` 이외의 상태)를 읽는 `start`의 최상위 `&&` 결합항으로 고정됩니다. `start="entry.keeperLog.everRead && visited('arrival')"`은 `entry(keeperLog) -> quest(relight) [start]`와 `scene(arrival) -> quest(relight) [start]`를 그립니다. 엔트리는 `entry(<id>)` 노드로 그래프에 참여합니다. 이런 읽기의 `||`는 여러 소스를 가진 하나의 앵커입니다. 그러므로 `start` 기반 퀘스트에는 `start`를 `follows=`에 복사할 필요가 없습니다.
 
-`lute scenario --project <DIR> reach --node quest:<id>`는 퀘스트의 앵커를 나열합니다(`--json`에서는 `anchors`). 앵커는 퀘스트가 도달 불가능하다는 것을 증명하지 않으며, 순환을 닫을 앵커는 그리지 않습니다. 명시적인 `follows=`가 있으면 `start`와 `accept` 앵커 대신 그것이 선언한 간선만 유지되고, 서브퀘스트 간선은 남습니다.
+`lute scenario --project <DIR> reach --node quest:<id>`는 퀘스트의 앵커를 나열합니다(`--json`에서는 `anchors`). 앵커는 퀘스트가 도달 불가능하다는 것을 증명하지 않으며, 순환을 닫을 앵커는 그리지 않습니다. 명시적인 `follows=`가 있으면 `start` 앵커 대신 그것이 선언한 간선만 유지됩니다. 서브퀘스트 간선은 남고, `accept` 앵커도 남습니다. `follows=`는 수락을 게이트하지 않기 때문입니다([수락 기반 퀘스트로 들어오는 경로](#수락-기반-퀘스트로-들어오는-경로) 참고).
 
 #### 돌아오는 퀘스트: 시즌 tier와 `rearm`
 
@@ -419,11 +419,91 @@ state:
 
   `lute play`는 `quest salvage accepted (engine)`을 출력하고 생명주기를 정착하므로 그 스텝에서 퀘스트의 `questActive` 핸들러가 실행됩니다. `engine: { accept }`는 수락 기반 퀘스트만 시작하며 `start`가 있는 퀘스트는 거부합니다.
 
-`accept`에는 `external`만 쓸 수 있습니다. 다른 값은 `E-ATTR-TYPE`입니다. `start`와 함께 `accept="external"`을 쓰는 경우도 마찬가지입니다. 퀘스트가 활성화되는 방법이 두 가지가 되기 때문입니다. [서브퀘스트](#서브퀘스트) 자식이 부모와 함께 활성화될 때는 엔진의 수락이 아무 일도 하지 않으므로 프로젝트 전체 `lute check`가 `E-ACCEPT-TARGET`을 보고합니다. 자식에도 [`activate="accept"`](#대화에서-시작하기-activateaccept)를 선언하면 부모가 active인 동안 엔진을 기다립니다:
+`accept`에는 `external`만 쓸 수 있습니다. 다른 값은 `E-ATTR-TYPE`입니다. `start`와 함께 `accept="external"`을 쓰는 경우도 마찬가지입니다. 퀘스트가 활성화되는 방법이 두 가지가 되기 때문이며, 메시지는 호스트의 조건을 쓰는 표기로 `follows=`를 알려 줍니다(아래). [서브퀘스트](#서브퀘스트) 자식이 부모와 함께 활성화될 때는 엔진의 수락이 아무 일도 하지 않으므로 프로젝트 전체 `lute check`가 `E-ACCEPT-TARGET`을 보고합니다. 자식에도 [`activate="accept"`](#대화에서-시작하기-activateaccept)를 선언하면 부모가 active인 동안 엔진을 기다립니다:
 
 <!-- lute-diagnostics -->
 ```
 ./quests/board.lute:10:41: error [E-ACCEPT-TARGET] quest `child` declares `accept="external"`, but it activates with its parent `board`, so the engine's acceptance does nothing; declare `activate="accept"` on it too so it waits to be accepted
+```
+
+#### 수락 기반 퀘스트로 들어오는 경로
+
+수락 기반 퀘스트는 수락될 때 활성화되며, 수락할 수 있는 것은 세 가지입니다. 누가 결정하느냐가 다릅니다:
+
+- **스크립트 안의 수락** — 씬의 `::accept` 또는 보상 kind의 `effects.accepts` — 은 `follows=`가 무엇이든 **상관없이** 다음 생명주기 라운드에 퀘스트를 활성화합니다. `follows`는 그래프와 호스트를 위한 메타데이터이며 런타임은 읽지 않습니다.
+- **호스트의 부여**: `accept="external"` 퀘스트(게시판, 메뉴, 서버)는 호스트가 스스로 결정합니다. 이런 퀘스트의 `follows=`는 **호스트가 부여하는 조건**입니다. Lute는 이를 호스트에 전달하고, 분석은 호스트 정책으로 읽습니다. Lute가 강제하지는 않습니다.
+- **그 밖에는 없습니다.** `accept="external"`이 아니고 `::accept`나 보상이 이름 붙이지 않는 퀘스트에는 `follows=`가 있든 없든 경로가 없습니다. `follows`는 순서 메타데이터일 뿐 경로가 아닙니다. `follows`가 있으면 `reach`는 `Unknown`이고(아래), 없으면 그 퀘스트는 간선 없는 퀘스트의 보수적인 판정대로 `Unanchored`로 남습니다.
+
+따라서 다른 퀘스트가 끝나야 호스트가 부여하는 퀘스트는 `accept="external" follows="…"`로 씁니다. `accept="external"`과 `start`의 조합은 계속 거부됩니다. 아래 두 퀘스트는 깨끗하게 검사되며, `salvage`는 `survey`가 끝난 뒤 호스트를 통해 도달 가능합니다:
+
+```lute check
+---
+kind: quest
+title: The board
+state:
+  run.dived: { type: bool, default: false }
+---
+
+<quest id="survey" title="Survey the reef" tier="run" start="true">
+  <objective id="look" title="Look at the reef" done="run.dived"/>
+</quest>
+
+<quest id="salvage" title="Salvage the wreck" tier="run" accept="external" follows="completed('survey')">
+  <objective id="dive" title="Dive the wreck" done="run.dived"/>
+</quest>
+```
+
+`lute scenario reach`는 퀘스트의 accept 앵커 소스 가운데 호스트 경로를 맨 앞에 나열합니다. 외부 퀘스트는 `follows`를 선언했거나 스크립트 안의 무언가가 수락할 때 그 앵커를 가집니다. 둘 다 없으면 앵커가 없어 `Unanchored`로 남습니다(`[accept]` 줄 없음). `follows`가 없으면 호스트 경로는 `[accept] the host (accept="external")`로 읽히고 증거는 `proven`입니다. `follows`가 있으면 호스트 경로가 호스트 정책에 기대므로, 호스트 경로에만 의존하는 판정의 증거가 **`heuristic`**입니다(실행될 수 있는 스크립트 안 수락이 있으면 `proven`). `follows` 줄에는 메타데이터라는 표시가 붙습니다:
+
+```console
+$ lute scenario --project . reach --node quest:gated
+project root: .
+reach quest(gated):
+  verdict: Reachable — reachable if the host grants it once `follows` holds (host policy; Lute does not enforce it). [heuristic]
+  follows: completed("intro") (declared ordering; not an activation route)
+  anchored; each anchor holds before it activates, through any one of its sources:
+    [accept] the host once follows: completed("intro")
+  referenced node(s) (see `follows` and the anchors above — this is NOT a flat requirement list):
+    - quest(intro): Reachable — a satisfiable route exists under your declared routes.
+```
+
+수락 기반이고 `accept="external"`이 아니며 `follows`를 선언했지만 어떤 `::accept`나 보상도 이름 붙이지 않는 퀘스트에는 경로가 전혀 없습니다. `reach`는 `Unknown`이고 `W-QUEST-NEVER-ACCEPTED`가 발생합니다. `follows` 간선은 그대로 그려집니다.
+
+```console
+$ lute scenario --project . reach --node quest:board
+project root: .
+reach quest(board):
+  verdict: Unknown — this analysis cannot prove reachability either way under your declared routes. [unknown]
+  follows: completed("intro") (declared ordering; not an activation route)
+  anchored; each anchor holds before it activates, through any one of its sources:
+    [accept] nothing accepts it (no ::accept or reward names it, and it is not accept="external")
+  referenced node(s) (see `follows` and the anchors above — this is NOT a flat requirement list):
+    - quest(intro): Reachable — a satisfiable route exists under your declared routes.
+```
+
+**수락 교착.** 순환 밖의 어떤 소스도 들어오지 않고 호스트 경로도 열려 있지 않은 `start` 조건과 스크립트 안 수락의 순환은 **`E-QUEST-START-CYCLE`**이며, 강연결 집합마다 하나씩 보고됩니다. 가장 작은 퀘스트의 `start`에서 보고하고, 그 퀘스트에 `start`가 없으면 `id`에서 보고합니다. 경로는 간선 종류(`-[start]->`, `-[accept]->`)를 이름으로 밝힙니다. 아래에서 `intro`는 `letter`가 active일 때 시작하고, `letter`는 `intro`의 보상으로만 수락됩니다:
+
+<!-- lute-diagnostics -->
+```
+./quests/q.lute:7:36: error [E-QUEST-START-CYCLE] quest start cycle: quest(intro) -[start]-> quest(letter) -[accept]-> quest(intro) — each waits for the next (a `start` for its condition, an accept for the `::accept` or reward that grants it) and no source outside the cycle starts any of them; start one of them from something outside the cycle, or let the host grant one with `accept="external"`
+```
+
+보상이 서로를 수락하는 두 퀘스트도 같은 방식으로 교착하며, `a`의 `id`에서 보고됩니다:
+
+<!-- lute-diagnostics -->
+```
+./quests/q.lute:7:12: error [E-QUEST-START-CYCLE] quest start cycle: quest(a) -[accept]-> quest(b) -[accept]-> quest(a) — each waits for the next (a `start` for its condition, an accept for the `::accept` or reward that grants it) and no source outside the cycle starts any of them; start one of them from something outside the cycle, or let the host grant one with `accept="external"`
+```
+
+세 번째 소스가 있으면 순환이 풀립니다. 스스로 시작해서 그중 하나를 수락하는 퀘스트, 씬의 `::accept`, 또는 그중 하나의 `accept="external"`입니다.
+
+**`follows=`를 가리키는 메시지.** `start`와 함께 쓴 `accept="external"`은 `E-ATTR-TYPE`, 자기 퀘스트의 상태를 읽는 `start`는 `E-QUEST-START-SELF`, `start`가 있는 퀘스트를 수락하면 `E-ACCEPT-TARGET`입니다. 이제 각 메시지가 대신 무엇을 쓸지 알려 줍니다:
+
+<!-- lute-diagnostics -->
+```
+./quests/q.lute:7:35: error [E-ATTR-TYPE] `<quest id="bad">` carries both `accept="external"` and `start`: a `start` condition activates a quest by itself, so the host could never decide; drop `start`. If the host grants it only once some scenes or quests are done, write that as `follows="…"` (for example `follows="completed('intro')"`): the host applies it, and analysis reads it as the host's condition
+./quests/q.lute:11:54: error [E-QUEST-START-SELF] `start` of quest `selfq` reads its own state (`quest.selfq.state`), which has no value before the quest starts, so this condition can never start it as intended; a quest that only the host grants is written `accept="external"` without a `start`; if the host grants it only once other scenes or quests are done, write those as `follows="…"`, which the host applies and analysis reads
+./quests/q.lute:21:38: error [E-ACCEPT-TARGET] `<reward kind="OFFER_QUEST" target="tgt">` accepts quest `tgt` (its kind's `effects.accepts`), which has a `start` condition and activates on its own; only an accept-driven quest (no `start`) can be accepted; drop its `start` — the accept activates it whatever other condition it had (a `follows="…"` records such conditions for analysis and the host, but does not gate the accept)
 ```
 
 ### 기한

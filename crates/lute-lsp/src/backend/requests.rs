@@ -7,24 +7,42 @@ use tower_lsp_server::jsonrpc::Result;
 use tower_lsp_server::ls_types::{
     CodeActionOrCommand, CodeActionParams, CodeActionProviderCapability, CodeActionResponse,
     CompletionOptions, CompletionParams, CompletionResponse, DidChangeTextDocumentParams,
-    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DocumentFormattingParams,
-    DocumentSymbolParams, DocumentSymbolResponse, FoldingRange, FoldingRangeParams,
-    FoldingRangeProviderCapability, GotoDefinitionParams, GotoDefinitionResponse, Hover,
-    HoverParams, HoverProviderCapability, InitializeParams, InitializeResult, Location,
-    MessageType, OneOf, Position, Range, ReferenceParams, SemanticTokens,
-    SemanticTokensFullOptions, SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
+    DidChangeWatchedFilesParams, DidChangeWatchedFilesRegistrationOptions,
+    DidCloseTextDocumentParams, DidOpenTextDocumentParams, DidSaveTextDocumentParams,
+    DocumentFormattingParams, DocumentSymbolParams, DocumentSymbolResponse, FileSystemWatcher,
+    FoldingRange, FoldingRangeParams, FoldingRangeProviderCapability, GlobPattern,
+    GotoDefinitionParams, GotoDefinitionResponse, Hover, HoverParams, HoverProviderCapability,
+    InitializeParams, InitializeResult, Location, MessageType, OneOf, Position, Range,
+    ReferenceParams, Registration, SemanticTokens, SemanticTokensFullOptions,
+    SemanticTokensOptions, SemanticTokensParams, SemanticTokensResult,
     SemanticTokensServerCapabilities, ServerCapabilities, ServerInfo, TextDocumentSyncCapability,
-    TextDocumentSyncKind, TextEdit as LspTextEdit, WorkDoneProgressOptions,
+    TextDocumentSyncKind, TextDocumentSyncOptions, TextDocumentSyncSaveOptions,
+    TextEdit as LspTextEdit, WorkDoneProgressOptions,
 };
 use tower_lsp_server::LanguageServer;
 
 impl LanguageServer for Backend {
-    async fn initialize(&self, _params: InitializeParams) -> Result<InitializeResult> {
+    async fn initialize(&self, params: InitializeParams) -> Result<InitializeResult> {
+        let dynamic_watch = params
+            .capabilities
+            .workspace
+            .and_then(|w| w.did_change_watched_files)
+            .and_then(|w| w.dynamic_registration)
+            .unwrap_or(false);
+        self.watch_files
+            .store(dynamic_watch, std::sync::atomic::Ordering::Relaxed);
         Ok(InitializeResult {
             capabilities: ServerCapabilities {
-                // FULL document sync + publishDiagnostics (6.1) retained.
-                text_document_sync: Some(TextDocumentSyncCapability::Kind(
-                    TextDocumentSyncKind::FULL,
+                // FULL document sync + publishDiagnostics (6.1) retained;
+                // `didSave` marks a saved input for content revalidation
+                // (spec 0.53.0 §3.5).
+                text_document_sync: Some(TextDocumentSyncCapability::Options(
+                    TextDocumentSyncOptions {
+                        open_close: Some(true),
+                        change: Some(TextDocumentSyncKind::FULL),
+                        save: Some(TextDocumentSyncSaveOptions::Supported(true)),
+                        ..Default::default()
+                    },
                 )),
                 // 6.3 editor features. Trigger chars fire completion where the
                 // resolver keys off punctuation: `::` (directive head), `@` (a
@@ -295,6 +313,32 @@ impl LanguageServer for Backend {
                 format!("lute-lsp {} initialized", env!("CARGO_PKG_VERSION")),
             )
             .await;
+        // Spec 0.53.0 §3.5: a watched input's change marks it for content
+        // revalidation; requests revalidate every input regardless.
+        if self.watch_files.load(std::sync::atomic::Ordering::Relaxed) {
+            let watchers = ["**/lute.project.yaml", "**/*.{yaml,yml,json}", "**/*.lute"]
+                .map(|glob| FileSystemWatcher {
+                    glob_pattern: GlobPattern::String(glob.to_string()),
+                    kind: None,
+                })
+                .to_vec();
+            let registration = Registration {
+                id: "lute-input-files".to_string(),
+                method: "workspace/didChangeWatchedFiles".to_string(),
+                register_options: serde_json::to_value(DidChangeWatchedFilesRegistrationOptions {
+                    watchers,
+                })
+                .ok(),
+            };
+            if let Err(error) = self.client.register_capability(vec![registration]).await {
+                self.client
+                    .log_message(
+                        MessageType::WARNING,
+                        format!("lute-lsp: file watchers not registered: {error}"),
+                    )
+                    .await;
+            }
+        }
     }
 
     async fn shutdown(&self) -> Result<()> {
@@ -307,6 +351,7 @@ impl LanguageServer for Backend {
             text: doc.text,
             version: doc.version,
         };
+        self.inputs.open(doc.uri.as_str());
         self.docs.insert(doc.uri.clone(), snapshot.clone());
         self.analyze(doc.uri, &snapshot).await;
     }
@@ -329,11 +374,33 @@ impl LanguageServer for Backend {
         let uri = params.text_document.uri;
         self.docs.remove(&uri);
         self.diagnostics.remove(&uri);
+        // Spec 0.53.0 §3.5: the document's configuration is superseded; the
+        // root's cache goes with its last open document.
+        self.inputs.close(uri.as_str());
         // LSP diagnostics are server-owned and persist in the client until the
         // server replaces them. The buffer is gone, so publish an empty set to
         // clear any squiggles the last analyze() left behind (no version stamp:
         // the document has no live version once closed), and withdraw what it
         // reported in other open files.
         self.publish(uri, None, Vec::new()).await;
+    }
+
+    /// Spec 0.53.0 §3.5: a saved file that some cache read is compared by
+    /// content at the next request (the request itself revalidates every
+    /// input anyway).
+    async fn did_save(&self, params: DidSaveTextDocumentParams) {
+        if let Some(path) = super::document::uri_to_path(&params.text_document.uri) {
+            self.inputs.mark_dirty(&path);
+        }
+    }
+
+    /// Spec 0.53.0 §3.5: each changed file some cache read is compared by
+    /// content at the next request; an unrelated file changes nothing.
+    async fn did_change_watched_files(&self, params: DidChangeWatchedFilesParams) {
+        for change in params.changes {
+            if let Some(path) = super::document::uri_to_path(&change.uri) {
+                self.inputs.mark_dirty(&path);
+            }
+        }
     }
 }

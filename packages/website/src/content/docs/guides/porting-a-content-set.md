@@ -28,6 +28,9 @@ Since 0.51 the guide also covers the problems that issues #159, #165, #170, #172
 [structured attribute values](#structured-values-are-not-supported-yet). The runnable project for these is
 [`docs/examples/flow-and-text/`](https://github.com/journeyWorker/lute/tree/main/docs/examples/flow-and-text).
 
+Since 0.53 it also covers [shots as sections](#shots-as-sections) (a port may keep one section per source shot, and a retry loop may span them),
+[quests the host grants once a condition holds](#quests-the-host-grants), and [`lute fix` on an old project](#running-lute-fix-on-an-old-project).
+
 ## Columns become stamps on the surface they belong to
 
 A sheet has different columns for different rows: a voice asset for a dialogue row, an asset name for
@@ -548,7 +551,7 @@ lints:
 A balance rule is a rule about an opener that must be closed: `::group{mode="begin"}` and
 `::group{mode="end"}`, a window that opens and closes. It is a `target: pair` lint (since 0.51), in the same
 places as a `node` lint. A `pair` rule declares `open` and `close` predicates over the same `node` row, an
-optional `inside` predicate, and a `scope`; it has no `when`. A `pair` rule with a `when`, or any other rule
+optional `inside` predicate, and a `scope` (`body`, `section`, or — since 0.53 — `document`); it has no `when`. A `pair` rule with a `when`, or any other rule
 with `open`, `close`, `inside` or `scope`, is `E-PLUGIN-PARSE` in a plugin's `lints:` and `E-LINT-CONFIG` in
 `lute.lint.yaml`.
 
@@ -559,7 +562,7 @@ lints:
     open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
     close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
     inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'   # optional
-    scope: body                                                    # body (default) | section
+    scope: body                                                    # body (default) | section | document
     level: error
     message: "::group begin/end"
 ```
@@ -663,9 +666,10 @@ node, so this loop asks at most three times (once, then two retries).
   is `E-JUMP-MAX` too, because it means nothing there. A backward jump without `max` stays `E-JUMP-BACKWARD`, and
   its message now names `max` and the `<hub>` for offering choices again.
 - **`when=` and `max` combine:** the jump is taken while `when` holds and takes remain.
-- **A loop stays in one body.** The label must be in the jump's own body, or in a body that encloses it through
-  `<choice>` bodies of a `<branch>` or `<match>` arms only. A label outside the `<hub>` option the jump is in is
-  `E-JUMP-LOOP-SCOPE`.
+- **A loop stays in one body, and the sections of a document are one body.** The label must be in the jump's own
+  body, or in a body that encloses it through `<choice>` bodies of a `<branch>` or `<match>` arms only. The top-level
+  `##` sections of a document run as one range, so the label may be in an earlier section (0.53; see
+  [Shots as sections](#shots-as-sections)). A label outside the `<hub>` option the jump is in is `E-JUMP-LOOP-SCOPE`.
 - **A loop is entered only at its head.** A forward jump from outside to a label inside the loop after its head is
   `E-JUMP-INTO-LOOP`. A forward jump to the head, and a jump out of the loop, are fine.
 - **Loops nest, they never cross.** Two loops either nest or are disjoint, or it is `E-JUMP-LOOP-CROSS` at the later
@@ -705,6 +709,86 @@ instance loops on its own label (#207).
 
 Use a loop for "the same stretch again, a bounded number of times". Use a `<hub>` to offer a menu again until the
 player takes an `exit` choice.
+
+## Shots as sections
+
+A source set that is cut into shots maps to one `##` section per shot, and a port may keep that cut: the importer
+emits `## Arrival {#shot-01}`, `## The lock {#shot-02}`, … and no longer has to merge shots to keep a loop inside one
+section. A section is presentation and identity — its heading, its `{#id}` in the artifact's `sections` table — and not a
+runtime boundary: the sections of a scene run as one range, and a `##` heading is not a jump target, a resume point or a
+host entry. Since 0.53 a bounded `::jump` may therefore loop back to a label in an **earlier** section; the loop's region is every node
+from the head through the jump, across the sections between. Every other loop rule is unchanged (`E-JUMP-INTO-LOOP`,
+`E-JUMP-LOOP-CROSS`, nesting, `E-JUMP-LOOP-SCOPE` for a loop that leaves a hub option, `<return>`, `<on>`, `<objective>`, an
+entry or a beat body). Three shots, the third of which sends the player back to the first twice at most:
+
+```lute check
+---
+kind: scene
+id: demo.vault
+---
+## Arrival {#shot-01}
+
+::label{name="attempt"}
+@mira: The vault door is locked.
+
+## The lock {#shot-02}
+
+<branch id="lock">
+  <choice id="pick" text="Pick it">
+    @mira: It jams.
+  </choice>
+  <choice id="leave" text="Leave it">
+    ::end
+  </choice>
+</branch>
+
+## Again {#shot-03}
+
+::jump{to="attempt" max="2"}
+@mira: That's enough for today.
+```
+
+A forward jump that enters a loop anywhere but its head is still `E-JUMP-INTO-LOOP`. When that jump is the last node of a
+`<choice>` body and nothing else targets its label, the message adds the move that fixes it ("`blockA` is reached only
+from option `a` of `<branch id="pick">`: move the block into that option's body"). Content that a host routes to is not
+reached by a section jump: it is a bridge result read by a `<match>`, as for every host-driven flow. See
+[a loop may span sections](/language/directives/#a-loop-may-span-sections).
+
+## Quests the host grants
+
+A sheet row "the board offers quest B once quest A is done" is a quest the **host** grants: the board, a menu or a
+server owns the grant. Write it `accept="external"` with the condition in `follows`:
+
+```lute check
+---
+kind: quest
+title: The board
+state:
+  run.dived: { type: bool, default: false }
+---
+
+<quest id="survey" title="Survey the reef" tier="run" start="true">
+  <objective id="look" title="Look at the reef" done="run.dived"/>
+</quest>
+
+<quest id="salvage" title="Salvage the wreck" tier="run" accept="external" follows="completed('survey')">
+  <objective id="dive" title="Dive the wreck" done="run.dived"/>
+</quest>
+```
+
+- **The host applies `follows`.** Lute carries the condition to the host (`prereqEdges`) and analysis reads it as host policy
+  (`lute scenario reach` reports the verdict with `heuristic` evidence); Lute does not enforce it, and 0.53 adds no runtime
+  gate. A reward kind's `effects.accepts` or a `::accept` activates the quest whatever its `follows` says; there is no
+  spelling that gates an in-script accept.
+- **`accept="external"` with `start` is refused** (`E-ATTR-TYPE`): a `start` condition activates a quest by itself, so the
+  host could never decide. The message names `follows="…"` as the spelling for a condition the host applies.
+- **A quest that is not external is reached only through its in-script accepts**, never through its `follows`. An importer that
+  maps a "unlocked by" column to `follows` on a quest nothing accepts gets `W-QUEST-NEVER-ACCEPTED`; mark it
+  `accept="external"` if the host grants it.
+- **A cycle of in-script accepts** that nothing outside it enters is `E-QUEST-START-CYCLE`; let the host grant one quest of
+  the cycle with `accept="external"`.
+
+See [routes into an accept-driven quest](/language/quests-and-scenes/#routes-into-an-accept-driven-quest).
 
 ## Scenes that a directive or a reward raises
 
@@ -837,6 +921,13 @@ locale is `W-L10N-MISSING` and a changed source is `W-L10N-STALE`, as for a line
 (a host token stays verbatim), and the reference player's `PluginCall.localized` gives a host handler each text in the
 player's locale.
 
+A translation shows its source's markers: each `{{…}}` marker of the source appears in the translation as often as in the
+source, in any order (the spaces at a marker's edges do not count; a space inside it or a format hint does). A translation
+that drops one, adds one, or writes one that opens on a literal brace is `E-L10N-MARKERS`: `compile --locale-bundle` refuses
+it. A line translation with a `{{` that has no `}}` fails the compile as a markup error, `E-L10N-MODIFIERS` (wrapping
+`E-INTERP-UNTERMINATED`). `lute loc import` sees only the translated rows and refuses a marker that does not parse, that
+unterminated `{{` included, as `E-L10N-MARKERS`. See [translate Quayside](/getting-started/build-a-town-game/#8-translate-quayside).
+
 ## Structured values are not supported yet
 
 A column that holds a list or a record (a tag list, a voice-asset map keyed by language) does not fit a directive
@@ -855,6 +946,39 @@ Where a scalar decomposition fits, use it:
 
 The refusal message says the same: give each field its own attribute, use a `text` attribute for player-visible
 text, or write a list of options as `<choice>` elements. For a stamp the `text` clause is omitted, since a stamp cannot be `text`.
+
+## Running `lute fix` on an old project
+
+A port often starts from a project written against an older release: an importer's output that predates 0.37, a
+`luteVersion` that was never raised. Run `lute fix --check` first, review the diff, then `lute fix`.
+`lute fix` applies **every** migration of every older release, not only the version raise, so the diff can be larger than
+the stamp: `## Shot N.` prefixes, renamed directive tags, `id=` on content lines. A plugin stamp is kept: a key your
+plugin declares as a stamp attribute is not a 0.37 spelling, and each site `lute fix` leaves alone is printed. See
+[What `lute fix` runs](/tooling/cli/#what-lute-fix-runs).
+
+```console
+$ lute fix --check .
+lute: ./lute.project.yaml: would apply 1 fix(es): lute-version 1
+lute fix: ./scenes/intro.lute:9:22: kept `action` on `::cg` — the active profile declares it as a stamp attribute; the 0.37 rename to `display` does not apply
+lute fix: ./scenes/intro.lute:10:25: kept `action` on `::music` — the active profile declares it as a stamp attribute; the 0.37 rename to `playback` does not apply
+lute fix: ./scenes/intro.lute:11:25: kept `action` on `::video` — the active profile declares it as a stamp attribute; the 0.37 rename to `display` does not apply
+lute: ./scenes/old.lute: would apply 4 fix(es): shot-heading 1, renamed-tag 1, line-id-label 2
+lute: would apply 5 fix(es) in 2 of 6 file(s)
+$ lute fix .
+lute: ./lute.project.yaml: applied 1 fix(es): lute-version 1
+…
+lute: ./scenes/old.lute: applied 4 fix(es): shot-heading 1, renamed-tag 1, line-id-label 2
+lute: applied 5 fix(es) in 2 of 6 file(s)
+$ lute check --project .
+ok: ./scenes/intro.lute (0 warning(s))
+ok: ./scenes/old.lute (0 warning(s))
+ok: . (2 file(s), 0 project-wide warning(s))
+```
+
+**Migrating from 0.52.0:** run `lute fix --check`, review, then `lute fix`. `lute fix` applies **every** migration of every older
+release, not only the version raise; see [What `lute fix` runs](/tooling/cli/#what-lute-fix-runs). A port that kept one section
+per source shot needs no change for 0.53: loops across sections are allowed, and an `accept="external"` quest may carry a
+`follows` the host applies.
 
 ## What the tool catches, and what it does not
 
@@ -879,6 +1003,10 @@ text, or write a list of options as `<choice>` elements. For a stamp the `text` 
 | Player-visible directive text that cannot be translated | `type: text`, `lute tag` and `lute loc` |
 | Two translation units with one id | `E-LINE-ID-DUP`; `~` in a `code` is `E-LINE-CODE-RESERVED` |
 | An opener that is never closed | a `pair` lint |
+| A retry loop that spans shots | `::jump{max}` across sections (0.53) |
+| A quest the host grants once a condition holds | `accept="external" follows="…"`; `start` with it is `E-ATTR-TYPE` |
+| A translation whose markers differ from its source's | `E-L10N-MARKERS` |
+| An old project's stale spellings | `lute fix --check`, then `lute fix` |
 | A list or record column | refused; use scalar decompositions |
 
 What Lute does **not** know:

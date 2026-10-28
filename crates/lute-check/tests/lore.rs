@@ -519,7 +519,7 @@ fn when_test_literal_and_fix_reach_entry_arms() {
     assert_eq!(w.len(), 1, "{ds:?}");
     assert_eq!(anchored(&src, w[0]), "test=\"$ == true\"");
 
-    let fixed = fix_document(&src);
+    let fixed = fix_document(&src, None);
     assert_eq!(fixed.changed, 1);
     assert!(fixed.text.contains("<when is=\"true\">"), "{}", fixed.text);
     assert!(codes(&fixed.text).is_empty(), "{:?}", codes(&fixed.text));

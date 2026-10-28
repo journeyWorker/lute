@@ -158,3 +158,69 @@ Effective capabilities resolve deterministically: `lute.core` → `global` → t
 `extends` chain (parent first) → the selected profile → scene-local `plugins` → dependency closure.
 Activation is purely additive. The checker, LSP, and compiler all validate the document against the
 same resolved capability snapshot, so what checks clean is exactly what compiles.
+
+## Plugin frontmatter keys
+
+A plugin's `frontmatter/*.yaml` export declares keys a document may carry, each with a `schema`
+(see [Plugin concepts](/plugins/concepts/)). A value that does not fit its schema is
+`E-FRONTMATTER-SCHEMA`.
+
+Since 0.53 a reference is checked **wherever it sits** in the value, not only at the top of the
+key. A key typed `entity`, `domain`, `enumFromOption`, `providerRef` or `assetKind` is checked
+like an attribute of that type, and so is every such value inside a `list`, a `record` field or a
+`map` key or value, at any depth. The diagnostic keeps the code the attribute check gives
+(`E-BAD-ENUM`, `E-UNKNOWN-ID`, `E-ASSET-*`) and names the **field path** in the message, as in the
+output below: the field of a record, the item of a list, the key or the entry of a map. It sits at
+the key's line. A `record` field the declaration does not know and a field
+of a non-reference type yield no reference. A value that is not representable in the schema (a
+`null`, a `!tag`, a map key of an unsupported type) and a shape that does not match stay
+`E-FRONTMATTER-SCHEMA`.
+
+```yaml
+# plugins/acme.stage/frontmatter/keys.yaml
+frontmatter:
+  - { key: lead, schema: { entity: person } }
+  - { key: guests, schema: { list: { entity: person } } }
+  - key: talk
+    schema:
+      record:
+        - { name: partner, type: { entity: person } }
+        - { name: turns, type: int }
+  - key: mood
+    schema:
+      map: { key: { entity: person }, value: { list: { entity: person } } }
+```
+
+With `person: { members: [mira, theo] }` declared, a scene that misspells each of them:
+
+```yaml
+lead: mirra
+guests: [mira, theoo]
+talk: { partner: mirra, turns: 3 }
+mood:
+  mira: [theo]
+  theoo: [mirra]
+```
+
+<!-- lute-diagnostics -->
+```
+./scenes/intro.lute:4:1: error [E-BAD-ENUM] `mirra` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`?
+./scenes/intro.lute:5:1: error [E-BAD-ENUM] `theoo` is not a member of entity kind `person` (attribute `guests` of `frontmatter`) — did you mean `theo`?
+```
+
+<!-- lute-diagnostics unverified="the field, map key and map entry path forms are not in the doc matcher's message templates; verbatim lute check output" -->
+```
+./scenes/intro.lute:6:1: error [E-BAD-ENUM] `mirra` is not a member of entity kind `person` (field `partner` of `talk` of `frontmatter`) — did you mean `mira`?
+./scenes/intro.lute:7:1: error [E-BAD-ENUM] `theoo` is not a member of entity kind `person` (key `theoo` of `mood` of `frontmatter`) — did you mean `theo`?
+./scenes/intro.lute:7:1: error [E-BAD-ENUM] `mirra` is not a member of entity kind `person` (item 1 of entry `theoo` of `mood` of `frontmatter`) — did you mean `mira`?
+```
+
+Plugin frontmatter types also count as **readers** for `W-DOMAIN-UNREAD`: an entity kind or enum
+that only a frontmatter key's type (at any depth) names is read, so it no longer draws the
+warning. With no frontmatter key typed by it, the warning lists "no plugin frontmatter key is typed
+by it" among the readers it looked for:
+
+<!-- lute-diagnostics -->
+```
+./schema/world.schema.yaml:2:3: warning [W-DOMAIN-UNREAD] domain `person` is declared but no active construct reads it: no directive attribute, content-line slot, or state path is typed `{ domain: person }`, no plugin frontmatter key is typed by it, no `relations:` entry takes it as an argument, no `per: person` state family or `subsetOf: person` kind builds on it, and no rule or condition queries `person(…)` — so it enforces nothing and only reaches the artifact's `enums` array. Read it, or remove the declaration
+```

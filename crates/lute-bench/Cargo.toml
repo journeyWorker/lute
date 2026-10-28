@@ -14,6 +14,8 @@ lute-cli = { path = "../lute-cli" }
 lute-compile = { path = "../lute-compile" }
 lute-core-span = { path = "../lute-core-span" }
 lute-lint = { path = "../lute-lint" }
+lute-load = { path = "../lute-load" }
+lute-lsp = { path = "../lute-lsp" }
 lute-manifest = { path = "../lute-manifest" }
 lute-model = { path = "../lute-model" }
 lute-runtime = { path = "../lute-runtime" }
@@ -25,7 +27,6 @@ serde_json = { workspace = true }
 yaml_serde = { workspace = true }
 
 [dev-dependencies]
-lute-load = { path = "../lute-load" }
 lute-scratch = { path = "../lute-scratch" }
 
 [lints]

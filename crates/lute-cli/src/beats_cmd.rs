@@ -20,7 +20,8 @@
 //! Nothing is re-derived. The rows are [`lute_check::project_beats`] — the
 //! beat list the project beat passes judge — and the verdicts are the
 //! whole-project `check` diagnostics themselves (per-file and project-wide, the
-//! same [`crate::reconcile_collected`] run), attached to the row they name.
+//! same [`lute_model::reconcile_collected`] run, each root's model's),
+//! attached to the row they name.
 //! Documents need not check clean: an unreachable beat is an error, and
 //! showing it is the point.
 
@@ -245,17 +246,29 @@ pub(crate) fn run_beats(
     json_out: bool,
     expand: bool,
 ) -> ExitCode {
-    let (file_results, by_root) = match crate::collect_project_docs(dir, None, None, false) {
-        Ok(v) => v,
-        Err(code) => return code,
-    };
-    let (file_results, project_diags, _, fact_envs) =
-        crate::reconcile_collected(file_results, &by_root, false);
+    // The models' own reconciliation (one per root, #240): its verdicts and
+    // fact envelopes are final.
+    let models =
+        match crate::project::project_models_in(&lute_model::ModelMemo::default(), dir, None, None)
+        {
+            Ok(models) => models,
+            Err(code) => return code,
+        };
+    let by_root = crate::project::root_groups(&models);
+    let reconciled = || models.iter().map(|(_, model)| model.reconciled());
     let mut verdict_diags: Vec<(&PathBuf, &Diagnostic)> = Vec::new();
-    for (path, result) in &file_results {
+    for (path, result) in reconciled().flat_map(|r| &r.checks) {
         verdict_diags.extend(result.diagnostics.iter().map(|d| (path, d)));
     }
-    verdict_diags.extend(project_diags.iter().map(|(p, d)| (p, d)));
+    verdict_diags.extend(
+        reconciled()
+            .flat_map(|r| &r.diagnostics)
+            .map(|(p, d)| (p, d)),
+    );
+    let fact_envs: BTreeMap<&Path, &lute_check::FactEnv> = reconciled()
+        .flat_map(|r| &r.fact_envs)
+        .map(|(root, env)| (root.as_path(), env))
+        .collect();
     verdict_diags.retain(|(_, d)| VERDICTS.iter().any(|(code, _)| d.code == *code));
 
     let mut text = String::new();
@@ -295,11 +308,11 @@ pub(crate) fn run_beats(
             .map(|c| c.map(|i| beats[i].id.as_str()))
             .collect();
         let mut ladders = ladders(&beats, &decls, occasions, targets);
-        gate_marks(&mut ladders, &beats, fact_envs.get(root));
+        gate_marks(&mut ladders, &beats, fact_envs.get(root.as_path()).copied());
         // dsl 0.28.0: a kind or `for=` beat's `when` judged per member, as
         // whole-project `check` judges it.
         let no_facts = lute_check::FactEnv::default();
-        let env = fact_envs.get(root).unwrap_or(&no_facts);
+        let env = fact_envs.get(root.as_path()).copied().unwrap_or(&no_facts);
         let never_for: Vec<Vec<String>> = beats
             .iter()
             .map(|b| lute_check::fact_check::beat_never_for(b, env))

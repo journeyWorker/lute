@@ -2,6 +2,10 @@
 //! capabilitySnapshot they target; the grammar is data-not-grammar so it targets
 //! the CORE snapshot. If capability_version's inputs change, these must be
 //! re-stamped or this test fails.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a test reads the fixtures it wrote; no cache is involved"
+)]
 use std::fs;
 
 fn stamp_from(path: &str) -> String {

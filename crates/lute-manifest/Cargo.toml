@@ -16,6 +16,9 @@ sha2 = "0.10"
 schemars = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Storage_FileSystem"] }
+
 [dev-dependencies]
 lute-scratch = { path = "../lute-scratch" }
 serde_json = { workspace = true }

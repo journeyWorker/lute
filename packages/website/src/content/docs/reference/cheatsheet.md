@@ -289,7 +289,7 @@ Every root kind also accepts `title`, `luteVersion`, `contentLang`, `profile`, `
 spelling. `title:` is the only document title: a `# Title` line in the body is `E-INERT-TITLE`. A
 quest's graph edge is the `follows=` attribute on `<quest>`. It is not a frontmatter key.
 
-A plugin frontmatter key typed `entity`, `domain`, `enumFromOption`, `providerRef` or `assetKind` is checked (0.49.0) with the same type-specific validation as an attribute of that type: `providerRef` gives `E-UNKNOWN-ID` (and possibly `W-CATALOG-STALE`), asset kinds give `E-ASSET-*`, and an entity or enum typo is `E-BAD-ENUM` with a did-you-mean, for example (`` `mirra` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`? ``), a `list` of such a type checks each element, and a non-string value stays `E-FRONTMATTER-SCHEMA`.
+A plugin frontmatter key typed `entity`, `domain`, `enumFromOption`, `providerRef` or `assetKind` is checked (0.49.0) with the same type-specific validation as an attribute of that type: `providerRef` gives `E-UNKNOWN-ID` (and possibly `W-CATALOG-STALE`), asset kinds give `E-ASSET-*`, and an entity or enum typo is `E-BAD-ENUM` with a did-you-mean, for example (`` `mirra` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`? ``). Since 0.53 the same check reaches every such value nested in a `record` field, a `list` item or a `map` key or value, at any depth, and the message names the field path (`` field `partner` of `talk` of `frontmatter` ``). A value that cannot be represented, an unsupported map key type or a shape that does not match stays `E-FRONTMATTER-SCHEMA`.
 
 → [Frontmatter & profiles](/language/frontmatter-and-profiles/)
 
@@ -414,7 +414,7 @@ defs:
 | `<branch id>` | A menu. The pick is recorded in `scene.choices.<id>`, which clears when the scene ends. At least one choice must be unguarded (`E-BRANCH-ALL-GUARDED`). Optional `prompt=` and `timeout="N"`. |
 | `<choice id text>` | `text=` is what the player sees. `when=` guard. `into="run.x"` writes `true`, or `value=` for numeric (`int`/`double`) and enum paths, so later scenes can read it. The IR's `choice` and `hub` records name the path a pick lands in as `selectionKey` (`scene.choices.greet`). |
 | `<hub id>` | Re-presents eligible choices until an `exit`. `once` removes a choice after one take. It needs an unguarded `exit`, or every choice `once` (`E-HUB-NO-EXIT`). Each pick sets `scene.visited.<hub>.<choice>`. Optional `prompt=` (0.23.0) is the question shown with the options; an empty one is `E-BRANCH-PROMPT`. |
-| `::jump{to when max}` | A jump to a `::label{name}` in the same document (labels share one document-wide namespace; a repeated name is `E-LABEL-DUP`). It goes forward. Since 0.51, `max="N"` (a literal integer from 1 to 99) lets it go back to an earlier label at most N times, then control falls through ([Bounded jumps](#bounded-jumps-declared-raises-directive-text--pair-lints-051)). A backward jump without `max` is `E-JUMP-BACKWARD`; `max` on a forward jump is `E-JUMP-MAX`. A section heading or `{#id}` is not a target (`E-JUMP-UNDEFINED`). Without `when`, and without `max`, the content after it is dead (`W-CODE-AFTER-JUMP`). `::label` emits no record and takes no `when=`. Since 0.26.0 `lute trace` and `lute test` follow a taken jump to its label (the trace shows `<jump -> outro>`), as `lute play` does. |
+| `::jump{to when max}` | A jump to a `::label{name}` in the same document (labels share one document-wide namespace; a repeated name is `E-LABEL-DUP`). It goes forward. Since 0.51, `max="N"` (a literal integer from 1 to 99) lets it go back to an earlier label at most N times, then control falls through ([Bounded jumps](#bounded-jumps-declared-raises-directive-text--pair-lints-051)); since 0.53 the label may sit in an earlier top-level `##` section. A backward jump without `max` is `E-JUMP-BACKWARD`; `max` on a forward jump is `E-JUMP-MAX`. A section heading or `{#id}` is not a target (`E-JUMP-UNDEFINED`). Without `when`, and without `max`, the content after it is dead (`W-CODE-AFTER-JUMP`). `::label` emits no record and takes no `when=`. Since 0.26.0 `lute trace` and `lute test` follow a taken jump to its label (the trace shows `<jump -> outro>`), as `lute play` does. |
 | `::end{reason}` | Ends the scene. In `lute play` it ends only the presentation (or quest handler) it runs in; the playthrough goes on. Content after it in the same body is `W-CODE-AFTER-END`. |
 | `::accept{quest}` | Takes up an accept-driven quest (no `start`, or a child with `activate="accept"`). `at="nextRun"` (0.24.0) queues it until right after the next `newRun` reset; any other `at` is `E-ACCEPT-TARGET`. Takes `when=` (0.26.0). See [Quests](#quests). |
 
@@ -1030,7 +1030,7 @@ state:
 | Piece | Rule |
 |---|---|
 | `start=` | Activates the quest (`unset` → `active`) when it holds. With no `start` the quest is accept-driven: it stays `unset` until a scene runs `::accept{quest="…"}`, or a mock accepts it. A play script seeds a save's status with `quests:`. One that no `::accept` names is `W-QUEST-NEVER-ACCEPTED` (0.24.0, whole-project `check`); since 0.25.0 an `accepts:` mock no longer counts. Since 0.26.0 a test's `accepts:` resolves quests project-wide, and a play accepts one mid-play with an `engine: { accept: [id] }` step. |
-| `accept="external"` | 0.25.0. The engine accepts the quest outside any document (a quest board, a menu): it silences `W-QUEST-NEVER-ACCEPTED`. Beside `start` it is `E-ATTR-TYPE`; on a child that activates with its parent it is `E-ACCEPT-TARGET` (add `activate="accept"`). IR: `QuestCmd.accept`. |
+| `accept="external"` | 0.25.0. The engine accepts the quest outside any document (a quest board, a menu): it silences `W-QUEST-NEVER-ACCEPTED`. Beside `start` it is `E-ATTR-TYPE`; on a child that activates with its parent it is `E-ACCEPT-TARGET` (add `activate="accept"`). IR: `QuestCmd.accept`. Since 0.53 a host-granted quest with a condition is `accept="external" follows="…"`: the host applies the condition, Lute does not (an in-script accept activates regardless of `follows`). |
 | `fail=` | `active` → `failed`. It wins over completion when both hold. |
 | `follows=` | Graph metadata for the scene graph: `visited` / `completed` / `active` with `&&` / `\|\|`. It never gates activation; `start` does. Scenes write their gating prerequisite as `after:` in frontmatter. Before 0.28.0 it was spelled `after=` (now `E-UNKNOWN-ATTR`). Without it a quest is anchored by its `::accept`s, its parent (`[subquest]`, 0.25.0) and its `start` conjuncts reading `visited(…)` / `entry.X.everRead` / `quest.Y.state == …` (`[start]`, 0.25.0). |
 | `tier="run"` | A new run returns the quest to `unset` and undoes its objectives. The default `tier="user"` keeps its status across runs; since 0.26.0 the manifest's `defaults: questTier: run` changes that default for every quest that writes no `tier=`. A subquest's tier must equal its parent's (`E-QUEST-TIER-MIX`). |
@@ -1447,7 +1447,7 @@ directives:
 ::banner{code="0010" title="Welcome to the hall, {{userName}}"}
 ```
 
-A `pair` lint finds an opener that is never closed, a close with no opener, an opener inside an open pair, and rows not allowed `inside` a pair. `scope: body` (default) pairs siblings of one body; `scope: section` pairs rows in document order at any depth.
+A `pair` lint finds an opener that is never closed, a close with no opener, an opener inside an open pair, and rows not allowed `inside` a pair. `scope: body` (default) pairs siblings of one body; `scope: section` pairs rows in document order at any depth, reset at each section; since 0.53 `scope: document` is one slot for the whole document, every section included.
 
 ```yaml
 custom:
@@ -1503,6 +1503,41 @@ rewardKinds:
 
 → [Choices & hubs](/language/choices-and-hubs/) · [Dialogue & cast](/language/dialogue-and-cast/#labels-and-prompts) · [Quests & scenes](/language/quests-and-scenes/) · [Plugin manifests](/plugins/manifests/#reward-kind-attributes)
 
+## Loops across sections, host-granted quests, nested frontmatter references & `scope: document` (0.53)
+
+The top-level `##` sections of a document are one loop scope, as they are one range at runtime (a section is presentation and identity, not an entry or a resume point). A bounded `::jump{to max}` may go back to a `::label` in an earlier section; every other loop rule holds (entered only at its head, no overlap, no loop out of a hub option, `<return>`, `<on>`, `<objective>`, entry or beat body). `E-JUMP-LOOP-SCOPE` no longer names a section.
+
+```lute check
+---
+kind: scene
+id: lock.retry
+title: Retry
+---
+
+## Shot 1. The door {#door}
+
+::label{name="attempt"}
+@narrator: Mira tries the lock.
+
+## Shot 2. The result {#result}
+
+@narrator: It sticks.
+::jump{to="attempt" max="2"}
+@narrator: That's enough for today.
+```
+
+A quest the host grants once a condition holds is `accept="external" follows="…"`: the host applies the condition (Lute carries it to the host and analysis reads it as host policy, `heuristic` evidence). A reward or `::accept` activates a quest whatever its `follows`, and `accept="external"` with `start` stays `E-ATTR-TYPE`. Quests that wait on each other through `start` and in-script accepts, with no source outside the cycle and no host route, are `E-QUEST-START-CYCLE` (also for accept-driven quests); let the host grant one with `accept="external"`.
+
+```lute
+<quest id="letter" accept="external" follows="completed('intro')">
+  <objective id="read" title="Read the letter"/>
+</quest>
+```
+
+A reference inside a plugin frontmatter `record`, `list` or `map` value is checked like a top-level one and the message names the field path. A `pair` lint takes `scope: document` (one slot for the whole document). `lute fix` applies every migration of every older release and keeps a directive attribute the profile declares as a stamp.
+
+→ [Directives](/language/directives/) · [Quests & scenes](/language/quests-and-scenes/) · [Frontmatter & profiles](/language/frontmatter-and-profiles/#plugin-frontmatter-keys) · [Linting](/tooling/linting/) · [What `lute fix` runs](/tooling/cli/#what-lute-fix-runs)
+
 ## Compiled artifact
 
 `lute compile` writes the execution IR. The envelope carries `kind`, `lute`, `irVersion`,
@@ -1540,7 +1575,7 @@ command by its `kind` and `position`.
 |---|---|
 | `lute check <file>… [--project <DIR>]` | Check one or more documents. Without `--project` each document applies the nearest `lute.project.yaml` above it and says so on stderr. Relational guard decisions (dead guards over relations, `W-WIP`) need the whole-project mode below. A directory operand is a usage error naming `--project`. |
 | `lute check --project <DIR> [--wip] [--deny-warnings]` (no file operand) | Check every document, plus connectivity, quest ids, `::accept` targets, occasions, and fact guards. It also compiles every clean document, so compile-stage errors (`E-DUP-VOICEKEY`, `E-CAPABILITY-MISMATCH`) fail here. Project advisories such as `W-BEAT-PRIORITY-TIE` and `W-QUEST-HANDLER-DEAD` come from here too. `--wip` (0.23.0) reports `E-BEAT-UNREACHABLE`, `E-ENTRY-UNREACHABLE`, and `E-OBJECTIVE-UNSATISFIABLE` as warnings when the guard is dead only because a relation has no producer yet (no seed, assert, rule, or `reserved`; since 0.26.0 also a relation only a component `::assert` with an unbound `@param` writes); a relation that has producers but never matches stays an error. |
-| `lute fix <path>…` | Mechanical migrations in place, over every path given: `::auto` → `::actor`, `::cut` → `::cg`, `::next` → `::jump`, `::mark{id}` → `::label{name}`, a line's `id="x"` → `::label{name="x"}` on the line before, music `action=` → `playback=`, cg / video `action=` → `display=`, choice `label=` → `text=`, `<match on=>` → `<match subject=>`, plus the older `:line` sigil, `as=` → `into=`, and `test="$ == …"` → `is=`. A directory covers every `.lute` and project/schema YAML file under it, recursively, in sorted order. What has no lossless rewrite (camera numbers, cg `full`, music `track`, sfx `name`, a missing `pov:`) stays an error for you to migrate by hand. |
+| `lute fix <path>…` | Mechanical migrations in place, over every path given: `::auto` → `::actor`, `::cut` → `::cg`, `::next` → `::jump`, `::mark{id}` → `::label{name}`, a line's `id="x"` → `::label{name="x"}` on the line before, music `action=` → `playback=`, cg / video `action=` → `display=`, choice `label=` → `text=`, `<match on=>` → `<match subject=>`, plus the older `:line` sigil, `as=` → `into=`, and `test="$ == …"` → `is=`. A directory covers every `.lute` and project/schema YAML file under it, recursively, in sorted order. What has no lossless rewrite (camera numbers, cg `full`, music `track`, sfx `name`, a missing `pov:`) stays an error for you to migrate by hand. Since 0.53 it applies every migration of every older release, not only the version raise ([What `lute fix` runs](/tooling/cli/#what-lute-fix-runs)); each changed file's line names its rules, and a directive attribute the profile declares as a stamp is kept (printed on stderr). Run `lute fix --check` first and review the diff. |
 | `lute tag [<path>]… [--renumber [--commit]] [--check]` | Back-fill a stable `code` on every line, of one file or every `.lute` file under a directory. `--renumber` is the dangerous mode: it previews (writes nothing) what a renumber would change, and `--renumber --commit` writes it. `--check` writes nothing and exits `1` when the selected mode would change a file. |
 | `lute compile <file> -o out.json` · `lute compile --project <DIR> -o <DIR>` (no document) · `lute compile --stream <file>` | Build artifacts. The whole-project form also writes `project.index.json`, including `beats`. Without `--project`, one file compiles against the nearest `lute.project.yaml` above it (0.27.0), as `check` does. `--locale-bundle <file>` merges a translation bundle. `--stream` appends body text from stdin to a checked template (NDJSON, no envelope). |
 | `lute trace <file> [--mock m.yaml] [--state P=V] [--fact "r(a)"] [--choice id=c[,c]] [--event e] [--accepted-quest q] [--occasion o[@target]] [--entry id \| --beat id] [--no-derive] [--expand]` | Preview the source against mocks, with the project's seed facts and rules applied; without `--project`, the project is the nearest `lute.project.yaml` above the file (0.27.0), as for `check`. Exit `3` means a guard was unknown. `--occasion talk@npc.mira` raises an occasion for a target (0.23.0). `--beat` presents one bundle beat by local or canonical id (`E-TRACE-BEAT` when it names none); `--entry` takes `<doc>.<entry>` too (0.26.0). A `@def` prints as written (`<match @weekday>`); `--expand` (0.24.0) prints its expansion. `--accepted-quest` also takes an `activate="accept"` child. Since 0.26.0 a taken `::jump` is followed to its label. |
@@ -1814,7 +1849,7 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-LUTE-VERSION-STALE` | A document's `luteVersion` stamp differs from the toolchain's. 0.25.0: when it is inherited from the manifest's `defaults: luteVersion`, whole-project `check` reports it once, at that line of `lute.project.yaml`, instead of once per document (`… — every document inherits it (N documents)`). |
 | `W-DEADLINE-BEFORE-DONE` | 0.24.0. An `on=` objective's `by=` holds whenever its `done` does, so `by` (judged at every settle) fails it before the occasion ever judges `done`. Write the condition as `until=`. |
 | `E-STATE-DECL` | A state declaration is malformed; since 0.24.0 also a `per:` over an open or unknown kind, or a map `default:` naming a non-member, leaving a member with no value and no `_` (`` `default:` gives no value for `guild` ``), or on a path without `per:`. |
-| `W-DOMAIN-UNREAD` | A declared enum or kind that nothing reads. Since 0.24.0 a `per:` index, a `subsetOf:` parent, and a kind atom in a rule body or `holds(…)` count as reads, and the warning sits at the declaration's own line. |
+| `W-DOMAIN-UNREAD` | A declared enum or kind that nothing reads. Since 0.24.0 a `per:` index, a `subsetOf:` parent, and a kind atom in a rule body or `holds(…)` count as reads, and the warning sits at the declaration's own line. Since 0.53 a plugin frontmatter key typed by it (at any depth) reads it too. |
 | `E-ENTITY-KIND-SHAPE` | An entity kind is malformed. Since 0.26.0 also: a member listed twice in one kind or enum, or added by two files (both lines named); an `add:` for a kind no import declares (did-you-mean), onto an `open:` kind, or beside `members:` / `open:`. A sub-kind's members no longer need restating in the parent. Reported once, at the schema line. |
 | `E-STATE-DECL-CONFLICT` | 0.26.0, whole-project `check`. Two documents declare one state path with a different `type`, `default`, `per` or `owner` (`scene.*` exempt; an `extends:` refinement is not a conflict). Declare a shared path once, in a schema both import. |
 | `E-REWARD-TARGET` | 0.26.0. A reward's `target=` breaks its kind's `target:` contract: not a member of the `{ entity: K }` kind, unknown to the `{ provider: … }`, or missing where `required: true`. |
@@ -1822,9 +1857,10 @@ expect:                                 # judged at the end; a miss exits 1
 | `W-DISPLAY-NAME-DUP` | 0.26.0, whole-project `check` and `lute lint`. Two speakers are shown with the same display name: two cast `name:`s, a cast name and a `::use{… name="…"}` string, or two such strings. Rename one, or mark an intended role name `sharedName: true` on the cast entries. |
 | `E-PLUGIN-STAMP-SURFACE` | 0.50. A `stampAttrs` `on:` names something that is not `line`, `branch`, `hub`, `choice` or a stampable directive of the resolved profile (a typo, `jump`/`label`/`clear`, or a directive of an inactive plugin). Fix the name, or `depends:` on the plugin that declares the directive. |
 | `E-DIAGNOSTICS-CONFIG` | 0.50. A `diagnostics:` entry in `lute.project.yaml` is malformed or illegal: an `E-*` or `L-*` code, an unknown code, a bad level, or bad `paths`. Only `W-*` codes can be re-levelled. |
-| `E-JUMP-MAX` / `E-JUMP-LOOP-SCOPE` / `E-JUMP-INTO-LOOP` / `E-JUMP-LOOP-CROSS` | 0.51. `max` is not a literal integer from 1 to 99 or sits on a forward jump; a loop leaves its body; a forward jump enters a loop after its head; two loops overlap without nesting. |
+| `E-JUMP-MAX` / `E-JUMP-LOOP-SCOPE` / `E-JUMP-INTO-LOOP` / `E-JUMP-LOOP-CROSS` | 0.51. `max` is not a literal integer from 1 to 99 or sits on a forward jump; a loop leaves its body (0.53: a `##` section is not a body, loops span sections); a forward jump enters a loop after its head (0.53: when the jump is the last node of a `<choice>` body and no other jump targets that label, the message suggests moving the block into the option); two loops overlap without nesting. |
 | `E-JUMP-INTO-BODY` | 0.52. A `::jump` enters a body that runs as its own range (a hub option or `<return>`, an `<on>` or `<objective>`, an entry or a beat) from outside it. A jump out of hub bodies to a label after the hub is legal and leaves the hub. |
-| `E-INTERP-BRACE` | 0.52. A literal `{` (an odd run) sits right before a `{{…}}` marker in line text, or a `::use` argument ending in a plain `{{` is spliced before one. Put a character between them, or pass `\\{{`. |
+| `E-INTERP-BRACE` | 0.52. A literal `{` (an odd run) sits right before a `{{…}}` marker in line text, or a `::use` argument ending in a plain `{{` is spliced before one. Put a character between them, or pass `\\{{`. 0.53. Also a marker whose expression itself opens on `{` (`{{{run.a}}`, any label-grammar value too), where 0.52 gave `E-CEL-PROFILE`; the message names the run length n. |
+| `E-L10N-MARKERS` | 0.53. A translation's `{{…}}` markers do not parse, or are not its source's (each as often, any order). The translation is not merged, `compile --locale-bundle` fails, and `loc import` refuses a marker that does not parse. |
 | `E-OBJECTIVE-TITLE-INTERP` | 0.52. An `<objective title>` holds `{{`; a title is shown as written. Write plain text. |
 | `E-PLUGIN-RAISES` / `E-RAISES-TARGET` / `W-OCCASION-NEVER-RAISED` | 0.51. A `raises` entry names an unknown occasion or a target of the wrong shape; a resolved raise target is outside the domain or answered by no scene or beat; a `raisedBy: declared` occasion has an answerer that nothing raises. |
 | `E-LINE-CODE-RESERVED` / `E-LINE-ID-DUP` | 0.51. A `code` contains `~`; two localization units share one final `lineId`. |
@@ -2155,7 +2191,7 @@ returns `schemaVersion: "0.48.0.schema"` and describes the `--json` check report
 In JSON mode, usage, I/O, and malformed-input failures are also one object:
 `error.code` is `E-CLI-USAGE`, `E-CLI-IO`, or `E-CLI-INPUT`; `error.path`, `error.argument`,
 and `error.hint` are included when applicable. The stable payload fields are documented in the
-[CLI reference](/tooling/cli/#machine-readable-output).
+[CLI reference](/tooling/cli/#machine-readable-output-043).
 
 Telemetry is local and opt-out: set `LUTE_TELEMETRY=0` (or `DO_NOT_TRACK=1`) for deterministic
 examples and CI. It never changes command output.

@@ -401,7 +401,8 @@ pub fn check_quest(quest: &Quest, seen_quests: &mut BTreeSet<String>) -> QuestRe
                     "`start` of quest `{id}` reads its own state (`{path}`), which has no value \
                      before the quest starts, so this condition can never start it as intended; \
                      a quest that only the host grants is written `accept=\"external\"` without \
-                     a `start`"
+                     a `start`; if the host grants it only once other scenes or quests are done, \
+                     write those as `follows=\"…\"`, which the host applies and analysis reads"
                 ),
                 start.span,
             ));

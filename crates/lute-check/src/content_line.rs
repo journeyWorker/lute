@@ -18,6 +18,7 @@ use lute_syntax::ast::{Attr, AttrValue, Line};
 
 use crate::directives::{
     check_attr_value, check_domain_member, scoped_elsewhere_message, universal_timing_decl,
+    ValueName,
 };
 
 /// The declared type of a content-line attribute whose value is typed by
@@ -247,6 +248,7 @@ pub fn check_content_line_attrs(
                 let mut scratch = Vec::new();
                 check_domain_member(
                     &owner,
+                    ValueName::Attr(&attr.key),
                     "emotion",
                     attr,
                     domains,
@@ -268,6 +270,7 @@ pub fn check_content_line_attrs(
                 let mut scratch = Vec::new();
                 check_domain_member(
                     &owner,
+                    ValueName::Attr(&attr.key),
                     "action",
                     attr,
                     domains,

@@ -1,9 +1,9 @@
 //! `lute scenario --json` and `--format dot` — machine-readable renderings of the
 //! SAME per-root scenario analysis the text view reports. Never a second
-//! analysis: every graph/reach/envelope datum comes from
-//! `crate::collect_project_docs` + `crate::assemble_root_scenario` (the exact
-//! per-root collection + connectivity/envelope passes whole-project `check` and the
-//! text `lute scenario` view share), reusing `crate::reach_verdict_text`,
+//! analysis: every graph/reach/envelope datum comes from each project
+//! root's model ([`crate::project::project_models_in`]): its documents and
+//! the scenario it assembled (one per root per command, spec 0.53.0 §3.10,
+//! the same the text `lute scenario` view reads), reusing `crate::reach_verdict_text`,
 //! `crate::format_prereq`, `crate::topo_layers`, `crate::node_cycle_degraded`,
 //! and the `reach`/`envelope` node-resolution seam verbatim — only the
 //! presentation differs.
@@ -17,14 +17,14 @@ use std::process::ExitCode;
 
 use serde_json::{Map, Value};
 
-use lute_check::connectivity::{ConnGraph, EdgeKind, NodeId, PrereqState};
+use lute_check::connectivity::{ConnGraph, EdgeKind, FollowsDecl, HostGate, NodeId, PrereqState};
 use lute_check::envelope;
 
 use crate::envelope::{self as cli_envelope, CliError};
 use crate::{
-    assemble_root_scenario, collect_project_docs, format_prereq, node_cycle_degraded,
-    node_ref_to_id, primary_node_ambiguity_note, reach_evidence, reach_verdict_text,
-    resolve_node_ref, topo_layers, unanchored_quests, NodeRef, RootScenario, ScenarioCommand,
+    format_prereq, node_cycle_degraded, node_ref_to_id, primary_node_ambiguity_note,
+    reach_evidence, reach_verdict_text, resolve_node_ref, topo_layers, unanchored_quests, NodeRef,
+    RootScenario, ScenarioCommand,
 };
 /// Render the scenario report in a non-text format. See
 /// [`crate::Command::Scenario`]. `json` (the `--json` report) and `dot` are
@@ -85,24 +85,26 @@ fn reach_token(scenario: &RootScenario, node: &NodeId) -> &'static str {
     }
 }
 
-/// A node's declared `after` prerequisite as JSON: `null` when absent (an
-/// entry node), the malformed marker string when present-but-unparseable
-/// (`E-CONN-PROFILE`, already reported by `check`), else the fully
-/// parenthesized formula text ([`crate::format_prereq`] — `&&`/`||` intact,
-/// never flattened into a misleading joint requirement).
+/// A node's declared `after` prerequisite (a quest's `follows`) as JSON,
+/// read from [`lute_check::connectivity::NodeInfo::follows`] (dsl 0.53.0
+/// §7.1, beside any anchors): `null` when absent, the malformed marker
+/// string when present-but-unparseable (`E-CONN-PROFILE`, already reported
+/// by `check`), else the fully parenthesized formula text
+/// ([`crate::format_prereq`] — `&&`/`||` intact, never flattened into a
+/// misleading joint requirement).
 fn prereq_json(scenario: &RootScenario, node: &NodeId) -> Value {
-    match scenario.graph.nodes.get(node).map(|info| &info.prereq) {
-        // An anchored quest declares no `after`; its anchors are listed
-        // under `anchors` (dsl 0.24.0 §2, 0.25.0 §4).
-        None | Some(PrereqState::Absent | PrereqState::Anchored(_)) => Value::Null,
-        Some(PrereqState::Invalid) => Value::String("(malformed — E-CONN-PROFILE)".to_string()),
-        Some(PrereqState::Valid(f)) => Value::String(format_prereq(f)),
+    match scenario.graph.nodes.get(node).map(|info| &info.follows) {
+        None | Some(FollowsDecl::Absent) => Value::Null,
+        Some(FollowsDecl::Malformed(code)) => Value::String(format!("(malformed — {code})")),
+        Some(FollowsDecl::Valid(f)) => Value::String(format_prereq(f)),
     }
 }
 
-/// dsl 0.24.0 §2, 0.25.0 §4: an anchored quest's anchors, in order — each
-/// `{kind, from}` with `kind` `subquest` / `start` / `accept` and `from` its
-/// alternative source nodes. `None` for any other node.
+/// dsl 0.24.0 §2, 0.25.0 §4: an anchored node's anchors, in order — each
+/// `{kind, from}` with `kind` `subquest` / `start` / `accept` / `raises`
+/// and `from` its alternative source nodes; dsl 0.53.0 §7.1: an accept
+/// anchor of an `accept="external"` quest adds `host` (`"always"`, or
+/// `{"follows": …}`). `None` for any other node.
 fn anchors_json(scenario: &RootScenario, node: &NodeId) -> Option<Value> {
     let Some(PrereqState::Anchored(anchors)) = scenario.graph.nodes.get(node).map(|i| &i.prereq)
     else {
@@ -112,10 +114,21 @@ fn anchors_json(scenario: &RootScenario, node: &NodeId) -> Option<Value> {
         anchors
             .iter()
             .map(|a| {
-                serde_json::json!({
+                let mut anchor = serde_json::json!({
                     "kind": a.kind.as_str(),
                     "from": a.from.iter().map(std::string::ToString::to_string).collect::<Vec<_>>(),
-                })
+                });
+                if let Some(host) = &a.host {
+                    let host = match host {
+                        HostGate::Always => Value::String("always".to_string()),
+                        HostGate::Follows(f) => serde_json::json!({ "follows": format_prereq(f) }),
+                        HostGate::Unreadable => serde_json::json!({
+                            "follows": format!("(malformed — {})", lute_check::prereq::E_CONN_PROFILE)
+                        }),
+                    };
+                    anchor["host"] = host;
+                }
+                anchor
             })
             .collect(),
     ))
@@ -139,20 +152,27 @@ fn run_json(
     command: Option<ScenarioCommand>,
     facts: bool,
 ) -> ExitCode {
-    let (file_results, by_root) = match collect_project_docs(dir, providers, None, false) {
-        Ok(v) => v,
+    let models = match crate::project::project_models_in(
+        &lute_model::ModelMemo::default(),
+        dir,
+        providers,
+        None,
+    ) {
+        Ok(models) => models,
         Err(code) => return code,
     };
+    let by_root = crate::project::root_groups(&models);
     match command {
         None => {
             let roots: Vec<Value> = by_root
                 .iter()
                 .map(|(root, group_full)| {
-                    let scenario = assemble_root_scenario(group_full, &file_results);
+                    let scenario = crate::project::model_scenario(&models, root)
+                        .expect("every collected root has its model's scenario");
                     let docs = lute_model::project_docs(group_full);
                     let facts =
                         facts.then(|| crate::FactGraph::of(group_full, &docs, &scenario.graph));
-                    root_graph_json(root, &scenario, &docs, facts.as_ref())
+                    root_graph_json(root, scenario, &docs, facts.as_ref())
                 })
                 .collect();
             let mut top = Map::new();
@@ -164,7 +184,7 @@ fn run_json(
             ..
         }) => match crate::endings::json(
             &by_root,
-            &file_results,
+            &models,
             (!occasion.is_empty()).then_some(occasion.as_str()),
         ) {
             Ok((v, exit)) => {
@@ -181,15 +201,10 @@ fn run_json(
             }
             Err(code) => code,
         },
-        Some(ScenarioCommand::Reach { node, .. }) => reach_json(
-            dir,
-            &by_root,
-            &file_results,
-            node.as_deref().unwrap_or_default(),
-        ),
-        Some(ScenarioCommand::Envelope { node }) => {
-            envelope_json(dir, &by_root, &file_results, &node)
+        Some(ScenarioCommand::Reach { node, .. }) => {
+            reach_json(dir, &models, node.as_deref().unwrap_or_default())
         }
+        Some(ScenarioCommand::Envelope { node }) => envelope_json(dir, &by_root, &models, &node),
         Some(ScenarioCommand::Knowledge { node }) => {
             match crate::knowledge::json(&by_root, node.as_deref()) {
                 Ok(v) => print_json(&v, crate::envelope::version::SCENARIO_KNOWLEDGE, 0),
@@ -379,14 +394,8 @@ fn root_graph_json(
 /// `scenario reach --node <node> --json`: the single-node reachability view
 /// (verdict text + token + declared `after` structure + each directly
 /// referenced node's own verdict) — the JSON mirror of `run_scenario_reach`.
-fn reach_json(
-    dir: &Path,
-    by_root: &crate::ByRoot,
-    file_results: &[(std::path::PathBuf, lute_check::CheckResult)],
-    node_id_raw: &str,
-) -> ExitCode {
-    let (node_ref, root, scenario) = match resolve_node_ref(dir, by_root, file_results, node_id_raw)
-    {
+fn reach_json(dir: &Path, models: &crate::project::RootModels, node_id_raw: &str) -> ExitCode {
+    let (node_ref, root, scenario) = match resolve_node_ref(dir, models, node_id_raw) {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -402,7 +411,7 @@ fn reach_json(
         Value::String(node_kind_str(&node_id).to_string()),
     );
 
-    if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
+    if let Some(note) = primary_node_ambiguity_note(scenario, &node_ref) {
         obj.insert("unavailable".to_string(), Value::String(note));
         obj.insert("evidence".to_string(), Value::String("unknown".to_string()));
         return print_json(
@@ -414,18 +423,18 @@ fn reach_json(
 
     obj.insert(
         "reach".to_string(),
-        Value::String(reach_token(&scenario, &node_id).to_string()),
+        Value::String(reach_token(scenario, &node_id).to_string()),
     );
     obj.insert(
         "evidence".to_string(),
-        Value::String(reach_evidence(&scenario, &node_id).to_string()),
+        Value::String(reach_evidence(scenario, &node_id).to_string()),
     );
     obj.insert(
         "verdict".to_string(),
-        Value::String(reach_verdict_text(&scenario, &node_id)),
+        Value::String(reach_verdict_text(scenario, &node_id)),
     );
-    obj.insert("prereq".to_string(), prereq_json(&scenario, &node_id));
-    if let Some(anchors) = anchors_json(&scenario, &node_id) {
+    obj.insert("prereq".to_string(), prereq_json(scenario, &node_id));
+    if let Some(anchors) = anchors_json(scenario, &node_id) {
         obj.insert("anchors".to_string(), anchors);
     }
 
@@ -439,7 +448,7 @@ fn reach_json(
         .graph
         .nodes
         .get(&node_id)
-        .map(|i| i.prereq.referenced(&scenario.graph.nodes))
+        .map(|i| i.referenced(&scenario.graph.nodes))
         .unwrap_or_default();
     if !targets.is_empty() {
         let referenced: Vec<Value> = targets
@@ -453,15 +462,15 @@ fn reach_json(
                 );
                 r.insert(
                     "reach".to_string(),
-                    Value::String(reach_token(&scenario, t).to_string()),
+                    Value::String(reach_token(scenario, t).to_string()),
                 );
                 r.insert(
                     "evidence".to_string(),
-                    Value::String(reach_evidence(&scenario, t).to_string()),
+                    Value::String(reach_evidence(scenario, t).to_string()),
                 );
                 r.insert(
                     "verdict".to_string(),
-                    Value::String(reach_verdict_text(&scenario, t)),
+                    Value::String(reach_verdict_text(scenario, t)),
                 );
                 Value::Object(r)
             })
@@ -484,11 +493,10 @@ fn reach_json(
 fn envelope_json(
     dir: &Path,
     by_root: &crate::ByRoot,
-    file_results: &[(std::path::PathBuf, lute_check::CheckResult)],
+    models: &crate::project::RootModels,
     node_id_raw: &str,
 ) -> ExitCode {
-    let (node_ref, root, scenario) = match resolve_node_ref(dir, by_root, file_results, node_id_raw)
-    {
+    let (node_ref, root, scenario) = match resolve_node_ref(dir, models, node_id_raw) {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -509,7 +517,7 @@ fn envelope_json(
         Value::String(node_kind_str(&node_id).to_string()),
     );
 
-    if let Some(note) = primary_node_ambiguity_note(&scenario, &node_ref) {
+    if let Some(note) = primary_node_ambiguity_note(scenario, &node_ref) {
         obj.insert("unavailable".to_string(), Value::String(note));
         return print_json(
             &Value::Object(obj),
@@ -520,12 +528,12 @@ fn envelope_json(
 
     obj.insert(
         "reach".to_string(),
-        Value::String(reach_token(&scenario, &node_id).to_string()),
+        Value::String(reach_token(scenario, &node_id).to_string()),
     );
-    obj.insert("prereq".to_string(), prereq_json(&scenario, &node_id));
+    obj.insert("prereq".to_string(), prereq_json(scenario, &node_id));
     obj.insert(
         "cycleDegraded".to_string(),
-        Value::Bool(node_cycle_degraded(&scenario, &node_id)),
+        Value::Bool(node_cycle_degraded(scenario, &node_id)),
     );
 
     let (env, enrichment_note, facts) = match &node_ref {
@@ -654,19 +662,26 @@ fn run_dot(
             .with_argument("--format"),
         );
     }
-    let (file_results, by_root) = match collect_project_docs(dir, providers, None, false) {
-        Ok(v) => v,
+    let models = match crate::project::project_models_in(
+        &lute_model::ModelMemo::default(),
+        dir,
+        providers,
+        None,
+    ) {
+        Ok(models) => models,
         Err(code) => return code,
     };
+    let by_root = crate::project::root_groups(&models);
     if by_root.is_empty() {
         return write_or_io_error("// lute scenario: no .lute files found\n");
     }
     let mut out = String::new();
     for (root, group_full) in &by_root {
-        let scenario = assemble_root_scenario(group_full, &file_results);
+        let scenario = crate::project::model_scenario(&models, root)
+            .expect("every collected root has its model's scenario");
         let docs = lute_model::project_docs(group_full);
         let facts = facts.then(|| crate::FactGraph::of(group_full, &docs, &scenario.graph));
-        out.push_str(&root_dot(root, &scenario, facts.as_ref()));
+        out.push_str(&root_dot(root, scenario, facts.as_ref()));
     }
     write_or_io_error(&out)
 }

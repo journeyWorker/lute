@@ -601,14 +601,20 @@ The rules, line by line above:
   translations, and a literal backslash directly before a `{{` is doubled, so
   `Lit \{{run.a}} and {{ run.a }}.` keeps that `text`, has one placeholder, and renders
   `Lit {{run.a}} and 3.` when `run.a` is 3. A translation may write `\{{` too.
-- **A literal `{` before a marker** (0.52, #139). The artifact has no spelling for a literal `{`
-  directly before a `{{…}}` marker: compiled text would open the marker one brace early. So in line
-  text a marker whose preceding literal text ends in an **odd** run of `{` is `E-INTERP-BRACE`,
-  whichever escapes or modifiers spell the run (`{\{{{{run.a}}`, `x{:pause{s=0.5}{{run.a}}`). An
-  even run is a run of literal `{{` pairs and stays legal: `\{{{{run.a}}` renders `{{3`. The
-  message below gives the two ways out. A translation with such a marker is not merged
-  (`E-L10N-MODIFIERS` naming `E-INTERP-BRACE`), and a component line whose spliced argument ends
-  the run reports at the `::use`, as does an argument ending in a plain `{{` (#221, see
+- **A marker that opens on a literal brace** (0.52, #139; 0.53, #229). The artifact has no spelling
+  for a literal `{` directly before a `{{…}}` marker: compiled text would open the marker one brace
+  early. So in line text a marker whose preceding literal text ends in an **odd** run of `{` is
+  `E-INTERP-BRACE`, whichever escapes or modifiers spell the run (`{\{{{{run.a}}`,
+  `x{:pause{s=0.5}{{run.a}}`). An even run is a run of literal `{{` pairs and stays legal:
+  `\{{{{run.a}}` renders `{{3`. Since 0.53 a marker whose expression itself begins with `{`
+  (`{{{run.a}}`, `{{{{run.a}}`) reads as the marker after n literal braces and is
+  `E-INTERP-BRACE` too, in line text and in every label-grammar value (a choice or hub label, a
+  prompt, a plugin `text` attribute), where 0.52 reported `E-CEL-PROFILE`. The message names the run
+  length n and spells the two ways out for exactly that many braces. A space after the `{{`
+  (`{{ {run.a}}`) is a marker you opened, so it stays `E-CEL-PROFILE`. A translation with such a
+  marker is not merged (see [Translations keep the source's markers](#translations-keep-the-sources-markers)),
+  and a component line whose spliced argument ends the run reports at the `::use`, as does an
+  argument ending in a plain `{{` (#221, see
   [Components](/language/components-and-extends/#sentences-in-string-params)).
 - **Plain colons stay text.** A colon starts a modifier only when a name and then `[` or `{`
   follow it, so `10:30` and `:)` need no escape.
@@ -616,6 +622,14 @@ The rules, line by line above:
 <!-- lute-diagnostics -->
 ```
 sign.lute:14:20: error [E-INTERP-BRACE] a literal `{` directly before `{{run.a}}` cannot be told apart from the marker in compiled text (lute 0.47.1 §3): put a character between them (`{ {{run.a}}`), or show the brace from a string state path (`{{run.lbrace}}{{run.a}}`, with `run.lbrace` declared `{ type: string, default: "{" }`)
+```
+
+That is the message for `Your score: {{{run.a}}` (n = 1). For `{\{{{{run.a}}`, three braces, the
+message says "literal `{{{`" and spells `\{{{ {{run.a}}` and three `{{run.lbrace}}`:
+
+<!-- lute-diagnostics -->
+```
+sign.lute:14:24: error [E-INTERP-BRACE] a literal `{{{` directly before `{{run.a}}` cannot be told apart from the marker in compiled text (lute 0.47.1 §3): put a character between them (`\{{{ {{run.a}}`), or show each brace from a string state path (`{{run.lbrace}}{{run.lbrace}}{{run.lbrace}}{{run.a}}`, with `run.lbrace` declared `{ type: string, default: "{" }`)
 ```
 
 A malformed modifier is `E-TEXT-MODIFIER`: an unterminated span, a name that is neither core nor a
@@ -640,3 +654,23 @@ translated file: [`lute loc import`](/tooling/cli/#loc-import) stores it per lin
 the bundle (`schemaVersion: 2`, `sourceHashes`), and `lute compile --locale-bundle` reports
 `W-L10N-STALE` when a line was edited after the export its translation came from — re-export and
 update that translation. The stale translation is still merged until you do.
+
+### Translations keep the source's markers
+
+Since 0.53 a translation also shows its source's `{{…}}` markers, as it shows its modifiers: each
+source marker as often as the source does, in any order. A marker is compared by its interior
+without the spaces at its edges, so `{{ run.a }}` is `{{run.a}}`, but a space inside it or another
+format hint makes another marker (`{{run.a: ordinal}}` is not `{{run.a:ordinal}}`). The rule covers
+a line, an option label, a prompt and a directive `text` attribute. A marker that opens on a
+literal brace, or one that is not the source's, is `E-L10N-MARKERS`: the translation is not merged,
+and `lute compile --locale-bundle` fails. A line translation whose `{{` has no `}}` fails the
+compile as any inline markup that does not parse, `E-L10N-MODIFIERS` (wrapping
+`E-INTERP-UNTERMINATED`). `lute loc import` has only the translated rows, so it refuses a marker
+that does not parse — that unterminated `{{` in a line included, there as `E-L10N-MARKERS` — and
+writes no bundle. Without this the runtime would show a marker it cannot match to the source
+verbatim. Given `Score {{run.a}} now.` as the source and `점수 {{run.zzz}}` as the `ko` text:
+
+<!-- lute-diagnostics unverified="the message quotes `{{…}}` literally, which the doc matcher reads as an elision; verbatim lute compile --locale-bundle output" -->
+```
+s.lute:1:1: error [E-L10N-MARKERS] `ko` text for `s.narrator_0010` is not merged: its markers differ from the source's (missing `{{run.a}}`; extra `{{run.zzz}}`): a translation shows each `{{…}}` marker of its source as often as the source does, in any order
+```

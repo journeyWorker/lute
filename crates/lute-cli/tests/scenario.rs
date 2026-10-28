@@ -124,6 +124,8 @@ fn scenario_envelope_reports_guaranteed_for_scene() {
 
 #[test]
 fn scenario_envelope_quest_without_follows_shows_defaults_note() {
+    // `someQuest` has no `start`: it is accept-driven, so `follows` would be
+    // no entry route (dsl 0.53.0 §7.1) and the note must not recommend it.
     let dir = lute_scratch::ScratchDir::named("scenario-envelope-quest-defaults");
     write(&dir, "q.lute", &quest_no_after("someQuest"));
 
@@ -137,7 +139,49 @@ fn scenario_envelope_quest_without_follows_shows_defaults_note() {
     ]);
     let out_text = stdout(&out);
     assert!(out.status.success(), "{out_text}");
-    assert!(out_text.contains("declaring `follows`"), "{out_text}");
+    assert!(
+        out_text.contains(
+            "quest:someQuest is accept-driven, and an accept activates it whatever `follows` \
+             says, so `follows` is never an entry route and would not enrich this table."
+        ),
+        "{out_text}"
+    );
+    assert!(
+        !out_text.contains("would enrich this table with"),
+        "{out_text}"
+    );
+}
+
+/// A quest with a `start` takes a declared `follows` as its route, so the
+/// note still says declaring one would enrich the table.
+#[test]
+fn scenario_envelope_started_quest_without_follows_recommends_follows() {
+    let dir = lute_scratch::ScratchDir::named("scenario-envelope-quest-started");
+    write(
+        &dir,
+        "q.lute",
+        "---\nkind: quest\nstate:\n  run.done: { type: bool, default: false }\n---\n\
+         <quest id=\"startedQuest\" start=\"true\">\n<objective id=\"o\" done=\"run.done\"/>\n\
+         </quest>\n",
+    );
+
+    let out = run(&[
+        "scenario",
+        "--project",
+        dir.to_str().unwrap(),
+        "envelope",
+        "--node",
+        "quest:startedQuest",
+    ]);
+    let out_text = stdout(&out);
+    assert!(out.status.success(), "{out_text}");
+    assert!(
+        out_text.contains(
+            "declaring `follows` on quest:startedQuest would enrich this table with the full \
+             project-resolved envelope."
+        ),
+        "{out_text}"
+    );
 }
 
 #[test]
@@ -280,9 +324,13 @@ fn scenario_envelope_plain_quest_on_cyclic_root_no_cycle_note() {
         "a plain (after-less) quest's D/D floor does not degrade due to the root cycle, so no \
          cycle note must be printed: {out_text}"
     );
-    // Its normal defaults-only tables still print (the enrichment note fires).
+    // Its normal defaults-only tables still print (the enrichment note fires;
+    // `plainQuest` is accept-driven, so the note names that).
     assert!(out_text.contains("Guaranteed (safe to read"), "{out_text}");
-    assert!(out_text.contains("declaring `follows`"), "{out_text}");
+    assert!(
+        out_text.contains("defaults-only `D` table; quest:plainQuest is accept-driven"),
+        "{out_text}"
+    );
 }
 
 #[test]
@@ -1186,8 +1234,15 @@ fn scenario_dot_dashes_active_edges_only_and_is_deterministic() {
 #[test]
 fn scenario_reach_accepts_an_active_prerequisite() {
     // End-to-end: `active(…)` must survive the per-file grammar check
-    // (no E-CONN-PROFILE) and resolve to a real, reachable verdict.
-    let (_dir, path) = both_edge_kinds_fixture();
+    // (no E-CONN-PROFILE) and resolve to a real, reachable verdict. The
+    // quests start (`start="true"`): an accept-driven quest with nothing
+    // accepting it has no route, its `follows` included (dsl 0.53.0 §7.1).
+    let (dir, path) = both_edge_kinds_fixture();
+    let q = dir.join("q.lute");
+    let started = std::fs::read_to_string(&q)
+        .unwrap()
+        .replace(" follows=", " start=\"true\" follows=");
+    std::fs::write(&q, started).unwrap();
     let out = run(&[
         "scenario",
         "--project",
@@ -1847,5 +1902,63 @@ fn scenario_reach_endings_lists_every_ending_with_its_verdicts() {
             .status
             .code(),
         Some(2)
+    );
+}
+
+/// A project where an ending is shadowed only once its per-file
+/// `E-MAYBE-UNSET` is reconciled away: `y` sets `run.z`; `x` (after `y`,
+/// on `dayEnd`) reads it and ends; `a`, earlier on `dayEnd`, is always
+/// eligible and never spent.
+fn shadowed_ending_project(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
+    write(
+        &dir,
+        "y.lute",
+        "---\nkind: scene\ncharacter: y\nseason: 1\nepisode: 1\nstate:\n  run.z: { type: int }\n\
+         ---\n## Shot 1.\n::set{run.z = 1}\n",
+    );
+    write(
+        &dir,
+        "a.lute",
+        "---\nkind: scene\ncharacter: a\nseason: 1\nepisode: 2\non: dayEnd\nonce: false\n---\n\
+         ## Shot 1.\n@narrator: always\n",
+    );
+    write(
+        &dir,
+        "x.lute",
+        "---\nkind: scene\ncharacter: x\nseason: 1\nepisode: 3\non: dayEnd\n\
+         after: 'visited(\"y.s01ep01\")'\nstate:\n  run.z: { type: int }\n  run.out: { type: int }\n\
+         ---\n## Shot 1.\n::set{run.out = run.z}\n::end\n",
+    );
+    dir
+}
+
+/// `reach --endings` cites the shadow `lute beats` reports for an ending
+/// whose read the project envelope settles (0.52.0 behaviour; 0.53 L2's
+/// first cut read the model's verdicts and called it reachable).
+#[test]
+fn endings_cite_a_shadow_found_after_reclassification() {
+    let dir = shadowed_ending_project("endings-shadow-reclassified");
+    let d = dir.to_str().unwrap();
+    let beats = run(&["beats", "--project", d]);
+    assert!(
+        stdout(&beats).contains("shadowed by a.s01ep02"),
+        "{}",
+        stdout(&beats)
+    );
+    let out = run(&["scenario", "--project", d, "reach", "--endings"]);
+    let text = stdout(&out);
+    assert_eq!(out.status.code(), Some(1), "{text}{}", stderr(&out));
+    assert!(
+        text.contains("x.s01ep03 (scene, x.lute): unreachable"),
+        "{text}"
+    );
+    assert!(text.contains("when: never wins (W-BEAT-SHADOWED"), "{text}");
+    let json = run(&["scenario", "--json", "--project", d, "reach", "--endings"]);
+    assert_eq!(json.status.code(), Some(1), "{}", stdout(&json));
+    assert!(
+        stdout(&json).contains("\"unreachable\": 1"),
+        "{}",
+        stdout(&json)
     );
 }

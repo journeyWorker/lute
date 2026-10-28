@@ -8,6 +8,11 @@
 //! lint rules, loads the pinned provider catalog, and calls the engine
 //! ONCE per root with [`LintScope::Full`].
 //!
+//! The run reads only its operands, plus the manifests, plugins, providers
+//! and imports they reach, through ONE [`InputCache`]: every project base
+//! and vocabulary is built once per key, however many documents share it,
+//! and no checked project model is built (spec 0.53.0 §3.2).
+//!
 //! The engine's diagnostics carry `LintDocInput.path` back verbatim; we
 //! feed it a project-root-relative display path so `ignore:` globs match
 //! spec §3 (and the printed diagnostics stay short).
@@ -23,15 +28,18 @@ use crate::SeverityPolicy;
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
+use std::sync::Arc;
 
+use lute_check::{CheckInput, Mode};
 use lute_core_span::{Diagnostic, Severity, Span, TextIndex};
 use lute_lint::{lint, parse_config, LintConfig, LintDocInput, LintScope};
 use lute_load::{
-    build_input, find_lute_files, nearest_manifest_dir, project_root_for, read_document, BuiltInput,
+    assemble_input_with_mode, find_lute_files, nearest_manifest_dir, project_root_for,
+    read_document, BuiltInput, InputCache, SharedManifest,
 };
 use lute_manifest::lint::namespace_active_lints;
 use lute_manifest::loader::load_plugins_dir;
-use lute_manifest::project::{project_providers, ProjectConfig};
+use lute_manifest::project::ProjectConfig;
 use lute_manifest::resolve::resolve_activation;
 /// clap `value_parser` for `lute lint --deny <CODE>`.
 ///
@@ -151,88 +159,84 @@ fn relative_display(file: &Path, root: &Path) -> PathBuf {
     }
 }
 
+/// What `W-DISPLAY-NAME-DUP` ([`display_name_dups`]) reads of one document
+/// besides its [`LintDocInput`]: the shared base and vocabulary its
+/// assembly resolved (`Arc`s, never copies), its typed frontmatter and its
+/// `::use` speaker lines. Nothing else of the assembly is kept (spec 0.53.0
+/// §3.2 item 5); the document text lives once, in the [`LintDocInput`].
+struct NameInputs {
+    base: Arc<lute_check::ProjectBase>,
+    vocab: Arc<lute_check::ProjectVocab>,
+    meta: lute_check::TypedMeta,
+    use_lines: BTreeMap<usize, Vec<lute_syntax::ast::Line>>,
+}
+
 /// Read `file` into a [`LintDocInput`] with its `path` set to the
-/// root-relative display form. Returns `Err(exit 2)` on an unreadable file.
+/// root-relative display form. Returns `Err(exit 2)` on an unreadable file:
+/// the file's own I/O error.
 ///
-/// Under a manifest (`with_project` true) the document is assembled through
-/// the shared model input path used by whole-project `check` — a scene a `chapters:`
-/// chain lists carries the `on:` the chain derives, so lint classifies it as
-/// the beat every other surface reads — returned with the model's
-/// [`lute_load::BuiltInput`] for the root's project passes.
+/// Under a manifest (`with_project` true) the document is assembled on the
+/// run's `cache`, the input layer whole-project `check` reads — a scene a
+/// `chapters:` chain lists carries the `on:` the chain derives, so lint
+/// classifies it as the beat every other surface reads — and returned with
+/// the [`NameInputs`] of the root's `W-DISPLAY-NAME-DUP` pass.
 fn build_lint_input(
+    cache: &InputCache,
     file: &Path,
     root: &Path,
     with_project: bool,
     providers: Option<&Path>,
-) -> Result<(LintDocInput, Option<BuiltInput>), ExitCode> {
-    let (text, doc, built) = if with_project {
-        let Some(built) = build_input(file, providers, Some(root), None) else {
-            if let Err(e) = read_document(file) {
-                return Err(envelope::fail_quietly(CliError::io(file, e.to_string())));
-            }
-            return Err(envelope::fail(CliError::input(
-                file,
-                format!("lute lint: cannot parse {}", file.display()),
-            )));
-        };
-        let text = built.input.text.clone();
-        let mut parsed = lute_syntax::parse(&text);
-        lute_check::meta::apply_quest_tier_default(&mut parsed.0, &built.defaults);
-        lute_check::chapters::apply_chapters(
-            &mut parsed.0,
-            &built.defaults,
-            &built.input.snapshot().occasions,
-        );
-        (text, parsed.0, Some(built))
-    } else {
-        let text =
-            read_document(file).map_err(|e| envelope::fail(CliError::io(file, e.to_string())))?;
+) -> Result<(LintDocInput, Option<NameInputs>), ExitCode> {
+    let text =
+        read_document(file).map_err(|e| envelope::fail(CliError::io(file, e.to_string())))?;
+    let path = relative_display(file, root);
+    if !with_project {
         let doc = lute_syntax::parse(&text).0;
-        (text, doc, None)
+        return Ok((LintDocInput { path, doc, text }, None));
+    }
+    // The one parse: `assemble_input_with_mode` returns it with
+    // `defaults.questTier` applied.
+    let (built, (mut doc, _)) =
+        assemble_input_with_mode(cache, file, text, providers, Some(root), None, Mode::Ci);
+    lute_check::chapters::apply_chapters(
+        &mut doc,
+        built.input.defaults(),
+        &built.input.snapshot().occasions,
+    );
+    let BuiltInput { input, meta, .. } = built;
+    let CheckInput {
+        text,
+        base,
+        vocab,
+        components,
+        ..
+    } = input;
+    let use_lines = lute_check::check::use_speaker_lines(&doc, &components);
+    let names = NameInputs {
+        base,
+        vocab,
+        meta,
+        use_lines,
     };
-    Ok((
-        LintDocInput {
-            path: relative_display(file, root),
-            doc,
-            text,
-        },
-        built,
-    ))
+    Ok((LintDocInput { path, doc, text }, Some(names)))
 }
 
-fn project_for_root(
-    root: &Path,
-    providers: Option<&Path>,
-) -> Result<Option<ProjectConfig>, ExitCode> {
-    if !root.join("lute.project.yaml").is_file() {
-        return Ok(None);
+/// The manifest of `root` from the run's cache (spec 0.53.0 §3.2 item 2):
+/// absent without a `lute.project.yaml`; one that does not load is
+/// `lute: cannot load project manifest {path}` (exit 2).
+fn project_for_root(root: &Path, cache: &InputCache) -> Result<SharedManifest, ExitCode> {
+    let path = root.join("lute.project.yaml");
+    if !path.is_file() {
+        return Ok(SharedManifest::default());
     }
-    let opts = lute_model::ModelOptions {
-        providers: providers.map(Path::to_path_buf),
-        permission_profile: None,
-        mode: lute_check::Mode::Ci,
-        compile: false,
-        wip: false,
-    };
-    let model = lute_model::ProjectModel::build_single_root(root, &opts).map_err(|error| {
-        envelope::fail(CliError::io(
-            root,
-            format!("lute: cannot load project {}: {error}", root.display()),
-        ))
-    })?;
-    model
-        .manifest()
-        .cloned()
-        .ok_or_else(|| {
-            envelope::fail(CliError::input(
-                &root.join("lute.project.yaml"),
-                format!(
-                    "lute: cannot load project manifest {}",
-                    root.join("lute.project.yaml").display()
-                ),
-            ))
-        })
-        .map(Some)
+    let manifest = SharedManifest::of(cache, root);
+    if manifest.config().is_none() {
+        return Err(envelope::fail(CliError::input(
+            &path,
+            format!("lute: cannot load project manifest {}", path.display()),
+        )));
+    }
+    Ok(manifest)
 }
 
 /// One diagnostic `lute lint` reports.
@@ -254,12 +258,15 @@ struct Findings {
     config_diagnostics: Vec<Finding>,
 }
 
-/// once per root. Returns `Err(exit 2)` on any I/O / malformed-YAML failure.
+/// Lint `path` (a `.lute` file or a directory tree), every document
+/// assembled on `cache`; the engine runs once per root. Returns `Err(exit
+/// 2)` on any I/O / malformed-YAML failure.
 fn lint_target(
     path: &Path,
     floor: Option<&Path>,
     providers_dir: Option<&Path>,
     explicit_config: Option<&Path>,
+    cache: &InputCache,
 ) -> Result<Findings, ExitCode> {
     let mut aggregated = Findings::default();
 
@@ -341,22 +348,20 @@ fn lint_target(
             ),
         };
 
-        // Load the project through the shared semantic model. Absent
-        // manifest ⇒ defaults-only, no plugin rules.
-        let project = project_for_root(&root, providers_dir)?;
-        let providers = match providers_dir {
-            Some(dir) => lute_manifest::provider::ProviderSet::load(dir),
-            None => project_providers(project.as_ref()),
-        };
-        let plugin_rules = plugin_rules_for_root(project.as_ref());
+        // The manifest from the run's cache. Absent manifest ⇒
+        // defaults-only, no plugin rules.
+        let manifest = project_for_root(&root, cache)?;
+        let project = manifest.config();
+        let providers = cache.providers(providers_dir, Some(&root), project);
+        let plugin_rules = plugin_rules_for_root(project);
 
         // Build parsed inputs — under a manifest, desugared as whole-project `check`
-        // reads them ([`build_lint_input`]).
-        let (inputs, builts): (Vec<LintDocInput>, Vec<_>) = {
+        // reads them ([`build_lint_input`]); index-aligned with `files`.
+        let (inputs, names): (Vec<LintDocInput>, Vec<_>) = {
             use rayon::prelude::*;
             files
                 .par_iter()
-                .map(|f| build_lint_input(f, &root, project.is_some(), providers_dir))
+                .map(|f| build_lint_input(cache, f, &root, project.is_some(), providers_dir))
                 .collect::<Result<Vec<_>, _>>()?
                 .into_iter()
                 .unzip()
@@ -411,9 +416,9 @@ fn lint_target(
         // dsl 0.26.0 §2.8: `W-DISPLAY-NAME-DUP` over the root's documents,
         // each against the cast its own profile and imports declare. A cast
         // home's printed path is `root`-relative ([`display_name_dups`]).
-        if let Some(project) = &project {
-            let builts: Vec<_> = builts.iter().flatten().collect();
-            let dups = display_name_dups(&root, &project.plugins_dir, &builts, &inputs);
+        if let Some(project) = project {
+            let names: Vec<&NameInputs> = names.iter().flatten().collect();
+            let dups = display_name_dups(&root, &project.plugins_dir, &names, &inputs);
             aggregated
                 .diagnostics
                 .extend(dups.into_iter().map(|(shown, d)| {
@@ -493,40 +498,31 @@ fn respell_under(dir: &Path, root: &Path, files: Vec<PathBuf>) -> Result<Vec<Pat
 
 /// `W-DISPLAY-NAME-DUP` (dsl 0.26.0 §2.8) for one project root — the same
 /// pass whole-project `check` runs, each document's cast resolved the way `check`
-/// resolves it. `builts` is index-aligned with `inputs`; paths are the
+/// resolves it. `names` is index-aligned with `inputs`; paths are the
 /// root-relative display paths the other lint diagnostics carry.
 fn display_name_dups(
     root: &Path,
     plugins_dir: &Path,
-    builts: &[&BuiltInput],
+    names: &[&NameInputs],
     inputs: &[LintDocInput],
 ) -> Vec<(PathBuf, Diagnostic)> {
-    let per_doc: Vec<_> = builts
+    let declared: Vec<_> = names
+        .iter()
+        .map(|n| lute_check::declared_cast(&n.base.snapshot, &n.vocab.imports, &[]))
+        .collect();
+    let docs: Vec<lute_check::ProjectDoc<'_>> = names
         .iter()
         .zip(inputs)
-        .map(|(built, input)| {
-            (
-                lute_check::declared_cast(built.input.snapshot(), built.input.imports(), &[]),
-                lute_check::check::use_speaker_lines(&input.doc, &built.input.components),
-                built.input.imports().rel.origins.cast.clone(),
-            )
+        .map(|(n, input)| {
+            lute_check::ProjectDoc::new(input.path.as_path(), &input.doc, &n.meta, &n.base.snapshot)
         })
         .collect();
-    let docs: Vec<lute_check::ProjectDoc<'_>> = builts
+    let casts: Vec<_> = declared.iter().collect();
+    let use_lines: Vec<_> = names.iter().map(|n| &n.use_lines).collect();
+    let origins: Vec<_> = names
         .iter()
-        .zip(inputs)
-        .map(|(built, input)| {
-            lute_check::ProjectDoc::new(
-                input.path.as_path(),
-                &input.doc,
-                &built.meta,
-                built.input.snapshot(),
-            )
-        })
+        .map(|n| &n.vocab.imports.rel.origins.cast)
         .collect();
-    let casts: Vec<_> = per_doc.iter().map(|(c, _, _)| c).collect();
-    let use_lines: Vec<_> = per_doc.iter().map(|(_, u, _)| u).collect();
-    let origins: Vec<_> = per_doc.iter().map(|(_, _, o)| o).collect();
     let home = |id: &str| {
         let (path, span) = cast_home(root, Some(plugins_dir), &origins, id)?;
         // Root-relative, like every other lint path.
@@ -653,7 +649,8 @@ pub fn run_lint(opts: &LintOptions<'_>) -> ExitCode {
         .map(Path::to_path_buf)
         .or_else(|| nearest_manifest_dir(path));
     let policy = SeverityPolicy::new(deny, deny_warnings).for_project(root.as_deref());
-    let outcome = match lint_target(path, project, providers, config) {
+    let cache = InputCache::default();
+    let outcome = match lint_target(path, project, providers, config, &cache) {
         Ok(v) => v,
         Err(code) => return code,
     };
@@ -749,5 +746,77 @@ mod tests {
         assert!(!is_lint_deniable("E-USES-PARSE"));
         assert!(!is_lint_deniable("W-LUTE-VERSION-STALE"));
         assert!(!is_lint_deniable(""));
+    }
+
+    const MANIFEST: &str =
+        "defaultProfile: core\nprofiles:\n  core:\n    plugins: {}\n  other:\n    plugins: {}\n";
+
+    fn write(path: &Path, text: &str) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, text).unwrap();
+    }
+
+    /// A scene of `root` named `name`, selecting `profile` when given.
+    fn scene(root: &Path, name: &str, profile: Option<&str>) {
+        let profile = profile.map_or_else(String::new, |p| format!("profile: {p}\n"));
+        write(
+            &root.join(format!("scenes/{name}.lute")),
+            &format!("---\nkind: scene\nid: scene.{name}\n{profile}---\n## Shot 1.\n::bg{{location=\"a\"}}\n@alice: hi\n"),
+        );
+    }
+
+    fn project(root: &Path) {
+        write(&root.join("lute.project.yaml"), MANIFEST);
+    }
+
+    /// The run's cache after linting `path`.
+    fn lint_stats(path: &Path) -> lute_load::InputCacheStats {
+        let cache = InputCache::default();
+        lint_target(path, None, None, None, &cache).expect("lint runs");
+        cache.stats()
+    }
+
+    fn stats(bases: usize, vocabs: usize, assemblies: usize) -> lute_load::InputCacheStats {
+        lute_load::InputCacheStats {
+            bases,
+            vocabs,
+            assemblies,
+        }
+    }
+
+    /// Spec 0.53.0 §3.8: one base and one vocabulary per cache key for the
+    /// run, never one per document. 0.52 assembled each document on a fresh
+    /// cache.
+    #[test]
+    fn two_documents_build_one_base() {
+        let dir = lute_scratch::ScratchDir::named("lint-one-base");
+        project(&dir);
+        scene(&dir, "a", None);
+        scene(&dir, "b", None);
+        assert_eq!(lint_stats(&dir), stats(1, 1, 2));
+    }
+
+    #[test]
+    fn two_roots_build_one_base_each() {
+        let dir = lute_scratch::ScratchDir::named("lint-two-roots");
+        for root in ["one", "two"] {
+            let root = dir.join(root);
+            project(&root);
+            scene(&root, "a", None);
+            scene(&root, "b", None);
+        }
+        assert_eq!(lint_stats(&dir), stats(2, 2, 4));
+    }
+
+    /// "Once" is per key: documents of one root that select another profile
+    /// keep their own base (and so their own vocabulary).
+    #[test]
+    fn two_profiles_in_one_root_build_two_bases() {
+        let dir = lute_scratch::ScratchDir::named("lint-two-profiles");
+        project(&dir);
+        scene(&dir, "a", None);
+        scene(&dir, "b", None);
+        scene(&dir, "c", Some("other"));
+        assert_eq!(lint_stats(&dir), stats(2, 2, 3));
     }
 }

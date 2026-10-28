@@ -769,6 +769,7 @@ fn walk_doc(
     let doc = item.doc;
     let mut flow = Some(entry);
     let mut w = Walk::new(root, path, folded);
+    w.top = &doc.sections;
     if let Some(when) = item.meta.beat.as_ref().and_then(|b| b.when.as_ref()) {
         w.guard(when, &mut flow);
     }
@@ -854,6 +855,9 @@ struct Walk<'a> {
     pending: BTreeMap<String, Facts>,
     /// The document's loops ([`crate::next_labels::LoopTable`]).
     loops: &'a crate::next_labels::LoopTable,
+    /// The document's top-level sections, one loop scope (dsl 0.53.0 §9.2);
+    /// empty when no shot is walked.
+    top: &'a [lute_syntax::ast::Section],
     /// The head whose probe pass is walking: a bounded jump to it sends its
     /// set there.
     probing: Option<String>,
@@ -892,6 +896,7 @@ impl<'a> Walk<'a> {
             slots: BTreeMap::new(),
             pending: BTreeMap::new(),
             loops: &folded.labels.loops,
+            top: &[],
             probing: None,
             probe: false,
             exit: None,
@@ -1054,7 +1059,7 @@ impl<'a> Walk<'a> {
             return;
         }
         if let Some(entry) = flow.take() {
-            let region = &rest[..crate::loop_walk::region_len(rest, id)];
+            let region = crate::loop_walk::region(rest, self.top, id);
             *flow = Some(self.head(id, entry, region));
         }
     }
@@ -1066,7 +1071,7 @@ impl<'a> Walk<'a> {
     /// beyond the seeds. The body's starting rules (grant points, handler
     /// writes, lasting guards, quest start facts) ran at the body's entry,
     /// outside every region, so no pass re-applies them.
-    fn head(&mut self, id: &str, entry: Facts, region: &[Node]) -> Facts {
+    fn head(&mut self, id: &str, entry: Facts, region: crate::loop_walk::Region<'_>) -> Facts {
         use crate::loop_walk::{head_fixpoint, WalkKind};
         let bound = entry.own.len() + 1;
         head_fixpoint(
@@ -1078,7 +1083,9 @@ impl<'a> Walk<'a> {
                 let probing = self.probing.replace(id.to_string());
                 let probe = std::mem::replace(&mut self.probe, true);
                 let mut flow = Some(h.clone());
-                self.walk(region, &mut flow);
+                for part in region.parts() {
+                    self.walk(part, &mut flow);
+                }
                 let back = self.pending.remove(id);
                 self.pending = pending;
                 self.probing = probing;

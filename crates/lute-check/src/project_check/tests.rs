@@ -383,6 +383,34 @@ mod test_cases {
         );
     }
 
+    /// 0.53.0 §6.2: a plugin frontmatter key's type reads every domain and
+    /// entity kind it names, at any depth (here a `map` key and value inside
+    /// a `list` of `record`s); without the key neither is read.
+    #[test]
+    fn reading_set_counts_plugin_frontmatter_types() {
+        use lute_manifest::types::{Field, Type};
+        let mut snap = lute_manifest::core::load_core_snapshot();
+        let before = domain_reading_set(&snap);
+        assert!(!before.contains("reason") && !before.contains("person"));
+        let row = Type::Record(vec![Field {
+            name: "why".into(),
+            ty: Type::Map {
+                key: Box::new(Type::Entity("person".into())),
+                value: Box::new(Type::Domain("reason".into())),
+            },
+            default: None,
+            required: false,
+            shape: None,
+        }]);
+        snap.frontmatter
+            .insert("rows".into(), Type::List(Box::new(row)));
+        let read = domain_reading_set(&snap);
+        assert!(
+            read.contains("reason") && read.contains("person"),
+            "{read:?}"
+        );
+    }
+
     /// §11.1: a declared domain no active construct reads is `W-DOMAIN-UNREAD`.
     #[test]
     fn an_unread_declared_domain_warns() {

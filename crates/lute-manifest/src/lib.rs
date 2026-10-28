@@ -4,6 +4,7 @@ pub mod bindings;
 pub mod clock;
 pub mod constraints;
 pub mod core;
+pub mod deps;
 pub mod diagnostic_levels;
 pub mod entities;
 pub mod fact;
@@ -48,6 +49,10 @@ pub fn io_reason(e: &std::io::Error) -> String {
 #[cfg(test)]
 mod tests {
     #[test]
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "reads a missing path for its I/O error"
+    )]
     fn io_reason_drops_the_os_error_number() {
         let e = std::fs::read("/definitely/not/here/lute").unwrap_err();
         assert_eq!(super::io_reason(&e), "no such file or directory");

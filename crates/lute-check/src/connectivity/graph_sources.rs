@@ -1,6 +1,6 @@
 use super::graph_assembly::QuestDecls;
 use super::graph_nodes::{
-    atom_edge_kind, cycle_diag, ConnGraph, EdgeKind, NodeId, NodeInfo, PrereqState,
+    atom_edge_kind, cycle_diag, ConnGraph, EdgeKind, FollowsDecl, NodeId, NodeInfo,
 };
 use super::{bundle_id, scene_key};
 use crate::ProjectDoc;
@@ -100,7 +100,7 @@ pub(crate) fn start_source(
     quest_state(a, b).or_else(|| quest_state(b, a))
 }
 
-/// dsl 0.24.0 §2: per accept-driven quest
+/// dsl 0.24.0 §2: per accept-driven quest of `driven`
 /// ([`crate::accept::accept_driven_quests`]), every graph node whose body
 /// `::accept`s it, in document order — the accepting scene, the accepting
 /// bundle beat, or the accepting quest (which must be active for its body
@@ -114,9 +114,9 @@ pub(crate) fn start_source(
 /// [`crate::raises::RaiseAnchors`] before [`crate::connectivity::assemble_graph`] runs.
 pub(crate) fn accept_sources<'a>(
     docs: &'a [ProjectDoc<'a>],
+    driven: &BTreeSet<&'a str>,
     nodes: &BTreeMap<NodeId, NodeInfo>,
 ) -> BTreeMap<&'a str, Vec<NodeId>> {
-    let driven = crate::accept::accept_driven_quests(docs);
     let mut sites: BTreeMap<&str, Vec<NodeId>> = BTreeMap::new();
     let mut record_id = |id: &str, source: &NodeId, own: Option<&str>| {
         let Some(id) = driven.get(id).copied() else {
@@ -216,7 +216,7 @@ pub fn omitted_refs(
 ) -> Vec<OmittedRef> {
     let mut out = Vec::new();
     for info in graph.nodes.values() {
-        let PrereqState::Valid(formula) = &info.prereq else {
+        let FollowsDecl::Valid(formula) = &info.follows else {
             continue;
         };
         for atom in atoms(formula) {

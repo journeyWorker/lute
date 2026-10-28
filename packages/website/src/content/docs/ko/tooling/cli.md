@@ -119,7 +119,7 @@ ok: ./scenes/imported/street.lute (0 warning(s), 1 suppressed by lute.project.ya
 | `loc report` | `--json` | `0.47.0.loc-report` |
 | `doctor` | `--json` | `0.43.0.doctor` |
 | `tag` | `--json` | `0.48.0.tag` |
-| `fix` | `--json` | `0.48.0.fix` |
+| `fix` | `--json` | `0.53.0.fix` |
 | `fmt` | `--json` | `0.48.0.fmt` |
 | `catalog refresh` | `--json` | `0.48.0.catalog-refresh` |
 | `init` | `--json` | `0.48.0.init` |
@@ -160,10 +160,32 @@ $ lute schema [<COMMAND>]…
 `lute`를 실행할 때마다 Lute 상태 디렉터리의 `telemetry.jsonl`에 한 줄을 추가합니다. `XDG_STATE_HOME`이 절대 경로면 `$XDG_STATE_HOME/lute`, 아니면 `$HOME/.local/state/lute`, Windows에서는 `%LOCALAPPDATA%\lute`입니다.
 
 ```json
-{"v":1,"ts":1760400000000,"lute":"0.52.0","command":"check","json":true,"exit":0,"durationMs":12}
+{"v":1,"ts":1760400000000,"lute":"0.53.0","command":"check","json":true,"exit":0,"durationMs":12}
 ```
 
 이것이 기록의 전부입니다. 명령 id(또는 `null`), JSON 모드 여부, 종료 코드, 걸린 시간, 툴체인 버전입니다. 인자나 플래그 값, 경로, 파일 내용, 출력, 환경은 기록하지 않고 어디로도 보내지 않습니다. 파일은 내 컴퓨터에만 남습니다. 1 MiB가 되면 `telemetry.jsonl.1`로 돌리며, 기록은 best-effort라 명령의 출력이나 종료 코드를 바꾸지 않습니다. `LUTE_TELEMETRY=0`(또는 `false`, `off`, `no`)이나 `DO_NOT_TRACK=1`로 끕니다. `lute doctor`가 상태를 보여 줍니다(`• Telemetry: off (LUTE_TELEMETRY)`, 켜져 있으면 파일 경로). 저장소의 테스트, 스크립트, CI는 꺼진 상태로 실행합니다.
+
+## 비용 카운터 (`LUTE_STATS`)
+
+`LUTE_STATS`는 명령이 무엇을 다시 빌드하는지 측정하는 도구용 스위치입니다. stdout과 종료 코드는 바꾸지 않으며, 시작할 때 한 번 읽습니다. `LUTE_STATS=input-cache`이면 명령이 끝날 때 stderr에 한 줄을 더 출력합니다. 빌드한 프로젝트 데이터, 즉 접은 프로젝트 base와 vocabulary(구성마다 하나씩), 문서별 assembly의 수입니다.
+
+<!-- lute-diagnostics unverified="verbatim lute lint output; L-MUSIC-BALANCED is the user's own custom rule message from lute.lint.yaml" -->
+```console
+$ LUTE_STATS=input-cache lute lint scenes/walk.lute
+scenes/walk.lute:12:1: error [L-MUSIC-BALANCED] ::music start/stop — opened here, with no close in this document
+failed: scenes/walk.lute (1 error(s), 0 warning(s))
+lute: stats: input-cache bases=1 vocabs=1 assemblies=1
+```
+
+0.53부터 명령은 읽는 문서가 몇 개든 base와 vocabulary를 실행당 한 번만 빌드합니다. `LUTE_STATS=project`이면 대신 프로젝트 단위 카운터(reconciliation, scenario assembly, fixpoint 수. 프로젝트 루트마다 reconciliation은 한 번)를 출력합니다.
+
+```console
+$ LUTE_STATS=project lute check --project .
+…
+lute: stats: project reconciliations=1 scenarios=1 fixpoints=1
+```
+
+다른 값이거나 설정하지 않으면 아무것도 출력하지 않습니다.
 
 ## check
 
@@ -241,6 +263,19 @@ $ lute check --project . --wip
 `--wip`가 없으면 같은 줄이 `error [E-ENTRY-UNREACHABLE]`이 되고 명령은 **1**로 종료되며, 있으면 프로젝트를 통과합니다. [`lute scenario knowledge`](/ko/tooling/overviews/#lute-scenario-knowledge)는 이런 모든 relation을 `NO PRODUCER`로 나열합니다. 0.23.0부터 이 세 코드와 `E-ARM-DEAD`, `W-BEAT-PRIORITY-TIE`의 판정기는 `&&`/`||`를 경로별로도 추론하므로 `run.slot == 'morning' && run.slot == 'evening'` 같은 모순도 0.22에서 놓쳤던 위치에 보고됩니다 — [when 판정 방식](/ko/language/beats/#when의-판정-방식)을 참고하세요.
 
 0.34.0부터 프로젝트 전체 명령은 가장 가까운 매니페스트 루트마다 하나의 `ProjectModel`을 불러옵니다. 따라서 전체 프로젝트 `check`, `scenario`, `beats`, `impact`, `calendar`, `play`, `test`는 하나의 조정된 스냅숏을 공유합니다. 분석에서 파생된 결과에는 `evidence` 수준(`proven`, `witnessed`, `bounded`, `heuristic`, `unknown`)이 붙습니다. 사람용 출력은 `[bounded: <scope>]`, `[heuristic]`, `[unknown]`을 추가하며 `proven`이나 `witnessed`에는 접미사를 붙이지 않습니다. bounded 결과는 “이 범위 안에서”라는 뜻이지 “경로가 없다”는 뜻이 아닙니다.
+
+0.53부터 `check --project`는 프로젝트 패스가 read를 재분류한 뒤 확정하는 비트·fact 가드 판정(#240)을 보고합니다. `lute beats`가 늘 보여 주던 `W-BEAT-SHADOWED`, `W-BEAT-PRIORITY-TIE`, 가드 진단입니다. 이전에는 파일별 오류가 프로젝트 envelope에서 정리되어 사라진 비트를 이 패스들이 판정하지 않아서, `lute beats`는 `shadowed`라고 하는데 `check --project`는 `ok`라고 했습니다. 아래에서 `x`는 `y`가 설정하는 `run.z`를 읽습니다. `dayEnd`에서 먼저 정렬된 `a`는 항상 자격이 있고 소진되지 않으므로 `x`는 절대 이길 수 없습니다.
+
+<!-- lute-diagnostics unverified="verbatim lute check --project output; the beat message is composed at runtime from the beat ladder's verdict" -->
+```console
+$ lute check --project .
+ok: ./a.lute (0 warning(s))
+ok: ./x.lute (0 warning(s))
+ok: ./y.lute (0 warning(s))
+project-wide diagnostics:
+./x.lute:6:1: warning [W-BEAT-SHADOWED] scene `x.s01ep03` can never win occasion `dayEnd`: scene `a.s01ep02` (priority 0) is ordered before it, is always eligible (no `after:`, and its `when` is absent or always true), and is never spent (`once: false`), so it wins every time
+ok: . (3 file(s), 1 project-wide warning(s))
+```
 
 `lute.project.yaml`에 선언된 제약도 전체 프로젝트 `check`가 검사합니다. 위반만 진단으로 표시하며, 성립과 미확정 결과는 아래 보고서에 나타납니다.
 
@@ -367,7 +402,7 @@ constraints:
 
 `proven`은 건전한 정적 증명이고, `witnessed`는 제공된 실행 또는 트레이스에서 나오며, `bounded`는 선언된 유한 범위 안에서만 건전하고, `heuristic`은 보수적인 안내이며, `unknown`은 분석이 판정하지 못했다는 뜻입니다. 진단에는 선택적 JSON `evidence` 및 `scope` 필드가 포함될 수 있습니다(bounded 진단에는 비어 있지 않은 scope가 반드시 있어야 합니다). `trace`, `play`, `test`, `calendar`, `scenario`, `beats`는 각 verdict/result에 `evidence`를 추가하며, calendar 집계 결과에는 `scope`도 포함됩니다. 파싱, 타입, 선언 오류에는 evidence가 없습니다.
 
-impact 및 constraints 섹션은 역사적인 0.34.0 계약에서 도입되었습니다. 저장소의 현재 릴리스는 0.52.0이며 AI 편집 루프 명령은 아래에 설명되어 있습니다.
+impact 및 constraints 섹션은 역사적인 0.34.0 계약에서 도입되었습니다. 저장소의 현재 릴리스는 0.53.0이며 AI 편집 루프 명령은 아래에 설명되어 있습니다.
 ## compile
 
 ```console
@@ -465,6 +500,15 @@ scenes/opening.lute:1:1: error [W-L10N-MISSING] [denied] no `ja-JP` text for `na
 병합된 번역에 저장된 `sourceHash`([`loc import`](#loc-import) 참고)가 레코드의 현재 원문 해시와 다르면 `(lineId, locale)` 쌍마다 하나씩 `W-L10N-STALE`입니다. 번역자가 작업한 export 이후 대사, 선택지 라벨 또는 프롬프트가 바뀌었다는 뜻입니다. 메시지는 lineId와 로케일을 밝히고 `lute loc export`로 다시 내보내 번역을 갱신하라고 안내합니다. 번역은 그대로 병합됩니다. 다른 경고와 마찬가지로 단일 문서 컴파일과 프로젝트 컴파일 모두에서 `--deny W-L10N-STALE` 또는 `--deny-warnings`로 승격됩니다. `schemaVersion: 1` 번들에는 해시가 없으므로 이 검사를 하지 않습니다.
 
 0.51부터 번들은 디렉티브의 [지역화 가능한 텍스트](/ko/language/dialogue-and-cast/#지역화-가능한-디렉티브-텍스트-051부터)에도 적용됩니다. `text` 속성의 `lineId`를 키로 하는 번들 항목은 줄의 번역이 `texts`에 들어가듯 해당 `plugin` 레코드의 `localized.<attr>.texts`에 병합됩니다. `W-L10N-MISSING`과 `W-L10N-STALE`은 이 항목에도 같은 문구와 같은 `--deny` 승격으로 `(lineId, locale)` 쌍마다 하나씩 적용됩니다. `text` 값에는 인라인 modifier가 없으므로 `E-L10N-MODIFIERS`는 적용되지 않습니다. `--locale-bundle` 없이, 또는 `text` 속성 없이 컴파일한 문서는 이전과 바이트 단위로 동일합니다.
+
+**번역은 원문의 마커를 그대로 보여 줘야 합니다(0.53).** 번역된 모든 텍스트(줄, 선택지 레이블, 프롬프트, 디렉티브 `text` 속성)는 원문의 `{{…}}` 마커를 그대로 지녀야 합니다. 원문 마커 각각을 원문과 같은 횟수만큼, 순서는 무관하게, 양 끝 공백을 뺀 내부 표현으로 비교합니다(`{{ run.a }}`는 `{{run.a}}`와 같지만, 내부의 공백과 형식 힌트는 마커의 일부이므로 `{{run.a: ordinal}}`은 `{{run.a:ordinal}}`이 아닙니다). 런타임은 번역의 마커를, 같은 내부 표현을 가진 원문 마커의 값으로 렌더링하므로 다른 마커는 그대로 노출됩니다. 마커가 다른 번역은 `E-L10N-MARKERS`이며 병합되지 않고, `E-L10N-MODIFIERS`와 마찬가지로 컴파일이 종료 코드 **1**로 실패하고 산출물이 없습니다(단일 문서 컴파일과 `--project` 컴파일 모두). 리터럴 중괄호에서 열리는 마커(`E-INTERP-BRACE`)도 같은 방식으로 거부됩니다. 줄 번역에 `}}` 없는 `{{`가 있으면 마커 검사 전에, 파싱되지 않는 줄 마크업과 마찬가지로 `E-INTERP-UNTERMINATED`를 감싼 `E-L10N-MODIFIERS`로 실패합니다(`loc import`는 그 행을 `E-L10N-MARKERS`로 보고합니다). 표면별 문법은 [`loc import`](#loc-import)에 있습니다.
+
+<!-- lute-diagnostics unverified="verbatim lute compile --locale-bundle output; the message is composed at runtime from the source's and the translation's marker lists" -->
+```console
+$ lute compile scenes/s.lute --project . --locale-bundle de-bundle.json -o out.json
+scenes/s.lute:1:1: error [E-L10N-MARKERS] `de` text for `s.narrator_0010` is not merged: its markers differ from the source's (missing `{{run.a}}`; extra `{{run.zzz + 1}}`): a translation shows each `{{…}}` marker of its source as often as the source does, in any order
+locale merge failed; no execution IR emitted
+```
 
 ### `--stream` — 스트리밍 컴파일
 
@@ -680,7 +724,80 @@ lute: would renumber <N> line(s) in <M> of <T> file(s); pass --commit to apply
 $ lute fix [<PATH>]… [--check] [--json]
 ```
 
-기계적이며 의미를 보존하는 migration을 제자리에서 적용합니다. 바이트 단위로 정확하고 주석을 보존하며, 무언가 변경된 경우에만 다시 쓰고 다시 실행하면 아무것도 적용하지 않습니다. 각 `<PATH>`(기본값 `.`)는 `.lute` 파일, 프로젝트/스키마 YAML 파일 또는 디렉터리입니다. 디렉터리라면 그 아래 모든 `.lute` 및 YAML 파일을 재귀적으로 정렬된 순서로 처리합니다. 여러 경로는 지정된 순서대로 migration합니다. 변경된 파일마다 자체 줄을 출력한 다음 요약(`lute: applied N fix(es) in M of K file(s)`)을 출력합니다. 변경할 것이 없는 단일 파일은 `lute: nothing to fix`을 출력합니다. 성공 시 종료 **0**, I/O 시 **2**이며, 파일 전체 결과 중 가장 심각한 결과입니다. `--check`는 아무것도 쓰지 않으며 적용할 수정이 하나라도 있으면 **1**로 종료합니다. `--json`은 보고서 `0.48.0.fix`(`{applied, files: [{path, changed, fixes}]}`, `fixes`는 텍스트가 출력하던 개수)를 출력합니다.
+기계적이며 의미를 보존하는 migration을 제자리에서 적용합니다. **`lute fix`는 이전 모든 릴리스의 migration을 전부 적용하며, 버전 stamp 올리기만 하지 않습니다.** 0.31용으로 쓴 프로젝트는 한 번의 실행으로 0.31, 0.37, 0.41 migration을 모두 받으며, 전체 목록은 [`lute fix`가 실행하는 규칙](#lute-fix가-실행하는-규칙)에 있습니다. 먼저 `lute fix --check`를 실행해 diff를 검토한 뒤 `lute fix`를 실행하세요. 바이트 단위로 정확하고 주석을 보존하며, 무언가 변경된 경우에만 다시 쓰고 다시 실행하면 아무것도 적용하지 않습니다. 각 `<PATH>`(기본값 `.`)는 `.lute` 파일, 프로젝트/스키마 YAML 파일 또는 디렉터리입니다. 디렉터리라면 그 아래 모든 `.lute` 및 YAML 파일을 재귀적으로 정렬된 순서로 처리합니다. 여러 경로는 지정된 순서대로 migration합니다. 디렉터리 순회는 다른 모든 워커(`check --project`, `lint`, `loc`, `doctor`)처럼 디렉터리 심볼릭 링크로 내려가지 않습니다. 링크로 명시해서 지정한 파일이나 디렉터리는 여전히 migration하며, 이때는 그 루트의 스냅숏을 사용합니다. 변경된 파일마다 적용된 규칙과 횟수를 담은 자체 줄을 출력한 다음 요약(`lute: applied N fix(es) in M of K file(s)`)을 출력합니다. 변경할 것이 없는 단일 파일은 `lute: nothing to fix`을 출력합니다. 성공 시 종료 **0**, I/O 시 **2**이며, 파일 전체 결과 중 가장 심각한 결과입니다. `--check`는 아무것도 쓰지 않으며 적용할 수정이 하나라도 있으면 **1**로 종료합니다. `--json`은 보고서 `0.53.0.fix`(`{applied, ok, files: [{path, changed, fixes, rules, kept}]}`, `fixes`는 텍스트가 출력하던 개수)를 출력합니다. `rules`는 규칙 순서대로의 `[{rule, fixes}]`(적용할 것이 없으면 빈 배열)이고 `kept`는 `[{line, column, rule, reason}]`입니다([`lute fix`가 실행하는 규칙](#lute-fix가-실행하는-규칙) 참고). `0.48.0.fix` 보고서에는 `path`, `changed`, `fixes`만 있었습니다.
+
+### `lute fix`가 실행하는 규칙
+
+`lute fix --help`도 같은 목록을 출력합니다. 규칙마다 고정된 id가 있으며, 파일별 줄과 JSON 보고서가 이 id를 씁니다.
+
+| 규칙 | 바꾸는 것 | 도입 |
+| ---- | -------- | ----- |
+| `line-sigil` | `:line[speaker]`와 `:`로 시작하는 모든 콘텐츠 줄이 `@speaker`가 됨 | 0.2.2 |
+| `choice-into` | `<choice as="…">`가 `into="…"`가 됨 | 0.1.0 |
+| `choice-persist` | `into=`도 있는 `<choice>`의 `persist="run"`을 삭제 | 0.6.0 |
+| `shot-heading` | heading 제목 앞의 `## Shot N.` / `## Scene N.` 접두사를 제거 | 0.6.0 |
+| `when-is` | `$`를 리터럴과 비교하는 `<when test="$ == …">`가 `is="…"`가 됨 | 0.18.0 |
+| `delivery` | 콘텐츠 줄의 `delivery="thought\|voiceover\|spoken"`가 `mono`, `vo` 또는 없음이 됨 | 0.2.2 |
+| `renamed-tag` | 디렉티브 태그 `::auto`, `::cut`, `::next`, `::mark`가 `::actor`, `::cg`, `::jump`, `::label`이 됨 | 0.37.0 |
+| `renamed-attr` | `::music{action}` → `playback`, `::cg{action}`·`::video{action}` → `display`, `::label{id}` → `name`. 활성 프로파일이 그 키를 해당 디렉티브의 stamp로 선언했다면 제외 | 0.37.0 |
+| `renamed-tag-attr` | `<choice label>`이 `text`, `<match on>`이 `subject`가 됨 | 0.37.0 |
+| `line-id-label` | 콘텐츠 줄의 `id="x"`가 앞의 `::label{name="x"}` 줄로 이동 | 0.37.0 |
+| `cel-0.32` | 0.31의 fact 질의·존재 호출(`holds`, `count`, `countDistinct`, `validAt`, `isSet`)이 표준 CEL 형태가 됨 | 0.32.0 |
+| `domain-rename` | 프로젝트·스키마·플러그인 YAML의 이름이 바뀐 도메인 | 0.41.0 |
+| `lute-version` | 툴체인보다 오래된 기존 `luteVersion` stamp를 툴체인 버전으로 올림 | 0.41.1 |
+| `bindings-version` | 툴체인 라인보다 오래된 `player.bindings.yaml`의 `bindingsVersion`을 그 라인으로 올림 | 0.47.0 |
+| `volume` | 프로젝트의 `volume` 도메인이 정확히 `[silent, down, normal, up, full]`이면 `down`/`up`이 `quiet`/`loud`가 됨 | 0.42.0 |
+
+이전 모든 릴리스의 migration이 실행되므로 diff가 버전 stamp 올리기보다 클 수 있습니다. 쓰기 전에 검토하세요. `lute fix --check`는 아무것도 쓰지 않고 같은 줄을 `would apply`로 출력하며, 적용할 수정이 있으면 **1**로 종료합니다.
+
+**플러그인 stamp는 유지됩니다.** 활성 프로파일이 해당 디렉티브의 stamp로 선언한 디렉티브 속성 키는 0.37 표기가 아닙니다. `lute fix`는 각 `.lute` 문서의 capability 스냅숏(매니페스트 아래 문서라면 프로젝트의 것)을 읽고, 스냅숏이 `::cg`에서 `action`을 허용하지 않을 때만 `::cg{action}`을 바꿉니다. 검사기도 같은 판단을 하므로 fix한 프로젝트는 깨끗하게 check를 통과합니다. `lute fix`가 그대로 둔 위치는 두 모드 모두 stderr에 출력되고, JSON 보고서의 `kept`에 `reason`과 함께 나열됩니다.
+
+- `stamp` — 활성 프로파일이 그 키를 stamp 속성으로 선언함;
+- `unresolved` — 문서의 플러그인이 해석되지 않아 `lute fix`가 stamp와 0.37 표기를 구분할 수 없으므로 그런 키를 모두 유지함. `lute check`를 실행해 프로젝트부터 고치세요.
+
+줄은 키의 열을 가리킵니다. 플러그인이 `action`을 stamp로 선언하고 `luteVersion`이 오래된 프로젝트입니다.
+
+```console
+$ lute fix --check .
+lute: ./lute.project.yaml: would apply 1 fix(es): lute-version 1
+lute fix: ./scenes/intro.lute:9:22: kept `action` on `::cg` — the active profile declares it as a stamp attribute; the 0.37 rename to `display` does not apply
+lute fix: ./scenes/intro.lute:10:25: kept `action` on `::music` — the active profile declares it as a stamp attribute; the 0.37 rename to `playback` does not apply
+lute fix: ./scenes/intro.lute:11:25: kept `action` on `::video` — the active profile declares it as a stamp attribute; the 0.37 rename to `display` does not apply
+lute: would apply 1 fix(es) in 1 of 5 file(s)
+```
+
+0.52에서는 같은 실행이 `scenes/intro.lute`에서 세 건을 더 수정한다고 보고했고, 그 결과 `check`에 실패하는 프로젝트가 남았습니다. `--json`에서는 유지된 위치가 파일 항목에 들어갑니다(출력은 줄였습니다).
+
+```console
+$ lute fix --check --json .
+{
+  "applied": false,
+  "command": "fix",
+  "files": [
+    {
+      "changed": true,
+      "fixes": 1,
+      "kept": [],
+      "path": "./lute.project.yaml",
+      "rules": [{ "fixes": 1, "rule": "lute-version" }]
+    },
+    …
+    {
+      "changed": false,
+      "fixes": 0,
+      "kept": [
+        { "column": 22, "line": 9, "reason": "stamp", "rule": "renamed-attr" },
+        …
+      ],
+      "path": "./scenes/intro.lute",
+      "rules": []
+    },
+    …
+  ],
+  "ok": false,
+  "schemaVersion": "0.53.0.fix"
+}
+```
 
 0.37 표면 변경은 다음과 같습니다. 각각 `lute check`가 새 표기와 `lute fix`가 다시 작성한다는 메모를 보고합니다.
 
@@ -741,8 +858,8 @@ state:
 
 ```console
 $ lute fix scenes/pier.lute lore
-lute: scenes/pier.lute: applied 8 fix(es)
-lute: lore/dock.lute: applied 8 fix(es)
+lute: scenes/pier.lute: applied 8 fix(es): renamed-tag 2, renamed-attr 1, renamed-tag-attr 3, line-id-label 2
+lute: lore/dock.lute: applied 8 fix(es): renamed-tag 2, renamed-attr 1, renamed-tag-attr 3, line-id-label 2
 lute: applied 16 fix(es) in 2 of 2 file(s)
 $ lute fix scenes/pier.lute lore
 lute: applied 0 fix(es) in 0 of 2 file(s)
@@ -796,6 +913,8 @@ $ lute catalog refresh [--project <DIR>] [--providers <DIR>] [--json]
 ```
 
 `--providers <DIR>`는 다시 스탬프할 스냅숏 디렉터리이며 기본값은 프로젝트의 `catalogDir`(기본 `catalog/`)입니다. 프로젝트(`--project` 또는 발견)가 스탬프를 정하므로, 프로젝트 안에서는 스탬프가 프로젝트의 다중 플러그인 버전입니다(프로젝트 없이 실행하면 core 기준선). 이 디렉터리의 고정된 모든 provider 스냅숏을 현재 `capabilitySnapshot`에 맞춰 다시 스탬프하고 `stale` 플래그를 지웁니다([providers & catalog](/ko/tooling/providers-and-catalog/) 참고). 프로젝트도 `--providers`도 없으면 `--providers`를 알려 주는 `E-CLI-USAGE`입니다. `--json`은 보고서 `0.48.0.catalog-refresh`(`{providers, capabilitySnapshot, refreshed: [path], skipped: [{path, reason}]}`)를 출력합니다. 성공 시 종료 **0**, I/O 오류 시 **2**입니다.
+
+`catalog refresh`는 매니페스트가 로드되면 항상 그 `catalogDir`를 읽습니다. 프로젝트의 문서 하나를 읽을 수 없을 때도 마찬가지입니다(0.52는 이때 `catalog/`로 대체했습니다).
 
 ## init
 
@@ -914,6 +1033,8 @@ $ lute doctor [--project <DIR>] [--strict] [--json]
 
 로컬 도구체인과 프로젝트 설정을 진단합니다. 버전 축, 프로젝트 매니페스트, 콘텐츠 문서, 플레이 스크립트(`*.play.yaml`)와 시나리오 테스트(`*.test.yaml`), provider 스냅숏, 활성 플러그인, 선언된 각 계기와 이에 응답하는 비트 수, 선언된 vocabulary 슬롯, 편집기 통합을 확인합니다. `--project`는 검사할 프로젝트 디렉터리이며(없으면 현재 디렉터리에서 위로 올라가며 찾고, 찾지 못하면 이전처럼 매니페스트 누락을 보고합니다) 문서 스캔은 이 프로젝트 디렉터리를 순회합니다. provider 스냅숏은 매니페스트의 `catalogDir:`(기본값 `catalog/`)에서 찾습니다. 이는 `check`가 읽는 디렉터리입니다. 없으면 `no pinned provider snapshots`라고 표시합니다. 편집기 검사는 `PATH`에서 처음 찾은 `lute-lsp`에 `lute-lsp --version`을 실행하고, 다른 버전을 보고하거나 0.22.0보다 오래되어 버전을 보고하지 않는 경우 이를 표시하며 재설치 방법도 안내합니다. 실행 중인 `lute` 옆의 `lute-lsp`와 `PATH`의 것을 비교해(`lute-lsp beside lute`; `--json`에서는 `siblingLanguageServer`) 먼저 발견된 것이 다른 빌드이면 버전이 같아도 검사에 실패시키고 두 바이너리를 표시합니다. 해결하려면 `lute` 디렉터리를 `PATH` 앞에 두거나 편집기의 언어 서버를 옆의 `lute-lsp`로 지정합니다.
 
+`doctor`도 프로젝트의 문서 하나를 읽을 수 없을 때 매니페스트의 `catalogDir`를 읽습니다(0.53. 0.52는 `catalog/`로 대체했습니다).
+
 ```console
 $ lute doctor --project .
 lute doctor — .
@@ -969,7 +1090,7 @@ $ lute play --script <FILE> [--project <DIR>] [--providers <DIR>] [--permission-
 프로젝트 **전체**를 발생한 **계기(occasion)**의 시퀀스로 스토리를 플레이합니다(dsl 0.21.0). [비트와 계기](/ko/tooling/play/)의 참조 런타임 소비자입니다. 프로젝트(`--project` 또는 발견된 프로젝트)는 메모리에서 한 번 컴파일되며, 프로젝트 `compile`이 사용하는 것과 같은 게이트와 선언 유합(씬, 퀘스트, 로어 문서)을 사용합니다. `--engine <FILE>`은 `lute.engine.yaml`을 로드하고 정확한 major.minor IR 게이트를 먼저 수행한 다음 프로젝트 인덱스의 `requiredSemantics` 유합을 `supportedIds`와 비교합니다. id가 없으면 어떤 스텝, 명령, 조건, 에셋, 브리지도 실행하기 전에 종료 **2**와 `E-ENGINE-SEMANTICS`로 거부합니다. 잘못된 매트릭스와 지원하지 않는 IR 라인은 `E-ENGINE-MATRIX` / `E-ENGINE-IR-VERSION`을 사용합니다. 생략하면 내장 `reference` 매트릭스를 사용합니다. 필수 `--script`는 닫힌 키 집합을 가진 `*.play.yaml` 파일입니다. 각 `steps:`는 계기 `occasion:` 발생(그리고 `target:`, `pick:`, 해당 제시에서 스크립트의 `choose:` 키를 키별로 대체하는 스텝 로컬 `choose:`), `newRun:` 시작, `engine:`을 통한 엔진 소유 내용 쓰기(`state:` 리터럴 또는 `{ add: <n> }`, `facts:`, `retract:`), 월드 `event:` 발생, 선언된 시계를 `advance: slot | day | <n>`으로 이동(dsl 0.24.0: 시계의 경로를 쓰고, 퀘스트를 정산하며, 시계의 `raise:`에 따라 지나는 자정마다 `dayEnd` / `dayStart`를, 멈춘 곳에서 `slot` 계기를 한 번 발생시킵니다. 같은 순간의 `engine:` 쓰기를 함께 실을 수 있으며, 이 쓰기는 시계가 도착한 곳에 적용됩니다 — 도중의 `dayEnd` / `dayStart` 이후, 마지막 정산과 발생 이전), 또는 `end: true`로 플레이스루를 끝냅니다. 그리고 어떤 스텝이든 `label:`, `repeat: <n>`, 자체 `bridges:` 응답, `expect: { winner, offered, notOffered, presented, options, quests, state, facts, notFacts }`를 가질 수 있으며, `- include: <file>`은 다른 파일의 스텝을 그 자리에 이어 붙입니다. `steps:` 외에도 스크립트는 `state:`, `facts:`, `choose:`, `bridges:`에 대해 `lute trace --mock` 문법을, 시작점이 되는 세이브(`visited:`, `presented: { run, user }`, `quests:`, `entriesRead: { run, user }`), `derive:`, 그리고 플레이의 끝을 판정하는 최상위 `expect: { exit, quests, state, facts, notFacts, transcriptContains, transcriptLacks }`(dsl 0.22.0)를 받습니다. 각 계기 스텝은 계기의 후보 비트와 그 판정을 나열하고, 승자(또는 `select: all` 계기에서는 스텝의 `pick`; `pick: none`이거나 자격 있는 비트가 없을 때 `pick`이 없으면 아무것도 제시하지 않음)를 `lute run`의 참조 평가기로 제시하며, 모든 퀘스트 생애주기를 진행시키므로 이후의 `when` 조건과 `after: completed(…)`가 실제 진행을 봅니다. `--json`은 같은 트랜스크립트를 하나의 객체로 내보냅니다.
 
 dsl 0.26.0부터 `advance: { to: <slot> }` / `advance: { to: { weekday, slot } }`는 다음 해당 위치로 시계를 이동합니다(앞으로만, 0단계는 불가). 스텝 `expect:`는 `clock: { weekday, slot, day }`를 받고(0.28부터 `ended`도 가능), `engine: { accept: [quest ids] }`는 플레이 도중 수락 방식 퀘스트를 수락합니다(`quest <id> accepted (engine)`). 엔트리는 `pick:`, `entriesRead:`, 선택 기대값에서 `<document id>.<entry id>`로 이름 붙일 수 있습니다. `kind:<kind>`를 대상으로 하는 비트는 해당 종류의 모든 멤버에 응답합니다. 실행되지 않은 가드 디렉티브는 `skip ::give{item="potion"} — when: false`를 출력합니다. 브리지 응답은 결과 슬롯 또는 capability의 `result:`로 타입이 정해지며, 타입 없는 응답은 거부됩니다(종료 **2**). 문서가 하나의 상태 경로를 두 타입으로 선언하는 프로젝트도 거부됩니다(종료 **1**). 프로젝트는 플레이마다 한 번만 로드됩니다 — Monster League에서 플레이 로드 시간이 약 12초에서 약 1.5초로 줄었습니다. [스토리 플레이](/ko/tooling/play/)를 참고하세요.
-`--events`는 재개 가능한 런타임 이벤트 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 seed와 그 출력이 들어가고, 이후 플레이어가 취한 각 입력은 출력과 짝을 이룹니다(`choose`와 `bridgeResult` 응답 포함). 모든 출력에는 `eventVersion: "0.52.0"`이 들어갑니다. `--json`, `--ir`, `--derivation`, `--conditions-output`과 함께 사용할 수 없습니다.
+`--events`는 재개 가능한 런타임 이벤트 스트림을 compact JSON Lines로 출력합니다. 첫 줄에는 seed와 그 출력이 들어가고, 이후 플레이어가 취한 각 입력은 출력과 짝을 이룹니다(`choose`와 `bridgeResult` 응답 포함). 모든 출력에는 `eventVersion: "0.53.0"`이 들어갑니다. `--json`, `--ir`, `--derivation`, `--conditions-output`과 함께 사용할 수 없습니다.
 
 `--no-derive`(또는 스크립트의 `derive: false`; 플래그가 우선)는 프로젝트의 Datalog 규칙 적용을 중지하므로 mock하지 않은 파생 atom은 unknown이 되고 walk가 미완료로 멈춥니다. `--derivation <ATOM>`(반복 가능)은 플레이 후 ground atom의 도출 트리를 출력합니다. 사용된 규칙과 각 전제의 자체 근거(시드 fact, 단언, 또는 차례로 파생)가 나오고, 부정 전제는 `(absent)`로 표시됩니다. 성립하지 않으면 이를 결론낼 수 있는 모든 규칙과 실패한 전제를 출력합니다. `--json`에서는 같은 트리가 `explain` 아래에 들어갑니다. `--deny <CODE>`/`--deny-warnings`는 프로젝트 compile 게이트의 진단을 승격합니다. `--conditions-output <FILE>`은 CEL 조건을 평가할 때마다 JSONL 레코드 하나를 `<FILE>`에 추가합니다.
 
@@ -1111,6 +1232,17 @@ $ lute lint [<PATH>] [--project <DIR>] [--providers <DIR>] [--deny <CODE>]… [-
 
 `lute lint <DIR>`는 프로젝트를 사용합니다(0.49.0). `<DIR>` 또는 그 상위의 가장 가까운 `lute.project.yaml`을 찾아 그 프로젝트의 `lute.lint.yaml`을 적용하고, 결과를 프로젝트 루트 기준 상대 경로로 출력합니다. `lute lint <DIR> --project <P>`는 `<P>` 안의 `<DIR>`를 검사하며, `<P>` 밖의 `<DIR>`는 `E-CLI-USAGE`(`lute lint: <DIR> is not inside the project <P>`)입니다.
 
+`lute lint`는 피연산자만 읽습니다(0.53). 여기에 매니페스트, 플러그인, provider, 그리고 이들이 닿는 import가 더해집니다. 프로젝트의 공유 데이터를 실행당 한 번만 빌드하며(`LUTE_STATS=input-cache`가 `bases=1 vocabs=1`을 보여 줍니다) 프로젝트 전체 모델은 만들지 않으므로, 무관한 형제 문서를 읽을 수 없어도(잘못된 UTF-8, 권한 없음) 더 이상 lint가 실패하지 않습니다. 0.52에서는 `lute: cannot load project …`, 종료 코드 **2**였습니다. 읽을 수 없는 *피연산자*는 자체 I/O 오류로 보고되며 종료 코드는 **2**입니다.
+
+<!-- lute-diagnostics unverified="verbatim lute lint output; the section message is composed at runtime from the section's title" -->
+```console
+$ lute lint scenes/good.lute
+scenes/good.lute:6:1: warning [L-SECTION-STARTS-WITH-BACKGROUND] section `A` does not open with a `::bg` staging directive
+ok: scenes/good.lute (0 error(s), 1 warning(s))
+$ lute lint scenes/bad.lute
+lute: cannot read scenes/bad.lute: stream did not contain valid UTF-8
+```
+
 0.26.0부터 lint는 `W-DISPLAY-NAME-DUP`도 보고하며 권고 전체 프로젝트 `check`도 보고합니다. 대화 상자가 같은 이름으로 표시할 두 화자, 즉 동일한 `name:`을 가진 두 cast 항목, `::use{… name="…"}` 표시 문자열과 같은 cast 이름, 또는 서로 다른 화자의 두 문자열(`who=`)이 대상입니다. `sharedName: true`로 표시된 cast 항목은 여러 화자가 공유하는 의도된 역할 이름이므로 집계하지 않습니다. 이 코드는 `lute.lint.yaml` 규칙이 아니며 `--deny W-DISPLAY-NAME-DUP`로 오류로 만들 수 있습니다. [Linting](/ko/tooling/linting/#표시-이름)을 참고하세요.
 
 ## loc export
@@ -1180,6 +1312,15 @@ $ lute loc import <FILE>… [-o, --output <PATH>] [--json]
 (위 해시는 줄여 표기했습니다.) `sourceHashes`는 각 행의 `sourceHash`를 lineId **와** 로케일별로 담습니다(두 로케일이 서로 다른 export에서 번역될 수 있기 때문입니다). 항상 기록되며, 해시를 가진 행이 없으면 `{}`입니다. 모든 맵이 정렬되므로 번들은 바이트 안정적입니다. 같은 입력을 두 번 import하면 동일한 바이트가 생성됩니다. `compile --locale-bundle`은 `schemaVersion: 1` 번들도 읽습니다(`sourceHashes`가 없고 stale 검사도 하지 않습니다). 파싱할 수 없는 입력, 한 로케일 안에서 중복된 `lineId`, 빈 로케일 태그는 `E-LOCALE-BUNDLE`이며 문제가 있는 파일과 행을 함께 보고합니다. `lineId`가 **없는** 행은 거부하지 않고 건너뜁니다. 태그되지 않은 줄은 아직 안정적인 identity가 없기 때문이며, stderr의 단일 요약에 그 수가 집계됩니다.
 
 0.51부터 `loc import`는 `kind: "directive"` 행을 받아들이며, 다른 모든 행과 마찬가지로 `lineId`를 키로 번들을 만듭니다. 알 수 없는 `kind`는 여전히 거부됩니다. `lineId`가 없는 directive 행(작성된 `code` 없음)은 태그 없는 다른 행처럼 건너뜁니다.
+
+`loc import`는 `{{…}}` 마커가 파싱되지 않는 텍스트를 거부합니다(0.53). `E-L10N-MARKERS`이며 행마다 오류 하나, 모두 보고하고 번들은 쓰지 않으며 종료 코드는 **1**입니다. 각 행은 `kind`에서 알 수 있는 원문 표면의 문법으로 읽습니다. `line` 행은 `}}` 없는 `{{`(`E-INTERP-UNTERMINATED`)와 리터럴 중괄호에서 열리는 마커(`E-INTERP-BRACE`)를 거부합니다. `choice`(선택지 레이블), `prompt`, `directive`(`text` 속성) 행은 원문처럼 `}}` 없는 `{{`를 리터럴 텍스트로 읽고 중괄호 경우만 거부합니다. `kind` 열이 없는 CSV는 모든 행을 레이블로 읽습니다. `loc import`는 번역된 행만 가지므로 마커가 파싱되는지만 판단하며, 원문의 마커와 같은지는 [`compile --locale-bundle`](#--locale-bundle--번역-번들-병합)이 함께 판단합니다.
+
+<!-- lute-diagnostics unverified="verbatim lute loc import output; the message is composed at runtime from the marker parser's own error" -->
+```console
+$ lute loc import fr.json -o bundle.json
+fr.json: error [E-L10N-MARKERS] row 1: `fr` text for `s.narrator_0010` cannot be merged: its markers do not parse (E-INTERP-BRACE: a literal `{` directly before `{{run.a}}` cannot be told apart from the marker in compiled text (lute 0.47.1 §3): put a character between them (`{ {{run.a}}`), or show the brace from a string state path (`{{run.lbrace}}{{run.a}}`, with `run.lbrace` declared `{ type: string, default: "{" }`))
+1 E-L10N-MARKERS error(s); no bundle emitted
+```
 
 ## loc report
 

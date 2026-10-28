@@ -227,7 +227,8 @@ pub(crate) enum Command {
         /// prompted branch/hub, keyed by `lineId`/`promptLineId`. `text` and
         /// `prompt` stay the source language. A record missing a declared
         /// locale is `W-L10N-MISSING`, a translation of a changed source is
-        /// `W-L10N-STALE`.
+        /// `W-L10N-STALE`; a translation whose `{{…}}` markers are not its
+        /// source's is `E-L10N-MARKERS` and fails the build.
         #[arg(long = "locale-bundle", value_name = "FILE")]
         locale_bundle: Option<PathBuf>,
         #[command(flatten)]
@@ -298,22 +299,7 @@ pub(crate) enum Command {
         json: JsonOpt,
     },
     /// Apply mechanical, meaning-preserving source migrations in place.
-    ///
-    /// Apply mechanical, meaning-preserving migrations in place: legacy
-    /// line/choice syntax; literal `<when>` comparisons; 0.31 CEL
-    /// fact-query/presence calls (`holds`/`count`/`countDistinct`/`validAt`/
-    /// `isSet`) to their standard-CEL 0.32 forms; renamed domains in project,
-    /// schema and plugin YAML (0.41.0); existing `luteVersion` stamps older
-    /// than the toolchain, raised to it (0.41.1); a `player.bindings.yaml`
-    /// `bindingsVersion` older than the toolchain line, raised to it
-    /// (0.47.0); and, when the project's
-    /// `volume` domain is exactly the old `[silent, down, normal, up, full]`,
-    /// `down`/`up` to `quiet`/`loud` in commands, YAML references and
-    /// `volumes` keys (0.42.0). Byte-exact and
-    /// comment-preserving; writes back only when something changed. A
-    /// directory migrates `.lute` and project/schema YAML files recursively,
-    /// sorted; several paths migrate in the order given. Exit `0` on success,
-    /// `2` on an I/O failure.
+    #[command(long_about = crate::rewrite::fix_long_about())]
     Fix {
         /// The `.lute`/YAML files to migrate, or directories to migrate
         /// recursively (default `.`).
@@ -1097,7 +1083,9 @@ pub(crate) enum LocCommand {
     /// field/column overrides that, so a single merged file also works.
     ///
     /// Exit `0`, `1` on `E-LOCALE-BUNDLE` (unparseable input, a duplicate
-    /// `lineId` within one locale, or an empty locale tag), `2` on I/O.
+    /// `lineId` within one locale, or an empty locale tag) or
+    /// `E-L10N-MARKERS` (a translation's `{{…}}` marker does not parse),
+    /// `2` on I/O.
     ///
     /// `--json` prints the `0.48.0.loc-import` report on stdout and so needs
     /// `-o, --output` (the bundle is the artifact).

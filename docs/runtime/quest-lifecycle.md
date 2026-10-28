@@ -741,5 +741,17 @@ with no `start`, or a child with `activate="accept"` — that declares no
 `follows=` is anchored at every scene, bundle beat and quest body that
 `::accept`s it, so it is drawn and reachable without repeating the accepting
 scene in `follows=`; a quest with an explicit `follows=` keeps only its declared
-edges. An anchor never proves a quest unreachable: the engine may accept it
-outside any `::accept`.
+edges, and its accept anchors too (dsl 0.53.0 §7). An anchor never proves a
+quest unreachable: the engine may accept it outside any `::accept`.
+
+**`follows` is host policy on an external quest and gates no in-script
+accept.** The runtime never reads `follows` (the compiler writes it only into
+`prereqEdges`). An in-script accept (`::accept`, a reward kind's
+`effects.accepts`) activates an accept-driven quest at the next lifecycle
+round whatever its `follows` says. On an `accept="external"` quest `follows`
+is the condition under which the **host** grants it: the host applies it, Lute
+carries it in `prereqEdges` and analysis reads it as host policy (evidence
+`heuristic`). A host-gated grant is written `accept="external" follows="…"`;
+`accept="external"` beside `start` is refused. A cycle of `start` and
+in-script accept anchors that nothing outside enters and no host route opens is
+`E-QUEST-START-CYCLE`.

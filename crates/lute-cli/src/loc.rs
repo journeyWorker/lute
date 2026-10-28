@@ -121,9 +121,9 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use lute_check::meta::canonical_episode_key;
-use lute_compile::locale::LocaleBundle;
+use lute_compile::locale::{LocaleBundle, E_L10N_MARKERS};
 use lute_core_span::Severity;
-use lute_load::{build_input, find_lute_files, project_root_for};
+use lute_load::{build_input_with, find_lute_files, project_root_for, InputCache};
 use lute_manifest::project::IdentityTemplates;
 use lute_manifest::snapshot::CapabilitySnapshot;
 use lute_syntax::ast::{Arm, Attr, AttrValue, Choice, ClipNode, Directive, Document, Node};
@@ -614,7 +614,9 @@ fn is_component_document(doc: &Document) -> bool {
 /// Each file's `identity:` templates resolve against its OWN nearest-ancestor
 /// project root ([`lute_load::project_root_for`], bounded below by `dir`) —
 /// same nested-subproject rule whole-project `check` and `lute scenario` use, so a
-/// walk spanning two subprojects exports each one's real ids.
+/// walk spanning two subprojects exports each one's real ids. Every file
+/// assembles through one [`InputCache`] for the walk (spec 0.53.0 §3.3): a
+/// base and vocabulary per key, not per file.
 fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
     let files = find_lute_files(dir).map_err(|e| {
         let e = lute_manifest::io_reason(&e);
@@ -622,6 +624,7 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
         eprintln!("{message}");
         crate::envelope::fail_quietly(crate::envelope::CliError::io(dir, message))
     })?;
+    let cache = InputCache::default();
     let mut units = Vec::new();
     for path in &files {
         // #3 / T6.10 fix (i): expand `::use` before extracting, so a
@@ -632,15 +635,16 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
         // `expand_document` is deliberately NOT run, because `{{…}}`
         // interpolation is what a translator must see intact.
         let root = project_root_for(path, dir);
-        let Some(built) = build_input(path, None, Some(&root), None) else {
+        let Some(built) = build_input_with(&cache, path, None, Some(&root), None) else {
             eprintln!(
                 "lute loc: skipping {} — cannot resolve inputs",
                 path.display()
             );
             continue;
         };
-        let identity = built.identity.clone();
-        let input = built.input;
+        let lute_load::BuiltInput {
+            input, manifest, ..
+        } = built;
         let (mut doc, diags) = lute_syntax::parse(&input.text);
         let errors = diags
             .iter()
@@ -672,11 +676,10 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
             &folded.env.state,
             &folded.env.occasion_scopes,
         );
-        let ident = identity;
         document_units(
             &path.display().to_string(),
             &doc,
-            &ident,
+            manifest.identity(),
             &input.components,
             input.snapshot(),
             &mut units,
@@ -1204,6 +1207,11 @@ struct ImportRow {
     /// A per-row locale override; `None` falls back to the file's own tag.
     locale: Option<String>,
     text: String,
+    /// The `{{…}}` grammar of the row's source surface (0.53.0 §8.1), from
+    /// its `kind`; a CSV without a `kind` column reads as the label grammar
+    /// (a `{{` with no `}}` is literal), and `compile --locale-bundle` judges
+    /// a line by the line grammar.
+    grammar: lute_compile::locale::TextGrammar,
     /// The row's `sourceHash` (dsl 0.47.0 §3.2); `None` when absent/empty.
     source_hash: Option<String>,
     /// 1-based position for error messages (a CSV record index including the
@@ -1248,7 +1256,15 @@ struct ImportRow {
 /// no stable identity yet, and a single stderr summary points at `lute tag`
 /// exactly as `export`'s own untagged advisory does.
 ///
-/// Exit `0` on success, `1` on `E-LOCALE-BUNDLE`, `2` on an I/O failure.
+/// ## `E-L10N-MARKERS` (exit 1, 0.53.0 §8.1)
+/// A translated text whose `{{…}}` markers do not parse as its source's
+/// would: a `{{` with no `}}`, or a marker that opens on a literal brace
+/// (`{{{run.a}}`, with the `E-INTERP-BRACE` advice). Every one is reported
+/// and no bundle is written. Whether the markers are the source's is
+/// judged by `compile --locale-bundle`, which has the source text.
+///
+/// Exit `0` on success, `1` on `E-LOCALE-BUNDLE` or `E-L10N-MARKERS`, `2` on
+/// an I/O failure.
 pub fn run_import(files: &[PathBuf], out: Option<&Path>, json: bool) -> ExitCode {
     if json && out.is_none() {
         return crate::envelope::fail(
@@ -1262,6 +1278,7 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>, json: bool) -> ExitCode
     let mut diagnostics: Vec<serde_json::Value> = Vec::new();
     let mut errors = 0usize;
     let mut skipped = 0usize;
+    let mut marker_errors = 0usize;
     let mut triples: Vec<(String, String, String)> = Vec::new();
     let mut hashes: Vec<(String, String, String)> = Vec::new();
     // `(locale, lineId)` already claimed — the duplicate guard is per LOCALE,
@@ -1349,6 +1366,22 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>, json: bool) -> ExitCode
                 errors += 1;
                 continue;
             }
+            // 0.53.0 §8.1: a translation's markers parse as its source
+            // surface's would. Whether they are the source's markers needs
+            // the source text, so `compile --locale-bundle` judges that.
+            if let Some(why) = lute_compile::locale::marker_syntax_fault(&row.text, row.grammar) {
+                markers_error(
+                    &mut diagnostics,
+                    file,
+                    &format!(
+                        "row {}: `{locale}` text for `{line_id}` cannot be merged: its markers do \
+                         not parse ({why})",
+                        row.row
+                    ),
+                );
+                marker_errors += 1;
+                continue;
+            }
             if let Some(hash) = row.source_hash {
                 hashes.push((line_id.clone(), locale.clone(), hash));
             }
@@ -1377,8 +1410,13 @@ pub fn run_import(files: &[PathBuf], out: Option<&Path>, json: bool) -> ExitCode
         )
     };
 
-    if errors > 0 {
-        eprintln!("{errors} {E_LOCALE_BUNDLE} error(s); no bundle emitted");
+    if errors > 0 || marker_errors > 0 {
+        if errors > 0 {
+            eprintln!("{errors} {E_LOCALE_BUNDLE} error(s); no bundle emitted");
+        }
+        if marker_errors > 0 {
+            eprintln!("{marker_errors} {E_L10N_MARKERS} error(s); no bundle emitted");
+        }
         if json {
             return report(None, 1);
         }
@@ -1431,6 +1469,17 @@ fn bundle_error(diagnostics: &mut Vec<serde_json::Value>, file: &Path, message: 
     }));
 }
 
+/// One `E-L10N-MARKERS` line (0.53.0 §8.1), naming the file like
+/// [`bundle_error`].
+fn markers_error(diagnostics: &mut Vec<serde_json::Value>, file: &Path, message: &str) {
+    eprintln!("{}: error [{E_L10N_MARKERS}] {message}", file.display());
+    diagnostics.push(serde_json::json!({
+        "path": file.display().to_string(),
+        "code": E_L10N_MARKERS,
+        "message": message,
+    }));
+}
+
 /// Parse `loc export`'s JSON array back into rows.
 fn parse_json_rows(text: &str) -> Result<Vec<ImportRow>, String> {
     let value: serde_json::Value =
@@ -1446,8 +1495,10 @@ fn parse_json_rows(text: &str) -> Result<Vec<ImportRow>, String> {
             .ok_or_else(|| format!("entry {row} is not an object"))?;
         // Every row's translatable string is its `text` (dsl 0.37.0 D7) —
         // exactly what `render_json` writes for both kinds.
-        let field = match obj.get("kind").and_then(serde_json::Value::as_str) {
-            Some("line" | "choice" | "prompt" | "directive") => "text",
+        let (field, grammar) = match obj.get("kind").and_then(serde_json::Value::as_str) {
+            Some(kind @ ("line" | "choice" | "prompt" | "directive")) => {
+                ("text", lute_compile::locale::TextGrammar::of_row_kind(kind))
+            }
             Some(other) => {
                 return Err(format!(
                     "entry {row} has unknown `kind` `{other}` (expected `line`, `choice`, \
@@ -1474,6 +1525,7 @@ fn parse_json_rows(text: &str) -> Result<Vec<ImportRow>, String> {
                 Some(_) => return Err(format!("entry {row} has a non-string `locale`")),
             },
             text: text.to_string(),
+            grammar,
             source_hash: match obj.get("sourceHash") {
                 None | Some(serde_json::Value::Null) => None,
                 Some(serde_json::Value::String(s)) => {
@@ -1502,6 +1554,7 @@ fn parse_csv_rows(text: &str) -> Result<Vec<ImportRow>, String> {
         .ok_or_else(|| format!("CSV header has no `text` column (expected `{expected}`)"))?;
     let locale_at = column("locale");
     let hash_at = column("sourceHash");
+    let kind_at = column("kind");
 
     let mut rows = Vec::new();
     for (i, record) in records {
@@ -1524,6 +1577,11 @@ fn parse_csv_rows(text: &str) -> Result<Vec<ImportRow>, String> {
                 .filter(|s| !s.is_empty())
                 .cloned(),
             text: text.clone(),
+            grammar: kind_at
+                .and_then(|at| record.get(at))
+                .map_or(lute_compile::locale::TextGrammar::Label, |kind| {
+                    lute_compile::locale::TextGrammar::of_row_kind(kind.trim())
+                }),
             source_hash: hash_at
                 .and_then(|at| record.get(at))
                 .map(|s| s.trim().to_string())
@@ -1687,6 +1745,24 @@ mod tests {
         assert_eq!(rows[0].line_id.as_deref(), Some("x.n_0010"));
         assert_eq!(rows[0].locale.as_deref(), Some("ja-JP"));
         assert_eq!(rows[0].text, "こんにちは");
+    }
+
+    /// 0.53.0 §8.1: a CSV row's grammar is its `kind`'s; a CSV without a
+    /// `kind` column reads every row by the label grammar (a `{{` with no
+    /// `}}` is literal text), and `compile` still judges a line by its own.
+    #[test]
+    fn csv_reader_defaults_to_the_label_grammar_without_a_kind_column() {
+        use lute_compile::locale::{marker_syntax_fault, TextGrammar};
+        let rows = parse_csv_rows("lineId,text\r\nx.n_0010,open {{ here\r\n").expect("parses");
+        assert_eq!(rows[0].grammar, TextGrammar::Label);
+        assert_eq!(marker_syntax_fault(&rows[0].text, rows[0].grammar), None);
+        let rows = parse_csv_rows(
+            "kind,lineId,text\r\nline,x.n_0010,open {{ here\r\nprompt,x.b.prompt,P\r\n",
+        )
+        .expect("parses");
+        assert_eq!(rows[0].grammar, TextGrammar::Line);
+        assert!(marker_syntax_fault(&rows[0].text, rows[0].grammar).is_some());
+        assert_eq!(rows[1].grammar, TextGrammar::Label);
     }
 
     #[test]

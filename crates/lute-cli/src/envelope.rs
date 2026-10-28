@@ -47,7 +47,8 @@ pub(crate) mod version {
     pub(crate) const LORE: &str = "0.43.0.lore";
     pub(crate) const LOC_REPORT: &str = "0.47.0.loc-report";
     pub(crate) const TAG: &str = "0.48.0.tag";
-    pub(crate) const FIX: &str = "0.48.0.fix";
+    /// 0.53.0 §4.3: `files[]` entries gain `rules` and `kept`.
+    pub(crate) const FIX: &str = "0.53.0.fix";
     pub(crate) const FMT: &str = "0.48.0.fmt";
     pub(crate) const CATALOG_REFRESH: &str = "0.48.0.catalog-refresh";
     pub(crate) const INIT: &str = "0.48.0.init";

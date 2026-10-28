@@ -677,13 +677,16 @@ pub(crate) fn check_quest_attrs(q: &Quest, diags: &mut Vec<Diagnostic>) {
         ));
     }
     // dsl 0.25.0 §5: an externally accepted quest is accept-driven — the
-    // engine activates it when the player takes it, never a `start`.
+    // engine activates it when the player takes it, never a `start`. dsl
+    // 0.53.0 §7.4: the host's condition is written `follows=`.
     if let (Some((_, span)), true, Some(_)) = (&q.accept, q.accepted_externally(), &q.start) {
         diags.push(attr_type(
             format!(
-                "`<quest id=\"{}\">` carries both `accept=\"external\"` and `start`: an \
-                 externally accepted quest activates when the engine accepts it, never by a \
-                 `start` condition; remove one (dsl 0.25.0 §5)",
+                "`<quest id=\"{}\">` carries both `accept=\"external\"` and `start`: a `start` \
+                 condition activates a quest by itself, so the host could never decide; drop \
+                 `start`. If the host grants it only once some scenes or quests are done, write \
+                 that as `follows=\"…\"` (for example `follows=\"completed('intro')\"`): the host \
+                 applies it, and analysis reads it as the host's condition",
                 q.id
             ),
             *span,

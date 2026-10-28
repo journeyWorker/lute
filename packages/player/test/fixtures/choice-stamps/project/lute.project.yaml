@@ -4,6 +4,6 @@ profiles:
   menus:
     plugins: { acme.menus: true }
 defaults:
-  luteVersion: "0.52.0"
+  luteVersion: "0.53.0"
   contentLang: en
   uses: [world.schema.yaml]

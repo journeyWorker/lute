@@ -200,7 +200,9 @@ fn reward_accepts_are_judged_like_accept() {
             "quests/q.lute:9:49 [E-ACCEPT-TARGET] `<reward kind=\"OFFER_QUEST\" \
              target=\"started\">` accepts quest `started` (its kind's `effects.accepts`), which \
              has a `start` condition and activates on its own; only an accept-driven quest (no \
-             `start`) can be accepted",
+             `start`) can be accepted; drop its `start` — the accept activates it whatever other \
+             condition it had (a `follows=\"…\"` records such conditions for analysis and the \
+             host, but does not gate the accept)",
             "quests/q.lute:10:49 [E-ACCEPT-TARGET] `<reward kind=\"OFFER_QUEST\" \
              target=\"child\">` accepts quest `child` (its kind's `effects.accepts`), which \
              activates with its parent `parent`; declare `activate=\"accept\"` on it to accept \

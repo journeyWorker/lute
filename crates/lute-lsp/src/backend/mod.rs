@@ -30,11 +30,14 @@ mod diagnostics;
 mod document;
 mod positions;
 mod requests;
+mod retention;
 mod version;
 mod yaml_spans;
 
-pub use document::DocumentSnapshot;
+pub use analysis::{analyze_document, DocumentAnalysis};
+pub use document::{find_project_root, DocumentSnapshot};
 pub(crate) use positions::{byte_to_position, span_to_range};
+pub use retention::{ProjectInputs, Request, SUPERSEDED_RETAINED};
 use version::{binary_id, BinaryId};
 
 /// The Lute language server: an LSP client handle plus the concurrent map of open
@@ -66,6 +69,11 @@ pub struct Backend {
     /// Round-5 T3-19: whether [`Self::warn_if_older_than_stamp`] has shown
     /// its one `window/showMessage` this session.
     warned_older: std::sync::atomic::AtomicBool,
+    /// Spec 0.53.0 §3.5: each project root's input cache across requests.
+    inputs: ProjectInputs,
+    /// Whether the client registers file watchers dynamically
+    /// (`workspace.didChangeWatchedFiles.dynamicRegistration`).
+    watch_files: std::sync::atomic::AtomicBool,
 }
 
 impl Backend {
@@ -81,6 +89,8 @@ impl Backend {
                 .ok()
                 .and_then(|p| binary_id(&p).map(|id| (p, id))),
             warned_older: std::sync::atomic::AtomicBool::new(false),
+            inputs: ProjectInputs::default(),
+            watch_files: std::sync::atomic::AtomicBool::new(false),
         }
     }
 }

@@ -15,6 +15,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use lute_core_span::{Diagnostic, Layer, Severity, Span};
+use lute_manifest::deps::DependencySink;
 use lute_manifest::fact::{FactArg, FactTerm};
 use lute_manifest::relations::{
     EntityKindDecl, KindShape, ParsedKinds, ParsedRelations, RelationDecl,
@@ -777,12 +778,16 @@ fn inline_enums(typed: &TypedMeta) -> BTreeMap<String, Vec<String>> {
 
 /// Merge `imports.rel` with this document's inline decls, run the merged-
 /// vocabulary checks (§3.1/§4), and validate seed `facts:` (incl. D12).
-/// `domains` = `merge_domains` output (plugin/core ∪ project).
+/// `domains` = `merge_domains` output (plugin/core ∪ project). `sink`
+/// records the filesystem probes that name an imported schema in a message
+/// ([`origin_display`]); the vocab memo's build records them, a per-document
+/// fold passes [`DependencySink::none`].
 pub fn build_rel_vocab(
     imports: &SchemaImports,
     typed: &TypedMeta,
     domains: &BTreeMap<String, Domain>,
     meta: &Meta,
+    sink: &DependencySink,
 ) -> (RelVocab, Vec<Diagnostic>) {
     let mut diags = Vec::new();
     let span_of = |name: &str| meta_key_span(meta, name);
@@ -831,9 +836,12 @@ pub fn build_rel_vocab(
                 .unwrap_or_default(),
         })
         .collect();
-    diags.extend(apply_kind_adds(&mut kinds, &inline_adds, &|kind| {
-        kind_home(&imports.rel.origins, kind)
-    }));
+    diags.extend(apply_kind_adds(
+        &mut kinds,
+        &inline_adds,
+        &|kind| kind_home(&imports.rel.origins, kind, sink),
+        sink,
+    ));
 
     let mut enums = imports.rel.enums.clone();
     let mut enum_labels = imports.rel.enum_labels.clone();
@@ -1062,7 +1070,7 @@ pub fn build_rel_vocab(
         }
     };
     let place = |(origin, span, _): &(Option<DeclOrigin>, Span, bool)| match origin {
-        Some(o) => format!("`{}:{}`", origin_display(&o.file), o.span.line),
+        Some(o) => format!("`{}:{}`", origin_display(&o.file, sink), o.span.line),
         None if span.line > 0 => format!("this document, line {}", span.line),
         None => "this document".to_string(),
     };
@@ -1085,7 +1093,7 @@ pub fn build_rel_vocab(
                     (
                         l.2,
                         l.0.is_none(),
-                        l.0.as_ref().map(|o| origin_display(&o.file)),
+                        l.0.as_ref().map(|o| origin_display(&o.file, sink)),
                         l.1.line,
                     )
                 };
@@ -1272,11 +1280,14 @@ pub(crate) struct KindHome {
 
 /// `file` as a message names it (prerelease N4): relative to the nearest
 /// ancestor holding a `lute.project.yaml` — the same text from every
-/// importer, so the roll-up still folds — else its file name.
-pub(crate) fn origin_display(file: &std::path::Path) -> String {
+/// importer, so the roll-up still folds — else its file name. Each ancestor
+/// probe is recorded in `sink`: a cached message names the file this way
+/// only while every probed manifest is still present or absent (spec 0.53.0
+/// §3.5).
+pub(crate) fn origin_display(file: &std::path::Path, sink: &DependencySink) -> String {
     file.ancestors()
         .skip(1)
-        .find(|dir| dir.join("lute.project.yaml").is_file())
+        .find(|dir| sink.is_file(&dir.join("lute.project.yaml")))
         .and_then(|root| file.strip_prefix(root).ok())
         .map_or_else(
             || {
@@ -1300,11 +1311,12 @@ pub(crate) fn origin_display(file: &std::path::Path) -> String {
 /// has — from its declaration or an earlier `add:` (§2.2), naming both
 /// places with their lines and anchored at the second member's own line
 /// (prerelease N4). `base_home` locates the declaration of a kind, when
-/// known.
+/// known; `sink` records the probes naming a schema ([`origin_display`]).
 pub(crate) fn apply_kind_adds(
     kinds: &mut BTreeMap<String, EntityKindDecl>,
     adds: &[KindAdd],
     base_home: &dyn Fn(&str) -> Option<KindHome>,
+    sink: &DependencySink,
 ) -> Vec<Diagnostic> {
     let mut out = Vec::new();
     // (kind, member) -> where it was first listed.
@@ -1312,7 +1324,7 @@ pub(crate) fn apply_kind_adds(
     let here = |add: &KindAdd| {
         add.origin.as_ref().map_or_else(
             || "this document".to_string(),
-            |o| format!("`{}`", origin_display(&o.file)),
+            |o| format!("`{}`", origin_display(&o.file, sink)),
         )
     };
     let at_line = |line: Option<u32>| {
@@ -1668,12 +1680,17 @@ pub(crate) fn add_member_spans(meta: &Meta, kind: &str, members: &[String]) -> V
 }
 
 /// Where imported kind `kind` is declared, with its members' lines
-/// (prerelease N4), from the resolved imports' `origins`.
-pub(crate) fn kind_home(origins: &DeclOrigins, kind: &str) -> Option<KindHome> {
+/// (prerelease N4), from the resolved imports' `origins`; `sink` records the
+/// probes naming its schema ([`origin_display`]).
+pub(crate) fn kind_home(
+    origins: &DeclOrigins,
+    kind: &str,
+    sink: &DependencySink,
+) -> Option<KindHome> {
     let origin = origins.kinds.get(kind)?;
     let prefix = member_origin_key(kind, "");
     Some(KindHome {
-        shown: origin_display(&origin.file),
+        shown: origin_display(&origin.file, sink),
         member_lines: origins
             .members
             .range(prefix.clone()..)

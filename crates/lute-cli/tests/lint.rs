@@ -324,3 +324,84 @@ fn chapters_listed_scene_lints_as_a_beat() {
     assert_eq!(bg.len(), 1, "{v}");
     assert!(bg[0].ends_with("loose.lute"), "{v}");
 }
+
+/// A project root with a clean `good.lute` and a sibling `bad.lute` that
+/// is not valid UTF-8.
+fn root_with_unreadable_sibling(tag: &str) -> lute_scratch::ScratchDir {
+    let dir = lute_scratch::ScratchDir::named(tag);
+    write(
+        &dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles: { core: { plugins: {} } }\n",
+    );
+    write(&dir.join("good.lute"), CLEAN_SCENE);
+    std::fs::write(dir.join("bad.lute"), b"---\nkind: scene\n---\n\xff\xfe\n").unwrap();
+    dir
+}
+
+/// Spec 0.53.0 §3.9 item 1: `lute lint` reads only its operands. On 0.52
+/// an unreadable sibling failed `lint good.lute` (exit 2, `cannot load
+/// project …`): the manifest came from a model built over every document.
+#[test]
+fn an_unreadable_sibling_does_not_fail_the_operand() {
+    let dir = root_with_unreadable_sibling("lint-sibling");
+    let out = run(&["lint", dir.join("good.lute").to_str().unwrap()]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(0), "stderr: {stderr}");
+    assert!(stderr.is_empty(), "{stderr}");
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.starts_with("ok: "), "{stdout}");
+}
+
+/// Spec 0.53.0 §3.9 item 1: an unreadable operand is reported as its own
+/// I/O error (exit 2), not as the project wrapper 0.52 printed.
+#[test]
+fn an_unreadable_operand_reports_its_own_read_error() {
+    let dir = root_with_unreadable_sibling("lint-operand");
+    let bad = dir.join("bad.lute");
+    let out = run(&["lint", bad.to_str().unwrap()]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "stderr: {stderr}");
+    assert!(
+        stderr.starts_with(&format!("lute: cannot read {}: ", bad.display())),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("cannot load project"), "{stderr}");
+    assert_eq!(stderr.lines().count(), 1, "{stderr}");
+}
+
+/// Spec 0.53.0 §3.7: `LUTE_STATS=input-cache` prints the run's cache work
+/// as one stderr line; any other value, or none, prints nothing.
+#[test]
+fn input_cache_stats_line() {
+    let dir = lute_scratch::ScratchDir::named("lint-stats");
+    write(
+        &dir.join("lute.project.yaml"),
+        "defaultProfile: core\nprofiles: { core: { plugins: {} } }\n",
+    );
+    for name in ["a", "b", "c"] {
+        write(&dir.join(format!("{name}.lute")), CLEAN_SCENE);
+    }
+    let lint = |stats: Option<&str>| {
+        let mut command = Command::new(BIN);
+        command.args(["lint", dir.to_str().unwrap()]);
+        command.env_remove("LUTE_STATS");
+        if let Some(value) = stats {
+            command.env("LUTE_STATS", value);
+        }
+        let out = command.output().unwrap();
+        assert_eq!(out.status.code(), Some(0));
+        (
+            String::from_utf8(out.stdout).unwrap(),
+            String::from_utf8(out.stderr).unwrap(),
+        )
+    };
+    let (plain_out, plain_err) = lint(None);
+    let (stats_out, stats_err) = lint(Some("input-cache"));
+    assert_eq!(
+        stats_err,
+        "lute: stats: input-cache bases=1 vocabs=1 assemblies=3\n"
+    );
+    assert_eq!(stats_out, plain_out);
+    assert_eq!(plain_err, "");
+    assert_eq!(lint(Some("other")), (plain_out, plain_err));
+}

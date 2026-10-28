@@ -565,12 +565,19 @@ state:
 - **중첩.** 스팬은 중첩될 수 있고 보간은 스팬 안에 들어갈 수 있으며 `text`와 `placeholders`에 그대로 남습니다. 중첩 스타일은 쌓이고(`["whisper", "emphasis"]`) 중첩된 `:speed`는 가장 안쪽의 `rate`를 사용합니다. 스타일과 rate가 같은 인접 실행 구간은 합쳐집니다.
 - **이스케이프.** `\:`는 수식자를 시작하지 않는 리터럴 콜론입니다. 수식자 안에서 `\[`, `\]`, `\{`, `\}` 및 `\\`는 괄호, 중괄호 또는 백슬래시를 씁니다. 그 밖의 이스케이프는 `E-TEXT-ESCAPE`입니다.
 - **리터럴 `{{`.** `\{{`는 리터럴 `{{`를 씁니다. `{{` 바로 앞의 백슬래시가 홀수 개이면 이스케이프되고, 짝수 개이면 마커가 남습니다(`\\{{run.a}}`는 백슬래시 하나 뒤에 마커). 아티팩트에서는(lute 0.47.1) 리터럴 `{{`를 `text`, segment 실행 구간, 번역 모두에서 `\{{`로 쓰고 `{{` 바로 앞의 리터럴 백슬래시는 두 번 씁니다. 그래서 `Lit \{{run.a}} and {{ run.a }}.`는 그 `text` 그대로 placeholder 하나를 가지며, `run.a`가 3이면 `Lit {{run.a}} and 3.`로 렌더링됩니다. 번역에도 `\{{`를 쓸 수 있습니다.
-- **마커 바로 앞의 리터럴 `{`** (0.52, #139). 아티팩트에는 `{{…}}` 마커 바로 앞의 리터럴 `{`를 적을 방법이 없습니다. 컴파일된 텍스트가 마커를 중괄호 하나 일찍 열게 됩니다. 그래서 줄 텍스트에서 앞의 리터럴 텍스트가 **홀수** 개의 `{`로 끝나는 마커는, 이스케이프나 수식자로 어떻게 쓰든(`{\{{{{run.a}}`, `x{:pause{s=0.5}{{run.a}}`) `E-INTERP-BRACE`입니다. 짝수 개는 리터럴 `{{` 쌍이므로 그대로 허용됩니다. `\{{{{run.a}}`는 `{{3`으로 렌더링됩니다. 아래 메시지가 두 가지 해결 방법을 알려 줍니다. 이런 마커가 있는 번역은 병합되지 않으며(`E-INTERP-BRACE`를 이름으로 든 `E-L10N-MODIFIERS`), 끼워 넣은 인자가 중괄호를 끝내는 컴포넌트 줄은 `::use`에서 보고됩니다. 평범한 `{{`로 끝나는 인자도 마찬가지입니다(#221, [컴포넌트](/ko/language/components-and-extends/#문자열-매개변수의-문장) 참고).
+- **리터럴 중괄호로 열리는 마커** (0.52, #139, 0.53, #229). 아티팩트에는 `{{…}}` 마커 바로 앞의 리터럴 `{`를 적을 방법이 없습니다. 컴파일된 텍스트가 마커를 중괄호 하나 일찍 열게 됩니다. 그래서 줄 텍스트에서 앞의 리터럴 텍스트가 **홀수** 개의 `{`로 끝나는 마커는, 이스케이프나 수식자로 어떻게 쓰든(`{\{{{{run.a}}`, `x{:pause{s=0.5}{{run.a}}`) `E-INTERP-BRACE`입니다. 짝수 개는 리터럴 `{{` 쌍이므로 그대로 허용됩니다. `\{{{{run.a}}`는 `{{3`으로 렌더링됩니다. 0.53부터는 표현식 자체가 `{`로 시작하는 마커(`{{{run.a}}`, `{{{{run.a}}`)도 리터럴 중괄호 n개 뒤의 마커로 읽어 `E-INTERP-BRACE`로 보고합니다. 줄 텍스트와 라벨 문법을 쓰는 모든 값(선택지·허브 라벨, 프롬프트, 플러그인 `text` 속성)에서 마찬가지이며, 0.52는 이를 `E-CEL-PROFILE`로 보고했습니다. 메시지는 중괄호 개수 n을 밝히고 정확히 그 개수에 맞는 두 가지 해결 방법을 알려 줍니다. `{{` 뒤에 공백이 있는 `{{ {run.a}}`는 작성자가 직접 연 마커이므로 `E-CEL-PROFILE`로 남습니다. 이런 마커가 있는 번역은 병합되지 않으며([번역은 소스의 마커를 유지합니다](#번역은-소스의-마커를-유지합니다) 참고), 끼워 넣은 인자가 중괄호를 끝내는 컴포넌트 줄은 `::use`에서 보고됩니다. 평범한 `{{`로 끝나는 인자도 마찬가지입니다(#221, [컴포넌트](/ko/language/components-and-extends/#문자열-매개변수의-문장) 참고).
 - **평범한 콜론은 텍스트로 남습니다.** 콜론 뒤에 이름과 `[` 또는 `{`가 이어질 때만 수식자를 시작하므로 `10:30`과 `:)`에는 이스케이프가 필요 없습니다.
 
 <!-- lute-diagnostics -->
 ```
 sign.lute:14:20: error [E-INTERP-BRACE] a literal `{` directly before `{{run.a}}` cannot be told apart from the marker in compiled text (lute 0.47.1 §3): put a character between them (`{ {{run.a}}`), or show the brace from a string state path (`{{run.lbrace}}{{run.a}}`, with `run.lbrace` declared `{ type: string, default: "{" }`)
+```
+
+`Your score: {{{run.a}}`(n = 1)의 메시지입니다. `{\{{{{run.a}}`처럼 중괄호가 세 개이면 메시지는 "literal `{{{`"라고 하고 `\{{{ {{run.a}}`와 `{{run.lbrace}}` 세 개를 제안합니다:
+
+<!-- lute-diagnostics -->
+```
+sign.lute:14:24: error [E-INTERP-BRACE] a literal `{{{` directly before `{{run.a}}` cannot be told apart from the marker in compiled text (lute 0.47.1 §3): put a character between them (`\{{{ {{run.a}}`), or show each brace from a string state path (`{{run.lbrace}}{{run.lbrace}}{{run.lbrace}}{{run.a}}`, with `run.lbrace` declared `{ type: string, default: "{" }`)
 ```
 
 형식이 잘못된 수식자는 `E-TEXT-MODIFIER`입니다. 여기에는 닫히지 않은 스팬, 코어 수식자도 `textStyle` 멤버도 아닌 이름, 스타일에 붙인 속성, 위치 인자(`:pause{0.5}` — `s=0.5`로 쓰세요)가 포함됩니다:
@@ -585,3 +592,12 @@ diner.lute:13:26: error [E-TEXT-MODIFIER] text style `:emphasis` takes no attrib
 보이스 키는 평문을 비교하므로 줄의 스타일만 바꾸어도 녹음과 충돌하지 않습니다. [`lute loc export`](/ko/tooling/cli/#loc-export)는 소스 마크업을 내보내며, 번역은 동일한 수식자를 전달해야 합니다 — 이름, 형식, 속성이 같아야 하고 순서는 달라도 됩니다 — 그렇지 않으면 병합되지 않습니다(`E-L10N-MODIFIERS`). 번역된 로케일에는 항상 `texts`에 평문이 들어가며, 수식자가 있는 줄에는 해당 로케일의 `localeSegments`도 들어갑니다.
 
 export의 각 행에는 `sourceHash`도 있습니다 — 줄의 평문(마크업과 이스케이프를 제거한, 컴파일된 `text`), 선택지 텍스트 또는 프롬프트의 `"sha256:<hex>"`입니다. 번역 파일에 그대로 두세요. [`lute loc import`](/ko/tooling/cli/#loc-import)가 이를 lineId와 로케일별로 번들(`schemaVersion: 2`, `sourceHashes`)에 저장하고, `lute compile --locale-bundle`는 번역의 바탕이 된 export 이후 줄이 수정되었으면 `W-L10N-STALE`을 보고합니다 — 다시 내보내 그 번역을 갱신하세요. 갱신하기 전까지 오래된 번역도 그대로 병합됩니다.
+
+### 번역은 소스의 마커를 유지합니다
+
+0.53부터 번역은 수식자와 마찬가지로 소스의 `{{…}}` 마커도 그대로 보여 주어야 합니다. 소스의 각 마커가 소스에 나온 횟수만큼, 순서는 자유롭게 나와야 합니다. 마커는 양 끝의 공백을 뺀 안쪽 내용으로 비교하므로 `{{ run.a }}`는 `{{run.a}}`와 같지만, 안쪽의 공백이나 다른 형식 힌트는 다른 마커가 됩니다(`{{run.a: ordinal}}`은 `{{run.a:ordinal}}`이 아닙니다). 이 규칙은 줄, 선택지 라벨, 프롬프트, 디렉티브 `text` 속성에 모두 적용됩니다. 리터럴 중괄호로 열리는 마커이거나 소스의 마커가 아니면 `E-L10N-MARKERS`입니다. 그 번역은 병합되지 않고 `lute compile --locale-bundle`이 실패합니다. 줄 번역에 `}}` 없는 `{{`가 있으면 파싱되지 않는 인라인 마크업과 마찬가지로 컴파일이 `E-L10N-MODIFIERS`(`E-INTERP-UNTERMINATED`를 감쌈)로 실패합니다. `lute loc import`는 번역된 행만 보므로 파싱되지 않는 마커를 거부하고(줄의 `}}` 없는 `{{`도 여기서는 `E-L10N-MARKERS`) 번들을 쓰지 않습니다. 이 검사가 없으면 런타임이 소스와 짝이 맞지 않는 마커를 그대로 노출합니다. 소스가 `Score {{run.a}} now.`이고 `ko` 텍스트가 `점수 {{run.zzz}}`인 경우:
+
+<!-- lute-diagnostics unverified="the message quotes `{{…}}` literally, which the doc matcher reads as an elision; verbatim lute compile --locale-bundle output" -->
+```
+s.lute:1:1: error [E-L10N-MARKERS] `ko` text for `s.narrator_0010` is not merged: its markers differ from the source's (missing `{{run.a}}`; extra `{{run.zzz}}`): a translation shows each `{{…}}` marker of its source as often as the source does, in any order
+```

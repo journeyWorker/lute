@@ -27,6 +27,11 @@ pub struct RootScenario {
     /// kinds and is not widened.
     pub raise_sites: Vec<ResolvedRaise>,
     pub reach: BTreeMap<lute_check::connectivity::NodeId, lute_check::connectivity::Reachability>,
+    /// dsl 0.53.0 §7.1: the `Reachable` nodes of [`Self::reach`] that rest
+    /// only on host routes with `follows`
+    /// ([`lute_check::connectivity::host_heuristic_nodes`]); their claim's
+    /// evidence is `heuristic`.
+    pub host_heuristic: BTreeSet<lute_check::connectivity::NodeId>,
     /// Each node's ROUTE envelope ([`envelope::propagate`]); its whole
     /// envelope also holds [`Self::envelope_d`] — read it with
     /// [`Self::env`].
@@ -115,10 +120,33 @@ impl RootScenario {
     }
 }
 
+/// `group_full`'s root scenario: the connectivity graph, its reach fixpoint
+/// and envelope tables. A command reads its model's
+/// ([`crate::ReconciledOutputs::scenarios`]) rather than assembling it again.
 pub fn assemble_root_scenario(
     group_full: &DocGroup,
     file_results: &[(PathBuf, lute_check::CheckResult)],
 ) -> RootScenario {
+    assemble(group_full, file_results, false).0
+}
+
+/// [`assemble_root_scenario`], also returning the root's reach fixpoint,
+/// which the project reconciliation reads (spec 0.53.0 §3.10: computed once
+/// per root).
+pub(crate) fn assemble_root_scenario_with_fixpoint(
+    group_full: &DocGroup,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+) -> (RootScenario, crate::reconcile::ConnFixpoint) {
+    let (scenario, fp) = assemble(group_full, file_results, true);
+    (scenario, fp.expect("kept on request"))
+}
+
+fn assemble(
+    group_full: &DocGroup,
+    file_results: &[(PathBuf, lute_check::CheckResult)],
+    keep_fixpoint: bool,
+) -> (RootScenario, Option<crate::reconcile::ConnFixpoint>) {
+    crate::stats::count_scenario();
     let project_docs = project_docs(group_full);
     let key_set = lute_check::connectivity::scene_key_set(&project_docs);
     let quest_ids = lute_check::connectivity::quest_id_set(&project_docs);
@@ -143,6 +171,13 @@ pub fn assemble_root_scenario(
         &mut graph,
         &project_docs,
         &fp.reach,
+        &fp.unreachable_quests,
+    );
+    let host_heuristic = lute_check::connectivity::host_heuristic_nodes(
+        &graph,
+        &fp.reach,
+        &quest_ids,
+        &ambiguous_quests,
         &fp.unreachable_quests,
     );
     let mut per_doc = envelope::PerDocEffects::default();
@@ -204,11 +239,13 @@ pub fn assemble_root_scenario(
         reads_per_scene.insert(key.clone(), reads);
     }
     let (route_envs, tainted) = envelope::propagate(&graph, &per_doc);
-    RootScenario {
+    let kept = keep_fixpoint.then(|| fp.clone());
+    let scenario = RootScenario {
         graph,
         raises,
         raise_sites,
         reach: fp.reach,
+        host_heuristic,
         route_envs,
         tainted,
         reads_per_scene,
@@ -223,7 +260,8 @@ pub fn assemble_root_scenario(
         per_doc,
         rel_vocab,
         scene_must: fp.scene_must,
-    }
+    };
+    (scenario, kept)
 }
 
 /// A reachability verdict ([`reach_claim`]).
@@ -264,6 +302,21 @@ const UNANCHORED_REASON: &str = "Unanchored — a quest with no declared `follow
      available from the start of play; the connectivity layer holds no prerequisites for it, so \
      only its quest lifecycle (`start`, or an accept) decides when it activates.";
 
+/// The reach reason of a `Reachable` verdict that rests only on host routes
+/// with `follows` (dsl 0.53.0 §7.1; evidence `heuristic`).
+const HOST_FOLLOWS_REASON: &str = "Reachable — reachable if the host grants it once `follows` \
+     holds (host policy; Lute does not enforce it).";
+
+/// Whether `node` is anchored by its own `start` (else it waits through an
+/// accept or its subquest parent).
+fn starts_itself(scenario: &RootScenario, node: &lute_check::connectivity::NodeId) -> bool {
+    use lute_check::connectivity::{EdgeKind, PrereqState};
+    matches!(
+        scenario.graph.nodes.get(node).map(|i| &i.prereq),
+        Some(PrereqState::Anchored(anchors)) if anchors.iter().any(|a| a.kind == EdgeKind::Start)
+    )
+}
+
 /// `node`'s reachability claim under the declared routes (dsl 0.49.0 §6.3).
 /// A quest that can never start ([`lute_check::connectivity::StartBlock`])
 /// is `Unknown` naming the start cycle or self-read; a plain quest with no
@@ -279,14 +332,19 @@ pub fn reach_claim(scenario: &RootScenario, node: &lute_check::connectivity::Nod
     let unknown = |reason: &str| claim(ReachVerdict::Unknown, Evidence::Unknown, reason);
     if let Some((at, block)) = scenario.graph.start_block_root(node) {
         let reason = match block {
-            StartBlock::Cycle(path) => format!(
-                "Unknown — this quest's `start` waits on a start cycle (E-QUEST-START-CYCLE): \
-                 {}; it can never start under your declared routes.",
-                path.iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(" -> ")
-            ),
+            StartBlock::Cycle(path) => {
+                // An accept-driven quest waits through its accept, not a `start`
+                // (dsl 0.53.0 §7.3).
+                let waits = if starts_itself(scenario, node) {
+                    "this quest's `start` waits"
+                } else {
+                    "this quest's accept waits"
+                };
+                format!(
+                    "Unknown — {waits} on a start cycle (E-QUEST-START-CYCLE): {path}; it can \
+                     never start under your declared routes."
+                )
+            }
             StartBlock::SelfRead if at == node => {
                 "Unknown — this quest's `start` reads its own state (E-QUEST-START-SELF); it can \
                  never start under your declared routes."
@@ -301,6 +359,11 @@ pub fn reach_claim(scenario: &RootScenario, node: &lute_check::connectivity::Nod
     }
     if let Some(r) = scenario.reach.get(node) {
         return match r {
+            Reachability::Reachable if scenario.host_heuristic.contains(node) => claim(
+                ReachVerdict::Reachable,
+                Evidence::Heuristic,
+                HOST_FOLLOWS_REASON,
+            ),
             Reachability::Reachable => claim(
                 ReachVerdict::Reachable,
                 Evidence::Proven,

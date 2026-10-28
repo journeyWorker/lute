@@ -658,8 +658,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-INTERP-BRACE",
-        summary: "A `{{…}}` marker in line text directly follows an odd run of literal `{`, which compiled text cannot tell apart from the marker — or a `::use` argument ending in a plain `{{` is spliced right before one and swallows it. Put a character between them, or show the brace from a string state path; in an argument write a literal `{{` as `\\\\{{`.",
-        spec: &["dsl 0.52.0 §3.1"],
+        summary: "A `{{…}}` marker in line text directly follows an odd run of literal `{`, which compiled text cannot tell apart from the marker — or a marker in line text or a label opens on a literal brace run (`{{{run.a}}`: its expression begins with `{`) — or a `::use` argument ending in a plain `{{` is spliced right before one and swallows it. Put a character between the braces and the marker, or show each brace from a string state path; in an argument write a literal `{{` as `\\\\{{`.",
+        spec: &["dsl 0.52.0 §3.1", "dsl 0.53.0 §8"],
     },
     Code {
         code: "E-INTERP-DEF",
@@ -703,8 +703,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-JUMP-INTO-LOOP",
-        summary: "A forward `::jump` from outside a loop (a `::label` and a later `::jump{to max}` back to it) lands on a label inside the loop after its head; a loop is entered only at its head label.",
-        spec: &["dsl 0.51.0 §3.2"],
+        summary: "A forward `::jump` from outside a loop (a `::label` and a later `::jump{to max}` back to it) lands on a label inside the loop after its head; a loop is entered only at its head label. When the jump ends one `<choice>` body and no other jump targets the label, the message suggests moving the block into that option's body.",
+        spec: &["dsl 0.51.0 §3.2", "dsl 0.53.0 §9.4"],
     },
     Code {
         code: "E-JUMP-LOOP-CROSS",
@@ -713,8 +713,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-JUMP-LOOP-SCOPE",
-        summary: "A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section.",
-        spec: &["dsl 0.51.0 §3.2"],
+        summary: "A bounded `::jump{to max}` loops back to a label outside the body it runs in: a loop may pass only through `<choice>` bodies of a `<branch>` and `<match>` arms, never out of a `<hub>` option or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry or a beat. A document's `##` sections are one loop scope.",
+        spec: &["dsl 0.51.0 §3.2", "dsl 0.53.0 §9.2"],
     },
     Code {
         code: "E-JUMP-MAX",
@@ -735,6 +735,11 @@ pub(crate) const CODES: &[Code] = &[
         code: "E-KIND-NAME-CLASH",
         summary: "An `entities:` block declares the same entity kind name twice, two schemas declare one kind differently, or a name is declared as both an entity kind and a relation.",
         spec: &["dsl 0.3.0 §4"],
+    },
+    Code {
+        code: "E-L10N-MARKERS",
+        summary: "A translated text — a line, an option label, a prompt or a directive `text` attribute — does not show its source's `{{…}}` markers: a marker does not parse (a marker opened on a literal brace, `{{{run.a}}`; at `lute loc import` also a line's `{{` with no `}}`, which `compile` reports as `E-L10N-MODIFIERS`), or the markers are not the source's, each as often (any order; the spaces at a marker's edges do not count, a space inside it or a format hint does). The runtime would show such a marker verbatim, so the translation is not merged; `lute loc import` refuses a marker that does not parse.",
+        spec: &["dsl 0.53.0 §8.1"],
     },
     Code {
         code: "E-L10N-MODIFIERS",
@@ -1148,13 +1153,13 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "E-QUEST-START-CYCLE",
-        summary: "Quests' `start` conditions wait on each other around a cycle that no source outside it enters, so none of them can ever start; start one of them from something outside the cycle, or grant it with `accept=\"external\"`.",
-        spec: &["dsl 0.49.0 §6.1"],
+        summary: "Quests' `start` conditions and in-script accepts (`::accept`, a reward's `accepts`) wait on each other around a cycle that no source outside it enters, so none of them can ever start; the path names each edge kind, and the error is at the least quest's `start`, or its `id` when it has none. Start one of them from something outside the cycle, or let the host grant one with `accept=\"external\"`.",
+        spec: &["dsl 0.49.0 §6.1", "dsl 0.53.0 §7.3"],
     },
     Code {
         code: "E-QUEST-START-SELF",
-        summary: "A quest's `start` reads the quest's own state (`quest.<id>.*`), which has no value before the quest starts; a quest only the host grants is written `accept=\"external\"` without a `start`.",
-        spec: &["dsl 0.49.0 §6.2"],
+        summary: "A quest's `start` reads the quest's own state (`quest.<id>.*`), which has no value before the quest starts; a quest only the host grants is written `accept=\"external\"` without a `start`, and a condition the host waits for is written `follows=\"…\"` (host policy: Lute carries it, analysis reads it).",
+        spec: &["dsl 0.49.0 §6.2", "dsl 0.53.0 §7.4"],
     },
     Code {
         code: "E-QUEST-TIER-MIX",
@@ -1848,8 +1853,8 @@ pub(crate) const CODES: &[Code] = &[
     },
     Code {
         code: "W-DOMAIN-UNREAD",
-        summary: "A declared domain is not read by any active construct — no directive attribute, content-line slot, state path, `relations:` argument, `per:`/`subsetOf:` family, or rule/condition query names it — so it enforces nothing.",
-        spec: &["dsl 0.10.0 §11.1"],
+        summary: "A declared domain is not read by any active construct — no directive attribute, content-line slot, plugin frontmatter key, state path, `relations:` argument, `per:`/`subsetOf:` family, or rule/condition query names it — so it enforces nothing.",
+        spec: &["dsl 0.10.0 §11.1", "dsl 0.53.0 §6.2"],
     },
     Code {
         code: "W-ENTRY-REF-UNKNOWN",
