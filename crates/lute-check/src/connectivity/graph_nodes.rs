@@ -504,18 +504,20 @@ pub enum PrereqState {
     /// `after` present but [`parse_prereq`] returned `None` (malformed CEL,
     /// already reported once as `E-CONN-PROFILE` by T2's per-file `check()`).
     Invalid,
-    /// dsl 0.24.0 §2, 0.25.0 §4: no `after` declared on a quest, which is
-    /// anchored by what the project says about it instead — each
-    /// [`Anchor`] one necessary condition of its activation, in the order
-    /// subquest, `start` conjuncts, `::accept`s. 0.51.0 §4.5: a scene or
-    /// bundle beat without `after:` answering a `raisedBy: declared`
-    /// occasion is anchored too, by one [`EdgeKind::Raises`] anchor (the
-    /// nodes whose declared raises reach it). Synthesized, never authored
-    /// (so never `E-CONN-PROFILE`/`-UNKNOWN-NODE` material). It never proves
-    /// the node `Unreachable`: the engine may accept a quest outside any
-    /// `::accept` (dsl 0.21.0 §7a.3, 0.25.0 §5), a declared raise is a host
-    /// promise, not a proof, and `after` stays the declared route, so a dead
-    /// anchor reads `Unknown`.
+    /// dsl 0.24.0 §2, 0.25.0 §4: a quest anchored by what the project says
+    /// about it — each [`Anchor`] one necessary condition of its
+    /// activation, in the order subquest, `start` conjuncts, accepts. A
+    /// quest that declares `follows` gets no subquest or `start` anchor, but
+    /// dsl 0.53.0 §7.1 gives it its accept anchor (in-script accepts are
+    /// unconditional routes; the host's grant of an `accept="external"`
+    /// quest is the anchor's [`HostGate`]); its declaration stays in
+    /// [`NodeInfo::follows`]. 0.51.0 §4.5: a scene or bundle beat without
+    /// `after:` answering a `raisedBy: declared` occasion is anchored too,
+    /// by one [`EdgeKind::Raises`] anchor (the nodes whose declared raises
+    /// reach it). Synthesized, never authored (so never
+    /// `E-CONN-PROFILE`/`-UNKNOWN-NODE` material). It never proves the node
+    /// `Unreachable`: a declared raise is a host promise, not a proof, and a
+    /// host grant is host policy, so a dead anchor reads `Unknown`.
     Anchored(Vec<Anchor>),
 }
 
@@ -704,17 +706,38 @@ impl ConnGraph {
 /// [`ConnGraph::start_blocked`].
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum StartBlock {
-    /// It is on a cycle of `start` anchors that no source outside the cycle
-    /// enters ([`crate::connectivity::E_QUEST_START_CYCLE`]). The path is
-    /// the shortest such cycle through it, `prerequisite -> dependent`,
-    /// starting and ending at the quest.
-    Cycle(Vec<NodeId>),
+    /// It is on a cycle of `start` and in-script accept anchors that no
+    /// source outside the cycle enters and no host route opens
+    /// ([`crate::connectivity::E_QUEST_START_CYCLE`], dsl 0.53.0 §7.3): the
+    /// shortest such cycle through it.
+    Cycle(CyclePath),
     /// Its `start` reads its own state and nothing else lets it start
     /// (`E-QUEST-START-SELF`).
     SelfRead,
     /// It can start only through quests that can never start; the first
     /// one of the anchor that fails.
     Behind(NodeId),
+}
+
+/// A start cycle in waiting order (dsl 0.53.0 §7.3): `steps[i]` waits on
+/// `steps[i + 1]` through its anchor of that kind, and the last waits on the
+/// first. Rendered `quest(a) -[start]-> quest(b) -[accept]-> quest(a)`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CyclePath {
+    /// Each quest with the kind of its anchor that waits on the next one.
+    pub steps: Vec<(NodeId, EdgeKind)>,
+}
+
+impl fmt::Display for CyclePath {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (node, kind) in &self.steps {
+            write!(f, "{node} -[{kind}]-> ")?;
+        }
+        match self.steps.first() {
+            Some((first, _)) => write!(f, "{first}"),
+            None => Ok(()),
+        }
+    }
 }
 
 /// dsl §2.4 (graph 1) / §4.1 (§A cycle): the topological-precedence DAG over

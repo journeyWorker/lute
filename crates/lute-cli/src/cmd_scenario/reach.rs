@@ -50,28 +50,30 @@ fn quote_cel_string(s: &str) -> String {
 }
 
 /// The evidence token of `node`'s reachability claim
-/// ([`lute_model::reach_claim`]): `proven` or `unknown`.
+/// ([`lute_model::reach_claim`]): `proven`, `heuristic` (a host route with
+/// `follows`, dsl 0.53.0 §7.1) or `unknown`.
 pub(crate) fn reach_evidence(
     scenario: &RootScenario,
     node: &lute_check::connectivity::NodeId,
 ) -> &'static str {
     match lute_model::reach_claim(scenario, node).evidence {
         lute_core_span::Evidence::Unknown => "unknown",
+        lute_core_span::Evidence::Heuristic => "heuristic",
         _ => "proven",
     }
 }
 
 /// `node`'s reachability claim as text ([`lute_model::reach_claim`]), with
-/// `[unknown]` appended when its evidence is unknown.
+/// `[unknown]` or `[heuristic]` appended when that is its evidence.
 pub(crate) fn reach_verdict_text(
     scenario: &RootScenario,
     node: &lute_check::connectivity::NodeId,
 ) -> String {
     let claim = lute_model::reach_claim(scenario, node);
-    if claim.evidence == lute_core_span::Evidence::Unknown {
-        format!("{} [unknown]", claim.reason)
-    } else {
-        claim.reason
+    match claim.evidence {
+        lute_core_span::Evidence::Unknown => format!("{} [unknown]", claim.reason),
+        lute_core_span::Evidence::Heuristic => format!("{} [heuristic]", claim.reason),
+        _ => claim.reason,
     }
 }
 

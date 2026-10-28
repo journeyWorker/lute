@@ -1326,15 +1326,15 @@ Spec: [dsl 0.2.0 §5.4](https://github.com/journeyWorker/lute/blob/main/docs/pro
 
 ### E-QUEST-START-CYCLE
 
-Quests' `start` conditions wait on each other around a cycle that no source outside it enters, so none of them can ever start; start one of them from something outside the cycle, or grant it with `accept="external"`.
+Quests' `start` conditions and in-script accepts (`::accept`, a reward's `accepts`) wait on each other around a cycle that no source outside it enters, so none of them can ever start; the path names each edge kind, and the error is at the least quest's `start`, or its `id` when it has none. Start one of them from something outside the cycle, or let the host grant one with `accept="external"`.
 
-Spec: [dsl 0.49.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+Spec: [dsl 0.49.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.53.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-QUEST-START-SELF
 
-A quest's `start` reads the quest's own state (`quest.<id>.*`), which has no value before the quest starts; a quest only the host grants is written `accept="external"` without a `start`.
+A quest's `start` reads the quest's own state (`quest.<id>.*`), which has no value before the quest starts; a quest only the host grants is written `accept="external"` without a `start`, and a condition the host waits for is written `follows="…"` (host policy: Lute carries it, analysis reads it).
 
-Spec: [dsl 0.49.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+Spec: [dsl 0.49.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.53.0 §7.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-QUEST-TIER-MIX
 

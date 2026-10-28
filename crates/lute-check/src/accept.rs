@@ -342,7 +342,10 @@ fn check_target(
     let message = match project.quests.get(id) {
         Some(q) if q.start => format!(
             "{subject}, which has a `start` condition and activates on its own; only an \
-             accept-driven quest (no `start`) can be accepted (dsl 0.21.0 §7a.3)"
+             accept-driven quest (no `start`) can be accepted; drop its `start` — the accept \
+             activates it whatever other condition it had (a `follows=\"…\"` records such \
+             conditions for analysis and the host, but does not gate the accept) (dsl 0.21.0 \
+             §7a.3)"
         ),
         Some(q) => match project.parents.get(id) {
             Some(parent) if !q.on_accept => format!(

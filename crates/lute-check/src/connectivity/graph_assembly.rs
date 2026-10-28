@@ -1,6 +1,6 @@
 use super::graph_nodes::{
-    atom_edge_kind, scene_after, Anchor, ConnGraph, EdgeKind, FollowsDecl, NodeId, NodeInfo,
-    PrereqState, SceneAfter,
+    atom_edge_kind, scene_after, Anchor, ConnGraph, EdgeKind, FollowsDecl, HostGate, NodeId,
+    NodeInfo, PrereqState, SceneAfter,
 };
 use super::{
     graph_sources::{accept_sources, detect_conn_cycles, start_sources, top_conjuncts, topo_sort},
@@ -132,13 +132,19 @@ pub fn assemble_graph(
     // `start` conjuncts and the nodes whose body `::accept`s it. Each source
     // quest or entry — and every subquest parent — joins the graph too, an
     // entry point unless anchored itself. Their edges go in below, after the
-    // authored ones.
+    // authored ones. dsl 0.53.0 §7.1: a quest that declares `follows` is
+    // already a node; its accept anchor becomes its activation and its
+    // declaration stays.
     let decls = QuestDecls::new(docs);
     for (id, anchors) in quest_anchors(docs, &decls, &nodes) {
         let Some(&(path, quest)) = decls.first.get(id.as_str()) else {
             continue;
         };
         let node = NodeId::Quest(id);
+        if let Some(info) = nodes.get_mut(&node) {
+            info.prereq = PrereqState::Anchored(anchors);
+            continue;
+        }
         nodes.insert(
             node.clone(),
             NodeInfo {
@@ -373,8 +379,11 @@ pub(crate) struct QuestDecls<'a> {
     /// Each quest id's first declaration, with its document.
     pub(crate) first: BTreeMap<&'a str, (&'a Path, &'a Quest)>,
     /// Every quest id some declaration gives an `after` — its declared
-    /// route replaces the synthesized anchors.
+    /// route replaces the synthesized subquest and `start` anchors.
     with_after: BTreeSet<&'a str>,
+    /// Every quest id some declaration marks `accept="external"` (dsl
+    /// 0.25.0 §5): the host may grant it.
+    external: BTreeSet<&'a str>,
     /// Declared subquest child → the first declared parent whose
     /// `<objective quest=…>` names it. A self-reference is
     /// `E-QUEST-TREE-CYCLE`'s and makes no child here.
@@ -387,6 +396,7 @@ impl<'a> QuestDecls<'a> {
     pub(crate) fn new(docs: &'a [ProjectDoc<'a>]) -> Self {
         let mut first: BTreeMap<&str, (&Path, &Quest)> = BTreeMap::new();
         let mut with_after = BTreeSet::new();
+        let mut external = BTreeSet::new();
         let mut entries = BTreeMap::new();
         for item in docs {
             let path = item.path;
@@ -395,6 +405,9 @@ impl<'a> QuestDecls<'a> {
                 first.entry(quest.id.as_str()).or_insert((path, quest));
                 if quest.follows.is_some() {
                     with_after.insert(quest.id.as_str());
+                }
+                if quest.accepted_externally() {
+                    external.insert(quest.id.as_str());
                 }
             }
             for entry in doc.entries.iter().filter(|e| !e.id.is_empty()) {
@@ -422,42 +435,53 @@ impl<'a> QuestDecls<'a> {
         QuestDecls {
             first,
             with_after,
+            external,
             parents,
             entries,
         }
     }
 }
 
-/// The [`PrereqState::Anchored`] anchors of every quest that declares no
-/// `after` (dsl 0.24.0 §2, 0.25.0 §4), in the order subquest parent,
-/// `start` conjuncts ([`start_anchors`]), `::accept`s ([`accept_sources`]).
-/// A quest none of them anchors is absent. `nodes` holds the scene and
-/// bundle beat nodes the sources resolve against.
+/// The [`PrereqState::Anchored`] anchors of every quest, in the order
+/// subquest parent, `start` conjuncts ([`start_anchors`]), accepts
+/// ([`accept_sources`]). A quest that declares `follows` gets no subquest
+/// or `start` anchor (its declared route replaces them, dsl 0.25.0 §4) but
+/// keeps its accept anchor (dsl 0.53.0 §7.1: an in-script accept activates
+/// it whatever `follows` says). The accept anchor of an accept-driven
+/// `accept="external"` quest also holds the host route ([`host_gate`]); one
+/// with no in-script source and no `follows` is no anchor (the quest stays
+/// unanchored, available from the start of play). A quest none of them
+/// anchors is absent. `nodes` holds the scene and bundle beat nodes the
+/// sources resolve against, and the nodes of the quests that declare
+/// `follows`.
 pub(crate) fn quest_anchors(
     docs: &[ProjectDoc<'_>],
     decls: &QuestDecls<'_>,
     nodes: &BTreeMap<NodeId, NodeInfo>,
 ) -> BTreeMap<String, Vec<Anchor>> {
-    let mut accepts = accept_sources(docs, nodes);
+    let driven = crate::accept::accept_driven_quests(docs);
+    let mut accepts = accept_sources(docs, &driven, nodes);
     let mut out = BTreeMap::new();
     for (&id, &(_, quest)) in &decls.first {
-        if decls.with_after.contains(id) {
-            continue;
-        }
         let mut anchors = Vec::new();
-        if let Some(parent) = decls.parents.get(id) {
-            anchors.push(Anchor {
-                kind: EdgeKind::Subquest,
-                from: vec![NodeId::Quest(parent.to_string())],
-                host: None,
-            });
+        if !decls.with_after.contains(id) {
+            if let Some(parent) = decls.parents.get(id) {
+                anchors.push(Anchor {
+                    kind: EdgeKind::Subquest,
+                    from: vec![NodeId::Quest(parent.to_string())],
+                    host: None,
+                });
+            }
+            anchors.extend(start_anchors(quest, decls, nodes));
         }
-        anchors.extend(start_anchors(quest, decls, nodes));
-        if let Some(from) = accepts.remove(id) {
+        let from = accepts.remove(id).unwrap_or_default();
+        let host = (decls.external.contains(id) && driven.contains(id))
+            .then(|| host_gate(nodes.get(&NodeId::Quest(id.to_string()))));
+        if !from.is_empty() || host.as_ref().is_some_and(|h| *h != HostGate::Always) {
             anchors.push(Anchor {
                 kind: EdgeKind::Accept,
                 from,
-                host: None,
+                host,
             });
         }
         if !anchors.is_empty() {
@@ -465,6 +489,16 @@ pub(crate) fn quest_anchors(
         }
     }
     out
+}
+
+/// dsl 0.53.0 §7.1: the host route of an `accept="external"` quest whose
+/// node (one exists when it declares `follows`) is `info`.
+fn host_gate(info: Option<&NodeInfo>) -> HostGate {
+    match info.map(|i| &i.follows) {
+        None | Some(FollowsDecl::Absent) => HostGate::Always,
+        Some(FollowsDecl::Valid(f)) => HostGate::Follows(f.clone()),
+        Some(FollowsDecl::Malformed(_)) => HostGate::Unreadable,
+    }
 }
 
 /// dsl 0.25.0 §4: one [`EdgeKind::Start`] anchor per top-level `&&`

@@ -2970,7 +2970,10 @@ fn an_accept_anchor_reads_the_anchor_reachability_but_never_proves_the_quest_dea
 }
 
 #[test]
-fn a_quest_with_an_explicit_after_keeps_only_its_declared_edges() {
+fn a_quest_with_an_explicit_after_keeps_its_declared_edges_beside_its_accept_anchor() {
+    // dsl 0.53.0 §7.1: an in-script accept activates the quest whatever its
+    // `follows` says, so the accept anchor is built beside the declaration
+    // (0.52 dropped it); the declaration keeps its edge.
     let quest = "---\nkind: quest\n---\n<quest id=\"helpVesna\" follows=\"visited('camp.day')\">\n\
         <objective id=\"o\" done=\"run.d\"/>\n</quest>\n";
     let day = "---\nkind: scene\nid: camp.day\n---\n## Shot 1.\n@a: hi\n";
@@ -2978,14 +2981,23 @@ fn a_quest_with_an_explicit_after_keeps_only_its_declared_edges() {
     let docs = docs_for(&[("q.lute", quest), ("d.lute", day), ("n.lute", &night)]);
     let g = graph_of(&docs.views());
     let q = NodeId::Quest("helpVesna".into());
-    assert!(matches!(g.nodes[&q].prereq, PrereqState::Valid(_)));
+    assert!(matches!(
+        g.nodes[&q].follows,
+        lute_check::connectivity::FollowsDecl::Valid(_)
+    ));
+    let PrereqState::Anchored(anchors) = &g.nodes[&q].prereq else {
+        panic!("{g:?}");
+    };
+    assert_eq!(anchors.len(), 1, "{anchors:?}");
+    assert_eq!(anchors[0].kind, EdgeKind::Accept);
+    assert_eq!(anchors[0].from, [NodeId::Scene("camp.night".into())]);
     assert_eq!(
         kinds(&g, &NodeId::Scene("camp.day".into()), &q),
         Some(vec![EdgeKind::Visited])
     );
     assert_eq!(
         kinds(&g, &NodeId::Scene("camp.night".into()), &q),
-        None,
+        Some(vec![EdgeKind::Accept]),
         "{g:?}"
     );
 }

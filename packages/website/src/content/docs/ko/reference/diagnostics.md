@@ -1338,15 +1338,15 @@ flag 속성(`<choice once>`/`exit`, `<objective optional>`, `<beat also>`)에 `t
 
 ### E-QUEST-START-CYCLE
 
-퀘스트의 `start`가 영영 성립할 수 없습니다(0.49.0). 각 `start`가 다음 퀘스트를 기다리고 순환 밖의 어떤 소스도 그중 하나를 시작시키지 않아, 앵커 엣지의 순환 위에서 교착됩니다. 강연결 집합마다 하나씩 가장 작은 퀘스트의 `start`에서 보고하며, 경로는 `E-CONN-CYCLE`처럼 표시합니다: ``quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` waits for the next and no source outside the cycle starts any of them; start one of them from something outside the cycle, or grant it with `accept="external"` ``. 순환 밖의 무언가에서 하나를 시작시키거나 `accept="external"`로 부여하세요. 외부에서 진입할 수 있는 순환은 오류가 아닙니다.
+퀘스트의 `start`가 영영 성립할 수 없습니다(0.49.0). 퀘스트의 `start` 조건과 스크립트 안의 수락(`::accept`, 보상 종류의 `accepts`)이 서로를 기다리고 순환 밖의 어떤 소스도 그중 하나를 시작시키지 않아, 앵커 엣지의 순환 위에서 교착됩니다(0.53.0부터 수락 앵커도 포함). 강연결 집합마다 하나씩 가장 작은 퀘스트의 `start`에서, `start`가 없으면(수락으로 시작하는 퀘스트) 그 `id`에서 보고하며, 경로는 엣지 종류와 함께 기다리는 순서로 표시합니다: ``quest start cycle: quest(intro) -[start]-> quest(letter) -[accept]-> quest(intro) — each waits for the next (a `start` for its condition, an accept for the `::accept` or reward that grants it) and no source outside the cycle starts any of them; start one of them from something outside the cycle, or let the host grant one with `accept="external"` ``. 순환 밖의 무언가에서 하나를 시작시키거나 호스트가 `accept="external"`로 그중 하나를 부여하게 하세요. 외부에서 진입할 수 있는 순환은 오류가 아닙니다.
 
-명세: [dsl 0.49.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+명세: [dsl 0.49.0 §6.1](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.53.0 §7.3](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 
 ### E-QUEST-START-SELF
 
-퀘스트가 자신의 `start`에서 자기 상태(`quest.<own id>.*`)를 읽습니다(0.49.0). 퀘스트가 시작되기 전에는 그 상태에 값이 없으므로 이 조건으로는 퀘스트를 의도대로 시작할 수 없습니다. 호스트만 부여하는 퀘스트는 `start` 없이 `accept="external"`로 씁니다. 자기 읽기만으로 인한 교착은 `E-QUEST-START-CYCLE`이 아니라 이 코드로 보고합니다.
+퀘스트가 자신의 `start`에서 자기 상태(`quest.<own id>.*`)를 읽습니다(0.49.0). 퀘스트가 시작되기 전에는 그 상태에 값이 없으므로 이 조건으로는 퀘스트를 의도대로 시작할 수 없습니다. 호스트만 부여하는 퀘스트는 `start` 없이 `accept="external"`로 쓰고, 호스트가 다른 장면이나 퀘스트가 끝난 뒤에만 부여한다면 그 조건을 `follows="…"`로 씁니다(호스트 정책: Lute는 이를 호스트에 전달하고 분석이 읽지만 강제하지는 않습니다). 자기 읽기만으로 인한 교착은 `E-QUEST-START-CYCLE`이 아니라 이 코드로 보고합니다.
 
-명세: [dsl 0.49.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md)
+명세: [dsl 0.49.0 §6.2](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.49.0.md), [dsl 0.53.0 §7.4](https://github.com/journeyWorker/lute/blob/main/docs/proposals/scenario-dsl/0.53.0.md)
 ### E-QUEST-TIER-MIX
 
 서브퀘스트의 실효 `tier`가 부모 퀘스트의 tier와 다릅니다.
