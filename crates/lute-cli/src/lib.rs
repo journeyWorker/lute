@@ -144,10 +144,19 @@ pub(crate) use project::{
 
 /// The `lute` command line: parse `std::env::args`, run the command, and
 /// record the invocation in the local telemetry file (dsl 0.43.0 §6).
+///
+/// With `LUTE_STATS=input-cache` in the environment (tooling only, spec
+/// 0.53.0 §3.7) it prints one stderr line at exit, the work of every
+/// [`lute_load::InputCache`] the command used, a project model's included:
+/// `lute: stats: input-cache bases=<n> vocabs=<n> assemblies=<n>`.
 pub fn run() -> ExitCode {
     let started = std::time::Instant::now();
+    let stats = std::env::var_os("LUTE_STATS").is_some_and(|value| value == "input-cache");
     let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
     let code = dispatch(&args);
+    if stats {
+        eprintln!("lute: stats: input-cache {}", lute_load::dropped_stats());
+    }
     telemetry::record(&args, code, started.elapsed());
     code
 }

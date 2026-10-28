@@ -174,7 +174,7 @@ fn scan_documents(root: &Path, lute_files: &[PathBuf]) -> ProjectScan {
             &doc.meta,
             built.input.snapshot(),
             lute_check::meta::MetaKind::Scene,
-            &built.defaults,
+            built.input.defaults(),
         );
         if let Some(beat) = &meta.beat {
             *scan.beats.entry(beat.on.clone()).or_default() += 1;

@@ -5,12 +5,13 @@ Every command is measured on projects from `lute-bench generate-vocab` (a
 byte-identical port of the issue's `gen.py`), written under $TMPDIR: the
 **grid** (100 and 400 scene documents at 150 and 4 800 per-member state
 slots) and the **item-3 project** (20 scenes + 400 quests at 2 400 slots).
-CPU (user+sys) and peak RSS come from `/usr/bin/time` (`-l` on macOS, `-v` on
-Linux); each figure is the minimum over `--runs` runs. Marginal = (cost at
-400 scenes - cost at 100) / 300 documents. Every command must exit 0 on the
-generated projects (a non-zero exit is a measurement error). Each generated
-project also gets `lint-off.yaml`, a lint config that turns every core rule
-of `crates/lute-lint/src/rules.rs` (`core_entries`) off.
+CPU (user+sys, microsecond resolution) and peak RSS come from the child's
+resource usage (`os.wait4`); each figure is the minimum over `--runs` runs.
+Marginal = (cost at 400 scenes - cost at 100) / 300 documents. Every command
+must exit 0 on the generated projects (a non-zero exit is a measurement
+error). Each generated project also gets `lint-off.yaml`, a lint config that
+turns every core rule of `crates/lute-lint/src/rules.rs` (`core_entries`)
+off.
 
 The commands and items are grouped in **tiers** (spec 0.53.0 section 3.7).
 `grid` measures and prints every selected tier's table; `gate` measures
@@ -48,6 +49,19 @@ tier `fix` (streaming) - `fix --check P`. Each command of these tiers:
   M1 (memory)      peak RSS(400, 4 800) <= 1.5x peak RSS(400, 150)
   M2 (memory)      peak RSS(400, 4 800) <= 1.25x `check`'s
 
+Every tier (spec 0.53.0 section 3.7, counter):
+  C (counter)      each command, run with `LUTE_STATS=input-cache`, prints
+                   `lute: stats: input-cache bases=<n> vocabs=<n> assemblies=<n>`;
+                   its `bases` and `vocabs` equal the generated project's
+                   distinct memo keys at every cell it runs on (the same at
+                   100 and 400 documents). The keys are derived from what
+                   the generator wrote, over every `.lute` file of the
+                   project (each command reads all of them): a base per
+                   distinct (`profile:`, `plugins:`) frontmatter, a
+                   vocabulary per distinct (directory, `uses:`, `extends:`,
+                   base). The scene grid: 1 base, 1 vocabulary; the item-3
+                   project (`scenes/` and `quests/`): 1 base, 2 vocabularies.
+
 Item 4 of 0.49 (one `ProjectModel` build for `constraints --all-scripts`) is
 a Rust test, not a measurement, and is not checked here.
 
@@ -82,6 +96,8 @@ LINT_OFF_CPU, LINT_DEFAULT_CPU, LINT_PEAK = 1.0, 1.25, 1.25
 STREAM_CPU, STREAM_PEAK, STREAM_CHECK_PEAK = 1.5, 1.5, 1.25
 LINT_OFF = "lint-off.yaml"
 CHECK = "check --project"
+STATS = re.compile(r"^lute: stats: input-cache bases=(\d+) vocabs=(\d+) assemblies=(\d+)$", re.M)
+FRONTMATTER_KEYS = ("profile", "plugins", "uses", "extends")
 
 Args = Callable[[Path, Path], list[str]]
 
@@ -92,10 +108,29 @@ def error(message: str) -> NoReturn:
 
 
 @dataclass(frozen=True)
+class Stats:
+    bases: int
+    vocabs: int
+    assemblies: int
+
+    def __str__(self) -> str:
+        return f"{self.bases}/{self.vocabs}/{self.assemblies}"
+
+
+@dataclass(frozen=True)
 class Measure:
     cpu_s: float
     rss_mb: float
     load: float
+    stats: Stats | None  # the `LUTE_STATS=input-cache` line; None when `lute` printed none
+
+
+@dataclass(frozen=True)
+class Keys:
+    """The memo keys a generated project's documents select (counter item C)."""
+
+    bases: int
+    vocabs: int
 
 
 class Results:
@@ -104,6 +139,8 @@ class Results:
     def __init__(self) -> None:
         self.grid: dict[str, dict[tuple[int, int], Measure]] = {}
         self.item3: dict[str, Measure] = {}
+        self.grid_keys: dict[tuple[int, int], Keys] = {}
+        self.item3_keys: Keys | None = None
 
     def marginal(self, label: str, slots: int) -> tuple[float, float]:
         """(ms, MB) per document of `label` between SCENES_LOW and SCENES_HIGH."""
@@ -312,28 +349,13 @@ def rules_off_config(rules: list[str]) -> str:
     return "rules:\n" + "".join(f"  {rule}: off\n" for rule in rules)
 
 
-def time_command() -> list[str]:
+def rss_unit() -> float:
+    """Bytes per unit of `ru_maxrss`: bytes on macOS, kilobytes on Linux."""
     if platform.system() == "Darwin":
-        return ["/usr/bin/time", "-l"]
+        return 1.0
     if platform.system() == "Linux":
-        return ["/usr/bin/time", "-v"]
-    error(f"unsupported platform {platform.system()} (needs /usr/bin/time -l or -v)")
-
-
-def parse_time(text: str) -> tuple[float, float]:
-    """(CPU seconds, peak RSS in MB) from /usr/bin/time output."""
-    if platform.system() == "Darwin":
-        times = re.search(r"([\d.]+) real\s+([\d.]+) user\s+([\d.]+) sys", text)
-        rss = re.search(r"(\d+)\s+maximum resident set size", text)
-        if times is None or rss is None:
-            error(f"cannot parse /usr/bin/time -l output: {text!r}")
-        return float(times.group(2)) + float(times.group(3)), int(rss.group(1)) / 1e6
-    user = re.search(r"User time \(seconds\): ([\d.]+)", text)
-    system = re.search(r"System time \(seconds\): ([\d.]+)", text)
-    rss = re.search(r"Maximum resident set size \(kbytes\): (\d+)", text)
-    if user is None or system is None or rss is None:
-        error(f"cannot parse /usr/bin/time -v output: {text!r}")
-    return float(user.group(1)) + float(system.group(1)), int(rss.group(1)) * 1024 / 1e6
+        return 1024.0
+    error(f"unsupported platform {platform.system()} (needs macOS or Linux `ru_maxrss` units)")
 
 
 def launch(command: list[str], env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -355,25 +377,73 @@ def generate(bench: Path, out: Path, scenes: int, quests: int, slots: int, lint_
     (out / LINT_OFF).write_text(lint_off, encoding="utf-8")
 
 
-def measure(lute: Path, args: list[str], runs: int, scratch: Path) -> Measure:
-    report = scratch / "time.txt"
-    environment = dict(os.environ, LUTE_TELEMETRY="0")
-    best_cpu = best_rss = None
-    for _ in range(runs):
-        command = [*time_command(), "-o", str(report), str(lute), *args]
-        completed = launch(command, env=environment)
-        if completed.returncode != 0:
-            detail = (completed.stderr.strip() or completed.stdout.strip())[-2000:]
-            shown = " ".join(args) if len(args) <= 12 else " ".join([*args[:6], "...", *args[-3:]])
-            error(f"lute {shown} exited {completed.returncode}: {detail}")
+def frontmatter_key(text: str) -> tuple[str, ...]:
+    """A document's `profile:`, `plugins:`, `uses:` and `extends:` frontmatter, as written."""
+    lines = text.splitlines()
+    values: dict[str, str] = {}
+    if not lines or lines[0].strip() != "---":
+        return tuple("" for _ in FRONTMATTER_KEYS)
+    current: str | None = None
+    for line in lines[1:]:
+        if line.strip() == "---":
+            break
+        if line[:1] in (" ", "\t", "-"):
+            if current is not None:
+                values[current] += "\n" + line
+            continue
+        key, _, value = line.partition(":")
+        current = key.strip() if key.strip() in FRONTMATTER_KEYS else None
+        if current is not None:
+            values[current] = value.strip()
+    return tuple(values.get(key, "") for key in FRONTMATTER_KEYS)
+
+
+def fixture_keys(project: Path) -> Keys:
+    """The distinct base and vocabulary memo keys of the project's documents (spec 0.53.0 section 3.7)."""
+    bases: set[tuple[str, str]] = set()
+    vocabs: set[tuple[Path, str, str, tuple[str, str]]] = set()
+    for path in sorted(project.rglob("*.lute")):
         try:
-            timing = report.read_text()
-        except OSError as exception:
-            error(f"cannot read the /usr/bin/time report {report}: {exception}")
-        cpu, rss = parse_time(timing)
+            profile, plugins, uses, extends = frontmatter_key(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError) as exception:
+            error(f"cannot read the generated document {path}: {exception}")
+        base = (profile, plugins)
+        bases.add(base)
+        vocabs.add((path.parent, uses, extends, base))
+    return Keys(len(bases), len(vocabs))
+
+
+def run_measured(command: list[str], env: dict[str, str], scratch: Path) -> tuple[int, str, str, float, float]:
+    """Runs `command`: (exit code, stdout, stderr, CPU seconds, peak RSS in MB) from its own rusage."""
+    out_path, err_path = scratch / "stdout.txt", scratch / "stderr.txt"
+    try:
+        with out_path.open("w", encoding="utf-8") as out, err_path.open("w", encoding="utf-8") as err:
+            process = subprocess.Popen(command, stdout=out, stderr=err, env=env)
+            _, status, usage = os.wait4(process.pid, 0)
+        process.returncode = os.waitstatus_to_exitcode(status)
+        stdout = out_path.read_text(encoding="utf-8", errors="replace")
+        stderr = err_path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exception:
+        error(f"cannot run {command[0]}: {exception}")
+    cpu = usage.ru_utime + usage.ru_stime
+    return process.returncode, stdout, stderr, cpu, usage.ru_maxrss * rss_unit() / 1e6
+
+
+def measure(lute: Path, args: list[str], runs: int, scratch: Path) -> Measure:
+    environment = dict(os.environ, LUTE_TELEMETRY="0", LUTE_STATS="input-cache")
+    best_cpu = best_rss = None
+    stats: Stats | None = None
+    for _ in range(runs):
+        code, stdout, stderr, cpu, rss = run_measured([str(lute), *args], environment, scratch)
+        if code != 0:
+            detail = (stderr.strip() or stdout.strip())[-2000:]
+            shown = " ".join(args) if len(args) <= 12 else " ".join([*args[:6], "...", *args[-3:]])
+            error(f"lute {shown} exited {code}: {detail}")
         best_cpu = cpu if best_cpu is None else min(best_cpu, cpu)
         best_rss = rss if best_rss is None else min(best_rss, rss)
-    return Measure(best_cpu, best_rss, os.getloadavg()[0])
+        line = STATS.search(stderr)
+        stats = Stats(*(int(group) for group in line.groups())) if line else None
+    return Measure(best_cpu, best_rss, os.getloadavg()[0], stats)
 
 
 def commands(tiers: list[Tier], which: str) -> list[tuple[str, str, Args]]:
@@ -402,14 +472,15 @@ def collect(options: argparse.Namespace, tiers: list[Tier], scratch: Path) -> Re
     print(f"{LINT_OFF} turns off: {', '.join(rules)}")
     grid_commands = commands(tiers, "grid")
     if grid_commands:
-        print("tier\tcommand\tdocs\tslots\tcpu_s\tpeak_rss_mb\tload")
+        print("tier\tcommand\tdocs\tslots\tcpu_s\tpeak_rss_mb\tload\tbases/vocabs/assemblies")
     for slots in (SLOTS_LOW, SLOTS_HIGH) if grid_commands else ():
         for scenes in (SCENES_LOW, SCENES_HIGH):
             generate(options.bench, project, scenes, 0, slots, lint_off)
+            results.grid_keys[(scenes, slots)] = fixture_keys(project)
             for tier, label, args in grid_commands:
                 cell = measure(options.lute, args(project, scratch), options.runs, scratch)
                 results.grid.setdefault(label, {})[(scenes, slots)] = cell
-                print(f"{tier}\t{label}\t{scenes} scenes\t{slots}\t{cell.cpu_s:.2f}\t{cell.rss_mb:.0f}\t{cell.load:.1f}", flush=True)
+                print(f"{tier}\t{label}\t{scenes} scenes\t{slots}\t{cell.cpu_s:.2f}\t{cell.rss_mb:.0f}\t{cell.load:.1f}\t{cell.stats or '-'}", flush=True)
     for tier, label, _ in grid_commands:
         for slots in (SLOTS_LOW, SLOTS_HIGH):
             cpu, rss = results.marginal(label, slots)
@@ -417,11 +488,12 @@ def collect(options: argparse.Namespace, tiers: list[Tier], scratch: Path) -> Re
     item3_commands = commands(tiers, "item3")
     if item3_commands:
         generate(options.bench, project, ITEM3_SCENES, ITEM3_QUESTS, SLOTS_ITEM3, lint_off)
+        results.item3_keys = fixture_keys(project)
         print(f"item-3 project: {ITEM3_SCENES} scenes + {ITEM3_QUESTS} quests, {SLOTS_ITEM3} slots")
         for tier, label, args in item3_commands:
             cell = measure(options.lute, args(project, scratch), options.runs, scratch)
             results.item3[label] = cell
-            print(f"{tier}\t{label}\t{cell.cpu_s:.2f} s\t{cell.rss_mb:.0f} MB\tload {cell.load:.1f}", flush=True)
+            print(f"{tier}\t{label}\t{cell.cpu_s:.2f} s\t{cell.rss_mb:.0f} MB\tload {cell.load:.1f}\t{cell.stats or '-'}", flush=True)
     return results
 
 
@@ -440,6 +512,35 @@ def check(name: str, value: float, base: float, limit: float, what: str) -> bool
     return passed
 
 
+def counter(name: str, label: str, cells: list[tuple[str, Measure, Keys]]) -> bool:
+    """Counter item C: at every cell `label` ran on, its stats line's bases and vocabs equal the fixture's keys."""
+    wrong = [
+        f"{where}: {cell.stats or 'no stats line'} (expected bases/vocabs {keys.bases}/{keys.vocabs})"
+        for where, cell, keys in cells
+        if cell.stats is None or (cell.stats.bases, cell.stats.vocabs) != (keys.bases, keys.vocabs)
+    ]
+    observed = ", ".join(f"{where} {cell.stats or '-'}" for where, cell, _ in cells)
+    verdict = "FAIL" if wrong else "PASS"
+    detail = "; ".join(wrong) if wrong else "bases/vocabs equal the fixture keys at every cell"
+    print(f"{verdict} {name}: counter: {label}: {detail} (bases/vocabs/assemblies: {observed})")
+    return not wrong
+
+
+def counters(results: Results, tier: Tier) -> bool:
+    passed = True
+    for label, _ in tier.grid:
+        cells = [
+            (f"{scenes}x{slots}", results.grid[label][(scenes, slots)], results.grid_keys[(scenes, slots)])
+            for slots in (SLOTS_LOW, SLOTS_HIGH)
+            for scenes in (SCENES_LOW, SCENES_HIGH)
+        ]
+        passed = counter(f"{tier.name} C", label, cells) and passed
+    for label, _ in tier.item3:
+        assert results.item3_keys is not None, "the item-3 project was generated"
+        passed = counter(f"{tier.name} C", label, [("item-3", results.item3[label], results.item3_keys)]) and passed
+    return passed
+
+
 def gate(results: Results, tiers: list[Tier]) -> bool:
     passed = True
     for tier in tiers:
@@ -447,6 +548,7 @@ def gate(results: Results, tiers: list[Tier]) -> bool:
         for item in tier.items:
             ok = check(f"{tier.name} {item.name}", item.value(results), item.base(results), item.limit, f"{item.kind}: {item.what}")
             tier_passed = tier_passed and ok
+        tier_passed = counters(results, tier) and tier_passed
         print(f"tier {tier.name} ({tier.memory}): {'PASS' if tier_passed else 'FAIL'}")
         passed = passed and tier_passed
     if any(tier.name == "check" for tier in tiers):

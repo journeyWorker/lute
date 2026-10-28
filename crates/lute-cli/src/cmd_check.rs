@@ -630,7 +630,7 @@ fn check_document(
     let BuiltInput {
         input,
         resolve_error,
-        identity,
+        manifest,
         ..
     } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
@@ -673,7 +673,7 @@ fn check_document(
     }
     if engine.is_some() && result.ok {
         if let Ok((artifact, source_map)) =
-            lute_compile::compile_mapped(&input, check(&input), &identity)
+            lute_compile::compile_mapped(&input, check(&input), manifest.identity())
         {
             merge_gate_diags(
                 &mut result,

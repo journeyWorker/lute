@@ -2,6 +2,7 @@
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use lute_check::{ImportCache, Memo, ProjectBase};
@@ -39,6 +40,55 @@ pub struct ResolvedBase {
     pub diags: Vec<ResolveDiag>,
 }
 
+/// The work an [`InputCache`] did: the bases and vocabularies it built (one
+/// per distinct key, spec 0.53.0 §3.1) and the documents assembled through
+/// it. `Display` is the counter part of the `LUTE_STATS=input-cache` line.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct InputCacheStats {
+    pub bases: usize,
+    pub vocabs: usize,
+    pub assemblies: usize,
+}
+
+impl std::fmt::Display for InputCacheStats {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "bases={} vocabs={} assemblies={}",
+            self.bases, self.vocabs, self.assemblies
+        )
+    }
+}
+
+/// Counters summed over the caches this process dropped.
+struct DroppedTotals {
+    bases: AtomicUsize,
+    vocabs: AtomicUsize,
+    assemblies: AtomicUsize,
+}
+
+static DROPPED: DroppedTotals = DroppedTotals {
+    bases: AtomicUsize::new(0),
+    vocabs: AtomicUsize::new(0),
+    assemblies: AtomicUsize::new(0),
+};
+
+/// The [`InputCacheStats`] of every [`InputCache`] this process has dropped,
+/// summed: a command's caches, a project model's included, once the command
+/// returned. What `LUTE_STATS=input-cache` prints (spec 0.53.0 §3.7).
+pub fn dropped_stats() -> InputCacheStats {
+    InputCacheStats {
+        bases: DROPPED.bases.load(Ordering::Relaxed),
+        vocabs: DROPPED.vocabs.load(Ordering::Relaxed),
+        assemblies: DROPPED.assemblies.load(Ordering::Relaxed),
+    }
+}
+
+/// The project input layer one command shares across its documents (ADR
+/// D14): each value is built once per key and handed out behind `Arc`. A
+/// command that reads two or more documents assembles them all through one
+/// cache (spec 0.53.0 §3.1); the files are assumed not to change while it
+/// lives.
 #[derive(Debug, Default)]
 pub struct InputCache {
     projects: Memo<PathBuf, LoadedProject>,
@@ -47,9 +97,39 @@ pub struct InputCache {
     plugin_origins: Memo<PathBuf, lute_check::rel_schema::PluginOrigins>,
     bases: Memo<BaseKey, ResolvedBase>,
     pub imports: ImportCache,
+    /// [`Self::base`] builds: one per distinct [`BaseKey`].
+    base_builds: AtomicUsize,
+    /// Documents assembled through this cache.
+    assemblies: AtomicUsize,
+}
+
+/// A dropped cache adds its counters to [`dropped_stats`].
+impl Drop for InputCache {
+    fn drop(&mut self) {
+        let stats = self.stats();
+        DROPPED.bases.fetch_add(stats.bases, Ordering::Relaxed);
+        DROPPED.vocabs.fetch_add(stats.vocabs, Ordering::Relaxed);
+        DROPPED
+            .assemblies
+            .fetch_add(stats.assemblies, Ordering::Relaxed);
+    }
 }
 
 impl InputCache {
+    /// What this cache built and assembled so far.
+    pub fn stats(&self) -> InputCacheStats {
+        InputCacheStats {
+            bases: self.base_builds.load(Ordering::Relaxed),
+            vocabs: self.imports.vocab_builds(),
+            assemblies: self.assemblies.load(Ordering::Relaxed),
+        }
+    }
+
+    /// Count one document assembled through this cache.
+    pub(crate) fn count_assembly(&self) {
+        self.assemblies.fetch_add(1, Ordering::Relaxed);
+    }
+
     pub fn project(&self, dir: &Path) -> Arc<LoadedProject> {
         self.projects
             .get_or_init(dir.to_path_buf(), || load_project(dir))
@@ -123,6 +203,7 @@ impl InputCache {
             providers_key,
         );
         self.bases.get_or_init(key, || {
+            self.base_builds.fetch_add(1, Ordering::Relaxed);
             let resolved = self.snapshot(root, project, profile, plugins);
             let (mut snapshot, mut diags) = (resolved.0.clone(), resolved.1.clone());
             snapshot.identity_require_stable =

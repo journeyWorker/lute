@@ -25,6 +25,7 @@
 //!    `state:` may refine it (dsl §9.2), while a `uses`-peer path may not.
 use std::collections::{BTreeMap, BTreeSet, HashMap, VecDeque};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
 use lute_core_span::{Diagnostic, Layer, RelatedDiagnostic, Severity, Span};
@@ -326,6 +327,8 @@ pub struct ImportCache {
     /// the importer's directory, and importers in different directories
     /// reach the same schema files.
     files: Memo<PathBuf, ParsedFile>,
+    /// [`crate::ProjectVocab::build`] calls: one per distinct `vocabs` key.
+    vocab_builds: AtomicUsize,
 }
 
 impl std::fmt::Debug for ImportCache {
@@ -371,6 +374,7 @@ impl ImportCache {
             extends.to_vec(),
         );
         let vocab = self.vocabs.get_or_init(key, || {
+            self.vocab_builds.fetch_add(1, Ordering::Relaxed);
             crate::ProjectVocab::build(base, self.resolve(base_dir, uses, extends))
         });
         let mut diags = vocab.imports.diags.clone();
@@ -393,6 +397,12 @@ impl ImportCache {
         let mut diags = cached.diags.clone();
         anchor_at(&mut diags, at);
         (cached, diags)
+    }
+
+    /// How many vocabularies [`Self::vocab`] built: one per distinct
+    /// `(base, base_dir, uses, extends)`, however many documents asked.
+    pub fn vocab_builds(&self) -> usize {
+        self.vocab_builds.load(Ordering::Relaxed)
     }
 }
 

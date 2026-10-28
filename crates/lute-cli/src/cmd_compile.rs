@@ -175,9 +175,7 @@ fn run_compile(
     let BuiltInput {
         input,
         resolve_error,
-        identity,
-        identity_rename_decls,
-        identity_rename_diags,
+        manifest,
         ..
     } = built;
     // plugin 0.0.2 §2: an `E-` capability-resolution diagnostic (bad plugin
@@ -215,7 +213,7 @@ fn run_compile(
     } else {
         match component_name_of(file).filter(|_| gate.ok) {
             Some((component, at)) => Err(vec![component_root_diag(&component, at)]),
-            None => lute_compile::compile_with_check(&input, gate, &identity),
+            None => lute_compile::compile_with_check(&input, gate, manifest.identity()),
         }
     };
     match compiled {
@@ -225,8 +223,8 @@ fn run_compile(
                 resolved.as_deref(),
                 providers,
                 permission_profile,
-                &identity_rename_decls,
-                &identity_rename_diags,
+                manifest.identity_rename_decls(),
+                manifest.identity_rename_diags(),
                 policy,
             ) {
                 return code;

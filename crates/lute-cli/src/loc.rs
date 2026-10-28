@@ -639,8 +639,9 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
             );
             continue;
         };
-        let identity = built.identity.clone();
-        let input = built.input;
+        let lute_load::BuiltInput {
+            input, manifest, ..
+        } = built;
         let (mut doc, diags) = lute_syntax::parse(&input.text);
         let errors = diags
             .iter()
@@ -672,11 +673,10 @@ fn collect_units(dir: &Path) -> Result<Vec<Unit>, ExitCode> {
             &folded.env.state,
             &folded.env.occasion_scopes,
         );
-        let ident = identity;
         document_units(
             &path.display().to_string(),
             &doc,
-            &ident,
+            manifest.identity(),
             &input.components,
             input.snapshot(),
             &mut units,
