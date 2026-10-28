@@ -539,13 +539,13 @@ carries no stamp, so `max` is the only attribute added.
   and its own loop.
 
 The **loop** of a bounded jump is every node from its label to the jump, in document order; the
-label is the loop's **head**. To keep every loop well-nested and entered only at its head, the
+label is the loop's **head**. A document's top-level sections are one range, so a loop may span them (below). To keep every loop well-nested and entered only at its head, the
 checker enforces these rules:
 
 | Rule | Code |
 |---|---|
 | `max` is a literal integer from 1 to 99 — not an `@ref`, not `0`, not negative, not above 99; and `max` on a forward jump means nothing | `E-JUMP-MAX` |
-| The label is in the jump's own body or in a body that encloses it, and every body in between is a `<choice>` body of a `<branch>` or an arm body of a `<match>`. The loop may not leave a `<hub>` option body or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry, a beat or a section (a loop around a quest's `<on>`/`<objective>` bodies would need a `::label` at the quest's top level, which is `E-GRAMMAR-NOT-ADMITTED` since 0.52) | `E-JUMP-LOOP-SCOPE` |
+| The label is in the jump's own body or in a body that encloses it, and every body in between is a `<choice>` body of a `<branch>` or an arm body of a `<match>`. The loop may not leave a `<hub>` option body or `<return>` body, an `<on>` or `<objective>` body, a quest, an entry or a beat (a loop around a quest's `<on>`/`<objective>` bodies would need a `::label` at the quest's top level, which is `E-GRAMMAR-NOT-ADMITTED` since 0.52) | `E-JUMP-LOOP-SCOPE` |
 | A forward jump from outside a loop may not land strictly inside it after its head; a loop is entered only at its head | `E-JUMP-INTO-LOOP` |
 | Two loops nest or are disjoint; they may not overlap without nesting (loops with the same head nest) | `E-JUMP-LOOP-CROSS` |
 
@@ -554,6 +554,109 @@ its head are both legal. A bounded jump inside a component body is checked in th
 document, and each expanded instance has its own counters and its own labels: the compiler names a
 label per `::use` instance, so a component used twice loops, or jumps forward, inside each instance
 (#207).
+
+#### A loop may span sections
+
+There is no section bound. The top-level `##` sections of a document run as one range, so a bounded
+jump may loop back to a label in an earlier section: the loop's region is every node from the head
+through the **last** back edge to it, across the sections in between (several bounded jumps may
+loop to one head, in the head's section and in later ones; when an earlier jump's `max` is
+exhausted, control reaches the later sections and their jump). Every other rule above applies
+unchanged. A "try again" that sits in its own section checks clean:
+
+```lute check
+---
+kind: scene
+id: demo.toss
+state:
+  run.x: { type: int, default: 0 }
+---
+## Offer
+
+@mira: Want to try the ring toss?
+<branch id="offer">
+  <choice id="play" text="Play">
+    ::jump{to="play"}
+  </choice>
+  <choice id="skip" text="Not now">
+    ::jump{to="out"}
+  </choice>
+</branch>
+
+## Play {#play}
+
+::label{name="play"}
+@mira: Toss!
+
+## Retry {#retry}
+
+<branch id="again">
+  <choice id="retry" text="Try again">
+    ::jump{to="play" max="3"}
+  </choice>
+  <choice id="stop" text="Stop">
+    ::jump{to="out"}
+  </choice>
+</branch>
+
+## After {#after}
+
+::label{name="out"}
+@mira: Let us head back.
+```
+
+`::end` inside a loop stays legal. A loop that leaves a hub option, a `<return>`, an `<on>`, an
+`<objective>`, an entry or a beat body is still `E-JUMP-LOOP-SCOPE`, and the message never names a
+section:
+
+<!-- lute-diagnostics -->
+```
+hub.lute:16:16: error [E-JUMP-LOOP-SCOPE] `::jump{to="top" max="2"}` loops back to a label outside the `<hub>` option it is in; a loop stays inside one option body — put `::label{name="top"}` inside it, or use the hub itself to repeat
+```
+
+A forward jump into the middle of a loop, in a section or not, is `E-JUMP-INTO-LOOP`. When that jump
+is the last node of one `<choice>` body of a `<branch>` and no other jump targets its label, the
+message ends with the one-option hint: the block belongs inside that option.
+
+<!-- lute-diagnostics -->
+```
+entered.lute:11:16: error [E-JUMP-INTO-LOOP] `::jump{to="blockA"}` enters the loop of `::jump{to="top" max="2"}` (line 24) after its head `top`; a loop is entered only at its head — jump to `top` instead — `blockA` is reached only from option `a` of `<branch id="pick">`: move the block into that option's body
+```
+
+Move the block into the option and the document checks clean:
+
+```lute check
+---
+kind: scene
+id: demo.toss
+state:
+  run.x: { type: int, default: 0 }
+---
+## One
+
+<branch id="pick">
+  <choice id="a" text="A">
+    @mira: A.
+  </choice>
+  <choice id="b" text="B">
+    @mira: B.
+  </choice>
+</branch>
+::label{name="top"}
+@mira: Top.
+
+## Two
+
+::jump{to="top" max="2"}
+```
+
+**What a section is at runtime.** A `##` section is presentation and identity: its heading, its
+optional `{#id}` in the artifact's descriptive `sections` table, and the first segment of a
+record's build-local `position`. It is not a runtime range, a resume point, a host entry or a jump
+target. The runtime runs a scene's sections as one range, so a loop across sections compiles to the
+same commands as the same document without its headings (apart from positions and the `sections`
+table). Content that a host routes to is a bridge result that the script `<match>`es, not a section
+it enters.
 
 Loops cannot make a walk run forever. Between two takes of bounded jumps control moves only
 forward, so it is bounded by the walk's length; a loop's counter resets only when its head is

@@ -97,3 +97,55 @@ plugins:
 ```
 
 유효 capability는 결정적으로 해석됩니다: `lute.core` → `global` → 선택한 프로필의 `extends` 체인(부모 먼저) → 선택한 프로필 → 씬 로컬 `plugins` → 의존성 폐쇄. 활성화는 순전히 가산적입니다. 검사기, LSP, 컴파일러는 모두 같은 해석된 capability 스냅숏에 대해 문서를 검사하므로, 검사에 통과하는 것이 그대로 컴파일되는 것과 일치합니다.
+
+## 플러그인 frontmatter 키
+
+플러그인의 `frontmatter/*.yaml` export는 문서가 가질 수 있는 키를 `schema`와 함께 선언합니다([플러그인 개념](/ko/plugins/concepts/) 참고). schema에 맞지 않는 값은 `E-FRONTMATTER-SCHEMA`입니다.
+
+0.53부터 참조는 키의 최상위뿐 아니라 값 **어디에 있든** 검사합니다. `entity`, `domain`, `enumFromOption`, `providerRef`, `assetKind`로 타입이 정해진 키는 그 타입의 속성과 똑같이 검사되고, `list`·`record` 필드·`map`의 키나 값 안에 있는 같은 타입의 값도 깊이에 상관없이 똑같이 검사됩니다. 진단은 속성 검사가 내는 코드(`E-BAD-ENUM`, `E-UNKNOWN-ID`, `E-ASSET-*`)를 그대로 쓰고, 메시지에 **필드 경로**를 적습니다. 아래 출력처럼 record의 필드, list의 항목, map의 키와 항목이 경로에 나옵니다. 위치는 키가 있는 줄입니다. 선언에 없는 `record` 필드와 참조가 아닌 타입의 필드는 참조로 취급하지 않습니다. schema로 표현할 수 없는 값(`null`, `!tag`, 지원하지 않는 타입의 map 키)과 모양이 맞지 않는 값은 그대로 `E-FRONTMATTER-SCHEMA`입니다.
+
+```yaml
+# plugins/acme.stage/frontmatter/keys.yaml
+frontmatter:
+  - { key: lead, schema: { entity: person } }
+  - { key: guests, schema: { list: { entity: person } } }
+  - key: talk
+    schema:
+      record:
+        - { name: partner, type: { entity: person } }
+        - { name: turns, type: int }
+  - key: mood
+    schema:
+      map: { key: { entity: person }, value: { list: { entity: person } } }
+```
+
+`person: { members: [mira, theo] }`가 선언되어 있을 때, 씬이 각각을 잘못 쓰면:
+
+```yaml
+lead: mirra
+guests: [mira, theoo]
+talk: { partner: mirra, turns: 3 }
+mood:
+  mira: [theo]
+  theoo: [mirra]
+```
+
+<!-- lute-diagnostics -->
+```
+./scenes/intro.lute:4:1: error [E-BAD-ENUM] `mirra` is not a member of entity kind `person` (attribute `lead` of `frontmatter`) — did you mean `mira`?
+./scenes/intro.lute:5:1: error [E-BAD-ENUM] `theoo` is not a member of entity kind `person` (attribute `guests` of `frontmatter`) — did you mean `theo`?
+```
+
+<!-- lute-diagnostics unverified="the field, map key and map entry path forms are not in the doc matcher's message templates; verbatim lute check output" -->
+```
+./scenes/intro.lute:6:1: error [E-BAD-ENUM] `mirra` is not a member of entity kind `person` (field `partner` of `talk` of `frontmatter`) — did you mean `mira`?
+./scenes/intro.lute:7:1: error [E-BAD-ENUM] `theoo` is not a member of entity kind `person` (key `theoo` of `mood` of `frontmatter`) — did you mean `theo`?
+./scenes/intro.lute:7:1: error [E-BAD-ENUM] `mirra` is not a member of entity kind `person` (item 1 of entry `theoo` of `mood` of `frontmatter`) — did you mean `mira`?
+```
+
+플러그인 frontmatter 타입은 `W-DOMAIN-UNREAD`의 **읽는 쪽**으로도 셉니다. frontmatter 키 타입이(깊이에 상관없이) 이름을 든 엔티티 종류나 enum은 읽히는 것으로 보므로 더 이상 경고가 나지 않습니다. 그 타입을 쓰는 frontmatter 키가 없으면 경고는 찾아본 읽는 쪽 목록에 "no plugin frontmatter key is typed by it"을 포함합니다:
+
+<!-- lute-diagnostics -->
+```
+./schema/world.schema.yaml:2:3: warning [W-DOMAIN-UNREAD] domain `person` is declared but no active construct reads it: no directive attribute, content-line slot, or state path is typed `{ domain: person }`, no plugin frontmatter key is typed by it, no `relations:` entry takes it as an argument, no `per: person` state family or `subsetOf: person` kind builds on it, and no rule or condition queries `person(…)` — so it enforces nothing and only reaches the artifact's `enums` array. Read it, or remove the declaration
+```

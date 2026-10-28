@@ -673,7 +673,8 @@ names (dsl 0.28.0 §6):
 - **`RewardEntry.outcome`** (was `on`): only ever `"failed"`, on a quest-level reward that grants
   on a fresh `failed` transition.
 - **A quest's `prereqEdges` row carries `follows`** (was `after`): quest-graph metadata that never
-  gates the quest (its `start` does). Scene and bundle-beat rows keep `after`.
+  gates the quest (its `start` does) and no in-script accept; on an `accept="external"` quest it is the
+  condition under which the host grants it (the host applies it; Lute does not enforce it). Scene and bundle-beat rows keep `after`.
 
 New behaviour and optional fields, each omitted when unauthored:
 
@@ -965,6 +966,12 @@ section number, then the record's order within that section. It is
 identity, a localization key, or a save key. The stable content joins are
 `lineId` / `voiceKey`; a section's stable identity is its optional `id` in
 `sections`.
+
+A section is presentation and identity, **not a runtime boundary**. The
+runtime runs a scene's sections as one range: there is no section resume point,
+no section entry a host can address and no section jump target, and a bounded
+loop may span sections. Content a host routes to is a bridge result that the
+script `<match>`es, not a section it enters.
 
 Both segments are zero-padded to a width computed from the document — at least
 `3` for the section and `4` for the index, wider when the document needs it —

@@ -84,10 +84,10 @@ reachable here means nothing static refutes it, not that a run reaches it: a pla
 2. **모든** 앵커에 시작할 수 있는(퀘스트) 또는 라우팅 가능한(다른 노드) 소스가 **하나라도** 있으면 퀘스트는 시작할 수 있습니다.
 3. "아무것도 시작할 수 없다"에서 출발해 더 변하지 않을 때까지 반복합니다.
 
-교착 상태인 각 퀘스트는 `start`에서 `E-QUEST-START-CYCLE`(오류, 프로젝트 전체)이며, 강연결 집합마다 하나씩 가장 작은 퀘스트에서 보고합니다. 경로는 가장 짧은 앵커 순환이며 `E-CONN-CYCLE`처럼 표시합니다:
+accept 앵커도 start 앵커처럼 계산합니다. 스크립트 안의 소스(`::accept`, 보상의 `accepts`) 중 하나가 시작할 수 있거나 [호스트 경로](#수락-기반-퀘스트로-향하는-호스트-경로)가 있으면 시작할 수 있습니다. 교착 상태인 각 퀘스트는 `E-QUEST-START-CYCLE`(오류, 프로젝트 전체)이며, 강연결 집합마다 하나씩 가장 작은 퀘스트에서 보고합니다. 그 퀘스트의 `start`에서 보고하고, 수락 기반이라 `start`가 없으면 `id`에서 보고합니다. 경로는 가장 짧은 앵커 순환이며 `E-CONN-CYCLE`처럼 표시하되 각 간선 종류를 이름으로 밝힙니다:
 
 ```text
-quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` waits for the next and no source outside the cycle starts any of them; start one of them from something outside the cycle, or grant it with `accept="external"`
+quest start cycle: quest(intro) -[start]-> quest(letter) -[accept]-> quest(intro) — each waits for the next (a `start` for its condition, an accept for the `::accept` or reward that grants it) and no source outside the cycle starts any of them; start one of them from something outside the cycle, or let the host grant one with `accept="external"`
 ```
 
 **외부에서 진입하는 순환은 문제없습니다.** 퀘스트 A가 B가 active일 때 시작하고, B가 A가 active이거나 **또는** `visited("entry")`일 때 시작하며, 씬 `entry`가 라우팅 가능하다면 B는 시작할 수 있고 따라서 A도 시작할 수 있습니다. 진단은 없습니다. 두 엣지는 여전히 그려지고, 위상 순서가 허용하는 곳에서는 두 퀘스트가 `entry` 뒤 층에 배치됩니다. 그렇지 않으면 층 없이 나열됩니다.
@@ -95,7 +95,20 @@ quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` wa
 교착의 출력:
 
 - 그래프 텍스트는 교착 퀘스트를 `(unlayered -- part of a start cycle, E-QUEST-START-CYCLE): …` 줄로 출력합니다. JSON과 DOT에는 `startCycle`이 들어갑니다. `after` 순환의 텍스트는 그대로입니다.
-- 교착 퀘스트, 또는 교착 소스만을 통해 하류에 있는 퀘스트의 `reach`는 ``this quest's `start` waits on a start cycle (E-QUEST-START-CYCLE): <path>; it can never start under your declared routes.`` 라는 이유와 함께 `Unknown`입니다. 시작할 수 없는 퀘스트를 `Reachable`로 보고하지 않습니다.
+- 교착 퀘스트, 또는 교착 소스만을 통해 하류에 있는 퀘스트의 `reach`는 ``this quest's `start` waits on a start cycle (E-QUEST-START-CYCLE): <path>; it can never start under your declared routes.`` 라는 이유와 함께 `Unknown`입니다. 시작할 수 없는 퀘스트를 `Reachable`로 보고하지 않습니다(수락 기반 퀘스트는 "this quest's accept waits on …"로 읽힙니다):
+
+```console
+$ lute scenario --project . reach --node quest:letter
+project root: .
+reach quest(letter):
+  verdict: Unknown — this quest's accept waits on a start cycle (E-QUEST-START-CYCLE): quest(letter) -[accept]-> quest(intro) -[start]-> quest(letter); it can never start under your declared routes. [unknown]
+  follows: (none declared) — anchored; each anchor holds before it activates, through any one of its sources:
+    [accept] quest(intro)
+  referenced node(s) (see the anchors above — this is NOT a flat requirement list):
+    - quest(intro): Unknown — this quest's `start` waits on a start cycle (E-QUEST-START-CYCLE): quest(intro) -[start]-> quest(letter) -[accept]-> quest(intro); it can never start under your declared routes. [unknown]
+```
+
+**호스트가 진입하는 accept 순환은 문제없습니다.** `letter`가 `accept="external"`이면 호스트 경로가 열리므로 두 퀘스트 모두 `Reachable`입니다. 상호 accept 순환의 어느 퀘스트에 호스트가 있어도 마찬가지입니다.
 
 ### 자기 퀘스트를 읽는 `start`
 
@@ -105,7 +118,30 @@ quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` wa
 
 ### 앵커가 없는 퀘스트
 
-앵커가 없는 퀘스트는 `reachable holds [proven]`이며 이유는 `unanchored: available from the start of play`입니다. `lute scenario reach`와 `lute constraints`는 같은 하나의 도달 가능성 주장을 읽으므로 서로 어긋날 수 없습니다.
+앵커가 없는 퀘스트는 `reachable holds [proven]`이며 이유는 `unanchored: available from the start of play`입니다. 스크립트 안의 어떤 accept도 이름 붙이지 않고 `follows`도 없는 `accept="external"` 퀘스트는 앵커 없이 남습니다. `lute scenario reach`와 `lute constraints`는 같은 하나의 도달 가능성 주장을 읽으므로 서로 어긋날 수 없습니다.
+
+## 수락 기반 퀘스트로 향하는 호스트 경로
+
+수락 기반 퀘스트(`start` 없음)에는 경로들의 any-of인 **accept 앵커**가 있습니다:
+
+- 스크립트 안의 모든 accept(`::accept`, 보상의 `accepts`)는 퀘스트의 `follows`가 무엇이든 **상관없이** 무조건 경로입니다. `follows`는 accept를 게이트하지 않습니다.
+- `accept="external"` 퀘스트는 **호스트 경로**를 더합니다. `follows`가 없으면 열려 있고, 있으면 그 `follows` 식이 성립할 때 열리는데, 이는 호스트 정책입니다(형식이 잘못된 식이면 경로는 `Unknown`).
+- `accept="external"`이 아니고 아무것도 이름 붙이지 않는 퀘스트는 `follows`를 선언해도 경로가 없습니다. `follows`는 경로가 아니므로 `reach`는 `Unknown`이고 `W-QUEST-NEVER-ACCEPTED`가 발생합니다.
+
+판정은 경로들의 OR입니다. 작성 측 설명은 [수락 기반 퀘스트로 들어오는 경로](/ko/language/quests-and-scenes/#수락-기반-퀘스트로-들어오는-경로)에 있습니다. `follows`가 있는 호스트 경로에만 기댄 `Reachable` 판정은 **`heuristic`** 증거를 가집니다(JSON `"evidence": "heuristic"`, 앵커의 `"host": {"follows": …}`). 이유는 ``reachable if the host grants it once `follows` holds (host policy; Lute does not enforce it)``입니다. `follows`가 없는 호스트 경로는 `proven`("available from the start of play")을 유지합니다. `follows` 식은 메타데이터인 ``(declared ordering; not an activation route)``로 출력되고 그 원자는 여전히 간선을 그리지만, 진입 보장이 되지는 않습니다. `lute constraints`도 같은 주장을 읽으므로, 이런 퀘스트에 건 `reachable` 제약은 `heuristic` 증거로 성립합니다.
+
+```console
+$ lute scenario --project . reach --node quest:letter
+project root: .
+reach quest(letter):
+  verdict: Reachable — a satisfiable route exists under your declared routes.
+  follows: (none declared) — anchored; each anchor holds before it activates, through any one of its sources:
+    [accept] the host (accept="external") | quest(intro)
+  referenced node(s) (see the anchors above — this is NOT a flat requirement list):
+    - quest(intro): Reachable — a satisfiable route exists under your declared routes.
+```
+
+순환을 닫을 accept 간선은 그려지지 않습니다. reach는 노드를 위상 순서로 평가하고, 그려지지 않은 accept(또는 raise) 간선이나 호스트 `follows`의 그려지지 않은 원자가 판정을 바꿀 수 있는 동안에는 더 이상 바뀌지 않을 때까지 **반복**합니다. 상호 accept 순환의 어느 퀘스트에 호스트가 있어도 두 퀘스트는 모두 `Reachable`입니다.
 
 ## 보상 효과가 그리는 엣지
 
@@ -113,7 +149,7 @@ quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` wa
 
 - 사실을 **assert**하는 보상은 핸들러 안의 `::assert`처럼, 그 사실을 `start`에서 읽는 퀘스트로 향하는 사실 엣지를 그립니다. `lute scenario --facts`는 그래프에 있는 퀘스트(`follows`가 있는 퀘스트)에 대해 이를 출력합니다. plugin-surfaces 예제에서는 `quest(firstVisit) -> quest(secondVisit) [met(mira)]`입니다. 따라서 `holds('met', ['mira'])`로 게이트된 퀘스트는 `firstVisit`의 보상이 `met(mira)`를 assert하면 도달 가능합니다: `E-QUEST-UNREACHABLE`이 없습니다. 조건부 보상(`when=`)은 조건부 생산자입니다.
 - 퀘스트를 **accept**하는 보상은 씬의 `::accept`가 그리는 엣지인 `quest(first) -> quest(second) [accept]`를 그립니다. 보상 `accepts`만 이름을 부르는 수락 기반 퀘스트는 도달 가능하며 `W-QUEST-NEVER-ACCEPTED`를 내지 않습니다. 그 경고의 메시지는 이제 "… but no `::accept` or reward `accepts` in the project names it …"입니다.
-- **시작 순환은 그대로입니다.** 보상 accept를 포함한 `[accept]` 앵커는 퀘스트의 시작을 게이트하지 않습니다. 엔진은 어떤 `::accept` 밖에서도 퀘스트를 수락할 수 있고, accept 교착은 범위 밖입니다. 보상을 통해서만 서로를 accept하는 수락 기반 퀘스트의 순환은 `E-QUEST-START-CYCLE`도 `E-QUEST-START-SELF`도 내지 않습니다.
+- **accept 교착은 시작 순환입니다.** 0.53부터, 바깥 소스가 들어오지 않고 호스트 경로도 열려 있지 않은 `start`와 스크립트 안 accept 앵커(보상 accept 포함)의 순환은 `E-QUEST-START-CYCLE`입니다(위). 보상을 통해서만 서로를 accept하는 수락 기반 퀘스트 둘은 교착하며, 둘 중 하나에 `accept="external"`을 쓰면 풀립니다.
 - `lute scenario knowledge`와 `lute lore`는 보상이 assert한 사실의 생산자를 지목합니다: `` met(mira) — produced by reward BADGE of quest `firstVisit` ``.
 
 ## raise되지 않는 occasion

@@ -84,10 +84,10 @@ A quest is **deadlocked** when it can never start and sits on a cycle of anchor 
 2. A quest can start when **every** anchor has **some** source that can start (a quest) or is routable (another node).
 3. Iterate from "nothing can start" until nothing changes.
 
-Each deadlocked quest is `E-QUEST-START-CYCLE` (error, project-wide) at its `start`, one per strongly connected set, reported at its least quest. The path is the shortest anchor cycle, rendered like `E-CONN-CYCLE`:
+An accept anchor counts like a start anchor: it can start when one of its in-script sources (`::accept`, a reward's `accepts`) can start, or when it has a [host route](#the-host-route-into-an-accept-driven-quest). Each deadlocked quest is `E-QUEST-START-CYCLE` (error, project-wide), one per strongly connected set, reported at its least quest: at its `start`, or at its `id` when it is accept-driven and has none. The path is the shortest anchor cycle, rendered like `E-CONN-CYCLE`, and names each edge kind:
 
 ```text
-quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` waits for the next and no source outside the cycle starts any of them; start one of them from something outside the cycle, or grant it with `accept="external"`
+quest start cycle: quest(intro) -[start]-> quest(letter) -[accept]-> quest(intro) — each waits for the next (a `start` for its condition, an accept for the `::accept` or reward that grants it) and no source outside the cycle starts any of them; start one of them from something outside the cycle, or let the host grant one with `accept="external"`
 ```
 
 **An externally entered cycle is fine.** If quest A starts when B is active, and B starts when A is active **or** `visited("entry")`, and scene `entry` is routable, then B can start, so A can start: no diagnostic. Both edges are still drawn, and the two quests are layered after `entry` where the topological order allows; otherwise they are listed unlayered.
@@ -95,7 +95,20 @@ quest start cycle: quest(cycA) -> quest(cycB) -> quest(cycA) — each `start` wa
 Output for a deadlock:
 
 - The graph text prints the deadlocked quests on a line `(unlayered -- part of a start cycle, E-QUEST-START-CYCLE): …`. JSON and DOT carry `startCycle`. The text for an `after` cycle is unchanged.
-- `reach` for a deadlocked quest, or one downstream only through deadlocked sources, is `Unknown` with the reason ``this quest's `start` waits on a start cycle (E-QUEST-START-CYCLE): <path>; it can never start under your declared routes.`` Reachability never reports `Reachable` for a quest that cannot start.
+- `reach` for a deadlocked quest, or one downstream only through deadlocked sources, is `Unknown` with the reason ``this quest's `start` waits on a start cycle (E-QUEST-START-CYCLE): <path>; it can never start under your declared routes.`` (an accept-driven quest reads "this quest's accept waits on …"). Reachability never reports `Reachable` for a quest that cannot start:
+
+```console
+$ lute scenario --project . reach --node quest:letter
+project root: .
+reach quest(letter):
+  verdict: Unknown — this quest's accept waits on a start cycle (E-QUEST-START-CYCLE): quest(letter) -[accept]-> quest(intro) -[start]-> quest(letter); it can never start under your declared routes. [unknown]
+  follows: (none declared) — anchored; each anchor holds before it activates, through any one of its sources:
+    [accept] quest(intro)
+  referenced node(s) (see the anchors above — this is NOT a flat requirement list):
+    - quest(intro): Unknown — this quest's `start` waits on a start cycle (E-QUEST-START-CYCLE): quest(intro) -[start]-> quest(letter) -[accept]-> quest(intro); it can never start under your declared routes. [unknown]
+```
+
+**An accept cycle the host enters is fine.** If `letter` is `accept="external"`, the host route opens it, so both quests are `Reachable`. The same holds when the host sits on either quest of a mutual-accept cycle.
 
 ### A `start` that reads its own quest
 
@@ -105,7 +118,30 @@ An anchoring self-read counts as a source that never helps, so a quest whose anc
 
 ### Unanchored quests
 
-An unanchored quest is `reachable holds [proven]` with the reason `unanchored: available from the start of play`. `lute scenario reach` and `lute constraints` read the same single reachability claim, so they cannot disagree.
+An unanchored quest is `reachable holds [proven]` with the reason `unanchored: available from the start of play`. An `accept="external"` quest that no in-script accept names and that has no `follows` stays unanchored. `lute scenario reach` and `lute constraints` read the same single reachability claim, so they cannot disagree.
+
+## The host route into an accept-driven quest
+
+An accept-driven quest (no `start`) has an **accept anchor**, an any-of over its routes:
+
+- every in-script accept (`::accept`, a reward's `accepts`) is an unconditional route, **whatever the quest's `follows` says**: `follows` never gates an accept;
+- an `accept="external"` quest adds the **host route**: open without `follows`, or open once its `follows` formula holds, which is host policy (a malformed formula leaves the route `Unknown`);
+- a quest that is not `accept="external"` and that nothing names has no route even if it declares `follows`: `follows` is no route, so `reach` is `Unknown` and `W-QUEST-NEVER-ACCEPTED` fires.
+
+The authoring side is in [Routes into an accept-driven quest](/language/quests-and-scenes/#routes-into-an-accept-driven-quest). The verdict is the OR of the routes. A `Reachable` verdict that rests only on a host route with `follows` carries **`heuristic`** evidence (JSON `"evidence": "heuristic"`, `"host": {"follows": …}` on the anchor), with the reason ``reachable if the host grants it once `follows` holds (host policy; Lute does not enforce it)``. A host route without `follows` keeps `proven` ("available from the start of play"). The `follows` formula is printed as metadata, ``(declared ordering; not an activation route)``, and its atoms still draw their edges; it is never an entry guarantee. `lute constraints` reads the same claim, so a `reachable` constraint on such a quest holds with `heuristic` evidence.
+
+```console
+$ lute scenario --project . reach --node quest:letter
+project root: .
+reach quest(letter):
+  verdict: Reachable — a satisfiable route exists under your declared routes.
+  follows: (none declared) — anchored; each anchor holds before it activates, through any one of its sources:
+    [accept] the host (accept="external") | quest(intro)
+  referenced node(s) (see the anchors above — this is NOT a flat requirement list):
+    - quest(intro): Reachable — a satisfiable route exists under your declared routes.
+```
+
+An accept edge that would close a cycle is not drawn. Reach evaluates nodes in topological order and **repeats** while an undrawn accept (or raise) edge, or an undrawn atom of a host `follows`, could still change a verdict, until none changes. With the host on either quest of a mutual-accept cycle both quests are `Reachable`.
 
 ## Edges that reward effects draw
 
@@ -113,7 +149,7 @@ A plugin reward kind can declare [effects](/language/quests-and-scenes/#reward-e
 
 - A reward that **asserts** a fact draws the fact edge to a quest whose `start` reads that fact, as an `::assert` in a handler would. `lute scenario --facts` prints it for a quest that is in the graph (one with `follows`), as in the plugin-surfaces example: `quest(firstVisit) -> quest(secondVisit) [met(mira)]`. A quest gated on `holds('met', ['mira'])` is therefore reachable when a reward of `firstVisit` asserts `met(mira)`: no `E-QUEST-UNREACHABLE`. A conditional reward (`when=`) is a conditional producer.
 - A reward that **accepts** a quest draws `quest(first) -> quest(second) [accept]`, the edge a scene's `::accept` draws. An accept-driven quest named only by a reward `accepts` is reachable, and draws no `W-QUEST-NEVER-ACCEPTED`. That warning's message now reads "… but no `::accept` or reward `accepts` in the project names it …".
-- **Start cycles are unchanged.** `[accept]` anchors, a reward accept's included, do not gate a quest's start: the engine may accept a quest outside any `::accept`, and accept deadlocks are out of scope. A cycle of accept-driven quests that accept each other only through rewards never draws `E-QUEST-START-CYCLE` or `E-QUEST-START-SELF`.
+- **Accept deadlocks are start cycles.** Since 0.53 a cycle of `start` and in-script accept anchors (a reward accept's included) that no outside source enters and no host route opens is `E-QUEST-START-CYCLE` (above): two accept-driven quests that accept each other only through rewards deadlock, and `accept="external"` on either one resolves it.
 - `lute scenario knowledge` and `lute lore` name the producer of a reward-asserted fact: `` met(mira) — produced by reward BADGE of quest `firstVisit` ``.
 
 ## Occasions that nothing raises

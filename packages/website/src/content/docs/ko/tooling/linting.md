@@ -195,7 +195,7 @@ lints:
     open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
     close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
     inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'   # optional
-    scope: body                                                    # body (default) | section
+    scope: body                                                    # body (default) | section | document
     level: error
     message: "::group begin/end"
 ```
@@ -205,7 +205,7 @@ lints:
 | `open` | 예 | [`node` 행](#node-lint-050부터)에 대한 lint-CEL 술어입니다. 짝을 여는 노드에서 성립합니다. |
 | `close` | 예 | 같은 형태이며, 짝을 닫는 노드에서 성립합니다. |
 | `inside` | 아니요 | open과 그 close 사이에 엄격히 놓인 모든 노드가 만족해야 하는 술어입니다. |
-| `scope` | 아니요 | `body`(기본값) 또는 `section`입니다. 아래를 참고하세요. |
+| `scope` | 아니요 | `body`(기본값), `section`, `document`(0.53부터)입니다. 아래를 참고하세요. |
 
 `open`, `close`, `inside`는 `node` 규칙과 같은 `node` 행(`kind`, `tag`, `speaker`, 작성된 그대로의 `attrs`, `index`, `first`, `last`, `depth`, `prev`, `next`, `parent`, `preceding`, `section`)과 `scene`, `options` binding, 문자열 멤버를 읽습니다. 없는 키는 CEL 의미를 유지하므로(`E-LINT-EXPR`) [레시피](#레시피)처럼 모든 인덱스를 가드하세요. 오류는 규칙과 술어를 알려 줍니다(`` rule `g2`: `open`: missing key `kind` ``). 로더가 형태를 강제합니다. `pair`에서는 `open`과 `close`가 필수이고 `when`은 거부되며(`` rule `g3`: `when` is refused on `target: pair`, which states `open` and `close` instead ``), 다른 모든 대상에서는 `open`, `close`, `inside`, `scope`가 거부됩니다. `null`로 쓴 키는 없는 것으로 읽지 않고 거부합니다(`` `open` is null; give it a value or leave it out ``). 위반은 플러그인 `lints:`에서는 `E-PLUGIN-PARSE`, `lute.lint.yaml`의 `custom:`에서는 `E-LINT-CONFIG`입니다.
 
@@ -215,6 +215,7 @@ lints:
 
 - **`scope: body`**(기본값): 각 body의 직계 자식을 순서대로 봅니다. 형제만 해당합니다. 모든 body(섹션, `<choice>`, `<match>` arm)가 각각 하나의 scope입니다.
 - **`scope: section`**: 한 섹션 또는 최상위 선언의 모든 노드를 모든 깊이에서 문서 순서로 봅니다. `node.preceding`이 초기화되는 단위입니다. 경로가 아니라 문서 순서이므로, 한 `<choice>`의 `open`은 형제 choice의 `close`와 짝을 이룹니다.
+- **`scope: document`**(0.53부터): 문서 전체에 슬롯 하나. 모든 섹션과 최상위 선언의 모든 행을 모든 깊이에서 문서 순서로 봅니다. `section` 순회에서 `##` 제목이나 선언마다 일어나는 초기화만 뺀 것이므로, 한 섹션에서 연 짝을 이후 섹션이나 이후 최상위 선언에서 닫을 수 있습니다.
 
 각 노드에 대해:
 
@@ -228,8 +229,8 @@ lints:
 
 | 위반 | 덧붙는 문구 |
 | --- | --- |
-| 닫히지 않은 open | `` — opened here, with no close in this body `` (`scope: section`에서는 `in this section`) |
-| 열리지 않은 close | `` — a close with no open pair in this body `` |
+| 닫히지 않은 open | `` — opened here, with no close in this body `` (`scope: section`에서는 `in this section`, `scope: document`에서는 `in this document`) |
+| 열리지 않은 close | `` — a close with no open pair in this body `` (`in this section`, `in this document`) |
 | 중첩 open | `` — opened again while the pair from line N is still open `` |
 | inside 위반 | `` — not allowed inside the pair opened at line N `` |
 
@@ -288,9 +289,62 @@ lints:
 
 이 짝은 문서 순서로 균형이 맞으므로 결과가 없습니다. 섹션의 슬롯은 다음 `##` 제목이나 선언에서 초기화되므로, 거기까지 열려 있는 `begin`은 닫히지 않은 open(`in this section`)입니다.
 
+### `document` scope 짝
+
+원본의 샷마다 섹션 하나를 두는 포팅에서는 한 섹션에서 연 효과를 이후 섹션에서 닫는 일이 흔합니다. `scope: section`에서는 앞 섹션의 `begin`이 닫히지 않은 open, 뒤 섹션의 `end`가 열리지 않은 close가 됩니다. `scope: document`는 둘을 짝짓습니다. 프로젝트의 `lute.lint.yaml`에 쓰는 규칙은 다음과 같습니다.
+
+```yaml
+custom:
+  - id: music-balanced
+    target: pair
+    open:   'node.tag == "music" && node.attrs["playback"] == "start"'
+    close:  'node.tag == "music" && node.attrs["playback"] == "stop"'
+    scope: document
+    level: error
+    message: "::music start/stop"
+```
+
+두 섹션에 짝이 걸쳐 있는 씬의 본문입니다.
+
+```lute
+## Arrival
+
+::bg{assetId="BG.road"}
+::music{assetId="BGM.walk" playback="start"}
+@narrator: The walk takes a while.
+
+## Gate
+
+::bg{assetId="BG.gate"}
+@narrator: Here we are.
+::music{assetId="BGM.walk" playback="stop"}
+```
+
+```console
+$ lute lint scenes/walk.lute
+ok: scenes/walk.lute (0 error(s), 0 warning(s))
+```
+
+`scope: section`이면 같은 씬이 두 건의 결과를 냅니다. `scope: document`에서 `stop` 줄을 지우면 문서 끝에서 open이 보고됩니다.
+
+<!-- lute-diagnostics unverified="verbatim lute lint output; L-MUSIC-BALANCED is the example's own custom rule message from lute.lint.yaml" -->
+```console
+$ lute lint scenes/walk.lute        # scope: section
+scenes/walk.lute:12:1: error [L-MUSIC-BALANCED] ::music start/stop — opened here, with no close in this section
+scenes/walk.lute:19:1: error [L-MUSIC-BALANCED] ::music start/stop — a close with no open pair in this section
+failed: scenes/walk.lute (2 error(s), 0 warning(s))
+$ lute lint scenes/walk.lute        # scope: document, no `stop`
+scenes/walk.lute:12:1: error [L-MUSIC-BALANCED] ::music start/stop — opened here, with no close in this document
+failed: scenes/walk.lute (1 error(s), 0 warning(s))
+```
+
+(줄 번호는 frontmatter를 포함한 전체 파일 기준입니다.) `node` 규칙에는 scope가 없고, `scope`는 `pair` 이외의 target에서는 계속 거부됩니다.
+
 ### 실행 위치와 비용
 
 `pair` 규칙은 `node` 규칙과 같은 노드 순회에서 `lute lint`와 언어 서버 모두 실행되며, 각 규칙은 노드마다 그 자리에서 평가되고 노드별로 저장되는 것은 없습니다. 순회는 `node` 또는 `pair` 규칙이 활성일 때 실행됩니다. 규칙의 술어에서 처음 나온 `E-LINT-EXPR`는 `node` 규칙과 마찬가지로 그 문서에 대해 해당 규칙을 중단시킵니다. 상태 기계 자체의 오버헤드는 선형입니다. `pair` 규칙마다 노드당 술어 호출은 최대 세 번이고 슬롯 작업은 상수입니다. 술어가 하는 일은 선형이라고 주장하지 않습니다. 예를 들어 긴 문자열의 `size()`는 문자 단위로 세므로, N개 노드마다 N자를 읽는 술어의 비용은 N²입니다. 작업 카운터가 이 둘을 구분해 보고합니다. `pair_evals`(술어 호출 횟수), `pair_slots`(슬롯 열기·닫기와 프레임 push), 문자열 연산이 훑는 문자 수를 세는 `eval_chars`입니다. `pair` 규칙은 IR, 이벤트, snapshot, `capabilitySnapshot`을 바꾸지 않으며 semantic id도 없습니다.
+
+**lint 비용(0.53).** `lute lint`는 프로젝트의 공유 데이터를 실행당 한 번만 빌드하고, 피연산자와 매니페스트, 플러그인, provider, 그리고 이들이 닿는 import만 읽습니다. 프로젝트의 다른 문서는 읽지 않습니다. 꺼진 규칙은 문서당 비용이 없고, 활성 규칙이 없으면 엔진이 문서별 작업 전에 반환합니다. `LUTE_STATS=input-cache`가 빌드 횟수를 보여 줍니다([비용 카운터](/ko/tooling/cli/#비용-카운터-lute_stats) 참고). 무관한 형제 문서를 읽을 수 없어도 더 이상 lint가 실패하지 않으며, 읽을 수 없는 피연산자는 자체 I/O 오류로 보고됩니다([`lute lint`](/ko/tooling/cli/#lint) 참고).
 
 ## Metric table
 

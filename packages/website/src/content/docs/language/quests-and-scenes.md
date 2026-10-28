@@ -194,8 +194,9 @@ Two more kinds of anchor need no `follows=` either (dsl 0.25.0 §4):
 
 `lute scenario --project <DIR> reach --node quest:<id>` lists a quest's anchors (`anchors` in `--json`).
 Anchors never prove a quest unreachable, and an anchor that would close a cycle is not drawn. An
-explicit `follows=` keeps only the edges it declares, in place of the `start` and `accept` anchors;
-the subquest edge stays.
+explicit `follows=` keeps only the edges it declares, in place of the `start` anchors; the subquest
+edge stays, and the `accept` anchors stay too, because `follows=` never gates an accept (see
+[Routes into an accept-driven quest](#routes-into-an-accept-driven-quest)).
 
 #### Quests that come back: season tiers and `rearm`
 
@@ -643,7 +644,8 @@ The toolchain stands in for the engine's acceptance:
   quest with a `start` is refused.
 
 `accept` takes only `external`; any other value is `E-ATTR-TYPE`. So is `accept="external"` beside
-`start`, since the quest would have two ways to activate. On a [subquest](#subquests) child that
+`start`, since the quest would have two ways to activate; the message names `follows=` as the
+spelling for a host condition (below). On a [subquest](#subquests) child that
 activates with its parent, the engine's acceptance would do nothing, so whole-project `lute check` reports
 `E-ACCEPT-TARGET`. Declare [`activate="accept"`](#taken-up-in-dialogue-activateaccept) on the
 child as well, and it waits for the engine while its parent is active:
@@ -651,6 +653,86 @@ child as well, and it waits for the engine while its parent is active:
 <!-- lute-diagnostics -->
 ```
 ./quests/board.lute:10:41: error [E-ACCEPT-TARGET] quest `child` declares `accept="external"`, but it activates with its parent `board`, so the engine's acceptance does nothing; declare `activate="accept"` on it too so it waits to be accepted
+```
+
+#### Routes into an accept-driven quest
+
+An accept-driven quest activates when it is accepted, and three things can accept it. They differ in who decides:
+
+- **An in-script accept** — a scene's `::accept`, or a reward kind's `effects.accepts` — activates the quest at the next lifecycle round **whatever its `follows=` says**. `follows` is metadata for the graph and the host; the runtime never reads it.
+- **The host's grant** of an `accept="external"` quest (a board, a menu, the server) is the host's own decision. `follows=` on such a quest is the **condition under which the host grants it**: Lute carries it to the host and analysis reads it as host policy. Lute does not enforce it.
+- **Nothing else.** A quest that is not `accept="external"` and has no `::accept` or reward naming it has no route, `follows=` or not: `follows` is ordering metadata and never a route.
+
+A quest the host grants only once other quests are done is therefore written `accept="external" follows="…"`; `accept="external"` beside `start` stays refused. Both quests below check clean, and `salvage` is reachable through the host once `survey` is complete:
+
+```lute check
+---
+kind: quest
+title: The board
+state:
+  run.dived: { type: bool, default: false }
+---
+
+<quest id="survey" title="Survey the reef" tier="run" start="true">
+  <objective id="look" title="Look at the reef" done="run.dived"/>
+</quest>
+
+<quest id="salvage" title="Salvage the wreck" tier="run" accept="external" follows="completed('survey')">
+  <objective id="dive" title="Dive the wreck" done="run.dived"/>
+</quest>
+```
+
+`lute scenario reach` lists the host route first. With no `follows` it reads `[accept] the host (accept="external")`, and the evidence stays `proven`. With a `follows` the verdict rests on host policy, so its evidence is **`heuristic`** and the `follows` line is marked as metadata:
+
+```console
+$ lute scenario --project . reach --node quest:gated
+project root: .
+reach quest(gated):
+  verdict: Reachable — reachable if the host grants it once `follows` holds (host policy; Lute does not enforce it). [heuristic]
+  follows: completed("intro") (declared ordering; not an activation route)
+  anchored; each anchor holds before it activates, through any one of its sources:
+    [accept] the host once follows: completed("intro")
+  referenced node(s) (see `follows` and the anchors above — this is NOT a flat requirement list):
+    - quest(intro): Reachable — a satisfiable route exists under your declared routes.
+```
+
+A quest that is accept-driven, not `accept="external"`, declares `follows`, and that no `::accept` or reward names has no route at all: `reach` is `Unknown` and `W-QUEST-NEVER-ACCEPTED` fires. The `follows` edge is still drawn.
+
+```console
+$ lute scenario --project . reach --node quest:board
+project root: .
+reach quest(board):
+  verdict: Unknown — this analysis cannot prove reachability either way under your declared routes. [unknown]
+  follows: completed("intro") (declared ordering; not an activation route)
+  anchored; each anchor holds before it activates, through any one of its sources:
+    [accept] 
+  referenced node(s) (see `follows` and the anchors above — this is NOT a flat requirement list):
+    - quest(intro): Reachable — a satisfiable route exists under your declared routes.
+```
+
+**Accept deadlocks.** A cycle of `start` conditions and in-script accepts that no source outside the cycle enters and no host route opens is **`E-QUEST-START-CYCLE`**, one per strongly connected set. It is reported at the least quest's `start`, or at its `id` when that quest has no `start`. The path names each edge kind (`-[start]->`, `-[accept]->`). Here `intro` starts when `letter` is active, and `letter` is only accepted by `intro`'s reward:
+
+<!-- lute-diagnostics -->
+```
+./quests/q.lute:7:36: error [E-QUEST-START-CYCLE] quest start cycle: quest(intro) -[start]-> quest(letter) -[accept]-> quest(intro) — each waits for the next (a `start` for its condition, an accept for the `::accept` or reward that grants it) and no source outside the cycle starts any of them; start one of them from something outside the cycle, or let the host grant one with `accept="external"`
+```
+
+Two quests whose rewards accept each other deadlock the same way, anchored at the `id` of `a`:
+
+<!-- lute-diagnostics -->
+```
+./quests/q.lute:7:12: error [E-QUEST-START-CYCLE] quest start cycle: quest(a) -[accept]-> quest(b) -[accept]-> quest(a) — each waits for the next (a `start` for its condition, an accept for the `::accept` or reward that grants it) and no source outside the cycle starts any of them; start one of them from something outside the cycle, or let the host grant one with `accept="external"`
+```
+
+Any third source breaks the cycle: a quest that starts on its own and accepts one of them, a scene's `::accept`, or `accept="external"` on one of them.
+
+**Messages that point to `follows=`.** `accept="external"` beside `start` is `E-ATTR-TYPE`; a `start` that reads its own quest's state is `E-QUEST-START-SELF`; and accepting a quest that has a `start` is `E-ACCEPT-TARGET`. Each now says what to write instead:
+
+<!-- lute-diagnostics -->
+```
+./quests/q.lute:7:35: error [E-ATTR-TYPE] `<quest id="bad">` carries both `accept="external"` and `start`: a `start` condition activates a quest by itself, so the host could never decide; drop `start`. If the host grants it only once some scenes or quests are done, write that as `follows="…"` (for example `follows="completed('intro')"`): the host applies it, and analysis reads it as the host's condition
+./quests/q.lute:11:54: error [E-QUEST-START-SELF] `start` of quest `selfq` reads its own state (`quest.selfq.state`), which has no value before the quest starts, so this condition can never start it as intended; a quest that only the host grants is written `accept="external"` without a `start`; if the host grants it only once other scenes or quests are done, write those as `follows="…"`, which the host applies and analysis reads
+./quests/q.lute:21:38: error [E-ACCEPT-TARGET] `<reward kind="OFFER_QUEST" target="tgt">` accepts quest `tgt` (its kind's `effects.accepts`), which has a `start` condition and activates on its own; only an accept-driven quest (no `start`) can be accepted; drop its `start` — the accept activates it whatever other condition it had (a `follows="…"` records such conditions for analysis and the host, but does not gate the accept)
 ```
 
 ### Deadlines

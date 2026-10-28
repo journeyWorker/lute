@@ -223,7 +223,7 @@ lints:
     open:   'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "begin"'
     close:  'node.tag == "group" && "mode" in node.attrs && node.attrs["mode"] == "end"'
     inside: 'node.kind == "line" || node.tag in ["actor", "sfx"]'   # optional
-    scope: body                                                    # body (default) | section
+    scope: body                                                    # body (default) | section | document
     level: error
     message: "::group begin/end"
 ```
@@ -233,7 +233,7 @@ lints:
 | `open` | yes | A lint-CEL predicate over the [`node` row](#node-lints-since-050): holds for a node that opens a pair. |
 | `close` | yes | The same, for a node that closes it. |
 | `inside` | no | A predicate every node strictly between an open and its close must satisfy. |
-| `scope` | no | `body` (default) or `section`; see below. |
+| `scope` | no | `body` (default), `section` or `document` (since 0.53); see below. |
 
 `open`, `close` and `inside` read the same `node` row as a `node` rule (`kind`, `tag`, `speaker`, `attrs` as authored, `index`, `first`, `last`, `depth`, `prev`, `next`, `parent`, `preceding`, `section`), plus the `scene` and `options` bindings and the string members. A missing key keeps CEL semantics (`E-LINT-EXPR`), so guard every index as in the [recipes](#recipes); the error names the rule and the predicate (`` rule `g2`: `open`: missing key `kind` ``). The loader enforces the shape: on `pair`, `open` and `close` are required and `when` is refused (`` rule `g3`: `when` is refused on `target: pair`, which states `open` and `close` instead ``); on every other target `open`, `close`, `inside` and `scope` are refused; a key written as `null` is refused rather than read as absent (`` `open` is null; give it a value or leave it out ``). A fault is `E-PLUGIN-PARSE` in a plugin's `lints:` and `E-LINT-CONFIG` in `lute.lint.yaml` `custom:`.
 
@@ -243,6 +243,7 @@ A rule keeps **one open slot** per scope and makes one pass over the scope's nod
 
 - **`scope: body`** (the default): each body's direct children, in order — siblings only. Every body (a section, a `<choice>`, a `<match>` arm) is its own scope.
 - **`scope: section`**: every node of one section or top-level declaration in document order, at every depth — the unit at which `node.preceding` resets. It is document order, not paths: an `open` in one `<choice>` pairs with a `close` in its sibling.
+- **`scope: document`** (since 0.53): one slot for the whole document — every row of every section and top-level declaration, at every depth, in document order. It is the `section` walk without the reset at each `##` heading or declaration, so a pair may open in one section and close in a later one, or in a later top-level declaration.
 
 For each node:
 
@@ -256,8 +257,8 @@ A finding carries the rule's code and level, anchors at the offending node, and 
 
 | fault | appended phrase |
 | --- | --- |
-| unclosed open | `` — opened here, with no close in this body `` (`in this section` for `scope: section`) |
-| unopened close | `` — a close with no open pair in this body `` |
+| unclosed open | `` — opened here, with no close in this body `` (`in this section` for `scope: section`, `in this document` for `scope: document`) |
+| unopened close | `` — a close with no open pair in this body `` (`in this section`, `in this document`) |
 | nested open | `` — opened again while the pair from line N is still open `` |
 | inside fault | `` — not allowed inside the pair opened at line N `` |
 
@@ -316,9 +317,62 @@ lints:
 
 Here the pair is balanced in document order, so there is no finding. A section's slot resets at the next `##` heading or declaration, so a `begin` left open there is an unclosed open (`in this section`).
 
+### A `document`-scope pair
+
+A port that keeps one section per source shot often opens an effect in one section and closes it in a later one. Under `scope: section` the `begin` of the first section is an unclosed open and the `end` of the later one an unopened close; `scope: document` pairs them. The rule, in the project's `lute.lint.yaml`:
+
+```yaml
+custom:
+  - id: music-balanced
+    target: pair
+    open:   'node.tag == "music" && node.attrs["playback"] == "start"'
+    close:  'node.tag == "music" && node.attrs["playback"] == "stop"'
+    scope: document
+    level: error
+    message: "::music start/stop"
+```
+
+and the body of a scene whose two sections carry the pair:
+
+```lute
+## Arrival
+
+::bg{assetId="BG.road"}
+::music{assetId="BGM.walk" playback="start"}
+@narrator: The walk takes a while.
+
+## Gate
+
+::bg{assetId="BG.gate"}
+@narrator: Here we are.
+::music{assetId="BGM.walk" playback="stop"}
+```
+
+```console
+$ lute lint scenes/walk.lute
+ok: scenes/walk.lute (0 error(s), 0 warning(s))
+```
+
+With `scope: section` the same scene is two findings. With `scope: document` and the `stop` line removed, the open is reported at the end of the document:
+
+<!-- lute-diagnostics unverified="verbatim lute lint output; L-MUSIC-BALANCED is the example's own custom rule message from lute.lint.yaml" -->
+```console
+$ lute lint scenes/walk.lute        # scope: section
+scenes/walk.lute:12:1: error [L-MUSIC-BALANCED] ::music start/stop — opened here, with no close in this section
+scenes/walk.lute:19:1: error [L-MUSIC-BALANCED] ::music start/stop — a close with no open pair in this section
+failed: scenes/walk.lute (2 error(s), 0 warning(s))
+$ lute lint scenes/walk.lute        # scope: document, no `stop`
+scenes/walk.lute:12:1: error [L-MUSIC-BALANCED] ::music start/stop — opened here, with no close in this document
+failed: scenes/walk.lute (1 error(s), 0 warning(s))
+```
+
+(Line numbers are those of the full file with its frontmatter.) `node` rules get no scope; `scope` stays refused on every target but `pair`.
+
 ### Where it runs, and cost
 
 `pair` rules run in the same node walk as `node` rules, in `lute lint` and in the language server, with each rule evaluated at its node and nothing stored per node; the walk runs when a `node` or a `pair` rule is active. The first `E-LINT-EXPR` in a rule's predicates stops that rule for the document, as for a `node` rule. The state machine's own overhead is linear: at most three predicate calls per `pair` rule per node, and constant slot work. What a predicate does is not claimed linear: `size()` of a long string, for example, is counted by character, so a predicate that reads N characters at each of N nodes costs N². The work counters report which is which: `pair_evals` (predicate invocations) and `pair_slots` (slot opens, closes and frame pushes), and `eval_chars` for the characters a string operation scans. A `pair` rule changes no IR, event, snapshot or `capabilitySnapshot`, and carries no semantic id.
+
+**Lint cost (0.53).** `lute lint` builds the project's shared data once per run and reads only its operands, the manifest, the plugins, the providers and the imports they reach — never the other documents of the project. A rule that is off costs nothing per document; with none active the engine returns before any per-document work. `LUTE_STATS=input-cache` shows the build counts (see [Cost counters](/tooling/cli/#cost-counters-lute_stats)). An unrelated unreadable sibling no longer fails a lint run, and an unreadable operand is reported as its own I/O error (see [`lute lint`](/tooling/cli/#lint)).
 
 ## Metric tables
 

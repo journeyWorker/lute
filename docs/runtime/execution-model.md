@@ -243,6 +243,12 @@ The stable joins are:
   metadata only and is never a jump target. A section without an `id` has
   only its position, which is not stable across edits.
 
+A section is presentation and identity, **not a runtime boundary**: the
+runtime runs a scene's sections as one range, so it has no section resume
+point, no section entry a host can address and no section jump target; a
+bounded loop may span sections (dsl 0.53.0 §9). Content a host routes to is a
+bridge result that the script `<match>`es, not a section it enters.
+
 ```lute check
 ---
 kind: scene

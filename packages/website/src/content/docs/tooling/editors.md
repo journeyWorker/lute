@@ -65,6 +65,21 @@ $ echo $?
 1
 ```
 
+## The input cache across requests (0.53)
+
+Before 0.53 every request — analysis on open and on change, hover, completion, go-to-definition — folded the project's base and vocabulary again, about 40 ms of CPU per request on a project of 4 800 vocabulary slots. The server now keeps **one input cache per project root** (and one for documents under no root) across requests, together with a record of everything the cache observed on disk. The analyzed document's own text is never cached: it comes from the request.
+
+Every request validates the record before it reuses the cache, and a failed validation replaces the cache with a fresh one:
+
+- **Saved inputs.** The manifest, schemas reached through `uses:`/`extends:`, components, plugins and providers are read from disk. A created, deleted or edited file, a symlink retargeted anywhere on its path, and a file added to or removed from a directory the cache listed (a `defaults:` glob, `catalogDir`, `pluginsDir`) all fail validation. A file whose length, modification time, change time and identity are unchanged is not re-read; a touch that leaves the content unchanged keeps the cache. A file written within two seconds of being read is compared by content.
+- **Watched files.** The server registers file watchers for `**/lute.project.yaml`, `**/*.{yaml,yml,json}` and `**/*.lute` when the client supports dynamic registration, and handles `workspace/didChangeWatchedFiles`; a `textDocument/didSave` of an input does the same. A notified path is marked dirty, and the next validation compares its **content**, not its timestamps. A client without file watching still gets the per-request validation.
+- **Unsaved schema edits are not read.** Schemas, plugins and components come from disk, not from open buffers — as before 0.53. Only the analyzed document's text comes from its buffer, so an edit to a schema is an input only once it is saved.
+- **Retention is bounded.** The cache keeps the configurations (profile, `plugins:`, `uses:`, `extends:`) of the open documents, plus the four most recently superseded ones, so flipping between a few profiles while editing does not rebuild. Everything else is released after each request.
+
+One edit is not detected by the request-time check: a change that preserves every field of the file's metadata (length, modification time, change time, identity) — possible only by tampering with file-system metadata, such as setting the clock back and rewriting in place. A server restart, or a watched-file or save notification for that path, revalidates it.
+
+On a 400-scene project, the median warm request fell from 38.74 ms to 0.187 ms at 4 800 slots (0.952 ms to 0.160 ms at 150), with one base and one vocabulary build instead of one per request (`lute-bench lsp-requests`, debug build).
+
 ## Highlighting model
 
 Highlighting is two layers that combine. A **static grammar** per editor gives an instant baseline — a TextMate grammar in VS Code, the tree-sitter grammar in Neovim. **LSP semantic tokens** from `lute-lsp` then refine it with project / plugin / schema knowledge the static grammar cannot see. The tree-sitter grammar parses `@speaker{attrs}: text` content lines, `//` comments, `{{…}}` interpolation, `<hub>` blocks, `<when is>` patterns, `<quest>`/`<objective>`/`<on>` nesting, and the `::assert`/`::retract` relational leaves; `lute-lsp`'s semantic tokens stay authoritative for the project-aware refinement.
