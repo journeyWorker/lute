@@ -117,6 +117,34 @@ fn test_runs_each_pass_once_per_root() {
     assert_eq!(counts, once_per_root(1));
 }
 
+/// `lute trace` whose report consults the project beyond the gate: an
+/// accepted quest (the project's quest ids), a quest another document
+/// declares (settled against them) and a mocked fact (the project's
+/// producers). One model for the gate and every lookup. Before, the gate's
+/// analysis model and the lookups' compiled model were two builds.
+#[test]
+fn trace_lookups_share_the_gate_model() {
+    let p = examples().join("games/lantern-academy");
+    let p = p.to_str().unwrap();
+    let exam = format!("{p}/scenes/common/exam.lute");
+    let commands: Vec<Vec<&str>> = vec![
+        vec![
+            "trace",
+            &exam,
+            "--project",
+            p,
+            "--accepted-quest",
+            "studyGroup",
+        ],
+        vec!["trace", &exam, "--project", p],
+        vec!["trace", &exam, "--project", p, "--fact", "locked(kai)"],
+    ];
+    for args in &commands {
+        let (_, counts) = passes(args);
+        assert_eq!(counts, once_per_root(1), "{args:?}");
+    }
+}
+
 /// Over a walk of many roots the reports run each pass once per root:
 /// exactly as many as `check --project` does.
 #[test]
