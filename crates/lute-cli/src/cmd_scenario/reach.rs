@@ -192,12 +192,19 @@ fn anchored_header(out: &mut String) {
 }
 
 /// One anchor's routes as `reach` prints them: the host route first
-/// (dsl 0.53.0 §7.1), then the alternative source nodes.
+/// (dsl 0.53.0 §7.1), then the alternative source nodes. An anchor with
+/// neither is the accept anchor of an accept-driven quest with `follows`
+/// that nothing accepts (its `follows` is no route): named as such.
 fn anchor_routes(a: &lute_check::connectivity::Anchor) -> String {
     use lute_check::connectivity::HostGate;
     let sources: Vec<String> = a.from.iter().map(ToString::to_string).collect();
     let sources = sources.join(" || ");
     let host = match &a.host {
+        None if sources.is_empty() => {
+            return "nothing accepts it (no ::accept or reward names it, and it is not \
+                    accept=\"external\")"
+                .to_string()
+        }
         None => return sources,
         Some(HostGate::Always) => "the host (accept=\"external\")".to_string(),
         Some(HostGate::Follows(f)) => format!("the host once follows: {}", format_prereq(f)),

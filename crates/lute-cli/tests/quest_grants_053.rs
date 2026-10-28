@@ -751,7 +751,8 @@ fn the_self_read_names_follows_as_the_hosts_condition() {
 /// and nothing accepting it is never activated: reach `Unknown`, its
 /// reachable constraint does not hold, `W-QUEST-NEVER-ACCEPTED` stays, and
 /// the declared `follows` stays metadata with its edge. Failing before:
-/// `Reachable [proven]` and the constraint held.
+/// `Reachable [proven]` and the constraint held. `reach` names the empty
+/// accept route (failing before: a bare `[accept] `); JSON `from` is `[]`.
 #[test]
 fn a_source_less_accept_driven_quest_has_no_follows_route() {
     let quests = format!(
@@ -772,6 +773,14 @@ fn a_source_less_accept_driven_quest_has_no_follows_route() {
         j["anchors"],
         serde_json::json!([{ "kind": "accept", "from": [] }]),
         "{j}"
+    );
+    let r = reach(&dir, "quest:gift");
+    assert!(
+        r.contains(
+            "    [accept] nothing accepts it (no ::accept or reward names it, and it is not \
+             accept=\"external\")\n"
+        ),
+        "{r}"
     );
     let report = json(&dir, &["constraints", "--project", ".", "--json"]);
     assert_ne!(report["constraints"][0]["verdict"], "holds", "{report}");
