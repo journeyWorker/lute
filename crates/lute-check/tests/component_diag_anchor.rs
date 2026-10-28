@@ -13,6 +13,10 @@
 //!
 //! Harness: temp-dir component files resolved through `resolve_components`,
 //! the resolver the CLI/LSP call (as `tests/component_line_code.rs`).
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a test canonicalizes the fixtures it wrote; no cache is involved"
+)]
 use lute_check::{
     check, parse_meta, resolve_components, CheckInput, ComponentSet, Mode, SchemaImports,
 };

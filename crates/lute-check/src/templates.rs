@@ -698,6 +698,10 @@ fn render_title(
 /// Whether component `def`'s body mentions `@param` (a `{{@p}}`, a `@p`
 /// argument or condition, a `@@p:` line). `true` when the file cannot be
 /// read: no claim is made about a body that was not seen.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "per-document desugaring, never memoized; the component file is a recorded dependency of the components memo"
+)]
 fn body_mentions(def: &ComponentDef, param: &str) -> bool {
     let Ok(src) = std::fs::read_to_string(&def.src) else {
         return true;
@@ -837,6 +841,10 @@ pub fn attribute_header(
     }) else {
         return diags;
     };
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "per-document desugaring, never memoized; the component file is a recorded dependency of the components memo"
+    )]
     let src = std::fs::read_to_string(&def.src).ok();
     let index = src.as_deref().map(lute_core_span::TextIndex::new);
     let at = match &index {

@@ -4,6 +4,10 @@
 //! single-file `check()` entrypoint. Node existence (whether the referenced
 //! `visited`/`completed` id actually exists in the project) is NOT resolved
 //! here — that is whole-project `check`'s job (Task 3+).
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a test reads the fixtures it wrote; no cache is involved"
+)]
 
 use lute_check::{check, CheckInput, Mode, ProjectDocs, SchemaImports, EMPTY_SNAPSHOT};
 use lute_manifest::provider::ProviderSet;

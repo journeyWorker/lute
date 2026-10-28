@@ -160,6 +160,66 @@ fn creating_a_missing_import_clears_its_error() {
     assert!(!has(&codes(&inputs, &file, &text), "E-USES-NOT-FOUND"));
 }
 
+/// The messages of one request with `code` (see [`codes`]).
+fn messages(inputs: &ProjectInputs, file: &Path, text: &str, code: &str) -> Vec<String> {
+    let doc = file.display().to_string();
+    inputs.open(&doc);
+    let analysis = analyze_document(inputs, &doc, file, text);
+    analysis
+        .diagnostics
+        .iter()
+        .filter(|d| d.code == code)
+        .map(|d| d.message.clone())
+        .collect()
+}
+
+/// L3 review: a message names an imported schema relative to the nearest
+/// ancestor manifest. Creating `schema/lute.project.yaml` changes that name,
+/// so the ancestor probes are dependencies of the cached import build
+/// (`E-USES-DUP-STATE`, the imports memo) and of the cached vocabulary
+/// (`E-ENTITY-KIND-CLASH`, the base fold) — before the fix the old
+/// `schema/a.yaml` stayed in both.
+#[test]
+fn a_new_ancestor_manifest_renames_an_imported_schema_in_cached_messages() {
+    for (code, a, b) in [
+        (
+            "E-USES-DUP-STATE",
+            "state:\n  run.gold: { type: int }\n",
+            "state:\n  run.gold: { type: int }\n",
+        ),
+        (
+            "E-ENTITY-KIND-CLASH",
+            "entities:\n  person: { members: [ana] }\n",
+            "entities:\n  faction: { members: [ana] }\n",
+        ),
+    ] {
+        let (_dir, root) = project(&format!("lsp-origin-{}", code.to_lowercase()), "");
+        write(&root.join("schema/a.yaml"), a);
+        write(&root.join("schema/b.yaml"), b);
+        let file = root.join("scenes/a.lute");
+        let text = scene(
+            "uses: [../schema/a.yaml, ../schema/b.yaml]\n",
+            "@narrator: Hi.",
+        );
+        write(&file, &text);
+        let inputs = ProjectInputs::default();
+        let before = messages(&inputs, &file, &text, code);
+        assert!(
+            before.len() == 1 && before[0].contains("`schema/a.yaml"),
+            "{code}: {before:?}"
+        );
+        write(&root.join("schema/lute.project.yaml"), "defaults: {}\n");
+        let after = messages(&inputs, &file, &text, code);
+        assert!(
+            after.len() == 1 && after[0].contains("`a.yaml") && !after[0].contains("schema/a.yaml"),
+            "{code}: {after:?}"
+        );
+        // A fresh cache agrees.
+        let fresh = messages(&ProjectInputs::default(), &file, &text, code);
+        assert_eq!(after, fresh, "{code}");
+    }
+}
+
 #[test]
 fn a_new_glob_or_catalog_match_is_read_and_a_non_matching_file_keeps_the_cache() {
     let (_dir, root) = project("lsp-glob", "defaults:\n  uses: \"schema/*.schema.yaml\"\n");

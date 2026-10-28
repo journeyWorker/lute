@@ -851,7 +851,12 @@ pub fn check_parsed(input: &CheckInput, parsed: (Document, Vec<Diagnostic>)) -> 
     // re-imports its own text: an import failure whose every cause lies in
     // THIS file is the file's own parse/frontmatter diagnostics a second time
     // (round-5 T3-4) — they are already reported above, at their own lines.
-    if let Ok(own) = std::fs::canonicalize(&input.uri) {
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "per-document check, never memoized"
+    )]
+    let own = std::fs::canonicalize(&input.uri);
+    if let Ok(own) = own {
         let own = own.display().to_string();
         component_diags.retain(|d| {
             d.code != "E-COMPONENT-PARSE"

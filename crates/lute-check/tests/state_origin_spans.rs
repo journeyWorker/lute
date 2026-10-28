@@ -2,6 +2,10 @@
 //! members are declared is located only when a diagnostic names one.
 //! Locating a path ([`lute_check::rel_schema::state_key_span`]) scans the
 //! file, so locating every member of a kind of `n` made a check O(n²).
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a test reads the fixtures it wrote; no cache is involved"
+)]
 
 use std::path::{Path, PathBuf};
 

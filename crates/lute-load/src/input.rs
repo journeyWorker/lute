@@ -173,6 +173,10 @@ pub fn build_input_with_mode(
 /// # Errors
 ///
 /// [`ReadError`]: the file cannot be read.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "the document's own text: a command reads it once, the language server takes its buffer"
+)]
 pub fn read_document(file: &Path) -> Result<String, ReadError> {
     std::fs::read_to_string(file).map_err(|source| ReadError {
         path: file.to_path_buf(),

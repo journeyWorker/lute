@@ -1,3 +1,8 @@
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a test reads the fixtures it wrote; no cache is involved"
+)]
+
 use lute_manifest::project::{
     load_project, project_providers, resolve_document_snapshot, IdentityTemplates,
 };

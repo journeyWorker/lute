@@ -476,7 +476,9 @@ impl ImportCache {
         let key = Self::vocab_key(base, base_dir, uses, extends);
         let vocab = self.vocabs.get_or_init_with(key, || {
             self.vocab_builds.fetch_add(1, Ordering::Relaxed);
-            let vocab = crate::ProjectVocab::build(base, self.resolve(base_dir, uses, extends));
+            let sink = DependencySink::new(self.tracked);
+            let vocab =
+                crate::ProjectVocab::build(base, self.resolve(base_dir, uses, extends), &sink);
             let children = if self.tracked {
                 vec![ImportNode::Imports(Self::import_key(
                     base_dir, uses, extends,
@@ -484,7 +486,7 @@ impl ImportCache {
             } else {
                 Vec::new()
             };
-            (vocab, self.record(children, DependencySink::default()))
+            (vocab, self.record(children, sink))
         });
         let mut diags = vocab.imports.diags.clone();
         anchor_at(&mut diags, at);
@@ -962,6 +964,7 @@ fn resolve_imports_in(
             &order,
             &mut kind_diags,
             at,
+            sink,
         );
         let Some((winner, winner_depth)) = pick_winner(&entries) else {
             continue;
@@ -999,8 +1002,9 @@ fn resolve_imports_in(
                 .iter()
                 .filter(|(_, d)| d.rel_kinds.kinds.contains_key(kind))
                 .min_by_key(|(p, _)| (dist.get(*p).copied().unwrap_or(0), *p))
-                .and_then(|(_, d)| crate::rel_schema::kind_home(&d.origins, kind))
+                .and_then(|(_, d)| crate::rel_schema::kind_home(&d.origins, kind, sink))
         },
+        sink,
     ));
     // dsl 0.26.0 §2.3: a parent's domain holds its sub-kinds' members too
     // (`rel.kinds` keeps the lists as declared; `build_rel_vocab` implies
@@ -1118,6 +1122,7 @@ fn resolve_imports_in(
             &order,
             &mut diags,
             at,
+            sink,
         );
         if levels.iter().any(|level| {
             let mut decls = entries.iter().filter(|(_, d, _)| d == level);
@@ -1191,6 +1196,7 @@ fn resolve_imports_in(
             &order,
             &mut diags,
             at,
+            sink,
         );
         if let Some((winner, winner_depth)) = pick_winner(&entries) {
             // `pick_winner`'s own tie-break: the byte-least path at the depth.
@@ -1224,6 +1230,7 @@ fn resolve_imports_in(
             &order,
             &mut diags,
             at,
+            sink,
         );
         let Some((winner, winner_depth)) = pick_winner(&entries) else {
             continue;
@@ -1265,6 +1272,7 @@ fn resolve_imports_in(
             &order,
             &mut diags,
             at,
+            sink,
         );
         let Some((winner, winner_depth)) = pick_winner(&entries) else {
             continue;
@@ -2130,6 +2138,7 @@ fn emit_level_dups<T>(
     order: &BTreeMap<PathBuf, usize>,
     diags: &mut Vec<Diagnostic>,
     at: Span,
+    sink: &DependencySink,
 ) -> Vec<usize> {
     let mut by_depth: BTreeMap<usize, Vec<&PathBuf>> = BTreeMap::new();
     for (file, depth, _) in entries {
@@ -2149,8 +2158,8 @@ fn emit_level_dups<T>(
                 code,
                 format!(
                     "{noun} `{name}` is declared by two imports (`{}{line}` and `{}`); keep one",
-                    crate::rel_schema::origin_display(files[0]),
-                    crate::rel_schema::origin_display(files[1]),
+                    crate::rel_schema::origin_display(files[0], sink),
+                    crate::rel_schema::origin_display(files[1], sink),
                 ),
                 at,
             );

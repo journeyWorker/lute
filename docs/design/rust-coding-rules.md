@@ -117,6 +117,17 @@ disallowed-methods = [
 ]
 ```
 
+`lute-check`, `lute-load` and `lute-manifest` assemble the inputs the
+language server caches across requests (0.53.0 §3.5), so each has its own
+`clippy.toml`: the two entries above plus the raw filesystem probes
+(`Path::is_file`/`is_dir`/`exists`/`metadata`/`canonicalize`/`read_dir`,
+`std::fs::read*`/`metadata`/`canonicalize`/`read_dir`, `File::open`, …). A
+probe in input assembly goes through `lute_manifest::deps::DependencySink`;
+a site no memoized build reaches (discovery, a per-document or project pass,
+the recorder itself, a test reading its fixtures) carries an `#[expect]`
+saying so. Clippy reads the nearest `clippy.toml`, so the crate files repeat
+the workspace entries.
+
 `clippy::unwrap_used` is not in `[workspace.lints]`, because integration-test
 helpers under `crates/*/tests/` hold 935 `unwrap()` calls. Clippy's
 `allow-unwrap-in-tests` covers only `#[test]` functions and `#[cfg(test)]`

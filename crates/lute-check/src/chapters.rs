@@ -395,6 +395,10 @@ pub fn check_project_chapters(
         return Vec::new();
     };
     let manifest_path = root.join("lute.project.yaml");
+    #[expect(
+        clippy::disallowed_methods,
+        reason = "a project pass, rerun by every command and request; no cache keeps its result"
+    )]
     let manifest = std::fs::read_to_string(&manifest_path).unwrap_or_default();
     let mut out: Vec<(PathBuf, Diagnostic)> = project
         .chapter_diags

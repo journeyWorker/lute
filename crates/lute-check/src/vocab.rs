@@ -106,9 +106,14 @@ impl fmt::Debug for ProjectVocab {
 }
 
 impl ProjectVocab {
-    /// Run the project-wide fold stages over `imports` once.
-    pub fn build(base: &ProjectBase, imports: Arc<SchemaImports>) -> Self {
-        let fold = crate::check::base_fold(base, &imports);
+    /// Run the project-wide fold stages over `imports` once; `sink` records
+    /// the filesystem probes they make (spec 0.53.0 §3.5).
+    pub fn build(
+        base: &ProjectBase,
+        imports: Arc<SchemaImports>,
+        sink: &lute_manifest::deps::DependencySink,
+    ) -> Self {
+        let fold = crate::check::base_fold(base, &imports, sink);
         Self {
             imports,
             fold,
@@ -183,7 +188,11 @@ impl InputSources {
         ));
         let import_diags = std::mem::take(&mut imports.diags);
         let component_diags = std::mem::take(&mut components.diags);
-        let vocab = Arc::new(ProjectVocab::build(&base, Arc::new(imports)));
+        let vocab = Arc::new(ProjectVocab::build(
+            &base,
+            Arc::new(imports),
+            lute_manifest::deps::DependencySink::none(),
+        ));
         Self {
             base,
             vocab,
@@ -201,7 +210,11 @@ impl InputSources {
             Arc::clone(&self.base.defaults),
             Arc::new(plugin_origins),
         ));
-        let vocab = Arc::new(ProjectVocab::build(&base, Arc::clone(&self.vocab.imports)));
+        let vocab = Arc::new(ProjectVocab::build(
+            &base,
+            Arc::clone(&self.vocab.imports),
+            lute_manifest::deps::DependencySink::none(),
+        ));
         Self {
             base,
             vocab,

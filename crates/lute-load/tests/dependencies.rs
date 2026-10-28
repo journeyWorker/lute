@@ -1,6 +1,10 @@
 //! The dependency record of a tracked [`InputCache`] (spec 0.53.0 §3.5): one
 //! document of a generated project, and every lookup, listing and file its
 //! assembly observed.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a test canonicalizes its scratch root; the records under test come from the cache"
+)]
 
 use std::path::Path;
 

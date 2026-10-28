@@ -19,6 +19,10 @@
 //! field of a file older than that window, which takes tampering with file
 //! system metadata (setting the clock back so `ctime` lands on its old
 //! value); a dirty mark or a server restart revalidates it.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "the recorder: the probes input assembly makes through a `DependencySink` are performed here"
+)]
 
 use std::io;
 use std::path::{Path, PathBuf};

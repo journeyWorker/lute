@@ -6,6 +6,10 @@
 //! binding carry-forwards: document-level definite-assignment, `E-UNDECLARED`
 //! dedup, and the byte-offset determinism ordering the Phase-6 divergence golden
 //! compares.
+#![expect(
+    clippy::disallowed_methods,
+    reason = "a test reads the example fixtures; no cache is involved"
+)]
 
 use lute_check::{check, CheckInput, Mode, SchemaImports};
 use lute_core_span::Severity;

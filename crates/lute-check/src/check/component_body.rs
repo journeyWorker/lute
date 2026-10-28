@@ -234,6 +234,10 @@ pub(crate) fn validate_components(
         // The component's own text resolves each inner span's line/column: a
         // CEL-slot span carries byte offsets only (`normalize_spans` never
         // walks `related`), which printed as `0:0`.
+        #[expect(
+            clippy::disallowed_methods,
+            reason = "per-document check, never memoized; the component file is a recorded dependency of the components memo"
+        )]
         let src_text = (!body_diags.is_empty())
             .then(|| std::fs::read_to_string(&def.src).ok())
             .flatten();
@@ -361,6 +365,10 @@ fn collect_use_names(nodes: &[Node], out: &mut Vec<(String, Span)>) {
 /// nearest ancestor directory holding a `lute.project.yaml` — the project
 /// root every other path in a report is read against — with `/` separators.
 /// A component outside any project keeps its full path.
+#[expect(
+    clippy::disallowed_methods,
+    reason = "names a component in a per-document check message, never memoized"
+)]
 pub(crate) fn project_relative_display(src: &std::path::Path) -> String {
     src.ancestors()
         .skip(1)
