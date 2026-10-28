@@ -9,8 +9,8 @@ import { canonical, compileBundle, hubFixtureRoot, repositoryRoot, sessionRoot }
 import { join } from "node:path"
 
 const started: Contract.Seed = { derive: true }
-const bindings = { bindingsVersion: "0.52", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
-const noFlowBindings = { bindingsVersion: "0.52", canvas: { width: 1920, height: 1080 } }
+const bindings = { bindingsVersion: "0.53", canvas: { width: 1920, height: 1080 }, flow: { newGame: { occasion: "visit" } } }
+const noFlowBindings = { bindingsVersion: "0.53", canvas: { width: 1920, height: 1080 } }
 const runtimeLayer = (bundle: string, seed = started) => RuntimeSession.layer({ seed }).pipe(
   Layer.provide(Layer.mergeAll(LuteBun.runtime, LuteBun.bundle(bundle))),
   Layer.provideMerge(InputLog.memory)
@@ -130,8 +130,8 @@ describe("PlayerSession", () => {
   })).pipe(Effect.provide(sessionLayer(hubFixtureRoot, { bindings: noFlowBindings }))))
 
   it("idle resolves raise and menu forms", () => {
-    expect(idle({ bindingsVersion: "0.52", canvas: { width: 1, height: 1 }, flow: { idle: { raise: { occasion: "visit", target: "door" } } } })).toEqual({ _tag: "Input", input: { type: "raiseOccasion", occasion: "visit", target: "door" } })
-    expect(idle({ bindingsVersion: "0.52", canvas: { width: 1, height: 1 }, flow: { idle: { menu: [{ label: "Visit", occasion: "visit" }] } } })).toEqual({ _tag: "Menu", options: [{ label: "Visit", input: { type: "raiseOccasion", occasion: "visit" } }] })
+    expect(idle({ bindingsVersion: "0.53", canvas: { width: 1, height: 1 }, flow: { idle: { raise: { occasion: "visit", target: "door" } } } })).toEqual({ _tag: "Input", input: { type: "raiseOccasion", occasion: "visit", target: "door" } })
+    expect(idle({ bindingsVersion: "0.53", canvas: { width: 1, height: 1 }, flow: { idle: { menu: [{ label: "Visit", occasion: "visit" }] } } })).toEqual({ _tag: "Menu", options: [{ label: "Visit", input: { type: "raiseOccasion", occasion: "visit" } }] })
   })
 
   it.effect("backlog names come from the index cast", () => Effect.gen(function* () {

@@ -1,6 +1,6 @@
 ---
 kind: quest
-luteVersion: "0.52.0"
+luteVersion: "0.53.0"
 uses: ./schema.yaml
 title: Rearm instance
 ---

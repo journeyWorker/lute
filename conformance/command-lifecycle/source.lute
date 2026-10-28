@@ -1,6 +1,6 @@
 ---
 kind: lore
-luteVersion: "0.52.0"
+luteVersion: "0.53.0"
 id: lifecycle
 uses: ./schema.yaml
 ---

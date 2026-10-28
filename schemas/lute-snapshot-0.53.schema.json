@@ -33,48 +33,62 @@
         }
       ]
     },
-    "Atom": {
-      "description": "A single leaf condition flattened out of a [`PrereqFormula`] by [`atoms`]\n(edge-extraction helper for later connectivity tasks).",
+    "Answer": {
       "oneOf": [
         {
           "additionalProperties": false,
           "properties": {
-            "visited": {
-              "type": "string"
+            "choice": {
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "option": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "option"
+              ],
+              "type": "object"
             }
           },
           "required": [
-            "visited"
+            "choice"
           ],
           "type": "object"
         },
         {
           "additionalProperties": false,
           "properties": {
-            "completed": {
-              "type": "string"
+            "bridge": {
+              "properties": {
+                "fields": {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                "tag": {
+                  "type": "string"
+                },
+                "writes": {
+                  "$ref": "#/$defs/WritesInput",
+                  "description": "dsl 0.41.0 §5.3: the host's writes with the answer, re-applied\non replay."
+                }
+              },
+              "required": [
+                "tag",
+                "fields"
+              ],
+              "type": "object"
             }
           },
           "required": [
-            "completed"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "description": "lang 0.8.0: see [`PrereqFormula::Active`]. Targets a QUEST node,\nexactly like [`Self::Completed`].",
-          "properties": {
-            "active": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "active"
+            "bridge"
           ],
           "type": "object"
         }
-      ],
-      "title": "Atom"
+      ]
     },
     "Await": {
       "oneOf": [
@@ -209,68 +223,61 @@
         }
       ]
     },
-    "BeatKind": {
-      "description": "What a [`ProjectIndex::beats`] row declares (dsl 0.21.0 §8): a scene beat\n(`SceneMeta.beat`), an entry beat (`EntryCmd.on`), or a bundle beat (a\nlore document's `beat` record, dsl 0.23.0 §4).",
-      "enum": [
-        "scene",
-        "entry",
-        "bundle"
-      ],
-      "type": "string"
-    },
-    "BeatOnce": {
-      "pattern": "^(run|user|none|day|slot|week|season:.+)$",
-      "title": "BeatOnce",
-      "type": "string"
-    },
-    "Candidate": {
+    "Cadence": {
+      "description": "The cadence memory a playthrough carries between steps.",
       "properties": {
-        "also": {
-          "description": "dsl 0.23.0 §3: a scene beat's `also: true` — presented after the\n`select: first` winner, never the winner itself.",
-          "type": "boolean"
+        "latched": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/ClockAt"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "description": "`spentBy` beats whose condition has held, keyed like a spend\n([`latch_key`]), with the clock position it was first seen holding\n(what a `once: day | slot | week` latch counts from). Cleared per\nscope: a new run drops the run-scoped ones, a season opening its\nown.",
+          "type": "object"
         },
-        "document": {
-          "type": "string"
+        "live": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "description": "Each season's `live` as last observed (absent before the first).",
+          "type": "object"
         },
-        "forMember": {
-          "description": "dsl 0.27.0 §3 (T2-10): the member a `for=\"kind:<kind>\"` beat's\ncandidate is judged (and presented) for; `None` for any other beat.",
-          "type": [
-            "string",
-            "null"
-          ]
+        "rearm": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "description": "Each rearming quest's condition as last observed.",
+          "type": "object"
         },
-        "id": {
-          "type": "string"
+        "spentSeason": {
+          "description": "Beats (`once: season:<name>`) presented in their season's current\nwindow.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
         },
-        "kind": {
-          "$ref": "#/$defs/BeatKind"
-        },
-        "priority": {
-          "type": "integer"
-        },
-        "read": {
-          "description": "dsl 0.23.0 §11: an entry beat already read this run\n(`entry.<id>.read`) — an interview menu shows it as read.",
-          "type": "boolean"
-        },
-        "rejudged": {
-          "description": "dsl 0.28.0 (T2-10): the verdict was judged again at the beat's turn\nin a `select: sequence` raise, after an earlier beat of the raise\nplayed — it may differ from the verdict when the occasion was raised.",
-          "type": "boolean"
-        },
-        "verdict": {
-          "$ref": "#/$defs/Verdict"
+        "windows": {
+          "description": "Seasons observed live at least once: an opening mirrors the last\nwindow into `prev.season.*` only when there was one.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
         }
       },
       "required": [
-        "id",
-        "kind",
-        "document",
-        "priority",
-        "verdict",
-        "read",
-        "also",
-        "rejudged"
+        "live",
+        "rearm",
+        "spentSeason",
+        "windows",
+        "latched"
       ],
-      "title": "Candidate",
       "type": "object"
     },
     "ClockAt": {
@@ -288,7 +295,6 @@
         "day",
         "slot"
       ],
-      "title": "ClockAt",
       "type": "object"
     },
     "ClockPosition": {
@@ -308,375 +314,41 @@
       },
       "type": "object"
     },
-    "ClockView": {
-      "description": "Where the declared clock stands (dsl 0.26.0 §7, T2-5: step\n`expect.clock`).",
+    "Continuation": {
       "properties": {
-        "day": {
+        "answers": {
+          "items": {
+            "$ref": "#/$defs/Answer"
+          },
+          "type": "array"
+        },
+        "before": {
+          "$ref": "#/$defs/World"
+        },
+        "delivered": {
+          "minimum": 0,
           "type": "integer"
         },
-        "ended": {
-          "description": "`clock.ended` — `None` on a clock that never ends.",
-          "type": [
-            "boolean",
-            "null"
-          ]
+        "input": {
+          "$ref": "#/$defs/Input"
         },
-        "last": {
-          "description": "Where the clock stands, when that is a finite clock's last position\nand it has not ended yet — it ends on the next advance past it.",
-          "type": [
-            "string",
-            "null"
-          ]
+        "pending": {
+          "$ref": "#/$defs/Await"
         },
-        "slot": {
-          "description": "The slot's name — `None` on a day-granular clock.",
-          "type": [
-            "string",
-            "null"
-          ]
-        },
-        "weekday": {
-          "description": "`clock.weekday` — `None` without a `week:`.",
-          "type": [
-            "integer",
-            "null"
-          ]
-        },
-        "weekdayLabel": {
-          "description": "`clock.weekdayLabel` — `None` without week labels.",
-          "type": [
-            "string",
-            "null"
-          ]
+        "stage": {
+          "$ref": "#/$defs/Stage",
+          "description": "The stage at the pending await; the `world` of a suspended state is\nthe world before its input (dsl 0.40.0 §4.2)."
         }
       },
       "required": [
-        "day"
+        "before",
+        "input",
+        "answers",
+        "pending",
+        "delivered",
+        "stage"
       ],
-      "title": "ClockView",
       "type": "object"
-    },
-    "Evaluation": {
-      "additionalProperties": false,
-      "description": "The answer of a read-only condition query, `evaluate` or `def`\n(dsl 0.41.0 §5.1).",
-      "properties": {
-        "unresolved": {
-          "description": "Why an `unknown` value is unknown, one reason per unresolved read;\nomitted for a decided value.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "value": {
-          "$ref": "#/$defs/Value",
-          "description": "The typed value: `bool`, `int`, `double`, `str` or `unknown` — never\n`error`, which is the rejection `E-RUNTIME-EVAL`."
-        }
-      },
-      "required": [
-        "value"
-      ],
-      "title": "Evaluation",
-      "type": "object"
-    },
-    "Event": {
-      "description": "An execution record or session-level notification.",
-      "oneOf": [
-        {
-          "additionalProperties": false,
-          "properties": {
-            "document": {
-              "type": "string"
-            },
-            "record": true,
-            "type": {
-              "const": "record",
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "document",
-            "record"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "beat": {
-              "type": "string"
-            },
-            "document": {
-              "type": "string"
-            },
-            "kind": {
-              "type": "string"
-            },
-            "occasion": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "target": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "type": {
-              "const": "presentation",
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "beat",
-            "document",
-            "kind"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "beat": {
-              "type": "string"
-            },
-            "document": {
-              "type": "string"
-            },
-            "reason": {
-              "type": [
-                "string",
-                "null"
-              ]
-            },
-            "type": {
-              "const": "presentationEnd",
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "beat",
-            "document"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "commands": {
-              "items": true,
-              "type": "array"
-            },
-            "document": {
-              "type": "string"
-            },
-            "type": {
-              "const": "quest",
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "document",
-            "commands"
-          ],
-          "type": "object"
-        },
-        {
-          "additionalProperties": false,
-          "properties": {
-            "from": true,
-            "passed": true,
-            "to": true,
-            "type": {
-              "const": "clock",
-              "type": "string"
-            }
-          },
-          "required": [
-            "type",
-            "from",
-            "to"
-          ],
-          "type": "object"
-        }
-      ]
-    },
-    "Gate": {
-      "additionalProperties": false,
-      "description": "dsl 0.41.0 §5.2: the answer of the `gate` query — whether a\n`raiseOccasion` of the occasion (for its target) with no writes would\npass the seam now.",
-      "properties": {
-        "open": {
-          "description": "The raise would be made.",
-          "type": "boolean"
-        },
-        "unresolved": {
-          "description": "Why the gate is undecided, one reason per unresolved read (as\n[`Evaluation::unresolved`]); omitted when it is decided.",
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "open"
-      ],
-      "title": "Gate",
-      "type": "object"
-    },
-    "GuardRead": {
-      "description": "One read of a guard that decided false, as the premise a refusal names\n(round-5 T3-12): a state path (with the value it held), a fact pattern\nthat does not hold, a scene `visited(…)` has not seen — or, under a\nnegation (OT-F-10), a fact that holds, a scene that is visited.",
-      "oneOf": [
-        {
-          "properties": {
-            "kind": {
-              "const": "path",
-              "type": "string"
-            },
-            "value": {
-              "maxItems": 2,
-              "minItems": 2,
-              "prefixItems": [
-                {
-                  "type": "string"
-                },
-                {
-                  "$ref": "#/$defs/Value"
-                }
-              ],
-              "type": "array"
-            }
-          },
-          "required": [
-            "kind",
-            "value"
-          ],
-          "type": "object"
-        },
-        {
-          "properties": {
-            "kind": {
-              "const": "fact",
-              "type": "string"
-            },
-            "value": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "value"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "HW27-10: a ground fact of a derived relation that does not hold,\nwith every rule that could conclude it (as written) and the\npremises that rule misses (`` `holding(brassKey)` does not hold ``);\n`base`: the missing atoms no rule explains further — what has to be\nasserted (or mocked) for a rule to fire.",
-          "properties": {
-            "kind": {
-              "const": "derived",
-              "type": "string"
-            },
-            "value": {
-              "properties": {
-                "base": {
-                  "items": {
-                    "type": "string"
-                  },
-                  "type": "array"
-                },
-                "fact": {
-                  "type": "string"
-                },
-                "rules": {
-                  "items": {
-                    "maxItems": 2,
-                    "minItems": 2,
-                    "prefixItems": [
-                      {
-                        "type": "string"
-                      },
-                      {
-                        "items": {
-                          "type": "string"
-                        },
-                        "type": "array"
-                      }
-                    ],
-                    "type": "array"
-                  },
-                  "type": "array"
-                }
-              },
-              "required": [
-                "fact",
-                "rules",
-                "base"
-              ],
-              "type": "object"
-            }
-          },
-          "required": [
-            "kind",
-            "value"
-          ],
-          "type": "object"
-        },
-        {
-          "properties": {
-            "kind": {
-              "const": "visited",
-              "type": "string"
-            },
-            "value": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "value"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "OT-F-10: a ground fact that holds, read under a negation.",
-          "properties": {
-            "kind": {
-              "const": "holds",
-              "type": "string"
-            },
-            "value": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "value"
-          ],
-          "type": "object"
-        },
-        {
-          "description": "OT-F-10: a scene `visited(…)` has seen, read under a negation.",
-          "properties": {
-            "kind": {
-              "const": "seen",
-              "type": "string"
-            },
-            "value": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "kind",
-            "value"
-          ],
-          "type": "object"
-        }
-      ],
-      "title": "GuardRead"
     },
     "Input": {
       "description": "The seven inputs in §5.1.",
@@ -969,29 +641,6 @@
       ],
       "type": "object"
     },
-    "Output": {
-      "additionalProperties": false,
-      "properties": {
-        "await": {
-          "$ref": "#/$defs/Await"
-        },
-        "eventVersion": {
-          "type": "string"
-        },
-        "events": {
-          "items": {
-            "$ref": "#/$defs/Event"
-          },
-          "type": "array"
-        }
-      },
-      "required": [
-        "eventVersion",
-        "events",
-        "await"
-      ],
-      "type": "object"
-    },
     "PickInput": {
       "anyOf": [
         {
@@ -1010,231 +659,167 @@
         }
       ]
     },
-    "Premise": {
-      "oneOf": [
-        {
-          "properties": {
-            "once": {
-              "anyOf": [
-                {
-                  "$ref": "#/$defs/BeatOnce"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "premise": {
-              "const": "spent",
-              "type": "string"
-            },
-            "reason": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "premise",
-            "reason"
-          ],
-          "type": "object"
-        },
-        {
-          "properties": {
-            "chapters": {
-              "type": "boolean"
-            },
-            "premise": {
-              "const": "after",
-              "type": "string"
-            },
-            "raw": {
-              "type": "string"
-            },
-            "unmet": {
-              "items": {
-                "$ref": "#/$defs/Atom"
-              },
-              "type": "array"
-            }
-          },
-          "required": [
-            "premise",
-            "raw",
-            "unmet",
-            "chapters"
-          ],
-          "type": "object"
-        },
-        {
-          "properties": {
-            "premise": {
-              "const": "spentBy",
-              "type": "string"
-            },
-            "raw": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "premise",
-            "raw"
-          ],
-          "type": "object"
-        },
-        {
-          "properties": {
-            "premise": {
-              "const": "when",
-              "type": "string"
-            },
-            "raw": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "premise",
-            "raw"
-          ],
-          "type": "object"
-        },
-        {
-          "properties": {
-            "occasion": {
-              "type": "string"
-            },
-            "premise": {
-              "const": "gate",
-              "type": "string"
-            },
-            "raw": {
-              "type": "string"
-            },
-            "reads": {
-              "items": {
-                "$ref": "#/$defs/GuardRead"
-              },
-              "type": "array"
-            }
-          },
-          "required": [
-            "premise",
-            "occasion",
-            "raw",
-            "reads"
-          ],
-          "type": "object"
-        },
-        {
-          "properties": {
-            "occasion": {
-              "type": "string"
-            },
-            "premise": {
-              "const": "terminal",
-              "type": "string"
-            },
-            "raw": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "premise",
-            "occasion",
-            "raw"
-          ],
-          "type": "object"
-        }
-      ],
-      "title": "Premise"
-    },
-    "Rejected": {
-      "additionalProperties": false,
+    "Stage": {
       "properties": {
-        "code": {
+        "actors": {
+          "items": {
+            "$ref": "#/$defs/StageActor"
+          },
+          "type": "array"
+        },
+        "bg": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageBackground"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cg": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageCg"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "music": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageMusic"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "video": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StageVideo"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "actors"
+      ],
+      "type": "object"
+    },
+    "StageActor": {
+      "properties": {
+        "anchor": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "character": {
           "type": "string"
         },
-        "message": {
+        "costume": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "emotion": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "character"
+      ],
+      "type": "object"
+    },
+    "StageBackground": {
+      "properties": {
+        "assetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "location": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "time": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "StageCg": {
+      "properties": {
+        "assetId": {
+          "type": "string"
+        },
+        "layout": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "assetId"
+      ],
+      "type": "object"
+    },
+    "StageMusic": {
+      "properties": {
+        "assetId": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "mood": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "playback": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "volume": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "StageVideo": {
+      "properties": {
+        "assetId": {
           "type": "string"
         }
       },
       "required": [
-        "code",
-        "message"
+        "assetId"
       ],
-      "type": "object"
-    },
-    "SaveInput": {
-      "additionalProperties": false,
-      "properties": {
-        "entriesRead": {
-          "additionalProperties": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "presented": {
-          "additionalProperties": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "questInstances": {
-          "additionalProperties": {
-            "minimum": 0,
-            "type": "integer"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "quests": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "default": {},
-          "type": "object"
-        },
-        "visited": {
-          "default": [],
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        }
-      },
-      "type": "object"
-    },
-    "Seed": {
-      "additionalProperties": false,
-      "description": "The initial world seed (§5.1).",
-      "properties": {
-        "derive": {
-          "default": true,
-          "type": "boolean"
-        },
-        "facts": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "save": {
-          "$ref": "#/$defs/SaveInput"
-        },
-        "state": {
-          "items": {
-            "$ref": "#/$defs/StateWrite"
-          },
-          "type": "array"
-        }
-      },
       "type": "object"
     },
     "StateWrite": {
@@ -1255,72 +840,6 @@
         "path"
       ],
       "type": "object"
-    },
-    "StreamLine": {
-      "anyOf": [
-        {
-          "properties": {
-            "output": {
-              "$ref": "#/$defs/Output"
-            },
-            "seed": {
-              "$ref": "#/$defs/Seed"
-            }
-          },
-          "required": [
-            "seed",
-            "output"
-          ],
-          "type": "object"
-        },
-        {
-          "properties": {
-            "input": {
-              "$ref": "#/$defs/Input"
-            },
-            "output": {
-              "$ref": "#/$defs/Output"
-            }
-          },
-          "required": [
-            "input",
-            "output"
-          ],
-          "type": "object"
-        },
-        {
-          "properties": {
-            "input": {
-              "$ref": "#/$defs/Input"
-            },
-            "rejected": {
-              "$ref": "#/$defs/Rejected"
-            }
-          },
-          "required": [
-            "input",
-            "rejected"
-          ],
-          "type": "object"
-        },
-        {
-          "properties": {
-            "rejected": {
-              "$ref": "#/$defs/Rejected"
-            },
-            "seed": {
-              "$ref": "#/$defs/Seed"
-            }
-          },
-          "required": [
-            "seed",
-            "rejected"
-          ],
-          "type": "object"
-        }
-      ],
-      "description": "One line of the `--events` JSONL stream.",
-      "title": "StreamLine"
     },
     "Value": {
       "description": "Three-valued trace value (§4.3). The explicit tag preserves CEL integer\nversus double values in JSON.",
@@ -1419,94 +938,183 @@
         }
       ]
     },
-    "Verdict": {
-      "oneOf": [
-        {
-          "properties": {
-            "verdict": {
-              "const": "eligible",
-              "type": "string"
-            }
-          },
-          "required": [
-            "verdict"
-          ],
-          "type": "object"
-        },
-        {
-          "properties": {
-            "premise": {
-              "$ref": "#/$defs/Premise"
-            },
-            "verdict": {
-              "const": "ineligible",
-              "type": "string"
-            }
-          },
-          "required": [
-            "verdict",
-            "premise"
-          ],
-          "type": "object"
-        },
-        {
-          "properties": {
-            "verdict": {
-              "const": "unknown",
-              "type": "string"
-            },
-            "why": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "verdict",
-            "why"
-          ],
-          "type": "object"
-        }
-      ],
-      "title": "Verdict"
-    },
-    "WorldView": {
-      "description": "The world at one moment of a play: the effective state, every fact that\nholds after derivation (rendered `rel(a, b)`), every declared quest's\nstatus, and the declared clock's position.",
+    "World": {
       "properties": {
-        "clock": {
-          "anyOf": [
-            {
-              "$ref": "#/$defs/ClockView"
-            },
-            {
-              "type": "null"
-            }
-          ],
-          "description": "`None` without a declared clock, or while its day/slot paths name no\nposition on it."
+        "accepts": {
+          "description": "Quest ids `accept` records named since the last quest advance (dsl\n0.21.0 §7a.3) — the next advance activates those still `unset`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "advanceCascadeDepth": {
+          "description": "Number of nested `advances:` beat presentations in the current\nclock-raise cascade. A declared beat can raise another declared beat;\nthis bounds a malformed cycle without changing ordinary play steps.",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "cadence": {
+          "$ref": "#/$defs/Cadence",
+          "description": "dsl 0.27.0 §5: the seasons' and rearms' last observed conditions and\nthe season-scoped spends."
+        },
+        "clockAdvancedByBeat": {
+          "description": "dsl 0.31.0 §1: the last presentation moved the clock because its\nbeat declared `advances`; the play driver uses this to explain an\nimmediately following explicit `advance:` without suppressing it.",
+          "type": "boolean"
+        },
+        "deferBy": {
+          "description": "dsl 0.24.0 §2.1: the raise (`name` / `name@target`) the running step\nmakes, until it is made — the settles before it defer the `by` of\nthe `on=` objectives it judges ([`Machine::with_deferred_by`]).",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "deferHandlers": {
+          "description": "dsl 0.24.0 §2: `true` while a `judge: before` raise is answered —\nthe `<on>` handlers it fires are collected in `deferred_handlers`\n(`(quest document, body addr)`, firing order) and run after the\noccasion's beats ([`run_deferred_handlers`](super::run_deferred_handlers)).",
+          "type": "boolean"
+        },
+        "deferredHandlers": {
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array"
+        },
+        "derive": {
+          "description": "`Some(false)` under `--no-derive` / `derive: false` (dsl 0.22.0 §6):\nhanded to every runner's mock.",
+          "type": [
+            "boolean",
+            "null"
+          ]
         },
         "facts": {
+          "description": "Base facts (the runner derives over them).",
+          "items": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ],
+            "type": "array"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "failedObjectives": {
+          "description": "dsl 0.23.0 §2: `<quest>.<objective>` ids a `by` deadline failed —\ncarried to every quest advance so a failed objective stays failed.",
           "items": {
             "type": "string"
           },
           "type": "array",
           "uniqueItems": true
         },
+        "nextRunAccepts": {
+          "description": "dsl 0.24.0 §2: quest ids `::accept{… at=\"nextRun\"}` queued — handed\nto `accepts` right after the next `newRun` reset.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "questInstances": {
+          "additionalProperties": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "description": "Save-wide quest instance number, keyed by quest id. Reset paths\nincrement this map but never clear it.",
+          "type": "object"
+        },
         "quests": {
           "additionalProperties": {
             "type": "string"
           },
+          "description": "quest id -> `unset`/`active`/`complete`/`failed`.",
           "type": "object"
+        },
+        "shareSpentBy": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "dsl 0.25.0 §2: `share` key → the beat whose presentation last spent\nit, for the reason a spent sibling gives.",
+          "type": "object"
+        },
+        "spentAt": {
+          "additionalProperties": {
+            "$ref": "#/$defs/ClockAt"
+          },
+          "description": "dsl 0.24.0 §1: where on the clock each beat was last presented (an\nentry: read) — what spends `once: day` / `once: slot`; a presented\nshared beat records every beat of its key (dsl 0.25.0 §2).",
+          "type": "object"
+        },
+        "spentRun": {
+          "description": "Scene beats presented since the last `newRun` (`once: run`) — and\n(dsl 0.25.0 §2) every beat, entries included, of a `share` key one of\nthem spent this run.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "spentUser": {
+          "description": "Scene beats presented in this play (`once: user`), and every beat of\na `share` key one of them spent.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "stage": {
+          "$ref": "#/$defs/Stage",
+          "description": "The current presentation stage. Unlike scene state, this survives\npresentations and is serialized in runtime snapshots."
         },
         "state": {
           "additionalProperties": {
             "$ref": "#/$defs/Value"
           },
+          "description": "Persistent-tier state (`run.*`/`user.*`/`app.*`/`quest.*`/`entry.*`);\n`scene.*` never lives here — it resets at every scene boundary.\nCarries `entry.<id>.everRead` for every entry (dsl 0.22.0 §7).",
           "type": "object"
+        },
+        "visited": {
+          "description": "Canonical ids of every presented scene — the `visited(…)` set both\n`after:` and CEL `visited('<id>')` read (dsl 0.21.0 §7a.1).",
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
         }
       },
       "required": [
         "state",
-        "quests"
+        "facts",
+        "quests",
+        "questInstances",
+        "visited",
+        "spentRun",
+        "spentUser",
+        "spentAt",
+        "shareSpentBy",
+        "accepts",
+        "nextRunAccepts",
+        "failedObjectives",
+        "deferHandlers",
+        "deferredHandlers",
+        "clockAdvancedByBeat",
+        "advanceCascadeDepth",
+        "cadence",
+        "stage"
       ],
-      "title": "WorldView",
       "type": "object"
     },
     "WritesInput": {
@@ -1725,24 +1333,45 @@
       ]
     }
   },
-  "$id": "https://lute-lang.vercel.app/schemas/lute-events-0.52.schema.json",
+  "$id": "https://lute-lang.vercel.app/schemas/lute-snapshot-0.53.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "oneOf": [
-    {
-      "$ref": "#/$defs/Input"
+  "additionalProperties": false,
+  "description": "A serialized, resumable runtime state.",
+  "properties": {
+    "await": {
+      "$ref": "#/$defs/Await"
     },
-    {
-      "$ref": "#/$defs/Seed"
+    "continuation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Continuation"
+        },
+        {
+          "type": "null"
+        }
+      ]
     },
-    {
-      "$ref": "#/$defs/Output"
+    "project": {
+      "type": "string"
     },
-    {
-      "$ref": "#/$defs/Rejected"
+    "request": {
+      "minimum": 0,
+      "type": "integer"
     },
-    {
-      "$ref": "#/$defs/StreamLine"
+    "snapshotVersion": {
+      "type": "string"
+    },
+    "world": {
+      "$ref": "#/$defs/World"
     }
+  },
+  "required": [
+    "snapshotVersion",
+    "project",
+    "await",
+    "request",
+    "world"
   ],
-  "title": "Lute runtime events (eventVersion 0.52.x)"
+  "title": "Snapshot",
+  "type": "object"
 }

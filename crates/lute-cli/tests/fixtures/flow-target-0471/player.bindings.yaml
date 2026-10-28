@@ -1,4 +1,4 @@
-bindingsVersion: "0.52"
+bindingsVersion: "0.53"
 canvas: { width: 1920, height: 1080 }
 flow:
   newGame: { occasion: begin }

@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.52.0`, the grammar and semantics the checker
+- **Language** — currently `0.53.0`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.52.0`) and gated on by consuming engines.
+  artifact (currently `0.53.0`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -34,6 +34,286 @@ unchanged) under the same precedent `0.7.0` set for a minor move with no shape
 change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
+
+## [0.53.0]
+
+**Dogfood round 3** (spec
+[`0.53.0.md`](docs/proposals/scenario-dsl/0.53.0.md); plan
+[`2026-10-28-lute-0.53.0-dogfood-r3.md`](docs/superpowers/plans/2026-10-28-lute-0.53.0-dogfood-r3.md);
+decisions [`2026-10-28-lute-0.53-decisions.md`](docs/superpowers/notes/2026-10-28-lute-0.53-decisions.md)).
+The release resolves the eight issues of the third dogfood round (porting a
+large existing VN / live-game content set) — #224, #225, #226, #227, #228,
+#229, #230, #231 — the audit and review findings filed while it was specified
+(#232, #233, #234, #235, #236, #237) and the two found while it was built
+(#240, #241), so the next dogfood starts from an empty tracker. The headline
+is #228: `lute lint` rebuilt the project for every document; the audit found
+the same defect in five more commands and in the LSP, and every one now builds
+the project input layer once. There is **no new keyword, no new element and no
+IR change**. Every axis reads `0.53.0`; the contract schemas move to the
+`0.53` line (`schemas/lute-{ir,events,snapshot,player-bindings}-0.53.schema.json`)
+with no shape change, `bindingsVersion` is `"0.53"` and the player's
+save/profile format is `"0.53"`. The seven npm packages align to `0.53.0`.
+Every artifact's `capabilitySnapshot` and every report id but `fix`'s
+(`0.53.0.fix`) is unchanged. This is a clean cutover (ADR D6).
+
+### Breaking
+
+| Class (D6) | Change | Migration |
+|---|---|---|
+| Semantic (stricter) | A misspelled reference inside a structured plugin frontmatter value is an error (§6); an in-script accept deadlock is `E-QUEST-START-CYCLE` (§7.3); an accept-driven quest that is not external is reached only through its in-script accepts, never through its `follows` (§7.1); a translation whose `{{…}}` markers are not its source's is `E-L10N-MARKERS`, not merged, and fails `compile --locale-bundle`; `loc import` refuses a marker that does not parse (§8.1). | Fix the reported id; let the host grant one quest of the cycle (`accept="external"`) or start one from outside it; give the translation the source's markers. |
+| Semantic (looser) | Loops may span top-level sections (§9); an `accept="external"` quest that a reward also accepts is reachable through the host (§7.1), and reach repeats over undrawn accept edges (§7.2); fewer `W-DOMAIN-UNREAD`. | None. A port may keep one section per source shot. |
+| Lint (looser) | `scope: document` (§5). | None. |
+| CLI | `lute fix` keeps plugin stamps, names its rules and reports kept sites; the `fix` report is `0.53.0.fix` with `rules` and `kept` (§4). `lute fix <dir>` no longer descends a directory symlink inside the directory, like every other walker (`check --project`, `lint`, `loc`, `doctor`); a file or directory named explicitly through a link is still migrated, with its root's snapshot. `lute lint` reads only its operands: an unrelated unreadable sibling no longer fails it, and an unreadable operand is reported as its own I/O error (§3.9). `catalog refresh` and `doctor` use the manifest's `catalogDir` even when a document of the root is unreadable (§3.9). `scenario reach` evidence may read `heuristic` (§7.1). | Tools reading the `fix` report accept `0.53.0.fix`; a project that relied on `fix` reaching linked directories names them as operands. |
+| LSP | One input cache per project root across requests, validated per request against its dependency record, with notifications forcing a content comparison and retention bounded to open documents' keys plus an LRU of 4 (§3.5); `workspace/didChangeWatchedFiles` registered. An edit that preserves every fingerprint field (metadata tampering) is detected only after a restart or a notification. | None. |
+| Diagnostics | `E-INTERP-BRACE` replaces `E-CEL-PROFILE` for a marker opening on a brace (§8). | A harness matching the code updates it. |
+| Rust API | `renames::renamed_attr` (replacing `renamed_directive_attr`); `fix_document(text, Option<&CapabilitySnapshot>)`, `FixRule`, `FixResult` per-rule counts and kept sites; `BuiltInput` without `defaults`, with shared identity fields; `InputCache` build counters and `dependencies()`, `Dependency`, `DependencySink`, `Memo::remove`; `PairScope::Document`; the frontmatter reference walk and `FrontmatterPath`; the accept anchor's `HostGate`; `GraphNode::follows: FollowsDecl` (`Absent` / `Malformed` / `Valid`, authored metadata, separate from `prereq`) read by every metadata consumer; `constraints::reachable` passing the claim's evidence; `loop_walk::region` / `Region`; `interp_brace_message(n, marker)`; the LSP's `ProjectInputs` and its factored analysis function. | Follow the types; the PR carries `api-change`. |
+| Release | All axes `0.53.0`; schemas `-0.53`; `bindingsVersion` and saves `"0.53"`. | Widen gates from `0.52` to `0.53`; a `"0.52"` save is refused as every minor's is. |
+
+### Syntax
+
+- **Loops across sections** (§9): the top-level `##` sections of a document
+  are one loop scope, as they run as one range, so a bounded
+  `::jump{to max}` may loop back to a label in an earlier section. A section
+  is presentation and identity, not a runtime range, a resume point, a host
+  entry or a jump target. Every flow walk (definite assignment, fact must,
+  stage, cast presence, the compiler's stage walk) follows the loop region
+  through the later sections to the last back edge; inside a component the
+  region stays in the component's own sections. (#231)
+
+### Semantics
+
+- **Accept routes** (§7.1): an in-script accept (`::accept` or a reward's
+  accept) activates an accept-driven quest whatever its `follows`, so the
+  accept anchor is drawn beside a declared `follows`, whose edge and JSON
+  `prereq` stay as authored metadata. An `accept="external"` quest has a
+  host route: open, or — with `follows="…"` — once the formula holds, as
+  host policy that Lute carries and analysis reads (`heuristic` evidence,
+  "reachable if the host grants it once `follows` holds"); it does not
+  enforce it. An accept-driven quest that is not external and that nothing
+  accepts is `Unknown`, never reached through its `follows`. (#227, #237)
+- **Reach over undrawn accept edges** (§7.2): the reach fixed point repeats
+  when an anchor source (accept, raise) or a host `follows` atom is not yet
+  decided, so a pair of mutual accepts or a host-granted quest that accepts
+  another resolves. (#237)
+- **Accept cycles** (§7.3): an in-script accept deadlock — quests that each
+  wait for another's accept or `start` — is `E-QUEST-START-CYCLE`, its path
+  naming each edge kind (`quest(a) -[start]-> quest(b) -[accept]->
+  quest(a)`), reported at the least quest's `start`, else its `id`. (#227)
+- **Structured frontmatter references** (§6): a reference typed `entity`,
+  `domain`, `enumFromOption`, `providerRef` or `assetKind` is checked
+  wherever it sits in a plugin frontmatter `record`, `list` or `map` value
+  (one walk; the message names the field path, e.g. ``field `partner` of
+  `talk` ``); a plugin frontmatter type counts as a reader for
+  `W-DOMAIN-UNREAD`. Representability and key-type checks are unchanged.
+  (#226)
+- **A marker that opens on a literal brace** (§8): a `{{…}}` marker whose
+  expression begins with `{` (`{{{run.a}}`) is `E-INTERP-BRACE`, naming the
+  run length n and the spellings for it, in line text and every label-grammar
+  value, in component bodies too. (#229)
+- **Translation markers** (§8.1): a translation shows each `{{…}}` marker of
+  its source as often, in any order, under its surface's grammar (a line's,
+  or a label's for option labels, prompts and directive `text` attributes);
+  otherwise it is `E-L10N-MARKERS` and is not merged. (#241)
+
+### IR
+
+- None. The schema is `schemas/lute-ir-0.53.schema.json` (title
+  `irVersion 0.53.x`), unchanged apart from its name; every artifact is
+  byte-identical to 0.52.0's apart from the version stamps.
+
+### Plugin
+
+- None. `schemas/lute.plugin.json` lists the `document` lint scope.
+
+### Bindings
+
+- None. `bindingsVersion` is `"0.53"`.
+
+### CLI
+
+- **Project data built once per command** (§3, #228): every multi-document
+  command builds the project input layer (manifest, plugins, providers,
+  imports) once per cache key and holds per document only its overlay.
+  Marginal CPU per document on the #228 vocabulary grid (150 / 4 800 state
+  slots; 0.52.0 → 0.53.0): `lint P` 1.68 / 46.30 → 0.11 / 0.13 ms; `lint P`
+  with every rule off 1.70 / 46.28 → 0.12 / 0.12 ms, peak 395 → 25 MB at
+  400 scenes; `check <files> --project P` 38.57 → 0.27 ms at 4 800 slots;
+  `loc export` 38.33 → 0.11 ms; `loc report` 38.52 → 0.11 ms; `doctor`
+  39.81 → 0.09 ms; standalone `lute test` one base per run; `scenario reach
+  --endings` one model per root (its 0.52 second model is gone, 1.59× →
+  0.85× of `scenario`). The #228 large-vocabulary `bench.py`: lint with
+  every rule off on 200 / 400 / 800 documents 15.72 s / 880 MB, 31.52 s /
+  1 714 MB, 61.77 s / 3 389 MB → 0.09 s / 31 MB, 0.10 s / 44 MB, 0.14 s /
+  68 MB, below `check --project` (0.50 / 0.89 / 1.74 s). Outputs are
+  byte-identical. (#228, #232, #233, #234)
+- **One reconciliation per root** (§3.10): `check --project` runs the beat
+  shadow, priority-tie and fact-guard passes after the reclassification of
+  `E-MAYBE-UNSET`, so it reports the shadows `lute beats` reported; `beats`,
+  `scenario`, `reach`, `envelope`, `--endings`, `trace` and `test --project`
+  read one model per root (one reconciliation, one scenario assembly).
+  (#240)
+- **`LUTE_STATS`**: `input-cache` prints `lute: stats: input-cache bases=…
+  vocabs=… assemblies=…` and `project` prints `reconciliations=…
+  scenarios=… fixpoints=…` after the command; any other value prints
+  nothing.
+- **§3.9 corrections**: `lute lint` reads only its operands (an unrelated
+  unreadable sibling no longer fails it; an unreadable operand is its own
+  I/O error, exit 2); `catalog refresh` and `doctor` read the manifest's
+  `catalogDir` also when a document of the root is unreadable. (#233)
+- **`lute fix`** (§4): reads each document's capability snapshot (one model
+  per root, shared with the volume migration) and keeps a directive
+  attribute the profile declares as a plugin stamp instead of renaming it as
+  the 0.37 core attribute; the checker's default judgment uses the same
+  predicate (`renames::renamed_attr`). Changed-file lines name their rules
+  (`would apply 1 fix(es): lute-version 1`), kept sites go to stderr in both
+  modes (`lute fix: <path>:<line>:<column>: kept …`), the JSON report is
+  `0.53.0.fix` with per-file `rules` and `kept`, and `lute fix --help` lists
+  every migration. A directory walk no longer descends a directory symlink.
+  Cost unchanged (0.51 / 0.53 ms/doc). (#224, #235, #230)
+- **`scenario reach`** prints a declared `follows` of an anchored quest as
+  `(declared ordering; not an activation route)`, the host route of an
+  external quest (`the host (accept="external")`, `the host once follows:
+  …`), an accept anchor nothing feeds as `[accept] nothing accepts it (…)`,
+  and `[heuristic]` evidence; JSON anchors gain `host`. `constraints`
+  keeps the claim's evidence. (#227)
+- `compile --locale-bundle` (file and project) fails on a translation
+  refused by `E-L10N-MARKERS`, as on `E-L10N-MODIFIERS`; `loc import`
+  refuses a row whose markers do not parse (every one reported, no bundle,
+  exit 1). (#241)
+- Every other output is identical to 0.52.0 apart from stamps and the
+  classes the spec's §15 lists.
+
+### Lint
+
+- `pair` rules take `scope: document`: one slot per document, across its
+  sections and top-level declarations, phrased "… in this document". (#225)
+- `lute lint` builds the project input layer once per root and reads only
+  its operands (see CLI). (#228)
+
+### Editors
+
+- **The LSP keeps one input cache per project root across requests** (§3.5):
+  every filesystem read of a cache build (manifest, `defaults:` globs,
+  catalog, plugins and exports, `uses:` / `extends:`, components) is
+  recorded as a dependency and revalidated on each request (metadata tuple,
+  then content for a racy or notified file); `didSave` and
+  `workspace/didChangeWatchedFiles` mark paths dirty; retention is the open
+  documents' keys plus an LRU of 4. Median warm request on 400 scenes
+  (`lute-bench lsp-requests`, 0.52.0 → 0.53.0): 0.952 → 0.160 ms at 150
+  slots, 38.74 → 0.187 ms at 4 800 slots; bases and vocabularies built over
+  20 requests 20 → 1. (#236)
+
+### Runtime
+
+- None.
+
+### Player
+
+- None. The save and profile format version is `"0.53"`.
+
+### Diagnostics
+
+- New: `E-L10N-MARKERS` (error; a translated text's markers do not parse
+  under its surface's rules or are not the source's). (#241)
+- Changed messages, sites and `--explain` text: `E-JUMP-LOOP-SCOPE` (the
+  section cause is gone), `E-JUMP-INTO-LOOP` (one-option hint),
+  `E-QUEST-START-CYCLE` (accept edges, edge kinds, the `id` anchor),
+  `E-QUEST-START-SELF` (`accept="external" follows="…"` as host policy),
+  `E-ACCEPT-TARGET` and `E-ATTR-TYPE` (messages name `follows=` as the
+  host's condition), `E-INTERP-BRACE` (a marker opening on `{`, n braces),
+  `E-CEL-PROFILE` (no longer for that marker), `E-BAD-ENUM` and every code
+  `check_attr_value` reports (references inside structured frontmatter, with
+  the field path), `W-DOMAIN-UNREAD` (plugin frontmatter types read),
+  `E-LINT-CONFIG` (`scope` admits `document`), the `pair` `L-*` lints
+  (`document` phrases), and `W-BEAT-SHADOWED`, `W-BEAT-PRIORITY-TIE` and
+  the fact-guard verdicts (new sites in `check --project`).
+
+### Identity
+
+- None. Line ids and voice keys do not move; `eventVersion` /
+  `snapshotVersion` read `0.53.0`.
+
+### Fixed
+
+- **`lute fix` no longer rewrites a plugin stamp named like a 0.37 renamed
+  attribute.** ([#224](https://github.com/journeyWorker/lute/issues/224))
+- **`pair` lints have a document scope.**
+  ([#225](https://github.com/journeyWorker/lute/issues/225))
+- **References in fields of structured plugin frontmatter are checked.**
+  ([#226](https://github.com/journeyWorker/lute/issues/226))
+- **An `accept="external"` quest keeps its host route when a reward also
+  accepts it, a host-granted quest writes its condition as `follows="…"`,
+  and an in-script accept deadlock is reported.**
+  ([#227](https://github.com/journeyWorker/lute/issues/227))
+- **`lute lint` builds the project once, not once per document.**
+  ([#228](https://github.com/journeyWorker/lute/issues/228))
+- **`{{{run.a}}` gives the literal-brace advice of `E-INTERP-BRACE`.**
+  ([#229](https://github.com/journeyWorker/lute/issues/229))
+- **The migration notes say that `lute fix` runs every older migration, and
+  `lute fix --help` lists them.**
+  ([#230](https://github.com/journeyWorker/lute/issues/230))
+- **A bounded loop may span the `##` sections of a document.**
+  ([#231](https://github.com/journeyWorker/lute/issues/231))
+- **`check <files…>`, the component-caller pass, `loc export` / `loc
+  report`, `doctor` and standalone `test` build the project once.**
+  ([#232](https://github.com/journeyWorker/lute/issues/232))
+- **`lint`, `doctor`, `catalog refresh` and `scenario reach --endings` read
+  the manifest instead of building a whole model for one field.**
+  ([#233](https://github.com/journeyWorker/lute/issues/233))
+- **`BuiltInput` no longer copies manifest data into every document.**
+  ([#234](https://github.com/journeyWorker/lute/issues/234))
+- **A plugin stamp named like a renamed attribute no longer hides that
+  attribute's default judgment.**
+  ([#235](https://github.com/journeyWorker/lute/issues/235))
+- **The LSP keeps the project input layer across requests.**
+  ([#236](https://github.com/journeyWorker/lute/issues/236))
+- **Reach repeats over undrawn accept edges, and a quest that declares
+  `follows` keeps its accept anchor.**
+  ([#237](https://github.com/journeyWorker/lute/issues/237))
+- **`check --project` reports the beat shadows `lute beats` reported.**
+  ([#240](https://github.com/journeyWorker/lute/issues/240))
+- **A translation whose `{{…}}` markers are not its source's is refused.**
+  ([#241](https://github.com/journeyWorker/lute/issues/241))
+
+### Documentation
+
+- Website (EN/KO) and `llms-full.txt`: [What `lute fix`
+  runs](https://lute-lang.vercel.app/tooling/cli/#what-lute-fix-runs), the
+  `0.53.0.fix` report, kept sites, the directory-symlink rule, `lint`
+  operands, `catalogDir`, `LUTE_STATS` and `E-L10N-MARKERS`
+  (`tooling/cli`); `scope: document` (`tooling/linting`); the per-root cache
+  (`tooling/editors`); structured references (`language/frontmatter-and-profiles`);
+  brace runs and translation markers (`language/dialogue-and-cast`,
+  `getting-started/build-a-town-game`); routes, the host route,
+  `heuristic` and accept cycles (`language/quests-and-scenes`,
+  `connectivity/reachability`); loops across sections and what a section
+  is at runtime (`language/directives`); `tooling/runtime-contract`; the
+  porting guide (shots as sections, retry loops, host-granted quests,
+  `lute fix` on an old project); `reference/cheatsheet`, `spec/current`,
+  `spec/index`; `docs/runtime/{execution-model,quest-lifecycle}.md`. (#230)
+
+### Out of scope
+
+- **Not developed** (decision note): a gated reading of `start` on
+  `accept="external"` quests; a runtime gate for `follows` (on host or
+  in-script accepts); a flow scope for `pair` lints; a per-edit `lute fix`
+  listing; reading schemas, plugins or components from unsaved LSP buffers;
+  skipping the input layer when no lint rule is active.
+
+### Migration notes
+
+| Class | Change | Migration |
+|---|---|---|
+| Semantic | Structured frontmatter references; accept deadlocks; `follows` is no route of a non-external accept-driven quest; translation markers. | Fix the reported id; grant one quest of the cycle from the host (`accept="external"`) or start one from outside it; give the translation the source's markers. |
+| CLI | `fix` report `0.53.0.fix`; `fix` does not descend directory symlinks. | Accept the new report id; name linked directories as operands. |
+| Diagnostics | `E-INTERP-BRACE` for a marker opening on `{`. | Update a harness matching `E-CEL-PROFILE`. |
+| Player | Saves are `"0.53"`. | Re-save. |
+| Release | All axes `0.53.0`; schemas `-0.53`; `bindingsVersion: "0.53"`. | Widen gates from `0.52` to `0.53`. |
+
+From 0.52.0: run `lute fix --check`, review, then `lute fix`. `lute fix`
+applies **every** migration of every older release, not only the version
+raise; see [What `lute fix`
+runs](https://lute-lang.vercel.app/tooling/cli/#what-lute-fix-runs).
 
 ## [0.52.0]
 

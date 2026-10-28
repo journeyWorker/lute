@@ -10,7 +10,7 @@ profiles:
 identity:
   requireStable: true
 defaults:
-  luteVersion: "0.52.0"
+  luteVersion: "0.53.0"
   contentLang: en-US
   pov: wren
   uses: [world.schema.yaml, vocabulary.schema.yaml]

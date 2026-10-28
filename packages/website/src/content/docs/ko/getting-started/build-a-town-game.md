@@ -267,7 +267,7 @@ expect:
 호스트가 직접 발생시키지 않습니다.
 
 ```yaml check="docs/examples/quayside/player.bindings.yaml"
-bindingsVersion: "0.52"
+bindingsVersion: "0.53"
 canvas: { width: 1280, height: 720 }
 assetsBase: assets/
 assets:
