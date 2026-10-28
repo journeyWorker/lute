@@ -2191,7 +2191,7 @@ returns `schemaVersion: "0.48.0.schema"` and describes the `--json` check report
 In JSON mode, usage, I/O, and malformed-input failures are also one object:
 `error.code` is `E-CLI-USAGE`, `E-CLI-IO`, or `E-CLI-INPUT`; `error.path`, `error.argument`,
 and `error.hint` are included when applicable. The stable payload fields are documented in the
-[CLI reference](/tooling/cli/#machine-readable-output).
+[CLI reference](/tooling/cli/#machine-readable-output-043).
 
 Telemetry is local and opt-out: set `LUTE_TELEMETRY=0` (or `DO_NOT_TRACK=1`) for deterministic
 examples and CI. It never changes command output.

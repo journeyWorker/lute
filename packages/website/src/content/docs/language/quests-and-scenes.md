@@ -705,7 +705,7 @@ reach quest(board):
   verdict: Unknown — this analysis cannot prove reachability either way under your declared routes. [unknown]
   follows: completed("intro") (declared ordering; not an activation route)
   anchored; each anchor holds before it activates, through any one of its sources:
-    [accept] 
+    [accept] nothing accepts it (no ::accept or reward names it, and it is not accept="external")
   referenced node(s) (see `follows` and the anchors above — this is NOT a flat requirement list):
     - quest(intro): Reachable — a satisfiable route exists under your declared routes.
 ```
