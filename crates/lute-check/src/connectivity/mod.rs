@@ -11,8 +11,8 @@ mod tests;
 
 pub use graph_assembly::assemble_graph;
 pub use graph_nodes::{
-    cycle_diag, quest_id_set, resolve_nodes, Anchor, ConnGraph, EdgeKind, NodeId, NodeInfo,
-    PrereqState, StartBlock, E_CONN_CYCLE, E_CONN_UNKNOWN_NODE,
+    cycle_diag, quest_id_set, resolve_nodes, Anchor, ConnGraph, EdgeKind, FollowsDecl, HostGate,
+    NodeId, NodeInfo, PrereqState, StartBlock, E_CONN_CYCLE, E_CONN_UNKNOWN_NODE,
 };
 pub use graph_sources::{omitted_refs, OmittedRef};
 pub use identity::{

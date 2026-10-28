@@ -17,7 +17,7 @@ use std::process::ExitCode;
 
 use serde_json::{Map, Value};
 
-use lute_check::connectivity::{ConnGraph, EdgeKind, NodeId, PrereqState};
+use lute_check::connectivity::{ConnGraph, EdgeKind, FollowsDecl, HostGate, NodeId, PrereqState};
 use lute_check::envelope;
 
 use crate::envelope::{self as cli_envelope, CliError};
@@ -85,24 +85,26 @@ fn reach_token(scenario: &RootScenario, node: &NodeId) -> &'static str {
     }
 }
 
-/// A node's declared `after` prerequisite as JSON: `null` when absent (an
-/// entry node), the malformed marker string when present-but-unparseable
-/// (`E-CONN-PROFILE`, already reported by `check`), else the fully
-/// parenthesized formula text ([`crate::format_prereq`] — `&&`/`||` intact,
-/// never flattened into a misleading joint requirement).
+/// A node's declared `after` prerequisite (a quest's `follows`) as JSON,
+/// read from [`lute_check::connectivity::NodeInfo::follows`] (dsl 0.53.0
+/// §7.1, beside any anchors): `null` when absent, the malformed marker
+/// string when present-but-unparseable (`E-CONN-PROFILE`, already reported
+/// by `check`), else the fully parenthesized formula text
+/// ([`crate::format_prereq`] — `&&`/`||` intact, never flattened into a
+/// misleading joint requirement).
 fn prereq_json(scenario: &RootScenario, node: &NodeId) -> Value {
-    match scenario.graph.nodes.get(node).map(|info| &info.prereq) {
-        // An anchored quest declares no `after`; its anchors are listed
-        // under `anchors` (dsl 0.24.0 §2, 0.25.0 §4).
-        None | Some(PrereqState::Absent | PrereqState::Anchored(_)) => Value::Null,
-        Some(PrereqState::Invalid) => Value::String("(malformed — E-CONN-PROFILE)".to_string()),
-        Some(PrereqState::Valid(f)) => Value::String(format_prereq(f)),
+    match scenario.graph.nodes.get(node).map(|info| &info.follows) {
+        None | Some(FollowsDecl::Absent) => Value::Null,
+        Some(FollowsDecl::Malformed(code)) => Value::String(format!("(malformed — {code})")),
+        Some(FollowsDecl::Valid(f)) => Value::String(format_prereq(f)),
     }
 }
 
-/// dsl 0.24.0 §2, 0.25.0 §4: an anchored quest's anchors, in order — each
-/// `{kind, from}` with `kind` `subquest` / `start` / `accept` and `from` its
-/// alternative source nodes. `None` for any other node.
+/// dsl 0.24.0 §2, 0.25.0 §4: an anchored node's anchors, in order — each
+/// `{kind, from}` with `kind` `subquest` / `start` / `accept` / `raises`
+/// and `from` its alternative source nodes; dsl 0.53.0 §7.1: an accept
+/// anchor of an `accept="external"` quest adds `host` (`"always"`, or
+/// `{"follows": …}`). `None` for any other node.
 fn anchors_json(scenario: &RootScenario, node: &NodeId) -> Option<Value> {
     let Some(PrereqState::Anchored(anchors)) = scenario.graph.nodes.get(node).map(|i| &i.prereq)
     else {
@@ -112,10 +114,21 @@ fn anchors_json(scenario: &RootScenario, node: &NodeId) -> Option<Value> {
         anchors
             .iter()
             .map(|a| {
-                serde_json::json!({
+                let mut anchor = serde_json::json!({
                     "kind": a.kind.as_str(),
                     "from": a.from.iter().map(std::string::ToString::to_string).collect::<Vec<_>>(),
-                })
+                });
+                if let Some(host) = &a.host {
+                    let host = match host {
+                        HostGate::Always => Value::String("always".to_string()),
+                        HostGate::Follows(f) => serde_json::json!({ "follows": format_prereq(f) }),
+                        HostGate::Unreadable => serde_json::json!({
+                            "follows": format!("(malformed — {})", lute_check::prereq::E_CONN_PROFILE)
+                        }),
+                    };
+                    anchor["host"] = host;
+                }
+                anchor
             })
             .collect(),
     ))
@@ -435,7 +448,7 @@ fn reach_json(dir: &Path, models: &crate::project::RootModels, node_id_raw: &str
         .graph
         .nodes
         .get(&node_id)
-        .map(|i| i.prereq.referenced(&scenario.graph.nodes))
+        .map(|i| i.referenced(&scenario.graph.nodes))
         .unwrap_or_default();
     if !targets.is_empty() {
         let referenced: Vec<Value> = targets

@@ -2569,6 +2569,7 @@ fn active_envelope_is_strictly_weaker_than_completed() {
         NodeInfo {
             id: NodeId::Quest(id.to_string()),
             path: PathBuf::from("t.lute"),
+            follows: lute_check::connectivity::FollowsDecl::Valid(f.clone()),
             prereq: PrereqState::Valid(f),
             span: Span {
                 byte_start: 0,

@@ -1,6 +1,6 @@
 use super::graph_nodes::{
-    atom_edge_kind, scene_after, Anchor, ConnGraph, EdgeKind, NodeId, NodeInfo, PrereqState,
-    SceneAfter,
+    atom_edge_kind, scene_after, Anchor, ConnGraph, EdgeKind, FollowsDecl, NodeId, NodeInfo,
+    PrereqState, SceneAfter,
 };
 use super::{
     graph_sources::{accept_sources, detect_conn_cycles, start_sources, top_conjuncts, topo_sort},
@@ -10,12 +10,24 @@ use crate::raises::RaiseAnchors;
 use crate::ProjectDoc;
 
 use crate::meta::meta_key_span;
-use crate::prereq::parse_prereq;
+use crate::prereq::{parse_prereq, E_CONN_PROFILE};
 use lute_core_span::{Diagnostic, Span};
 use lute_manifest::semantics::prereq::atoms;
 use lute_syntax::ast::{Node, Quest};
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
+
+/// An authored `after` / `follows` value at `span`: empty is no
+/// declaration; one [`parse_prereq`] cannot read is malformed (its
+/// [`E_CONN_PROFILE`] is the per-file check's).
+fn declared(raw: &str, span: Span) -> FollowsDecl {
+    if raw.is_empty() {
+        return FollowsDecl::Absent;
+    }
+    parse_prereq(raw, span)
+        .0
+        .map_or(FollowsDecl::Malformed(E_CONN_PROFILE), FollowsDecl::Valid)
+}
 
 /// The project's prerequisite graph. `raises` holds the root's raise anchors
 /// ([`crate::raises::RaiseTable::anchors`]; empty without declared raises).
@@ -37,18 +49,13 @@ pub fn assemble_graph(
         let Some((path, span)) = occurrences.first() else {
             continue;
         };
-        let prereq = by_path
+        let follows = by_path
             .get(path.as_path())
-            .map_or(PrereqState::Absent, |item| match scene_after(item.meta) {
-                SceneAfter::Absent => PrereqState::Absent,
-                SceneAfter::NonString => PrereqState::Invalid,
-                SceneAfter::String(after) if after.is_empty() => PrereqState::Absent,
+            .map_or(FollowsDecl::Absent, |item| match scene_after(item.meta) {
+                SceneAfter::Absent => FollowsDecl::Absent,
+                SceneAfter::NonString => FollowsDecl::Malformed(E_CONN_PROFILE),
                 SceneAfter::String(after) => {
-                    let after_span = meta_key_span(&item.doc.meta, "after");
-                    match parse_prereq(&after, after_span).0 {
-                        Some(f) => PrereqState::Valid(f),
-                        None => PrereqState::Invalid,
-                    }
+                    declared(&after, meta_key_span(&item.doc.meta, "after"))
                 }
             });
         nodes.insert(
@@ -56,7 +63,8 @@ pub fn assemble_graph(
             NodeInfo {
                 id: NodeId::Scene(key.clone()),
                 path: path.clone(),
-                prereq,
+                prereq: follows.activation(),
+                follows,
                 span: *span,
             },
         );
@@ -70,16 +78,12 @@ pub fn assemble_graph(
         let Some((path, span)) = occurrences.into_iter().next() else {
             continue;
         };
-        let prereq = match by_path
+        let follows = match by_path
             .get(path.as_path())
             .and_then(|item| bundle_beat_after(item.doc, item.meta, &key))
         {
-            None => PrereqState::Absent,
-            Some((after, _)) if after.is_empty() => PrereqState::Absent,
-            Some((after, after_span)) => match parse_prereq(after, *after_span).0 {
-                Some(f) => PrereqState::Valid(f),
-                None => PrereqState::Invalid,
-            },
+            None => FollowsDecl::Absent,
+            Some((after, after_span)) => declared(after, *after_span),
         };
         let id = NodeId::Beat(key);
         nodes.insert(
@@ -87,7 +91,8 @@ pub fn assemble_graph(
             NodeInfo {
                 id,
                 path,
-                prereq,
+                prereq: follows.activation(),
+                follows,
                 span,
             },
         );
@@ -108,20 +113,14 @@ pub fn assemble_graph(
             if quest.id.is_empty() {
                 continue;
             }
-            let prereq = if after.is_empty() {
-                PrereqState::Absent
-            } else {
-                match parse_prereq(after, quest.follows_span).0 {
-                    Some(f) => PrereqState::Valid(f),
-                    None => PrereqState::Invalid,
-                }
-            };
+            let follows = declared(after, quest.follows_span);
             nodes.insert(
                 NodeId::Quest(quest.id.clone()),
                 NodeInfo {
                     id: NodeId::Quest(quest.id.clone()),
                     path: path.to_path_buf(),
-                    prereq,
+                    prereq: follows.activation(),
+                    follows,
                     span: quest.id_span,
                 },
             );
@@ -145,6 +144,7 @@ pub fn assemble_graph(
             NodeInfo {
                 id: node,
                 path: path.to_path_buf(),
+                follows: FollowsDecl::Absent,
                 prereq: PrereqState::Anchored(anchors),
                 span: quest.id_span,
             },
@@ -174,6 +174,7 @@ pub fn assemble_graph(
             info.prereq = PrereqState::Anchored(vec![Anchor {
                 kind: EdgeKind::Raises,
                 from: sources,
+                host: None,
             }]);
         }
     }
@@ -207,6 +208,7 @@ pub fn assemble_graph(
             NodeInfo {
                 id: source,
                 path: path.to_path_buf(),
+                follows: FollowsDecl::Absent,
                 prereq: PrereqState::Absent,
                 span,
             },
@@ -226,7 +228,7 @@ pub fn assemble_graph(
     let mut edges: BTreeMap<NodeId, BTreeSet<NodeId>> = BTreeMap::new();
     let mut edge_kinds: BTreeMap<NodeId, BTreeMap<NodeId, BTreeSet<EdgeKind>>> = BTreeMap::new();
     for info in nodes.values() {
-        let PrereqState::Valid(formula) = &info.prereq else {
+        let FollowsDecl::Valid(formula) = &info.follows else {
             continue;
         };
         for atom in atoms(formula) {
@@ -447,6 +449,7 @@ pub(crate) fn quest_anchors(
             anchors.push(Anchor {
                 kind: EdgeKind::Subquest,
                 from: vec![NodeId::Quest(parent.to_string())],
+                host: None,
             });
         }
         anchors.extend(start_anchors(quest, decls, nodes));
@@ -454,6 +457,7 @@ pub(crate) fn quest_anchors(
             anchors.push(Anchor {
                 kind: EdgeKind::Accept,
                 from,
+                host: None,
             });
         }
         if !anchors.is_empty() {
@@ -493,6 +497,7 @@ pub(crate) fn start_anchors(
         .map(|from| Anchor {
             kind: EdgeKind::Start,
             from,
+            host: None,
         })
         .collect()
 }

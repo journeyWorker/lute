@@ -421,21 +421,72 @@ impl fmt::Display for NodeId {
 }
 
 /// One [`ConnGraph`] node: its identity, the file it was declared in, its
-/// parsed `after` prerequisite state ([`PrereqState`] — `Absent` for a
-/// scene/quest with no `after:` key at all, `Valid` for one whose CEL text
-/// parsed, `Invalid` for one present-but-malformed —
+/// authored prerequisite declaration ([`FollowsDecl`]: a scene's or bundle
+/// beat's `after`, a quest's `follows`), its activation state
+/// ([`PrereqState`] — `Absent` for a node with no declaration, `Valid` for
+/// one whose CEL text parsed, `Invalid` for one present-but-malformed —
 /// [`crate::prereq::E_CONN_PROFILE`] already reports the malformed case once,
-/// from T2's per-file `check()`; only `Absent`/`Invalid` nodes here
-/// contribute no incoming edges; `Anchored` for a quest without `after`
-/// anchored by its tree, `start` or `::accept`s), and the span this node is
-/// anchored at for diagnostics (a scene's `character:` key span — the SAME
-/// span [`scene_key_set`] stores; a quest's or entry's `id_span`).
+/// from T2's per-file `check()`; `Anchored` for a node anchored by its tree,
+/// `start`, accepts or declared raises), and the span this node is anchored
+/// at for diagnostics (a scene's `character:` key span — the SAME span
+/// [`scene_key_set`] stores; a quest's or entry's `id_span`).
+///
+/// dsl 0.53.0 §7.1: the two are independent. `follows` is what the author
+/// declared and is what every metadata reader reads (the graph's formula
+/// edges, omitted references, `lute scenario`'s `prereq` and `reach`'s
+/// structure); `prereq` is how the node activates and is what every
+/// activation reader reads (reachability, envelopes, must-facts). An
+/// anchored quest keeps its declaration.
 #[derive(Clone, Debug)]
 pub struct NodeInfo {
     pub id: NodeId,
     pub path: PathBuf,
+    pub follows: FollowsDecl,
     pub prereq: PrereqState,
     pub span: Span,
+}
+
+impl NodeInfo {
+    /// Every node this node names, for `lute scenario reach`'s referenced
+    /// list: each atom's target of its authored declaration (a target may
+    /// be no node — an undeclared id, a plain quest), then every anchor
+    /// source of an anchored node (dsl 0.53.0 §7.1: the union).
+    pub fn referenced<V>(&self, nodes: &BTreeMap<NodeId, V>) -> BTreeSet<NodeId> {
+        let mut out = BTreeSet::new();
+        if let FollowsDecl::Valid(f) = &self.follows {
+            out.extend(atoms(f).iter().map(|a| NodeId::of_atom(a, nodes)));
+        }
+        if let PrereqState::Anchored(anchors) = &self.prereq {
+            out.extend(anchors.iter().flat_map(|a| a.from.iter().cloned()));
+        }
+        out
+    }
+}
+
+/// A node's authored prerequisite declaration (dsl 0.53.0 §7.1): a scene's
+/// or bundle beat's `after`, a quest's `follows`. Kept apart from the
+/// activation state [`PrereqState`], which anchors replace.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum FollowsDecl {
+    /// Nothing declared (or an empty value).
+    Absent,
+    /// Declared but unreadable; the code is the one already reported
+    /// ([`crate::prereq::E_CONN_PROFILE`]).
+    Malformed(&'static str),
+    /// Declared and parsed.
+    Valid(PrereqFormula),
+}
+
+impl FollowsDecl {
+    /// The activation state this declaration gives a node that nothing
+    /// anchors: the declared route.
+    pub fn activation(&self) -> PrereqState {
+        match self {
+            FollowsDecl::Absent => PrereqState::Absent,
+            FollowsDecl::Malformed(_) => PrereqState::Invalid,
+            FollowsDecl::Valid(f) => PrereqState::Valid(f.clone()),
+        }
+    }
 }
 
 /// The resolved state of a node's `after` prerequisite (Task 5 review fix):
@@ -468,36 +519,40 @@ pub enum PrereqState {
     Anchored(Vec<Anchor>),
 }
 
-/// One synthesized prerequisite of a node that declares no `after` (dsl
-/// 0.24.0 §2, 0.25.0 §4, 0.51.0 §4.5): the node cannot activate before one
-/// of `from` is reached. Drawn as `from -> node` edges of `kind`.
+/// One synthesized prerequisite of a node (dsl 0.24.0 §2, 0.25.0 §4,
+/// 0.51.0 §4.5, 0.53.0 §7.1): the node cannot activate before one of its
+/// routes opens — one of `from` is reached, or, for an accept anchor of an
+/// `accept="external"` quest, the host grants it. Drawn as `from -> node`
+/// edges of `kind`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Anchor {
     /// [`EdgeKind::Subquest`] (the parent, active before its child),
     /// [`EdgeKind::Start`] (one top-level `start` conjunct),
-    /// [`EdgeKind::Accept`] (every node whose body `::accept`s the quest), or
-    /// [`EdgeKind::Raises`] (every node whose declared raise reaches the
-    /// scene or bundle beat).
+    /// [`EdgeKind::Accept`] (every node whose body `::accept`s the quest or
+    /// whose reward accepts it), or [`EdgeKind::Raises`] (every node whose
+    /// declared raise reaches the scene or bundle beat).
     pub kind: EdgeKind,
     /// The alternatives, in source order — every one a graph node.
     pub from: Vec<NodeId>,
+    /// dsl 0.53.0 §7.1: the host route of an accept anchor of an
+    /// `accept="external"` quest — one more alternative beside `from`.
+    /// `None` on every other anchor.
+    pub host: Option<HostGate>,
 }
 
-impl PrereqState {
-    /// Every node this prerequisite names, for `lute scenario reach`'s
-    /// referenced list: each atom's target of an authored formula (a target
-    /// may be no node — an undeclared id, a plain quest), every anchor
-    /// source of an anchored quest.
-    pub fn referenced<V>(&self, nodes: &BTreeMap<NodeId, V>) -> BTreeSet<NodeId> {
-        match self {
-            PrereqState::Valid(f) => atoms(f).iter().map(|a| NodeId::of_atom(a, nodes)).collect(),
-            PrereqState::Anchored(anchors) => anchors
-                .iter()
-                .flat_map(|a| a.from.iter().cloned())
-                .collect(),
-            PrereqState::Absent | PrereqState::Invalid => BTreeSet::new(),
-        }
-    }
+/// When the host grants an `accept="external"` quest (dsl 0.53.0 §7.1):
+/// host policy, which Lute carries to the host (`prereqEdges`) and does not
+/// enforce.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum HostGate {
+    /// No `follows`: the host may grant it from the start of play.
+    Always,
+    /// Once the quest's `follows` formula holds (its verdict is the
+    /// route's; evidence `heuristic`).
+    Follows(PrereqFormula),
+    /// The quest's `follows` is malformed: the condition cannot be read, so
+    /// the route's verdict is `Unknown`.
+    Unreadable,
 }
 
 /// Every edge in a [`ConnGraph`] is also tagged with the ATOM it came from

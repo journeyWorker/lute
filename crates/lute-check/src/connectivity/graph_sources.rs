@@ -1,6 +1,6 @@
 use super::graph_assembly::QuestDecls;
 use super::graph_nodes::{
-    atom_edge_kind, cycle_diag, ConnGraph, EdgeKind, NodeId, NodeInfo, PrereqState,
+    atom_edge_kind, cycle_diag, ConnGraph, EdgeKind, FollowsDecl, NodeId, NodeInfo,
 };
 use super::{bundle_id, scene_key};
 use crate::ProjectDoc;
@@ -216,7 +216,7 @@ pub fn omitted_refs(
 ) -> Vec<OmittedRef> {
     let mut out = Vec::new();
     for info in graph.nodes.values() {
-        let PrereqState::Valid(formula) = &info.prereq else {
+        let FollowsDecl::Valid(formula) = &info.follows else {
             continue;
         };
         for atom in atoms(formula) {

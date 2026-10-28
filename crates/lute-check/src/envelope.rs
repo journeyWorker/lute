@@ -1062,9 +1062,19 @@ mod tests {
     }
 
     fn node(id: NodeId, prereq: PrereqState) -> NodeInfo {
+        let follows = match &prereq {
+            PrereqState::Valid(f) => crate::connectivity::FollowsDecl::Valid(f.clone()),
+            PrereqState::Invalid => {
+                crate::connectivity::FollowsDecl::Malformed(crate::prereq::E_CONN_PROFILE)
+            }
+            PrereqState::Absent | PrereqState::Anchored(_) => {
+                crate::connectivity::FollowsDecl::Absent
+            }
+        };
         NodeInfo {
             id: id.clone(),
             path: std::path::PathBuf::from(format!("{id}.lute")),
+            follows,
             prereq,
             span: dummy_span(),
         }
