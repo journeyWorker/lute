@@ -262,18 +262,24 @@ if (!binary) {
   process.exit(1);
 }
 
-// On macOS and Linux with Node >= 23.11 the launcher replaces itself with the
-// binary (`process.execve`): no node process (~39 MB) stays alive beside a
-// long-running `lute-lsp`, the pid stays the one the editor started, and
-// signals reach the binary directly. Elsewhere (Windows, an older Node, Bun)
-// it runs the binary as a child and passes its exit status on, as before.
+// On macOS and Linux with Node 26.1 or later (or Bun) the launcher replaces
+// itself with the binary (`process.execve`): no node process (~39 MB) stays
+// alive beside a long-running `lute-lsp`, the pid stays the one the editor
+// started, and signals reach the binary directly. Elsewhere (Windows, an
+// older Node) it runs the binary as a child and passes its exit status on, as
+// before.
 // Returns only when replacing is not possible here (and nothing has run yet).
 function replaceWith(bin: string, args: string[]): void {
   // `execve` is not in @types/node ^20; probe it at runtime.
   const execve = (process as { execve?: (file: string, args: string[], env: NodeJS.ProcessEnv) => never })
     .execve;
   if (process.platform === "win32" || typeof execve !== "function") return;
-  // process.execve is experimental in Node 23.11 to 26 and announces itself
+  // Node 22.15 to 26.0 has execve, but a failed execve(2) aborts the process
+  // (SIGABRT) instead of throwing (nodejs/node#62878, fixed in 26.1). Bun
+  // reports a newer node version and throws.
+  const [major, minor] = process.versions.node.split(".").map(Number);
+  if (major < 26 || (major === 26 && minor < 1)) return;
+  // process.execve is experimental in Node and announces itself
   // with an ExperimentalWarning on stderr; keep it quiet (stderr of an LSP
   // server lands in the editor's log on every start).
   const emitWarning = process.emitWarning;

@@ -70,6 +70,15 @@ test("stdin reaches lute-lsp and the launcher writes nothing to stderr (LSP over
   expect(r.stderr.toString()).toBe("");
 });
 
+test("a binary the system cannot execute falls back to the child path instead of aborting", () => {
+  stub("lute", "exit 0");
+  chmodSync(join(pkg, "bin", "lute"), 0o644);
+  const r = launch("bin.js");
+  expect(r.signalCode ?? null).toBeNull();
+  expect(r.exitCode).toBe(1);
+  expect(r.stderr.toString()).not.toContain("Abort");
+});
+
 test("without process.execve the launcher runs the binary as a child and keeps its exit status", () => {
   const preload = join(root, "no-execve.cjs");
   writeFileSync(preload, "process.execve = undefined;\n");
