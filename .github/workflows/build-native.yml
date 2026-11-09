@@ -2,7 +2,7 @@ name: Build Native (Test Only)
 
 # Scoped to S0's acceptance bar: macOS arm64 + Linux x64 gnu only. Both
 # matrix rows build on a host that natively matches the target triple
-# (macos-14 runners are Apple Silicon; ubuntu-latest runners are x86_64),
+# (macos-15 runners are Apple Silicon; ubuntu-latest runners are x86_64),
 # so no cross-compilation toolchain (zig / cargo-zigbuild) is needed for
 # either row — that machinery only becomes necessary once a target is
 # added whose triple doesn't match any available runner's native arch.
@@ -41,7 +41,7 @@ jobs:
       fail-fast: false
       matrix:
         settings:
-          - host: macos-14
+          - host: macos-15
             target: aarch64-apple-darwin
             package_dir: core-darwin-arm64
             binary_ext: ""

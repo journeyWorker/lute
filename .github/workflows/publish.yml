@@ -86,7 +86,7 @@ jobs:
       fail-fast: false
       matrix:
         settings:
-          - host: macos-14
+          - host: macos-15
             target: aarch64-apple-darwin
             package_dir: core-darwin-arm64
             package_name: "@lute-lang/lute-core-darwin-arm64"
