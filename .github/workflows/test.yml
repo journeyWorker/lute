@@ -23,7 +23,8 @@ name: Test
 # `launcher-typecheck` compiles the `@lute-lang/lute` JS launcher
 # (packages/cli) under `tsc --noEmit` so a type regression in the
 # platform-detection / binary-resolution logic is caught without a native
-# build.
+# build, then runs `packages/cli/test` (the built launcher under Node 26:
+# execve replacement and the child-process fallback).
 # `runtime-ts` builds the runtime binding (`crates/lute-runtime-wasm`) and
 # runs the `@lute-lang/runtime` suite on Bun — contract drift check, replay
 # conformance over every `conformance/session` case — then one replay in
@@ -396,6 +397,18 @@ jobs:
       - name: Typecheck launcher
         working-directory: packages/cli
         run: bunx tsc --noEmit
+
+      # The launcher tests run the built launcher under real `node`; Node 26
+      # (>= 26.1, where a failed execve throws) covers both the replace path and (with
+      # execve masked) the child-process fallback.
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 26
+
+      - name: Launcher tests
+        working-directory: packages/cli
+        run: bun test test
 
   runtime-ts:
     name: TypeScript runtime (Bun + browser)
