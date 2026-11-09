@@ -103,6 +103,10 @@ format stays `"0.53"`. The seven npm packages align to `0.53.1`.
   empty stderr, the fallback for a binary the system cannot execute, the
   child path and its exit status without `process.execve`); the
   `launcher-typecheck` job of `test.yml` runs it under Node 26.
+- The `aarch64-apple-darwin` rows of `build-native.yml` and `publish.yml` run
+  on `macos-15` (GitHub retired the `macos-14` image on 2026-11-02;
+  [#245](https://github.com/journeyWorker/lute/pull/245)). macOS 15 is Apple
+  Silicon too, and the binary's deployment target stays macOS 11.
 
 ### Documentation
 
