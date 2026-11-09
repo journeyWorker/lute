@@ -35,6 +35,12 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
+## [Unreleased]
+
+### CLI
+
+- The npm launcher (`lute`, `lute-lsp`) now replaces itself with the native binary via `process.execve` on macOS and Linux with Node >= 23.11, so no ~39 MB Node process stays resident beside a long-running `lute-lsp`. Windows, older Node and Bun keep the previous child-process path and exit-status passthrough.
+
 ## [0.53.0]
 
 **Dogfood round 3** (spec

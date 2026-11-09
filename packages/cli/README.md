@@ -2,6 +2,8 @@
 
 The Lute command-line toolchain for `.lute` branching game narratives: the checker, compiler, play and test runners, formatter, migrations, and the `lute-lsp` language server. This package is a small launcher; the native binaries come from the platform package npm installs alongside it (`@lute-lang/lute-core-darwin-arm64`, `@lute-lang/lute-core-linux-x64`, or `@lute-lang/lute-core-win32-x64`).
 
+On macOS and Linux with Node 23.11 or newer the launcher replaces its own process with the native binary, so no Node process stays alive beside a long-running `lute-lsp`; on Windows, older Node, or Bun it runs the binary as a child process and passes its exit status through.
+
 ## Install
 
 ```sh

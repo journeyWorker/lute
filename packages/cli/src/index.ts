@@ -262,5 +262,32 @@ if (!binary) {
   process.exit(1);
 }
 
-const result = spawnSync(binary, process.argv.slice(2), { stdio: "inherit" });
+// On macOS and Linux with Node >= 23.11 the launcher replaces itself with the
+// binary (`process.execve`): no node process (~39 MB) stays alive beside a
+// long-running `lute-lsp`, the pid stays the one the editor started, and
+// signals reach the binary directly. Elsewhere (Windows, an older Node, Bun)
+// it runs the binary as a child and passes its exit status on, as before.
+// Returns only when replacing is not possible here (and nothing has run yet).
+function replaceWith(bin: string, args: string[]): void {
+  // `execve` is not in @types/node ^20; probe it at runtime.
+  const execve = (process as { execve?: (file: string, args: string[], env: NodeJS.ProcessEnv) => never })
+    .execve;
+  if (process.platform === "win32" || typeof execve !== "function") return;
+  // process.execve is experimental in Node 23.11 to 26 and announces itself
+  // with an ExperimentalWarning on stderr; keep it quiet (stderr of an LSP
+  // server lands in the editor's log on every start).
+  const emitWarning = process.emitWarning;
+  process.emitWarning = () => {};
+  try {
+    execve.call(process, bin, [bin, ...args], process.env);
+  } catch {
+    // Not replaced (e.g. a file the system cannot execute): the child path below handles it.
+  } finally {
+    process.emitWarning = emitWarning;
+  }
+}
+
+const args = process.argv.slice(2);
+replaceWith(binary, args);
+const result = spawnSync(binary, args, { stdio: "inherit" });
 process.exit(result.status ?? 1);
