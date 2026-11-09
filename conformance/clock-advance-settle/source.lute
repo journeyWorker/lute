@@ -1,6 +1,6 @@
 ---
 kind: lore
-luteVersion: "0.53.0"
+luteVersion: "0.53.1"
 id: clockAdvance
 uses: ./schema.yaml
 ---
