@@ -8,11 +8,11 @@ Lute tracks three independent version axes; this file covers only the first:
 - **Toolchain** — this changelog. The version of the CLI, checker, compiler,
   LSP, and npm launcher that ship together, stamped from the Cargo workspace
   (`CARGO_PKG_VERSION`) and printed by `lute version`.
-- **Language** — currently `0.53.0`, the grammar and semantics the checker
+- **Language** — currently `0.53.1`, the grammar and semantics the checker
   enforces. Its history lives in the versioned spec stack under
   [`docs/proposals/scenario-dsl/`](docs/proposals/scenario-dsl), not here.
 - **IR** — the compiled JSON artifact schema, stamped as `irVersion` in every
-  artifact (currently `0.53.0`) and gated on by consuming engines.
+  artifact (currently `0.53.1`) and gated on by consuming engines.
 
 Every release holds all three axes **aligned** at one visible number, so a
 release presents one number and nobody has to reconcile three. Alignment is a
@@ -35,11 +35,88 @@ change.
 See [`docs/versioning.md`](docs/versioning.md) for the full policy and the axes
 table.
 
-## [Unreleased]
+## [0.53.1] - 2026-11-09
+
+**Patch on the 0.53 line: the npm launcher replaces itself with the native
+binary** (spec [`0.53.1.md`](docs/proposals/scenario-dsl/0.53.1.md);
+[#243](https://github.com/journeyWorker/lute/pull/243)). The `lute` and
+`lute-lsp` launchers no longer keep a Node process alive beside the native
+binary. Nothing an author, an engine or a host sees changes: the native
+binaries, every command output and every contract are those of 0.53.0 apart
+from stamps. The toolchain earns the release; the language, IR, Event and
+snapshot are stamp-only. `luteVersion`, `irVersion`, `eventVersion` and
+`snapshotVersion` read `0.53.1`; the schema files stay `-0.53` (bodies
+unchanged), `bindingsVersion` stays `"0.53"` and the player's save/profile
+format stays `"0.53"`. The seven npm packages align to `0.53.1`.
+
+### Syntax
+
+- None.
+
+### Semantics
+
+- None.
+
+### IR
+
+- None (stamp only).
+
+### Plugin
+
+- None.
+
+### Bindings
+
+- None.
 
 ### CLI
 
 - The npm launcher (`lute`, `lute-lsp`) now replaces itself with the native binary via `process.execve` on macOS and Linux with Node >= 26.1 (or Bun), so no ~39 MB Node process stays resident beside a long-running `lute-lsp`. Windows and older Node (where a failed exec aborts instead of throwing) keep the previous child-process path and exit-status passthrough.
+- Every native command output, exit code and `--explain` text is identical to
+  0.53.0 apart from stamps.
+
+### Runtime
+
+- None.
+
+### Player
+
+- None; the save and profile format stays `"0.53"`.
+
+### Diagnostics
+
+- None: no diagnostic is added, removed or reworded.
+
+### Identity
+
+- Stamp only: `eventVersion` / `snapshotVersion` read `0.53.1`; the schemas
+  stay `lute-{ir,events,snapshot,player-bindings}-0.53` (bodies unchanged),
+  `bindingsVersion` stays `"0.53"`, saves and profiles stay `"0.53"`. Line ids
+  and voice keys do not move. A bundle recompiled with the 0.53.1 stamps gets
+  a new project fingerprint (the snapshot hashes `irVersion`), as any
+  recompile does.
+
+### Tooling/Repo
+
+- `packages/cli/test/launcher.test.ts` runs the built launcher under `node`
+  with stub binaries (replacement for `lute` and `lute-lsp`, stdin with an
+  empty stderr, the fallback for a binary the system cannot execute, the
+  child path and its exit status without `process.execve`); the
+  `launcher-typecheck` job of `test.yml` runs it under Node 26.
+
+### Documentation
+
+- The `@lute-lang/lute` README states when the launcher replaces itself and
+  when it runs the binary as a child.
+
+### Migration notes
+
+| Class | Change | Migration |
+|---|---|---|
+| Launcher | On macOS and Linux with Node >= 26.1 (or Bun) the launcher process becomes the native binary. | None. A supervisor that tracked the launcher's pid now tracks the binary itself. |
+| Release | All axes `0.53.1`; schemas, `bindingsVersion` and save format stay on `0.53`. | None. |
+
+From 0.53.0: run `lute fix` to raise `luteVersion` stamps to `0.53.1`.
 
 ## [0.53.0]
 
